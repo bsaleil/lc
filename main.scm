@@ -190,7 +190,6 @@
           (set-car! (cdr (vector-ref code-vector jump-loc)) dest-loc)
           (vector-set! code-vector jump-loc (list 'jump dest-loc))))
 
-;; TODO
 (define (patch-closure closure new-dest)
   (set-car! (cdr closure) new-dest))
 
