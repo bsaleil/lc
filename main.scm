@@ -597,14 +597,18 @@
                                                                            0
                                                                            (lambda (ret-addr selector)
                                                                               (println "EXEC CALLBACK")
-                                                                              (println "   >> selector = ")
+                                                                              (print "   >> selector = ")
                                                                               (println selector)
                                                                               (gen-version -1 lazy-ret ctx)))))
                                              (set! functions (cons (cons (cadr ast) (list-ref stub-labels 0)) functions))
                                              (jump-to-version cgc succ ctx))))))
 
                  (else
-                  ...))))
+                  (make-lazy-code (lambda (cgc ctx)
+                                          (let ((label (cdr (assoc (car ast) functions))))
+                                               (x86-jmp cgc label)))))
+                  )))
+                  ;...))))
 
         (else
          (error "unknown ast" ast))))
@@ -657,9 +661,9 @@
 
 ;(test '(if (< a b) 11 22))
 
-;(test '((Define RR 10)))
+(test '((Define RR 10) (RR)))
 
-(test '((if #t 10 20)))
+;(test '((if #t 10 20)))
 
 ;(test '(- (if (< a b) 11 22) (if (< b a) 33 44)))
 
