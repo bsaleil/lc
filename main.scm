@@ -262,6 +262,7 @@
 
     (x86-push cgc (x86-rdx))
     (x86-push cgc (x86-rsi))
+    (x86-push cgc (x86-rbx))
     (x86-push cgc (x86-rdi))
     (x86-mov  cgc (x86-rcx) (x86-imm-int 0))))
 
@@ -610,12 +611,11 @@
                      lazy-code-test)))
 
                  ((eq? op 'Define)
-                    (let* ((lazy-ret (make-lazy-code (lambda (cgc ctx) ;; TODO optional ?
-                                                            (x86-pop cgc (x86-rax))
-                                                            (x86-pop cgc (x86-rdi))
-                                                            (x86-pop cgc (x86-rsi))
-                                                            (x86-pop cgc (x86-rdx))
-                                                            (x86-ret cgc))))
+                    (let* ((lazy-ret (make-lazy-code (lambda (cgc ctx)
+                                                            (x86-pop cgc (x86-rax)) ;; Ret val
+                                                            (x86-pop cgc (x86-rbx)) ;; Ret addr
+                                                            (x86-push cgc (x86-rax))
+                                                            (x86-jmp cgc (x86-rbx)))))
                           (lazy-body (gen-ast (caddr ast) lazy-ret)))
                        (make-lazy-code (lambda (cgc ctx)
                                           (let ((stub-labels (add-callback cgc
@@ -630,8 +630,25 @@
 
                  (else
                   (make-lazy-code (lambda (cgc ctx)
-                                          (let ((label (cdr (assoc (car ast) functions))))
-                                               (x86-jmp cgc label)))))
+                                          (let ((fun-label (cdr (assoc (car ast) functions)))
+                                                (stub-labels (add-callback cgc
+                                                                           0
+                                                                           (lambda (ret-addr selector)
+                                                                              (println "CONTINUATION")
+                                                                              (gen-version -1 succ (ctx-push ctx 'unknown))))))
+                                               
+                                               (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1))) ;; Push label addr
+                                               (x86-push cgc (x86-rax))
+                                               (x86-jmp cgc fun-label)))))
+
+
+                  ; (make-lazy-code (lambda (cgc ctx)
+                  ;                         (let ((label (cdr (assoc (car ast) functions))))
+                  ;                              ;(x86-jmp cgc label)))))
+                  ;                              (pp "CALL")
+                  ;                              (jump-to-version cgc succ ctx)))))
+                  ;                              (pp succ)))))
+                  ;                              ;(x86-call cgc label)))))
                   )))
                   ;...))))
 
@@ -650,6 +667,7 @@
         (x86-pop cgc (x86-rax))
         (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 3) 8)))
         (x86-pop cgc (x86-rdi))
+        (x86-pop cgc (x86-rbx))
         (x86-pop cgc (x86-rsi))
         (x86-pop cgc (x86-rdx))
         (x86-ret cgc)))
@@ -686,7 +704,7 @@
 
 ;(test '(if (< a b) 11 22))
 
-(test '((Define RR 10) (RR)))
+(test '((Define RR 100) (RR)))
 
 ;(test '((if #t 10 20)))
 
