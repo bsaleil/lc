@@ -78,7 +78,8 @@
 
          (new-ret-addr
           (callback-fn ret-addr selector)))
-
+    (pp "DO CALLBACK")
+    (pp callback-fn)
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8))
              new-ret-addr)
@@ -356,44 +357,59 @@
 
 (define (gen-version jump-addr lazy-code ctx)
 
-  (print ">>> ")
-  (pp ctx)
+  ;; This is a function stub
+  (if (< jump-addr 0)
+    (begin
+        (let ((label-version (asm-make-label #f (new-sym 'version))))
+        ;; generer le bloc à un endroit précis
+          (code-gen 'x86-64 fun-addr (lambda (cgc) (x86-label cgc label-version)
+                                                   (x86-pop cgc (x86-rdi))
+                                                   (x86-pop cgc (x86-rsi))
+                                                   (x86-pop cgc (x86-rdx))
+                                                   (x86-ret cgc)))
+          (pp "DEBUG GEN VERSION")
+          (pp jump-addr)
+          (asm-label-pos label-version)))
 
-  ;; the jump instruction at address "jump-addr" must be redirected to
-  ;; jump to the machine code corresponding to the version of
-  ;; "lazy-code" for the context "ctx"
+    (begin
+        (print ">>> ")
+        (pp ctx)
 
-  (let ((label-dest (get-version lazy-code ctx)))
-    (if label-dest
+        ;; the jump instruction at address "jump-addr" must be redirected to
+        ;; jump to the machine code corresponding to the version of
+        ;; "lazy-code" for the context "ctx"
 
-        (let ((dest-addr (asm-label-pos label-dest)))
+        (let ((label-dest (get-version lazy-code ctx)))
+          (if label-dest
 
-          ;; that version has already been generated, so just patch jump
+              (let ((dest-addr (asm-label-pos label-dest)))
 
-          (patch-jump jump-addr dest-addr)
+                ;; that version has already been generated, so just patch jump
 
-          dest-addr)
+                (patch-jump jump-addr dest-addr)
 
-        (begin
+                dest-addr)
 
-          (cond ((= (+ jump-addr (jump-size jump-addr)) code-alloc)
-                 ;; (fall-through optimization)
-                 ;; the jump is the last instruction previously generated, so
-                 ;; just overwrite the jump
-                 (println ">>> fall-through-optimization")
-                 (set! code-alloc jump-addr)) 
+              (begin
 
-                (else
-                 (patch-jump jump-addr code-alloc)))
+                (cond ((= (+ jump-addr (jump-size jump-addr)) code-alloc)
+                       ;; (fall-through optimization)
+                       ;; the jump is the last instruction previously generated, so
+                       ;; just overwrite the jump
+                       (println ">>> fall-through-optimization")
+                       (set! code-alloc jump-addr)) 
 
-          ;; generate that version inline
-          (let ((label-version (asm-make-label #f (new-sym 'version))))
-            (put-version lazy-code ctx label-version)
-            (code-add
-             (lambda (cgc)
-               (x86-label cgc label-version)
-               ((lazy-code-generator lazy-code) cgc ctx)))
-            (asm-label-pos label-version))))))
+                      (else
+                       (patch-jump jump-addr code-alloc)))
+
+                ;; generate that version inline
+                (let ((label-version (asm-make-label #f (new-sym 'version))))
+                  (put-version lazy-code ctx label-version)
+                  (code-add
+                   (lambda (cgc)
+                     (x86-label cgc label-version)
+                     ((lazy-code-generator lazy-code) cgc ctx)))
+                  (asm-label-pos label-version))))))))
 
 (define (patch-jump jump-addr dest-addr)
 
