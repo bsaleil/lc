@@ -127,7 +127,7 @@
             (loop (fx- i 1)))
           mcb))))
 
-(define (code-gen arch addr gen #!optional (show-listing? #t))
+(define (code-gen arch addr gen #!optional ctx (show-listing? #t))
   (let* ((cgc (make-codegen-context))
          (endianness 'le))
 
@@ -135,7 +135,10 @@
     (codegen-context-listing-format-set! cgc 'nasm)
     (x86-arch-set! cgc arch)
 
-    (gen cgc)
+    ;; If the code-gen function is called to generate function stub, use ctx
+    (if ctx
+      (gen cgc ctx)
+      (gen cgc))
 
     (let ((code (asm-assemble-to-u8vector cgc)))
       (if show-listing?
@@ -357,16 +360,16 @@
 
 (define (gen-version jump-addr lazy-code ctx)
 
+  (pp "CODE")
+  (pp (lazy-code-generator lazy-code))
+
   ;; This is a function stub
   (if (< jump-addr 0)
     (begin
-        (let ((label-version (asm-make-label #f (new-sym 'version))))
-        ;; generer le bloc à un endroit précis
-          (code-gen 'x86-64 fun-addr (lambda (cgc) (x86-label cgc label-version)
-                                                   (x86-pop cgc (x86-rdi))
-                                                   (x86-pop cgc (x86-rsi))
-                                                   (x86-pop cgc (x86-rdx))
-                                                   (x86-ret cgc)))
+        (let* ((label-version (asm-make-label #f (new-sym 'version)))
+               (nb-bytes-label (code-gen 'x86-64 fun-addr (lambda (cgc) (x86-label cgc label-version))))
+               (nb-bytes-lazy  (code-gen 'x86-64 (+ nb-bytes-label fun-addr) (lazy-code-generator lazy-code) ctx)))
+          (set! fun-addr (+ fun-addr nb-bytes-label nb-bytes-lazy))
           (pp "DEBUG GEN VERSION")
           (pp jump-addr)
           (asm-label-pos label-version)))
@@ -607,7 +610,13 @@
                      lazy-code-test)))
 
                  ((eq? op 'Define)
-                    (let ((lazy-ret (make-lazy-code (lambda (cgc ctx) (x86-ret cgc)))))
+                    (let* ((lazy-ret (make-lazy-code (lambda (cgc ctx) ;; TODO optional ?
+                                                            (x86-pop cgc (x86-rax))
+                                                            (x86-pop cgc (x86-rdi))
+                                                            (x86-pop cgc (x86-rsi))
+                                                            (x86-pop cgc (x86-rdx))
+                                                            (x86-ret cgc))))
+                          (lazy-body (gen-ast (caddr ast) lazy-ret)))
                        (make-lazy-code (lambda (cgc ctx)
                                           (let ((stub-labels (add-callback cgc
                                                                            0
@@ -615,7 +624,7 @@
                                                                               (println "EXEC CALLBACK")
                                                                               (print "   >> selector = ")
                                                                               (println selector)
-                                                                              (gen-version -1 lazy-ret ctx)))))
+                                                                              (gen-version -1 lazy-body ctx)))))
                                              (set! functions (cons (cons (cadr ast) (list-ref stub-labels 0)) functions))
                                              (jump-to-version cgc succ ctx))))))
 
