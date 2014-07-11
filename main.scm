@@ -107,12 +107,15 @@
 ;; Machine code block management
 
 (define mcb-len 100000)
+(define fun-len 100000)
 (define mcb #f)
 (define mcb-addr #f)
+(define fun-addr #f)
 
 (define (init-mcb)
-  (set! mcb (##make-machine-code-block mcb-len))
-  (set! mcb-addr (##foreign-address mcb)))
+  (set! mcb (##make-machine-code-block (+ mcb-len fun-len)))
+  (set! mcb-addr (##foreign-address mcb))
+  (set! fun-addr (+ (##foreign-address mcb) mcb-len)))
 
 (define (write-mcb code start)
   (let ((len (u8vector-length code)))
@@ -587,27 +590,48 @@
                      (cadr ast)
                      lazy-code-test)))
 
+                 ((eq? op 'Define)
+                    (let ((lazy-ret (make-lazy-code (lambda (cgc ctx) (x86-ret cgc)))))
+                       (make-lazy-code (lambda (cgc ctx)
+                                          (let ((stub-labels (add-callback cgc
+                                                                           0
+                                                                           (lambda (ret-addr selector)
+                                                                              (println "EXEC CALLBACK")
+                                                                              (println "   >> selector = ")
+                                                                              (println selector)
+                                                                              (gen-version -1 lazy-ret ctx)))))
+                                             (set! functions (cons (cons (cadr ast) (list-ref stub-labels 0)) functions))
+                                             (jump-to-version cgc succ ctx))))))
+
                  (else
                   ...))))
 
         (else
          (error "unknown ast" ast))))
 
+;; TODO
+(define functions '())
+
 ;;-----------------------------------------------------------------------------
+
+(define (lazy-exprs exprs)
+  (if (null? exprs)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (x86-pop cgc (x86-rax))
+        (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 3) 8)))
+        (x86-pop cgc (x86-rdi))
+        (x86-pop cgc (x86-rsi))
+        (x86-pop cgc (x86-rdx))
+        (x86-ret cgc)))
+    (gen-ast (car exprs)
+             (lazy-exprs (cdr exprs)))))
 
 (define (compile-lambda params expr)
 
   (init)
 
-  (let ((lazy-code
-         (gen-ast expr
-                  (make-lazy-code
-                   (lambda (cgc ctx)
-                     (x86-pop cgc (x86-rax))
-                     (x86-pop cgc (x86-rdi))
-                     (x86-pop cgc (x86-rsi))
-                     (x86-pop cgc (x86-rdx))
-                     (x86-ret cgc))))))
+  (let ((lazy-code (lazy-exprs expr)))
     (gen-version code-alloc
                  lazy-code
                  (make-ctx (map (lambda (x) 'unknown) params)))
@@ -626,15 +650,17 @@
         (pretty-print (list (cons 'f args) '=> result))))
 
     (t 1 2)
-    (t 2 1)
-    (t 1 2)
-    (t 2 1)
+    ;(t 2 1)
+    ;(t 1 2)
+    ;(t 2 1)
 ))
 
-(test '(if (< a b) 11 22))
+;(test '(if (< a b) 11 22))
 
-(test '(if #t 11 22))
+(test '((Define RR 10)))
 
-(test '(- (if (< a b) 11 22) (if (< b a) 33 44)))
+;(test '((if #t 10 20)))
+
+;(test '(- (if (< a b) 11 22) (if (< b a) 33 44)))
 
 ;;-----------------------------------------------------------------------------
