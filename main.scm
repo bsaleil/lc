@@ -627,22 +627,22 @@
     (gen-ast (car exprs)
              (lazy-exprs (cdr exprs)))))
 
-(define (compile-lambda params expr)
+(define (compile-lambda params exprs)
 
   (init)
 
-  (let ((lazy-code (lazy-exprs expr)))
+  (let ((lazy-code (lazy-exprs exprs)))
     (gen-version code-alloc
                  lazy-code
                  (make-ctx (map (lambda (x) 'unknown) params)))
     (lambda (#!optional (arg1 0) (arg2 0) (arg3 0))
       (##machine-code-block-exec mcb arg1 arg2 arg3))))
 
-(define (test expr)
+(define (test exprs)
   (println "******************************************************************")
   (print "*** TESTING: ")
-  (pretty-print (list 'define 'f (list 'lambda '(a b) expr)))
-  (let ((f (compile-lambda '(a b) expr)))
+  (pretty-print (list 'define 'f (list 'lambda '(a b) exprs)))
+  (let ((f (compile-lambda '(a b) exprs)))
 
     (define (t . args)
       (let ((result (apply f (reverse args))))
@@ -657,9 +657,9 @@
 
 ;(test '(if (< a b) 11 22))
 
-(test '((Define RR 10)))
+;(test '((Define RR 10)))
 
-;(test '((if #t 10 20)))
+(test '((if #t 10 20)))
 
 ;(test '(- (if (< a b) 11 22) (if (< b a) 33 44)))
 
