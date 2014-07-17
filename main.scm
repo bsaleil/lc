@@ -359,6 +359,25 @@
 (define (add-callback cgc max-selector callback-fn)
   (create-stub label-do-callback-handler max-selector callback-fn))
 
+;; Generate a continuation
+;; First generate lazy-code corresponding to continuation
+;; Then patch mov before call to mov continuation address instead of stub address
+;;  TODO : check if stub addr and continuation addr are the same size
+(define (gen-version-continuation load-addr lazy-code ctx)
+
+  (let ((continuation-label (asm-make-label #f (new-sym 'continuation))))
+    ;; Generate lazy-code
+    (code-add 
+      (lambda (cgc)
+        (x86-label cgc continuation-label)
+        ((lazy-code-generator lazy-code) cgc ctx)))
+    ;; Patch load
+    (print ">>> pathing mov at ") (print (number->string load-addr 16)) (print " : ")
+    (print "now load continuation addr ") (println (number->string (asm-label-pos continuation-label) 16))
+    (code-gen 'x86-64 load-addr (lambda (cgc) (x86-mov cgc (x86-rax) (x86-imm-int (asm-label-pos continuation-label)))))
+    ;; Return label pos
+    (asm-label-pos continuation-label)))
+
 (define (gen-version jump-addr lazy-code ctx)
 
   (pp "CODE")
@@ -610,7 +629,7 @@
                      (cadr ast)
                      lazy-code-test)))
 
-                 ((eq? op 'Define)
+                 ((eq? op 'define)
                     (let* ((lazy-ret (make-lazy-code (lambda (cgc ctx)
                                                             (x86-pop cgc (x86-rax)) ;; Ret val
                                                             (x86-pop cgc (x86-rbx)) ;; Ret addr
@@ -621,34 +640,25 @@
                                           (let ((stub-labels (add-callback cgc
                                                                            0
                                                                            (lambda (ret-addr selector)
-                                                                              (println "EXEC CALLBACK")
-                                                                              (print "   >> selector = ")
-                                                                              (println selector)
+                                                                              (println "GEN VERSION DE RR")
                                                                               (gen-version -1 lazy-body ctx)))))
                                              (set! functions (cons (cons (cadr ast) (list-ref stub-labels 0)) functions))
                                              (jump-to-version cgc succ ctx))))))
 
                  (else
                   (make-lazy-code (lambda (cgc ctx)
-                                          (let ((fun-label (cdr (assoc (car ast) functions)))
+                                          (let* ((fun-label (cdr (assoc (car ast) functions)))
+                                                (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
                                                 (stub-labels (add-callback cgc
                                                                            0
                                                                            (lambda (ret-addr selector)
-                                                                              (println "CONTINUATION")
-                                                                              (gen-version -1 succ (ctx-push ctx 'unknown))))))
-                                               
+                                                                              (gen-version-continuation (asm-label-pos load-ret-label)
+                                                                                                        succ
+                                                                                                        (ctx-push ctx 'unknown))))))
+                                               (x86-label cgc load-ret-label)
                                                (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1))) ;; Push label addr
                                                (x86-push cgc (x86-rax))
                                                (x86-jmp cgc fun-label)))))
-
-
-                  ; (make-lazy-code (lambda (cgc ctx)
-                  ;                         (let ((label (cdr (assoc (car ast) functions))))
-                  ;                              ;(x86-jmp cgc label)))))
-                  ;                              (pp "CALL")
-                  ;                              (jump-to-version cgc succ ctx)))))
-                  ;                              (pp succ)))))
-                  ;                              ;(x86-call cgc label)))))
                   )))
                   ;...))))
 
@@ -697,14 +707,18 @@
         (pretty-print (list (cons 'f args) '=> result))))
 
     (t 1 2)
-    ;(t 2 1)
+    (println "")
+    (println "BREAK")
+    (println "")
+
+    (t 2 1)
     ;(t 1 2)
     ;(t 2 1)
 ))
 
 ;(test '(if (< a b) 11 22))
 
-(test '((Define RR 100) (RR)))
+(test '((define RR 100) (RR)))
 
 ;(test '((if #t 10 20)))
 
