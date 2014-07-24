@@ -378,15 +378,17 @@
 
 (define-type ctx
   stack ;; compile time stack, containing types
+  env   ;; compile time environment
 )
 
 (define (ctx-push ctx type)
-  (make-ctx (cons type (ctx-stack ctx))))
+  (make-ctx (cons type (ctx-stack ctx)) (ctx-env ctx)))
 
 (define (ctx-pop ctx)
-  (make-ctx (cdr (ctx-stack ctx))))
+  (make-ctx (cdr (ctx-stack ctx)) (ctx-env ctx)))
 
 (define (jump-to-version cgc lazy-code ctx)
+
   (let ((label-dest (get-version lazy-code ctx)))
     (if label-dest
 
@@ -413,7 +415,7 @@
 ;;  TODO : check if stub addr and continuation addr are the same size
 (define (gen-version-continuation load-ret-label lazy-code ctx)
 
-  (let ((continuation-label (asm-make-label #f (new-sym 'continuation)))
+  (let ((continuation-label (asm-make-label #f (new-sym 'continuation_)))
         (load-addr (asm-label-pos load-ret-label)))
     ;; Generate lazy-code
     (code-add 
@@ -446,6 +448,8 @@
     (asm-label-pos fn-label)))
 
 (define (gen-version jump-addr lazy-code ctx)
+
+  (print "GEN VERSION")
 
   (print ">>> ")
   (pp ctx)
@@ -517,7 +521,7 @@
          (make-lazy-code
           (lambda (cgc ctx)
             (let* ((fs (length (ctx-stack ctx)))
-                   (pos (- fs 1 (cdr (assoc ast '((a . 0) (b . 1) (c . 2)))))))
+                   (pos (- fs 1 (cdr (assoc ast (ctx-env ctx))))))
               (x86-push cgc (x86-mem (* pos 8) (x86-rsp)))
               (jump-to-version cgc
                                succ
@@ -687,7 +691,7 @@
                                                             (x86-pop cgc (x86-rbx)) ;; Ret addr
                                                             (x86-push cgc (x86-rax))
                                                             (x86-jmp cgc (x86-rbx)))))
-                          (lazy-body (gen-ast (caddr ast) lazy-ret))
+                          (lazy-body (gen-ast (caddr (caddr ast)) lazy-ret))
                           (function-name (cadr ast)))
                        (make-lazy-code (lambda (cgc ctx)
                                           (let* ((stub-labels (add-fn-callback cgc
@@ -728,6 +732,11 @@
 
 ;;-----------------------------------------------------------------------------
 
+(define (build-env ids start)
+  (if (null? ids)
+    '()
+    (cons (cons (car ids) start) (build-env (cdr ids) (+ start 1)))))
+
 (define (lazy-exprs exprs)
   (if (null? exprs)
     (make-lazy-code
@@ -749,9 +758,11 @@
   (let ((lazy-code (lazy-exprs exprs)))
     (gen-version code-alloc
                  lazy-code
-                 (make-ctx (map (lambda (x) 'unknown) params)))
+                 (make-ctx (map (lambda (x) 'unknown) params) (build-env params 0)))
     (lambda (#!optional (arg1 0) (arg2 0) (arg3 0))
       (##machine-code-block-exec mcb arg1 arg2 arg3))))
+
+
 
 (define (test exprs)
   (println "******************************************************************")
@@ -765,20 +776,19 @@
         (pretty-print (list (cons 'f args) '=> result))))
 
     (t 1 2)
-    (println "")
-    (println "BREAK")
-    (println "")
 
-    ;(t 2 1)
+
+
+    (t 2 1))
     ;(t 1 2)
     ;(t 2 1)
-))
+)
 
-;(test '(if (< a b) 11 22))
+(test '((if (< a b) 11 22)))
 
-(test '((define RR 100) (RR)))
+;(test '((define RR (lambda () (+ 1 2))) (RR)))
 
-
+;(test '(10))
 ;(test '((if #t 10 20)))
 
 ;(test '(- (if (< a b) 11 22) (if (< b a) 33 44)))
