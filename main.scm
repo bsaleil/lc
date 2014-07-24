@@ -64,8 +64,8 @@
 
 ;;-----------------------------------------------------------------------------
 
-;; The procedure do-callback is callable from generated machine code.
-
+;; The procedure do-callback* is callable from generated machine code.
+;; RCX holds selector (CL)
 (c-define (do-callback sp) (long) void "do_callback" ""
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
@@ -78,8 +78,7 @@
 
          (new-ret-addr
           (callback-fn ret-addr selector)))
-    (pp "DO CALLBACK")
-    (pp callback-fn)
+
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8))
              new-ret-addr)
@@ -88,7 +87,10 @@
     (put-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))
              0)))
 
-;; TODO
+;; Same behavior as 'do-callback' but calls callback with 'orig' arg
+;; 'orig' is the position of function call site
+;; RCX holds selector (CL)
+;; RAX holds call site position
 (c-define (do-callback-fn sp) (long) void "do_callback_fn" ""
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
@@ -104,8 +106,7 @@
 
          (new-ret-addr
           (callback-fn ret-addr selector orig)))
-    (pp "DO CALLBACK FN")
-    (pp callback-fn)
+
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8))
              new-ret-addr)
@@ -117,7 +118,7 @@
 ;; The label for procedure do-callback
 
 (define label-do-callback #f)
-(define label-do-callback-fn #f) ;; TODO
+(define label-do-callback-fn #f)
 
 (define (init-labels cgc)
 
@@ -130,7 +131,7 @@
                      (pointer void)
                      "___result = ___CAST(void*,do_callback);")))))
 
-  (set! label-do-callback-fn ;; TODO
+  (set! label-do-callback-fn
         (asm-make-label
          cgc
          'do_callback_fn
@@ -144,15 +145,12 @@
 ;; Machine code block management
 
 (define mcb-len 100000)
-(define fun-len 100000)
 (define mcb #f)
 (define mcb-addr #f)
-(define fun-addr #f)
 
 (define (init-mcb)
-  (set! mcb (##make-machine-code-block (+ mcb-len fun-len)))
-  (set! mcb-addr (##foreign-address mcb))
-  (set! fun-addr (+ (##foreign-address mcb) mcb-len)))
+  (set! mcb (##make-machine-code-block mcb-len))
+  (set! mcb-addr (##foreign-address mcb)))
 
 (define (write-mcb code start)
   (let ((len (u8vector-length code)))
@@ -188,6 +186,7 @@
 
 ;; Code and stub management
 
+(define functions '())
 (define code-alloc #f)
 (define stub-alloc #f)
 (define stub-freelist #f)
@@ -264,7 +263,7 @@
 ;;-----------------------------------------------------------------------------
 
 (define label-do-callback-handler #f)
-(define label-do-callback-fn-handler #f) ;; TODO
+(define label-do-callback-fn-handler #f)
 
 (define (gen-handler cgc id label)
   (let ((label-handler (asm-make-label cgc id)))
@@ -295,7 +294,6 @@
     (set! label-do-callback-handler
           (gen-handler cgc 'do_callback_handler label-do-callback))
 
-    ;; TODO
     (set! label-do-callback-fn-handler
           (gen-handler cgc 'do_callback_fn_handler label-do-callback-fn))
 
@@ -401,20 +399,22 @@
           (x86-label cgc label-version)
           ((lazy-code-generator lazy-code) cgc ctx)))))
 
+;; Add callback
 (define (add-callback cgc max-selector callback-fn)
   (create-stub label-do-callback-handler max-selector callback-fn))
 
-;; TODO
-(define (add-fn-callback cgc max-selector callback-fn) ;; TODO : selector useful here ?
+;; Add function callback
+(define (add-fn-callback cgc max-selector callback-fn) ;; NOTE : is all selector mechanism useful here ?
   (create-stub label-do-callback-fn-handler max-selector callback-fn))
 
 ;; Generate a continuation
-;; First generate lazy-code corresponding to continuation
+;; First generate continuation lazy-code
 ;; Then patch mov before call to mov continuation address instead of stub address
 ;;  TODO : check if stub addr and continuation addr are the same size
-(define (gen-version-continuation load-addr lazy-code ctx)
+(define (gen-version-continuation load-ret-label lazy-code ctx)
 
-  (let ((continuation-label (asm-make-label #f (new-sym 'continuation))))
+  (let ((continuation-label (asm-make-label #f (new-sym 'continuation)))
+        (load-addr (asm-label-pos load-ret-label)))
     ;; Generate lazy-code
     (code-add 
       (lambda (cgc)
@@ -422,82 +422,69 @@
         ((lazy-code-generator lazy-code) cgc ctx)))
     ;; Patch load
     (print ">>> patching mov at ") (print (number->string load-addr 16)) (print " : ")
-    (print "now load continuation addr ") (println (number->string (asm-label-pos continuation-label) 16))
+    (print "now load ") (print (asm-label-name continuation-label)) (print " (") (print (number->string (asm-label-pos continuation-label) 16)) (println ")")
     (code-gen 'x86-64 load-addr (lambda (cgc) (x86-mov cgc (x86-rax) (x86-imm-int (asm-label-pos continuation-label)))))
     ;; Return label pos
     (asm-label-pos continuation-label)))
 
-;; TODO gen-version-fn
+;; Generate a function
+;; First generate function lazy-code
+;; Then patch call site to jump directly to generated function
 (define (gen-version-fn call-addr lazy-code ctx)
   (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_)))
-       (TODO-pos (- call-addr 5)))
+       (overwrite-addr (- call-addr 5))) ;; -5 to remove call to label 'here'
     ;; Generate lazy-code
     (code-add
       (lambda (cgc)
         (x86-label cgc fn-label)
         ((lazy-code-generator lazy-code) cgc ctx)))
     ;; Patch call
-    (print ">>> patching call at ") (print (number->string TODO-pos 16)) (print " : ")
-    (print "now jump to entry point ") (println (number->string (asm-label-pos fn-label) 16))
-    (code-gen 'x86-64 TODO-pos (lambda (cgc) (x86-jmp cgc fn-label)))
+    (print ">>> patching call at ") (print (number->string overwrite-addr 16)) (print " : ")
+    (print "now jump to ") (print (asm-label-name fn-label)) (print " (") (print (number->string (asm-label-pos fn-label) 16)) (println ")")
+    (code-gen 'x86-64 overwrite-addr (lambda (cgc) (x86-jmp cgc fn-label)))
     ;; Return label pos
     (asm-label-pos fn-label)))
 
 (define (gen-version jump-addr lazy-code ctx)
 
-  (pp "CODE")
-  (pp (lazy-code-generator lazy-code))
+  (print ">>> ")
+  (pp ctx)
 
-  ;; This is a function stub
-  (if (< jump-addr 0)
-    (begin
-        (let* ((label-version (asm-make-label #f (new-sym 'version)))
-               (nb-bytes-label (code-gen 'x86-64 fun-addr (lambda (cgc) (x86-label cgc label-version))))
-               (nb-bytes-lazy  (code-gen 'x86-64 (+ nb-bytes-label fun-addr) (lazy-code-generator lazy-code) ctx)))
-          (set! fun-addr (+ fun-addr nb-bytes-label nb-bytes-lazy))
-          (pp "DEBUG GEN VERSION")
-          (pp jump-addr)
-          (asm-label-pos label-version)))
+  ;; the jump instruction at address "jump-addr" must be redirected to
+  ;; jump to the machine code corresponding to the version of
+  ;; "lazy-code" for the context "ctx"
 
-    (begin
-        (print ">>> ")
-        (pp ctx)
+  (let ((label-dest (get-version lazy-code ctx)))
+    (if label-dest
 
-        ;; the jump instruction at address "jump-addr" must be redirected to
-        ;; jump to the machine code corresponding to the version of
-        ;; "lazy-code" for the context "ctx"
+        (let ((dest-addr (asm-label-pos label-dest)))
 
-        (let ((label-dest (get-version lazy-code ctx)))
-          (if label-dest
+          ;; that version has already been generated, so just patch jump
 
-              (let ((dest-addr (asm-label-pos label-dest)))
+          (patch-jump jump-addr dest-addr)
 
-                ;; that version has already been generated, so just patch jump
+          dest-addr)
 
-                (patch-jump jump-addr dest-addr)
+        (begin
 
-                dest-addr)
+          (cond ((= (+ jump-addr (jump-size jump-addr)) code-alloc)
+                 ;; (fall-through optimization)
+                 ;; the jump is the last instruction previously generated, so
+                 ;; just overwrite the jump
+                 (println ">>> fall-through-optimization")
+                 (set! code-alloc jump-addr)) 
 
-              (begin
+                (else
+                 (patch-jump jump-addr code-alloc)))
 
-                (cond ((= (+ jump-addr (jump-size jump-addr)) code-alloc)
-                       ;; (fall-through optimization)
-                       ;; the jump is the last instruction previously generated, so
-                       ;; just overwrite the jump
-                       (println ">>> fall-through-optimization")
-                       (set! code-alloc jump-addr)) 
-
-                      (else
-                       (patch-jump jump-addr code-alloc)))
-
-                ;; generate that version inline
-                (let ((label-version (asm-make-label #f (new-sym 'version))))
-                  (put-version lazy-code ctx label-version)
-                  (code-add
-                   (lambda (cgc)
-                     (x86-label cgc label-version)
-                     ((lazy-code-generator lazy-code) cgc ctx)))
-                  (asm-label-pos label-version))))))))
+          ;; generate that version inline
+          (let ((label-version (asm-make-label #f (new-sym 'version))))
+            (put-version lazy-code ctx label-version)
+            (code-add
+             (lambda (cgc)
+               (x86-label cgc label-version)
+               ((lazy-code-generator lazy-code) cgc ctx)))
+            (asm-label-pos label-version))))))
 
 (define (patch-jump jump-addr dest-addr)
 
@@ -700,34 +687,34 @@
                                                             (x86-pop cgc (x86-rbx)) ;; Ret addr
                                                             (x86-push cgc (x86-rax))
                                                             (x86-jmp cgc (x86-rbx)))))
-                          (lazy-body (gen-ast (caddr ast) lazy-ret)))
+                          (lazy-body (gen-ast (caddr ast) lazy-ret))
+                          (function-name (cadr ast)))
                        (make-lazy-code (lambda (cgc ctx)
-                                          (let ((stub-labels (add-fn-callback cgc
+                                          (let* ((stub-labels (add-fn-callback cgc
                                                                            0
                                                                            (lambda (ret-addr selector orig)
-                                                                              (println "GEN VERSION DE RR")
-                                                                              (print "ORIG : ")
-                                                                              (println (number->string (- orig 5) 16))
-                                                                              (gen-version-fn orig lazy-body ctx))))) ;; TODO ctx
-                                             (set! functions (cons (cons (cadr ast) (list-ref stub-labels 0)) functions))
+                                                                              (println ">>> orig= " (number->string orig 16))
+                                                                              (gen-version-fn orig lazy-body ctx)))) ;; TODO ctx
+                                                 (function-label (list-ref stub-labels 0)))
+                                             (set! functions (cons (cons function-name function-label) functions))
                                              (jump-to-version cgc succ ctx))))))
 
                  (else
                   (make-lazy-code (lambda (cgc ctx)
                                           (let* ((fun-label (cdr (assoc (car ast) functions)))
-                                                (here-label (asm-make-label cgc (new-sym 'here_)))
-                                                (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
-                                                (stub-labels (add-callback cgc
+                                                 (here-label (asm-make-label cgc (new-sym 'here_)))
+                                                 (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
+                                                 (stub-labels (add-callback cgc
                                                                            0
                                                                            (lambda (ret-addr selector)
-                                                                              (gen-version-continuation (asm-label-pos load-ret-label)
+                                                                              (gen-version-continuation load-ret-label
                                                                                                         succ
                                                                                                         (ctx-push ctx 'unknown))))))
                                                (x86-label cgc load-ret-label)
                                                (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1))) ;; Push continuation label addr
                                                (x86-push cgc (x86-rax))
 
-                                               ;; TODO 'here' label in rax
+                                               ;; Put current RIP position in rax
                                                (x86-call cgc here-label)
                                                (x86-label cgc here-label)
                                                (x86-pop cgc (x86-rax))
@@ -738,9 +725,6 @@
 
         (else
          (error "unknown ast" ast))))
-
-;; TODO
-(define functions '())
 
 ;;-----------------------------------------------------------------------------
 
@@ -785,9 +769,9 @@
     (println "BREAK")
     (println "")
 
-    (t 2 1)
-    (t 1 2)
-    (t 2 1)
+    ;(t 2 1)
+    ;(t 1 2)
+    ;(t 2 1)
 ))
 
 ;(test '(if (< a b) 11 22))
