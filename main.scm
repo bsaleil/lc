@@ -104,8 +104,11 @@
          (orig
           (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
 
+         (ctx
+          (encoding-obj (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdx-pos) 1) 8)))))
+
          (new-ret-addr
-          (callback-fn ret-addr selector orig)))
+          (callback-fn ret-addr selector orig ctx)))
 
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8))
@@ -260,6 +263,9 @@
   (let ((n (##object->encoding obj)))
     (if (>= n (expt 2 63)) (- n (expt 2 64)) n)))
 
+(define (encoding-obj encoding)
+  (##encoding->object encoding))
+
 ;;-----------------------------------------------------------------------------
 
 (define label-do-callback-handler #f)
@@ -335,6 +341,10 @@
 
 (define nb-c-caller-save-regs
   (length c-caller-save-regs))
+
+(define rdx-pos
+  (- nb-c-caller-save-regs
+     (length (member (x86-rdx) c-caller-save-regs))))
 
 (define rcx-pos
   (- nb-c-caller-save-regs
@@ -696,8 +706,9 @@
                        (make-lazy-code (lambda (cgc ctx)
                                           (let* ((stub-labels (add-fn-callback cgc
                                                                            0
-                                                                           (lambda (ret-addr selector orig)
+                                                                           (lambda (ret-addr selector orig ctx)
                                                                               (println ">>> orig= " (number->string orig 16))
+                                                                              (println ">>> ctx = " ctx)
                                                                               (gen-version-fn orig lazy-body ctx)))) ;; TODO ctx
                                                  (function-label (list-ref stub-labels 0)))
                                              (set! functions (cons (cons function-name function-label) functions))
@@ -717,6 +728,10 @@
                                                (x86-label cgc load-ret-label)
                                                (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1))) ;; Push continuation label addr
                                                (x86-push cgc (x86-rax))
+
+                                               ;; TODO
+                                               (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding ctx)))
+
 
                                                ;; Put current RIP position in rax
                                                (x86-call cgc here-label)
@@ -784,9 +799,9 @@
     ;(t 2 1)
 )
 
-(test '((if (< a b) 11 22)))
+;(test '((if (< a b) 11 22)))
 
-;(test '((define RR (lambda () (+ 1 2))) (RR)))
+(test '((define RR (lambda () (+ 1 2))) (RR)))
 
 ;(test '(10))
 ;(test '((if #t 10 20)))
