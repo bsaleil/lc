@@ -431,7 +431,12 @@
     (code-add 
       (lambda (cgc)
         (x86-label cgc continuation-label)
+        
+        ;(x86-pop cgc (x86-rax))                               ;; TODO : pop debut continuation pour teste
+        ;((lazy-code-generator lazy-code) cgc (ctx-pop ctx)))) ;; TODO : idem
+
         ((lazy-code-generator lazy-code) cgc ctx)))
+    
     ;; Patch load
     (print ">>> patching mov at ") (print (number->string load-addr 16)) (print " : ")
     (print "now load ") (print (asm-label-name continuation-label)) (print " (") (print (number->string (asm-label-pos continuation-label) 16)) (println ")")
@@ -443,19 +448,57 @@
 ;; First generate function lazy-code
 ;; Then patch call site to jump directly to generated function
 (define (gen-version-fn call-addr lazy-code ctx)
-  (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_)))
-       (overwrite-addr (- call-addr 5))) ;; -5 to remove call to label 'here'
-    ;; Generate lazy-code
-    (code-add
-      (lambda (cgc)
-        (x86-label cgc fn-label)
-        ((lazy-code-generator lazy-code) cgc ctx)))
-    ;; Patch call
-    (print ">>> patching call at ") (print (number->string overwrite-addr 16)) (print " : ")
-    (print "now jump to ") (print (asm-label-name fn-label)) (print " (") (print (number->string (asm-label-pos fn-label) 16)) (println ")")
-    (code-gen 'x86-64 overwrite-addr (lambda (cgc) (x86-jmp cgc fn-label)))
-    ;; Return label pos
-    (asm-label-pos fn-label)))
+
+  (print "GEN VERSION FN")
+
+  (print ">>> ")
+  (pp ctx)
+
+  ;; the jump instruction (call) at address "call-addr" must be redirected to
+  ;; jump to the machine code corresponding to the version of
+  ;; "lazy-code" for the context "ctx"
+
+  (let ((label-dest (get-version lazy-code ctx))
+        (overwrite-addr (- call-addr 5)))
+    (if label-dest
+      
+        ;; That version has already been generated, so just patch jump
+        (let ((dest-addr (asm-label-pos label-dest)))
+         (print ">>> patching call at ") (print (number->string overwrite-addr 16)) (print " : ")
+         (print "now jump to ") (print (asm-label-name label-dest)) (print " (") (print (number->string (asm-label-pos label-dest) 16)) (println ")")
+         (code-gen 'x86-64 overwrite-addr (lambda (cgc) (x86-jmp cgc label-dest)))
+         dest-addr)
+
+        ;; That version is not yet generated, so generate it and then patch call
+        (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
+          ;; Gen version
+          (code-add
+             (lambda (cgc)
+                (x86-label cgc fn-label)
+                ((lazy-code-generator lazy-code) cgc ctx)))
+          ;; Patch call
+          (print ">>> patching call at ") (print (number->string overwrite-addr 16)) (print " : ")
+          (print "now jump to ") (print (asm-label-name fn-label)) (print " (") (print (number->string (asm-label-pos fn-label) 16)) (println ")")
+          (code-gen 'x86-64 overwrite-addr (lambda (cgc) (x86-jmp cgc fn-label)))
+          ;; Put version matching this ctx
+          (put-version lazy-code ctx fn-label)
+          (asm-label-pos fn-label)))))
+
+  
+    
+    ; (pp "FUNCTION GENERATION FOR CTX :")
+    ; (pp ctx)
+    ; ;; Generate lazy-code
+    ; (code-add
+    ;   (lambda (cgc)
+    ;     (x86-label cgc fn-label)
+    ;     ((lazy-code-generator lazy-code) cgc ctx)))
+    ; ;; Patch call
+    ; (print ">>> patching call at ") (print (number->string overwrite-addr 16)) (print " : ")
+    ; (print "now jump to ") (print (asm-label-name fn-label)) (print " (") (print (number->string (asm-label-pos fn-label) 16)) (println ")")
+    ; (code-gen 'x86-64 overwrite-addr (lambda (cgc) (x86-jmp cgc fn-label)))
+    ; ;; Return label pos
+    ; (asm-label-pos fn-label)))
 
 (define (gen-version jump-addr lazy-code ctx)
 
@@ -707,14 +750,14 @@
                                           (let* ((stub-labels (add-fn-callback cgc
                                                                            0
                                                                            (lambda (ret-addr selector orig ctx)
-                                                                              (println ">>> orig= " (number->string orig 16))
-                                                                              (println ">>> ctx = " ctx)
-                                                                              (gen-version-fn orig lazy-body ctx)))) ;; TODO ctx
+                                                                              (gen-version-fn orig lazy-body ctx))))
                                                  (function-label (list-ref stub-labels 0)))
                                              (set! functions (cons (cons function-name function-label) functions))
                                              (jump-to-version cgc succ ctx))))))
 
                  (else
+                  (let ((opid (car ast))
+                        (args (cdr ast)))
                   (make-lazy-code (lambda (cgc ctx)
                                           (let* ((fun-label (cdr (assoc (car ast) functions)))
                                                  (here-label (asm-make-label cgc (new-sym 'here_)))
@@ -730,6 +773,10 @@
                                                (x86-push cgc (x86-rax))
 
                                                ;; TODO
+                                               (println "CURR TEST")
+                                               (println "opid : " opid)
+                                               (println "args : " args)
+                                               
                                                (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding ctx)))
 
 
@@ -738,7 +785,7 @@
                                                (x86-label cgc here-label)
                                                (x86-pop cgc (x86-rax))
 
-                                               (x86-jmp cgc fun-label)))))
+                                               (x86-jmp cgc fun-label))))))
                   )))
                   ;...))))
 
@@ -790,7 +837,7 @@
         (print "*** RESULT: ")
         (pretty-print (list (cons 'f args) '=> result))))
 
-    (t 1 2)
+    ;(t 1 2)
 
 
 
@@ -801,7 +848,8 @@
 
 ;(test '((if (< a b) 11 22)))
 
-(test '((define RR (lambda () (+ 1 2))) (RR)))
+(test '((define RR (lambda () (+ 1 2))) (RR) (RR) ))
+
 
 ;(test '(10))
 ;(test '((if #t 10 20)))
