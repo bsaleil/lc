@@ -464,41 +464,21 @@
       
         ;; That version has already been generated, so just patch jump
         (let ((dest-addr (asm-label-pos label-dest)))
-         (print ">>> patching call at ") (print (number->string overwrite-addr 16)) (print " : ")
-         (print "now jump to ") (print (asm-label-name label-dest)) (print " (") (print (number->string (asm-label-pos label-dest) 16)) (println ")")
-         (code-gen 'x86-64 overwrite-addr (lambda (cgc) (x86-jmp cgc label-dest)))
-         dest-addr)
+
+         (patch-call overwrite-addr label-dest))
 
         ;; That version is not yet generated, so generate it and then patch call
         (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
+
           ;; Gen version
           (code-add
              (lambda (cgc)
                 (x86-label cgc fn-label)
                 ((lazy-code-generator lazy-code) cgc ctx)))
-          ;; Patch call
-          (print ">>> patching call at ") (print (number->string overwrite-addr 16)) (print " : ")
-          (print "now jump to ") (print (asm-label-name fn-label)) (print " (") (print (number->string (asm-label-pos fn-label) 16)) (println ")")
-          (code-gen 'x86-64 overwrite-addr (lambda (cgc) (x86-jmp cgc fn-label)))
           ;; Put version matching this ctx
           (put-version lazy-code ctx fn-label)
-          (asm-label-pos fn-label)))))
-
-  
-    
-    ; (pp "FUNCTION GENERATION FOR CTX :")
-    ; (pp ctx)
-    ; ;; Generate lazy-code
-    ; (code-add
-    ;   (lambda (cgc)
-    ;     (x86-label cgc fn-label)
-    ;     ((lazy-code-generator lazy-code) cgc ctx)))
-    ; ;; Patch call
-    ; (print ">>> patching call at ") (print (number->string overwrite-addr 16)) (print " : ")
-    ; (print "now jump to ") (print (asm-label-name fn-label)) (print " (") (print (number->string (asm-label-pos fn-label) 16)) (println ")")
-    ; (code-gen 'x86-64 overwrite-addr (lambda (cgc) (x86-jmp cgc fn-label)))
-    ; ;; Return label pos
-    ; (asm-label-pos fn-label)))
+          ;; Patch call
+          (patch-call overwrite-addr fn-label)))))
 
 (define (gen-version jump-addr lazy-code ctx)
 
@@ -543,7 +523,7 @@
                ((lazy-code-generator lazy-code) cgc ctx)))
             (asm-label-pos label-version))))))
 
-(define (patch-jump jump-addr dest-addr)
+(define (patch-jump jump-addr dest-addr) ;; TODO passer label ?
 
   (println ">>> patching jump at "
            (number->string jump-addr 16)
@@ -554,6 +534,12 @@
       (let ((size (jump-size jump-addr)))
         (put-i32 (- (+ jump-addr size) 4)
                  (- dest-addr (+ jump-addr size))))))
+
+(define (patch-call call-addr dest-label)
+  (print ">>> patching call at ") (print (number->string call-addr 16)) (print " : ")
+  (print "now jump to ") (print (asm-label-name dest-label)) (print " (") (print (number->string (asm-label-pos dest-label) 16)) (println ")")
+  (code-gen 'x86-64 call-addr (lambda (cgc) (x86-jmp cgc dest-label)))
+  (asm-label-pos dest-label))
 
 (define (jump-size jump-addr)
   (if (= (get-u8 jump-addr) #x0f) 6 5))
