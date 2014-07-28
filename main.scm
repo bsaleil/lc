@@ -759,6 +759,7 @@
                                           (let* ((fun-label (cdr (assoc (car ast) functions)))
                                                  (here-label (asm-make-label cgc (new-sym 'here_)))
                                                  (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
+                                                 ;; Create continuation stub
                                                  (stub-labels (add-callback cgc
                                                                            0
                                                                            (lambda (ret-addr selector)
