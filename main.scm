@@ -397,6 +397,11 @@
 (define (ctx-pop ctx)
   (make-ctx (cdr (ctx-stack ctx)) (ctx-env ctx)))
 
+(define (ctx-pop-nb ctx nb-pop)
+  (cond ((= nb-pop 0) ctx)
+        ((null? (ctx-stack ctx)) (error "pop empty ctx"))
+        (else (ctx-pop-nb (ctx-pop ctx) (- nb-pop 1)))))
+
 (define (jump-to-version cgc lazy-code ctx)
 
   (let ((label-dest (get-version lazy-code ctx)))
@@ -423,6 +428,7 @@
 ;; First generate continuation lazy-code
 ;; Then patch mov before call to mov continuation address instead of stub address
 ;;  TODO : check if stub addr and continuation addr are the same size
+;;  TODO : clean code with patch function
 (define (gen-version-continuation load-ret-label lazy-code ctx)
 
   (let ((continuation-label (asm-make-label #f (new-sym 'continuation_)))
@@ -431,10 +437,6 @@
     (code-add 
       (lambda (cgc)
         (x86-label cgc continuation-label)
-        
-        ;(x86-pop cgc (x86-rax))                               ;; TODO : pop debut continuation pour teste
-        ;((lazy-code-generator lazy-code) cgc (ctx-pop ctx)))) ;; TODO : idem
-
         ((lazy-code-generator lazy-code) cgc ctx)))
     
     ;; Patch load
@@ -451,7 +453,7 @@
 
   (print "GEN VERSION FN")
 
-  (print ">>> ")
+  (print " >>> ")
   (pp ctx)
 
   ;; the jump instruction (call) at address "call-addr" must be redirected to
@@ -461,7 +463,7 @@
   (let ((label-dest (get-version lazy-code ctx))
         (overwrite-addr (- call-addr 5)))
     (if label-dest
-      
+
         ;; That version has already been generated, so just patch jump
         (let ((dest-addr (asm-label-pos label-dest)))
 
@@ -484,7 +486,7 @@
 
   (print "GEN VERSION")
 
-  (print ">>> ")
+  (print " >>> ")
   (pp ctx)
 
   ;; the jump instruction at address "jump-addr" must be redirected to
@@ -537,8 +539,8 @@
 
 (define (patch-call call-addr dest-label)
 
-  (print ">>> patching call at ") (print (number->string call-addr 16)) (print " : ")
-  (print "now jump to ") (print (asm-label-name dest-label)) (print " (") (print (number->string (asm-label-pos dest-label) 16)) (println ")")
+  (print ">>> patching call at " (number->string call-addr 16) " : ")
+  (println "now jump to " (asm-label-name dest-label) " (" (number->string (asm-label-pos dest-label) 16) ")")
   
   (code-gen 'x86-64 call-addr (lambda (cgc) (x86-jmp cgc dest-label)))
   (asm-label-pos dest-label))
@@ -558,16 +560,19 @@
                                        (cond ((number? ast) 'num)
                                              ((boolean? ast) 'bool)))))))
 
-        ((symbol? ast) ;; a, b, c refer to the arguments of the function
+        ((symbol? ast)
          (make-lazy-code
           (lambda (cgc ctx)
             (let* ((fs (length (ctx-stack ctx)))
-                   (pos (- fs 1 (cdr (assoc ast (ctx-env ctx))))))
-              (x86-push cgc (x86-mem (* pos 8) (x86-rsp)))
-              (jump-to-version cgc
-                               succ
-                               (ctx-push ctx
-                                         (list-ref (ctx-stack ctx) pos)))))))
+                   (lookup-res (assoc ast (ctx-env ctx))))
+              (if lookup-res ;; Id exists
+                   (let ((pos (- fs 1 (cdr lookup-res))))
+                      (x86-push cgc (x86-mem (* pos 8) (x86-rsp)))
+                      (jump-to-version cgc
+                                       succ
+                                       (ctx-push ctx
+                                                 (list-ref (ctx-stack ctx) pos))))
+                   (error "Can't find variable: " ast))))))  
 
         ((pair? ast)
          (let ((op (car ast)))
@@ -727,9 +732,11 @@
                      lazy-code-test)))
 
                  ((eq? op 'define)
-                    (let* ((lazy-ret (make-lazy-code (lambda (cgc ctx)
+                    (let* ((params (cadr (caddr ast)))
+                          (lazy-ret (make-lazy-code (lambda (cgc ctx)
                                                             (x86-pop cgc (x86-rax)) ;; Ret val
                                                             (x86-pop cgc (x86-rbx)) ;; Ret addr
+                                                            (x86-add cgc (x86-rsp) (x86-imm-int (* (length params) 8)))
                                                             (x86-push cgc (x86-rax))
                                                             (x86-jmp cgc (x86-rbx)))))
                           (lazy-body (gen-ast (caddr (caddr ast)) lazy-ret))
@@ -738,15 +745,17 @@
                                           (let* ((stub-labels (add-fn-callback cgc
                                                                            0
                                                                            (lambda (ret-addr selector orig ctx)
-                                                                              (gen-version-fn orig lazy-body ctx))))
+                                                                              ;; Add params to env
+                                                                              (let ((ctx (make-ctx (ctx-stack ctx) (build-env params 0))))
+                                                                                (gen-version-fn orig lazy-body ctx)))))
                                                  (function-label (list-ref stub-labels 0)))
                                              (set! functions (cons (cons function-name function-label) functions))
                                              (jump-to-version cgc succ ctx))))))
 
                  (else
-                  (let ((opid (car ast))
-                        (args (cdr ast)))
-                  (make-lazy-code (lambda (cgc ctx)
+                  (let* ((opid (car ast))
+                        (args (cdr ast))
+                        (lazy-call (make-lazy-code (lambda (cgc ctx)
                                           (let* ((fun-label (cdr (assoc (car ast) functions)))
                                                  (here-label (asm-make-label cgc (new-sym 'here_)))
                                                  (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
@@ -755,30 +764,44 @@
                                                                            (lambda (ret-addr selector)
                                                                               (gen-version-continuation load-ret-label
                                                                                                         succ
-                                                                                                        (ctx-push ctx 'unknown))))))
+                                                                                                        (ctx-push (ctx-pop-nb ctx (length args)) 'unknown)))))) ;; remove args and add ret val
+                                
+                                               ;; Return address
                                                (x86-label cgc load-ret-label)
                                                (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1))) ;; Push continuation label addr
                                                (x86-push cgc (x86-rax))
 
-                                               ;; TODO
-                                               (println "CURR TEST")
-                                               (println "opid : " opid)
-                                               (println "args : " args)
-                                               
-                                               (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding ctx)))
+                                               ;; Call ctx
+                                               (let* ((call-stack (cons 'retAddr (list-head (ctx-stack ctx) (length args))))
+                                                      (call-ctx   (make-ctx call-stack '())))
+                                                 (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding call-ctx))))
 
-
-                                               ;; Put current RIP position in rax
+                                               ;; Call position
                                                (x86-call cgc here-label)
                                                (x86-label cgc here-label)
                                                (x86-pop cgc (x86-rax))
 
                                                (x86-jmp cgc fun-label))))))
+
+                    (if (> (length args) 0)
+                      (gen-ast-l args lazy-call) ;; Gen args and give lazy-call as successor
+                      lazy-call)))
                   )))
-                  ;...))))
 
         (else
          (error "unknown ast" ast))))
+
+;;
+(define (list-head lst nb-el)
+  (cond ((= nb-el 0) '())
+        ((null? lst) (error "Not enough els"))
+        (else (cons (car lst) (list-head (cdr lst) (- nb-el 1))))))
+
+;; Gen ast for a list of exprs with successor 'succ'
+(define (gen-ast-l lst succ)
+  (cond ((null? lst) (error "Empty list"))
+        ((= (length lst) 1) (gen-ast (car lst) succ))
+        (else (gen-ast (car lst) (gen-ast-l (cdr lst) succ)))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -792,7 +815,7 @@
     (make-lazy-code
       (lambda (cgc ctx)
         (x86-pop cgc (x86-rax))
-        (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 3) 8)))
+        (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
         (x86-pop cgc (x86-rdi))
         (x86-pop cgc (x86-rbx))
         (x86-pop cgc (x86-rsi))
@@ -817,31 +840,23 @@
 (define (test exprs)
   (println "******************************************************************")
   (print "*** TESTING: ")
-  (pretty-print (list 'define 'f (list 'lambda '(a b) exprs)))
-  (let ((f (compile-lambda '(a b) exprs)))
+  (pretty-print (list 'define 'f (list 'lambda '() exprs)))
+  (let ((f (compile-lambda '() exprs)))
 
     (define (t . args)
       (let ((result (apply f (reverse args))))
         (print "*** RESULT: ")
         (pretty-print (list (cons 'f args) '=> result))))
 
-    ;(t 1 2)
-
-
-
-    (t 2 1))
+    (t))
     ;(t 1 2)
     ;(t 2 1)
 )
 
 ;(test '((if (< a b) 11 22)))
-
-(test '((define RR (lambda () (+ 1 2))) (RR) (RR) ))
-
-
+(test '((define RR (lambda (A) A)) (RR 1) (RR 2)))
 ;(test '(10))
 ;(test '((if #t 10 20)))
-
 ;(test '(- (if (< a b) 11 22) (if (< b a) 33 44)))
 
 ;;-----------------------------------------------------------------------------
