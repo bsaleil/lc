@@ -523,7 +523,7 @@
                ((lazy-code-generator lazy-code) cgc ctx)))
             (asm-label-pos label-version))))))
 
-(define (patch-jump jump-addr dest-addr) ;; TODO passer label ?
+(define (patch-jump jump-addr dest-addr)
 
   (println ">>> patching jump at "
            (number->string jump-addr 16)
@@ -536,8 +536,10 @@
                  (- dest-addr (+ jump-addr size))))))
 
 (define (patch-call call-addr dest-label)
+
   (print ">>> patching call at ") (print (number->string call-addr 16)) (print " : ")
   (print "now jump to ") (print (asm-label-name dest-label)) (print " (") (print (number->string (asm-label-pos dest-label) 16)) (println ")")
+  
   (code-gen 'x86-64 call-addr (lambda (cgc) (x86-jmp cgc dest-label)))
   (asm-label-pos dest-label))
 
