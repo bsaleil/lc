@@ -64,7 +64,48 @@
 
 ;;-----------------------------------------------------------------------------
 
-;; The procedure do-callback* is callable from generated machine code.
+;; Exec errors
+(define ERR_MSG "EXEC ERROR")
+
+;; Code gen to print error
+;; stop-exec? to #f to continue after error
+(define (gen-error cgc ctx err #!optional (stop-exec? #t))
+
+  ;; Put error msg in RAX
+  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding err)))
+
+  ;; Call exec-error
+  (push-pop-regs
+     cgc
+     c-caller-save-regs ;; preserve regs for C call
+     (lambda (cgc)
+       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
+       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+       (x86-push cgc (x86-rdi))
+       (x86-call cgc label-exec-error) ;; call C function
+       (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
+       ))
+
+  (if stop-exec?
+    (begin 
+      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding -1)))
+      (x86-add cgc (x86-rsp) (x86-imm-int (* (length (ctx-stack ctx)) 8)))
+      (pop-regs-reverse cgc prog-regs)
+      (x86-ret cgc)))
+)
+
+;; The procedure exec-error is callable from generated machine code.
+;; This function print the error message in rax
+(c-define (exec-error sp) (long) void "exec_error" ""
+  (let* ((err-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
+        (err (encoding-obj err-enc)))
+    (print "!!! ERROR : ")
+    (println err)))
+
+;;-----------------------------------------------------------------------------
+
+;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
 (c-define (do-callback sp) (long) void "do_callback" ""
   (let* ((ret-addr
@@ -120,10 +161,20 @@
 
 ;; The label for procedure do-callback
 
-(define label-do-callback #f)
+(define label-exec-error     #f)
+(define label-do-callback    #f)
 (define label-do-callback-fn #f)
 
 (define (init-labels cgc)
+
+  (set! label-exec-error
+        (asm-make-label
+         cgc
+         'exer-error
+         (##foreign-address
+          ((c-lambda ()
+                     (pointer void)
+                     "___result = ___CAST(void*,exec_error);")))))
 
   (set! label-do-callback
         (asm-make-label
@@ -305,10 +356,7 @@
 
     (x86-label cgc label-rtlib-skip)
 
-    (x86-push cgc (x86-rdx))
-    (x86-push cgc (x86-rsi))
-    (x86-push cgc (x86-rbx))
-    (x86-push cgc (x86-rdi))
+    (push-regs cgc prog-regs)
     (x86-mov  cgc (x86-rcx) (x86-imm-int 0))))
 
 (define (init)
@@ -327,6 +375,12 @@
   (proc cgc)
   (for-each (lambda (reg) (x86-pop cgc reg)) (reverse regs)))
 
+(define (push-regs cgc regs)
+  (for-each (lambda (reg) (x86-push cgc reg)) regs))
+
+(define (pop-regs-reverse cgc regs)
+  (for-each (lambda (reg) (x86-pop cgc reg)) (reverse regs)))
+
 (define c-caller-save-regs ;; from System V ABI
   (list (x86-rdi) ;; 1st argument
         (x86-rsi) ;; 2nd argument
@@ -337,6 +391,13 @@
         (x86-r10)
         (x86-r11)
         (x86-rax) ;; return register
+        ))
+
+(define prog-regs ;; Registers at entry and exit points of program
+  (list (x86-rdx)
+        (x86-rsi)
+        (x86-rbx)
+        (x86-rdi)
         ))
 
 (define nb-c-caller-save-regs
@@ -817,10 +878,7 @@
       (lambda (cgc ctx)
         (x86-pop cgc (x86-rax))
         (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
-        (x86-pop cgc (x86-rdi))
-        (x86-pop cgc (x86-rbx))
-        (x86-pop cgc (x86-rsi))
-        (x86-pop cgc (x86-rdx))
+        (pop-regs-reverse cgc prog-regs)
         (x86-ret cgc)))
     (gen-ast (car exprs)
              (lazy-exprs (cdr exprs)))))
@@ -855,8 +913,8 @@
 )
 
 ;(test '((if (< a b) 11 22)))
-(test '((define RR (lambda (A) A)) (RR 1) (RR 2)))
-;(test '(10))
+;(test '((define RR (lambda (A) A)) (RR 1) (RR 2)))
+(test '(10 10))
 ;(test '((if #t 10 20)))
 ;(test '(- (if (< a b) 11 22) (if (< b a) 33 44)))
 
