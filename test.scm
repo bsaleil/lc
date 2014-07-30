@@ -2,15 +2,13 @@
 ;; TEST 1
 ;; ------
 
-(* 3 20)
+(define fn1
+  (lambda (a b c) (+ b c)))
 
-; (define fn1
-;   (lambda (a b c) (+ b c)))
-
-; ($$msg "EXEC 1")
-; (fn1 1 2 3)
-; ($$msg "EXEC 2")
-; (fn1 1 2 10)
+($$msg "EXEC 1")
+(fn1 1 2 3)
+($$msg "EXEC 2")
+(fn1 1 2 10)
 
 ;; ------
 ;; TEST 2
@@ -36,7 +34,7 @@
 ; 	    1
 ; 		(* n (fact (- n 1)))))))
 
-; (fact 4)
+; (fact 10)
 
 ;; ----
 ;; FIBO
