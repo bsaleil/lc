@@ -638,7 +638,13 @@
         ((pair? ast)
          (let ((op (car ast)))
 
-           (cond ((member op '(+ - * < =))
+           (cond 
+                 ((eq? op '$$msg)
+                    (make-lazy-code (lambda (cgc ctx)
+                      (gen-error cgc ctx (cadr ast) #f)
+                      (jump-to-version cgc succ ctx))))
+
+                 ((member op '(+ - * < =))
                   (let* ((lazy-code2
                           (make-lazy-code
                            (lambda (cgc ctx)
@@ -649,7 +655,11 @@
                                ((-)
                                 (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
                                ((*)
-                                (x86-imul cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+                                (begin (x86-pop cgc (x86-rbx))
+                                       (x86-shr cgc (x86-rbx) (x86-imm-int 2))
+                                       (x86-imul cgc (x86-rbx) (x86-rax))
+                                       (x86-push cgc (x86-rbx))))
+                                ;(x86-imul cgc (x86-mem 0 (x86-rsp)) (x86-rax))) ;; TODO
                                ((<)
                                 (let ((label-done
                                        (asm-make-label cgc (new-sym 'done))))
@@ -908,13 +918,34 @@
         (pretty-print (list (cons 'f args) '=> result))))
 
     (t))
+    ;(t))
     ;(t 1 2)
     ;(t 2 1)
 )
 
 ;(test '((if (< a b) 11 22)))
-;(test '((define RR (lambda (A) A)) (RR 1) (RR 2)))
-(test '(10 10))
+(test '(
+  (define fact
+    (lambda (n)
+      (if (= n 0)
+        1
+        (if (= n 1)
+          1
+          (* n (fact (- n 1)))))))
+
+  (fact 4)
+
+  (define fibo
+    (lambda (n)
+      (if (= n 0)
+        0
+        (if (= n 1)
+          1
+          (+ (fibo (- n 1)) (fibo (- n 2)))))))
+
+  (fibo 40)
+))
+
 ;(test '((if #t 10 20)))
 ;(test '(- (if (< a b) 11 22) (if (< b a) 33 44)))
 
