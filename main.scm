@@ -923,28 +923,38 @@
     ;(t 2 1)
 )
 
+;; Read prog from stdin
+(define (read-prog)
+  (let ((r (read)))
+    (if (eof-object? r)
+      '()
+      (cons r (read-prog)))))
+
+(define prog (read-prog))
+(test prog)
+
 ;(test '((if (< a b) 11 22)))
-(test '(
-  (define fact
-    (lambda (n)
-      (if (= n 0)
-        1
-        (if (= n 1)
-          1
-          (* n (fact (- n 1)))))))
+; (test '(
+;   (define fact
+;     (lambda (n)
+;       (if (= n 0)
+;         1
+;         (if (= n 1)
+;           1
+;           (* n (fact (- n 1)))))))
 
-  (fact 4)
+;   (fact 4)
 
-  (define fibo
-    (lambda (n)
-      (if (= n 0)
-        0
-        (if (= n 1)
-          1
-          (+ (fibo (- n 1)) (fibo (- n 2)))))))
+;   (define fibo
+;     (lambda (n)
+;       (if (= n 0)
+;         0
+;         (if (= n 1)
+;           1
+;           (+ (fibo (- n 1)) (fibo (- n 2)))))))
 
-  (fibo 40)
-))
+;   (fibo 4)
+; ))
 
 ;(test '((if #t 10 20)))
 ;(test '(- (if (< a b) 11 22) (if (< b a) 33 44)))
