@@ -929,7 +929,7 @@
       (cons r (read-prog)))))
 
 (define prog (read-prog))
-;(test prog)
+(test prog)
 
 
 ;(test '((if (< a b) 11 22)))
