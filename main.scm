@@ -302,6 +302,20 @@
     (pp (list 'obj= obj))
     stub-labels))
 
+(define (create-stub-continuation label-handler max-selector . args)
+  (let* ((len
+          (length args))
+         (obj
+          (alloc-still-vector len))
+         (stub-labels
+          (stub-add
+           max-selector
+           (lambda (cgc)
+             (call-handler cgc label-handler obj)))))
+    (subvector-move! (list->vector args) 0 len obj 0)
+    (pp (list 'obj= obj))
+    stub-labels))
+
 (define (call-handler cgc label-handler obj)
   (x86-call cgc label-handler)
   (asm-64   cgc (obj-encoding obj)))
@@ -830,14 +844,17 @@
                                           (let* ((fun-label (cdr (assoc (car ast) functions)))
                                                  (here-label (asm-make-label cgc (new-sym 'here_)))
                                                  (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
-                                                 ;; Create continuation stub
+                                                 ;; Flag in stub : is the continuation already generated ?
+                                                 (gen-flag #f)
+                                                 ;; Create continuation stubs 
                                                  (stub-labels (add-callback cgc
                                                                            0
                                                                            (lambda (ret-addr selector)
-                                                                              (gen-version-continuation load-ret-label
+                                                                              (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
+                                                                                  (set! gen-flag (gen-version-continuation load-ret-label
                                                                                                         succ
-                                                                                                        (ctx-push (ctx-pop-nb ctx (length args)) 'unknown)))))) ;; remove args and add ret val
-                                
+                                                                                                        (ctx-push (ctx-pop-nb ctx (length args)) 'unknown)))) ;; remove args and add ret val
+                                                                              gen-flag))))
                                                ;; Return address
                                                (x86-label cgc load-ret-label)
                                                (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1))) ;; Push continuation label addr
