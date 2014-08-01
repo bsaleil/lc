@@ -669,11 +669,9 @@
                                ((-)
                                 (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
                                ((*)
-                                (begin (x86-pop cgc (x86-rbx))
-                                       (x86-shr cgc (x86-rbx) (x86-imm-int 2))
-                                       (x86-imul cgc (x86-rbx) (x86-rax))
-                                       (x86-push cgc (x86-rbx))))
-                                ;(x86-imul cgc (x86-mem 0 (x86-rsp)) (x86-rax))) ;; TODO
+                                (begin (x86-shr cgc (x86-rax) (x86-imm-int 2))
+                                       (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                                       (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
                                ((<)
                                 (let ((label-done
                                        (asm-make-label cgc (new-sym 'done))))
@@ -949,6 +947,7 @@
 
 (define prog (read-prog))
 (test prog)
+
 
 ;(test '((if (< a b) 11 22)))
 ; (test '(
