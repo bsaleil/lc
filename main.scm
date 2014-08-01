@@ -302,20 +302,6 @@
     (pp (list 'obj= obj))
     stub-labels))
 
-(define (create-stub-continuation label-handler max-selector . args)
-  (let* ((len
-          (length args))
-         (obj
-          (alloc-still-vector len))
-         (stub-labels
-          (stub-add
-           max-selector
-           (lambda (cgc)
-             (call-handler cgc label-handler obj)))))
-    (subvector-move! (list->vector args) 0 len obj 0)
-    (pp (list 'obj= obj))
-    stub-labels))
-
 (define (call-handler cgc label-handler obj)
   (x86-call cgc label-handler)
   (asm-64   cgc (obj-encoding obj)))
