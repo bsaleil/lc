@@ -128,13 +128,14 @@
     (put-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))
              0)))
 
-;; Same behavior as 'do-callback' but calls callback with 'orig' arg
-;; 'orig' is the position of function call site
+;; Same behavior as 'do-callback' but calls callback with call site addr
 ;; RCX holds selector (CL)
-;; RAX holds call site position
 (c-define (do-callback-fn sp) (long) void "do_callback_fn" ""
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
+
+         (call-site-addr
+          (- (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)) 5)) ;; 5 : call instruction size
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
@@ -142,14 +143,11 @@
          (selector
           (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
 
-         (orig
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
-
          (ctx
           (encoding-obj (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdx-pos) 1) 8)))))
 
          (new-ret-addr
-          (callback-fn ret-addr selector orig ctx)))
+          (callback-fn ret-addr selector call-site-addr ctx)))
 
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8))
@@ -339,7 +337,13 @@
        (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
        ))
 
-    (x86-ret  cgc)
+    (if (eq? id 'do_callback_fn_handler)
+           ;; If fn handler, then remove extra stack slot for call site position, and return
+           (begin (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                  (x86-add cgc (x86-rsp) (x86-imm-int 16))
+                  (x86-jmp cgc (x86-rax)))
+           ;; Else there is no extra slot, return
+           (x86-ret cgc))
 
     label-handler))
 
@@ -510,7 +514,7 @@
 ;; Generate a function
 ;; First generate function lazy-code
 ;; Then patch call site to jump directly to generated function
-(define (gen-version-fn call-addr lazy-code ctx)
+(define (gen-version-fn call-site-addr lazy-code ctx)
 
   (print "GEN VERSION FN")
 
@@ -521,14 +525,13 @@
   ;; jump to the machine code corresponding to the version of
   ;; "lazy-code" for the context "ctx"
 
-  (let ((label-dest (get-version lazy-code ctx))
-        (overwrite-addr (- call-addr 5)))
+  (let ((label-dest (get-version lazy-code ctx)))
     (if label-dest
 
         ;; That version has already been generated, so just patch jump
         (let ((dest-addr (asm-label-pos label-dest)))
 
-         (patch-call overwrite-addr label-dest))
+         (patch-call call-site-addr label-dest))
 
         ;; That version is not yet generated, so generate it and then patch call
         (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
@@ -541,7 +544,7 @@
           ;; Put version matching this ctx
           (put-version lazy-code ctx fn-label)
           ;; Patch call
-          (patch-call overwrite-addr fn-label)))))
+          (patch-call call-site-addr fn-label)))))
 
 (define (gen-version jump-addr lazy-code ctx)
 
@@ -813,10 +816,10 @@
                        (make-lazy-code (lambda (cgc ctx)
                                           (let* ((stub-labels (add-fn-callback cgc
                                                                            0
-                                                                           (lambda (ret-addr selector orig ctx)
+                                                                           (lambda (ret-addr selector call-site-addr ctx)
                                                                               ;; Add params to env
                                                                               (let ((ctx (make-ctx (ctx-stack ctx) (build-env params 0))))
-                                                                                (gen-version-fn orig lazy-body ctx)))))
+                                                                                (gen-version-fn call-site-addr lazy-body ctx)))))
                                                  (function-label (list-ref stub-labels 0)))
                                              (set! functions (cons (cons function-name function-label) functions))
                                              (jump-to-version cgc succ ctx))))))
@@ -844,17 +847,13 @@
                                                (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1))) ;; Push continuation label addr
                                                (x86-push cgc (x86-rax))
 
-                                               ;; Call ctx
+                                               ;; Call ctx in rdx
                                                (let* ((call-stack (cons 'retAddr (list-head (ctx-stack ctx) (length args))))
                                                       (call-ctx   (make-ctx call-stack '())))
                                                  (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding call-ctx))))
 
-                                               ;; Call position
-                                               (x86-call cgc here-label)
-                                               (x86-label cgc here-label)
-                                               (x86-pop cgc (x86-rax))
-
-                                               (x86-jmp cgc fun-label))))))
+                                               ;; Call function stub to keep address of this call site
+                                               (x86-call cgc fun-label))))))
 
                     (if (> (length args) 0)
                       (gen-ast-l args lazy-call) ;; Gen args and give lazy-call as successor
