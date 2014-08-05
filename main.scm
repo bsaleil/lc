@@ -66,6 +66,7 @@
 
 ;; Exec errors
 (define ERR_MSG "EXEC ERROR")
+(define ERR_NUM_EXPECTED "NUMBER EXPECTED")
 
 ;; Code gen to print error
 ;; stop-exec? to #f to continue after error
@@ -651,7 +652,21 @@
                   (let* ((lazy-code2
                           (make-lazy-code
                            (lambda (cgc ctx)
+                            
+                             (let ((left-op-type  (cadr (ctx-stack ctx)))
+                                   (right-op-type (car (ctx-stack ctx))))
+
+                                ;; TODO
+                                (if (eq? left-op-type 'unknown)
+                                    (error "NYI dyn test left"));; ctx = (dyn_test ctx left)
+                                (if (eq? right-op-type 'unknown)
+                                    (error "NYI dyn test right"));; ctx = (dyn_test ctx right)
+
+                                (cond ((not (eq? left-op-type  'num)) (gen-error cgc ctx (string-append ERR_NUM_EXPECTED " (arg 1)")))
+                                      ((not (eq? right-op-type 'num)) (gen-error cgc ctx (string-append ERR_NUM_EXPECTED " (arg 2)")))))
+
                              (x86-pop cgc (x86-rax))
+
                              (case op
                                ((+)
                                 (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
@@ -913,7 +928,7 @@
 
     (define (t . args)
       (let ((result (apply f (reverse args))))
-        (print "*** RESULT: ")
+        (print "!!! RESULT: ")
         (pretty-print (list (cons 'f args) '=> result))))
 
     (t))
