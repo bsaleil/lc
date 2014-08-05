@@ -64,8 +64,49 @@
 
 ;;-----------------------------------------------------------------------------
 
-;; The procedure do-callback is callable from generated machine code.
+;; Exec errors
+(define ERR_MSG "EXEC ERROR")
 
+;; Code gen to print error
+;; stop-exec? to #f to continue after error
+(define (gen-error cgc ctx err #!optional (stop-exec? #t))
+
+  ;; Put error msg in RAX
+  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding err)))
+
+  ;; Call exec-error
+  (push-pop-regs
+     cgc
+     c-caller-save-regs ;; preserve regs for C call
+     (lambda (cgc)
+       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
+       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+       (x86-push cgc (x86-rdi))
+       (x86-call cgc label-exec-error) ;; call C function
+       (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
+       ))
+
+  (if stop-exec?
+    (begin 
+      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding -1)))
+      (x86-add cgc (x86-rsp) (x86-imm-int (* (length (ctx-stack ctx)) 8)))
+      (pop-regs-reverse cgc prog-regs)
+      (x86-ret cgc)))
+)
+
+;; The procedure exec-error is callable from generated machine code.
+;; This function print the error message in rax
+(c-define (exec-error sp) (long) void "exec_error" ""
+  (let* ((err-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
+        (err (encoding-obj err-enc)))
+    (print "!!! ERROR : ")
+    (println err)))
+
+;;-----------------------------------------------------------------------------
+
+;; The procedures do-callback* are callable from generated machine code.
+;; RCX holds selector (CL)
 (c-define (do-callback sp) (long) void "do_callback" ""
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
@@ -87,11 +128,51 @@
     (put-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))
              0)))
 
+;; Same behavior as 'do-callback' but calls callback with call site addr
+;; RCX holds selector (CL)
+(c-define (do-callback-fn sp) (long) void "do_callback_fn" ""
+  (let* ((ret-addr
+          (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
+
+         (call-site-addr
+          (- (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)) 5)) ;; 5 : call instruction size
+
+         (callback-fn
+          (vector-ref (get-scmobj ret-addr) 0))
+
+         (selector
+          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
+
+         (ctx
+          (encoding-obj (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdx-pos) 1) 8)))))
+
+         (new-ret-addr
+          (callback-fn ret-addr selector call-site-addr ctx)))
+
+    ;; replace return address
+    (put-i64 (+ sp (* nb-c-caller-save-regs 8))
+             new-ret-addr)
+
+    ;; reset selector
+    (put-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))
+             0)))
+
 ;; The label for procedure do-callback
 
-(define label-do-callback #f)
+(define label-exec-error     #f)
+(define label-do-callback    #f)
+(define label-do-callback-fn #f)
 
 (define (init-labels cgc)
+
+  (set! label-exec-error
+        (asm-make-label
+         cgc
+         'exer-error
+         (##foreign-address
+          ((c-lambda ()
+                     (pointer void)
+                     "___result = ___CAST(void*,exec_error);")))))
 
   (set! label-do-callback
         (asm-make-label
@@ -100,7 +181,16 @@
          (##foreign-address
           ((c-lambda ()
                      (pointer void)
-                     "___result = ___CAST(void*,do_callback);"))))))
+                     "___result = ___CAST(void*,do_callback);")))))
+
+  (set! label-do-callback-fn
+        (asm-make-label
+         cgc
+         'do_callback_fn
+         (##foreign-address
+          ((c-lambda ()
+                     (pointer void)
+                     "___result = ___CAST(void*,do_callback_fn);"))))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -123,7 +213,7 @@
             (loop (fx- i 1)))
           mcb))))
 
-(define (code-gen arch addr gen #!optional (show-listing? #t))
+(define (code-gen arch addr gen #!optional ctx (show-listing? #t))
   (let* ((cgc (make-codegen-context))
          (endianness 'le))
 
@@ -131,7 +221,10 @@
     (codegen-context-listing-format-set! cgc 'nasm)
     (x86-arch-set! cgc arch)
 
-    (gen cgc)
+    ;; If the code-gen function is called to generate function stub, use ctx
+    (if ctx
+      (gen cgc ctx)
+      (gen cgc))
 
     (let ((code (asm-assemble-to-u8vector cgc)))
       (if show-listing?
@@ -145,6 +238,7 @@
 
 ;; Code and stub management
 
+(define functions '())
 (define code-alloc #f)
 (define stub-alloc #f)
 (define stub-freelist #f)
@@ -218,9 +312,13 @@
   (let ((n (##object->encoding obj)))
     (if (>= n (expt 2 63)) (- n (expt 2 64)) n)))
 
+(define (encoding-obj encoding)
+  (##encoding->object encoding))
+
 ;;-----------------------------------------------------------------------------
 
 (define label-do-callback-handler #f)
+(define label-do-callback-fn-handler #f)
 
 (define (gen-handler cgc id label)
   (let ((label-handler (asm-make-label cgc id)))
@@ -239,7 +337,13 @@
        (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
        ))
 
-    (x86-ret  cgc)
+    (if (eq? id 'do_callback_fn_handler)
+           ;; If fn handler, then remove extra stack slot for call site position, and return
+           (begin (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                  (x86-add cgc (x86-rsp) (x86-imm-int 16))
+                  (x86-jmp cgc (x86-rax)))
+           ;; Else there is no extra slot, return
+           (x86-ret cgc))
 
     label-handler))
 
@@ -251,11 +355,12 @@
     (set! label-do-callback-handler
           (gen-handler cgc 'do_callback_handler label-do-callback))
 
+    (set! label-do-callback-fn-handler
+          (gen-handler cgc 'do_callback_fn_handler label-do-callback-fn))
+
     (x86-label cgc label-rtlib-skip)
 
-    (x86-push cgc (x86-rdx))
-    (x86-push cgc (x86-rsi))
-    (x86-push cgc (x86-rdi))
+    (push-regs cgc prog-regs)
     (x86-mov  cgc (x86-rcx) (x86-imm-int 0))))
 
 (define (init)
@@ -274,6 +379,12 @@
   (proc cgc)
   (for-each (lambda (reg) (x86-pop cgc reg)) (reverse regs)))
 
+(define (push-regs cgc regs)
+  (for-each (lambda (reg) (x86-push cgc reg)) regs))
+
+(define (pop-regs-reverse cgc regs)
+  (for-each (lambda (reg) (x86-pop cgc reg)) (reverse regs)))
+
 (define c-caller-save-regs ;; from System V ABI
   (list (x86-rdi) ;; 1st argument
         (x86-rsi) ;; 2nd argument
@@ -286,12 +397,27 @@
         (x86-rax) ;; return register
         ))
 
+(define prog-regs ;; Registers at entry and exit points of program
+  (list (x86-rdx)
+        (x86-rsi)
+        (x86-rbx)
+        (x86-rdi)
+        ))
+
 (define nb-c-caller-save-regs
   (length c-caller-save-regs))
+
+(define rdx-pos
+  (- nb-c-caller-save-regs
+     (length (member (x86-rdx) c-caller-save-regs))))
 
 (define rcx-pos
   (- nb-c-caller-save-regs
      (length (member (x86-rcx) c-caller-save-regs))))
+
+(define rax-pos
+  (- nb-c-caller-save-regs
+     (length (member (x86-rax) c-caller-save-regs))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -327,15 +453,22 @@
 
 (define-type ctx
   stack ;; compile time stack, containing types
+  env   ;; compile time environment
 )
 
 (define (ctx-push ctx type)
-  (make-ctx (cons type (ctx-stack ctx))))
+  (make-ctx (cons type (ctx-stack ctx)) (ctx-env ctx)))
 
 (define (ctx-pop ctx)
-  (make-ctx (cdr (ctx-stack ctx))))
+  (make-ctx (cdr (ctx-stack ctx)) (ctx-env ctx)))
+
+(define (ctx-pop-nb ctx nb-pop)
+  (cond ((= nb-pop 0) ctx)
+        ((null? (ctx-stack ctx)) (error "pop empty ctx"))
+        (else (ctx-pop-nb (ctx-pop ctx) (- nb-pop 1)))))
 
 (define (jump-to-version cgc lazy-code ctx)
+
   (let ((label-dest (get-version lazy-code ctx)))
     (if label-dest
 
@@ -348,12 +481,76 @@
           (x86-label cgc label-version)
           ((lazy-code-generator lazy-code) cgc ctx)))))
 
+;; Add callback
 (define (add-callback cgc max-selector callback-fn)
   (create-stub label-do-callback-handler max-selector callback-fn))
 
+;; Add function callback
+(define (add-fn-callback cgc max-selector callback-fn) ;; NOTE : is all selector mechanism useful here ?
+  (create-stub label-do-callback-fn-handler max-selector callback-fn))
+
+;; Generate a continuation
+;; First generate continuation lazy-code
+;; Then patch mov before call to mov continuation address instead of stub address
+;;  TODO : check if stub addr and continuation addr are the same size
+;;  TODO : clean code with patch function
+(define (gen-version-continuation load-ret-label lazy-code ctx)
+
+  (let ((continuation-label (asm-make-label #f (new-sym 'continuation_)))
+        (load-addr (asm-label-pos load-ret-label)))
+    ;; Generate lazy-code
+    (code-add 
+      (lambda (cgc)
+        (x86-label cgc continuation-label)
+        ((lazy-code-generator lazy-code) cgc ctx)))
+    
+    ;; Patch load
+    (print ">>> patching mov at ") (print (number->string load-addr 16)) (print " : ")
+    (print "now load ") (print (asm-label-name continuation-label)) (print " (") (print (number->string (asm-label-pos continuation-label) 16)) (println ")")
+    (code-gen 'x86-64 load-addr (lambda (cgc) (x86-mov cgc (x86-rax) (x86-imm-int (asm-label-pos continuation-label)))))
+    ;; Return label pos
+    (asm-label-pos continuation-label)))
+
+;; Generate a function
+;; First generate function lazy-code
+;; Then patch call site to jump directly to generated function
+(define (gen-version-fn call-site-addr lazy-code ctx)
+
+  (print "GEN VERSION FN")
+
+  (print " >>> ")
+  (pp ctx)
+
+  ;; the jump instruction (call) at address "call-addr" must be redirected to
+  ;; jump to the machine code corresponding to the version of
+  ;; "lazy-code" for the context "ctx"
+
+  (let ((label-dest (get-version lazy-code ctx)))
+    (if label-dest
+
+        ;; That version has already been generated, so just patch jump
+        (let ((dest-addr (asm-label-pos label-dest)))
+
+         (patch-call call-site-addr label-dest))
+
+        ;; That version is not yet generated, so generate it and then patch call
+        (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
+
+          ;; Gen version
+          (code-add
+             (lambda (cgc)
+                (x86-label cgc fn-label)
+                ((lazy-code-generator lazy-code) cgc ctx)))
+          ;; Put version matching this ctx
+          (put-version lazy-code ctx fn-label)
+          ;; Patch call
+          (patch-call call-site-addr fn-label)))))
+
 (define (gen-version jump-addr lazy-code ctx)
 
-  (print ">>> ")
+  (print "GEN VERSION")
+
+  (print " >>> ")
   (pp ctx)
 
   ;; the jump instruction at address "jump-addr" must be redirected to
@@ -404,6 +601,14 @@
         (put-i32 (- (+ jump-addr size) 4)
                  (- dest-addr (+ jump-addr size))))))
 
+(define (patch-call call-addr dest-label)
+
+  (print ">>> patching call at " (number->string call-addr 16) " : ")
+  (println "now jump to " (asm-label-name dest-label) " (" (number->string (asm-label-pos dest-label) 16) ")")
+  
+  (code-gen 'x86-64 call-addr (lambda (cgc) (x86-jmp cgc dest-label)))
+  (asm-label-pos dest-label))
+
 (define (jump-size jump-addr)
   (if (= (get-u8 jump-addr) #x0f) 6 5))
 
@@ -419,21 +624,30 @@
                                        (cond ((number? ast) 'num)
                                              ((boolean? ast) 'bool)))))))
 
-        ((symbol? ast) ;; a, b, c refer to the arguments of the function
+        ((symbol? ast)
          (make-lazy-code
           (lambda (cgc ctx)
             (let* ((fs (length (ctx-stack ctx)))
-                   (pos (- fs 1 (cdr (assoc ast '((a . 0) (b . 1) (c . 2)))))))
-              (x86-push cgc (x86-mem (* pos 8) (x86-rsp)))
-              (jump-to-version cgc
-                               succ
-                               (ctx-push ctx
-                                         (list-ref (ctx-stack ctx) pos)))))))
+                   (lookup-res (assoc ast (ctx-env ctx))))
+              (if lookup-res ;; Id exists
+                   (let ((pos (- fs 1 (cdr lookup-res))))
+                      (x86-push cgc (x86-mem (* pos 8) (x86-rsp)))
+                      (jump-to-version cgc
+                                       succ
+                                       (ctx-push ctx
+                                                 (list-ref (ctx-stack ctx) pos))))
+                   (error "Can't find variable: " ast))))))  
 
         ((pair? ast)
          (let ((op (car ast)))
 
-           (cond ((member op '(+ - * < =))
+           (cond 
+                 ((eq? op '$$msg)
+                    (make-lazy-code (lambda (cgc ctx)
+                      (gen-error cgc ctx (cadr ast) #f)
+                      (jump-to-version cgc succ ctx))))
+
+                 ((member op '(+ - * < =))
                   (let* ((lazy-code2
                           (make-lazy-code
                            (lambda (cgc ctx)
@@ -444,7 +658,9 @@
                                ((-)
                                 (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
                                ((*)
-                                (x86-imul cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+                                (begin (x86-shr cgc (x86-rax) (x86-imm-int 2))
+                                       (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                                       (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
                                ((<)
                                 (let ((label-done
                                        (asm-make-label cgc (new-sym 'done))))
@@ -587,54 +803,160 @@
                      (cadr ast)
                      lazy-code-test)))
 
+                 ((eq? op 'define)
+                    (let* ((params (cadr (caddr ast)))
+                          (lazy-ret (make-lazy-code (lambda (cgc ctx)
+                                                            (x86-pop cgc (x86-rax)) ;; Ret val
+                                                            (x86-pop cgc (x86-rbx)) ;; Ret addr
+                                                            (x86-add cgc (x86-rsp) (x86-imm-int (* (length params) 8)))
+                                                            (x86-push cgc (x86-rax))
+                                                            (x86-jmp cgc (x86-rbx)))))
+                          (lazy-body (gen-ast (caddr (caddr ast)) lazy-ret))
+                          (function-name (cadr ast)))
+                       (make-lazy-code (lambda (cgc ctx)
+                                          (let* ((stub-labels (add-fn-callback cgc
+                                                                           0
+                                                                           (lambda (ret-addr selector call-site-addr ctx)
+                                                                              ;; Add params to env
+                                                                              (let ((ctx (make-ctx (ctx-stack ctx) (build-env params 0))))
+                                                                                (gen-version-fn call-site-addr lazy-body ctx)))))
+                                                 (function-label (list-ref stub-labels 0)))
+                                             (set! functions (cons (cons function-name function-label) functions))
+                                             (jump-to-version cgc succ ctx))))))
+
                  (else
-                  ...))))
+                  (let* ((opid (car ast))
+                        (args (cdr ast))
+                        (lazy-call (make-lazy-code (lambda (cgc ctx)
+                                          (let* ((fun-label (cdr (assoc (car ast) functions)))
+                                                 (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
+                                                 ;; Flag in stub : is the continuation already generated ?
+                                                 (gen-flag #f)
+                                                 ;; Create continuation stubs 
+                                                 (stub-labels (add-callback cgc
+                                                                           0
+                                                                           (lambda (ret-addr selector)
+                                                                              (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
+                                                                                  (set! gen-flag (gen-version-continuation load-ret-label
+                                                                                                        succ
+                                                                                                        (ctx-push (ctx-pop-nb ctx (length args)) 'unknown)))) ;; remove args and add ret val
+                                                                              gen-flag))))
+                                               ;; Return address
+                                               (x86-label cgc load-ret-label)
+                                               (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1))) ;; Push continuation label addr
+                                               (x86-push cgc (x86-rax))
+
+                                               ;; Call ctx in rdx
+                                               (let* ((call-stack (cons 'retAddr (list-head (ctx-stack ctx) (length args))))
+                                                      (call-ctx   (make-ctx call-stack '())))
+                                                 (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding call-ctx))))
+
+                                               ;; Call function stub to keep address of this call site
+                                               (x86-call cgc fun-label))))))
+
+                    (if (> (length args) 0)
+                      (gen-ast-l args lazy-call) ;; Gen args and give lazy-call as successor
+                      lazy-call)))
+                  )))
 
         (else
          (error "unknown ast" ast))))
 
+;;
+(define (list-head lst nb-el)
+  (cond ((= nb-el 0) '())
+        ((null? lst) (error "Not enough els"))
+        (else (cons (car lst) (list-head (cdr lst) (- nb-el 1))))))
+
+;; Gen ast for a list of exprs with successor 'succ'
+(define (gen-ast-l lst succ)
+  (cond ((null? lst) (error "Empty list"))
+        ((= (length lst) 1) (gen-ast (car lst) succ))
+        (else (gen-ast (car lst) (gen-ast-l (cdr lst) succ)))))
+
 ;;-----------------------------------------------------------------------------
 
-(define (compile-lambda params expr)
+(define (build-env ids start)
+  (if (null? ids)
+    '()
+    (cons (cons (car ids) start) (build-env (cdr ids) (+ start 1)))))
+
+(define (lazy-exprs exprs)
+  (if (null? exprs)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (x86-pop cgc (x86-rax))
+        (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
+        (pop-regs-reverse cgc prog-regs)
+        (x86-ret cgc)))
+    (gen-ast (car exprs)
+             (lazy-exprs (cdr exprs)))))
+
+(define (compile-lambda params exprs)
 
   (init)
 
-  (let ((lazy-code
-         (gen-ast expr
-                  (make-lazy-code
-                   (lambda (cgc ctx)
-                     (x86-pop cgc (x86-rax))
-                     (x86-pop cgc (x86-rdi))
-                     (x86-pop cgc (x86-rsi))
-                     (x86-pop cgc (x86-rdx))
-                     (x86-ret cgc))))))
+  (let ((lazy-code (lazy-exprs exprs)))
     (gen-version code-alloc
                  lazy-code
-                 (make-ctx (map (lambda (x) 'unknown) params)))
+                 (make-ctx (map (lambda (x) 'unknown) params) (build-env params 0)))
     (lambda (#!optional (arg1 0) (arg2 0) (arg3 0))
       (##machine-code-block-exec mcb arg1 arg2 arg3))))
 
-(define (test expr)
+
+
+(define (test exprs)
   (println "******************************************************************")
   (print "*** TESTING: ")
-  (pretty-print (list 'define 'f (list 'lambda '(a b) expr)))
-  (let ((f (compile-lambda '(a b) expr)))
+  (pretty-print (list 'define 'f (list 'lambda '() exprs)))
+  (let ((f (compile-lambda '() exprs)))
 
     (define (t . args)
       (let ((result (apply f (reverse args))))
         (print "*** RESULT: ")
         (pretty-print (list (cons 'f args) '=> result))))
 
-    (t 1 2)
-    (t 2 1)
-    (t 1 2)
-    (t 2 1)
-))
+    (t))
+    ;(t))
+    ;(t 1 2)
+    ;(t 2 1)
+)
 
-(test '(if (< a b) 11 22))
+;; Read prog from stdin
+(define (read-prog)
+  (let ((r (read)))
+    (if (eof-object? r)
+      '()
+      (cons r (read-prog)))))
 
-(test '(if #t 11 22))
+(define prog (read-prog))
+(test prog)
 
-(test '(- (if (< a b) 11 22) (if (< b a) 33 44)))
+
+;(test '((if (< a b) 11 22)))
+; (test '(
+;   (define fact
+;     (lambda (n)
+;       (if (= n 0)
+;         1
+;         (if (= n 1)
+;           1
+;           (* n (fact (- n 1)))))))
+
+;   (fact 4)
+
+;   (define fibo
+;     (lambda (n)
+;       (if (= n 0)
+;         0
+;         (if (= n 1)
+;           1
+;           (+ (fibo (- n 1)) (fibo (- n 2)))))))
+
+;   (fibo 4)
+; ))
+
+;(test '((if #t 10 20)))
+;(test '(- (if (< a b) 11 22) (if (< b a) 33 44)))
 
 ;;-----------------------------------------------------------------------------
