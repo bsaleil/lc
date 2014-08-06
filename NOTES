@@ -1,1 +1,2 @@
-Supprimer le stub de la continuation apres génération ?
+- Modifier (gen-version-continuation) pour passer le code à générer en paramètre,
+  ajouter une fonction intermédiaire pour les tests de type pour factoriser avec 'if
