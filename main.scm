@@ -468,6 +468,20 @@
         ((null? (ctx-stack ctx)) (error "pop empty ctx"))
         (else (ctx-pop-nb (ctx-pop ctx) (- nb-pop 1)))))
 
+(define (todo-jump-to-version cgc lazy-code ctx jmp)
+
+  (let ((label-dest (get-version lazy-code ctx)))
+    (if label-dest
+
+        ;; that version has already been generated, so just jump to it
+        (jmp cgc label-dest)
+
+        ;; generate that version inline
+        (let ((label-version (asm-make-label cgc (new-sym 'version))))
+          (put-version lazy-code ctx label-version)
+          (x86-label cgc label-version)
+          ((lazy-code-generator lazy-code) cgc ctx)))))
+
 (define (jump-to-version cgc lazy-code ctx)
 
   (let ((label-dest (get-version lazy-code ctx)))
@@ -649,66 +663,74 @@
                       (jump-to-version cgc succ ctx))))
 
                  ((member op '(+ - * < =))
-                  (let* ((lazy-code2
-                          (make-lazy-code
-                           (lambda (cgc ctx)
-                            
-                             (let ((left-op-type  (cadr (ctx-stack ctx)))
-                                   (right-op-type (car (ctx-stack ctx))))
+                    (letrec (;; Lazy code used if type test fail
+                             (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ctx ERR_NUM_EXPECTED))))
+                             ;; Lazy code of left operand
+                             (lazy-ast-left  (gen-ast (cadr ast)  lazy-ast-right))
+                             ;; Lazy code of right operand
+                             (lazy-ast-right (gen-ast (caddr ast) lazy-main))
+                             ;; Gen operation code (assumes both operands are 'num)
+                             (lazy-code-op (make-lazy-code
+                                            (lambda (cgc ctx)
+                                              (begin (x86-pop cgc (x86-rax))
+                                                     (case op
+                                                       ((+)
+                                                        (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+                                                       ((-)
+                                                        (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+                                                       ((*)
+                                                        (begin (x86-shr cgc (x86-rax) (x86-imm-int 2))
+                                                               (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                                                               (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
+                                                       ((<)
+                                                        (let ((label-done
+                                                               (asm-make-label cgc (new-sym 'done))))
+                                                          (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                                                          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                                                          (x86-jl  cgc label-done)
+                                                          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                                          (x86-label cgc label-done)
+                                                          (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
+                                                       ((=)
+                                                        (let ((label-done
+                                                               (asm-make-label cgc (new-sym 'done))))
+                                                          (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                                                          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                                                          (x86-je  cgc label-done)
+                                                          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                                          (x86-label cgc label-done)
+                                                          (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
+                                                       (else
+                                                        (error "unknown op" op)))
+                                                       (jump-to-version cgc
+                                                                        succ
+                                                                        (ctx-push
+                                                                         (ctx-pop (ctx-pop ctx))
+                                                                         (cond ((member op '(+ - *)) 'num)
+                                                                               ((member op '(< =)) 'bool))))))))
+                             ;; Lazy code, tests types from ctx to jump to the correct lazy-code  
+                             (lazy-main (make-lazy-code
+                                          (lambda (cgc ctx)
+                                              (let ((left-type  (cadr (ctx-stack ctx)))
+                                                    (right-type (car (ctx-stack ctx))))
 
-                                ;; TODO
-                                (if (eq? left-op-type 'unknown)
-                                    (error "NYI dyn test left"));; ctx = (dyn_test ctx left)
-                                (if (eq? right-op-type 'unknown)
-                                    (error "NYI dyn test right"));; ctx = (dyn_test ctx right)
+                                                ;(set! right-type 'unknown) ;; TODO
+                                                ;(set! left-type 'unknown)
 
-                                (cond ((not (eq? left-op-type  'num)) (gen-error cgc ctx (string-append ERR_NUM_EXPECTED " (arg 1)")))
-                                      ((not (eq? right-op-type 'num)) (gen-error cgc ctx (string-append ERR_NUM_EXPECTED " (arg 2)")))))
-
-                             (x86-pop cgc (x86-rax))
-
-                             (case op
-                               ((+)
-                                (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-                               ((-)
-                                (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-                               ((*)
-                                (begin (x86-shr cgc (x86-rax) (x86-imm-int 2))
-                                       (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                                       (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
-                               ((<)
-                                (let ((label-done
-                                       (asm-make-label cgc (new-sym 'done))))
-                                  (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                  (x86-jl  cgc label-done)
-                                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                  (x86-label cgc label-done)
-                                  (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
-                               ((=)
-                                (let ((label-done
-                                       (asm-make-label cgc (new-sym 'done))))
-                                  (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                  (x86-je  cgc label-done)
-                                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                  (x86-label cgc label-done)
-                                  (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
-                               (else
-                                (error "unknown op" op)))
-                             (jump-to-version cgc
-                                              succ
-                                              (ctx-push
-                                               (ctx-pop (ctx-pop ctx))
-                                               (cond ((member op '(+ - *)) 'num)
-                                                     ((member op '(< =)) 'bool)))))))
-                         (lazy-code1
-                          (gen-ast
-                           (caddr ast)
-                           lazy-code2)))
-                    (gen-ast
-                     (cadr ast)
-                     lazy-code1)))
+                                                (cond ((eq? left-type 'num)
+                                                          (cond ((eq? right-type 'num)     (jump-to-version cgc lazy-code-op ctx))
+                                                                ((eq? right-type 'unknown) (jump-to-version cgc (gen-dyn-type-test 0 lazy-code-op lazy-fail) ctx)) ;; TODO modif ctx
+                                                                (else                      (gen-error cgc ctx ERR_NUM_EXPECTED))))
+                                                      
+                                                      ((eq? left-type 'unknown)
+                                                          (cond ((eq? right-type 'num)     (jump-to-version cgc (gen-dyn-type-test 1 lazy-code-op lazy-fail) ctx)) ;; TODO modif ctx
+                                                                ((eq? right-type 'unknown) (let* ((right-test (gen-dyn-type-test 1 lazy-code-op lazy-fail))  ;; TODO modif ctx
+                                                                                                  (left-test  (gen-dyn-type-test 0 right-test   lazy-fail))) ;; TODO modif ctx
+                                                                                              (jump-to-version cgc left-test ctx)))
+                                                                (else                      (gen-error cgc ctx ERR_NUM_EXPECTED))))
+                                                      (else (gen-error cgc ctx ERR_NUM_EXPECTED))))))))
+                    ;; Return left operand lazy-code
+                    lazy-ast-left))
 
                  ((eq? op 'if)
                   (let* ((lazy-code0
@@ -888,6 +910,64 @@
   (cond ((null? lst) (error "Empty list"))
         ((= (length lst) 1) (gen-ast (car lst) succ))
         (else (gen-ast (car lst) (gen-ast-l (cdr lst) succ)))))
+
+;; TODO
+(define (gen-dyn-type-test stack-idx lazy-success lazy-fail)
+
+    (make-lazy-code
+       (lambda (cgc ctx)
+
+          (println ">>> Dynamic type test at index " stack-idx)
+         (let* ((ctx0 ctx) ;; TODO CONTEXTE SUCCESS
+                (ctx1 ctx) ;; TODO CONTEXTE FAIL
+
+                (label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
+                (stub-labels
+                      (add-callback cgc 1
+                        (let ((prev-action #f))
+
+                          (lambda (ret-addr selector)
+                          (let ((stub-addr (- ret-addr 5 2))
+                          (jump-addr (asm-label-pos label-jump)))
+                          (println ">>> selector= " selector)
+                          (println ">>> prev-action= " prev-action)
+                          (if (not prev-action)
+                          (begin (set! prev-action 'no-swap)
+                          (if (= selector 1)
+                          ;; overwrite unconditional jump
+                          (gen-version (+ jump-addr 6) lazy-fail ctx1)
+                          (if (= (+ jump-addr 6 5) code-alloc)
+                          (begin
+                          (println ">>> swapping-branches")
+                          (set! prev-action 'swap)
+                          ;; invert jump direction
+                          (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
+                          ;; make conditional jump to stub
+                          (patch-jump jump-addr stub-addr)
+                          ;; overwrite unconditional jump
+                          (gen-version
+                          (+ jump-addr 6)
+                          lazy-success
+                          ctx0))
+                          ;; make conditional jump to new version
+                          (gen-version jump-addr lazy-success ctx0))))
+                          (begin
+                          ;; one branch has already been patched
+                          ;; reclaim the stub
+                          (release-still-vector (get-scmobj ret-addr))
+                          (stub-reclaim stub-addr)
+                          (if (= selector 0)
+                          (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx0)
+                          (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx1))))))))))
+
+         ;;
+         ;; TODO CODE DU TEST
+         ;;
+         (x86-mov cgc (x86-rbx) (x86-mem (* 8 stack-idx) (x86-rsp)))
+         (x86-cmp cgc (x86-rbx) (x86-imm-int (obj-encoding 20))) ;; TODO test id == 20
+         (x86-label cgc label-jump)
+         (x86-je  cgc (list-ref stub-labels 0))
+         (x86-jmp cgc (list-ref stub-labels 1))))))
 
 ;;-----------------------------------------------------------------------------
 
