@@ -954,17 +954,7 @@
                                             (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-success)
                                             (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-fail))))))))))
 
-         ;;
-         ;; TODO CODE DU TEST
-         ;;
-         ; (println ">>> Gen dynamic type test at index " stack-idx)
-         ; (x86-mov cgc (x86-rbx) (x86-mem (* 8 stack-idx) (x86-rsp)))
-         ; (x86-cmp cgc (x86-rbx) (x86-imm-int (obj-encoding 20))) ;; TODO test id == 20
-         ; (x86-label cgc label-jump)
-         ; (x86-je  cgc (list-ref stub-labels 0))
-         ; (x86-jmp cgc (list-ref stub-labels 1))))))
          (println ">>> Gen dynamic type test at index " stack-idx)
-         (pp "DEBUG TYPE TEST")
          (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
          (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
          (x86-cmp chc (x86-rax) (x86-imm-int 0))
