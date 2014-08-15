@@ -1,0 +1,23 @@
+
+
+
+Exemple 1 :
+On veut compiler le plus paresseusement pour avoir le plus d'information dans le contexte
+Ajouter que pour le moment, c'est une idee a exploiter, pas de benchmarks
+
+
+
+
+
+
+
+FAIT :
+Supprimer bb versionning pour Code versionning (ou continuation versionning)
+Extremely + boxing au lieu de allocation de registre
+
+yA : 
+Compil fn
+Compil bb
+Mais surtout compil paresseuse pour éviter d'avoir à générer TOUTES les versions d'un code
+
+Enlever le "as" continuation pour le remplacer par "similaire à"
