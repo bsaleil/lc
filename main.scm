@@ -14,6 +14,10 @@
 
 ;;-----------------------------------------------------------------------------
 
+(include "x86-debug.scm")
+
+;;-----------------------------------------------------------------------------
+
 (define (alloc-still-vector len)
   ((c-lambda (int)
              scheme-object
@@ -191,7 +195,16 @@
          (##foreign-address
           ((c-lambda ()
                      (pointer void)
-                     "___result = ___CAST(void*,do_callback_fn);"))))))
+                     "___result = ___CAST(void*,do_callback_fn);")))))
+  
+  (set! label-dump-regs
+          (asm-make-label
+           cgc
+           'print-regs
+           (##foreign-address
+            ((c-lambda ()
+                       (pointer void)
+                       "___result = ___CAST(void*,dump_regs);"))))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -398,6 +411,24 @@
         (x86-rax) ;; return register
         ))
 
+(define all-regs
+  (list (x86-rax)
+        (x86-rbx)
+        (x86-rcx)
+        (x86-rdx)
+        (x86-rsp)
+        (x86-rbp)
+        (x86-rsi)
+        (x86-rdi)
+        (x86-r8)
+        (x86-r9)
+        (x86-r10)
+        (x86-r11)
+        (x86-r12)
+        (x86-r13)
+        (x86-r14)
+        (x86-r15)))
+
 (define prog-regs ;; Registers at entry and exit points of program
   (list (x86-rdx)
         (x86-rsi)
@@ -408,6 +439,7 @@
 (define nb-c-caller-save-regs
   (length c-caller-save-regs))
 
+;; TODO : *-pos: "nb-c-caller-save-regs" as parameter
 (define rdx-pos
   (- nb-c-caller-save-regs
      (length (member (x86-rdx) c-caller-save-regs))))
@@ -618,6 +650,10 @@
   (cond ((or (number? ast) (boolean? ast))
          (make-lazy-code
           (lambda (cgc ctx)
+            ;; TODO
+            (gen-dump-regs cgc)
+            ;(x86-call cgc label-print-regs)
+            ;; end todo
             (x86-push cgc (x86-imm-int (obj-encoding ast)))
             (jump-to-version cgc
                              succ
@@ -1009,6 +1045,11 @@
     ;(t 1 2)
     ;(t 2 1)
 )
+
+(lambda (i)
+  (if (< i 2)
+      '()
+      (cons i (fn (- i 1)))))
 
 ;; Read prog from stdin
 (define (read-prog)
