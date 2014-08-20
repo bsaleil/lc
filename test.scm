@@ -1,5 +1,7 @@
-(+ 14 11)
-
+;(+ 14 11)
+($$msg "TEST MSG SF")
+(define f (lambda (a) (+ a 11)))
+(f 33)
 
 ;; ------
 ;; TEST 1
