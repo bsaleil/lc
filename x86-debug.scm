@@ -1,5 +1,9 @@
 ;; TODO dump, hardcoded
 
+;;
+;; REGISTERS DUMP
+;;
+
 ;; dump registers label
 (define label-dump-regs #f)
 
@@ -41,5 +45,46 @@
      (println "-------------------------")
      (println "DUMP REGISTERS :")
      (println "-------------------------")
-	 (pp-regs regs-name regs-val)
+	   (pp-regs regs-name regs-val)
      (println "-------------------------")))
+
+;;
+;; STACK DUMP
+;;
+
+;; dump stack label
+(define label-dump-stack #f)
+
+;; generate code to call the "dump stack" function
+(define (gen-dump-stack cgc)
+  (push-pop-regs
+     cgc
+     all-regs
+     (lambda (cgc)
+       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
+       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+       (x86-push cgc (x86-rdi))
+       (x86-call cgc label-dump-stack) ;; call C function
+       (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
+       )))
+
+;; Pretty print stack top values
+(c-define (dump-stack sp) (long) void "dump_stack" ""
+     (let ((offset (length all-regs))
+           (slots-nb 10)) ;; TODO arg ?
+       (println "-------------------------")
+       (println "DUMP STACK :")
+       (println "-------------------------")
+       (println "RSP -> " (get-i64 (+ sp (* offset 8)))) ;; TODO 16 start
+       (println "-------------------------")
+       (print-stack-slots sp (+ offset 1) slots-nb)))
+
+;; Print n stack slots from sp+pos*8
+(define (print-stack-slots sp pos n)
+  (if (= n 0)
+      '()
+      (let ((val (get-i64 (+ sp (* pos 8)))))
+        (println "       " val)
+        (println "-------------------------")
+        (print-stack-slots sp (+ pos 1) (- n 1)))))
