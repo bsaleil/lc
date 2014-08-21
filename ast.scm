@@ -209,10 +209,6 @@
 (define (mlc-op ast succ op)
   (letrec (   ;; Lazy code used if type test fail
               (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ctx ERR_NUM_EXPECTED))))
-              
-              
-                           
-              
               ;; Lazy code of left operand
               (lazy-ast-left  (gen-ast (cadr ast)  lazy-ast-right))
               ;; Lazy code of right operand

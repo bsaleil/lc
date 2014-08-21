@@ -800,11 +800,6 @@
     ;(t 2 1)
 )
 
-(lambda (i)
-  (if (< i 2)
-      '()
-      (cons i (fn (- i 1)))))
-
 ;; Read prog from stdin
 (define (read-prog)
   (let ((r (read)))
