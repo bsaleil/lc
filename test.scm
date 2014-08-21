@@ -1,3 +1,8 @@
+(< #t 99)
+;($$msg "TEST MSG SF")
+;(define f (lambda (a) (+ a 11)))
+;(f 33)
+
 ;; ------
 ;; TEST 1
 ;; ------
@@ -40,12 +45,12 @@
 ;; FIBO
 ;; ----
 
-(define fibo
-  (lambda (n)
-    (if (= n 0)
-      0
-      (if (= n 1)
-        1
-        (+ (fibo (- n 1)) (fibo (- n 2)))))))
+; (define fibo
+;   (lambda (n)
+;     (if (= n 0)
+;       0
+;       (if (= n 1)
+;         1
+;         (+ (fibo (- n 1)) (fibo (- n 2)))))))
 
-(fibo 40)
+; (fibo 40)

@@ -14,6 +14,11 @@
 
 ;;-----------------------------------------------------------------------------
 
+(include "ast.scm")
+(include "x86-debug.scm")
+
+;;-----------------------------------------------------------------------------
+
 (define (alloc-still-vector len)
   ((c-lambda (int)
              scheme-object
@@ -66,6 +71,8 @@
 
 ;; Exec errors
 (define ERR_MSG "EXEC ERROR")
+(define ERR_NUM_EXPECTED "NUMBER EXPECTED")
+(define ERR_ARR_OVERFLOW "ARITHMETIC OVERFLOW")
 
 ;; Code gen to print error
 ;; stop-exec? to #f to continue after error
@@ -168,7 +175,7 @@
   (set! label-exec-error
         (asm-make-label
          cgc
-         'exer-error
+         'exec-error
          (##foreign-address
           ((c-lambda ()
                      (pointer void)
@@ -190,7 +197,25 @@
          (##foreign-address
           ((c-lambda ()
                      (pointer void)
-                     "___result = ___CAST(void*,do_callback_fn);"))))))
+                     "___result = ___CAST(void*,do_callback_fn);")))))
+  
+  (set! label-dump-regs
+          (asm-make-label
+           cgc
+           'dump-regs
+           (##foreign-address
+            ((c-lambda ()
+                       (pointer void)
+                       "___result = ___CAST(void*,dump_regs);")))))
+
+  (set! label-dump-stack
+          (asm-make-label
+           cgc
+           'dump-stack
+           (##foreign-address
+            ((c-lambda ()
+                       (pointer void)
+                       "___result = ___CAST(void*,dump_stack);"))))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -397,6 +422,24 @@
         (x86-rax) ;; return register
         ))
 
+(define all-regs
+  (list (x86-rax)
+        (x86-rbx)
+        (x86-rcx)
+        (x86-rdx)
+        (x86-rsp)
+        (x86-rbp)
+        (x86-rsi)
+        (x86-rdi)
+        (x86-r8)
+        (x86-r9)
+        (x86-r10)
+        (x86-r11)
+        (x86-r12)
+        (x86-r13)
+        (x86-r14)
+        (x86-r15)))
+
 (define prog-regs ;; Registers at entry and exit points of program
   (list (x86-rdx)
         (x86-rsi)
@@ -407,6 +450,7 @@
 (define nb-c-caller-save-regs
   (length c-caller-save-regs))
 
+;; TODO : *-pos: "nb-c-caller-save-regs" as parameter
 (define rdx-pos
   (- nb-c-caller-save-regs
      (length (member (x86-rdx) c-caller-save-regs))))
@@ -612,253 +656,26 @@
 (define (jump-size jump-addr)
   (if (= (get-u8 jump-addr) #x0f) 6 5))
 
+;; Gen lazy code object from given ast
 (define (gen-ast ast succ)
-
-  (cond ((or (number? ast) (boolean? ast))
-         (make-lazy-code
-          (lambda (cgc ctx)
-            (x86-push cgc (x86-imm-int (obj-encoding ast)))
-            (jump-to-version cgc
-                             succ
-                             (ctx-push ctx
-                                       (cond ((number? ast) 'num)
-                                             ((boolean? ast) 'bool)))))))
-
-        ((symbol? ast)
-         (make-lazy-code
-          (lambda (cgc ctx)
-            (let* ((fs (length (ctx-stack ctx)))
-                   (lookup-res (assoc ast (ctx-env ctx))))
-              (if lookup-res ;; Id exists
-                   (let ((pos (- fs 1 (cdr lookup-res))))
-                      (x86-push cgc (x86-mem (* pos 8) (x86-rsp)))
-                      (jump-to-version cgc
-                                       succ
-                                       (ctx-push ctx
-                                                 (list-ref (ctx-stack ctx) pos))))
-                   (error "Can't find variable: " ast))))))  
-
+  (cond ;; Literal
+        ((or (number? ast) (boolean? ast)) (mlc-literal ast succ))
+        ;; Symbol
+        ((symbol? ast) (mlc-symbol ast succ))
+        ;; Pair
         ((pair? ast)
          (let ((op (car ast)))
-
-           (cond 
-                 ((eq? op '$$msg)
-                    (make-lazy-code (lambda (cgc ctx)
-                      (gen-error cgc ctx (cadr ast) #f)
-                      (jump-to-version cgc succ ctx))))
-
-                 ((member op '(+ - * < =))
-                  (let* ((lazy-code2
-                          (make-lazy-code
-                           (lambda (cgc ctx)
-                             (x86-pop cgc (x86-rax))
-                             (case op
-                               ((+)
-                                (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-                               ((-)
-                                (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-                               ((*)
-                                (begin (x86-shr cgc (x86-rax) (x86-imm-int 2))
-                                       (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                                       (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
-                               ((<)
-                                (let ((label-done
-                                       (asm-make-label cgc (new-sym 'done))))
-                                  (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                  (x86-jl  cgc label-done)
-                                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                  (x86-label cgc label-done)
-                                  (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
-                               ((=)
-                                (let ((label-done
-                                       (asm-make-label cgc (new-sym 'done))))
-                                  (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                  (x86-je  cgc label-done)
-                                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                  (x86-label cgc label-done)
-                                  (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
-                               (else
-                                (error "unknown op" op)))
-                             (jump-to-version cgc
-                                              succ
-                                              (ctx-push
-                                               (ctx-pop (ctx-pop ctx))
-                                               (cond ((member op '(+ - *)) 'num)
-                                                     ((member op '(< =)) 'bool)))))))
-                         (lazy-code1
-                          (gen-ast
-                           (caddr ast)
-                           lazy-code2)))
-                    (gen-ast
-                     (cadr ast)
-                     lazy-code1)))
-
-                 ((eq? op 'if)
-                  (let* ((lazy-code0
-                          (gen-ast (cadddr ast) succ))
-                         (lazy-code1
-                          (gen-ast (caddr ast) succ))
-                         (lazy-code-test
-                          (make-lazy-code
-                           (lambda (cgc ctx)
-                             (let* ((ctx0
-                                     (ctx-pop ctx))
-
-                                    (ctx1
-                                     ctx0)
-
-                                    (label-jump
-                                     (asm-make-label
-                                      cgc
-                                      (new-sym 'patchable_jump)))
-
-                                    (stub-labels
-                                     (add-callback
-                                      cgc
-                                      1
-                                      (let ((prev-action #f))
-                                        (lambda (ret-addr selector)
-                                          (let ((stub-addr
-                                                 (- ret-addr 5 2))
-                                                (jump-addr
-                                                 (asm-label-pos label-jump)))
-
-                                            (println ">>> selector= " selector)
-                                            (println ">>> prev-action= " prev-action)
-
-                                            (if (not prev-action)
-
-                                                (begin
-
-                                                  (set! prev-action 'no-swap)
-
-                                                  (if (= selector 1)
-
-                                                      ;; overwrite unconditional jump
-                                                      (gen-version
-                                                       (+ jump-addr 6)
-                                                       lazy-code1
-                                                       ctx1)
-
-                                                      (if (= (+ jump-addr 6 5) code-alloc)
-
-                                                          (begin
-
-                                                            (println ">>> swapping-branches")
-
-                                                            (set! prev-action 'swap)
-
-                                                            ;; invert jump direction
-                                                            (put-u8 (+ jump-addr 1)
-                                                                    (fxxor 1 (get-u8 (+ jump-addr 1))))
-
-                                                            ;; make conditional jump to stub
-                                                            (patch-jump jump-addr stub-addr)
-
-                                                            ;; overwrite unconditional jump
-                                                            (gen-version
-                                                             (+ jump-addr 6)
-                                                             lazy-code0
-                                                             ctx0))
-
-                                                          ;; make conditional jump to new version
-                                                          (gen-version
-                                                           jump-addr
-                                                           lazy-code0
-                                                           ctx0))))
-
-                                                (begin
-
-                                                  ;; one branch has already been patched
-
-                                                  ;; reclaim the stub
-                                                  (release-still-vector
-                                                   (get-scmobj ret-addr))
-                                                  (stub-reclaim stub-addr)
-
-                                                  (if (= selector 0)
-
-                                                      (gen-version
-                                                       (if (eq? prev-action 'swap)
-                                                           (+ jump-addr 6)
-                                                           jump-addr)
-                                                       lazy-code0
-                                                       ctx0)
-
-                                                      (gen-version
-                                                       (if (eq? prev-action 'swap)
-                                                           jump-addr
-                                                           (+ jump-addr 6))
-                                                       lazy-code1
-                                                       ctx1))))))))))
-
-                               (x86-pop cgc (x86-rax))
-                               (x86-cmp cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                               (x86-label cgc label-jump)
-                               (x86-je  cgc (list-ref stub-labels 0))
-                               (x86-jmp cgc (list-ref stub-labels 1)))))))
-                    (gen-ast
-                     (cadr ast)
-                     lazy-code-test)))
-
-                 ((eq? op 'define)
-                    (let* ((params (cadr (caddr ast)))
-                          (lazy-ret (make-lazy-code (lambda (cgc ctx)
-                                                            (x86-pop cgc (x86-rax)) ;; Ret val
-                                                            (x86-pop cgc (x86-rbx)) ;; Ret addr
-                                                            (x86-add cgc (x86-rsp) (x86-imm-int (* (length params) 8)))
-                                                            (x86-push cgc (x86-rax))
-                                                            (x86-jmp cgc (x86-rbx)))))
-                          (lazy-body (gen-ast (caddr (caddr ast)) lazy-ret))
-                          (function-name (cadr ast)))
-                       (make-lazy-code (lambda (cgc ctx)
-                                          (let* ((stub-labels (add-fn-callback cgc
-                                                                           0
-                                                                           (lambda (ret-addr selector call-site-addr ctx)
-                                                                              ;; Add params to env
-                                                                              (let ((ctx (make-ctx (ctx-stack ctx) (build-env params 0))))
-                                                                                (gen-version-fn call-site-addr lazy-body ctx)))))
-                                                 (function-label (list-ref stub-labels 0)))
-                                             (set! functions (cons (cons function-name function-label) functions))
-                                             (jump-to-version cgc succ ctx))))))
-
-                 (else
-                  (let* ((opid (car ast))
-                        (args (cdr ast))
-                        (lazy-call (make-lazy-code (lambda (cgc ctx)
-                                          (let* ((fun-label (cdr (assoc (car ast) functions)))
-                                                 (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
-                                                 ;; Flag in stub : is the continuation already generated ?
-                                                 (gen-flag #f)
-                                                 ;; Create continuation stubs 
-                                                 (stub-labels (add-callback cgc
-                                                                           0
-                                                                           (lambda (ret-addr selector)
-                                                                              (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
-                                                                                  (set! gen-flag (gen-version-continuation load-ret-label
-                                                                                                        succ
-                                                                                                        (ctx-push (ctx-pop-nb ctx (length args)) 'unknown)))) ;; remove args and add ret val
-                                                                              gen-flag))))
-                                               ;; Return address
-                                               (x86-label cgc load-ret-label)
-                                               (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1))) ;; Push continuation label addr
-                                               (x86-push cgc (x86-rax))
-
-                                               ;; Call ctx in rdx
-                                               (let* ((call-stack (cons 'retAddr (list-head (ctx-stack ctx) (length args))))
-                                                      (call-ctx   (make-ctx call-stack '())))
-                                                 (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding call-ctx))))
-
-                                               ;; Call function stub to keep address of this call site
-                                               (x86-call cgc fun-label))))))
-
-                    (if (> (length args) 0)
-                      (gen-ast-l args lazy-call) ;; Gen args and give lazy-call as successor
-                      lazy-call)))
-                  )))
-
+           (cond ;; $$msg
+                 ((eq? op '$$msg) (mlc-$$msg ast succ))
+                 ;; Operator
+                 ((member op '(+ - * < =)) (mlc-op ast succ op))
+                 ;; If
+                 ((eq? op 'if) (mlc-if ast succ))
+                 ;; Define
+                 ((eq? op 'define) (mlc-define ast succ))
+                 ;; Call expr
+                 (else (mlc-call ast succ)))))
+        ;; *unknown*
         (else
          (error "unknown ast" ast))))
 
@@ -873,6 +690,67 @@
   (cond ((null? lst) (error "Empty list"))
         ((= (length lst) 1) (gen-ast (car lst) succ))
         (else (gen-ast (car lst) (gen-ast-l (cdr lst) succ)))))
+
+;; Create lazy code for type test of stack slot (stack-idx)
+;; jump to lazy-success if test succeeds
+;; jump to lazy-fail if test fails
+(define (gen-dyn-type-test stack-idx ctx-success lazy-success ctx-fail lazy-fail)
+
+    (make-lazy-code
+       (lambda (cgc ctx)
+
+         (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
+                (stub-labels
+                      (add-callback cgc 1
+                        (let ((prev-action #f))
+
+                          (lambda (ret-addr selector)
+                            (let ((stub-addr (- ret-addr 5 2))
+                                  (jump-addr (asm-label-pos label-jump)))
+                            
+                              (println ">>> selector= " selector)
+                              (println ">>> prev-action= " prev-action)
+                            
+                              (if (not prev-action)
+                                  
+                                  (begin (set! prev-action 'no-swap)
+                                         (if (= selector 1)
+                                          
+                                            ;; overwrite unconditional jump
+                                            (gen-version (+ jump-addr 6) lazy-fail ctx-fail)
+                                          
+                                            (if (= (+ jump-addr 6 5) code-alloc)
+
+                                              (begin (println ">>> swapping-branches")
+                                                     (set! prev-action 'swap)
+                                                     ;; invert jump direction
+                                                     (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
+                                                     ;; make conditional jump to stub
+                                                     (patch-jump jump-addr stub-addr)
+                                                     ;; overwrite unconditional jump
+                                                     (gen-version
+                                                     (+ jump-addr 6)
+                                                     lazy-success
+                                                     ctx-success))
+
+                                              ;; make conditional jump to new version
+                                              (gen-version jump-addr lazy-success ctx-success))))
+
+                                  (begin ;; one branch has already been patched
+                                         ;; reclaim the stub
+                                         (release-still-vector (get-scmobj ret-addr))
+                                         (stub-reclaim stub-addr)
+                                         (if (= selector 0)
+                                            (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-success)
+                                            (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-fail))))))))))
+
+         (println ">>> Gen dynamic type test at index " stack-idx)
+         (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
+         (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
+         (x86-cmp cgc (x86-rax) (x86-imm-int 0))
+         (x86-label cgc label-jump)
+         (x86-je cgc (list-ref stub-labels 0))
+         (x86-jmp cgc (list-ref stub-labels 1))))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -913,7 +791,7 @@
 
     (define (t . args)
       (let ((result (apply f (reverse args))))
-        (print "*** RESULT: ")
+        (print "!!! RESULT: ")
         (pretty-print (list (cons 'f args) '=> result))))
 
     (t))
@@ -958,5 +836,3 @@
 
 ;(test '((if #t 10 20)))
 ;(test '(- (if (< a b) 11 22) (if (< b a) 33 44)))
-
-;;-----------------------------------------------------------------------------
