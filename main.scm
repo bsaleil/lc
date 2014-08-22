@@ -221,13 +221,24 @@
 
 ;; Machine code block management
 
-(define mcb-len 100000)
+;; HEAP
+(define heap-len 50000)
+(define heap-addr #f)
+
+;; CODE
+(define code-len 50000)
+(define code-addr #f)
+
+;; MCB
 (define mcb #f)
+(define mcb-len (+ heap-len code-len))
 (define mcb-addr #f)
 
 (define (init-mcb)
   (set! mcb (##make-machine-code-block mcb-len))
-  (set! mcb-addr (##foreign-address mcb)))
+  (set! mcb-addr (##foreign-address mcb))
+  (set! heap-addr mcb-addr)
+  (set! code-addr (+ mcb-addr heap-len)))
 
 (define (write-mcb code start)
   (let ((len (u8vector-length code)))
@@ -270,7 +281,7 @@
 
 (define (init-code-allocator)
   (init-mcb)
-  (set! code-alloc mcb-addr)
+  (set! code-alloc code-addr)
   (set! stub-alloc (+ mcb-addr mcb-len))
   (set! stub-freelist 0))
 
