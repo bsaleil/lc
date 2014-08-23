@@ -234,7 +234,7 @@
 (define code-len 50000)
 (define code-addr #f)
 
-;; MCBter
+;; MCB
 (define mcb #f)
 (define mcb-len (+ heap-len code-len))
 (define mcb-addr #f)
