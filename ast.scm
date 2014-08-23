@@ -64,8 +64,10 @@
                                     (jump-addr
                                       (asm-label-pos label-jump)))
                                 
-                                (println ">>> selector= " selector)
-                                (println ">>> prev-action= " prev-action)
+                                (if dev-log
+                                    (begin
+                                      (println ">>> selector= " selector)
+                                      (println ">>> prev-action= " prev-action)))
                                 
                                 (if (not prev-action)
                                     
@@ -85,7 +87,7 @@
                                               
                                               (begin
                                                 
-                                                (println ">>> swapping-branches")
+                                                (if dev-log (println ">>> swapping-branches"))
                                                 
                                                 (set! prev-action 'swap)
                                                 
@@ -285,6 +287,15 @@
                                      (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #f)))
                                      (x86-label cgc label-done)
                                      (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rbx))))
+                                  ((>)
+                                   (let ((label-done
+                                           (asm-make-label cgc (new-sym 'done))))
+                                     (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
+                                     (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #t)))
+                                     (x86-jg  cgc label-done)
+                                     (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #f)))
+                                     (x86-label cgc label-done)
+                                     (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rbx))))
                                   ((=)
                                    (let ((label-done
                                            (asm-make-label cgc (new-sym 'done))))
@@ -300,8 +311,8 @@
                                                  succ
                                                  (ctx-push
                                                    (ctx-pop (ctx-pop ctx))
-                                                   (cond ((member op '(+ - *)) 'num)
-                                                         ((member op '(< =)) 'bool))))))))
+                                                   (cond ((member op '(+ - * modulo quotient)) 'num)
+                                                         ((member op '(< > =)) 'bool))))))))
               ;; Lazy code, tests types from ctx to jump to the correct lazy-code  
               (lazy-main (make-lazy-code
                            (lambda (cgc ctx)
@@ -329,3 +340,16 @@
                                      (else (gen-error cgc ctx ERR_NUM_EXPECTED))))))))
     ;; Return left operand lazy-code
     lazy-ast-left))
+
+; TODO : Remove let construction after lambda implementation
+(define (mlc-let ast succ)
+  (let* ((LECODE (make-lazy-code
+                   (lambda (cgc ctx)
+                     (x86-pop cgc (x86-rax))
+                     (jump-to-version cgc succ (make-ctx (ctx-stack (ctx-pop ctx)) (cdr (ctx-env ctx)))))))
+         (lazy-expr (gen-ast (caddr ast) LECODE))
+         (lazy-prov (make-lazy-code
+                      (lambda (cgc ctx)
+                        (jump-to-version cgc lazy-expr (make-ctx (ctx-stack ctx) (cons '(a . 1) (ctx-env ctx)))))))
+         (lazy-e1 (gen-ast (car (cdaadr ast)) lazy-prov)))
+    lazy-e1))

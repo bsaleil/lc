@@ -17,6 +17,7 @@
 (include "lib.scm")
 (include "ast.scm")
 (include "x86-debug.scm")
+(include "expand.scm")
 
 ;;-----------------------------------------------------------------------------
 
@@ -642,7 +643,7 @@
                  ;; (fall-through optimization)
                  ;; the jump is the last instruction previously generated, so
                  ;; just overwrite the jump
-                 (println ">>> fall-through-optimization")
+                 (if dev-log (println ">>> fall-through-optimization"))
                  (set! code-alloc jump-addr)) 
 
                 (else
@@ -694,8 +695,10 @@
          (let ((op (car ast)))
            (cond ;; $$msg
                  ((eq? op '$$msg) (mlc-$$msg ast succ))
+                 ;; Let
+                 ((eq? op 'let)   (mlc-let ast succ))
                  ;; Operator
-                 ((member op '(+ - * quotient modulo < =)) (mlc-op ast succ op))
+                 ((member op '(+ - * quotient modulo < > =)) (mlc-op ast succ op))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -735,8 +738,10 @@
                             (let ((stub-addr (- ret-addr 5 2))
                                   (jump-addr (asm-label-pos label-jump)))
                             
-                              (println ">>> selector= " selector)
-                              (println ">>> prev-action= " prev-action)
+                              (if dev-log
+                                  (begin
+                                    (println ">>> selector= " selector)
+                                    (println ">>> prev-action= " prev-action)))
                             
                               (if (not prev-action)
                                   
@@ -748,7 +753,7 @@
                                           
                                             (if (= (+ jump-addr 6 5) code-alloc)
 
-                                              (begin (println ">>> swapping-branches")
+                                              (begin (if dev-log (println ">>> swapping-branches"))
                                                      (set! prev-action 'swap)
                                                      ;; invert jump direction
                                                      (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
@@ -839,7 +844,8 @@
       (cons r (read-prog)))))
 
 (define prog (read-prog))
-(test prog)
+
+(test (expand prog))
 
 
 ;(test '((if (< a b) 11 22)))
