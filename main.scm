@@ -14,8 +14,13 @@
 
 ;;-----------------------------------------------------------------------------
 
+(include "lib.scm")
 (include "ast.scm")
 (include "x86-debug.scm")
+
+;;-----------------------------------------------------------------------------
+
+(define dev-log #t)
 
 ;;-----------------------------------------------------------------------------
 
@@ -229,7 +234,7 @@
 (define code-len 50000)
 (define code-addr #f)
 
-;; MCB
+;; MCBter
 (define mcb #f)
 (define mcb-len (+ heap-len code-len))
 (define mcb-addr #f)
@@ -249,7 +254,7 @@
             (loop (fx- i 1)))
           mcb))))
 
-(define (code-gen arch addr gen #!optional ctx (show-listing? #t))
+(define (code-gen arch addr gen #!optional ctx)
   (let* ((cgc (make-codegen-context))
          (endianness 'le))
 
@@ -263,7 +268,7 @@
       (gen cgc))
 
     (let ((code (asm-assemble-to-u8vector cgc)))
-      (if show-listing?
+      (if dev-log
           (begin
             (println "------------------------------------------------------------------------")
             (asm-display-listing cgc (current-output-port) #t)))
@@ -333,7 +338,8 @@
            (lambda (cgc)
              (call-handler cgc label-handler obj)))))
     (subvector-move! (list->vector args) 0 len obj 0)
-    (pp (list 'obj= obj))
+    (if dev-log
+        (pp (list 'obj= obj)))
     stub-labels))
 
 (define (call-handler cgc label-handler obj)
@@ -393,6 +399,9 @@
 
     (set! label-do-callback-fn-handler
           (gen-handler cgc 'do_callback_fn_handler label-do-callback-fn))
+
+    ;; Gen lib special forms
+    (gen-$$putchar cgc)
 
     (x86-label cgc label-rtlib-skip)
 
@@ -560,8 +569,10 @@
         ((lazy-code-generator lazy-code) cgc ctx)))
     
     ;; Patch load
-    (print ">>> patching mov at ") (print (number->string load-addr 16)) (print " : ")
-    (print "now load ") (print (asm-label-name continuation-label)) (print " (") (print (number->string (asm-label-pos continuation-label) 16)) (println ")")
+    (if dev-log
+      (begin
+        (print ">>> patching mov at ") (print (number->string load-addr 16)) (print " : ")
+        (print "now load ") (print (asm-label-name continuation-label)) (print " (") (print (number->string (asm-label-pos continuation-label) 16)) (println ")")))
     (code-gen 'x86-64 load-addr (lambda (cgc) (x86-mov cgc (x86-rax) (x86-imm-int (asm-label-pos continuation-label)))))
     ;; Return label pos
     (asm-label-pos continuation-label)))
@@ -571,10 +582,11 @@
 ;; Then patch call site to jump directly to generated function
 (define (gen-version-fn call-site-addr lazy-code ctx)
 
-  (print "GEN VERSION FN")
-
-  (print " >>> ")
-  (pp ctx)
+  (if dev-log
+      (begin
+        (print "GEN VERSION FN")
+        (print " >>> ")
+        (pp ctx)))
 
   ;; the jump instruction (call) at address "call-addr" must be redirected to
   ;; jump to the machine code corresponding to the version of
@@ -603,10 +615,11 @@
 
 (define (gen-version jump-addr lazy-code ctx)
 
-  (print "GEN VERSION")
-
-  (print " >>> ")
-  (pp ctx)
+  (if dev-log
+      (begin
+        (print "GEN VERSION")
+        (print " >>> ")
+        (pp ctx)))
 
   ;; the jump instruction at address "jump-addr" must be redirected to
   ;; jump to the machine code corresponding to the version of
@@ -646,10 +659,11 @@
 
 (define (patch-jump jump-addr dest-addr)
 
-  (println ">>> patching jump at "
-           (number->string jump-addr 16)
-           " -> "
-           (number->string dest-addr 16))
+  (if dev-log
+    (println ">>> patching jump at "
+             (number->string jump-addr 16)
+             " -> "
+             (number->string dest-addr 16)))
 
   (if (not (= jump-addr dest-addr))
       (let ((size (jump-size jump-addr)))
@@ -658,8 +672,10 @@
 
 (define (patch-call call-addr dest-label)
 
-  (print ">>> patching call at " (number->string call-addr 16) " : ")
-  (println "now jump to " (asm-label-name dest-label) " (" (number->string (asm-label-pos dest-label) 16) ")")
+  (if dev-log
+    (begin
+      (print ">>> patching call at " (number->string call-addr 16) " : ")
+      (println "now jump to " (asm-label-name dest-label) " (" (number->string (asm-label-pos dest-label) 16) ")")))
   
   (code-gen 'x86-64 call-addr (lambda (cgc) (x86-jmp cgc dest-label)))
   (asm-label-pos dest-label))
@@ -795,15 +811,19 @@
 
 
 (define (test exprs)
-  (println "******************************************************************")
-  (print "*** TESTING: ")
-  (pretty-print (list 'define 'f (list 'lambda '() exprs)))
+  (if dev-log
+    (begin
+      (println "******************************************************************")
+      (print "*** TESTING: ")
+      (pretty-print (list 'define 'f (list 'lambda '() exprs)))))
   (let ((f (compile-lambda '() exprs)))
 
     (define (t . args)
       (let ((result (apply f (reverse args))))
-        (print "!!! RESULT: ")
-        (pretty-print (list (cons 'f args) '=> result))))
+        (if dev-log
+          (begin 
+            (print "!!! RESULT: ")
+            (pretty-print (list (cons 'f args) '=> result))))))
 
     (t))
     ;(t))

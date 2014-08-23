@@ -1,3 +1,20 @@
+;; n : ascii code
+(define putchar
+	(lambda (n)
+		($$putchar n)))
+
+(putchar 48)
+(putchar 49)
+(putchar 50)
+(putchar 51)
+(putchar 52)
+(putchar 53)
+(putchar 54)
+(putchar 55)
+(putchar 56)
+(putchar 57) 
+(putchar 10) ;; EOL
+
 ;(< #t 99)
 ;($$msg "TEST MSG SF")
 ;(define f (lambda (a) (+ a 11)))
@@ -31,15 +48,15 @@
 ;; FACT
 ;; ----
 
-(define fact
-  (lambda (n)
-    (if (= n 0)
-      1
-      (if (= n 1)
-        1
-        (* n (fact (- n 1)))))))
+; (define fact
+;   (lambda (n)
+;     (if (= n 0)
+;       1
+;       (if (= n 1)
+;         1
+;         (* n (fact (- n 1)))))))
 
-(fact 10)
+; (fact 10)
 
 ;; ----
 ;; FIBO

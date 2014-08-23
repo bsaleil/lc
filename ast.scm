@@ -164,12 +164,20 @@
                         (set! functions (cons (cons function-name function-label) functions))
                         (jump-to-version cgc succ ctx))))))
 
+;; Return label associated to function name
+(define (lookup-fn name)
+  (let ((r (assoc name functions)))
+    (if r
+      (cdr r)
+      (cond ((eq? name '$$putchar) label-$$putchar)
+            (else (error "NYI"))))))
+
 ;; Make lazy code from call expr
 (define (mlc-call ast succ)
   (let* ((opid (car ast))
          (args (cdr ast))
          (lazy-call (make-lazy-code (lambda (cgc ctx)
-                                      (let* ((fun-label (cdr (assoc (car ast) functions)))
+                                      (let* ((fun-label (lookup-fn opid))
                                              (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
                                              ;; Flag in stub : is the continuation already generated ?
                                              (gen-flag #f)
@@ -191,7 +199,7 @@
                                         (let* ((call-stack (cons 'retAddr (list-head (ctx-stack ctx) (length args))))
                                                (call-ctx   (make-ctx call-stack '())))
                                           (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding call-ctx))))
-                                        
+
                                         ;; Call function stub to keep address of this call site
                                         (x86-call cgc fun-label))))))
     
