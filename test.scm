@@ -3,17 +3,33 @@
 	(lambda (n)
 		($$putchar n)))
 
-(putchar 48)
-(putchar 49)
-(putchar 50)
-(putchar 51)
-(putchar 52)
-(putchar 53)
-(putchar 54)
-(putchar 55)
-(putchar 56)
-(putchar 57) 
-(putchar 10) ;; EOL
+; (putchar 48)
+; (putchar 49)
+; (putchar 50)
+; (putchar 51)
+; (putchar 52)
+; (putchar 53)
+; (putchar 54)
+; (putchar 55)
+; (putchar 56)
+; (putchar 57) 
+; (putchar 10) ;; EOL
+
+;(modulo 12 5)
+
+; (define print-number-nz
+;   (lambda (n)
+;     (if (> n 0)
+;         (print-number-nz (quotient n 10))
+        
+
+; (define print-number
+;   (lambda (n)
+;     (if (= n 0)
+;         ($$putchar 48)
+;         (print-number-nz n))))
+
+($$putchar (quotient 52 1))
 
 ;(< #t 99)
 ;($$msg "TEST MSG SF")

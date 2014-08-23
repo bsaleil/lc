@@ -1,7 +1,8 @@
 
-(define label-$$putchar (asm-make-label #f '$$putchar))
+(define label-$$putchar  (asm-make-label #f '$$putchar))
 
 ;; PUTCHAR
+
 (define (gen-$$putchar cgc)
   ;; label
   (x86-label cgc label-$$putchar)

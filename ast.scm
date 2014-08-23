@@ -169,7 +169,7 @@
   (let ((r (assoc name functions)))
     (if r
       (cdr r)
-      (cond ((eq? name '$$putchar) label-$$putchar)
+      (cond ((eq? name '$$putchar)  label-$$putchar)
             (else (error "NYI"))))))
 
 ;; Make lazy code from call expr
@@ -236,42 +236,64 @@
                                                                   (lambda (ret-addr selector)
                                                                     (gen-version (vector-ref label-jo 1) lazy-overflow ctx-overflow)))))
                                 
-                                (x86-pop cgc (x86-rax))
+                                (x86-pop cgc (x86-rbx))
                                 (case op
                                   ((+)
                                    (begin
-                                     (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                                     (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
                                      (x86-label cgc label-jo)
                                      (x86-jo cgc (list-ref stub-labels 0))))
                                   ((-)
                                    (begin
-                                     (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                                     (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
                                      (x86-label cgc label-jo)
                                      (x86-jo cgc (list-ref stub-labels 0))))
                                   ((*)
-                                   (begin (x86-shr cgc (x86-rax) (x86-imm-int 2))
-                                     (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                                     (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                                   (begin (x86-sar cgc (x86-rbx) (x86-imm-int 2))
+                                     (x86-imul cgc (x86-rbx) (x86-mem 0 (x86-rsp)))
+                                     (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
                                      (x86-label cgc label-jo)
                                      (x86-jo cgc (list-ref stub-labels 0))))
+                                  ((quotient) ;; TODO : check '/0'
+                                   (begin
+                                          (x86-pop cgc (x86-rax))
+                                          (x86-sar cgc (x86-rax) (x86-imm-int 2))
+                                          (x86-cqo cgc)
+                                          (x86-sar cgc (x86-rbx) (x86-imm-int 2))
+                                          (x86-idiv cgc (x86-rbx))
+                                          (x86-shl cgc (x86-rax) (x86-imm-int 2))
+                                          (x86-push cgc (x86-rax))
+                                          (x86-label cgc label-jo)
+                                          (x86-jo cgc (list-ref stub-labels 0))))
+                                  ((modulo) ;; TODO : check '/0'
+                                   (begin
+                                          (x86-pop cgc (x86-rax))
+                                          (x86-sar cgc (x86-rax) (x86-imm-int 2))
+                                          (x86-cqo cgc)
+                                          (x86-sar cgc (x86-rbx) (x86-imm-int 2))
+                                          (x86-idiv cgc (x86-rbx))
+                                          (x86-shl cgc (x86-rdx) (x86-imm-int 2))
+                                          (x86-push cgc (x86-rdx))
+                                          (x86-label cgc label-jo)
+                                          (x86-jo cgc (list-ref stub-labels 0))))
                                   ((<)
                                    (let ((label-done
                                            (asm-make-label cgc (new-sym 'done))))
-                                     (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                                     (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
+                                     (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #t)))
                                      (x86-jl  cgc label-done)
-                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                     (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #f)))
                                      (x86-label cgc label-done)
-                                     (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
+                                     (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rbx))))
                                   ((=)
                                    (let ((label-done
                                            (asm-make-label cgc (new-sym 'done))))
-                                     (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                                     (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
+                                     (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #t)))
                                      (x86-je  cgc label-done)
-                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                     (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #f)))
                                      (x86-label cgc label-done)
-                                     (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
+                                     (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rbx))))
                                   (else
                                     (error "unknown op" op)))
                                 (jump-to-version cgc

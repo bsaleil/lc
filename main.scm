@@ -20,7 +20,7 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define dev-log #t)
+(define dev-log #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -695,7 +695,7 @@
            (cond ;; $$msg
                  ((eq? op '$$msg) (mlc-$$msg ast succ))
                  ;; Operator
-                 ((member op '(+ - * < =)) (mlc-op ast succ op))
+                 ((member op '(+ - * quotient modulo < =)) (mlc-op ast succ op))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
