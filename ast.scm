@@ -213,40 +213,51 @@
       (cond ((eq? name '$$putchar)  label-$$putchar)
             (else (error "NYI"))))))
 
-;; Make lazy code from call expr
+;; TODO
 (define (mlc-call ast succ)
-  (let* ((opid (car ast))
-         (args (cdr ast))
-         (lazy-call (make-lazy-code (lambda (cgc ctx)
-                                      (let* ((fun-label (lookup-fn opid))
-                                             (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
-                                             ;; Flag in stub : is the continuation already generated ?
-                                             (gen-flag #f)
-                                             ;; Create continuation stubs 
-                                             (stub-labels (add-callback cgc
-                                                                        0
-                                                                        (lambda (ret-addr selector)
-                                                                          (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
-                                                                              (set! gen-flag (gen-version-continuation load-ret-label
-                                                                                                                       succ
-                                                                                                                       (ctx-push (ctx-pop-nb ctx (length args)) 'unknown)))) ;; remove args and add ret val
-                                                                          gen-flag))))
-                                        ;; Return address
-                                        (x86-label cgc load-ret-label)
-                                        (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1))) ;; Push continuation label addr
-                                        (x86-push cgc (x86-rax))
-                                        
-                                        ;; Call ctx in rdx
-                                        (let* ((call-stack (cons 'retAddr (list-head (ctx-stack ctx) (length args))))
-                                               (call-ctx   (make-ctx call-stack '())))
-                                          (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding call-ctx))))
+  (let* ((lazy-call (make-lazy-code (lambda (cgc ctx)
+                                     (x86-pop cgc (x86-rax)) ;; pop closure
+                                     (x86-sub cgc (x86-rax) (x86-imm-int 1)) ;; enleve le tag
+                                     (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax))) ;; Récup premier champs de la table (donc stub addr)
+                                     (x86-call cgc (x86-rax)))))
+        (lazy-test (gen-ast (car ast) lazy-call)))
+    lazy-test))
+                    
 
-                                        ;; Call function stub to keep address of this call site
-                                        (x86-call cgc fun-label))))))
+; ;; Make lazy code from call expr
+; (define (mlc-call ast succ)
+;   (let* ((opid (car ast))
+;          (args (cdr ast))
+;          (lazy-call (make-lazy-code (lambda (cgc ctx)
+;                                       (let* ((fun-label (lookup-fn opid))
+;                                              (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
+;                                              ;; Flag in stub : is the continuation already generated ?
+;                                              (gen-flag #f)
+;                                              ;; Create continuation stubs 
+;                                              (stub-labels (add-callback cgc
+;                                                                         0
+;                                                                         (lambda (ret-addr selector)
+;                                                                           (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
+;                                                                               (set! gen-flag (gen-version-continuation load-ret-label
+;                                                                                                                        succ
+;                                                                                                                        (ctx-push (ctx-pop-nb ctx (length args)) 'unknown)))) ;; remove args and add ret val
+;                                                                           gen-flag))))
+;                                         ;; Return address
+;                                         (x86-label cgc load-ret-label)
+;                                         (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1))) ;; Push continuation label addr
+;                                         (x86-push cgc (x86-rax))
+                                        
+;                                         ;; Call ctx in rdx
+;                                         (let* ((call-stack (cons 'retAddr (list-head (ctx-stack ctx) (length args))))
+;                                                (call-ctx   (make-ctx call-stack '())))
+;                                           (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding call-ctx))))
+
+;                                         ;; Call function stub to keep address of this call site
+;                                         (x86-call cgc fun-label))))))
     
-    (if (> (length args) 0)
-        (gen-ast-l args lazy-call) ;; Gen args and give lazy-call as successor
-        lazy-call)))
+;     (if (> (length args) 0)
+;         (gen-ast-l args lazy-call) ;; Gen args and give lazy-call as successor
+;         lazy-call)))
 
 ;; Make lazy code from special form $$msg
 (define (mlc-$$msg ast succ)
