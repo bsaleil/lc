@@ -21,7 +21,7 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define dev-log #f)
+(define dev-log #t)
 
 ;;-----------------------------------------------------------------------------
 
@@ -231,6 +231,8 @@
 (define heap-len 50000)
 (define heap-addr #f)
 
+(define alloc-ptr (x86-r9)) ;; TODO : attention a sauvegarder toujours r9
+
 ;; CODE
 (define code-len 50000)
 (define code-addr #f)
@@ -400,14 +402,15 @@
 
     (set! label-do-callback-fn-handler
           (gen-handler cgc 'do_callback_fn_handler label-do-callback-fn))
-
+    
     ;; Gen lib special forms
     (gen-$$putchar cgc)
 
     (x86-label cgc label-rtlib-skip)
 
     (push-regs cgc prog-regs)
-    (x86-mov  cgc (x86-rcx) (x86-imm-int 0))))
+    (x86-mov cgc (x86-rcx) (x86-imm-int 0))
+    (x86-mov cgc (x86-r9) (x86-imm-int heap-addr))))
 
 (define (init)
 
@@ -695,6 +698,8 @@
          (let ((op (car ast)))
            (cond ;; $$msg
                  ((eq? op '$$msg) (mlc-$$msg ast succ))
+                 ;; Lambda
+                 ((eq? op 'lambda) (mlc-lambda ast succ))
                  ;; Let
                  ((eq? op 'let)   (mlc-let ast succ))
                  ;; Operator

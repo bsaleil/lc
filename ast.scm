@@ -33,6 +33,45 @@
                                          (list-ref (ctx-stack ctx) pos))))
             (error "Can't find variable: " ast))))))
 
+;; TODO
+(define (mlc-lambda ast succ)
+  (make-lazy-code (lambda (cgc ctx)
+                    (let* ((free-vars '())
+                          (alloc-size (+ (length free-vars) 10)) ;; TODO : ctx/addr table size = 10
+                          (stub-labels (add-fn-callback cgc
+                                                        0
+                                                        (lambda (ret-addr selector call-site-addr ctx)
+                                                           ; gen-version ...
+                                                           (println "LE STUB DE LA LAMBDA")
+                                                           )))
+                          (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
+                      
+                      
+                      (x86-mov cgc (x86-rax) (x86-imm-int 118)) ;; 000...000 | 01110 | 110 => Length=0 | Procedure | Permanent
+                      (x86-mov cgc (x86-mem 0  (x86-r9)) (x86-rax))
+                      (x86-add cgc (x86-r9) (x86-imm-int 8))
+                      
+                      (build-lambda-table cgc stub-addr)
+                      (x86-mov cgc (x86-rax) (x86-r9))
+                      (x86-add cgc (x86-rax) (x86-imm-int (+ 1 -8))) ;; 1 = tag, -8 = head word
+                      (x86-push cgc (x86-rax))
+                      
+                      (jump-to-version cgc
+                                       succ
+                                       (ctx-push ctx
+                                                 'lambda))))))
+                      
+;; TODO
+(define (build-lambda-table cgc stub-addr)
+  (x86-mov cgc (x86-rax) (x86-imm-int stub-addr))
+  (build-lambda-table-h cgc 0 10)) ;; TODO : ctx/addr table size = 10             
+
+;; TODO
+(define (build-lambda-table-h cgc offset nb-slots)
+  (if (> nb-slots 0)
+      (begin (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
+             (build-lambda-table-h cgc (+ offset 8) (- nb-slots 1)))))
+
 ;; Make lazy code from 'if
 (define (mlc-if ast succ)
   (let* ((lazy-code0

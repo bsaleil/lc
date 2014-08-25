@@ -1,3 +1,5 @@
+(lambda () (+ 1 2))
+
 ;; n : ascii code
 ; (define putchar
 ; 	(lambda (n)
@@ -17,28 +19,28 @@
 
 ;(modulo 12 5)
 
-(define print
-  (lambda (n)
-    (print-number n)))
+; (define print
+;   (lambda (n)
+;     (print-number n)))
 
-(define println
-  (lambda (n)
-    (let ((a (print n)))
-      ($$putchar 10))))
+; (define println
+;   (lambda (n)
+;     (let ((a (print n)))
+;       ($$putchar 10))))
 
-(define print-number
-  (lambda (n)
-    (if (= n 0)
-        ($$putchar 48)
-        (print-number-nz n))))
+; (define print-number
+;   (lambda (n)
+;     (if (= n 0)
+;         ($$putchar 48)
+;         (print-number-nz n))))
 
-(define print-number-nz
-  (lambda (n)
-    (if (> n 0)
-        (let ((a (print-number-nz (quotient n 10))))
-          ($$putchar (+ (modulo n 10) 48))))))
+; (define print-number-nz
+;   (lambda (n)
+;     (if (> n 0)
+;         (let ((a (print-number-nz (quotient n 10))))
+;           ($$putchar (+ (modulo n 10) 48))))))
         
-(println 10)
+; (println 10)
         
 ; (define print-number
 ;   (lambda (n)
