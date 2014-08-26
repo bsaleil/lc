@@ -581,6 +581,7 @@
     ;; Return label pos
     (asm-label-pos continuation-label)))
 
+;; TODO nettoyer (patch ... )
 ;; Generate a function
 ;; First generate function lazy-code
 ;; Then patch call site to jump directly to generated function
@@ -603,7 +604,7 @@
         (let ((dest-addr (asm-label-pos label-dest)))
 
          ;;(patch-call call-site-addr label-dest))
-         (patch-closure ...))
+         (patch-closure call-site-addr ctx (asm-label-pos label-dest)))
 
         ;; That version is not yet generated, so generate it and then patch call
         (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))

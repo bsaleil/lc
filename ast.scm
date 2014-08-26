@@ -254,7 +254,7 @@
 
 ;; TODO
 (define (mlc-call ast succ)
-  (let* ((load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
+  (let* ((load-ret-label (asm-make-label #f (new-sym 'load-ret-addr)))
          (lazy-call (make-lazy-code (lambda (cgc ctx)
                                      
                                      (let* ((gen-flag #f)
