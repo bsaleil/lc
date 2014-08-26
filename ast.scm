@@ -60,10 +60,10 @@
         (let* (;; Create lambda stub
                (stub-labels (add-fn-callback cgc
                                              0
-                                             (lambda (ret-addr selector call-site-addr ctx)
+                                             (lambda (ret-addr selector closure ctx)
                                                ;; Extends env with params
                                                (let ((ctx (make-ctx (ctx-stack ctx) (build-env params 0))))
-                                                 (gen-version-fn call-site-addr lazy-body ctx)))))
+                                                 (gen-version-fn closure lazy-body ctx)))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
           
           ;; Write object header

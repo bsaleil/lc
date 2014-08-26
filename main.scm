@@ -147,7 +147,7 @@
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
 
-         (call-site-addr
+         (closure
           (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
 
          (callback-fn
@@ -160,7 +160,7 @@
           (encoding-obj (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdx-pos) 1) 8)))))
 
          (new-ret-addr
-          (callback-fn ret-addr selector call-site-addr ctx)))
+          (callback-fn ret-addr selector closure ctx)))
 
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8))
@@ -581,11 +581,10 @@
     ;; Return label pos
     (asm-label-pos continuation-label)))
 
-;; TODO nettoyer (patch ... )
 ;; Generate a function
 ;; First generate function lazy-code
-;; Then patch call site to jump directly to generated function
-(define (gen-version-fn call-site-addr lazy-code ctx)
+;; Then patch closure slot to jump directly to generated function
+(define (gen-version-fn closure lazy-code ctx)
 
   (if dev-log
       (begin
@@ -600,11 +599,9 @@
   (let ((label-dest (get-version lazy-code ctx)))
     (if label-dest
 
-        ;; That version has already been generated, so just patch jump
+        ;; That version has already been generated, so just patch closure
         (let ((dest-addr (asm-label-pos label-dest)))
-
-         ;;(patch-call call-site-addr label-dest))
-         (patch-closure call-site-addr ctx (asm-label-pos label-dest)))
+         (patch-closure closure ctx label-dest))
 
         ;; That version is not yet generated, so generate it and then patch call
         (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
@@ -617,20 +614,7 @@
           ;; Put version matching this ctx
           (put-version lazy-code ctx fn-label)
           ;; Patch closure
-          ;;(patch-call call-site-addr fn-label)))))
-          (patch-closure call-site-addr ctx (asm-label-pos fn-label))))))
-
-;; TODO
-;; TODO mettre ne forme
-(define (patch-closure closure ctx label-addr)
-  (let* ((index (get-closure-index ctx))
-         (offset (- (+ (* index 8) 8) 1)))
-    
-    (println "PATCHER A :" (+ closure offset))
-    
-    (put-i64 (+ closure offset) label-addr)
-    
-    label-addr))
+          (patch-closure closure ctx fn-label)))))
 
 (define (gen-version jump-addr lazy-code ctx)
 
@@ -689,16 +673,25 @@
         (put-i32 (- (+ jump-addr size) 4)
                  (- dest-addr (+ jump-addr size))))))
 
-;; TODO remove ?
-(define (patch-call call-addr dest-label)
-
-  (if dev-log
-    (begin
-      (print ">>> patching call at " (number->string call-addr 16) " : ")
-      (println "now jump to " (asm-label-name dest-label) " (" (number->string (asm-label-pos dest-label) 16) ")")))
+(define (patch-closure closure ctx label)
   
-  (code-gen 'x86-64 call-addr (lambda (cgc) (x86-jmp cgc dest-label)))
-  (asm-label-pos dest-label))
+  (let* ((label-addr (asm-label-pos  label))
+         (label-name (asm-label-name label))
+         (index (get-closure-index ctx))
+         (offset (- (+ (* index 8) 8) 1)))
+    
+    (if dev-log
+        (println ">>> patching closure " (number->string closure 16) " at "
+                 (number->string (+ closure offset) 16)
+                 " : slot contains now label "
+                 label-name
+                 " ("
+                 (number->string label-addr 16)
+                 ")"))
+    
+    ;; Write procedure entry point in closure slot of this ctx
+    (put-i64 (+ closure offset) label-addr)
+    label-addr))
 
 (define (jump-size jump-addr)
   (if (= (get-u8 jump-addr) #x0f) 6 5))
