@@ -1,4 +1,4 @@
-((lambda () (+ 1 2)))
+((lambda (n m) (+ m n)) 20 30)
 
 ;; n : ascii code
 ; (define putchar
