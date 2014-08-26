@@ -33,18 +33,60 @@
                                          (list-ref (ctx-stack ctx) pos))))
             (error "Can't find variable: " ast))))))
 
+;; Make lazy code from 'define
+(define (mlc-define ast succ)
+  (let* ((params (cadr (caddr ast)))
+         (lazy-ret (make-lazy-code (lambda (cgc ctx)
+                                     (x86-pop cgc (x86-rax)) ;; Ret val
+                                     (x86-pop cgc (x86-rbx)) ;; Ret addr
+                                     (x86-add cgc (x86-rsp) (x86-imm-int (* (length params) 8)))
+                                     (x86-push cgc (x86-rax))
+                                     (x86-jmp cgc (x86-rbx)))))
+         (lazy-body (gen-ast (caddr (caddr ast)) lazy-ret))
+         (function-name (cadr ast)))
+    (make-lazy-code (lambda (cgc ctx)
+                      (let* ((stub-labels (add-fn-callback cgc
+                                                           0
+                                                           (lambda (ret-addr selector call-site-addr ctx)
+                                                             ;; Add params to env
+                                                             (let ((ctx (make-ctx (ctx-stack ctx) (build-env params 0))))
+                                                               (gen-version-fn call-site-addr lazy-body ctx)))))
+                             (function-label (list-ref stub-labels 0)))
+                        (set! functions (cons (cons function-name function-label) functions))
+                        (jump-to-version cgc succ ctx))))))
+
 ;; TODO
 (define (mlc-lambda ast succ)
-  (make-lazy-code (lambda (cgc ctx)
-                    (let* ((free-vars '())
-                          (alloc-size (+ (length free-vars) 10)) ;; TODO : ctx/addr table size = 10
-                          (stub-labels (add-fn-callback cgc
-                                                        0
-                                                        (lambda (ret-addr selector call-site-addr ctx)
-                                                           ; gen-version ...
-                                                           (println "LE STUB DE LA LAMBDA")
-                                                           )))
-                          (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
+  (let* ((lazy-ret (make-lazy-code (lambda (cgc ctx)
+                                     (x86-pop cgc (x86-rax)) ;; Ret val
+                                     (x86-pop cgc (x86-rbx)) ;; Ret addr
+                                     (x86-add cgc (x86-rsp) (x86-imm-int (* (length '()) 8))) ;; TODO length params
+                                     (x86-push cgc (x86-rax))
+                                     (x86-jmp cgc (x86-rbx)))))
+         (lazy-body (gen-ast (caddr ast) lazy-ret)) ;; Corps de la fonction
+         (lazy-lambda (make-lazy-code (lambda (cgc ctx)
+                                       (let* ((free-vars '()) ;; TODO
+                                              (alloc-size (+ (length free-vars) 10)) ;; TODO : ctx/addr table size = 10
+                                              (stub-labels (add-fn-callback cgc
+                                                                            0
+                                                                            (lambda (ret-addr selector call-site-addr ctx)
+                                                                              
+                                                                              ;; TODO renommer partout (meme dans gen-version-fn) call-site-addr en 'closure'
+                                                                              
+                                                                              ; (pp "CTX : ")
+                                                                              ; (pp ctx)
+                                                                              ; (pp (get-closure-index ctx))
+                                                                              
+                                                                              ; gen-version ...
+                                                                              (println "LE STUB DE LA LAMBDA")
+                                                                              (pp "LAMBDA : ")
+                                                                              (pp call-site-addr)
+                                                                              ;; Add params to env
+                                                                              ;(let ((ctx (make-ctx (ctx-stack ctx) (build-env params 0))))
+                                                                              (gen-version-fn call-site-addr lazy-body ctx))))
+                                              
+                                              
+                                              (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
                       
                       
                       (x86-mov cgc (x86-rax) (x86-imm-int 118)) ;; 000...000 | 01110 | 110 => Length=0 | Procedure | Permanent
@@ -53,13 +95,15 @@
                       
                       (build-lambda-table cgc stub-addr)
                       (x86-mov cgc (x86-rax) (x86-r9))
-                      (x86-add cgc (x86-rax) (x86-imm-int (+ 1 -8))) ;; 1 = tag, -8 = head word
+                      (x86-sub cgc (x86-rax) (x86-imm-int (+ -1 8))) ;; 1 = tag, -8 = head word
                       (x86-push cgc (x86-rax))
                       
                       (jump-to-version cgc
                                        succ
                                        (ctx-push ctx
-                                                 'lambda))))))
+                                                 'lambda)))))))
+    
+    lazy-lambda))
                       
 ;; TODO
 (define (build-lambda-table cgc stub-addr)
@@ -183,28 +227,6 @@
       (cadr ast)
       lazy-code-test)))
 
-;; Make lazy code from 'define
-(define (mlc-define ast succ)
-  (let* ((params (cadr (caddr ast)))
-         (lazy-ret (make-lazy-code (lambda (cgc ctx)
-                                     (x86-pop cgc (x86-rax)) ;; Ret val
-                                     (x86-pop cgc (x86-rbx)) ;; Ret addr
-                                     (x86-add cgc (x86-rsp) (x86-imm-int (* (length params) 8)))
-                                     (x86-push cgc (x86-rax))
-                                     (x86-jmp cgc (x86-rbx)))))
-         (lazy-body (gen-ast (caddr (caddr ast)) lazy-ret))
-         (function-name (cadr ast)))
-    (make-lazy-code (lambda (cgc ctx)
-                      (let* ((stub-labels (add-fn-callback cgc
-                                                           0
-                                                           (lambda (ret-addr selector call-site-addr ctx)
-                                                             ;; Add params to env
-                                                             (let ((ctx (make-ctx (ctx-stack ctx) (build-env params 0))))
-                                                               (gen-version-fn call-site-addr lazy-body ctx)))))
-                             (function-label (list-ref stub-labels 0)))
-                        (set! functions (cons (cons function-name function-label) functions))
-                        (jump-to-version cgc succ ctx))))))
-
 ;; Return label associated to function name
 (define (lookup-fn name)
   (let ((r (assoc name functions)))
@@ -213,15 +235,64 @@
       (cond ((eq? name '$$putchar)  label-$$putchar)
             (else (error "NYI"))))))
 
+;;TODO
+(define closure-table '())
+;;TODO
+(define max-closure-table-size 10)
+;;TODO
+(define (get-closure-index ctx)
+  (let ((r (assoc ctx closure-table)))
+    (if r
+        (cdr r) ;; Return index in closure table
+        (if (= (length closure-table) max-closure-table-size)
+            (error "Closure table of contexts is full")
+            (let ((index (length closure-table)))
+              (cons (cons ctx index) closure-table)
+              index)))))
+
+;; TODO store ctx in closure?
+
 ;; TODO
 (define (mlc-call ast succ)
-  (let* ((lazy-call (make-lazy-code (lambda (cgc ctx)
-                                     (x86-pop cgc (x86-rax)) ;; pop closure
-                                     (x86-sub cgc (x86-rax) (x86-imm-int 1)) ;; enleve le tag
-                                     (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax))) ;; Récup premier champs de la table (donc stub addr)
-                                     (x86-call cgc (x86-rax)))))
-        (lazy-test (gen-ast (car ast) lazy-call)))
+  (let* ((load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
+         (lazy-call (make-lazy-code (lambda (cgc ctx)
+                                     
+                                     (let* ((gen-flag #f)
+                                           (stub-labels (add-callback cgc
+                                                                      0
+                                                                      (lambda (ret-addr selector)
+                                                                        (let ((ctx-continuation (ctx-push (ctx-pop ctx) 'unknown))) ;; TODO on enleve la fermeture, les arguments ne sont pas encore gérés
+                                                                          (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
+                                                                              (set! gen-flag (gen-version-continuation load-ret-label
+                                                                                                                       succ
+                                                                                                                       ctx-continuation)));; TODO length args ;; remove args and add ret val
+                                                                          gen-flag)))))
+                                     
+                                         ;; CHANGER PROTOCOLE d'APPEL
+                                         (x86-pop cgc (x86-rax)) ;; pop closure
+                                         
+                                         ;; Return address
+                                         (x86-label cgc load-ret-label)
+                                         (x86-mov cgc (x86-rdx) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1))) ;; Push continuation label addr
+                                         (x86-push cgc (x86-rdx))
+                                                                                  
+                                         ;; Call ctx in rdx
+                                         (let* ((call-stack (cons 'retAddr (list-head (ctx-stack ctx) (length '())))) ;; todo length args
+                                                (call-ctx   (make-ctx call-stack '())))
+                                            (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding call-ctx)))) ;; CTX - pop lambda
+                                         
+                                         (x86-push cgc (x86-rax)) ;; PUSH CLOSURE pour la passer au stub qui va patcher
+                                         ;; Call function stub to keep address of this call site
+                                         (let* ((closure-index (get-closure-index ctx)) ;; get closure offset for this ctx
+                                                (offset (- (+ (* closure-index 8) 8) 1))) ;; TODO : -1 procedure tag & +8 head word
+                                           (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax))))
+                                         
+                                         (x86-jmp cgc (x86-rax))))))
+         
+            (lazy-test (gen-ast (car ast) lazy-call)))
+    
     lazy-test))
+
                     
 
 ; ;; Make lazy code from call expr

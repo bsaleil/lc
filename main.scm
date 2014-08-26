@@ -123,7 +123,7 @@
 (c-define (do-callback sp) (long) void "do_callback" ""
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
-
+         
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
 
@@ -132,7 +132,7 @@
 
          (new-ret-addr
           (callback-fn ret-addr selector)))
-
+    
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8))
              new-ret-addr)
@@ -148,7 +148,7 @@
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
 
          (call-site-addr
-          (- (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)) 5)) ;; 5 : call instruction size
+          (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
@@ -563,7 +563,7 @@
 ;;  TODO : check if stub addr and continuation addr are the same size
 ;;  TODO : clean code with patch function
 (define (gen-version-continuation load-ret-label lazy-code ctx)
-
+  
   (let ((continuation-label (asm-make-label #f (new-sym 'continuation_)))
         (load-addr (asm-label-pos load-ret-label)))
     ;; Generate lazy-code
@@ -602,7 +602,8 @@
         ;; That version has already been generated, so just patch jump
         (let ((dest-addr (asm-label-pos label-dest)))
 
-         (patch-call call-site-addr label-dest))
+         ;;(patch-call call-site-addr label-dest))
+         (patch-closure ...))
 
         ;; That version is not yet generated, so generate it and then patch call
         (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
@@ -614,8 +615,21 @@
                 ((lazy-code-generator lazy-code) cgc ctx)))
           ;; Put version matching this ctx
           (put-version lazy-code ctx fn-label)
-          ;; Patch call
-          (patch-call call-site-addr fn-label)))))
+          ;; Patch closure
+          ;;(patch-call call-site-addr fn-label)))))
+          (patch-closure call-site-addr ctx (asm-label-pos fn-label))))))
+
+;; TODO
+;; TODO mettre ne forme
+(define (patch-closure closure ctx label-addr)
+  (let* ((index (get-closure-index ctx))
+         (offset (- (+ (* index 8) 8) 1)))
+    
+    (println "PATCHER A :" (+ closure offset))
+    
+    (put-i64 (+ closure offset) label-addr)
+    
+    label-addr))
 
 (define (gen-version jump-addr lazy-code ctx)
 
@@ -674,6 +688,7 @@
         (put-i32 (- (+ jump-addr size) 4)
                  (- dest-addr (+ jump-addr size))))))
 
+;; TODO remove ?
 (define (patch-call call-addr dest-label)
 
   (if dev-log
