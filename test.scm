@@ -1,9 +1,12 @@
-((lambda (n) 40) 1)
-((lambda (n) 40) 1)
-((lambda (n) 40) 1)
-((lambda (n) 40) 1)
-((lambda (n) 40) 1)
-((lambda (m n o) (+ n o)) 10 20 30)
+
+(define print-number-nz
+  (lambda (n)
+    (if (> n 0)
+        ($$putchar (+ (modulo n 10) 48)))))
+        ; (let ((a (print-number-nz (quotient n 10))))
+        ;   ($$putchar (+ (modulo n 10) 48))))))
+
+(print-number-nz 10)
 
 ;((lambda (n m) (+ m n)) 20 30)
 
@@ -105,12 +108,12 @@
 ;; FIBO
 ;; ----
 
-; (define fibo
-;   (lambda (n)
-;     (if (= n 0)
-;       0
-;       (if (= n 1)
-;         1
-;         (+ (fibo (- n 1)) (fibo (- n 2)))))))
+(define fibo
+  (lambda (n)
+    (if (= n 0)
+      0
+      (if (= n 1)
+        1
+        (+ (fibo (- n 1)) (fibo (- n 2)))))))
 
-; (fibo 40)
+(fibo 40)

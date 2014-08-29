@@ -31,11 +31,42 @@
                                succ
                                (ctx-push ctx
                                          (list-ref (ctx-stack ctx) pos))))
-            (print "Can't find variable: " ast))))))
+            ;; Else, lookup in globals
+            (let ((glookup-res (assoc ast globals)))
+              (if glookup-res
+                  (begin (x86-mov cgc (x86-rax) (x86-mem (* -8 (cdr glookup-res)) (x86-r10)))
+                         (x86-push cgc (x86-rax))
+                         (jump-to-version cgc succ (ctx-push ctx 'unknown))) ;; TODO, get ctx info of global
+                  (error "Can't find variable: " ast))))))))
+
+;; TODO
+;; TODO : enlever l'utilisation de r9 ?
+(define globals '())
 
 ;; Make lazy code from 'define
 (define (mlc-define ast succ)
-  (error "NYI"))
+  (let ((lazy-bind (make-lazy-code (lambda (cgc ctx)
+                                     (pp ctx)
+                                     (x86-pop cgc (x86-rax))
+                                     ;; TODO
+                                     (x86-mov cgc (x86-mem (* -8 (length globals)) (x86-r10)) (x86-rax))
+                                     (set! globals (cons (cons (cadr ast) (length globals)) globals))
+                                     (x86-push cgc (x86-imm-int -18)) ;; -18 = #!void
+                                     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'void))))))
+    (gen-ast (caddr ast) lazy-bind)))
+
+;; TODO
+(define (mlc-special ast succ)
+  (let* ((name (car ast))
+         (label (cond ((eq? name '$$putchar) label-$$putchar)
+                      (else "NYI special")))
+         (lazy-special (make-lazy-code 
+                         (lambda (cgc ctx)
+                           (x86-call cgc label)
+                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'void)))))) ;; TODO : ctx changes with other special
+    (if (> (length (cdr ast)) 0)
+        (gen-ast-l (cdr ast) lazy-special)
+        lazy-special)))
 
 ;; Make lazy code from 'lambda
 (define (mlc-lambda ast succ)

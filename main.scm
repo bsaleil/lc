@@ -422,7 +422,10 @@
 
     (push-regs cgc prog-regs)
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-    (x86-mov cgc (x86-r9) (x86-imm-int heap-addr))))
+    (x86-mov cgc (x86-r9)  (x86-imm-int heap-addr))
+    (x86-mov cgc (x86-r10) (x86-rsp)) ;; Global start in r10
+    (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 10))) ;; TODO 10 globals
+    ))
 
 (define (init)
 
@@ -479,7 +482,8 @@
 (define prog-regs ;; Registers at entry and exit points of program
   (list (x86-rcx)
         (x86-rbx)
-        (x86-r9)
+        (x86-r9)  ;; Heap
+        (x86-r10) ;; Globals
         ))
 
 (define nb-c-caller-save-regs
@@ -718,6 +722,8 @@
          (let ((op (car ast)))
            (cond ;; $$msg
                  ((eq? op '$$msg) (mlc-$$msg ast succ))
+                 ;; TODO
+                 ((member op '($$putchar)) (mlc-special ast succ))
                  ;; Lambda
                  ((eq? op 'lambda) (mlc-lambda ast succ))
                  ;; Operator
@@ -820,6 +826,7 @@
       (lambda (cgc ctx)
         (x86-pop cgc (x86-rax))
         (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
+        (x86-add cgc (x86-rsp) (x86-imm-int (* 8 10))) ;; TODO : ajouter au dessus, plus 10 en variable
         (pop-regs-reverse cgc prog-regs)
         (x86-ret cgc)))
     (gen-ast (car exprs)
