@@ -142,26 +142,45 @@
              0)))
 
 ;; Same behavior as 'do-callback' but calls callback with call site addr
-;; RCX holds selector (CL)
+;; The call code call the stub, then the stub call 'do-callback-fn'
+;; Here is the stack when stub calls 'do-callback-fn' :
+;; +---------------+
+;; | Saved reg n   |  <<-- RSP
+;; +---------------+
+;; | Saved reg ... |
+;; +---------------+
+;; | Saved reg 1   |
+;; +---------------+
+;; | Return addr   | (return addr for do-callback-fn function)
+;; +---------------+
+;; | Call ctx id   |
+;; +---------------+
+;; | Return addr   | (continuation addr)
+;; +---------------+
+;; | Closure       |
+;; +---------------+
+;; | Call arg n    |
+;; +---------------+
+;; | Call arg ...  |
+;; +---------------+
+;; | Call arg 1    |
+;; +---------------+
 (c-define (do-callback-fn sp) (long) void "do_callback_fn" ""
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
-
+         
+         (ctx-id (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
+         (ctx (cdr (assoc ctx-id LES_CTX)))
+         
          (closure
-          (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
-
+          (get-i64 (+ sp (* nb-c-caller-save-regs 8) 24)))
+         
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
-
-         (selector
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
-
-         (ctx
-          (encoding-obj (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdx-pos) 1) 8)))))
-
+                 
          (new-ret-addr
-          (callback-fn ret-addr selector closure ctx)))
-
+          (callback-fn sp ctx ret-addr 0 closure)))
+    
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8))
              new-ret-addr)
@@ -171,7 +190,6 @@
              0)))
 
 ;; The label for procedure do-callback
-
 (define label-exec-error     #f)
 (define label-do-callback    #f)
 (define label-do-callback-fn #f)
@@ -382,19 +400,13 @@
        (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
        ))
 
-    (if (eq? id 'do_callback_fn_handler)
-           ;; If fn handler, then remove extra stack slot for call site position, and return
-           (begin (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                  (x86-add cgc (x86-rsp) (x86-imm-int 16))
-                  (x86-jmp cgc (x86-rax)))
-           ;; Else there is no extra slot, return
-           (x86-ret cgc))
+    (x86-ret cgc)
 
     label-handler))
 
 (define (init-rtlib cgc)
-  (let ((label-rtlib-skip (asm-make-label cgc 'rtlib_skip)))
-
+  (let ((label-rtlib-skip (asm-make-label cgc 'rtlib_skip)))    
+    
     (x86-jmp cgc label-rtlib-skip)
 
     (set! label-do-callback-handler
@@ -465,10 +477,9 @@
         (x86-r15)))
 
 (define prog-regs ;; Registers at entry and exit points of program
-  (list (x86-rdx)
-        (x86-rsi)
+  (list (x86-rcx)
         (x86-rbx)
-        (x86-rdi)
+        (x86-r9)
         ))
 
 (define nb-c-caller-save-regs
@@ -585,7 +596,7 @@
 ;; First generate function lazy-code
 ;; Then patch closure slot to jump directly to generated function
 (define (gen-version-fn closure lazy-code ctx)
-
+  
   (if dev-log
       (begin
         (print "GEN VERSION FN")
@@ -709,8 +720,6 @@
                  ((eq? op '$$msg) (mlc-$$msg ast succ))
                  ;; Lambda
                  ((eq? op 'lambda) (mlc-lambda ast succ))
-                 ;; Let
-                 ((eq? op 'let)   (mlc-let ast succ))
                  ;; Operator
                  ((member op '(+ - * quotient modulo < > =)) (mlc-op ast succ op))
                  ;; If

@@ -1,6 +1,3 @@
-;; TODO store ctx in closure?
-;; TODO Change call protocol
-
 ;;-----------------------------------------------------------------------------
 
 ;; AST FUNCTIONS
@@ -46,11 +43,19 @@
          (params (cadr ast))
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code (lambda (cgc ctx)
-                                     (x86-pop cgc (x86-rax)) ;; Ret val
-                                     (x86-pop cgc (x86-rbx)) ;; Ret addr
-                                     (x86-add cgc (x86-rsp) (x86-imm-int (* (length params) 8))) ;; Clean stack (8 * nb params)
-                                     (x86-push cgc (x86-rax))
-                                     (x86-jmp cgc (x86-rbx)))))
+                                     ;; Here the stack is :
+                                     ;;         RSP
+                                     ;;     | ret-val |  ctx  | ret-addr | closure | arg n | ... | arg 1 |
+                                     ;; Pop return value
+                                     (x86-pop cgc (x86-rax))
+                                     ;; Mov return value at bottom of the frame
+                                     (x86-mov cgc (x86-mem (* 8 (+ 2 (length params))) (x86-rsp)) (x86-rax))
+                                     ;; Mov ret-addr in rax
+                                     (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
+                                     ;; RSP now point to return value
+                                     (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (+ 2 (length params)))))
+                                     ;; Jump to continuation
+                                     (x86-jmp cgc (x86-rax)))))
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret)))
     
@@ -60,7 +65,7 @@
         (let* (;; Create lambda stub
                (stub-labels (add-fn-callback cgc
                                              0
-                                             (lambda (ret-addr selector closure ctx)
+                                             (lambda (sp ctx ret-addr selector closure)
                                                ;; Extends env with params
                                                (let ((ctx (make-ctx (ctx-stack ctx) (build-env params 0))))
                                                  (gen-version-fn closure lazy-body ctx)))))
@@ -261,37 +266,47 @@
                                              (stub-labels (add-callback cgc
                                                                         0
                                                                         (lambda (ret-addr selector)
-                                                                          ;; Remove args from context, and add returned value (unknown for now)
-                                                                          (let ((ctx-continuation (ctx-push (ctx-pop-nb ctx (length args)) 'unknown)))
+                                                                          ;; Remove lambda and args from ctx, and add retval (unknown)
+                                                                          (let ((ctx-continuation (ctx-push (ctx-pop (ctx-pop-nb ctx (length args))) 'unknown)))
                                                                             (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
                                                                                 (set! gen-flag (gen-version-continuation load-ret-label
                                                                                                                          succ
                                                                                                                          ctx-continuation)))
                                                                             gen-flag)))))
-                                        ;; Get closure
-                                        (x86-pop cgc (x86-rax))
-                                        (set! ctx (ctx-pop ctx))
+                                        
                                         ;; Return address (continuation label)
                                         (x86-label cgc load-ret-label)
                                         (x86-mov cgc (x86-rdx) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
                                         (x86-push cgc (x86-rdx))
+                                        
                                         ;; Call ctx in rdx
-                                        (let* ((call-stack (cons 'retAddr (list-head (ctx-stack ctx) (length args))))
+                                        (let* ((call-stack (cons 'ctx (cons 'retAddr (list-head (ctx-stack ctx) (+ 1 (length args))))))
                                                (call-ctx   (make-ctx call-stack '())))
-                                          (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding call-ctx))))
-                                        ;; Push closure, then the stub will patch it
-                                        (x86-push cgc (x86-rax))
-                                        ;; Get cc table offset for this ctx
-                                        (let* ((closure-index (get-closure-index ctx))
-                                               (offset (- (+ (* closure-index 8) 8) 1))) ;; -1 procdure tag, +8 header word
-                                          (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax))))
-                                        (x86-jmp cgc (x86-rax))))))
+                                          
+                                          (let ((ctxid (length LES_CTX)))
+                                            (set! LES_CTX (cons (cons ctxid call-ctx) LES_CTX))
+                                            (x86-mov cgc (x86-rax) (x86-imm-int ctxid))
+                                            (x86-push cgc (x86-rax)))
+                                        
+                                          ;; Get cc table offset for this ctx
+                                          (let* ((closure-index (get-closure-index call-ctx))
+                                                 (offset (- (+ (* closure-index 8) 8) 1))) ;; -1 procdure tag, +8 header word
+                                            ;(gen-dump-stack cgc)
+                                            
+                                            
+                                            (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
+                                            (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax))))
+                                          
+                                          
+                                          (x86-jmp cgc (x86-rax)))))))
          ;; Lazy callee
          (lazy-callee (gen-ast (car ast) lazy-call)))
     
     (if (> (length args) 0)
         (gen-ast-l args lazy-callee)
         lazy-callee)))
+
+(define LES_CTX '())
 
 ;; Make lazy code from special form $$msg
 (define (mlc-$$msg ast succ)
@@ -424,16 +439,3 @@
                                      (else (gen-error cgc ctx ERR_NUM_EXPECTED))))))))
     ;; Return left operand lazy-code
     lazy-ast-left))
-
-; TODO : Remove let construction after lambda implementation
-(define (mlc-let ast succ)
-  (let* ((LECODE (make-lazy-code
-                   (lambda (cgc ctx)
-                     (x86-pop cgc (x86-rax))
-                     (jump-to-version cgc succ (make-ctx (ctx-stack (ctx-pop ctx)) (cdr (ctx-env ctx)))))))
-         (lazy-expr (gen-ast (caddr ast) LECODE))
-         (lazy-prov (make-lazy-code
-                      (lambda (cgc ctx)
-                        (jump-to-version cgc lazy-expr (make-ctx (ctx-stack ctx) (cons '(a . 1) (ctx-env ctx)))))))
-         (lazy-e1 (gen-ast (car (cdaadr ast)) lazy-prov)))
-    lazy-e1))

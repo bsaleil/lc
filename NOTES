@@ -5,3 +5,12 @@
 - Implémenter les fermetures avec tas
 
 - La gestion de la forme 'let est provisoire en attendant l'implémentation des fermetures, avec expansion des macros
+
+
+
+==
+== DEV NOTES
+==
+
+RCX : compteur
+R9  : alloc-ptr

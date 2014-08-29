@@ -1,5 +1,13 @@
-( (lambda (n m) (+ m n)) 20 30)
+((lambda (n) 40) 1)
+((lambda (n) 40) 1)
+((lambda (n) 40) 1)
+((lambda (n) 40) 1)
+((lambda (n) 40) 1)
+((lambda (m n o) (+ n o)) 10 20 30)
 
+;((lambda (n m) (+ m n)) 20 30)
+
+;((lambda (n m) (+ m n)) 20 30)
 ;; n : ascii code
 ; (define putchar
 ; 	(lambda (n)
