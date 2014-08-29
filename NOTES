@@ -1,13 +1,3 @@
-- Modifier (gen-version-continuation) pour passer le code à générer en paramètre,
-  ajouter une fonction intermédiaire pour les tests de type pour factoriser avec 'if
-
-
-- Implémenter les fermetures avec tas
-
-- La gestion de la forme 'let est provisoire en attendant l'implémentation des fermetures, avec expansion des macros
-
-
-
 ==
 == DEV NOTES
 ==
