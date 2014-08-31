@@ -56,6 +56,16 @@
     (gen-ast (caddr ast) lazy-bind)))
 
 ;; TODO
+(define (mlc-begin ast succ)
+  (let* ((lazy-d (gen-ast (caddr ast) succ))
+        (lazy-inter (make-lazy-code
+                      (lambda (cgc ctx)
+                        (x86-pop cgc (x86-rax))
+                        (jump-to-version cgc lazy-d (ctx-pop ctx)))))
+        (lazy-u (gen-ast (cadr ast) lazy-inter)))
+    lazy-u))
+
+;; TODO
 (define (mlc-special ast succ)
   (let* ((name (car ast))
          (label (cond ((eq? name '$$putchar) label-$$putchar)
@@ -112,6 +122,8 @@
           (x86-mov cgc (x86-rax) (x86-r9))
           (x86-sub cgc (x86-rax) (x86-imm-int (+ -1 8))) ;; 1 = tag, -8 = head word
           (x86-push cgc (x86-rax))
+          ;; Update alloc ptr
+          (x86-add cgc alloc-ptr (x86-imm-int (* 8 global-cc-table-maxsize)))
           ;; Jump to next
           (jump-to-version cgc
                            succ

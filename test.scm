@@ -2,8 +2,29 @@
 (define print-number-nz
   (lambda (n)
     (if (> n 0)
-      ((lambda (g) ($$putchar (+ (modulo n 10) 48))) (print-number-nz (quotient n 10)))
-      50)))
+      ((lambda (aa nn) ($$putchar (+ (modulo nn 10) 48))) (print-number-nz (quotient n 10)) n)
+      #f)))
+
+     
+  
+
+(print-number-nz 10)
+; (define print-pos-nz
+;   (lambda (n)
+;     (if (> n 0)
+;         (begin (print-pos-nz (quotient n 10))
+;                ($$putchar (+ (modulo n 10) 48)))
+;         #f)))
+
+; (define funun
+;   (lambda (n)
+;     50))
+
+; (define fundeux
+;   (lambda (n)
+;     (lafun 50)))
+
+
     
         ; (let ((a (print-number-nz (quotient n 10))))
         ;   ($$putchar (+ (modulo n 10) 48))))))
@@ -11,10 +32,6 @@
 ;; TODO : probleme :
 ;;    -- Propagation de l'environnement, ici n n'est pas dispo dans la fermeture
 ;;    -- Un probleme avec fibo
-        
-(print-number-nz 10)
-
-
 
 ;((lambda (n m) (+ m n)) 20 30)
 

@@ -723,6 +723,8 @@
            (cond ;; $$msg
                  ((eq? op '$$msg) (mlc-$$msg ast succ))
                  ;; TODO
+                 ((eq? op 'begin) (mlc-begin ast succ))
+                 ;; TODO
                  ((member op '($$putchar)) (mlc-special ast succ))
                  ;; Lambda
                  ((eq? op 'lambda) (mlc-lambda ast succ))
