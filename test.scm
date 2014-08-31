@@ -1,14 +1,4 @@
 
-(define fibo
-  (lambda (n)
-    (if (= n 0)
-      0
-      (if (= n 1)
-        1
-        (+ (fibo (- n 1)) (fibo (- n 2)))))))
-
-(fibo 40)
-
 ; (define print-pos-nz
 ;   (lambda (n)
 ;     (if (> n 0)
@@ -16,15 +6,14 @@
 ;                ($$putchar (+ (modulo n 10) 48)))
 ;         #f)))
 
-; (define funun
-;   (lambda (n)
-;     50))
 
-; (define fundeux
-;   (lambda (n)
-;     (lafun 50)))
+(define lafun
+  (lambda (n)
+    (if (> n 0)
+        ((lambda (aa nn) ($$putchar (+ (modulo nn 10) 48)))  (lafun (quotient n 10)) n)
+        #f)))
 
-
+(lafun 109099)
     
         ; (let ((a (print-number-nz (quotient n 10))))
         ;   ($$putchar (+ (modulo n 10) 48))))))
