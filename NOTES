@@ -4,3 +4,6 @@
 
 RCX : compteur
 R9  : alloc-ptr
+
+-- Tester en enlevant le passage du ctx par id pour bug
+-- revoir les overflow, test dyn, et fermetures (patch, etc...)
