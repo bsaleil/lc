@@ -1,14 +1,14 @@
 
-(define print-number-nz
+(define fibo
   (lambda (n)
-    (if (> n 0)
-      ((lambda (aa nn) ($$putchar (+ (modulo nn 10) 48))) (print-number-nz (quotient n 10)) n)
-      #f)))
+    (if (= n 0)
+      0
+      (if (= n 1)
+        1
+        (+ (fibo (- n 1)) (fibo (- n 2)))))))
 
-     
-  
+(fibo 40)
 
-(print-number-nz 10)
 ; (define print-pos-nz
 ;   (lambda (n)
 ;     (if (> n 0)

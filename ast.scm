@@ -319,8 +319,8 @@
                                         
                                         ;; Return address (continuation label)
                                         (x86-label cgc load-ret-label)
-                                        (x86-mov cgc (x86-rdx) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
-                                        (x86-push cgc (x86-rdx))
+                                        (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
+                                        (x86-push cgc (x86-rax))
                                         
                                         ;; Call ctx in rdx
                                         (let* ((call-stack (cons 'ctx (cons 'retAddr (list-head (ctx-stack ctx) (+ 1 (length args))))))
@@ -467,7 +467,7 @@
                                    (lctx  (make-ctx (cons (car (ctx-stack ctx)) (cons 'num (cddr (ctx-stack ctx)))) (ctx-env ctx)))
                                    ;; ctx with 'num for left AND right operand
                                    (lrctx (make-ctx (cons 'num (cons 'num (cddr (ctx-stack ctx)))) (ctx-env ctx))))
-                               
+                                                           
                                (cond ((eq? left-type 'num)
                                       (cond ((eq? right-type 'num)     (jump-to-version cgc lazy-code-op ctx))
                                             ((eq? right-type 'unknown) (jump-to-version cgc (gen-dyn-type-test 0 rctx lazy-code-op ctx lazy-fail) ctx))

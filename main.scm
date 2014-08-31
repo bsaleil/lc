@@ -399,7 +399,7 @@
        (x86-call cgc label) ;; call C function
        (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
        ))
-
+    
     (x86-ret cgc)
 
     label-handler))
