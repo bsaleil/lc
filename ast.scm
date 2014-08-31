@@ -46,7 +46,6 @@
 ;; Make lazy code from 'define
 (define (mlc-define ast succ)
   (let ((lazy-bind (make-lazy-code (lambda (cgc ctx)
-                                     (pp ctx)
                                      (x86-pop cgc (x86-rax))
                                      ;; TODO
                                      (x86-mov cgc (x86-mem (* -8 (length globals)) (x86-r10)) (x86-rax))
@@ -54,16 +53,6 @@
                                      (x86-push cgc (x86-imm-int -18)) ;; -18 = #!void
                                      (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'void))))))
     (gen-ast (caddr ast) lazy-bind)))
-
-;; TODO
-(define (mlc-begin ast succ)
-  (let* ((lazy-d (gen-ast (caddr ast) succ))
-        (lazy-inter (make-lazy-code
-                      (lambda (cgc ctx)
-                        (x86-pop cgc (x86-rax))
-                        (jump-to-version cgc lazy-d (ctx-pop ctx)))))
-        (lazy-u (gen-ast (cadr ast) lazy-inter)))
-    lazy-u))
 
 ;; TODO
 (define (mlc-special ast succ)

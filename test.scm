@@ -1,84 +1,33 @@
-
-; (define print-pos-nz
-;   (lambda (n)
-;     (if (> n 0)
-;         (begin (print-pos-nz (quotient n 10))
-;                ($$putchar (+ (modulo n 10) 48)))
-;         #f)))
-
-
-(define lafun
+(define print-pos-nz
   (lambda (n)
     (if (> n 0)
-        ((lambda (aa nn) ($$putchar (+ (modulo nn 10) 48)))  (lafun (quotient n 10)) n)
+        ((lambda (aa nn) ($$putchar (+ (modulo nn 10) 48)))  (print-pos-nz (quotient n 10)) n)
         #f)))
 
-(lafun 109099)
-    
-        ; (let ((a (print-number-nz (quotient n 10))))
-        ;   ($$putchar (+ (modulo n 10) 48))))))
+(define print-pos
+  (lambda (n)
+    (if (= n 0)
+        ($$putchar 48)
+        (print-pos-nz n))))
 
-;; TODO : probleme :
-;;    -- Propagation de l'environnement, ici n n'est pas dispo dans la fermeture
-;;    -- Un probleme avec fibo
+(define print-nb
+  (lambda (n)
+    (if (< n 0)
+        ((lambda (aa nn) (print-pos (* -1 nn))) ($$putchar 45) n)
+        (print-pos n))))
 
-;((lambda (n m) (+ m n)) 20 30)
+(define print-ln
+  (lambda (n)
+    ((lambda (aa) ($$putchar 10)) (print-nb n))))
 
-;((lambda (n m) (+ m n)) 20 30)
-;; n : ascii code
-; (define putchar
-; 	(lambda (n)
-; 		($$putchar n)))
+(print-ln 101)
+(print-ln 202)
+(print-ln 303)
+(print-ln 0)
+(print-ln -101)
+(print-ln -202)
+(print-ln -303)
 
-; (putchar 48)
-; (putchar 49)
-; (putchar 50)
-; (putchar 51)
-; (putchar 52)
-; (putchar 53)
-; (putchar 54)
-; (putchar 55)
-; (putchar 56)
-; (putchar 57) 
-; (putchar 10) ;; EOL
-
-;(modulo 12 5)
-
-; (define print
-;   (lambda (n)
-;     (print-number n)))
-
-; (define println
-;   (lambda (n)
-;     (let ((a (print n)))
-;       ($$putchar 10))))
-
-; (define print-number
-;   (lambda (n)
-;     (if (= n 0)
-;         ($$putchar 48)
-;         (print-number-nz n))))
-
-; (define print-number-nz
-;   (lambda (n)
-;     (if (> n 0)
-;         (let ((a (print-number-nz (quotient n 10))))
-;           ($$putchar (+ (modulo n 10) 48))))))
-        
-; (println 10)
-        
-; (define print-number
-;   (lambda (n)
-;     (if (= n 0)
-;         ($$putchar 48)
-;         (print-number-nz n))))
-
-;(begin 10 20)
-
-;(< #t 99)
-;($$msg "TEST MSG SF")
-;(define f (lambda (a) (+ a 11)))
-;(f 33)
 
 ;; ------
 ;; TEST 1

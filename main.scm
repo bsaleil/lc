@@ -21,7 +21,7 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define dev-log #t)
+(define dev-log #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -722,8 +722,6 @@
          (let ((op (car ast)))
            (cond ;; $$msg
                  ((eq? op '$$msg) (mlc-$$msg ast succ))
-                 ;; TODO
-                 ((eq? op 'begin) (mlc-begin ast succ))
                  ;; TODO
                  ((member op '($$putchar)) (mlc-special ast succ))
                  ;; Lambda
