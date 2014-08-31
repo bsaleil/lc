@@ -276,15 +276,15 @@
 
 ;; Get closure index for 'ctx' associates a new index if ctx is a new one
 (define (get-closure-index ctx)
-  (let ((r (assoc ctx global-cc-table)))
+  (let ((r (assoc (ctx-stack ctx) global-cc-table)))
     (if r
         (cdr r)
-        (if (= (length global-cc-table) global-cc-table-maxsize)
-            (error "Global cc table is full")
-            (let ((index (length global-cc-table)))
-              (cons (cons ctx index) global-cc-table)
-              index)))))
-
+        (let ((idx (length global-cc-table)))
+          (if (= idx global-cc-table-maxsize)
+              (error "CC Table is full")
+              (begin (set! global-cc-table (cons (cons (ctx-stack ctx) idx) global-cc-table))
+                     idx))))))
+              
 ;; Gen a new cc-table at 'alloc-ptr' and write 'stub-addr'
 (define (gen-cc-table cgc stub-addr)
   (x86-mov cgc (x86-rax) (x86-imm-int stub-addr))
