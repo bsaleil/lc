@@ -805,7 +805,9 @@
                                             (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-success)
                                             (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-fail))))))))))
 
-         (println ">>> Gen dynamic type test at index " stack-idx)
+         (if dev-log
+             (println ">>> Gen dynamic type test at index " stack-idx))
+         
          (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
          (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
          (x86-cmp cgc (x86-rax) (x86-imm-int 0))

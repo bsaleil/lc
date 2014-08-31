@@ -288,12 +288,12 @@
 (define (mlc-call ast succ)
   (let* (;; Call arguments
          (args (cdr ast))
-         ;; Label for return address loading
-         (load-ret-label (asm-make-label #f (new-sym 'load-ret-addr)))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
                                       (let* (;; Flag in stub : is the continuation already generated ?
                                              (gen-flag #f)
+                                             ;; Label for return address loading
+                                             (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
                                              ;; Continuation stub
                                              (stub-labels (add-callback cgc
                                                                         0
