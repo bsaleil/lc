@@ -726,8 +726,12 @@
                  ((member op '($$putchar)) (mlc-special ast succ))
                  ;; Lambda
                  ((eq? op 'lambda) (mlc-lambda ast succ))
-                 ;; Operator
-                 ((member op '(+ - * quotient modulo < > =)) (mlc-op ast succ op))
+                 ;; Operator num
+                 ((member op '($+ $- $* $quotient $modulo $< $> $=)) (mlc-op ast succ op))
+                 ;; Operator gen
+                 ((member op '($eq?)) (mlc-opgen ast succ op))
+                 ;; Tests
+                 ((member op '($number?)) (mlc-test ast succ))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -876,8 +880,8 @@
       (cons r (read-prog)))))
 
 (define prog (read-prog))
-
-(test (expand prog))
+(pp (car (expand prog)))
+;(test (expand prog))
 
 
 ;(test '((if (< a b) 11 22)))

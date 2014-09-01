@@ -261,7 +261,7 @@
 
 ;; Global closure context table
 (define global-cc-table '())
-(define global-cc-table-maxsize 10)
+(define global-cc-table-maxsize 20)
 
 ;; Get closure index for 'ctx' associates a new index if ctx is a new one
 (define (get-closure-index ctx)
@@ -371,23 +371,23 @@
                                 
                                 (x86-pop cgc (x86-rbx))
                                 (case op
-                                  ((+)
+                                  (($+)
                                    (begin
                                      (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
                                      (x86-label cgc label-jo)
                                      (x86-jo cgc (list-ref stub-labels 0))))
-                                  ((-)
+                                  (($-)
                                    (begin
                                      (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
                                      (x86-label cgc label-jo)
                                      (x86-jo cgc (list-ref stub-labels 0))))
-                                  ((*)
+                                  (($*)
                                    (begin (x86-sar cgc (x86-rbx) (x86-imm-int 2))
                                      (x86-imul cgc (x86-rbx) (x86-mem 0 (x86-rsp)))
                                      (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
                                      (x86-label cgc label-jo)
                                      (x86-jo cgc (list-ref stub-labels 0))))
-                                  ((quotient) ;; TODO : check '/0'
+                                  (($quotient) ;; TODO : check '/0'
                                    (begin
                                           (x86-pop cgc (x86-rax))
                                           (x86-sar cgc (x86-rax) (x86-imm-int 2))
@@ -398,7 +398,7 @@
                                           (x86-push cgc (x86-rax))
                                           (x86-label cgc label-jo)
                                           (x86-jo cgc (list-ref stub-labels 0))))
-                                  ((modulo) ;; TODO : check '/0'
+                                  (($modulo) ;; TODO : check '/0'
                                    (begin
                                           (x86-pop cgc (x86-rax))
                                           (x86-sar cgc (x86-rax) (x86-imm-int 2))
@@ -409,7 +409,7 @@
                                           (x86-push cgc (x86-rdx))
                                           (x86-label cgc label-jo)
                                           (x86-jo cgc (list-ref stub-labels 0))))
-                                  ((<)
+                                  (($<)
                                    (let ((label-done
                                            (asm-make-label cgc (new-sym 'done))))
                                      (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
@@ -418,7 +418,7 @@
                                      (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #f)))
                                      (x86-label cgc label-done)
                                      (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rbx))))
-                                  ((>)
+                                  (($>)
                                    (let ((label-done
                                            (asm-make-label cgc (new-sym 'done))))
                                      (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
@@ -427,7 +427,7 @@
                                      (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #f)))
                                      (x86-label cgc label-done)
                                      (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rbx))))
-                                  ((=)
+                                  (($=)
                                    (let ((label-done
                                            (asm-make-label cgc (new-sym 'done))))
                                      (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
@@ -442,8 +442,8 @@
                                                  succ
                                                  (ctx-push
                                                    (ctx-pop (ctx-pop ctx))
-                                                   (cond ((member op '(+ - * modulo quotient)) 'num)
-                                                         ((member op '(< > =)) 'bool))))))))
+                                                   (cond ((member op '($+ $- $* $modulo $quotient)) 'num)
+                                                         ((member op '($< $> $=)) 'bool))))))))
               ;; Lazy code, tests types from ctx to jump to the correct lazy-code  
               (lazy-main (make-lazy-code
                            (lambda (cgc ctx)
@@ -471,3 +471,41 @@
                                      (else (gen-error cgc ctx ERR_NUM_EXPECTED))))))))
     ;; Return left operand lazy-code
     lazy-ast-left))
+
+;; Make lazy code from operator
+(define (mlc-opgen ast succ op)
+  (let ((lazy-code-op (make-lazy-code
+                        (lambda (cgc ctx)
+                          (x86-pop cgc (x86-rbx))
+                          (case op
+                            (($eq?)
+                             (let ((label-done
+                                     (asm-make-label cgc (new-sym 'done))))
+                               (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
+                               (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #t)))
+                               (x86-je  cgc label-done)
+                               (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #f)))
+                               (x86-label cgc label-done)
+                               (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rbx))))
+                            (else
+                              (error "unknown op" op)))
+                          (jump-to-version cgc
+                                           succ
+                                           (ctx-push
+                                             (ctx-pop (ctx-pop ctx))
+                                             (cond ((member op '($eq?)) 'bool))))))))
+    (gen-ast-l (cdr ast) lazy-code-op)))
+
+;; TODO
+(define (mlc-test ast succ)
+  (let ((lazy-test (make-lazy-code (lambda (cgc ctx)
+                                     (let ((label-done (asm-make-label cgc (new-sym 'label_done))))
+                                       (x86-pop cgc (x86-rax))
+                                       (x86-and cgc (x86-rax) (x86-imm-int 3))
+                                       (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                                       (x86-je cgc  label-done) ;; TODO : only number
+                                       (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                       (x86-label cgc label-done)
+                                       (x86-push cgc (x86-rax))
+                                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'bool)))))))
+    (gen-ast (cadr ast) lazy-test)))
