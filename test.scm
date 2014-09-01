@@ -63,11 +63,17 @@
 ; (println #f)
 ; (println #t)
 
-(let ((a 101) (b 102) (c 103))
-  (println a)
-  (println b)
-  (println c))
-; ;; ------
+;; TODO
+;; TODO
+;; TODO
+;; TESTER EXPANSION DE : (lambda (a b c) (println 10) (println 20))
+;; CAR POUR LE MOMENT ETENDU EN BEGIN
+
+(define (FUN a b)
+  (println 20)
+  (println 40))
+
+
 ; ;; TEST 1
 ; ;; ------
 

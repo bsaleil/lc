@@ -880,8 +880,7 @@
       (cons r (read-prog)))))
 
 (define prog (read-prog))
-(pp (car (expand prog)))
-;(test (expand prog))
+(test (expand prog))
 
 
 ;(test '((if (< a b) 11 22)))
