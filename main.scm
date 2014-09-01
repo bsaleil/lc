@@ -123,7 +123,7 @@
 (c-define (do-callback sp) (long) void "do_callback" ""
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
-
+         
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
 
@@ -132,7 +132,7 @@
 
          (new-ret-addr
           (callback-fn ret-addr selector)))
-
+    
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8))
              new-ret-addr)
@@ -142,26 +142,45 @@
              0)))
 
 ;; Same behavior as 'do-callback' but calls callback with call site addr
-;; RCX holds selector (CL)
+;; The call code call the stub, then the stub call 'do-callback-fn'
+;; Here is the stack when stub calls 'do-callback-fn' :
+;; +---------------+
+;; | Saved reg n   |  <<-- RSP
+;; +---------------+
+;; | Saved reg ... |
+;; +---------------+
+;; | Saved reg 1   |
+;; +---------------+
+;; | Return addr   | (return addr for do-callback-fn function)
+;; +---------------+
+;; | Call ctx id   |
+;; +---------------+
+;; | Return addr   | (continuation addr)
+;; +---------------+
+;; | Closure       |
+;; +---------------+
+;; | Call arg n    |
+;; +---------------+
+;; | Call arg ...  |
+;; +---------------+
+;; | Call arg 1    |
+;; +---------------+
 (c-define (do-callback-fn sp) (long) void "do_callback_fn" ""
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
-
-         (call-site-addr
-          (- (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)) 5)) ;; 5 : call instruction size
-
+         
+         (ctx-id (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
+         (ctx (cdr (assoc ctx-id LES_CTX)))
+         
+         (closure
+          (get-i64 (+ sp (* nb-c-caller-save-regs 8) 24)))
+         
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
-
-         (selector
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
-
-         (ctx
-          (encoding-obj (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdx-pos) 1) 8)))))
-
+                 
          (new-ret-addr
-          (callback-fn ret-addr selector call-site-addr ctx)))
-
+          (callback-fn sp ctx ret-addr 0 closure)))
+    
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8))
              new-ret-addr)
@@ -171,7 +190,6 @@
              0)))
 
 ;; The label for procedure do-callback
-
 (define label-exec-error     #f)
 (define label-do-callback    #f)
 (define label-do-callback-fn #f)
@@ -230,6 +248,8 @@
 ;; HEAP
 (define heap-len 50000)
 (define heap-addr #f)
+
+(define alloc-ptr (x86-r9)) ;; TODO : attention a sauvegarder toujours r9
 
 ;; CODE
 (define code-len 50000)
@@ -379,20 +399,14 @@
        (x86-call cgc label) ;; call C function
        (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
        ))
-
-    (if (eq? id 'do_callback_fn_handler)
-           ;; If fn handler, then remove extra stack slot for call site position, and return
-           (begin (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                  (x86-add cgc (x86-rsp) (x86-imm-int 16))
-                  (x86-jmp cgc (x86-rax)))
-           ;; Else there is no extra slot, return
-           (x86-ret cgc))
+    
+    (x86-ret cgc)
 
     label-handler))
 
 (define (init-rtlib cgc)
-  (let ((label-rtlib-skip (asm-make-label cgc 'rtlib_skip)))
-
+  (let ((label-rtlib-skip (asm-make-label cgc 'rtlib_skip)))    
+    
     (x86-jmp cgc label-rtlib-skip)
 
     (set! label-do-callback-handler
@@ -400,14 +414,18 @@
 
     (set! label-do-callback-fn-handler
           (gen-handler cgc 'do_callback_fn_handler label-do-callback-fn))
-
+    
     ;; Gen lib special forms
     (gen-$$putchar cgc)
 
     (x86-label cgc label-rtlib-skip)
 
     (push-regs cgc prog-regs)
-    (x86-mov  cgc (x86-rcx) (x86-imm-int 0))))
+    (x86-mov cgc (x86-rcx) (x86-imm-int 0))
+    (x86-mov cgc (x86-r9)  (x86-imm-int heap-addr))
+    (x86-mov cgc (x86-r10) (x86-rsp)) ;; Global start in r10
+    (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 10))) ;; TODO 10 globals
+    ))
 
 (define (init)
 
@@ -462,10 +480,10 @@
         (x86-r15)))
 
 (define prog-regs ;; Registers at entry and exit points of program
-  (list (x86-rdx)
-        (x86-rsi)
+  (list (x86-rcx)
         (x86-rbx)
-        (x86-rdi)
+        (x86-r9)  ;; Heap
+        (x86-r10) ;; Globals
         ))
 
 (define nb-c-caller-save-regs
@@ -560,7 +578,7 @@
 ;;  TODO : check if stub addr and continuation addr are the same size
 ;;  TODO : clean code with patch function
 (define (gen-version-continuation load-ret-label lazy-code ctx)
-
+  
   (let ((continuation-label (asm-make-label #f (new-sym 'continuation_)))
         (load-addr (asm-label-pos load-ret-label)))
     ;; Generate lazy-code
@@ -580,9 +598,9 @@
 
 ;; Generate a function
 ;; First generate function lazy-code
-;; Then patch call site to jump directly to generated function
-(define (gen-version-fn call-site-addr lazy-code ctx)
-
+;; Then patch closure slot to jump directly to generated function
+(define (gen-version-fn closure lazy-code ctx)
+  
   (if dev-log
       (begin
         (print "GEN VERSION FN")
@@ -596,10 +614,9 @@
   (let ((label-dest (get-version lazy-code ctx)))
     (if label-dest
 
-        ;; That version has already been generated, so just patch jump
+        ;; That version has already been generated, so just patch closure
         (let ((dest-addr (asm-label-pos label-dest)))
-
-         (patch-call call-site-addr label-dest))
+         (patch-closure closure ctx label-dest))
 
         ;; That version is not yet generated, so generate it and then patch call
         (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
@@ -611,8 +628,8 @@
                 ((lazy-code-generator lazy-code) cgc ctx)))
           ;; Put version matching this ctx
           (put-version lazy-code ctx fn-label)
-          ;; Patch call
-          (patch-call call-site-addr fn-label)))))
+          ;; Patch closure
+          (patch-closure closure ctx fn-label)))))
 
 (define (gen-version jump-addr lazy-code ctx)
 
@@ -671,15 +688,25 @@
         (put-i32 (- (+ jump-addr size) 4)
                  (- dest-addr (+ jump-addr size))))))
 
-(define (patch-call call-addr dest-label)
-
-  (if dev-log
-    (begin
-      (print ">>> patching call at " (number->string call-addr 16) " : ")
-      (println "now jump to " (asm-label-name dest-label) " (" (number->string (asm-label-pos dest-label) 16) ")")))
+(define (patch-closure closure ctx label)
   
-  (code-gen 'x86-64 call-addr (lambda (cgc) (x86-jmp cgc dest-label)))
-  (asm-label-pos dest-label))
+  (let* ((label-addr (asm-label-pos  label))
+         (label-name (asm-label-name label))
+         (index (get-closure-index ctx))
+         (offset (- (+ (* index 8) 8) 1)))
+    
+    (if dev-log
+        (println ">>> patching closure " (number->string closure 16) " at "
+                 (number->string (+ closure offset) 16)
+                 " : slot contains now label "
+                 label-name
+                 " ("
+                 (number->string label-addr 16)
+                 ")"))
+    
+    ;; Write procedure entry point in closure slot of this ctx
+    (put-i64 (+ closure offset) label-addr)
+    label-addr))
 
 (define (jump-size jump-addr)
   (if (= (get-u8 jump-addr) #x0f) 6 5))
@@ -695,8 +722,10 @@
          (let ((op (car ast)))
            (cond ;; $$msg
                  ((eq? op '$$msg) (mlc-$$msg ast succ))
-                 ;; Let
-                 ((eq? op 'let)   (mlc-let ast succ))
+                 ;; TODO
+                 ((member op '($$putchar)) (mlc-special ast succ))
+                 ;; Lambda
+                 ((eq? op 'lambda) (mlc-lambda ast succ))
                  ;; Operator
                  ((member op '(+ - * quotient modulo < > =)) (mlc-op ast succ op))
                  ;; If
@@ -776,7 +805,9 @@
                                             (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-success)
                                             (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-fail))))))))))
 
-         (println ">>> Gen dynamic type test at index " stack-idx)
+         (if dev-log
+             (println ">>> Gen dynamic type test at index " stack-idx))
+         
          (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
          (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
          (x86-cmp cgc (x86-rax) (x86-imm-int 0))
@@ -797,6 +828,7 @@
       (lambda (cgc ctx)
         (x86-pop cgc (x86-rax))
         (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
+        (x86-add cgc (x86-rsp) (x86-imm-int (* 8 10))) ;; TODO : ajouter au dessus, plus 10 en variable
         (pop-regs-reverse cgc prog-regs)
         (x86-ret cgc)))
     (gen-ast (car exprs)
