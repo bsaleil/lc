@@ -1,123 +1,110 @@
 
-; ;; OPERATORS
-; (define + (lambda (x y) ($+ x y)))
-; (define - (lambda (x y) ($- x y)))
-; (define * (lambda (x y) ($* x y)))
-; (define quotient (lambda (x y) ($quotient x y)))
-; (define modulo (lambda (x y) ($modulo x y)))
-; (define < (lambda (x y) ($< x y)))
-; (define > (lambda (x y) ($> x y)))
-; (define = (lambda (x y) ($= x y)))
+;; OPERATORS
+(define (+ x y)        ($+ x y))
+(define (- x y)        ($- x y))
+(define (* x y)        ($* x y))
+(define (quotient x y) ($quotient x y))
+(define (modulo x y)   ($modulo x y))
+(define (< x y)        ($< x y))
+(define (> x y)        ($> x y))
+(define (= x y)        ($= x y))
 
-; ;; TYPE TESTS
+;; TYPE TESTS
 
-; (define number? (lambda (n) ($number? n)))
+(define (number? n)
+  ($number? n))
 
-; (define boolean?
-;   (lambda (n)
-;     (if (= n #t)
-;         #t
-;         (if (= n #f)
-;             #t
-;             #f))))
+(define (boolean? n)
+    (if (= n #t)
+        #t
+        (if (= n #f)
+            #t
+            #f)))
 
-; ;; PRINT NUMBER
+;; PRINT NUMBER
 
-; (define print-pos-nz
-;   (lambda (n)
-;     (if (> n 0)
-;         ((lambda (aa nn) ($$putchar (+ (modulo nn 10) 48)))  (print-pos-nz (quotient n 10)) n)
-;         #f)))
+(define (print-pos-nz n)
+    (if (> n 0)
+        ((lambda (aa nn) ($$putchar (+ (modulo nn 10) 48)))  (print-pos-nz (quotient n 10)) n)
+        #f))
 
-; (define print-pos
-;   (lambda (n)
-;     (if (= n 0)
-;         ($$putchar 48)
-;         (print-pos-nz n))))
+(define (print-pos n)
+    (if (= n 0)
+        ($$putchar 48)
+        (print-pos-nz n)))
 
-; (define print-nb
-;   (lambda (n)
-;     (if (< n 0)
-;         ((lambda (aa nn) (print-pos (* -1 nn))) ($$putchar 45) n)
-;         (print-pos n))))
+(define (print-nb n)
+    (if (< n 0)
+        ((lambda (aa nn) (print-pos (* -1 nn))) ($$putchar 45) n)
+        (print-pos n)))
 
-; (define print-bool
-;   (lambda (n)
-;     (if ($eq? n #t)
-;         ((lambda (aa) ($$putchar 116)) ($$putchar 35))
-;         ((lambda (aa) ($$putchar 102)) ($$putchar 35)))))
+(define (print-bool n)
+  (if ($eq? n #t)
+      (begin ($$putchar  35)
+             ($$putchar 116))
+      (begin ($$putchar  35)
+             ($$putchar 102))))
 
-; (define println
-;   (lambda (n)
-;     (if (number? n)
-;       ((lambda (aa) ($$putchar 10)) (print-nb n))
-;       ((lambda (aa) ($$putchar 10)) (print-bool n)))))
+(define (println n)
+  (if (number? n)
+      ((lambda (aa) ($$putchar 10)) (print-nb n))
+      ((lambda (aa) ($$putchar 10)) (print-bool n))))
 
-; (println 101)
-; (println 202)
-; (println 303)
-; (println 0)
-; (println -101)
-; (println -202)
-; (println -303)
-; (println #f)
-; (println #t)
+(println 101)
+(println 202)
+(println 303)
+(println 0)
+(println -101)
+(println -202)
+(println -303)
+(println #f)
+(println #t)
 
-;; TODO
-;; TODO
-;; TODO
-;; TESTER EXPANSION DE : (lambda (a b c) (println 10) (println 20))
-;; CAR POUR LE MOMENT ETENDU EN BEGIN
+;; ------
+;; TEST 1
+;; ------
 
-(define (FUN a b)
-  (println 20)
-  (println 40))
+(define fn1
+  (lambda (a b c) (+ b c)))
 
 
-; ;; TEST 1
-; ;; ------
+(println (fn1 1 2 3))
+(println (fn1 1 2 10))
 
-; (define fn1
-;   (lambda (a b c) (+ b c)))
+;; ------
+;; TEST 2
+;; ------
 
+; (define fn2
+;   (lambda (a b c) (+ a c)))
 
-; (print-ln (fn1 1 2 3))
-; (print-ln (fn1 1 2 10))
+; (println (fn2 1 2 3))
+; (println (fn2 #t 2 3))
 
-; ;; ------
-; ;; TEST 2
-; ;; ------
+;; ----
+;; FACT
+;; ----
 
-; ; (define fn2
-; ;   (lambda (a b c) (+ a c)))
+(define fact
+  (lambda (n)
+    (if (= n 0)
+      1
+      (if (= n 1)
+        1
+        (* n (fact (- n 1)))))))
 
-; ; (print-ln (fn2 1 2 3))
-; ; (print-ln (fn2 #t 2 3))
+(println (fact 10))
 
-; ;; ----
-; ;; FACT
-; ;; ----
+;; ----
+;; FIBO
+;; ----
 
-; (define fact
-;   (lambda (n)
-;     (if (= n 0)
-;       1
-;       (if (= n 1)
-;         1
-;         (* n (fact (- n 1)))))))
+(define fibo
+  (lambda (n)
+    (if (= n 0)
+      0
+      (if (= n 1)
+        1
+        (+ (fibo (- n 1)) (fibo (- n 2)))))))
 
-; (print-ln (fact 10))
-
-; ;; ----
-; ;; FIBO
-; ;; ----
-
-; (define fibo
-;   (lambda (n)
-;     (if (= n 0)
-;       0
-;       (if (= n 1)
-;         1
-;         (+ (fibo (- n 1)) (fibo (- n 2)))))))
-
-; (print-ln (fibo 30))
+(println (fibo 40))
