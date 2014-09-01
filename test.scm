@@ -63,7 +63,10 @@
 ; (println #f)
 ; (println #t)
 
-(let ((a 10) (b 20)) 100 200)
+(let ((a 101) (b 102) (c 103))
+  (println a)
+  (println b)
+  (println c))
 ; ;; ------
 ; ;; TEST 1
 ; ;; ------

@@ -7,7 +7,7 @@
       ;((equal? (car expr) 'define) (expand-define expr))
       ;((equal? (car expr) 'if) (expand-if expr))
       ;((equal? (car expr) 'begin) (expand-begin expr))
-      ;((equal? (car expr) 'let) (expand-let expr))
+      ((equal? (car expr) 'let) (expand-let expr))
       ;((equal? (car expr) 'lambda) (expand-lambda expr))
       (else (map expand expr))))
 
@@ -30,16 +30,19 @@
 ;     (let ((v (gensym)))
 ;           `(let ((,v ,(expand (cadr expr)))) ,(expand `(begin ,@(cddr expr)))))))
 
-; ;; LET
-; (define (expand-let expr)
-;   (if (> (length expr) 3)
-;     `(let ,(expand (cadr expr)) ,(expand `(begin ,@(cddr expr))))
-;     `((lambda ,(map expand (map car (cadr expr))) ; binding symbols
-;               ,(if (list? (caddr expr))           ; body
-;                    (map (expand (caddr expr)))
-;                    (expand (caddr expr)))
-;               )                                   ; lambda end
-;               ,@(map cadr (cadr expr)))))         ; binding values
+;; LET
+(define (expand-let expr)
+  (let ((bindings (cadr  expr))
+        (body     (cddr expr)))
+    (cond ;; 2 body
+          ((and (list? body) (= (length body) 2))
+                `((lambda ,(map car bindings) ,(expand `(let ((,(gensym) ,(car body))) ,(cadr body)))) ,@(expand (map cadr bindings))))
+          ;; > 2 body
+          ((and (list? body) (> (length body) 2))
+                `((lambda ,(map car bindings) ,(expand `(let ((,(gensym) ,(car body))) ,@(cdr body)))) ,@(expand (map cadr bindings))))
+          ;; 1 body
+          (else `((lambda ,(map car bindings) ,(expand (car body))) ,@(expand (map cadr bindings)))))))
+      
 
 ; ;; LAMBDA
 ; (define (expand-lambda expr)
