@@ -62,7 +62,7 @@
             (if (pair? (cdr lookup-res))
                 ;; Free var
                 (let* ((offset (+ 15 (* 8 (cdr (cdr lookup-res))))) ;; var - 1(tag) + 8(header) + 8(nb-free) = var + 15
-                       (clo-offset (* 8 (closure-pos (ctx-stack ctx)))))
+                       (clo-offset (* 8 (closure-pos (ctx-stack ctx))))) ;; TODO : closure pos : get it from base 'pointer' in ctx ?
                   ;; Get closure
                   (x86-mov cgc (x86-rax) (x86-mem clo-offset (x86-rsp)))
                   ;; Get value & push
