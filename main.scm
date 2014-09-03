@@ -249,7 +249,7 @@
 (define heap-len 50000)
 (define heap-addr #f)
 
-(define alloc-ptr (x86-r9)) ;; TODO : attention a sauvegarder toujours r9
+(define alloc-ptr (x86-r12)) ;; TODO : attention a sauvegarder quand il faut alloc-ptr
 
 ;; CODE
 (define code-len 50000)
@@ -422,7 +422,7 @@
 
     (push-regs cgc prog-regs)
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-    (x86-mov cgc (x86-r9)  (x86-imm-int heap-addr))
+    (x86-mov cgc alloc-ptr  (x86-imm-int heap-addr))
     (x86-mov cgc (x86-r10) (x86-rsp)) ;; Global start in r10
     (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 10))) ;; TODO 10 globals
     ))
@@ -482,7 +482,7 @@
 (define prog-regs ;; Registers at entry and exit points of program
   (list (x86-rcx)
         (x86-rbx)
-        (x86-r9)  ;; Heap
+        (x86-r12)  ;; Heap
         (x86-r10) ;; Globals
         ))
 
@@ -693,7 +693,7 @@
   (let* ((label-addr (asm-label-pos  label))
          (label-name (asm-label-name label))
          (index (get-closure-index ctx))
-         (offset (- (+ (* index 8) 8) 1)))
+         (offset (* index 8)))
     
     (if dev-log
         (println ">>> patching closure " (number->string closure 16) " at "
@@ -704,8 +704,10 @@
                  (number->string label-addr 16)
                  ")"))
     
-    ;; Write procedure entry point in closure slot of this ctx
-    (put-i64 (+ closure offset) label-addr)
+    ;; TODO : TESTER !
+    (let ((cctable-addr (get-i64 (+ closure 7)))) ;; +8(header) - 1(tag)
+      (put-i64 (+ cctable-addr offset) label-addr))
+    
     label-addr))
 
 (define (jump-size jump-addr)
@@ -861,10 +863,10 @@
 
     (define (t . args)
       (let ((result (apply f (reverse args))))
-        (if dev-log
+        ;(if dev-log
           (begin 
             (print "!!! RESULT: ")
-            (pretty-print (list (cons 'f args) '=> result))))))
+            (pretty-print (list (cons 'f args) '=> result)))));)
 
     (t))
     ;(t))
@@ -881,7 +883,6 @@
 
 (define prog (read-prog))
 (test (expand prog))
-
 
 ;(test '((if (< a b) 11 22)))
 ; (test '(

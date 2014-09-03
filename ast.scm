@@ -18,41 +18,75 @@
                                  (cond ((number? ast) 'num)
                                        ((boolean? ast) 'bool)))))))
 
+;; TODO
+(define (closure-pos stack)
+  (if (eq? 'closure (car stack)) ;; TODO 'closure global
+      0
+      (+ 1 (closure-pos (cdr stack)))))
+
 ;; Make lazy code from symbol
 (define (mlc-symbol ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
       (let* ((fs (length (ctx-stack ctx)))
              (lookup-res (assoc ast (ctx-env ctx))))
-        (if lookup-res ;; Id exists
-            (let ((pos (- fs 1 (cdr lookup-res))))
-              (x86-push cgc (x86-mem (* pos 8) (x86-rsp)))
-              (jump-to-version cgc
-                               succ
-                               (ctx-push ctx
-                                         (list-ref (ctx-stack ctx) pos))))
+        (if lookup-res
+            ;; Id exists
+            (if (pair? (cdr lookup-res))
+                ;; Free var TODO
+                (let ((offset (+ 15 (* 8 (cdr (cdr lookup-res)))))) ;; var - 1(tag) + 8(header) + 8(nb-free) = var + 15
+                  ;(gen-dump-regs cgc)
+                  ;(pp (ctx-stack ctx))
+                  ;(pp (closure-pos (ctx-stack ctx)))
+                  ;(x86-mov cgc (x86-rax) (x86-mem (* 8 (- (length (ctx-stack ctx)) 1)) (x86-rsp))) ;; get closure
+                  (x86-mov cgc (x86-rax) (x86-mem (* 8 (closure-pos (ctx-stack ctx))) (x86-rsp))) ;; get closure
+                  
+                  ;; TODO
+                  ; (x86-mov cgc (x86-rbx) (x86-mem -168 alloc-ptr))
+                  ; (x86-mov cgc (x86-rcx) (x86-mem -8 alloc-ptr))
+                  ; (gen-dump-regs cgc)
+                  
+                  
+                  (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
+                  (x86-push cgc (x86-rax))
+                  ;(x86-push cgc (x86-imm-int 40))
+                  (jump-to-version cgc succ (ctx-push ctx 'unknown))) ;; TODO free vars info
+                ;; Local var
+                (let ((pos (- fs 1 (cdr lookup-res))))
+                  (x86-push cgc (x86-mem (* pos 8) (x86-rsp)))
+                  (jump-to-version cgc
+                                   succ
+                                   (ctx-push ctx
+                                             (list-ref (ctx-stack ctx) pos)))))
             ;; Else, lookup in globals
             (let ((glookup-res (assoc ast globals)))
               (if glookup-res
                   (begin (x86-mov cgc (x86-rax) (x86-mem (* -8 (cdr glookup-res)) (x86-r10)))
-                         (x86-push cgc (x86-rax))
-                         (jump-to-version cgc succ (ctx-push ctx 'unknown))) ;; TODO, get ctx info of global
+                    (x86-push cgc (x86-rax))
+                    (jump-to-version cgc succ (ctx-push ctx 'unknown))) ;; TODO, get ctx info of global
                   (error "Can't find variable: " ast))))))))
 
 ;; TODO
-;; TODO : enlever l'utilisation de r9 ?
 (define globals '())
 
 ;; Make lazy code from 'define
 (define (mlc-define ast succ)
-  (let ((lazy-bind (make-lazy-code (lambda (cgc ctx)
+  (let* ((lazy-bind (make-lazy-code (lambda (cgc ctx)
                                      (x86-pop cgc (x86-rax))
-                                     ;; TODO
-                                     (x86-mov cgc (x86-mem (* -8 (length globals)) (x86-r10)) (x86-rax))
-                                     (set! globals (cons (cons (cadr ast) (length globals)) globals))
+                                     (let ((pos (cdr (assoc (cadr ast) globals))))
+                                       (x86-mov cgc (x86-mem (* -8 pos) (x86-r10)) (x86-rax)))
+                                     
                                      (x86-push cgc (x86-imm-int -18)) ;; -18 = #!void
-                                     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'void))))))
-    (gen-ast (caddr ast) lazy-bind)))
+                                     
+                                     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'void)))))
+         (lazy-val (gen-ast (caddr ast) lazy-bind)))
+    
+    (make-lazy-code (lambda (cgc ctx)
+                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f))) ;; TODO : void
+                      (x86-mov cgc (x86-mem (* -8 (length globals)) (x86-r10)) (x86-rax))
+                      (set! globals (cons (cons (cadr ast) (length globals)) globals))
+                      (jump-to-version cgc lazy-val ctx)
+                      ))))
 
 ;; TODO
 (define (mlc-special ast succ)
@@ -71,6 +105,8 @@
 (define (mlc-lambda ast succ)
   (let* (;; Lambda parameters
          (params (cadr ast))
+         ;; Lambda free vars
+         (fvars #f)
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code (lambda (cgc ctx)
                                      ;; Here the stack is :
@@ -97,27 +133,93 @@
                                              0
                                              (lambda (sp ctx ret-addr selector closure)
                                                ;; Extends env with params
-                                               (let ((ctx (make-ctx (ctx-stack ctx) (build-env params 0))))
-                                                 (gen-version-fn closure lazy-body ctx)))))
+                                               ;; TODO : modifier ce let
+                                               (let* ((ctxp (make-ctx (ctx-stack ctx)  (build-env  params 0)))
+                                                      (ctxf (make-ctx (ctx-stack ctxp) (append (ctx-env ctxp) (build-fenv fvars 0)))))
+                                                 
+                                                 (gen-version-fn closure lazy-body ctxf)))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
           
-          ;; Write object header
+          
+          (set! fvars (free-vars (caddr ast) params))
+          
+          ;; 1 - OBJECT HEADER
           (x86-mov cgc (x86-rax) (x86-imm-int 2678)) ;; 000..1010 | 01110 | 110 => Length=table.length | Procedure | Permanent
-          (x86-mov cgc (x86-mem 0  (x86-r9)) (x86-rax))
-          (x86-add cgc (x86-r9) (x86-imm-int 8))
-          ;; Write closure context table
-          (gen-cc-table cgc stub-addr)
-          ;; Tag and push closure
-          (x86-mov cgc (x86-rax) (x86-r9))
-          (x86-sub cgc (x86-rax) (x86-imm-int (+ -1 8))) ;; 1 = tag, -8 = head word
+          (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+          
+          ;; 2 - CC TABLE LOCATION
+          (x86-mov cgc (x86-rax) (x86-imm-int (+ 16 (* 8 (length fvars))))) ;; 16 = 8(header) + 8(location)
+          (x86-add cgc (x86-rax) alloc-ptr)
+          (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+          
+          ;; 3 - FREE VARS
+          (gen-free-vars cgc fvars ctx 16) ;; 16 = 8(header) + 8(location)
+          
+          ;; 4 - CC TABLE
+          (gen-cc-table cgc stub-addr (+ 16 (* 8 (length fvars))))
+          
+          ;; 5 - TAG AND PUSH CLOSURE
+          (x86-mov cgc (x86-rax) alloc-ptr)
+          (x86-add cgc (x86-rax) (x86-imm-int 1));; 1 = tag
           (x86-push cgc (x86-rax))
-          ;; Update alloc ptr
-          (x86-add cgc alloc-ptr (x86-imm-int (* 8 global-cc-table-maxsize)))
+          
+          ;; 6 - UPDATE ALLOC PTR
+          (x86-add cgc alloc-ptr (x86-imm-int (* 8 (+ 2 (length fvars) global-cc-table-maxsize))))
+          
           ;; Jump to next
           (jump-to-version cgc
                            succ
                            (ctx-push ctx
-                                     'lambda)))))))
+                                     'closure)))))))
+
+;; TODO
+(define (build-fenv fvars offset)
+  (if (null? fvars)
+      '()
+      (cons (cons (car fvars) (cons 'free offset)) (build-fenv (cdr fvars) (+ offset 1)))))
+
+;; TODO
+(define (gen-free-vars cgc vars ctx offset)
+  (if (null? vars)
+      '()
+      (let* ((var (car vars))
+             (res (assoc var (ctx-env ctx))))
+        (if res
+            (let* ((fs (length (ctx-stack ctx)))
+                   (pos (- fs 1 (cdr res))))
+              (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp)))
+              (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
+              (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))
+            (error "ZZ Can't find variable: " var))))) ;; TODO ZZ
+        
+
+;; TODO
+(define (free-vars ast clo-env)
+  (cond ;; Literal
+        ((or (number? ast) (boolean? ast)) '())
+        ;; Symbol
+        ((symbol? ast)
+          (cond ((member ast clo-env) '())
+                ((assoc  ast globals) '())
+                (else (list ast))))
+        ;; Pair
+        ((pair? ast)
+          (let ((op (car ast)))
+            (cond ;; If
+                  ((eq? op 'if) (append (free-vars (cadr ast)   clo-env)   ; cond
+                                        (free-vars (caddr ast)  clo-env)   ; then
+                                        (free-vars (cadddr ast) clo-env))) ; else
+                  ;; Lambda
+                  ((eq? op 'lambda) '())
+                  ;; Special
+                  ((member op '($$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number?)) (free-vars-l (cdr ast) clo-env))
+                  ;; Call
+                  (else (free-vars-l ast clo-env)))))))
+
+(define (free-vars-l lst clo-env)
+  (if (null? lst)
+      '()
+      (append (free-vars (car lst) clo-env) (free-vars-l (cdr lst) clo-env))))
 
 ;; Make lazy code from 'if
 (define (mlc-if ast succ)
@@ -238,6 +340,7 @@
       (cond ((eq? name '$$putchar)  label-$$putchar)
             (else (error "NYI"))))))
 
+;; TODO : ajouter les variables libres au schéma / explications
 ;;
 ;; CC Table (Closure Context Table) :
 ;; A closure contains multiple possible entry points (fixed number) for the procedure
@@ -275,9 +378,9 @@
                      idx))))))
               
 ;; Gen a new cc-table at 'alloc-ptr' and write 'stub-addr'
-(define (gen-cc-table cgc stub-addr)
+(define (gen-cc-table cgc stub-addr offset)
   (x86-mov cgc (x86-rax) (x86-imm-int stub-addr))
-  (gen-cc-table-h cgc 0 global-cc-table-maxsize))           
+  (gen-cc-table-h cgc offset global-cc-table-maxsize))           
 
 (define (gen-cc-table-h cgc offset nb-slots)
   (if (> nb-slots 0)
@@ -322,14 +425,21 @@
                                         
                                           ;; Get cc table offset for this ctx
                                           (let* ((closure-index (get-closure-index call-ctx))
-                                                 (offset (- (+ (* closure-index 8) 8) 1))) ;; -1 procdure tag, +8 header word
-                                            ;(gen-dump-stack cgc)
+                                                 (offset (* closure-index 8))) ;; -1 procdure tag, +8 header word
                                             
-                                            
+                                            ;; closure in rax
                                             (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
+                                            
+                                            ;; untag
+                                            (x86-sub cgc (x86-rax) (x86-imm-int 1))
+                                            
+                                            ;; cc table in rax
+                                            (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax)))
+                                            
+                                            ;; add offset of mlc table
                                             (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax))))
                                           
-                                          
+                                          ;; TODO : reecrire proprement mlc-call
                                           (x86-jmp cgc (x86-rax)))))))
          ;; Lazy callee
          (lazy-callee (gen-ast (car ast) lazy-call)))

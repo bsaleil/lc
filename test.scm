@@ -1,5 +1,6 @@
 
 ;; OPERATORS
+
 (define (+ x y)        ($+ x y))
 (define (- x y)        ($- x y))
 (define (* x y)        ($* x y))
@@ -23,9 +24,11 @@
 
 ;; PRINT NUMBER
 
+;; TODO
 (define (print-pos-nz n)
     (if (> n 0)
-        ((lambda (aa nn) ($$putchar (+ (modulo nn 10) 48)))  (print-pos-nz (quotient n 10)) n)
+        (begin (print-pos-nz (quotient n 10))
+               ($$putchar (+ (modulo n 10) 48)))
         #f))
 
 (define (print-pos n)
@@ -33,9 +36,11 @@
         ($$putchar 48)
         (print-pos-nz n)))
 
+;; TODO
 (define (print-nb n)
     (if (< n 0)
-        ((lambda (aa nn) (print-pos (* -1 nn))) ($$putchar 45) n)
+        (begin ($$putchar 45)
+               (print-pos (* -1 n)))
         (print-pos n)))
 
 (define (print-bool n)
@@ -47,8 +52,10 @@
 
 (define (println n)
   (if (number? n)
-      ((lambda (aa) ($$putchar 10)) (print-nb n))
-      ((lambda (aa) ($$putchar 10)) (print-bool n))))
+      (begin (print-nb n)
+             ($$putchar 10))
+      (begin (print-bool n)
+             ($$putchar 10))))
 
 (println 101)
 (println 202)
@@ -71,9 +78,9 @@
 (println (fn1 1 2 3))
 (println (fn1 1 2 10))
 
-;; ------
-;; TEST 2
-;; ------
+; ;; ------
+; ;; TEST 2
+; ;; ------
 
 ; (define fn2
 ;   (lambda (a b c) (+ a c)))
