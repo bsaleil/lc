@@ -1,4 +1,7 @@
 
+(define (gen-native cgc)
+  (gen-$$putchar cgc))
+
 (define label-$$putchar  (asm-make-label #f '$$putchar))
 
 ;; PUTCHAR

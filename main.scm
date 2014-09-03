@@ -21,7 +21,21 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define dev-log #f)
+(define dev-log #f) ;; TODO : Macro
+
+;;-----------------------------------------------------------------------------
+
+;; Types
+(define TAG_NUMBER  0)
+(define TAG_CLOSURE 1)
+(define ENCODING_VOID -18)
+
+;; Context
+(define CTX_NUM  'number)
+(define CTX_BOOL 'boolean)
+(define CTX_CLO  'closure)
+(define CTX_UNK  'unknown)
+
 
 ;;-----------------------------------------------------------------------------
 
@@ -75,12 +89,12 @@
 
 ;;-----------------------------------------------------------------------------
 
-;; Exec errors
-(define ERR_MSG "EXEC ERROR")
+;; Errors
+(define ERR_MSG          "EXEC ERROR")
 (define ERR_NUM_EXPECTED "NUMBER EXPECTED")
 (define ERR_ARR_OVERFLOW "ARITHMETIC OVERFLOW")
 
-;; Code gen to print error
+;; Gen code for error
 ;; stop-exec? to #f to continue after error
 (define (gen-error cgc ctx err #!optional (stop-exec? #t))
 
@@ -248,8 +262,7 @@
 ;; HEAP
 (define heap-len 50000)
 (define heap-addr #f)
-
-(define alloc-ptr (x86-r12)) ;; TODO : attention a sauvegarder quand il faut alloc-ptr
+(define alloc-ptr (x86-r12))
 
 ;; CODE
 (define code-len 50000)
@@ -415,9 +428,8 @@
     (set! label-do-callback-fn-handler
           (gen-handler cgc 'do_callback_fn_handler label-do-callback-fn))
     
-    ;; Gen lib special forms
-    (gen-$$putchar cgc)
-
+    (gen-native cgc)
+    
     (x86-label cgc label-rtlib-skip)
 
     (push-regs cgc prog-regs)
@@ -482,7 +494,7 @@
 (define prog-regs ;; Registers at entry and exit points of program
   (list (x86-rcx)
         (x86-rbx)
-        (x86-r12)  ;; Heap
+        alloc-ptr
         (x86-r10) ;; Globals
         ))
 
@@ -713,38 +725,7 @@
 (define (jump-size jump-addr)
   (if (= (get-u8 jump-addr) #x0f) 6 5))
 
-;; Gen lazy code object from given ast
-(define (gen-ast ast succ)
-  (cond ;; Literal
-        ((or (number? ast) (boolean? ast)) (mlc-literal ast succ))
-        ;; Symbol
-        ((symbol? ast) (mlc-symbol ast succ))
-        ;; Pair
-        ((pair? ast)
-         (let ((op (car ast)))
-           (cond ;; $$msg
-                 ((eq? op '$$msg) (mlc-$$msg ast succ))
-                 ;; TODO
-                 ((member op '($$putchar)) (mlc-special ast succ))
-                 ;; Lambda
-                 ((eq? op 'lambda) (mlc-lambda ast succ))
-                 ;; Operator num
-                 ((member op '($+ $- $* $quotient $modulo $< $> $=)) (mlc-op ast succ op))
-                 ;; Operator gen
-                 ((member op '($eq?)) (mlc-opgen ast succ op))
-                 ;; Tests
-                 ((member op '($number?)) (mlc-test ast succ))
-                 ;; If
-                 ((eq? op 'if) (mlc-if ast succ))
-                 ;; Define
-                 ((eq? op 'define) (mlc-define ast succ))
-                 ;; Call expr
-                 (else (mlc-call ast succ)))))
-        ;; *unknown*
-        (else
-         (error "unknown ast" ast))))
-
-;;
+;; TODO
 (define (list-head lst nb-el)
   (cond ((= nb-el 0) '())
         ((null? lst) (error "Not enough els"))
@@ -823,11 +804,6 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define (build-env ids start)
-  (if (null? ids)
-    '()
-    (cons (cons (car ids) start) (build-env (cdr ids) (+ start 1)))))
-
 (define (lazy-exprs exprs)
   (if (null? exprs)
     (make-lazy-code
@@ -883,29 +859,3 @@
 
 (define prog (read-prog))
 (test (expand prog))
-
-;(test '((if (< a b) 11 22)))
-; (test '(
-;   (define fact
-;     (lambda (n)
-;       (if (= n 0)
-;         1
-;         (if (= n 1)
-;           1
-;           (* n (fact (- n 1)))))))
-
-;   (fact 4)
-
-;   (define fibo
-;     (lambda (n)
-;       (if (= n 0)
-;         0
-;         (if (= n 1)
-;           1
-;           (+ (fibo (- n 1)) (fibo (- n 2)))))))
-
-;   (fibo 4)
-; ))
-
-;(test '((if #t 10 20)))
-;(test '(- (if (< a b) 11 22) (if (< b a) 33 44)))
