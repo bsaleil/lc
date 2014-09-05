@@ -14,7 +14,7 @@
 
 ;;-----------------------------------------------------------------------------
 
-(include "lib.scm")
+(include "native.scm")
 (include "ast.scm")
 (include "x86-debug.scm")
 (include "expand.scm")
@@ -804,17 +804,18 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define (lazy-exprs exprs)
+(define (lazy-exprs exprs succ)
   (if (null? exprs)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (x86-pop cgc (x86-rax))
-        (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
-        (x86-add cgc (x86-rsp) (x86-imm-int (* 8 10))) ;; TODO : ajouter au dessus, plus 10 en variable
-        (pop-regs-reverse cgc prog-regs)
-        (x86-ret cgc)))
-    (gen-ast (car exprs)
-             (lazy-exprs (cdr exprs)))))
+      (or succ
+          (make-lazy-code
+            (lambda (cgc ctx)
+              (x86-pop cgc (x86-rax))
+              (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
+              (x86-add cgc (x86-rsp) (x86-imm-int (* 8 10))) ;; TODO : ajouter au dessus, plus 10 en variable
+              (pop-regs-reverse cgc prog-regs)
+              (x86-ret cgc))))
+      (gen-ast (car exprs)
+               (lazy-exprs (cdr exprs) succ))))
 
 (define (compile-lambda params exprs)
 
@@ -850,12 +851,20 @@
     ;(t 2 1)
 )
 
-;; Read prog from stdin
-(define (read-prog)
-  (let ((r (read)))
-    (if (eof-object? r)
-      '()
-      (cons r (read-prog)))))
+(define (mytest lib prog)
+  
+  (init)
+  
+  (let* ((lazy-prog (lazy-exprs prog #f))
+         (lazy-lib  (lazy-exprs lib  lazy-prog)))
+    
+    (gen-version code-alloc
+                 lazy-lib
+                 (make-ctx '() '())))
+  
+  (##machine-code-block-exec mcb))
 
-(define prog (read-prog))
-(test (expand prog))
+(define lib  (read-all (open-input-file "./lib.scm")))
+(define prog (read-all))
+
+(mytest lib (expand prog))
