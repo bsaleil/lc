@@ -817,41 +817,39 @@
       (gen-ast (car exprs)
                (lazy-exprs (cdr exprs) succ))))
 
-(define (compile-lambda params exprs)
+; (define (compile-lambda params exprs)
 
-  (init)
+;   (init)
 
-  (let ((lazy-code (lazy-exprs exprs)))
-    (gen-version code-alloc
-                 lazy-code
-                 (make-ctx (map (lambda (x) 'unknown) params) (build-env params 0)))
-    (lambda (#!optional (arg1 0) (arg2 0) (arg3 0))
-      (##machine-code-block-exec mcb arg1 arg2 arg3))))
+;   (let ((lazy-code (lazy-exprs exprs)))
+;     (gen-version code-alloc
+;                  lazy-code
+;                  (make-ctx (map (lambda (x) 'unknown) params) (build-env params 0)))
+;     (lambda (#!optional (arg1 0) (arg2 0) (arg3 0))
+;       (##machine-code-block-exec mcb arg1 arg2 arg3))))
 
+; (define (test exprs)
+;   (if dev-log
+;     (begin
+;       (println "******************************************************************")
+;       (print "*** TESTING: ")
+;       (pretty-print (list 'define 'f (list 'lambda '() exprs)))))
+;   (let ((f (compile-lambda '() exprs)))
 
+;     (define (t . args)
+;       (let ((result (apply f (reverse args))))
+;         ;(if dev-log
+;           (begin 
+;             (print "!!! RESULT: ")
+;             (pretty-print (list (cons 'f args) '=> result)))));)
 
-(define (test exprs)
-  (if dev-log
-    (begin
-      (println "******************************************************************")
-      (print "*** TESTING: ")
-      (pretty-print (list 'define 'f (list 'lambda '() exprs)))))
-  (let ((f (compile-lambda '() exprs)))
+;     (t))
+;     ;(t))
+;     ;(t 1 2)
+;     ;(t 2 1)
+; )
 
-    (define (t . args)
-      (let ((result (apply f (reverse args))))
-        ;(if dev-log
-          (begin 
-            (print "!!! RESULT: ")
-            (pretty-print (list (cons 'f args) '=> result)))));)
-
-    (t))
-    ;(t))
-    ;(t 1 2)
-    ;(t 2 1)
-)
-
-(define (mytest lib prog)
+(define (exec lib prog)
   
   (init)
   
@@ -867,4 +865,4 @@
 (define lib  (read-all (open-input-file "./lib.scm")))
 (define prog (read-all))
 
-(mytest lib (expand prog))
+(exec lib (expand prog))
