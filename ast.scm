@@ -341,8 +341,8 @@
                                         (let* ((call-stack (cons 'ctx (cons 'retAddr (list-head (ctx-stack ctx) (+ 1 (length args))))))
                                                (call-ctx   (make-ctx call-stack '())))
                                           
-                                          (let ((ctxid (length LES_CTX)))
-                                            (set! LES_CTX (cons (cons ctxid call-ctx) LES_CTX))
+                                          (let ((ctxid (length test_ctx)))
+                                            (set! test_ctx (cons (cons ctxid call-ctx) test_ctx))
                                             (x86-mov cgc (x86-rax) (x86-imm-int ctxid))
                                             (x86-push cgc (x86-rax)))
                                         
@@ -695,4 +695,5 @@
       (cond ((eq? name '$$putchar)  label-$$putchar)
             (else (error "NYI"))))))
 
-(define LES_CTX '())
+;;
+(define test_ctx '())

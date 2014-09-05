@@ -184,7 +184,7 @@
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
          
          (ctx-id (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
-         (ctx (cdr (assoc ctx-id LES_CTX)))
+         (ctx (cdr (assoc ctx-id test_ctx)))
          
          (closure
           (get-i64 (+ sp (* nb-c-caller-save-regs 8) 24)))
