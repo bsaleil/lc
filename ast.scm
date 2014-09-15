@@ -43,7 +43,7 @@
     (lambda (cgc ctx)
       (if (and (number? ast) (>= ast 536870912)) ;; 2^(32-1-2) (32bits-sign-tags)
           (begin (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding ast)))
-            (x86-push cgc (x86-rax)))
+                 (x86-push cgc (x86-rax)))
           (x86-push cgc (x86-imm-int (obj-encoding ast))))
       (jump-to-version cgc
                        succ
@@ -51,7 +51,9 @@
                                  (cond ((number? ast)  'num)
                                        ((boolean? ast) 'bool)))))))
 
-;; TODO
+;;
+;; Make lazy code from QUOTE
+;;
 (define (mlc-quote ast succ)
   (let ((quoted-expr (car (cdr ast))))
     (if (null? quoted-expr) ;; '()
@@ -671,10 +673,8 @@
                   ((eq? op 'if) (append (free-vars (cadr ast)   clo-env)   ; cond
                                         (free-vars (caddr ast)  clo-env)   ; then
                                         (free-vars (cadddr ast) clo-env))) ; else
-                  ;; Lambda
-                  ((eq? op 'lambda) '())
-                  ;; Quote
-                  ((eq? op 'quote) '())
+                  ;; Lambda & Quote
+                  ((or (eq? op 'lambda) (eq? op 'quote)) '())
                   ;; Special
                   ((member op '($$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number?)) (free-vars-l (cdr ast) clo-env))
                   ;; Call
