@@ -862,7 +862,7 @@
   
   (##machine-code-block-exec mcb))
 
-(define lib  (read-all (open-input-file "./lib.scm")))
+(define lib  (expand (read-all (open-input-file "./lib.scm"))))
 (define prog (read-all))
 
 (exec lib (expand prog))
