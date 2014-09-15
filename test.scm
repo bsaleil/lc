@@ -1,3 +1,4 @@
+
 (println 101)
 (println 202)
 (println 303)
@@ -34,9 +35,9 @@
 (println (fn2 1 2 3))
 ;(println (fn2 #t 2 3))
 
-; ;; ----
-; ;; FACT
-; ;; ----
+;; ----
+;; FACT
+;; ----
 
 (define (fact n)
    (if (= n 0)

@@ -9,7 +9,7 @@
 (define (< x y)        ($< x y))
 (define (> x y)        ($> x y))
 (define (= x y)        ($= x y))
-(define (eq? x y)        ($eq? x y))
+(define (eq? x y)      ($eq? x y))
 
 ;; TYPE TESTS
 

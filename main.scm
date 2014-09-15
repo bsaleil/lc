@@ -97,6 +97,7 @@
 ;; Gen code for error
 ;; stop-exec? to #f to continue after error
 (define (gen-error cgc ctx err #!optional (stop-exec? #t))
+;; TODO : revoirn besoin de tous ces arguments ?
 
   ;; Put error msg in RAX
   (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding err)))
@@ -115,10 +116,12 @@
        ))
 
   (if stop-exec?
-    (begin 
-      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding -1)))
-      (x86-add cgc (x86-rsp) (x86-imm-int (* (length (ctx-stack ctx)) 8)))
+    (begin
+      (x86-mov cgc (x86-rax) (x86-imm-int mcb-addr))
+      (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
+      (x86-mov cgc (x86-rax) (x86-imm-int -1))
       (pop-regs-reverse cgc prog-regs)
+      (x86-ret cgc)
       (x86-ret cgc)))
 )
 
@@ -276,7 +279,7 @@
 (define (init-mcb)
   (set! mcb (##make-machine-code-block mcb-len))
   (set! mcb-addr (##foreign-address mcb))
-  (set! heap-addr mcb-addr)
+  (set! heap-addr (+ mcb-addr 8))
   (set! code-addr (+ mcb-addr heap-len)))
 
 (define (write-mcb code start)
@@ -433,6 +436,11 @@
     (x86-label cgc label-rtlib-skip)
 
     (push-regs cgc prog-regs)
+    
+    ;; Put address of the bottom of the stack (after saving regs) at mcb-addr + 0
+    (x86-mov cgc (x86-rax) (x86-imm-int mcb-addr))
+    (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rsp))
+    
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
     (x86-mov cgc alloc-ptr  (x86-imm-int heap-addr))
     (x86-mov cgc (x86-r10) (x86-rsp)) ;; Global start in r10
