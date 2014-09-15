@@ -21,7 +21,8 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define dev-log #f) ;; TODO : Macro
+;; NOTE : Should be a macro
+(define dev-log #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -96,8 +97,7 @@
 
 ;; Gen code for error
 ;; stop-exec? to #f to continue after error
-(define (gen-error cgc ctx err #!optional (stop-exec? #t))
-;; TODO : revoirn besoin de tous ces arguments ?
+(define (gen-error cgc err #!optional (stop-exec? #t))
 
   ;; Put error msg in RAX
   (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding err)))
@@ -117,7 +117,7 @@
 
   (if stop-exec?
     (begin
-      (x86-mov cgc (x86-rax) (x86-imm-int mcb-addr))
+      (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
       (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
       (x86-mov cgc (x86-rax) (x86-imm-int -1))
       (pop-regs-reverse cgc prog-regs)
@@ -271,7 +271,14 @@
 (define code-len 50000)
 (define code-addr #f)
 
-;; MCB
+;; MCB :
+;; 0                 heap-len              mcb-len
+;; +--------------------+--------------------+
+;; |    Heap            |    Code            |
+;; |                    |                    |
+;; |                    |                    |
+;; +--------------------+--------------------+
+
 (define mcb #f)
 (define mcb-len (+ heap-len code-len))
 (define mcb-addr #f)
@@ -281,6 +288,23 @@
   (set! mcb-addr (##foreign-address mcb))
   (set! heap-addr (+ mcb-addr 8))
   (set! code-addr (+ mcb-addr heap-len)))
+
+;; BLOCK :
+;; 0          8                       (nb-globals * 8 + 8)
+;; +----------+----------+----------+----------+
+;; | Bottom   | Global 1 |    ...   | Global n |
+;; | stack    |          |          |          |
+;; | addr     |          |          |          |
+;; +----------+----------+----------+----------+
+
+(define block #f)
+;; TODO : fixed number of globals
+(define block-len (* 8 (+ 1 100))) ;; 1 stack addr, 100 globals
+(define block-addr #f)
+
+(define (init-block)
+  (set! block (##make-machine-code-block block-len))
+  (set! block-addr (##foreign-address block)))
 
 (define (write-mcb code start)
   (let ((len (u8vector-length code)))
@@ -322,6 +346,7 @@
 (define stub-freelist #f)
 
 (define (init-code-allocator)
+  (init-block)
   (init-mcb)
   (set! code-alloc code-addr)
   (set! stub-alloc (+ mcb-addr mcb-len))
@@ -437,14 +462,13 @@
 
     (push-regs cgc prog-regs)
     
-    ;; Put address of the bottom of the stack (after saving regs) at mcb-addr + 0
-    (x86-mov cgc (x86-rax) (x86-imm-int mcb-addr))
+    ;; Put bottom of the stack (after saving registers) at "block-addr + 0"
+    (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
     (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rsp))
     
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-    (x86-mov cgc alloc-ptr  (x86-imm-int heap-addr))
-    (x86-mov cgc (x86-r10) (x86-rsp)) ;; Global start in r10
-    (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 10))) ;; TODO 10 globals
+    (x86-mov cgc alloc-ptr  (x86-imm-int heap-addr))       ;; Heap addr ub alloc-ptr
+    (x86-mov cgc (x86-r10) (x86-imm-int (+ block-addr 8))) ;; Globals addr in r10
     ))
 
 (define (init)
@@ -733,11 +757,11 @@
 (define (jump-size jump-addr)
   (if (= (get-u8 jump-addr) #x0f) 6 5))
 
-;; TODO
-(define (list-head lst nb-el)
-  (cond ((= nb-el 0) '())
+;; Return n firsts elements of lst
+(define (list-head lst n)
+  (cond ((= n 0) '())
         ((null? lst) (error "Not enough els"))
-        (else (cons (car lst) (list-head (cdr lst) (- nb-el 1))))))
+        (else (cons (car lst) (list-head (cdr lst) (- n 1))))))
 
 ;; Gen ast for a list of exprs with successor 'succ'
 (define (gen-ast-l lst succ)
@@ -819,7 +843,6 @@
             (lambda (cgc ctx)
               (x86-pop cgc (x86-rax))
               (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
-              (x86-add cgc (x86-rsp) (x86-imm-int (* 8 10))) ;; TODO : ajouter au dessus, plus 10 en variable
               (pop-regs-reverse cgc prog-regs)
               (x86-ret cgc))))
       (gen-ast (car exprs)

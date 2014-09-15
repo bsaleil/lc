@@ -80,7 +80,7 @@
             ;; Else, lookup in globals
             (let ((glookup-res (assoc ast globals)))
               (if glookup-res
-                  (begin (x86-mov cgc (x86-rax) (x86-mem (* -8 (cdr glookup-res)) (x86-r10)))
+                  (begin (x86-mov cgc (x86-rax) (x86-mem (* 8 (cdr glookup-res)) (x86-r10)))
                     (x86-push cgc (x86-rax))
                     (jump-to-version cgc succ (ctx-push ctx 'unknown))) ;; TODO, get ctx info of global
                   (error "Can't find variable: " ast))))))))
@@ -93,7 +93,7 @@
   (let* ((lazy-bind (make-lazy-code (lambda (cgc ctx)
                                      (x86-pop cgc (x86-rax))
                                      (let ((pos (cdr (assoc (cadr ast) globals))))
-                                       (x86-mov cgc (x86-mem (* -8 pos) (x86-r10)) (x86-rax)))
+                                       (x86-mov cgc (x86-mem (* 8 pos) (x86-r10)) (x86-rax)))
                                      
                                      (x86-push cgc (x86-imm-int ENCODING_VOID))
                                      
@@ -102,7 +102,7 @@
     
     (make-lazy-code (lambda (cgc ctx)
                       (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
-                      (x86-mov cgc (x86-mem (* -8 (length globals)) (x86-r10)) (x86-rax))
+                      (x86-mov cgc (x86-mem (* 8 (length globals)) (x86-r10)) (x86-rax))
                       (set! globals (cons (cons (cadr ast) (length globals)) globals))
                       (jump-to-version cgc lazy-val ctx)
                       ))))
@@ -376,7 +376,7 @@
 ;;
 (define (mlc-op-num ast succ op)
   (letrec (   ;; Lazy code used if type test fail
-              (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ctx ERR_NUM_EXPECTED))))
+              (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_NUM_EXPECTED))))
               ;; Lazy code of left operand
               (lazy-ast-left  (gen-ast (cadr ast)  lazy-ast-right))
               ;; Lazy code of right operand
@@ -387,7 +387,7 @@
                                 
                                 ;; Arithmetic overflow
                                 (let* ((ctx-overflow (ctx-pop ctx)) ;; First operand pop
-                                       (lazy-overflow (make-lazy-code (lambda (cgc ctx) (gen-error cgc ctx ERR_ARR_OVERFLOW))))
+                                       (lazy-overflow (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_ARR_OVERFLOW))))
                                        (label-jo (asm-make-label #f (new-sym 'jump-overflow)))
                                        ;; TODO : new kind of stub (add-callback without ret-addr and without selector?)
                                        ;; TODO : overflow stub could be global
@@ -487,15 +487,15 @@
                                (cond ((eq? left-type 'num)
                                       (cond ((eq? right-type 'num)     (jump-to-version cgc lazy-code-op ctx))
                                             ((eq? right-type 'unknown) (jump-to-version cgc (gen-dyn-type-test 0 rctx lazy-code-op ctx lazy-fail) ctx))
-                                            (else                      (gen-error cgc ctx ERR_NUM_EXPECTED))))
+                                            (else                      (gen-error cgc ERR_NUM_EXPECTED))))
                                      
                                      ((eq? left-type 'unknown)
                                       (cond ((eq? right-type 'num)     (jump-to-version cgc (gen-dyn-type-test 1 lctx lazy-code-op ctx lazy-fail) ctx))
                                             ((eq? right-type 'unknown) (let* ((right-test (gen-dyn-type-test 1 lrctx lazy-code-op ctx lazy-fail))
                                                                               (left-test  (gen-dyn-type-test 0 lctx right-test ctx lazy-fail)))
                                                                          (jump-to-version cgc left-test ctx)))
-                                            (else                      (gen-error cgc ctx ERR_NUM_EXPECTED))))
-                                     (else (gen-error cgc ctx ERR_NUM_EXPECTED))))))))
+                                            (else                      (gen-error cgc ERR_NUM_EXPECTED))))
+                                     (else (gen-error cgc ERR_NUM_EXPECTED))))))))
     ;; Return left operand lazy-code
     lazy-ast-left))
 
