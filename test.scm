@@ -12,6 +12,8 @@
 (println (number?  10))
 (println (number?  #f))
 (println (boolean? #f))
+(println (null? 10))
+(println (null? '()))
 
 
 ;; ------

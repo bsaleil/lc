@@ -15,6 +15,8 @@
          (let ((op (car ast)))
            (cond ;; TODO
                  ((member op '($$putchar)) (mlc-special ast succ))
+                 ;; Quote
+                 ((eq? 'quote (car ast)) (mlc-quote ast succ))
                  ;; Lambda
                  ((eq? op 'lambda) (mlc-lambda ast succ))
                  ;; Operator num
@@ -41,13 +43,23 @@
     (lambda (cgc ctx)
       (if (and (number? ast) (>= ast 536870912)) ;; 2^(32-1-2) (32bits-sign-tags)
           (begin (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding ast)))
-                 (x86-push cgc (x86-rax)))
+            (x86-push cgc (x86-rax)))
           (x86-push cgc (x86-imm-int (obj-encoding ast))))
       (jump-to-version cgc
                        succ
                        (ctx-push ctx
-                                 (cond ((number? ast) 'num)
+                                 (cond ((number? ast)  'num)
                                        ((boolean? ast) 'bool)))))))
+
+;; TODO
+(define (mlc-quote ast succ)
+  (let ((quoted-expr (car (cdr ast))))
+    (if (null? quoted-expr) ;; '()
+        (make-lazy-code
+          (lambda (cgc ctx)
+            (x86-push cgc (x86-imm-int (obj-encoding '())))
+            (jump-to-version cgc succ (ctx-push ctx 'null))))
+        (error "NYI"))))
 
 ;;
 ;; Make lazy code from SYMBOL
@@ -661,6 +673,8 @@
                                         (free-vars (cadddr ast) clo-env))) ; else
                   ;; Lambda
                   ((eq? op 'lambda) '())
+                  ;; Quote
+                  ((eq? op 'quote) '())
                   ;; Special
                   ((member op '($$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number?)) (free-vars-l (cdr ast) clo-env))
                   ;; Call

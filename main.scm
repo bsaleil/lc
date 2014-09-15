@@ -316,6 +316,7 @@
           mcb))))
 
 (define (code-gen arch addr gen #!optional ctx)
+
   (let* ((cgc (make-codegen-context))
          (endianness 'le))
 
@@ -327,7 +328,7 @@
     (if ctx
       (gen cgc ctx)
       (gen cgc))
-
+    
     (let ((code (asm-assemble-to-u8vector cgc)))
       (if dev-log
           (begin

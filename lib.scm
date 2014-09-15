@@ -23,6 +23,9 @@
             #t
             #f)))
 
+(define (null? n)
+	(eq? n '()))
+
 ;; PRINT
 
 (define (print-pos-nz n)
@@ -50,8 +53,10 @@
              ($$putchar 102))))
 
 (define (println n)
-  (if (number? n)
-      (begin (print-nb n)
-             ($$putchar 10))
-      (begin (print-bool n)
-             ($$putchar 10))))
+  (if (null? n)
+      ($$putchar 10)
+	  (if (number? n)
+	      (begin (print-nb n)
+	             ($$putchar 10))
+	      (begin (print-bool n)
+	             ($$putchar 10)))))
