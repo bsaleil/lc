@@ -8,13 +8,16 @@
 (println -303)
 (println #f)
 (println #t)
+(println '())
+(println (lambda (x) x))
 (println (boolean? 10))
 (println (number?  10))
 (println (number?  #f))
 (println (boolean? #f))
 (println (null? 10))
 (println (null? '()))
-
+(println (procedure? 10))
+(println (procedure? (lambda (x) x)))
 
 ;; ------
 ;; TEST 1

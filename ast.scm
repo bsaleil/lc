@@ -29,7 +29,7 @@
                  ;; Operator gen
                  ((member op '($eq?)) (mlc-op-gen ast succ op))
                  ;; Tests
-                 ((member op '($number?)) (mlc-test ast succ))
+                 ((member op '($number? $procedure?)) (mlc-test ast succ))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -540,16 +540,21 @@
 ;; Make lazy code from TYPE TEST
 ;;
 (define (mlc-test ast succ)
-  (let ((lazy-test (make-lazy-code (lambda (cgc ctx)
-                                     (let ((label-done (asm-make-label cgc (new-sym 'label_done))))
-                                       (x86-pop cgc (x86-rax))
-                                       (x86-and cgc (x86-rax) (x86-imm-int 3))
-                                       (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                       (x86-je cgc  label-done) ;; TODO : only number
-                                       (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                       (x86-label cgc label-done)
-                                       (x86-push cgc (x86-rax))
-                                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'bool)))))))
+  
+  (let* ((op (car ast))
+         (lazy-test (make-lazy-code (lambda (cgc ctx)
+                                      (let ((label-done (asm-make-label cgc (new-sym 'label_done))))
+                                        (x86-pop cgc (x86-rax))
+                                        (x86-and cgc (x86-rax) (x86-imm-int 3))
+                                        ;; No cmp needed for "$number?"
+                                        (cond ((eq? op '$procedure?)
+                                                  (x86-cmp cgc (x86-rax) (x86-imm-int TAG_CLOSURE))))
+                                        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                                        (x86-je cgc  label-done)
+                                        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                        (x86-label cgc label-done)
+                                        (x86-push cgc (x86-rax))
+                                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'bool)))))))
     (gen-ast (cadr ast) lazy-test)))
 
 ;;-----------------------------------------------------------------------------
@@ -673,7 +678,7 @@
                   ;; Lambda & Quote
                   ((or (eq? op 'lambda) (eq? op 'quote)) '())
                   ;; Special
-                  ((member op '($$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number?)) (free-vars-l (cdr ast) clo-env))
+                  ((member op '($$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure?)) (free-vars-l (cdr ast) clo-env))
                   ;; Call
                   (else (free-vars-l ast clo-env)))))))
 
