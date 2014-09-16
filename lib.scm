@@ -16,6 +16,11 @@
       #t
       #f))
 
+;; LISTS
+
+(define (cons a b)
+  ($cons a b))
+
 ;; TYPE TESTS
 
 (define (number? n)
@@ -23,6 +28,9 @@
 
 (define (procedure? n)
   ($procedure? n))
+
+(define (pair? n)
+  ($pair? n))
 
 (define (boolean? n)
     (if (eq? n #t)

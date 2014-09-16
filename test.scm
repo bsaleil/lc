@@ -18,6 +18,10 @@
 (println (null? '()))
 (println (procedure? 10))
 (println (procedure? (lambda (x) x)))
+(println (pair? 10))
+(println (pair? (cons 1 2)))
+(println (pair? (lambda (x) x)))
+(println (pair? (cons (lambda (x) x) (lambda (y) y))))
 
 ;; ------
 ;; TEST 1

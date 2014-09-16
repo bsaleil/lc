@@ -18,8 +18,10 @@
         ;; Pair
         ((pair? ast)
          (let ((op (car ast)))
-           (cond ;; Special
-                 ((member op '($$putchar)) (mlc-special ast succ))
+           (cond ;; Special TODO : call
+                 ((member op '($$putchar)) (mlc-special-c ast succ))
+                 ;; Special TODO : !call
+                 ((member op '($cons)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote ast succ))
                  ;; Lambda
@@ -29,7 +31,7 @@
                  ;; Operator gen
                  ((member op '($eq?)) (mlc-op-gen ast succ op))
                  ;; Tests
-                 ((member op '($number? $procedure?)) (mlc-test ast succ))
+                 ((member op '($number? $procedure? $pair?)) (mlc-test ast succ))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -127,9 +129,9 @@
                       ))))
 
 ;;
-;; Make lazy code from SPECIAL FORM
+;; Make lazy code from SPECIAL FORM (called specials)
 ;;
-(define (mlc-special ast succ)
+(define (mlc-special-c ast succ)
   (let* ((name (car ast))
          (label (cond ((eq? name '$$putchar) label-$$putchar)
                       (else "NYI special")))
@@ -140,6 +142,35 @@
     (if (> (length (cdr ast)) 0)
         (gen-ast-l (cdr ast) lazy-special)
         lazy-special)))
+
+;;
+;; Make lazy code from SPECIAL FORM (inlined specials)
+;;
+(define (mlc-special-nc ast succ)
+  (let* ((special (car ast))
+         (lazy-special
+           (make-lazy-code
+             (lambda (cgc ctx)
+                (cond ((eq? special '$cons)
+                          (begin ;; TODO COMMENTER ?
+                                 ;; TODO WRONG SIZE
+                                 ;; TODO : mov directly to memory
+                                 (x86-mov cgc (x86-rax) (x86-imm-int 2574));; 000..1010 | 00001 | 110 => Length=table.length | Pair | Permanent
+                                 (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+                                 (x86-pop cgc (x86-rbx))
+                                 (x86-pop cgc (x86-rax))
+                                 (x86-mov cgc (x86-mem 8 alloc-ptr)  (x86-rax))
+                                 (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
+                                 (x86-mov cgc (x86-rax) alloc-ptr)
+                                 (x86-add cgc (x86-rax) (x86-imm-int 1)) ;; TODO : mlc-lambda aussi, type mem obj
+                                 (x86-push cgc (x86-rax))
+                                 (x86-add cgc alloc-ptr (x86-imm-int 24))
+                                 (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) 'pair))))
+                      (else (error "NYI")))))))
+    (if (> (length (cdr ast)) 0)
+        (gen-ast-l (cdr ast) lazy-special)
+        lazy-special)))
+    
 
 ;;
 ;; Make lazy code from LAMBDA
@@ -185,6 +216,7 @@
           (set! fvars (free-vars (caddr ast) params))
           
           ;; 1 - WRITE OBJECT HEADER
+          ;; TODO : object size is wrong
           (x86-mov cgc (x86-rax) (x86-imm-int 2678)) ;; 000..1010 | 01110 | 110 => Length=table.length | Procedure | Permanent
           (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
           
@@ -539,22 +571,39 @@
 ;;
 ;; Make lazy code from TYPE TEST
 ;;
-(define (mlc-test ast succ)
-  
+;; TODO : Mettre les tags en global
+(define (mlc-test ast succ)  
   (let* ((op (car ast))
-         (lazy-test (make-lazy-code (lambda (cgc ctx)
-                                      (let ((label-done (asm-make-label cgc (new-sym 'label_done))))
-                                        (x86-pop cgc (x86-rax))
-                                        (x86-and cgc (x86-rax) (x86-imm-int 3))
-                                        ;; No cmp needed for "$number?"
-                                        (cond ((eq? op '$procedure?)
-                                                  (x86-cmp cgc (x86-rax) (x86-imm-int TAG_CLOSURE))))
-                                        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                        (x86-je cgc  label-done)
-                                        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                        (x86-label cgc label-done)
-                                        (x86-push cgc (x86-rax))
-                                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'bool)))))))
+         (lazy-test (make-lazy-code
+                      (lambda (cgc ctx)
+                        (let ((label-done (asm-make-label cgc (new-sym 'label_done))))
+                          (x86-pop   cgc (x86-rax))
+                          (if (eq? op '$number?)
+                              ;; $number?
+                              (begin (x86-and   cgc (x86-rax) (x86-imm-int 3))
+                                     (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                                     (x86-je    cgc label-done)
+                                     (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #f))))
+                              ;; Others
+                              (begin (x86-mov cgc (x86-rbx) (x86-rax))
+                                     (x86-and cgc (x86-rax) (x86-imm-int 3))
+                                     (x86-cmp cgc (x86-rax) (x86-imm-int 1)) ;; CMP avec tag memory allocated obj
+                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                     (x86-jne cgc label-done)
+                                     ;; It's a memory allocated obj
+                                     (x86-mov cgc (x86-rbx) (x86-mem -1 (x86-rbx)))
+                                     (x86-and cgc (x86-rbx) (x86-imm-int 248))
+                                     (x86-shr cgc (x86-rbx) (x86-imm-int 3))
+                                     (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int 14))) ;; TODO : global type tags
+                                           ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int 1)))
+                                           (else (error "NYI")))
+                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                     (x86-jne cgc label-done)
+                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))))
+                          ;; 
+                          (x86-label cgc label-done)
+                          (x86-push  cgc (x86-rax))
+                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'bool)))))))
     (gen-ast (cadr ast) lazy-test)))
 
 ;;-----------------------------------------------------------------------------
@@ -678,7 +727,7 @@
                   ;; Lambda & Quote
                   ((or (eq? op 'lambda) (eq? op 'quote)) '())
                   ;; Special
-                  ((member op '($$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure?)) (free-vars-l (cdr ast) clo-env))
+                  ((member op '($cons $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env))
                   ;; Call
                   (else (free-vars-l ast clo-env)))))))
 
