@@ -358,10 +358,10 @@
                                         ;; Call ctx in rdx
                                         (let* ((call-stack    (cons 'ctx (cons 'retAddr (list-head (ctx-stack ctx) (+ 1 (length args))))))
                                                (call-ctx      (make-ctx call-stack '()))
-                                               (ctx-id        (length test_ctx))
+                                               (ctx-id        (length ctx_ids))
                                                (cct-offset    (* 8 (get-closure-index call-ctx))))
                                           
-                                          (set! test_ctx (cons (cons ctx-id call-ctx) test_ctx))
+                                          (set! ctx_ids (cons (cons ctx-id call-ctx) ctx_ids))
                                           (x86-mov cgc (x86-rax) (x86-imm-int ctx-id))
                                           (x86-push cgc (x86-rax))
                                         
@@ -704,5 +704,5 @@
       (cond ((eq? name '$$putchar)  label-$$putchar)
             (else (error "NYI"))))))
 
-;; TODO : test_ctx to solve segfault on ctx read
-(define test_ctx '())
+;; TODO : ctx_ids to solve segfault on ctx read
+(define ctx_ids '())
