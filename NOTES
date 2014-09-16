@@ -2,18 +2,5 @@
 == DEV NOTES
 ==
 
-RCX : compteur
-R9  : alloc-ptr
-
--- Tester en enlevant le passage du ctx par id pour bug
--- revoir les overflow, test dyn, et fermetures (patch, etc...)
-
-
-
-
-+----------+----------+----------+----------+----------+----------+
-|          |          |          |          |          |          |
-|  HEADER  | NB FREE  |  Free 1  | Free 2   | CC Entry | CC Entry |
-|          |    *8    |          |          |  1       |  2       |
-|          |          |          |          |          |          |
-+----------+----------+----------+----------+----------+----------+
+-- tester en enlevant le passage du ctx par id pour bug
+-- modifier les tags bruts par leurs ids globaux

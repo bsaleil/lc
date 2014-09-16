@@ -18,9 +18,9 @@
         ;; Pair
         ((pair? ast)
          (let ((op (car ast)))
-           (cond ;; Special TODO : call
+           (cond ;; Special with call
                  ((member op '($$putchar)) (mlc-special-c ast succ))
-                 ;; Special TODO : !call
+                 ;; Special without call
                  ((member op '($cons)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote ast succ))
@@ -152,20 +152,22 @@
            (make-lazy-code
              (lambda (cgc ctx)
                 (cond ((eq? special '$cons)
-                          (begin ;; TODO COMMENTER ?
-                                 ;; TODO WRONG SIZE
-                                 ;; TODO : mov directly to memory
-                                 (x86-mov cgc (x86-rax) (x86-imm-int 2574));; 000..1010 | 00001 | 110 => Length=table.length | Pair | Permanent
-                                 (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-                                 (x86-pop cgc (x86-rbx))
-                                 (x86-pop cgc (x86-rax))
-                                 (x86-mov cgc (x86-mem 8 alloc-ptr)  (x86-rax))
-                                 (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
-                                 (x86-mov cgc (x86-rax) alloc-ptr)
-                                 (x86-add cgc (x86-rax) (x86-imm-int 1)) ;; TODO : mlc-lambda aussi, type mem obj
-                                 (x86-push cgc (x86-rax))
-                                 (x86-add cgc alloc-ptr (x86-imm-int 24))
-                                 (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) 'pair))))
+                          (let ((header-word (+ (arithmetic-shift 3 8) (arithmetic-shift 1 3) 6))) ;; 000...011 | STAG_PAIR | 110 => Length | Pair | Permanent
+                            (begin ;; TODO : mov directly to memory
+                                   ;; Write object header
+                                   (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+                                   (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+                                   (x86-pop cgc (x86-rbx))
+                                   (x86-pop cgc (x86-rax))
+                                   ;; Write pair
+                                   (x86-mov cgc (x86-mem 8 alloc-ptr)  (x86-rax))
+                                   (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
+                                   ;; Tag,Push closure and update alloc-ptr
+                                   (x86-mov cgc (x86-rax) alloc-ptr)
+                                   (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                                   (x86-push cgc (x86-rax))
+                                   (x86-add cgc alloc-ptr (x86-imm-int 24))
+                                   (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) 'pair)))))
                       (else (error "NYI")))))))
     (if (> (length (cdr ast)) 0)
         (gen-ast-l (cdr ast) lazy-special)
@@ -216,9 +218,9 @@
           (set! fvars (free-vars (caddr ast) params))
           
           ;; 1 - WRITE OBJECT HEADER
-          ;; TODO : object size is wrong
-          (x86-mov cgc (x86-rax) (x86-imm-int 2678)) ;; 000..1010 | 01110 | 110 => Length=table.length | Procedure | Permanent
-          (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+          (let ((header-word (+ (arithmetic-shift (+ 2 (length fvars)) 8) (arithmetic-shift STAG_PROCEDURE 3) 6))) ;; 2 + nbFreeVars | STAG_PROCEDURE | 110 => Length | Procedure | Permanent
+            (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+            (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax)))
           
           ;; 2 - WRITE CC TABLE LOCATION
           (x86-mov cgc (x86-rax) (x86-imm-int (+ 16 (* 8 (length fvars))))) ;; 16 = 8(header) + 8(location)
@@ -233,7 +235,7 @@
           
           ;; 5 - TAG AND PUSH CLOSURE
           (x86-mov cgc (x86-rax) alloc-ptr)
-          (x86-add cgc (x86-rax) (x86-imm-int 1));; 1 = tag
+          (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
           (x86-push cgc (x86-rax))
           
           ;; 6 - UPDATE ALLOC PTR
@@ -397,10 +399,11 @@
                                           (x86-mov cgc (x86-rax) (x86-imm-int ctx-id))
                                           (x86-push cgc (x86-rax))
                                         
+                                        ;; TODO : procedure type test
                                         
                                         ;; 1 - Get cc-table
-                                        (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))                ;; get closure
-                                        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_CLOSURE) (x86-rax))) ;; get cc-table
+                                        (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))               ;; get closure
+                                        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; get cc-table
                                         
                                         ;; 2 - Get entry point in cc-table
                                         (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
@@ -594,8 +597,8 @@
                                      (x86-mov cgc (x86-rbx) (x86-mem -1 (x86-rbx)))
                                      (x86-and cgc (x86-rbx) (x86-imm-int 248))
                                      (x86-shr cgc (x86-rbx) (x86-imm-int 3))
-                                     (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int 14))) ;; TODO : global type tags
-                                           ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int 1)))
+                                     (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int STAG_PROCEDURE))) ;; TODO : global type tags
+                                           ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int STAG_PAIR)))
                                            (else (error "NYI")))
                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
                                      (x86-jne cgc label-done)

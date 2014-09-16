@@ -26,10 +26,14 @@
 
 ;;-----------------------------------------------------------------------------
 
-;; Types
+;; Types tag
 (define TAG_NUMBER  0)
-(define TAG_CLOSURE 1)
+(define TAG_MEMOBJ 1)
 (define ENCODING_VOID -18)
+
+;; Types subtag
+(define STAG_PROCEDURE 14)
+(define STAG_PAIR    1)
 
 ;; Context
 (define CTX_NUM  'number)
@@ -749,7 +753,7 @@
                  (number->string label-addr 16)
                  ")"))
     
-    (let ((cctable-addr (get-i64 (- (+ closure 8) TAG_CLOSURE)))) ;; +8(header) - 1(tag)
+    (let ((cctable-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ)))) ;; +8(header) - 1(tag)
       (put-i64 (+ cctable-addr offset) label-addr))
     
     label-addr))
