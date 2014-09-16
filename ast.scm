@@ -574,7 +574,6 @@
 ;;
 ;; Make lazy code from TYPE TEST
 ;;
-;; TODO : Mettre les tags en global
 (define (mlc-test ast succ)  
   (let* ((op (car ast))
          (lazy-test (make-lazy-code
@@ -597,7 +596,7 @@
                                      (x86-mov cgc (x86-rbx) (x86-mem -1 (x86-rbx)))
                                      (x86-and cgc (x86-rbx) (x86-imm-int 248))
                                      (x86-shr cgc (x86-rbx) (x86-imm-int 3))
-                                     (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int STAG_PROCEDURE))) ;; TODO : global type tags
+                                     (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int STAG_PROCEDURE)))
                                            ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int STAG_PAIR)))
                                            (else (error "NYI")))
                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
