@@ -11,6 +11,11 @@
 (define (= x y)        ($= x y))
 (define (eq? x y)      ($eq? x y))
 
+(define (not x)
+  (if (eq? x #f)
+      #t
+      #f))
+
 ;; TYPE TESTS
 
 (define (number? n)

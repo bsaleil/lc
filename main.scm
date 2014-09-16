@@ -749,8 +749,7 @@
                  (number->string label-addr 16)
                  ")"))
     
-    ;; TODO : TESTER !
-    (let ((cctable-addr (get-i64 (+ closure 7)))) ;; +8(header) - 1(tag)
+    (let ((cctable-addr (get-i64 (- (+ closure 8) TAG_CLOSURE)))) ;; +8(header) - 1(tag)
       (put-i64 (+ cctable-addr offset) label-addr))
     
     label-addr))
@@ -849,38 +848,6 @@
       (gen-ast (car exprs)
                (lazy-exprs (cdr exprs) succ))))
 
-; (define (compile-lambda params exprs)
-
-;   (init)
-
-;   (let ((lazy-code (lazy-exprs exprs)))
-;     (gen-version code-alloc
-;                  lazy-code
-;                  (make-ctx (map (lambda (x) 'unknown) params) (build-env params 0)))
-;     (lambda (#!optional (arg1 0) (arg2 0) (arg3 0))
-;       (##machine-code-block-exec mcb arg1 arg2 arg3))))
-
-; (define (test exprs)
-;   (if dev-log
-;     (begin
-;       (println "******************************************************************")
-;       (print "*** TESTING: ")
-;       (pretty-print (list 'define 'f (list 'lambda '() exprs)))))
-;   (let ((f (compile-lambda '() exprs)))
-
-;     (define (t . args)
-;       (let ((result (apply f (reverse args))))
-;         ;(if dev-log
-;           (begin 
-;             (print "!!! RESULT: ")
-;             (pretty-print (list (cons 'f args) '=> result)))));)
-
-;     (t))
-;     ;(t))
-;     ;(t 1 2)
-;     ;(t 2 1)
-; )
-
 (define (exec lib prog)
   
   (init)
@@ -894,7 +861,10 @@
   
   (##machine-code-block-exec mcb))
 
+;; Get lib
 (define lib  (expand (read-all (open-input-file "./lib.scm"))))
+;; Get prog
 (define prog (read-all))
 
+;; Exec lib and prog
 (exec lib (expand prog))

@@ -4,6 +4,11 @@
 
 ;;-----------------------------------------------------------------------------
 
+;; Global ids
+(define globals '())
+
+;;-----------------------------------------------------------------------------
+
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
   (cond ;; Literal
@@ -13,7 +18,7 @@
         ;; Pair
         ((pair? ast)
          (let ((op (car ast)))
-           (cond ;; TODO
+           (cond ;; Special
                  ((member op '($$putchar)) (mlc-special ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote ast succ))
@@ -121,7 +126,6 @@
                       (jump-to-version cgc lazy-val ctx)
                       ))))
 
-;; TODO
 ;;
 ;; Make lazy code from SPECIAL FORM
 ;;
@@ -132,7 +136,7 @@
          (lazy-special (make-lazy-code 
                          (lambda (cgc ctx)
                            (x86-call cgc label)
-                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'void)))))) ;; TODO : ctx changes with other special
+                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'void))))))
     (if (> (length (cdr ast)) 0)
         (gen-ast-l (cdr ast) lazy-special)
         lazy-special)))
@@ -352,32 +356,25 @@
                                         (x86-push cgc (x86-rax))
                                         
                                         ;; Call ctx in rdx
-                                        (let* ((call-stack (cons 'ctx (cons 'retAddr (list-head (ctx-stack ctx) (+ 1 (length args))))))
-                                               (call-ctx   (make-ctx call-stack '())))
+                                        (let* ((call-stack    (cons 'ctx (cons 'retAddr (list-head (ctx-stack ctx) (+ 1 (length args))))))
+                                               (call-ctx      (make-ctx call-stack '()))
+                                               (ctx-id        (length test_ctx))
+                                               (cct-offset    (* 8 (get-closure-index call-ctx))))
                                           
-                                          (let ((ctxid (length test_ctx)))
-                                            (set! test_ctx (cons (cons ctxid call-ctx) test_ctx))
-                                            (x86-mov cgc (x86-rax) (x86-imm-int ctxid))
-                                            (x86-push cgc (x86-rax)))
+                                          (set! test_ctx (cons (cons ctx-id call-ctx) test_ctx))
+                                          (x86-mov cgc (x86-rax) (x86-imm-int ctx-id))
+                                          (x86-push cgc (x86-rax))
                                         
-                                          ;; Get cc table offset for this ctx
-                                          (let* ((closure-index (get-closure-index call-ctx))
-                                                 (offset (* closure-index 8))) ;; -1 procdure tag, +8 header word
-                                            
-                                            ;; closure in rax
-                                            (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
-                                            
-                                            ;; untag
-                                            (x86-sub cgc (x86-rax) (x86-imm-int 1))
-                                            
-                                            ;; cc table in rax
-                                            (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax)))
-                                            
-                                            ;; add offset of mlc table
-                                            (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax))))
+                                        
+                                        ;; 1 - Get cc-table
+                                        (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))                ;; get closure
+                                        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_CLOSURE) (x86-rax))) ;; get cc-table
+                                        
+                                        ;; 2 - Get entry point in cc-table
+                                        (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
                                           
-                                          ;; TODO : reecrire proprement mlc-call
-                                          (x86-jmp cgc (x86-rax)))))))
+                                        ;; 3 - Jump to entry point
+                                        (x86-jmp cgc (x86-rax)))))))
          ;; Lazy callee
          (lazy-callee (gen-ast (car ast) lazy-call)))
     
@@ -557,7 +554,7 @@
 
 ;;-----------------------------------------------------------------------------
 
-;; TODO FUNCTIONS
+;; AST RALETED FUNCTIONS
 
 ;;-----------------------------------------------------------------------------
 
@@ -681,10 +678,11 @@
                   (else (free-vars-l ast clo-env)))))))
 
 ;;
-;; TODO
+;; UTILS
 ;;
 
-;; TODO
+;; Build new environment with ids dtarting from 'start'
+;; ex : (buile-env '(a b c) 8) -> ((a . 8) (b . 9) (c . 10))
 (define (build-env ids start)
   (if (null? ids)
     '()
@@ -698,9 +696,6 @@
           0
           (+ 1 (closure-pos (cdr stack))))))
 
-;; TODO
-(define globals '())
-
 ;; Return label associated to function name
 (define (lookup-fn name)
   (let ((r (assoc name functions)))
@@ -709,5 +704,5 @@
       (cond ((eq? name '$$putchar)  label-$$putchar)
             (else (error "NYI"))))))
 
-;;
+;; TODO : test_ctx to solve segfault on ctx read
 (define test_ctx '())
