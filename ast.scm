@@ -399,8 +399,6 @@
                                           (x86-mov cgc (x86-rax) (x86-imm-int ctx-id))
                                           (x86-push cgc (x86-rax))
                                         
-                                        ;; TODO : procedure type test
-                                        
                                         ;; 1 - Get cc-table
                                         (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))               ;; get closure
                                         (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; get cc-table
@@ -410,12 +408,19 @@
                                           
                                         ;; 3 - Jump to entry point
                                         (x86-jmp cgc (x86-rax)))))))
+         ;; Lazy main
+         (lazy-main (make-lazy-code (lambda (cgc ctx)
+                                      (let ((op-type (car (ctx-stack ctx))))
+                                        (cond ((eq? op-type CTX_CLO) (jump-to-version cgc lazy-call ctx))
+                                              ((eq? op-type CTX_UNK) (error "NYI"))
+                                              (else (gen-error cgc ERR_PRO_EXPECTED)))))))
          ;; Lazy callee
-         (lazy-callee (gen-ast (car ast) lazy-call)))
+         (lazy-operator (gen-ast (car ast) lazy-main)))
+         
     
     (if (> (length args) 0)
-        (gen-ast-l args lazy-callee)
-        lazy-callee)))
+        (gen-ast-l args lazy-operator)
+        lazy-operator)))
 
 ;;
 ;; Make lazy code from NUMBER OPERATOR

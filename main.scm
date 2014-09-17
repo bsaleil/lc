@@ -97,6 +97,7 @@
 ;; Errors
 (define ERR_MSG          "EXEC ERROR")
 (define ERR_NUM_EXPECTED "NUMBER EXPECTED")
+(define ERR_PRO_EXPECTED "PROCEDURE EXPECTED")
 (define ERR_ARR_OVERFLOW "ARITHMETIC OVERFLOW")
 
 ;; Gen code for error
