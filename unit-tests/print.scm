@@ -14,6 +14,10 @@
 
 (println (lambda (x) (* x x)))
 
+(println (cons 10 20))
+(println (cons 10 (cons 20 '())))
+(println (cons 99 (cons #f (cons '() '()))))
+
 ;0
 ;0
 ;0
@@ -25,3 +29,6 @@
 ;#f
 ;
 ;#<procedure>
+;1020
+;1020
+;99#f

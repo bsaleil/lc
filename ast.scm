@@ -21,7 +21,7 @@
            (cond ;; Special with call
                  ((member op '($$putchar)) (mlc-special-c ast succ))
                  ;; Special without call
-                 ((member op '($cons $car)) (mlc-special-nc ast succ))
+                 ((member op '($cons $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote ast succ))
                  ;; Lambda
@@ -169,19 +169,23 @@
                             (x86-push cgc (x86-rax))
                             (x86-add cgc alloc-ptr (x86-imm-int 24))
                             (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI))))
-                      ((eq? special '$car)
-                          (x86-pop cgc (x86-rax))
-                          (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-                          (x86-push cgc (x86-rax))
-                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK)))
+                      ((member special '($car $cdr))
+                          (let ((offset
+                                  (if (eq? special '$car)
+                                      (- 8 TAG_MEMOBJ)
+                                      (- 16 TAG_MEMOBJ))))
+                            (x86-pop cgc (x86-rax))
+                            (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
+                            (x86-push cgc (x86-rax))
+                            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK))))
                       (else (error "NYI")))))))
     
     (cond ;; $CONS 
           ((eq? special '$cons)
               (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
                     (gen-ast (cadr ast) lazy-right)))
-          ;; $CAR
-          ((eq? special '$car)
+          ;; $CAR & $CDR
+          ((member special '($car $cdr))
               (let* ((lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_PAIR_EXPECTED))))
                      (lazy-main (make-lazy-code
                                  (lambda (cgc ctx)
@@ -772,7 +776,7 @@
                   ;; Lambda & Quote
                   ((or (eq? op 'lambda) (eq? op 'quote)) '())
                   ;; Special
-                  ((member op '($cons $car $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env))
+                  ((member op '($cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env))
                   ;; Call
                   (else (free-vars-l ast clo-env)))))))
 

@@ -26,11 +26,6 @@
       #t
       (= x y)))
 
-;; LISTS
-
-(define (cons a b)
-  ($cons a b))
-
 ;; TYPE TESTS
 
 (define (number? n)
@@ -51,6 +46,26 @@
 
 (define (null? n)
 	(eq? n '()))
+
+;; LISTS
+
+(define (cons a b)
+  ($cons a b))
+
+(define (car l)
+  ($car l))
+
+(define (cdr l)
+  ($cdr l))
+
+
+;; TODO : type test 
+(define (list? n)
+  (if (null? n)
+      #t
+      (if (pair? n)
+      	(list? (cdr n))
+        #f)))
 
 ;; PRINT
 
@@ -92,14 +107,18 @@
   ($$putchar 101)
   ($$putchar  62))
 
-(define (println n)
+(define (print n)
   (if (null? n)
-      ($$putchar 10)
+      #f
       (if (number? n)
-          (begin (print-nb n)
-                 ($$putchar 10))
+          (print-nb n)
           (if (procedure? n)
-              (begin (print-procedure n)
-                     ($$putchar 10))
-              (begin (print-bool n)
-	                   ($$putchar 10))))))
+              (print-procedure n)
+              (if (pair? n)
+                  (begin (print (car n))
+                         (print (cdr n)))
+	              (begin (print-bool n)))))))
+
+(define (println n)
+  (print n)
+  ($$putchar 10))
