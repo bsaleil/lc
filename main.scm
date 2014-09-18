@@ -777,7 +777,7 @@
 ;; Create lazy code for type test of stack slot (stack-idx)
 ;; jump to lazy-success if test succeeds
 ;; jump to lazy-fail if test fails
-(define (gen-dyn-type-test stack-idx ctx-success lazy-success ctx-fail lazy-fail)
+(define (gen-dyn-type-test type stack-idx ctx-success lazy-success ctx-fail lazy-fail)
 
     (make-lazy-code
        (lambda (cgc ctx)
@@ -832,9 +832,23 @@
          (if dev-log
              (println ">>> Gen dynamic type test at index " stack-idx))
          
-         (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
-         (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
-         (x86-cmp cgc (x86-rax) (x86-imm-int 0))
+         (cond ;; Number type test
+               ((eq? type 'number)
+                   (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
+                   (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
+                   (x86-cmp cgc (x86-rax) (x86-imm-int 0)))
+               ;; Procedure type test
+               ((eq? type 'procedure)
+                   (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
+                   (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
+                   (x86-and cgc (x86-rax) (x86-imm-int 3))
+                   (x86-cmp cgc (x86-rax) (x86-imm-int 1))
+                   (x86-jne cgc (list-ref stub-labels 1)) ;; it is not a memory allocated object then error
+                   (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
+                   (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
+                   (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
+               ;; Other
+               (else (error "Unknown type")))
          (x86-label cgc label-jump)
          (x86-je cgc (list-ref stub-labels 0))
          (x86-jmp cgc (list-ref stub-labels 1))))))

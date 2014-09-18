@@ -366,6 +366,8 @@
 (define (mlc-call ast succ)
   (let* (;; Call arguments
          (args (cdr ast))
+         ;; Lazy fail TODO
+         (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_PRO_EXPECTED))))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
                                       (let* (;; Flag in stub : is the continuation already generated ?
@@ -412,7 +414,14 @@
          (lazy-main (make-lazy-code (lambda (cgc ctx)
                                       (let ((op-type (car (ctx-stack ctx))))
                                         (cond ((eq? op-type CTX_CLO) (jump-to-version cgc lazy-call ctx))
-                                              ((eq? op-type CTX_UNK) (error "NYI"))
+                                              ((eq? op-type CTX_UNK) (jump-to-version cgc
+                                                                                      (gen-dyn-type-test 'procedure
+                                                                                                         0
+                                                                                                         (ctx-push (ctx-pop ctx) CTX_CLO)
+                                                                                                         lazy-call
+                                                                                                         ctx
+                                                                                                         lazy-fail)
+                                                                                      ctx))
                                               (else (gen-error cgc ERR_PRO_EXPECTED)))))))
          ;; Lazy callee
          (lazy-operator (gen-ast (car ast) lazy-main)))
@@ -537,13 +546,13 @@
                                                            
                                (cond ((eq? left-type 'num)
                                       (cond ((eq? right-type 'num)     (jump-to-version cgc lazy-code-op ctx))
-                                            ((eq? right-type 'unknown) (jump-to-version cgc (gen-dyn-type-test 0 rctx lazy-code-op ctx lazy-fail) ctx))
+                                            ((eq? right-type 'unknown) (jump-to-version cgc (gen-dyn-type-test 'number 0 rctx lazy-code-op ctx lazy-fail) ctx))
                                             (else                      (gen-error cgc ERR_NUM_EXPECTED))))
                                      
                                      ((eq? left-type 'unknown)
-                                      (cond ((eq? right-type 'num)     (jump-to-version cgc (gen-dyn-type-test 1 lctx lazy-code-op ctx lazy-fail) ctx))
-                                            ((eq? right-type 'unknown) (let* ((right-test (gen-dyn-type-test 1 lrctx lazy-code-op ctx lazy-fail))
-                                                                              (left-test  (gen-dyn-type-test 0 lctx right-test ctx lazy-fail)))
+                                      (cond ((eq? right-type 'num)     (jump-to-version cgc (gen-dyn-type-test 'number 1 lctx lazy-code-op ctx lazy-fail) ctx))
+                                            ((eq? right-type 'unknown) (let* ((right-test (gen-dyn-type-test 'number 1 lrctx lazy-code-op ctx lazy-fail))
+                                                                              (left-test  (gen-dyn-type-test 'number 0 lctx right-test ctx lazy-fail)))
                                                                          (jump-to-version cgc left-test ctx)))
                                             (else                      (gen-error cgc ERR_NUM_EXPECTED))))
                                      (else (gen-error cgc ERR_NUM_EXPECTED))))))))
@@ -600,9 +609,8 @@
                                      ;; It's a memory allocated obj
                                      (x86-mov cgc (x86-rbx) (x86-mem -1 (x86-rbx)))
                                      (x86-and cgc (x86-rbx) (x86-imm-int 248))
-                                     (x86-shr cgc (x86-rbx) (x86-imm-int 3))
-                                     (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int STAG_PROCEDURE)))
-                                           ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int STAG_PAIR)))
+                                     (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
+                                           ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
                                            (else (error "NYI")))
                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
                                      (x86-jne cgc label-done)
