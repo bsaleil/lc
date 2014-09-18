@@ -39,6 +39,7 @@
 (define CTX_NUM  'number)
 (define CTX_BOOL 'boolean)
 (define CTX_CLO  'closure)
+(define CTX_PAI  'pair)
 (define CTX_UNK  'unknown)
 
 
@@ -95,10 +96,11 @@
 ;;-----------------------------------------------------------------------------
 
 ;; Errors
-(define ERR_MSG          "EXEC ERROR")
-(define ERR_NUM_EXPECTED "NUMBER EXPECTED")
-(define ERR_PRO_EXPECTED "PROCEDURE EXPECTED")
-(define ERR_ARR_OVERFLOW "ARITHMETIC OVERFLOW")
+(define ERR_MSG           "EXEC ERROR")
+(define ERR_NUM_EXPECTED  "NUMBER EXPECTED")
+(define ERR_PRO_EXPECTED  "PROCEDURE EXPECTED")
+(define ERR_PAIR_EXPECTED "PAIR EXPECTED")
+(define ERR_ARR_OVERFLOW  "ARITHMETIC OVERFLOW")
 
 ;; Gen code for error
 ;; stop-exec? to #f to continue after error
@@ -838,7 +840,8 @@
                    (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                    (x86-cmp cgc (x86-rax) (x86-imm-int 0)))
                ;; Procedure type test
-               ((eq? type 'procedure)
+               ;((eq? type 'procedure)
+               ((member type '(procedure pair))
                    (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                    (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
                    (x86-and cgc (x86-rax) (x86-imm-int 3))
@@ -846,7 +849,9 @@
                    (x86-jne cgc (list-ref stub-labels 1)) ;; it is not a memory allocated object then error
                    (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
                    (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
-                   (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
+                   ;; STAG_XXX << 3
+                   (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type 'procedure) STAG_PROCEDURE)
+                                                                  ((eq? type 'pair)      STAG_PAIR))))))
                ;; Other
                (else (error "Unknown type")))
          (x86-label cgc label-jump)

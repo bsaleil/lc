@@ -21,7 +21,7 @@
            (cond ;; Special with call
                  ((member op '($$putchar)) (mlc-special-c ast succ))
                  ;; Special without call
-                 ((member op '($cons)) (mlc-special-nc ast succ))
+                 ((member op '($cons $car)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote ast succ))
                  ;; Lambda
@@ -147,31 +147,61 @@
 ;; Make lazy code from SPECIAL FORM (inlined specials)
 ;;
 (define (mlc-special-nc ast succ)
+    
   (let* ((special (car ast))
          (lazy-special
            (make-lazy-code
              (lambda (cgc ctx)
                 (cond ((eq? special '$cons)
                           (let ((header-word (+ (arithmetic-shift 3 8) (arithmetic-shift 1 3) 6))) ;; 000...011 | STAG_PAIR | 110 => Length | Pair | Permanent
-                            (begin ;; TODO : mov directly to memory
-                                   ;; Write object header
-                                   (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-                                   (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-                                   (x86-pop cgc (x86-rbx))
-                                   (x86-pop cgc (x86-rax))
-                                   ;; Write pair
-                                   (x86-mov cgc (x86-mem 8 alloc-ptr)  (x86-rax))
-                                   (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
-                                   ;; Tag,Push closure and update alloc-ptr
-                                   (x86-mov cgc (x86-rax) alloc-ptr)
-                                   (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-                                   (x86-push cgc (x86-rax))
-                                   (x86-add cgc alloc-ptr (x86-imm-int 24))
-                                   (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) 'pair)))))
+                            ;; TODO : mov directly to memory
+                            ;; Write object header
+                            (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+                            (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+                            (x86-pop cgc (x86-rbx))
+                            (x86-pop cgc (x86-rax))
+                            ;; Write pair
+                            (x86-mov cgc (x86-mem 8 alloc-ptr)  (x86-rax))
+                            (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
+                            ;; Tag,Push closure and update alloc-ptr
+                            (x86-mov cgc (x86-rax) alloc-ptr)
+                            (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                            (x86-push cgc (x86-rax))
+                            (x86-add cgc alloc-ptr (x86-imm-int 24))
+                            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI))))
+                      ((eq? special '$car)
+                          (x86-pop cgc (x86-rax))
+                          (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+                          (x86-push cgc (x86-rax))
+                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK)))
                       (else (error "NYI")))))))
-    (if (> (length (cdr ast)) 0)
-        (gen-ast-l (cdr ast) lazy-special)
-        lazy-special)))
+    
+    (cond ;; $CONS 
+          ((eq? special '$cons)
+              (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
+                    (gen-ast (cadr ast) lazy-right)))
+          ;; $CAR
+          ((eq? special '$car)
+              (let* ((lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_PAIR_EXPECTED))))
+                     (lazy-main (make-lazy-code
+                                 (lambda (cgc ctx)
+                                   (let ((type (car (ctx-stack ctx))))
+                                     (cond ((eq? type CTX_PAI) (jump-to-version cgc lazy-special ctx))
+                                           ((eq? type CTX_UNK) (jump-to-version cgc
+                                                                                (gen-dyn-type-test 'pair
+                                                                                                   0
+                                                                                                   (ctx-push (ctx-pop ctx) CTX_PAI)
+                                                                                                   lazy-special
+                                                                                                   ctx
+                                                                                                   lazy-fail)
+                                                                                ctx))
+                                           (else (gen-error cgc ERR_PAIR_EXPECTED))))))))
+                (gen-ast (cadr ast) lazy-main))))))
+                               
+    
+    ; (if (> (length (cdr ast)) 0)
+    ;     (gen-ast-l (cdr ast) lazy-special)
+    ;     lazy-special)))
     
 
 ;;
@@ -742,7 +772,7 @@
                   ;; Lambda & Quote
                   ((or (eq? op 'lambda) (eq? op 'quote)) '())
                   ;; Special
-                  ((member op '($cons $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env))
+                  ((member op '($cons $car $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env))
                   ;; Call
                   (else (free-vars-l ast clo-env)))))))
 
