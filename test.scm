@@ -1,5 +1,5 @@
 
-(println (list? (cons 1 (cons 2 '()))))
+(println (length (cons 1 (cons 2 '()))))
 
 ; (println 101)
 ; (println 202)

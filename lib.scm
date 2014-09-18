@@ -58,6 +58,10 @@
 (define (cdr l)
   ($cdr l))
 
+(define (length l)
+  (if (null? l)
+      0
+      (+ 1 (length (cdr l)))))
 
 ;; TODO : type test 
 (define (list? n)
