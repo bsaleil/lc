@@ -16,6 +16,16 @@
       #t
       #f))
 
+(define (<= x y)
+  (if (< x y)
+      #t
+      (= x y)))
+
+(define (>= x y)
+  (if (> x y)
+      #t
+      (= x y)))
+
 ;; LISTS
 
 (define (cons a b)

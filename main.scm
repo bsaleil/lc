@@ -882,6 +882,7 @@
 
 ;; Get lib
 (define lib  (expand (read-all (open-input-file "./lib.scm"))))
+
 ;; Get prog
 (define prog (read-all))
 
