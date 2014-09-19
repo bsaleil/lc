@@ -1,6 +1,3 @@
-;; Supported macros :
-;; define, if, begin, let, lambda
-;; TODO : remove lambda, and expand only if called ?
 
 (define (expand expr)
   (cond
