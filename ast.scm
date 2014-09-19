@@ -520,16 +520,18 @@
                                           (x86-label cgc label-jo)
                                           (x86-jo cgc (list-ref stub-labels 0))))
                                   (($modulo) ;; TODO : check '/0'
-                                   (begin
+                                   (begin                                          
                                           (x86-pop cgc (x86-rax))
+                                          (x86-sar cgc (x86-rbx) (x86-imm-int 2))
                                           (x86-sar cgc (x86-rax) (x86-imm-int 2))
                                           (x86-cqo cgc)
-                                          (x86-sar cgc (x86-rbx) (x86-imm-int 2))
+                                          (x86-idiv cgc (x86-rbx))
+                                          (x86-mov cgc (x86-rax) (x86-rdx)) ;; (a%b) in rax, b in rbx
+                                          (x86-add cgc (x86-rax) (x86-rbx)) ;; (a%b + b) in rax
+                                          (x86-cqo cgc)
                                           (x86-idiv cgc (x86-rbx))
                                           (x86-shl cgc (x86-rdx) (x86-imm-int 2))
-                                          (x86-push cgc (x86-rdx))
-                                          (x86-label cgc label-jo)
-                                          (x86-jo cgc (list-ref stub-labels 0))))
+                                          (x86-push cgc (x86-rdx))))
                                   (($<)
                                    (let ((label-done
                                            (asm-make-label cgc (new-sym 'done))))

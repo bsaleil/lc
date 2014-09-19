@@ -1,5 +1,8 @@
 
-(println (length (cons 1 (cons 2 '()))))
+(println (modulo 13 4))
+(println (modulo -13 4))
+(println (modulo 13 -4))
+(println (modulo -13 -4))
 
 ; (println 101)
 ; (println 202)
