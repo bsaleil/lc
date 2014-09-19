@@ -12,19 +12,13 @@
 (define (eq? x y)      ($eq? x y))
 
 (define (not x)
-  (if (eq? x #f)
-      #t
-      #f))
+  (eq? x #f))
 
 (define (<= x y)
-  (if (< x y)
-      #t
-      (= x y)))
+  (not (> x y)))
 
 (define (>= x y)
-  (if (> x y)
-      #t
-      (= x y)))
+  (not (< x y)))
 
 ;; TYPE TESTS
 
@@ -38,11 +32,9 @@
   ($pair? n))
 
 (define (boolean? n)
-    (if (eq? n #t)
-        #t
-        (if (eq? n #f)
-            #t
-            #f)))
+  (cond ((eq? n #t) #t)
+        ((eq? n #f) #t)
+        (else #f)))
 
 (define (null? n)
 	(eq? n '()))
@@ -65,11 +57,9 @@
 
 ;; TODO : type test 
 (define (list? n)
-  (if (null? n)
-      #t
-      (if (pair? n)
-      	(list? (cdr n))
-        #f)))
+  (cond ((null? n) #t)
+        ((pair? n) (list? (cdr n)))
+        (else #f)))
 
 ;; PRINT
 
@@ -112,17 +102,13 @@
   ($$putchar  62))
 
 (define (print n)
-  (if (null? n)
-      #f
-      (if (number? n)
-          (print-nb n)
-          (if (procedure? n)
-              (print-procedure n)
-              (if (pair? n)
-                  (begin (print (car n))
-                         (print (cdr n)))
-	              (begin (print-bool n)))))))
-
+  (cond ((null? n) #f)
+        ((number? n) (print-nb n))
+        ((procedure? n) (print-procedure n))
+        ((pair? n) (begin (print (car n))
+                          (print (cdr n))))
+        (else (print-bool n))))
+  
 (define (println n)
   (print n)
   ($$putchar 10))

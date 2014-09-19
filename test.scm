@@ -1,8 +1,11 @@
 
-(println (modulo 13 4))
-(println (modulo -13 4))
-(println (modulo 13 -4))
-(println (modulo -13 -4))
+(pp (cons 1 2))
+
+
+
+
+
+
 
 ; (println 101)
 ; (println 202)
