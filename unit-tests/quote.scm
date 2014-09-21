@@ -16,6 +16,10 @@
 
 (println (null? (car (cdr '(1 () 3)))))
 
+(println '(1 . 2))
+(println (list? '(1 . 2)))
+(println (pair? '(1 . 2)))
+
 ;
 ;#t
 ;#f
@@ -28,4 +32,7 @@
 ;#t
 ;#t
 ;4
+;#t
+;12
+;#f
 ;#t
