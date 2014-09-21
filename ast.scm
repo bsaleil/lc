@@ -12,7 +12,7 @@
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
   (cond ;; Literal
-        ((or (number? ast) (boolean? ast)) (mlc-literal ast succ))
+        ((or (number? ast) (boolean? ast) (null? ast)) (mlc-literal ast succ))
         ;; Symbol
         ((symbol? ast) (mlc-symbol ast succ))
         ;; Pair
@@ -23,7 +23,7 @@
                  ;; Special without call
                  ((member op '($cons $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
-                 ((eq? 'quote (car ast)) (mlc-quote ast succ))
+                 ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ;; Lambda
                  ((eq? op 'lambda) (mlc-lambda ast succ))
                  ;; Operator num
@@ -56,20 +56,20 @@
                        succ
                        (ctx-push ctx
                                  (cond ((number? ast)  'num)
-                                       ((boolean? ast) 'bool)))))))
+                                       ((boolean? ast) 'bool)
+                                       ((null? ast) 'null)))))))
 
 ;;
 ;; Make lazy code from QUOTE
 ;;
 (define (mlc-quote ast succ)
-  (let ((quoted-expr (car (cdr ast))))
-    (if (null? quoted-expr) ;; '()
-        (make-lazy-code
-          (lambda (cgc ctx)
-            (x86-push cgc (x86-imm-int (obj-encoding '())))
-            (jump-to-version cgc succ (ctx-push ctx 'null))))
-        (error "NYI"))))
-
+  (cond ((pair? ast)
+         (let* ((lazy-pair (mlc-pair succ))
+                (lazy-cdr  (mlc-quote (cdr ast) lazy-pair)))
+           (mlc-quote (car ast) lazy-cdr)))
+        ((symbol? ast) (error "NYI quoted symbol"))
+        (else (gen-ast ast succ))))
+                   
 ;;
 ;; Make lazy code from SYMBOL
 ;;
@@ -147,65 +147,46 @@
 ;; Make lazy code from SPECIAL FORM (inlined specials)
 ;;
 (define (mlc-special-nc ast succ)
-    
   (let* ((special (car ast))
          (lazy-special
-           (make-lazy-code
-             (lambda (cgc ctx)
-                (cond ((eq? special '$cons)
-                          (let ((header-word (+ (arithmetic-shift 3 8) (arithmetic-shift 1 3) 6))) ;; 000...011 | STAG_PAIR | 110 => Length | Pair | Permanent
-                            ;; TODO : mov directly to memory
-                            ;; Write object header
-                            (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-                            (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-                            (x86-pop cgc (x86-rbx))
-                            (x86-pop cgc (x86-rax))
-                            ;; Write pair
-                            (x86-mov cgc (x86-mem 8 alloc-ptr)  (x86-rax))
-                            (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
-                            ;; Tag,Push closure and update alloc-ptr
-                            (x86-mov cgc (x86-rax) alloc-ptr)
-                            (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-                            (x86-push cgc (x86-rax))
-                            (x86-add cgc alloc-ptr (x86-imm-int 24))
-                            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI))))
-                      ((member special '($car $cdr))
-                          (let ((offset
-                                  (if (eq? special '$car)
-                                      (- 8 TAG_MEMOBJ)
-                                      (- 16 TAG_MEMOBJ))))
-                            (x86-pop cgc (x86-rax))
-                            (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
-                            (x86-push cgc (x86-rax))
-                            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK))))
-                      (else (error "NYI")))))))
+           (cond ;; CONS
+                 ((eq? special '$cons) (mlc-pair succ))
+                 ;; CAR & CDR
+                 ((member special '($car $cdr))
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      (let ((offset
+                              (if (eq? special '$car)
+                                  (- 8 TAG_MEMOBJ)
+                                  (- 16 TAG_MEMOBJ))))
+                        (x86-pop cgc (x86-rax))
+                        (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
+                        (x86-push cgc (x86-rax))
+                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK))))))
+                 ;; OTHERS
+                 (else (error "NYI")))))
     
     (cond ;; $CONS 
           ((eq? special '$cons)
-              (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
-                    (gen-ast (cadr ast) lazy-right)))
+           (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
+             (gen-ast (cadr ast) lazy-right)))
           ;; $CAR & $CDR
           ((member special '($car $cdr))
-              (let* ((lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_PAIR_EXPECTED))))
-                     (lazy-main (make-lazy-code
-                                 (lambda (cgc ctx)
-                                   (let ((type (car (ctx-stack ctx))))
-                                     (cond ((eq? type CTX_PAI) (jump-to-version cgc lazy-special ctx))
-                                           ((eq? type CTX_UNK) (jump-to-version cgc
-                                                                                (gen-dyn-type-test 'pair
-                                                                                                   0
-                                                                                                   (ctx-push (ctx-pop ctx) CTX_PAI)
-                                                                                                   lazy-special
-                                                                                                   ctx
-                                                                                                   lazy-fail)
-                                                                                ctx))
-                                           (else (gen-error cgc ERR_PAIR_EXPECTED))))))))
-                (gen-ast (cadr ast) lazy-main))))))
-                               
-    
-    ; (if (> (length (cdr ast)) 0)
-    ;     (gen-ast-l (cdr ast) lazy-special)
-    ;     lazy-special)))
+           (let* ((lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_PAIR_EXPECTED))))
+                  (lazy-main (make-lazy-code
+                               (lambda (cgc ctx)
+                                 (let ((type (car (ctx-stack ctx))))
+                                   (cond ((eq? type CTX_PAI) (jump-to-version cgc lazy-special ctx))
+                                         ((eq? type CTX_UNK) (jump-to-version cgc
+                                                                              (gen-dyn-type-test 'pair
+                                                                                                 0
+                                                                                                 (ctx-push (ctx-pop ctx) CTX_PAI)
+                                                                                                 lazy-special
+                                                                                                 ctx
+                                                                                                 lazy-fail)
+                                                                              ctx))
+                                         (else (gen-error cgc ERR_PAIR_EXPECTED))))))))
+             (gen-ast (cadr ast) lazy-main))))))
     
 
 ;;
@@ -656,6 +637,30 @@
                           (x86-push  cgc (x86-rax))
                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'bool)))))))
     (gen-ast (cadr ast) lazy-test)))
+
+;;
+;; Make lazy code to create pair
+;; Create pair with the too values on top of the stack
+;;
+(define (mlc-pair succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+       (let ((header-word (+ (arithmetic-shift 3 8) (arithmetic-shift 1 3) 6))) ;; 000...011 | STAG_PAIR | 110 => Length | Pair | Permanent
+         ;; TODO : mov directly to memory
+         ;; Write object header
+         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+         (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+         (x86-pop cgc (x86-rbx)) ;; pop CDR
+         (x86-pop cgc (x86-rax)) ;; pop CAR
+         ;; Write pair
+         (x86-mov cgc (x86-mem 8 alloc-ptr)  (x86-rax))
+         (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
+         ;; Tag,Push closure and update alloc-ptr
+         (x86-mov cgc (x86-rax) alloc-ptr)
+         (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+         (x86-push cgc (x86-rax))
+         (x86-add cgc alloc-ptr (x86-imm-int 24))
+         (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI))))))
 
 ;;-----------------------------------------------------------------------------
 
