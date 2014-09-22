@@ -25,6 +25,9 @@
 (println (cond (else 99)))
 (println (cond (#t 50)))
 (println (cond (#f 51)))
+(println (cond ((= 0 1) 0)
+               ((= 0 2) 1)
+               ((= 0 3) 2)))
 (println (cond ((> 30 20) 0)
                ((< 30 20) 1)
                ((= 30 20) 2)))
@@ -48,6 +51,25 @@
 (begin (println 1)
   	   (println 2))
 (begin (println (or #t #f #t)))
+
+(define (foo1 n)
+  (begin (println n)
+         (println n)
+         (println n)))
+
+(define (foo2 n)
+  (begin (println n)
+         (println 10)
+         (println n)))
+
+(define (foo3 n)
+  (begin (println 10)
+         (println 10)
+         (println n)))
+
+(foo1 100)
+(foo2 200)
+(foo3 300)
 
 (println 123456789)
 
@@ -80,6 +102,7 @@
 ;99
 ;50
 ;#f
+;#f
 ;0
 ;1
 ;2
@@ -91,6 +114,15 @@
 ;1
 ;2
 ;#t
+;100
+;100
+;100
+;200
+;10
+;200
+;10
+;10
+;300
 ;123456789
 ;100
 ;300
