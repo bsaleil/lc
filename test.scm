@@ -1,11 +1,8 @@
 
 
-(define (foo n)
-  (begin (println n)
-         (println n)
-         (println n)))
-
-(foo 10)
+(pp '(1 2 3))
+(pp '(1 2 (3 4) 5 6))
+(pp '(1 2 (3 4) 5))
 
 
 

@@ -893,4 +893,3 @@
 
 ;; Exec lib and prog
 (exec lib prog)
-;(pp prog)

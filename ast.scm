@@ -69,7 +69,7 @@
          (let* ((lazy-pair (mlc-pair succ))
                 (lazy-cdr  (mlc-quote (cdr ast) lazy-pair)))
            (mlc-quote (car ast) lazy-cdr)))
-        ((symbol? ast) (error "NYI quoted symbol"))
+        ((symbol? ast) (begin (pp ast) (error "NYI quoted symbol")))
         (else (gen-ast ast succ))))
                    
 ;; TODO
@@ -766,11 +766,23 @@
       (let* ((var (car vars))
              (res (assoc var (ctx-env ctx))))
         (if res
-            (let* ((fs (length (ctx-stack ctx)))
-                   (pos (- fs 1 (cdr res))))
-              (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp)))
-              (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
-              (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))
+            (if (pair? (cdr res))
+                ;; Free var ;; TODO factorise with similar code in mlc-symbol
+                (let* ((free-offset (+ 15 (* 8 (cdr (cdr res))))) ;; var - 1(tag) + 8(header) + 8(nb-free) = var + 15
+                       (clo-offset (* 8 (closure-pos (ctx-stack ctx))))) ;; TODO : closure pos : get it from base 'pointer' in ctx ?
+                  ;; Get closure
+                  (x86-mov cgc (x86-rax) (x86-mem clo-offset (x86-rsp)))
+                  ;; Get value
+                  (x86-mov cgc (x86-rax) (x86-mem free-offset (x86-rax)))
+                  ;; Mov to closure
+                  (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
+                  (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))
+                ;; Local var
+                (let* ((fs (length (ctx-stack ctx)))
+                       (pos (- fs 1 (cdr res))))
+                  (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp)))
+                  (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
+                  (gen-free-vars cgc (cdr vars) ctx (+ offset 8))))
             (error "Can't find variable: " var)))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
@@ -795,8 +807,10 @@
                   ((eq? op 'if) (append (free-vars (cadr ast)   clo-env)   ; cond
                                         (free-vars (caddr ast)  clo-env)   ; then
                                         (free-vars (cadddr ast) clo-env))) ; else
-                  ;; Lambda & Quote
-                  ((or (eq? op 'lambda) (eq? op 'quote)) '())
+                  ;; Quote
+                  ((eq? op 'quote) '())
+                  ;; Lambda
+                  ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env)))
                   ;; Special
                   ((member op '($cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env))
                   ;; Call
