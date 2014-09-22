@@ -72,7 +72,9 @@
         ((symbol? ast) (begin (pp ast) (error "NYI quoted symbol")))
         (else (gen-ast ast succ))))
                    
-;; TODO
+;;
+;; Make lazy code from SET!
+;;
 (define (mlc-set! ast succ)
   (let* ((variable (cadr ast))
         (lazy-set (make-lazy-code
