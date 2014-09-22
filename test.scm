@@ -1,5 +1,13 @@
 
 
+(define (foo n)
+  (begin (println n)
+         (println n)
+         (println n)))
+
+(foo 10)
+
+
 
 ; (println 101)
 ; (println 202)

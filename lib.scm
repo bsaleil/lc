@@ -112,3 +112,37 @@
 (define (println n)
   (print n)
   ($$putchar 10))
+
+;; PP
+(define pp-h #f)
+
+(define (pp-pair-h n)
+  (cond ;; (e1)
+        ((and (list? n) (= (length n) 1)) (pp-h (car n)))
+        ;; (e1 . e2)
+        ((not (pair? (cdr n)))
+         (let  ((aaa (pp-h (car n)))
+                (bbb ($$putchar 32))
+                (ccc ($$putchar 46))
+                (ddd ($$putchar 32)))
+           (pp-h (cdr n))))
+        ;; (e1 ...)
+        (else (let ((aaa (pp-h (car n)))
+                    (bbb ($$putchar 32)))
+                (pp-pair-h (cdr n))))))
+
+(define (pp-pair n)
+  ($$putchar 40)
+  (pp-pair-h n)
+  ($$putchar 41))
+
+(define (pp-h n)
+  (cond ((null? n) (begin ($$putchar 40) ($$putchar 41))) ;; ()
+        ((number? n) (print-nb n))
+        ((procedure? n) (print-procedure n))
+        ((pair? n) (pp-pair n))
+        (else (print-bool n))))
+
+(define (pp n)
+  (pp-h n)
+  ($$putchar 10))

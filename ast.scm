@@ -24,6 +24,8 @@
                  ((member op '($cons $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
+                 ;; Set!
+                 ((eq? 'set! (car ast)) (mlc-set! ast succ))
                  ;; Lambda
                  ((eq? op 'lambda) (mlc-lambda ast succ))
                  ;; Operator num
@@ -69,6 +71,19 @@
            (mlc-quote (car ast) lazy-cdr)))
         ((symbol? ast) (error "NYI quoted symbol"))
         (else (gen-ast ast succ))))
+                   
+;; TODO
+(define (mlc-set! ast succ)
+  (let* ((variable (cadr ast))
+        (lazy-set (make-lazy-code
+                    (lambda (cgc ctx)
+                      (let ((glookup-res (assoc variable globals)))
+                        (if glookup-res
+                            (begin (x86-pop cgc (x86-rax))
+                                   (x86-mov cgc (x86-mem (* 8 (cdr glookup-res)) (x86-r10)) (x86-rax))
+                                   (jump-to-version cgc succ (ctx-pop ctx)))
+                            #f))))))
+    (gen-ast (caddr ast) lazy-set)))
                    
 ;;
 ;; Make lazy code from SYMBOL
