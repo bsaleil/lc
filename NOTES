@@ -3,4 +3,3 @@
 ==
 
 -- tester en enlevant le passage du ctx par id pour bug
--- modifier les tags bruts par leurs ids globaux (en partie terminé)

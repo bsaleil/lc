@@ -36,12 +36,15 @@
 (define STAG_PAIR    1)
 
 ;; Context
-(define CTX_NUM  'number)
-(define CTX_BOOL 'boolean)
-(define CTX_CLO  'closure)
-(define CTX_PAI  'pair)
-(define CTX_UNK  'unknown)
-
+(define CTX_NUM   'number)
+(define CTX_BOOL  'boolean)
+(define CTX_CLO   'closure)
+(define CTX_PAI   'pair)
+(define CTX_UNK   'unknown)
+(define CTX_VOID  'void)
+(define CTX_NULL  'null)
+(define CTX_CTXID 'ctx)
+(define CTX_RETAD 'retAddr)
 
 ;;-----------------------------------------------------------------------------
 
@@ -843,13 +846,13 @@
              (println ">>> Gen dynamic type test at index " stack-idx))
          
          (cond ;; Number type test
-               ((eq? type 'number)
+               ((eq? type CTX_NUM)
                    (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
                    (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                    (x86-cmp cgc (x86-rax) (x86-imm-int 0)))
                ;; Procedure type test
                ;((eq? type 'procedure)
-               ((member type '(procedure pair))
+               ((member type (list CTX_CLO CTX_PAI))
                    (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                    (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
                    (x86-and cgc (x86-rax) (x86-imm-int 3))
@@ -858,8 +861,8 @@
                    (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
                    (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
                    ;; STAG_XXX << 3
-                   (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type 'procedure) STAG_PROCEDURE)
-                                                                  ((eq? type 'pair)      STAG_PAIR))))))
+                   (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_CLO) STAG_PROCEDURE)
+                                                                  ((eq? type CTX_PAI) STAG_PAIR))))))
                ;; Other
                (else (error "Unknown type")))
          (x86-label cgc label-jump)

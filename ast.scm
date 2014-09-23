@@ -59,9 +59,9 @@
       (jump-to-version cgc
                        succ
                        (ctx-push ctx
-                                 (cond ((number? ast)  'num)
-                                       ((boolean? ast) 'bool)
-                                       ((null? ast) 'null)))))))
+                                 (cond ((number? ast)  CTX_NUM)
+                                       ((boolean? ast) CTX_BOOL)
+                                       ((null? ast)    CTX_NULL)))))))
 
 ;;
 ;; Make lazy code from QUOTE
@@ -109,7 +109,7 @@
                   (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
                   (x86-push cgc (x86-rax))
                   ;; Jump to succ
-                  (jump-to-version cgc succ (ctx-push ctx 'unknown))) ;; TODO free vars info
+                  (jump-to-version cgc succ (ctx-push ctx CTX_UNK))) ;; TODO free vars info
                 ;; Local var
                 (let ((pos (- fs 1 (cdr lookup-res))))
                   (x86-push cgc (x86-mem (* pos 8) (x86-rsp)))
@@ -144,13 +144,13 @@
 
                                      (x86-push cgc (x86-imm-int ENCODING_VOID))
 
-                                     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'void)))))
+                                     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))
          (lazy-val (gen-ast (caddr ast) lazy-bind)))
 
     (make-lazy-code (lambda (cgc ctx)
                       (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
                       (x86-mov cgc (x86-mem (* 8 (length globals)) (x86-r10)) (x86-rax))
-                      (set! globals (cons (cons identifier (cons (length globals) 'void)) globals))
+                      (set! globals (cons (cons identifier (cons (length globals) CTX_VOID)) globals))
                       (jump-to-version cgc lazy-val ctx)
                       ))))
 
@@ -164,7 +164,7 @@
          (lazy-special (make-lazy-code
                          (lambda (cgc ctx)
                            (x86-call cgc label)
-                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'void))))))
+                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
     (if (> (length (cdr ast)) 0)
         (gen-ast-l (cdr ast) lazy-special)
         lazy-special)))
@@ -204,7 +204,7 @@
                                  (let ((type (car (ctx-stack ctx))))
                                    (cond ((eq? type CTX_PAI) (jump-to-version cgc lazy-special ctx))
                                          ((eq? type CTX_UNK) (jump-to-version cgc
-                                                                              (gen-dyn-type-test 'pair
+                                                                              (gen-dyn-type-test CTX_PAI
                                                                                                  0
                                                                                                  (ctx-push (ctx-pop ctx) CTX_PAI)
                                                                                                  lazy-special
@@ -286,7 +286,7 @@
           (jump-to-version cgc
                            succ
                            (ctx-push ctx
-                                     'closure)))))))
+                                     CTX_CLO)))))))
 
 ;;
 ;; Make lazy code from IF
@@ -420,7 +420,7 @@
                                                                         0
                                                                         (lambda (ret-addr selector)
                                                                           ;; Remove lambda and args from ctx, and add retval (unknown)
-                                                                          (let ((ctx-continuation (ctx-push (ctx-pop (ctx-pop-nb ctx (length args))) 'unknown)))
+                                                                          (let ((ctx-continuation (ctx-push (ctx-pop (ctx-pop-nb ctx (length args))) CTX_UNK)))
                                                                             (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
                                                                                 (set! gen-flag (gen-version-continuation load-ret-label
                                                                                                                          succ
@@ -433,7 +433,7 @@
                                         (x86-push cgc (x86-rax))
 
                                         ;; Call ctx in rdx
-                                        (let* ((call-stack    (cons 'ctx (cons 'retAddr (list-head (ctx-stack ctx) (+ 1 (length args))))))
+                                        (let* ((call-stack    (cons CTX_CTXID (cons CTX_RETAD (list-head (ctx-stack ctx) (+ 1 (length args))))))
                                                (call-ctx      (make-ctx call-stack '()))
                                                (ctx-id        (length ctx_ids))
                                                (cct-offset    (* 8 (get-closure-index call-ctx))))
@@ -456,7 +456,7 @@
                                       (let ((op-type (car (ctx-stack ctx))))
                                         (cond ((eq? op-type CTX_CLO) (jump-to-version cgc lazy-call ctx))
                                               ((eq? op-type CTX_UNK) (jump-to-version cgc
-                                                                                      (gen-dyn-type-test 'procedure
+                                                                                      (gen-dyn-type-test CTX_CLO
                                                                                                          0
                                                                                                          (ctx-push (ctx-pop ctx) CTX_CLO)
                                                                                                          lazy-call
@@ -482,7 +482,7 @@
               (lazy-ast-left  (gen-ast (cadr ast)  lazy-ast-right))
               ;; Lazy code of right operand
               (lazy-ast-right (gen-ast (caddr ast) lazy-main))
-              ;; Gen operation code (assumes both operands are 'num)
+              ;; Gen operation code (assumes both operands are num)
               (lazy-code-op (make-lazy-code
                               (lambda (cgc ctx)
 
@@ -572,30 +572,30 @@
                                                  succ
                                                  (ctx-push
                                                    (ctx-pop (ctx-pop ctx))
-                                                   (cond ((member op '($+ $- $* $modulo $quotient)) 'num)
-                                                         ((member op '($< $> $=)) 'bool))))))))
+                                                   (cond ((member op '($+ $- $* $modulo $quotient)) CTX_NUM)
+                                                         ((member op '($< $> $=)) CTX_BOOL))))))))
               ;; Lazy code, tests types from ctx to jump to the correct lazy-code
               (lazy-main (make-lazy-code
                            (lambda (cgc ctx)
 
                              (let ((left-type  (cadr (ctx-stack ctx)))
                                    (right-type (car (ctx-stack ctx)))
-                                   ;; ctx with 'num for right operand
-                                   (rctx  (ctx-push (ctx-pop ctx) 'num))
-                                   ;; ctx with 'num for left operand
-                                   (lctx  (make-ctx (cons (car (ctx-stack ctx)) (cons 'num (cddr (ctx-stack ctx)))) (ctx-env ctx)))
-                                   ;; ctx with 'num for left AND right operand
-                                   (lrctx (make-ctx (cons 'num (cons 'num (cddr (ctx-stack ctx)))) (ctx-env ctx))))
+                                   ;; ctx with num for right operand
+                                   (rctx  (ctx-push (ctx-pop ctx) CTX_NUM))
+                                   ;; ctx with num for left operand
+                                   (lctx  (make-ctx (cons (car (ctx-stack ctx)) (cons CTX_NUM (cddr (ctx-stack ctx)))) (ctx-env ctx)))
+                                   ;; ctx with num for left AND right operand
+                                   (lrctx (make-ctx (cons CTX_NUM (cons CTX_NUM (cddr (ctx-stack ctx)))) (ctx-env ctx))))
 
-                               (cond ((eq? left-type 'num)
-                                      (cond ((eq? right-type 'num)     (jump-to-version cgc lazy-code-op ctx))
-                                            ((eq? right-type 'unknown) (jump-to-version cgc (gen-dyn-type-test 'number 0 rctx lazy-code-op ctx lazy-fail) ctx))
+                               (cond ((eq? left-type CTX_NUM)
+                                      (cond ((eq? right-type CTX_NUM)     (jump-to-version cgc lazy-code-op ctx))
+                                            ((eq? right-type CTX_UNK) (jump-to-version cgc (gen-dyn-type-test CTX_NUM 0 rctx lazy-code-op ctx lazy-fail) ctx))
                                             (else                      (gen-error cgc ERR_NUM_EXPECTED))))
 
-                                     ((eq? left-type 'unknown)
-                                      (cond ((eq? right-type 'num)     (jump-to-version cgc (gen-dyn-type-test 'number 1 lctx lazy-code-op ctx lazy-fail) ctx))
-                                            ((eq? right-type 'unknown) (let* ((right-test (gen-dyn-type-test 'number 1 lrctx lazy-code-op ctx lazy-fail))
-                                                                              (left-test  (gen-dyn-type-test 'number 0 lctx right-test ctx lazy-fail)))
+                                     ((eq? left-type CTX_UNK)
+                                      (cond ((eq? right-type CTX_NUM)     (jump-to-version cgc (gen-dyn-type-test CTX_NUM 1 lctx lazy-code-op ctx lazy-fail) ctx))
+                                            ((eq? right-type CTX_UNK) (let* ((right-test (gen-dyn-type-test CTX_NUM 1 lrctx lazy-code-op ctx lazy-fail))
+                                                                              (left-test  (gen-dyn-type-test CTX_NUM 0 lctx right-test ctx lazy-fail)))
                                                                          (jump-to-version cgc left-test ctx)))
                                             (else                      (gen-error cgc ERR_NUM_EXPECTED))))
                                      (else (gen-error cgc ERR_NUM_EXPECTED))))))))
@@ -625,7 +625,7 @@
                                            succ
                                            (ctx-push
                                              (ctx-pop (ctx-pop ctx))
-                                             (cond ((member op '($eq?)) 'bool))))))))
+                                             (cond ((member op '($eq?)) CTX_BOOL))))))))
     (gen-ast-l (cdr ast) lazy-code-op)))
 
 ;;
@@ -661,7 +661,7 @@
                           ;;
                           (x86-label cgc label-done)
                           (x86-push  cgc (x86-rax))
-                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'bool)))))))
+                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))))
     (gen-ast (cadr ast) lazy-test)))
 
 ;;
