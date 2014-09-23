@@ -5,6 +5,8 @@
 ;;-----------------------------------------------------------------------------
 
 ;; Global ids
+;; Contains a list of global ids with id,position,type-information
+;; ex. '((foo 1 number) (bar 2 bool) (fun 3 closure))
 (define globals '())
 
 ;;-----------------------------------------------------------------------------
@@ -23,8 +25,8 @@
                  ;; Special without call
                  ((member op '($cons $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
-                 ;; Set!
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
+                 ;; Set!
                  ((eq? 'set! (car ast)) (mlc-set! ast succ))
                  ;; Lambda
                  ((eq? op 'lambda) (mlc-lambda ast succ))
