@@ -627,7 +627,6 @@
 ;; Generate a continuation
 ;; First generate continuation lazy-code
 ;; Then patch mov before call to mov continuation address instead of stub address
-;;  TODO : check if stub addr and continuation addr are the same size
 ;;  TODO : clean code with patch function
 (define (gen-version-continuation load-ret-label lazy-code ctx)
   
@@ -639,15 +638,8 @@
         (x86-label cgc continuation-label)
         ((lazy-code-generator lazy-code) cgc ctx)))
     
-    ;; Patch load
-    (if dev-log
-      (begin
-        (print ">>> patching mov at ") (print (number->string load-addr 16)) (print " : ")
-        (print "now load ") (print (asm-label-name continuation-label)) (print " (") (print (number->string (asm-label-pos continuation-label) 16)) (println ")")))
-    (code-gen 'x86-64 load-addr (lambda (cgc) (x86-mov cgc (x86-rax) (x86-imm-int (asm-label-pos continuation-label)))))
-    ;; Return label pos
-    (asm-label-pos continuation-label)))
-
+    (patch-continuation load-addr continuation-label)))
+  
 ;; Generate a function
 ;; First generate function lazy-code
 ;; Then patch closure slot to jump directly to generated function
@@ -727,6 +719,21 @@
                ((lazy-code-generator lazy-code) cgc ctx)))
             (asm-label-pos label-version))))))
 
+;; Patch load at a call site to load continuation addr instead of continuation stub addr
+(define (patch-continuation load-addr continuation-label)
+  (if dev-log
+      (begin
+        (println ">>> patching mov at "
+                 (number->string load-addr 16)
+                 " : now load "
+                 (asm-label-name continuation-label)
+                 " (" (number->string (asm-label-pos continuation-label) 16) ")")))
+  
+  (code-gen 'x86-64 load-addr (lambda (cgc) (x86-mov cgc (x86-rax) (x86-imm-int (asm-label-pos continuation-label)))))
+
+  (asm-label-pos continuation-label))
+
+;; Patch jump at jump-addr: change jump destination to dest-addr
 (define (patch-jump jump-addr dest-addr)
 
   (if dev-log
@@ -740,6 +747,7 @@
         (put-i32 (- (+ jump-addr size) 4)
                  (- dest-addr (+ jump-addr size))))))
 
+;; Patch closure
 (define (patch-closure closure ctx label)
   
   (let* ((label-addr (asm-label-pos  label))
