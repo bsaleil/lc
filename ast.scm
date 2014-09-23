@@ -23,8 +23,8 @@
                  ;; Special without call
                  ((member op '($cons $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
-                 ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ;; Set!
+                 ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ((eq? 'set! (car ast)) (mlc-set! ast succ))
                  ;; Lambda
                  ((eq? op 'lambda) (mlc-lambda ast succ))
@@ -71,7 +71,7 @@
            (mlc-quote (car ast) lazy-cdr)))
         ((symbol? ast) (begin (pp ast) (error "NYI quoted symbol")))
         (else (gen-ast ast succ))))
-                   
+
 ;;
 ;; Make lazy code from SET!
 ;;
@@ -86,7 +86,7 @@
                                    (jump-to-version cgc succ (ctx-pop ctx)))
                             #f))))))
     (gen-ast (caddr ast) lazy-set)))
-                   
+
 ;;
 ;; Make lazy code from SYMBOL
 ;;
@@ -118,9 +118,9 @@
             ;; Else, lookup in globals
             (let ((glookup-res (assoc ast globals)))
               (if glookup-res
-                  (begin (x86-mov cgc (x86-rax) (x86-mem (* 8 (cdr glookup-res)) (x86-r10)))
+                  (begin (x86-mov cgc (x86-rax) (x86-mem (* 8 (cadr glookup-res)) (x86-r10)))
                     (x86-push cgc (x86-rax))
-                    (jump-to-version cgc succ (ctx-push ctx 'unknown))) ;; TODO, get ctx info of global
+                    (jump-to-version cgc succ (ctx-push ctx (cddr glookup-res))))
                   (error "Can't find variable: " ast))))))))
 
 
@@ -128,20 +128,27 @@
 ;; Make lazy code from DEFINE
 ;;
 (define (mlc-define ast succ)
-  (let* ((lazy-bind (make-lazy-code (lambda (cgc ctx)
+  (let* ((identifier (cadr ast))
+         (lazy-bind (make-lazy-code (lambda (cgc ctx)
                                      (x86-pop cgc (x86-rax))
-                                     (let ((pos (cdr (assoc (cadr ast) globals))))
+                                     (let* ((res (assoc identifier globals)) ;; Lookup in globals
+                                           (pos (cadr res))                  ;; Get global pos
+                                           (ctx-type (car (ctx-stack ctx)))) ;; Get type from top of stack
+                                       
+                                       ;; Set global type in globals
+                                       (set-cdr! (cdr res) ctx-type)
+                                                                              
                                        (x86-mov cgc (x86-mem (* 8 pos) (x86-r10)) (x86-rax)))
-                                     
+
                                      (x86-push cgc (x86-imm-int ENCODING_VOID))
-                                     
+
                                      (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'void)))))
          (lazy-val (gen-ast (caddr ast) lazy-bind)))
-    
+
     (make-lazy-code (lambda (cgc ctx)
                       (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
                       (x86-mov cgc (x86-mem (* 8 (length globals)) (x86-r10)) (x86-rax))
-                      (set! globals (cons (cons (cadr ast) (length globals)) globals))
+                      (set! globals (cons (cons identifier (cons (length globals) 'void)) globals))
                       (jump-to-version cgc lazy-val ctx)
                       ))))
 
@@ -152,7 +159,7 @@
   (let* ((name (car ast))
          (label (cond ((eq? name '$$putchar) label-$$putchar)
                       (else "NYI special")))
-         (lazy-special (make-lazy-code 
+         (lazy-special (make-lazy-code
                          (lambda (cgc ctx)
                            (x86-call cgc label)
                            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'void))))))
@@ -182,8 +189,8 @@
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK))))))
                  ;; OTHERS
                  (else (error "NYI")))))
-    
-    (cond ;; $CONS 
+
+    (cond ;; $CONS
           ((eq? special '$cons)
            (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
              (gen-ast (cadr ast) lazy-right)))
@@ -204,7 +211,7 @@
                                                                               ctx))
                                          (else (gen-error cgc ERR_PAIR_EXPECTED))))))))
              (gen-ast (cadr ast) lazy-main))))))
-    
+
 
 ;;
 ;; Make lazy code from LAMBDA
@@ -232,7 +239,7 @@
                        (x86-jmp cgc (x86-rax)))))
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret)))
-    
+
     ;; Lazy closure generation
     (make-lazy-code
       (lambda (cgc ctx)
@@ -240,39 +247,39 @@
                (stub-labels (add-fn-callback cgc
                                              0
                                              (lambda (sp ctx ret-addr selector closure)
-                                               ;; Extends env with params and free vars                                               
+                                               ;; Extends env with params and free vars
                                                (let* ((env (append (build-env params 0) (build-fenv fvars 0)))
                                                       (ctx (make-ctx (ctx-stack ctx) env)))
                                                  (gen-version-fn closure lazy-body ctx)))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
-          
+
           ;; 0 - COMPUTE FREE VARS
           (set! fvars (free-vars (caddr ast) params))
-          
+
           ;; 1 - WRITE OBJECT HEADER
           (let ((header-word (+ (arithmetic-shift (+ 2 (length fvars)) 8) (arithmetic-shift STAG_PROCEDURE 3) 6))) ;; 2 + nbFreeVars | STAG_PROCEDURE | 110 => Length | Procedure | Permanent
             (x86-mov cgc (x86-rax) (x86-imm-int header-word))
             (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax)))
-          
+
           ;; 2 - WRITE CC TABLE LOCATION
           (x86-mov cgc (x86-rax) (x86-imm-int (+ 16 (* 8 (length fvars))))) ;; 16 = 8(header) + 8(location)
           (x86-add cgc (x86-rax) alloc-ptr)
           (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-          
+
           ;; 3 - WRITE FREE VARS
           (gen-free-vars cgc fvars ctx 16) ;; 16 = 8(header) + 8(location)
-          
+
           ;; 4 - WRITE CC TABLE
           (gen-cc-table cgc stub-addr (+ 16 (* 8 (length fvars))))
-          
+
           ;; 5 - TAG AND PUSH CLOSURE
           (x86-mov cgc (x86-rax) alloc-ptr)
           (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
           (x86-push cgc (x86-rax))
-          
+
           ;; 6 - UPDATE ALLOC PTR
           (x86-add cgc alloc-ptr (x86-imm-int (* 8 (+ 2 (length fvars) global-cc-table-maxsize))))
-          
+
           ;; Jump to next
           (jump-to-version cgc
                            succ
@@ -292,15 +299,15 @@
              (lambda (cgc ctx)
                (let* ((ctx0
                         (ctx-pop ctx))
-                      
+
                       (ctx1
                         ctx0)
-                      
+
                       (label-jump
                         (asm-make-label
                           cgc
                           (new-sym 'patchable_jump)))
-                      
+
                       (stub-labels
                         (add-callback
                           cgc
@@ -311,78 +318,78 @@
                                       (- ret-addr 5 2))
                                     (jump-addr
                                       (asm-label-pos label-jump)))
-                                
+
                                 (if dev-log
                                     (begin
                                       (println ">>> selector= " selector)
                                       (println ">>> prev-action= " prev-action)))
-                                
+
                                 (if (not prev-action)
-                                    
+
                                     (begin
-                                      
+
                                       (set! prev-action 'no-swap)
-                                      
+
                                       (if (= selector 1)
-                                          
+
                                           ;; overwrite unconditional jump
                                           (gen-version
                                             (+ jump-addr 6)
                                             lazy-code1
                                             ctx1)
-                                          
+
                                           (if (= (+ jump-addr 6 5) code-alloc)
-                                              
+
                                               (begin
-                                                
+
                                                 (if dev-log (println ">>> swapping-branches"))
-                                                
+
                                                 (set! prev-action 'swap)
-                                                
+
                                                 ;; invert jump direction
                                                 (put-u8 (+ jump-addr 1)
                                                         (fxxor 1 (get-u8 (+ jump-addr 1))))
-                                                
+
                                                 ;; make conditional jump to stub
                                                 (patch-jump jump-addr stub-addr)
-                                                
+
                                                 ;; overwrite unconditional jump
                                                 (gen-version
                                                   (+ jump-addr 6)
                                                   lazy-code0
                                                   ctx0))
-                                              
+
                                               ;; make conditional jump to new version
                                               (gen-version
                                                 jump-addr
                                                 lazy-code0
                                                 ctx0))))
-                                    
+
                                     (begin
-                                      
+
                                       ;; one branch has already been patched
-                                      
+
                                       ;; reclaim the stub
                                       (release-still-vector
                                         (get-scmobj ret-addr))
                                       (stub-reclaim stub-addr)
-                                      
+
                                       (if (= selector 0)
-                                          
+
                                           (gen-version
                                             (if (eq? prev-action 'swap)
                                                 (+ jump-addr 6)
                                                 jump-addr)
                                             lazy-code0
                                             ctx0)
-                                          
+
                                           (gen-version
                                             (if (eq? prev-action 'swap)
                                                 jump-addr
                                                 (+ jump-addr 6))
                                             lazy-code1
                                             ctx1))))))))))
-                 
+
                  (x86-pop cgc (x86-rax))
                  (x86-cmp cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
                  (x86-label cgc label-jump)
@@ -398,7 +405,7 @@
 (define (mlc-call ast succ)
   (let* (;; Call arguments
          (args (cdr ast))
-         ;; Lazy fail TODO
+         ;; Lazy fail
          (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_PRO_EXPECTED))))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
@@ -417,29 +424,29 @@
                                                                                                                          succ
                                                                                                                          ctx-continuation)))
                                                                             gen-flag)))))
-                                        
+
                                         ;; Return address (continuation label)
                                         (x86-label cgc load-ret-label)
                                         (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
                                         (x86-push cgc (x86-rax))
-                                        
+
                                         ;; Call ctx in rdx
                                         (let* ((call-stack    (cons 'ctx (cons 'retAddr (list-head (ctx-stack ctx) (+ 1 (length args))))))
                                                (call-ctx      (make-ctx call-stack '()))
                                                (ctx-id        (length ctx_ids))
                                                (cct-offset    (* 8 (get-closure-index call-ctx))))
-                                          
+
                                           (set! ctx_ids (cons (cons ctx-id call-ctx) ctx_ids))
                                           (x86-mov cgc (x86-rax) (x86-imm-int ctx-id))
                                           (x86-push cgc (x86-rax))
-                                        
+
                                         ;; 1 - Get cc-table
                                         (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))               ;; get closure
                                         (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; get cc-table
-                                        
+
                                         ;; 2 - Get entry point in cc-table
                                         (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
-                                          
+
                                         ;; 3 - Jump to entry point
                                         (x86-jmp cgc (x86-rax)))))))
          ;; Lazy main
@@ -457,8 +464,8 @@
                                               (else (gen-error cgc ERR_PRO_EXPECTED)))))))
          ;; Lazy callee
          (lazy-operator (gen-ast (car ast) lazy-main)))
-         
-    
+
+
     (if (> (length args) 0)
         (gen-ast-l args lazy-operator)
         lazy-operator)))
@@ -476,7 +483,7 @@
               ;; Gen operation code (assumes both operands are 'num)
               (lazy-code-op (make-lazy-code
                               (lambda (cgc ctx)
-                                
+
                                 ;; Arithmetic overflow
                                 (let* ((ctx-overflow (ctx-pop ctx)) ;; First operand pop
                                        (lazy-overflow (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_ARR_OVERFLOW))))
@@ -487,7 +494,7 @@
                                                                   0
                                                                   (lambda (ret-addr selector)
                                                                     (gen-version (vector-ref label-jo 1) lazy-overflow ctx-overflow)))))
-                                
+
                                 (x86-pop cgc (x86-rbx))
                                 (case op
                                   (($+)
@@ -518,7 +525,7 @@
                                           (x86-label cgc label-jo)
                                           (x86-jo cgc (list-ref stub-labels 0))))
                                   (($modulo) ;; TODO : check '/0'
-                                   (begin                                          
+                                   (begin
                                           (x86-pop cgc (x86-rax))
                                           (x86-sar cgc (x86-rbx) (x86-imm-int 2))
                                           (x86-sar cgc (x86-rax) (x86-imm-int 2))
@@ -565,10 +572,10 @@
                                                    (ctx-pop (ctx-pop ctx))
                                                    (cond ((member op '($+ $- $* $modulo $quotient)) 'num)
                                                          ((member op '($< $> $=)) 'bool))))))))
-              ;; Lazy code, tests types from ctx to jump to the correct lazy-code  
+              ;; Lazy code, tests types from ctx to jump to the correct lazy-code
               (lazy-main (make-lazy-code
                            (lambda (cgc ctx)
-                             
+
                              (let ((left-type  (cadr (ctx-stack ctx)))
                                    (right-type (car (ctx-stack ctx)))
                                    ;; ctx with 'num for right operand
@@ -577,12 +584,12 @@
                                    (lctx  (make-ctx (cons (car (ctx-stack ctx)) (cons 'num (cddr (ctx-stack ctx)))) (ctx-env ctx)))
                                    ;; ctx with 'num for left AND right operand
                                    (lrctx (make-ctx (cons 'num (cons 'num (cddr (ctx-stack ctx)))) (ctx-env ctx))))
-                                                           
+
                                (cond ((eq? left-type 'num)
                                       (cond ((eq? right-type 'num)     (jump-to-version cgc lazy-code-op ctx))
                                             ((eq? right-type 'unknown) (jump-to-version cgc (gen-dyn-type-test 'number 0 rctx lazy-code-op ctx lazy-fail) ctx))
                                             (else                      (gen-error cgc ERR_NUM_EXPECTED))))
-                                     
+
                                      ((eq? left-type 'unknown)
                                       (cond ((eq? right-type 'num)     (jump-to-version cgc (gen-dyn-type-test 'number 1 lctx lazy-code-op ctx lazy-fail) ctx))
                                             ((eq? right-type 'unknown) (let* ((right-test (gen-dyn-type-test 'number 1 lrctx lazy-code-op ctx lazy-fail))
@@ -622,7 +629,7 @@
 ;;
 ;; Make lazy code from TYPE TEST
 ;;
-(define (mlc-test ast succ)  
+(define (mlc-test ast succ)
   (let* ((op (car ast))
          (lazy-test (make-lazy-code
                       (lambda (cgc ctx)
@@ -649,7 +656,7 @@
                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
                                      (x86-jne cgc label-done)
                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))))
-                          ;; 
+                          ;;
                           (x86-label cgc label-done)
                           (x86-push  cgc (x86-rax))
                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) 'bool)))))))
@@ -733,7 +740,7 @@
 (define (gen-cc-table cgc stub-addr offset)
   (x86-mov cgc (x86-rax) (x86-imm-int stub-addr))
   (gen-cc-table-h cgc offset global-cc-table-maxsize))
-           
+
 ;; Gen-cc-table helper
 (define (gen-cc-table-h cgc offset nb-slots)
   (if (> nb-slots 0)

@@ -76,7 +76,7 @@
   
   (cond ((equal? mode "gsi")
          (run "gsi" "-:d-,fu,=.." file))
-        ((equal? mode "sc")
+        ((equal? mode "lc")
          (let ((x (run "./lazy-comp" file)))
            (if (= (car x) 0)
                (let ((y (run "./lazy-comp" file)))
@@ -188,7 +188,7 @@
       (set! args '("unit-tests")))
 
   (if (null? modes)
-      (set! modes '("sc")))
+      (set! modes '("lc")))
 
   (run-tests (list-of-scm-files args)))
 
