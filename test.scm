@@ -1,8 +1,19 @@
 
 
-(pp '(1 2 3))
-(pp '(1 2 (3 4) 5 6))
-(pp '(1 2 (3 4) 5))
+; (pp '(1 2 3))
+; (pp '(1 2 (3 4) 5 6))
+; (pp '(1 2 (3 4) 5))
+
+
+(define la 10)
+(let* ((lb (+ la 200))
+	   (la 100)
+       (lc (+ la 200)))
+  (println la)
+  (println lb)
+  (println lc))
+
+
 
 
 

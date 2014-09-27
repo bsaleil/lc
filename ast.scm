@@ -256,7 +256,7 @@
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
 
           ;; 0 - COMPUTE FREE VARS
-          (set! fvars (free-vars (caddr ast) params))
+          (set! fvars (free-vars (caddr ast) params ctx))
 
           ;; 1 - WRITE OBJECT HEADER
           (let ((header-word (+ (arithmetic-shift (+ 2 (length fvars)) 8) (arithmetic-shift STAG_PROCEDURE 3) 6))) ;; 2 + nbFreeVars | STAG_PROCEDURE | 110 => Length | Procedure | Permanent
@@ -797,35 +797,37 @@
             (error "Can't find variable: " var)))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
-(define (free-vars-l lst clo-env)
+(define (free-vars-l lst clo-env ctx)
   (if (null? lst)
       '()
-      (append (free-vars (car lst) clo-env) (free-vars-l (cdr lst) clo-env))))
+      (append (free-vars (car lst) clo-env ctx) (free-vars-l (cdr lst) clo-env ctx))))
 
 ;; Return all free vars used by ast knowing env 'clo-env'
-(define (free-vars ast clo-env)
+(define (free-vars ast clo-env ctx)
   (cond ;; Literal
         ((or (number? ast) (boolean? ast)) '())
         ;; Symbol
         ((symbol? ast)
           (cond ((member ast clo-env) '())
-                ((assoc  ast globals) '())
+                ((and (assoc ast globals)
+                      (not (assoc ast (ctx-env ctx))))
+                        '())
                 (else (list ast))))
         ;; Pair
         ((pair? ast)
           (let ((op (car ast)))
             (cond ;; If
-                  ((eq? op 'if) (append (free-vars (cadr ast)   clo-env)   ; cond
-                                        (free-vars (caddr ast)  clo-env)   ; then
-                                        (free-vars (cadddr ast) clo-env))) ; else
+                  ((eq? op 'if) (append (free-vars (cadr ast)   clo-env ctx)   ; cond
+                                        (free-vars (caddr ast)  clo-env ctx)   ; then
+                                        (free-vars (cadddr ast) clo-env ctx))) ; else
                   ;; Quote
                   ((eq? op 'quote) '())
                   ;; Lambda
-                  ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env)))
+                  ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
                   ;; Special
-                  ((member op '($cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env))
+                  ((member op '($cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
-                  (else (free-vars-l ast clo-env)))))))
+                  (else (free-vars-l ast clo-env ctx)))))))
 
 ;;
 ;; UTILS

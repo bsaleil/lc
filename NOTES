@@ -3,3 +3,5 @@
 ==
 
 -- tester en enlevant le passage du ctx par id pour bug
+-- let* letrec do let-nommé
+-- la macro let peut etre réduite à une seule lambda ?

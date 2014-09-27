@@ -7,6 +7,7 @@
       ((equal? (car expr) 'if) (expand-if expr))
       ((equal? (car expr) 'begin) (expand-begin expr))
       ((equal? (car expr) 'let) (expand-let expr))
+      ((equal? (car expr) 'let*) (expand-let* expr))
       ((equal? (car expr) 'lambda) (expand-lambda expr))
       ((equal? (car expr) 'or) (expand-or expr))
       ((equal? (car expr) 'and) (expand-and expr))
@@ -50,6 +51,18 @@
                 `((lambda ,(map car bindings) ,(expand `(let ((,(gensym) ,(car body))) ,@(cdr body)))) ,@(expand (map cadr bindings))))
           ;; 1 body
           (else `((lambda ,(map car bindings) ,(expand (car body))) ,@(expand (map cadr bindings)))))))
+      
+;; LET*
+(define (expand-let* expr)
+  (let ((bindings (cadr expr))
+        (body     (cddr expr)))
+    (cond ;; 1 body
+          ((and (list? body) (= (length bindings) 1))
+              (expand `(let ,bindings ,@body)))
+          ;; > 1 body
+          (else (expand `(let ,(list (car bindings))
+                        (let* ,(cdr bindings)
+                           ,@body)))))))
       
 ;; LAMBDA
 (define (expand-lambda expr)
