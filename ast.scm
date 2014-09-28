@@ -86,7 +86,7 @@
                             (begin (x86-pop cgc (x86-rax))
                                    (x86-mov cgc (x86-mem (* 8 (cdr glookup-res)) (x86-r10)) (x86-rax))
                                    (jump-to-version cgc succ (ctx-pop ctx)))
-                            #f))))))
+                            (error "NYI set!")))))))
     (gen-ast (caddr ast) lazy-set)))
 
 ;;
@@ -95,36 +95,21 @@
 (define (mlc-symbol ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (let* ((fs (length (ctx-stack ctx)))
-             (lookup-res (assoc ast (ctx-env ctx))))
-        (if lookup-res
-            ;; Id exists
-            (if (pair? (cdr lookup-res))
-                ;; Free var
-                (let* ((offset (+ 15 (* 8 (cdr (cdr lookup-res))))) ;; var - 1(tag) + 8(header) + 8(nb-free) = var + 15
-                       (clo-offset (* 8 (closure-pos (ctx-stack ctx))))) ;; TODO : closure pos : get it from base 'pointer' in ctx ?
-                  ;; Get closure
-                  (x86-mov cgc (x86-rax) (x86-mem clo-offset (x86-rsp)))
-                  ;; Get value & push
-                  (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
-                  (x86-push cgc (x86-rax))
-                  ;; Jump to succ
-                  (jump-to-version cgc succ (ctx-push ctx CTX_UNK))) ;; TODO free vars info
-                ;; Local var
-                (let ((pos (- fs 1 (cdr lookup-res))))
-                  (x86-push cgc (x86-mem (* pos 8) (x86-rsp)))
-                  (jump-to-version cgc
-                                   succ
-                                   (ctx-push ctx
-                                             (list-ref (ctx-stack ctx) pos)))))
-            ;; Else, lookup in globals
-            (let ((glookup-res (assoc ast globals)))
-              (if glookup-res
-                  (begin (x86-mov cgc (x86-rax) (x86-mem (* 8 (cadr glookup-res)) (x86-r10)))
-                    (x86-push cgc (x86-rax))
-                    (jump-to-version cgc succ (ctx-push ctx (cddr glookup-res))))
-                  (error "Can't find variable: " ast))))))))
-
+      ;; Lookup in local env
+      (let* ((res (assoc ast (ctx-env ctx)))
+             (ctx-type (if res
+                          (if (pair? (cdr res))
+                             ;; Free var
+                             (gen-get-freevar  cgc ctx res 'stack)
+                             ;; Local var
+                             (gen-get-localvar cgc ctx res 'stack))
+                          (let ((res (assoc ast globals)))
+                             (if res
+                                ;; Global var
+                                (gen-get-globalvar cgc ctx res 'stack)
+                                ;; Unknown
+                                (error "Can't find variable: " ast))))))
+           (jump-to-version cgc succ (ctx-push ctx ctx-type))))))
 
 ;;
 ;; Make lazy code from DEFINE
@@ -690,7 +675,7 @@
 
 ;;-----------------------------------------------------------------------------
 
-;; AST RALETED FUNCTIONS
+;; AST RELATED FUNCTIONS
 
 ;;-----------------------------------------------------------------------------
 
@@ -761,6 +746,54 @@
                      idx))))))
 
 ;;
+;; SYMBOL READ/WRITE
+;;
+
+;; Gen code to get a free var from closure
+;; info is the lookup result which contains id info
+;;  ex: info = '(n free . 0) for free var 'n' at index '0'
+;; dest is the destination of free var. possible values are :
+;;  'stack : push value on top of stack
+;;  'gen-reg : general register (mov value into rax)
+(define (gen-get-freevar cgc ctx info dest)
+   (let* ((offset (+ 15 (* 8 (cdr (cdr info)))))
+          (clo-offset (* 8 (closure-pos (ctx-stack ctx)))))
+      ;; Get closure
+      (x86-mov cgc (x86-rax) (x86-mem clo-offset (x86-rsp)))
+      ;; Get value & push
+      (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
+      (cond  ((eq? dest 'stack)   (x86-push cgc (x86-rax)))
+             ((eq? dest 'gen-reg) #f) ;; Already in rax
+             (else (error "Invalid destination")))
+      CTX_UNK)) ;; TODO return free var info when implemented
+
+;; Gen code to get a local var from stack
+;; info is the lookup result which contains id info
+;;  ex: info = '(n . 0) for local var 'n' at index '0'
+;; dest is the destination of local var. possible values are :
+;;  'stack : push value on top of stack
+;;  'gen-reg : general register (mov value into rax)
+(define (gen-get-localvar cgc ctx info dest)
+   (let* ((fs (length (ctx-stack ctx)))
+          (pos (- fs 1 (cdr info))))
+      (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* pos 8) (x86-rsp))))
+            ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp))))
+            (error "Invalid destination"))
+      (list-ref (ctx-stack ctx) pos)))
+
+;; Gen code to get a global var from memory
+;; info is the lookup result which contains id info
+;;  ex: info = '(n 0 . number) for local var 'n' at global index 0 with type info 'number'
+;; dest is the destination of global var. possible values are :
+;;  'stack : push value on top of stack
+(define (gen-get-globalvar cgc ctx info dest)
+   (x86-mov cgc (x86-rax) (x86-mem (* 8 (cadr info)) (x86-r10)))
+   (if (eq? dest 'stack)
+      (x86-push cgc (x86-rax))
+      (error "Invalid destination"))
+   (cddr info))
+
+;;
 ;; FREE VARS
 ;;
 
@@ -776,25 +809,16 @@
       '()
       (let* ((var (car vars))
              (res (assoc var (ctx-env ctx))))
-        (if res
+         (if res
             (if (pair? (cdr res))
-                ;; Free var ;; TODO factorise with similar code in mlc-symbol
-                (let* ((free-offset (+ 15 (* 8 (cdr (cdr res))))) ;; var - 1(tag) + 8(header) + 8(nb-free) = var + 15
-                       (clo-offset (* 8 (closure-pos (ctx-stack ctx))))) ;; TODO : closure pos : get it from base 'pointer' in ctx ?
-                  ;; Get closure
-                  (x86-mov cgc (x86-rax) (x86-mem clo-offset (x86-rsp)))
-                  ;; Get value
-                  (x86-mov cgc (x86-rax) (x86-mem free-offset (x86-rax)))
-                  ;; Mov to closure
-                  (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
-                  (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))
-                ;; Local var
-                (let* ((fs (length (ctx-stack ctx)))
-                       (pos (- fs 1 (cdr res))))
-                  (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp)))
-                  (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
-                  (gen-free-vars cgc (cdr vars) ctx (+ offset 8))))
-            (error "Can't find variable: " var)))))
+               ;; Free var
+               (gen-get-freevar  cgc ctx res 'gen-reg)
+               ;; Local var
+               (gen-get-localvar cgc ctx res 'gen-reg))
+            (error "Can't find variable: " var))
+         ;; TODO : free vars ctx information
+         (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
+         (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst clo-env ctx)
@@ -825,7 +849,7 @@
                   ;; Lambda
                   ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
                   ;; Special
-                  ((member op '($cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
+                  ((member op '(set! $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
 

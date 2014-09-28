@@ -1,60 +1,32 @@
+; (do ((a 0 (+ a 1))
+;      (b 0 (+ b 2)))
+;   ((= a 6) (println 10) 20)
+;   (println a))
+
+; =
+
+; (letrec ((LAFUN (lambda (a b)
+; 				 (if (= a 6)
+; 				    (begin (println 10) 20)
+; 				    (begin (println a) (LAFUN (+ a 1) (+ b 2)))))))
+;    (LAFUN 0 0))
+
+; =
+
+; (let ((LAFUN #f))
+;    (set! LAFUN (lambda (a b)
+;                   (if (= a 6)
+;                      (begin (println 10) 20)
+;                      (begin (println a) (LAFUN (+ a 1) (+ b 2))))))
+;    (LAFUN 0 0))
+(println 10)
+
+;(((lambda (LAFUN) ((lambda (#:g27) (println LAFUN)) (set! LAFUN 10))) #f))
+
+;(aa free . 0)
+;(lavar . 0)
 
 
-; (pp '(1 2 3))
-; (pp '(1 2 (3 4) 5 6))
-; (pp '(1 2 (3 4) 5))
-
-
-(define la 10)
-(let* ((lb (+ la 200))
-	   (la 100)
-       (lc (+ la 200)))
-  (println la)
-  (println lb)
-  (println lc))
-
-
-
-
-
-; (println 101)
-; (println 202)
-; (println 303)
-; (println 0)
-; (println -101)
-; (println -202)
-; (println -303)
-; (println #f)
-; (println #t)
-; (println '())
-; (println (lambda (x) x))
-; (println (boolean? 10))
-; (println (number?  10))
-; (println (number?  #f))
-; (println (boolean? #f))
-; (println (null? 10))
-; (println (null? '()))
-; (println (procedure? 10))
-; (println (procedure? (lambda (x) x)))
-; (println (pair? 10))
-; (println (pair? (cons 1 2)))
-; (println (pair? (lambda (x) x)))
-; (println (pair? (cons (lambda (x) x) (lambda (y) y))))
-
-; ;; ------
-; ;; TEST 1
-; ;; ------
-
-; (define (fn1 a b c)
-;    (+ b c))
-
-
-; (println (fn1 1 2 3))
-; (println (fn1 1 2 10))
-
-; ;; ------
-; ;; TEST 2
-; ;; ------
 
 ; (define (fn2 a b c)
 ;    (+ a c))
