@@ -243,6 +243,11 @@
           ;; 0 - COMPUTE FREE VARS
           (set! fvars (free-vars (caddr ast) params ctx))
 
+          ;; 0b - variables mutées TODO
+          (set! mutated (mutated-vars (caddr ast) params ctx))
+          (pp "MUTATED VARS")
+          (pp mutated)
+
           ;; 1 - WRITE OBJECT HEADER
           (let ((header-word (+ (arithmetic-shift (+ 2 (length fvars)) 8) (arithmetic-shift STAG_PROCEDURE 3) 6))) ;; 2 + nbFreeVars | STAG_PROCEDURE | 110 => Length | Procedure | Permanent
             (x86-mov cgc (x86-rax) (x86-imm-int header-word))
@@ -819,6 +824,37 @@
          ;; TODO : free vars ctx information
          (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
          (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))))
+
+;; TODO
+(define (ensub lsta lstb res)
+  (if (null? lsta)
+    res
+    (if (member (car lsta) lstb)
+      (ensub (cdr lsta) lstb res)
+      (ensub (cdr lsta) lstb (cons (car lsta) res)))))
+
+
+;; TODO 
+(define (mutated-vars-l lst params ctx) ;; TODO ctx ?
+  (if (null? lst)
+    '()
+    (append (mutated-vars (car lst) params ctx) (mutated-vars-l (cdr lst) params ctx))))
+
+;; TODO
+(define (mutated-vars ast params ctx) ;; TODO ctx ?
+  (pp "compute mutated of ")
+  (pp ast)
+  (cond ;; Literal & Symbol 
+        ((or (number? ast) (boolean? ast) (symbol? ast)) '())
+        ;; Pair
+        ((pair? ast)
+           (let ((op (car ast)))
+              (cond ((eq? op 'lambda) (mutated-vars (caddr ast) (ensub params (cadr ast) '()) ctx))
+                    ((eq? op 'set!)
+                      (if (member (cadr ast) params)
+                        (list (cadr ast))
+                        '()))
+                    (else (mutated-vars-l ast params ctx)))))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst clo-env ctx)
