@@ -22,10 +22,12 @@
          (let ((op (car ast)))
            (cond ;; Special with call
                  ((member op '($$putchar)) (mlc-special-c ast succ))
+                 ;; TODO VERIF
+                 ((eq? op '$verif) (mlc-verif ast succ))
                  ;; Special without call
                  ((member op '($cons $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
-                 ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
+                 ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ)) ;; TODO : (eq? op 'quote)
                  ;; Set!
                  ((eq? 'set! (car ast)) (mlc-set! ast succ))
                  ;; Lambda
@@ -83,10 +85,15 @@
                     (lambda (cgc ctx)
                       (let ((glookup-res (assoc variable globals)))
                         (if glookup-res
+                            ;; Global
                             (begin (x86-pop cgc (x86-rax))
                                    (x86-mov cgc (x86-mem (* 8 (cdr glookup-res)) (x86-r10)) (x86-rax))
                                    (jump-to-version cgc succ (ctx-pop ctx)))
-                            (error "NYI set!")))))))
+                            ;;
+                            (let ((res (assoc variable (ctx-env ctx))))
+                               (if (pair? (cdr res))
+                                  (error "NYI set! freevar")
+                                  (error "NTI set! localvar")))))))))
     (gen-ast (caddr ast) lazy-set)))
 
 ;;
@@ -248,30 +255,52 @@
             (x86-mov cgc (x86-rax) (x86-imm-int header-word))
             (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax)))
 
-          ;; 2 - WRITE CC TABLE LOCATION
-          (x86-mov cgc (x86-rax) (x86-imm-int (+ 16 (* 8 (length fvars))))) ;; 16 = 8(header) + 8(location)
-          (x86-add cgc (x86-rax) alloc-ptr)
-          (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+          ;; TODO
+          (x86-mov cgc (x86-rbx) (x86-imm-int 0))
 
-          ;; 3 - WRITE FREE VARS
-          (gen-free-vars cgc fvars ctx 16) ;; 16 = 8(header) + 8(location)
+          (let ((lazy-end
+                   (make-lazy-code
+                      (lambda (cgc ctx)
+                          (pp "GENERATION DE LA FERMETURE APRES VARS")
 
-          ;; 4 - WRITE CC TABLE
-          (gen-cc-table cgc stub-addr (+ 16 (* 8 (length fvars))))
+                          ;; 2 - WRITE CC TABLE LOCATION
+                          (x86-push cgc alloc-ptr) ;; push closure pos
+                          (x86-mov cgc (x86-rax) (x86-imm-int (+ 16 (* 8 (length fvars))))) ;; 16 = 8(header) + 8(location)
+                          (x86-add cgc (x86-rax) alloc-ptr)
+                          (x86-add cgc (x86-rax) (x86-rbx))
+                          (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
 
-          ;; 5 - TAG AND PUSH CLOSURE
-          (x86-mov cgc (x86-rax) alloc-ptr)
-          (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-          (x86-push cgc (x86-rax))
+                          ;; 4 - WRITE CC TABLE
+                          (x86-add cgc alloc-ptr (x86-imm-int (* 8 (+ 2 (length fvars)))))
+                          (x86-add cgc alloc-ptr (x86-rbx))
+                          (gen-cc-table cgc stub-addr 0)
 
-          ;; 6 - UPDATE ALLOC PTR
-          (x86-add cgc alloc-ptr (x86-imm-int (* 8 (+ 2 (length fvars) global-cc-table-maxsize))))
+                          ;; 5 - TAG AND PUSH CLOSURE
+                          (x86-pop cgc (x86-rax))
+                          ;(x86-mov cgc (x86-rax) alloc-ptr)
+                          (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                          (x86-push cgc (x86-rax))
 
-          ;; Jump to next
-          (jump-to-version cgc
-                           succ
-                           (ctx-push ctx
-                                     CTX_CLO)))))))
+                          (x86-add cgc alloc-ptr (x86-rbx))
+
+                          ;; 6 - UPDATE ALLOC PTR
+                          (x86-add cgc alloc-ptr (x86-imm-int (* 8 global-cc-table-maxsize)))
+
+                          (pp "FERMETURE GENEREE")
+
+                          ;; Jump to next
+                          (jump-to-version cgc
+                                           succ
+                                           (ctx-push ctx
+                                                     CTX_CLO))))))
+
+
+
+             ;; 3 - WRITE FREE VARS
+             (let ((box-offset (+ 16 (* 8 (length fvars)))))
+              (gen-free-vars box-offset lazy-end cgc fvars ctx 16))) ;; 16 = 8(header) + 8(location)
+
+          )))))
 
 ;;
 ;; Make lazy code from IF
@@ -774,8 +803,12 @@
 ;;  'stack : push value on top of stack
 ;;  'gen-reg : general register (mov value into rax)
 (define (gen-get-localvar cgc ctx info dest)
+
+  ;; ajouter flag boxing
+
    (let* ((fs (length (ctx-stack ctx)))
           (pos (- fs 1 (cdr info))))
+
       (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* pos 8) (x86-rsp))))
             ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp))))
             (error "Invalid destination"))
@@ -803,22 +836,109 @@
       '()
       (cons (cons (car fvars) (cons 'free offset)) (build-fenv (cdr fvars) (+ offset 1)))))
 
+(define (mlc-verif ast succ)
+  (let ((lazy-VERIF
+           (make-lazy-code
+              (lambda (cgc ctx)
+                (x86-pop cgc (x86-rax))
+                (x86-sub cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax)))
+                (x86-pop cgc (x86-rbx))
+                (x86-sub cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
+                (x86-mov cgc (x86-rbx) (x86-mem 8 (x86-rbx)))
+                (gen-dump-regs cgc)))))
+   (gen-ast-l (cdr ast) lazy-VERIF)))
+
+
+;; TODO
+(define (new-TODO box-offset succ vars offset res)
+
+  (let* (;; LAZY COPY
+         (lazy-copy
+           (make-lazy-code
+              (lambda (cgc ctx)
+                 (x86-pop cgc (x86-rax))
+                 (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
+                 (gen-free-vars box-offset succ cgc (cdr vars) (ctx-pop ctx) (+ offset 8)))))
+        ;; LAZY BOX
+        (lazy-box
+           (make-lazy-code
+              (lambda (cgc ctx)
+                 (pp "LAZY-BOX")
+
+                 (let ((header-word (+ (arithmetic-shift 2 8) (arithmetic-shift STAG_BOX 3) 6))) ;; 2 + nbFreeVars | STAG_BOX | 110 => Length | Procedure | Permanent)))
+                    ;; Write boxed object header
+                    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+                    (x86-mov cgc (x86-mem box-offset alloc-ptr) (x86-rax)))
+
+                 ;; Write boxed object value
+                 (x86-pop cgc (x86-rax))
+                 (x86-mov cgc (x86-mem (+ box-offset 8) alloc-ptr) (x86-rax))
+                 (x86-add cgc (x86-rbx) (x86-imm-int 16))
+
+                 ;; Tag and push box
+                 (x86-mov cgc (x86-rax) alloc-ptr)
+                 (x86-add cgc (x86-rax) (x86-imm-int (+ TAG_MEMOBJ box-offset)))
+                 (x86-push cgc (x86-rax))
+
+                 ;; Update box-offset
+                 (set! box-offset (+ box-offset 16))
+
+                 ;; TODO : detecter et boxer uniquement les variables qui changent
+                 ;;        par ex. lors de la recherche des variables libres, trouver les (set! id ...)
+                 ;; TODO : expliquer box offset
+                 ;; TODO : ajouter à alloc ptr au cas de base de gen-free-vars
+                 (jump-to-version cgc lazy-copy (ctx-push (ctx-pop ctx) CTX_BOX)))))
+        ;; LAZY TEST
+        (lazy-test
+           (make-lazy-code
+              (lambda (cgc ctx)
+                 (pp "LAZY-TEST")
+                 (gen-dyn-type-test CTX_BOX
+                                    0
+                                    (ctx-push (ctx-pop ctx) CTX_BOX) ;; ctx success
+                                    lazy-copy  ;; lazy success
+                                    ctx ;; ctx fail
+                                    lazy-box))))
+        ;; LAZY MAIN
+        (lazy-main
+           (make-lazy-code
+              (lambda (cgc ctx)
+                 (let ((ctx-type (gen-get-localvar cgc ctx res 'stack)))
+                    (set! ctx (ctx-push ctx ctx-type))
+                    (cond ((eq? ctx-type CTX_BOX)
+                              (jump-to-version cgc lazy-copy ctx))
+                          ((eq? ctx-type CTX_UNK)
+                              (jump-to-version cgc lazy-test ctx))
+                          (else
+                              (jump-to-version cgc lazy-box ctx))))))))
+
+    lazy-main))
+
+
 ;; Write free vars in closure
-(define (gen-free-vars cgc vars ctx offset)
+(define (gen-free-vars box-offset succ cgc vars ctx offset)
+  (pp "GENERATION DES VARIABLES LIBRES")
+  (pp vars)
   (if (null? vars)
-      '()
+      (begin (pp "JUMP TOO SUCC") (jump-to-version cgc succ ctx))
       (let* ((var (car vars))
              (res (assoc var (ctx-env ctx))))
          (if res
             (if (pair? (cdr res))
                ;; Free var
-               (gen-get-freevar  cgc ctx res 'gen-reg)
+               (begin (gen-get-freevar cgc ctx res 'gen-reg)
+                      (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
+                      (gen-free-vars box-offset succ cgc (cdr vars) ctx (+ offset 8)))
                ;; Local var
-               (gen-get-localvar cgc ctx res 'gen-reg))
-            (error "Can't find variable: " var))
+               ;; TODO : 1. feuille
+               (let ((lazyTODO (new-TODO box-offset succ vars offset res)))
+                  (jump-to-version cgc lazyTODO ctx)))
+               ;(gen-free-from-local cgc ctx res)
+               ;;(gen-get-localvar cgc ctx res 'gen-reg))
+            (error "Can't find variable: " var)))))
          ;; TODO : free vars ctx information
-         (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
-         (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))))
+
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst clo-env ctx)
@@ -849,7 +969,8 @@
                   ;; Lambda
                   ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
                   ;; Special
-                  ((member op '(set! $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
+                  ;; TODO : remove $verif
+                  ((member op '(set! $verif $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
 

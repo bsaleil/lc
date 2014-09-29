@@ -22,7 +22,7 @@
 ;;-----------------------------------------------------------------------------
 
 ;; NOTE : Should be a macro
-(define dev-log #f)
+(define dev-log #t)
 
 ;;-----------------------------------------------------------------------------
 
@@ -32,8 +32,9 @@
 (define ENCODING_VOID -18)
 
 ;; Types subtag
+(define STAG_PAIR       1)
+(define STAG_BOX        5)
 (define STAG_PROCEDURE 14)
-(define STAG_PAIR    1)
 
 ;; Context
 (define CTX_NUM   'number)
@@ -45,6 +46,7 @@
 (define CTX_NULL  'null)
 (define CTX_CTXID 'ctx)
 (define CTX_RETAD 'retAddr)
+(define CTX_BOX   'box)
 
 ;;-----------------------------------------------------------------------------
 
@@ -478,8 +480,10 @@
     (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rsp))
     
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-    (x86-mov cgc alloc-ptr  (x86-imm-int heap-addr))       ;; Heap addr ub alloc-ptr
+    (x86-mov cgc alloc-ptr  (x86-imm-int heap-addr))       ;; Heap addr in alloc-ptr
     (x86-mov cgc (x86-r10) (x86-imm-int (+ block-addr 8))) ;; Globals addr in r10
+
+    (gen-dump-regs cgc)
     ))
 
 (define (init)
@@ -877,8 +881,17 @@
           (make-lazy-code
             (lambda (cgc ctx)
               (x86-pop cgc (x86-rax))
+
+              ;; TODO
+
+              (x86-sub cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+              (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax)))
+
+              (gen-dump-regs cgc)
+
               (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
               (pop-regs-reverse cgc prog-regs)
+              (pp "END OF PROG")
               (x86-ret cgc))))
       (gen-ast (car exprs)
                (lazy-exprs (cdr exprs) succ))))
@@ -894,7 +907,9 @@
                  lazy-lib
                  (make-ctx '() '())))
   
-  (##machine-code-block-exec mcb))
+  (let ((res (##machine-code-block-exec mcb)))
+    (if dev-log
+       (begin (print "RESULT = ") (pp res)))))
 
 ;; Get lib
 (define lib  (expand (read-all (open-input-file "./lib.scm"))))

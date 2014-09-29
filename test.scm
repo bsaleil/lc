@@ -19,7 +19,15 @@
 ;                      (begin (println 10) 20)
 ;                      (begin (println a) (LAFUN (+ a 1) (+ b 2))))))
 ;    (LAFUN 0 0))
-(println 10)
+
+
+((lambda (a b)
+	((lambda () ($verif a b)))) 10 20)
+
+; (let ((a 10)
+; 	  (b 20)
+; 	  (c 30))
+;    ((lambda () (println a) (println b) (println c))))
 
 ;(((lambda (LAFUN) ((lambda (#:g27) (println LAFUN)) (set! LAFUN 10))) #f))
 
