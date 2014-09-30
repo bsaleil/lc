@@ -86,7 +86,10 @@
                             (begin (x86-pop cgc (x86-rax))
                                    (x86-mov cgc (x86-mem (* 8 (cdr glookup-res)) (x86-r10)) (x86-rax))
                                    (jump-to-version cgc succ (ctx-pop ctx)))
-                            (error "NYI set!")))))))
+                            (begin (x86-pop cgc (x86-rax))
+                                   (x86-push cgc (x86-imm-int ENCODING_VOID))
+                                   (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))))))
+                            ;(error "NYI set!")))))))
     (gen-ast (caddr ast) lazy-set)))
 
 ;;

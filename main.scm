@@ -46,6 +46,17 @@
 (define CTX_CTXID 'ctx)
 (define CTX_RETAD 'retAddr)
 
+;; TODO
+(define-type identifier
+  type ;; 'free or 'local
+  offset ;; offset on closure or stack
+  flags ;; List of flags (possible flags : mutable)
+  versions
+)
+
+(define (identifier-mutable? id)
+  (member 'mutable (identifier-flags id)))
+
 ;;-----------------------------------------------------------------------------
 
 (define (alloc-still-vector len)
