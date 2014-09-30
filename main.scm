@@ -894,7 +894,9 @@
                  lazy-lib
                  (make-ctx '() '())))
   
+  ;(print "RESULT = ")
   (##machine-code-block-exec mcb))
+  ;(pp (##machine-code-block-exec mcb)))
 
 ;; Get lib
 (define lib  (expand (read-all (open-input-file "./lib.scm"))))

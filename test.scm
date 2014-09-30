@@ -20,9 +20,7 @@
 ;                      (begin (println a) (LAFUN (+ a 1) (+ b 2))))))
 ;    (LAFUN 0 0))
 
-(lambda (n m)
-	(lambda (m) (set! n 10))
-	(set! m 99))
+(number? 10)
 
 ;(((lambda (LAFUN) ((lambda (#:g27) (println LAFUN)) (set! LAFUN 10))) #f))
 

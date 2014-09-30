@@ -98,7 +98,7 @@
       ;; Lookup in local env
       (let* ((res (assoc ast (ctx-env ctx)))
              (ctx-type (if res
-                          (if (pair? (cdr res))
+                          (if (eq? (cadr res) 'free)
                              ;; Free var
                              (gen-get-freevar  cgc ctx res 'stack)
                              ;; Local var
@@ -199,6 +199,10 @@
                                          (else (gen-error cgc ERR_PAIR_EXPECTED))))))))
              (gen-ast (cadr ast) lazy-main))))))
 
+;; TODO
+;; TODO
+(define (gen-mutated cgc ctx mutated)
+  '())
 
 ;;
 ;; Make lazy code from LAMBDA
@@ -208,6 +212,8 @@
          (params (cadr ast))
          ;; Lambda free vars
          (fvars #f)
+         ;; TODO
+         (mutated #f)
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code
                      (lambda (cgc ctx)
@@ -225,7 +231,12 @@
                        ;; Jump to continuation
                        (x86-jmp cgc (x86-rax)))))
          ;; Lazy lambda body
-         (lazy-body (gen-ast (caddr ast) lazy-ret)))
+         (lazy-body (gen-ast (caddr ast) lazy-ret))
+         ;; Lazy mutated : Move mutated vars in memory
+         (lazy-mutated (make-lazy-code
+                           (lambda (cgc ctx)
+                              ;;(gen-mutated cgc ctx mutated)
+                              (jump-to-version cgc lazy-body ctx)))))
 
     ;; Lazy closure generation
     (make-lazy-code
@@ -237,7 +248,7 @@
                                                ;; Extends env with params and free vars
                                                (let* ((env (append (build-env params 0) (build-fenv fvars 0)))
                                                       (ctx (make-ctx (ctx-stack ctx) env)))
-                                                 (gen-version-fn closure lazy-body ctx)))))
+                                                 (gen-version-fn closure lazy-mutated ctx)))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
 
           ;; 0 - COMPUTE FREE VARS
@@ -245,8 +256,6 @@
 
           ;; 0b - variables mutées TODO
           (set! mutated (mutated-vars (caddr ast) params ctx))
-          (pp "MUTATED VARS")
-          (pp mutated)
 
           ;; 1 - WRITE OBJECT HEADER
           (let ((header-word (+ (arithmetic-shift (+ 2 (length fvars)) 8) (arithmetic-shift STAG_PROCEDURE 3) 6))) ;; 2 + nbFreeVars | STAG_PROCEDURE | 110 => Length | Procedure | Permanent
@@ -780,7 +789,7 @@
 ;;  'gen-reg : general register (mov value into rax)
 (define (gen-get-localvar cgc ctx info dest)
    (let* ((fs (length (ctx-stack ctx)))
-          (pos (- fs 1 (cdr info))))
+          (pos (- fs 1 (cddr info))))
       (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* pos 8) (x86-rsp))))
             ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp))))
             (error "Invalid destination"))
@@ -815,7 +824,7 @@
       (let* ((var (car vars))
              (res (assoc var (ctx-env ctx))))
          (if res
-            (if (pair? (cdr res))
+            (if (eq? (cadr res) 'free)
                ;; Free var
                (gen-get-freevar  cgc ctx res 'gen-reg)
                ;; Local var
@@ -842,10 +851,8 @@
 
 ;; TODO
 (define (mutated-vars ast params ctx) ;; TODO ctx ?
-  (pp "compute mutated of ")
-  (pp ast)
   (cond ;; Literal & Symbol 
-        ((or (number? ast) (boolean? ast) (symbol? ast)) '())
+        ((or (null? ast) (number? ast) (boolean? ast) (symbol? ast)) '())
         ;; Pair
         ((pair? ast)
            (let ((op (car ast)))
@@ -898,7 +905,7 @@
 (define (build-env ids start)
   (if (null? ids)
     '()
-    (cons (cons (car ids) start) (build-env (cdr ids) (+ start 1)))))
+    (cons (append (list (car ids) 'local) start) (build-env (cdr ids) (+ start 1)))))
 
 ;; Get position of first occurrence of CTX_CLO in ctx
 (define (closure-pos stack)
