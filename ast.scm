@@ -101,7 +101,7 @@
       ;; Lookup in local env
       (let* ((res (assoc ast (ctx-env ctx)))
              (ctx-type (if res
-                          (if (eq? (cadr res) 'free)
+                          (if (eq? (identifier-type (cdr res)) 'free)
                              ;; Free var
                              (gen-get-freevar  cgc ctx res 'stack)
                              ;; Local var
@@ -772,8 +772,8 @@
 ;; dest is the destination of free var. possible values are :
 ;;  'stack : push value on top of stack
 ;;  'gen-reg : general register (mov value into rax)
-(define (gen-get-freevar cgc ctx info dest)
-   (let* ((offset (+ 15 (* 8 (cdr (cdr info)))))
+(define (gen-get-freevar cgc ctx variable dest)
+   (let* ((offset (+ 15 (* 8 (identifier-offset (cdr variable)))))
           (clo-offset (* 8 (closure-pos (ctx-stack ctx)))))
       ;; Get closure
       (x86-mov cgc (x86-rax) (x86-mem clo-offset (x86-rsp)))
@@ -790,9 +790,9 @@
 ;; dest is the destination of local var. possible values are :
 ;;  'stack : push value on top of stack
 ;;  'gen-reg : general register (mov value into rax)
-(define (gen-get-localvar cgc ctx info dest)
+(define (gen-get-localvar cgc ctx variable dest)
    (let* ((fs (length (ctx-stack ctx)))
-          (pos (- fs 1 (cddr info))))
+          (pos (- fs 1 (identifier-offset (cdr variable)))))
       (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* pos 8) (x86-rsp))))
             ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp))))
             (error "Invalid destination"))
@@ -818,7 +818,8 @@
 (define (build-fenv fvars offset)
   (if (null? fvars)
       '()
-      (cons (cons (car fvars) (cons 'free offset)) (build-fenv (cdr fvars) (+ offset 1)))))
+      (cons (cons (car fvars) (make-identifier 'free offset '()))
+            (build-fenv (cdr fvars) (+ offset 1)))))
 
 ;; Write free vars in closure
 (define (gen-free-vars cgc vars ctx offset)
@@ -827,7 +828,7 @@
       (let* ((var (car vars))
              (res (assoc var (ctx-env ctx))))
          (if res
-            (if (eq? (cadr res) 'free)
+            (if (eq? (identifier-type (cdr res)) 'free)
                ;; Free var
                (gen-get-freevar  cgc ctx res 'gen-reg)
                ;; Local var
@@ -908,7 +909,8 @@
 (define (build-env ids start)
   (if (null? ids)
     '()
-    (cons (append (list (car ids) 'local) start) (build-env (cdr ids) (+ start 1)))))
+    (cons (cons (car ids) (make-identifier 'local start '()))
+          (build-env (cdr ids) (+ start 1)))))
 
 ;; Get position of first occurrence of CTX_CLO in ctx
 (define (closure-pos stack)

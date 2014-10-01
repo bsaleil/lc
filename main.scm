@@ -51,7 +51,6 @@
   type ;; 'free or 'local
   offset ;; offset on closure or stack
   flags ;; List of flags (possible flags : mutable)
-  versions
 )
 
 (define (identifier-mutable? id)
