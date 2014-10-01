@@ -25,9 +25,14 @@
 (set! global 6)
 (println global)
 
+((lambda ()
+    (set! global 7)
+    (println global)))
+
 ;1
 ;2
 ;3
 ;4
 ;5
 ;6
+;7

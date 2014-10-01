@@ -85,7 +85,9 @@
                         (if glookup-res
                             (begin (x86-pop cgc (x86-rax))
                                    (x86-mov cgc (x86-mem (* 8 (cadr glookup-res)) (x86-r10)) (x86-rax))
-                                   (jump-to-version cgc succ (ctx-pop ctx)))
+                                   ;; TODO set global + Reecrire cette fonction (factoriser)
+                                   (x86-push cgc (x86-imm-int ENCODING_VOID))
+                                   (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))
                             ;; TODO
                             (let ((res (assoc variable (ctx-env ctx))))
                               (if (eq? (identifier-type (cdr res)) 'free)
