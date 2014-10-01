@@ -91,6 +91,7 @@
                                    (set-cdr! (cdr glookup-res) (car (ctx-stack ctx)))
                                    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))
                             ;; TODO
+                            ;; (+ remplacer type)
                             (let ((res (assoc variable (ctx-env ctx))))
                               (if (eq? (identifier-type (cdr res)) 'free)
                                 (begin (gen-set-freevar cgc ctx res)
@@ -107,25 +108,6 @@
                             ;        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))))))
                             ;(error "NYI set!")))))))
     (gen-ast (caddr ast) lazy-set)))
-
-;; TODO
-(define (gen-set-freevar cgc ctx variable)
-   (let ((mutable (identifier-mutable? (cdr variable))))
-      (if mutable
-        (begin (gen-get-freevar cgc ctx variable 'gen-reg)
-               (x86-pop cgc (x86-rbx))
-               (x86-mov cgc (x86-mem 7 (x86-rax)) (x86-rbx)))
-        (error "NYI B")))) ;; TODO CAS IMPOSSIBLE
-
-;; TODO
-(define (gen-set-localvar cgc ctx variable)
-   (let ((mutable (identifier-mutable? (cdr variable))))
-     (if mutable
-        (begin (gen-get-localvar cgc ctx variable 'gen-reg)
-               (x86-pop cgc (x86-rbx))
-               (x86-mov cgc (x86-mem 7 (x86-rax)) (x86-rbx)))
-               ;; TODO replace ctx
-        (error "NYI")))) ;; TODO CAS IMPOSSIBLE
 
 ;;
 ;; Make lazy code from SYMBOL
@@ -858,12 +840,38 @@
 ;; SYMBOL READ/WRITE
 ;;
 
+;; Gen code to set a free var in closure
+;; variable is the lookup result which contains id info
+;;  ex: variable = '(n . identifier-obj)
+;; SRC TODO
+(define (gen-set-freevar cgc ctx variable)
+   (let ((mutable (identifier-mutable? (cdr variable))))
+      (if mutable
+        (begin (gen-get-freevar cgc ctx variable 'gen-reg)
+               (x86-pop cgc (x86-rbx))
+               (x86-mov cgc (x86-mem 7 (x86-rax)) (x86-rbx)))
+        (error "Compiler error : set a non mutable var"))))
+
+;; Gen code to set a local var
+;; variable is the lookup result which contains id info
+;;  ex: variable = '(n . identifier-obj)
+;; SRC
+(define (gen-set-localvar cgc ctx variable)
+   (let ((mutable (identifier-mutable? (cdr variable))))
+     (if mutable
+        (begin (gen-get-localvar cgc ctx variable 'gen-reg)
+               (x86-pop cgc (x86-rbx))
+               (x86-mov cgc (x86-mem 7 (x86-rax)) (x86-rbx)))
+               ;; TODO replace ctx
+        (error "Compiler error : set a non mutable var"))))
+
 ;; Gen code to get a free var from closure
 ;; info is the lookup result which contains id info
 ;;  ex: info = '(n free . 0) for free var 'n' at index '0'
 ;; dest is the destination of free var. possible values are :
 ;;  'stack : push value on top of stack
 ;;  'gen-reg : general register (mov value into rax)
+;; TODO explication + param (et autres gen-get)
 (define (gen-get-freevar cgc ctx variable dest #!optional (DIRECT_VALUE #t))
    (let* ((offset (+ 15 (* 8 (identifier-offset (cdr variable)))))
           (clo-offset (* 8 (closure-pos (ctx-stack ctx)))))
