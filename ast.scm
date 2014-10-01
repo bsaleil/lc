@@ -87,6 +87,8 @@
                                    (x86-mov cgc (x86-mem (* 8 (cadr glookup-res)) (x86-r10)) (x86-rax))
                                    ;; TODO set global + Reecrire cette fonction (factoriser)
                                    (x86-push cgc (x86-imm-int ENCODING_VOID))
+                                   ;; Replace ctx type ;; TODO commentaire
+                                   (set-cdr! (cdr glookup-res) (car (ctx-stack ctx)))
                                    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))
                             ;; TODO
                             (let ((res (assoc variable (ctx-env ctx))))

@@ -136,12 +136,12 @@
   (pp-pair-h n)
   ($$putchar 41))
 
-(define (pp-h n)
+(set! pp-h (lambda (n)
   (cond ((null? n) (begin ($$putchar 40) ($$putchar 41))) ;; ()
         ((number? n) (print-nb n))
         ((procedure? n) (print-procedure n))
         ((pair? n) (pp-pair n))
-        (else (print-bool n))))
+        (else (print-bool n)))))
 
 (define (pp n)
   (pp-h n)
