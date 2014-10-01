@@ -29,7 +29,9 @@
 ;(aa free . 0)
 ;(lavar . 0)
 
-
+((lambda (n)
+	(set! n 10)
+	n) 40)
 
 ; (define (fn2 a b c)
 ;    (+ a c))

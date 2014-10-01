@@ -204,8 +204,11 @@
 
 ;; TODO
 ;; TODO
-(define (gen-mutated cgc ctx mutated)
+(define (gen-mutable cgc ctx mutable)
   '())
+
+
+
 
 ;;
 ;; Make lazy code from LAMBDA
@@ -216,7 +219,7 @@
          ;; Lambda free vars
          (fvars #f)
          ;; TODO
-         (mutated #f)
+         (mvars #f)
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code
                      (lambda (cgc ctx)
@@ -235,10 +238,11 @@
                        (x86-jmp cgc (x86-rax)))))
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
-         ;; Lazy mutated : Move mutated vars in memory
-         (lazy-mutated (make-lazy-code
+         ;; Lazy mutable : Move mutable vars in memory
+         (lazy-mutable (make-lazy-code
                            (lambda (cgc ctx)
-                              ;;(gen-mutated cgc ctx mutated)
+                              ;;(gen-mutable cgc ctx mutable)
+                              ;(pp (ctx-env ctx))
                               (jump-to-version cgc lazy-body ctx)))))
 
     ;; Lazy closure generation
@@ -249,16 +253,16 @@
                                              0
                                              (lambda (sp ctx ret-addr selector closure)
                                                ;; Extends env with params and free vars
-                                               (let* ((env (append (build-env params 0) (build-fenv fvars 0)))
+                                               (let* ((env (append (build-env mvars params 0) (build-fenv mvars fvars 0)))
                                                       (ctx (make-ctx (ctx-stack ctx) env)))
-                                                 (gen-version-fn closure lazy-mutated ctx)))))
+                                                 (gen-version-fn closure lazy-mutable ctx)))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
 
-          ;; 0 - COMPUTE FREE VARS
+          ;; 0a - COMPUTE FREE VARS
           (set! fvars (free-vars (caddr ast) params ctx))
 
-          ;; 0b - variables mutées TODO
-          (set! mutated (mutated-vars (caddr ast) params ctx))
+          ;; 0b - COMPUTE MUTABLE VARS
+          (set! mvars (mutable-vars (caddr ast) params ctx))
 
           ;; 1 - WRITE OBJECT HEADER
           (let ((header-word (+ (arithmetic-shift (+ 2 (length fvars)) 8) (arithmetic-shift STAG_PROCEDURE 3) 6))) ;; 2 + nbFreeVars | STAG_PROCEDURE | 110 => Length | Procedure | Permanent
@@ -815,11 +819,15 @@
 ;;
 
 ;; Extends env with 'fvars' free vars starting with offset
-(define (build-fenv fvars offset)
+(define (build-fenv mvars fvars offset)
   (if (null? fvars)
       '()
-      (cons (cons (car fvars) (make-identifier 'free offset '()))
-            (build-fenv (cdr fvars) (+ offset 1)))))
+      (cons (cons (car fvars) (make-identifier 'free
+                                               offset
+                                               (if (member (car fvars) mvars)
+                                                  '(mutable)
+                                                  '())))
+            (build-fenv mvars (cdr fvars) (+ offset 1)))))
 
 ;; Write free vars in closure
 (define (gen-free-vars cgc vars ctx offset)
@@ -848,24 +856,24 @@
 
 
 ;; TODO 
-(define (mutated-vars-l lst params ctx) ;; TODO ctx ?
+(define (mutable-vars-l lst params ctx) ;; TODO ctx ?
   (if (null? lst)
     '()
-    (append (mutated-vars (car lst) params ctx) (mutated-vars-l (cdr lst) params ctx))))
+    (append (mutable-vars (car lst) params ctx) (mutable-vars-l (cdr lst) params ctx))))
 
 ;; TODO
-(define (mutated-vars ast params ctx) ;; TODO ctx ?
+(define (mutable-vars ast params ctx) ;; TODO ctx ?
   (cond ;; Literal & Symbol 
         ((or (null? ast) (number? ast) (boolean? ast) (symbol? ast)) '())
         ;; Pair
         ((pair? ast)
            (let ((op (car ast)))
-              (cond ((eq? op 'lambda) (mutated-vars (caddr ast) (ensub params (cadr ast) '()) ctx))
+              (cond ((eq? op 'lambda) (mutable-vars (caddr ast) (ensub params (cadr ast) '()) ctx))
                     ((eq? op 'set!)
                       (if (member (cadr ast) params)
                         (list (cadr ast))
                         '()))
-                    (else (mutated-vars-l ast params ctx)))))))
+                    (else (mutable-vars-l ast params ctx)))))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst clo-env ctx)
@@ -906,11 +914,15 @@
 
 ;; Build new environment with ids dtarting from 'start'
 ;; ex : (buile-env '(a b c) 8) -> ((a . 8) (b . 9) (c . 10))
-(define (build-env ids start)
+(define (build-env mvars ids start) ;; TODO mutated
   (if (null? ids)
     '()
-    (cons (cons (car ids) (make-identifier 'local start '()))
-          (build-env (cdr ids) (+ start 1)))))
+    (cons (cons (car ids) (make-identifier 'local
+                                           start
+                                           (if (member (car ids) mvars)
+                                              '(mutable)
+                                              '())))
+          (build-env mvars (cdr ids) (+ start 1)))))
 
 ;; Get position of first occurrence of CTX_CLO in ctx
 (define (closure-pos stack)

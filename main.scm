@@ -46,16 +46,6 @@
 (define CTX_CTXID 'ctx)
 (define CTX_RETAD 'retAddr)
 
-;; TODO
-(define-type identifier
-  type ;; 'free or 'local
-  offset ;; offset on closure or stack
-  flags ;; List of flags (possible flags : mutable)
-)
-
-(define (identifier-mutable? id)
-  (member 'mutable (identifier-flags id)))
-
 ;;-----------------------------------------------------------------------------
 
 (define (alloc-still-vector len)
@@ -598,6 +588,16 @@
 (define (put-version lazy-code ctx v)
   (let ((versions (lazy-code-versions lazy-code)))
     (table-set! versions ctx v)))
+
+;; Identifier in environment associated to an identifier
+(define-type identifier
+  type   ;; 'free or 'local
+  offset ;; offset in closure or stack
+  flags  ;; List of flags (possible flags : mutable)
+)
+
+(define (identifier-mutable? id)
+  (member 'mutable (identifier-flags id)))
 
 (define-type ctx
   stack ;; compile time stack, containing types
