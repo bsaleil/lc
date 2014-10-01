@@ -29,9 +29,24 @@
 ;(aa free . 0)
 ;(lavar . 0)
 
-((lambda (n)
-	(set! n 10)
-	n) 40)
+(println
+	((lambda (n)
+		n) 100))
+
+(println ((lambda (n)
+		 	(set! n 200)
+				n) 100))
+
+(println ((lambda (n)
+	      	((lambda () (set! n 200)))
+				n) 100))
+
+(println ((lambda (n)
+			((lambda (n)
+ 				(set! n 200)) 0)
+			n) 100))
+
+
 
 ; (define (fn2 a b c)
 ;    (+ a c))

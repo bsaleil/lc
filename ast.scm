@@ -84,13 +84,44 @@
                       (let ((glookup-res (assoc variable globals)))
                         (if glookup-res
                             (begin (x86-pop cgc (x86-rax))
-                                   (x86-mov cgc (x86-mem (* 8 (cdr glookup-res)) (x86-r10)) (x86-rax))
+                                   (x86-mov cgc (x86-mem (* 8 (cadr glookup-res)) (x86-r10)) (x86-rax))
                                    (jump-to-version cgc succ (ctx-pop ctx)))
-                            (begin (x86-pop cgc (x86-rax))
-                                   (x86-push cgc (x86-imm-int ENCODING_VOID))
-                                   (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))))))
+                            ;; TODO
+                            (let ((res (assoc variable (ctx-env ctx))))
+                              (if (eq? (identifier-type (cdr res)) 'free)
+                                (begin (gen-set-freevar cgc ctx res)
+                                       (x86-push cgc (x86-imm-int ENCODING_VOID))
+                                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))
+                                ;; LOCAL
+                                (begin (gen-set-localvar cgc ctx res)
+                                       (x86-push cgc (x86-imm-int ENCODING_VOID))
+                                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))))))))
+                                ;(error "NYO")))))))))
+                            ;; SET! inactif :
+                            ; (begin (x86-pop cgc (x86-rax))
+                            ;        (x86-push cgc (x86-imm-int ENCODING_VOID))
+                            ;        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))))))
                             ;(error "NYI set!")))))))
     (gen-ast (caddr ast) lazy-set)))
+
+;; TODO
+(define (gen-set-freevar cgc ctx variable)
+   (let ((mutable (identifier-mutable? (cdr variable))))
+      (if mutable
+        (begin (gen-get-freevar cgc ctx variable 'gen-reg)
+               (x86-pop cgc (x86-rbx))
+               (x86-mov cgc (x86-mem 7 (x86-rax)) (x86-rbx)))
+        (error "NYI B")))) ;; TODO CAS IMPOSSIBLE
+
+;; TODO
+(define (gen-set-localvar cgc ctx variable)
+   (let ((mutable (identifier-mutable? (cdr variable))))
+     (if mutable
+        (begin (gen-get-localvar cgc ctx variable 'gen-reg)
+               (x86-pop cgc (x86-rbx))
+               (x86-mov cgc (x86-mem 7 (x86-rax)) (x86-rbx)))
+               ;; TODO replace ctx
+        (error "NYI")))) ;; TODO CAS IMPOSSIBLE
 
 ;;
 ;; Make lazy code from SYMBOL
@@ -103,9 +134,9 @@
              (ctx-type (if res
                           (if (eq? (identifier-type (cdr res)) 'free)
                              ;; Free var
-                             (gen-get-freevar  cgc ctx res 'stack)
+                             (gen-get-freevar  cgc ctx res 'stack #f)
                              ;; Local var
-                             (gen-get-localvar cgc ctx res 'stack))
+                             (gen-get-localvar cgc ctx res 'stack #f))
                           (let ((res (assoc ast globals)))
                              (if res
                                 ;; Global var
@@ -204,8 +235,57 @@
 
 ;; TODO
 ;; TODO
+;; gen LOCAL mutable (pas de free ici)
 (define (gen-mutable cgc ctx mutable)
-  '())
+    (if (not (null? mutable))
+       
+       (let ((res (assoc (car mutable) (ctx-env ctx)))
+             (header-word (+ (arithmetic-shift 2 8) (arithmetic-shift 2 3) 6))) ;; 000...010 | STAG_MOBJECT | 110 => Length | Mobject | Permanent
+             
+        ;; Create var in memory
+        (gen-get-localvar cgc ctx res 'gen-reg)
+        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)) ;; X in mem
+        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+
+        ;;TODO ;; Replace local
+        (x86-mov cgc (x86-rax) alloc-ptr)
+        (x86-add cgc alloc-ptr (x86-imm-int 16))
+        (x86-add cgc (x86-rax) (x86-imm-int 1)) ;; TODO MEM TAG
+        (x86-mov cgc (x86-mem (* (- (length (ctx-stack ctx)) 1 (identifier-offset (cdr res))) 8) (x86-rsp)) (x86-rax))
+       
+        (gen-mutable cgc ctx (cdr mutable)))))
+
+  ; (if (not (null? mutable))
+
+  ;   (let ((res (assoc (car mutable) cap-env)))
+  ;      (set-itdentifier-mutable (cdr res)))))
+
+;(define (gen-mutated cgc ctx mutated)
+  ; (if (not (null? mutated)) ;; si y'a des variables a mettre en mémoire
+  ;     (let* ((res (assoc (car mutated) (ctx-env ctx)))
+  ;            (ctx-type (gen-get-localvar cgc ctx res 'gen-reg)) ;; X in rax ;; TODO : on est sur que pas boxé ici. Optimiser ?
+  ;            (header-word (+ (arithmetic-shift 2 8) (arithmetic-shift STAG_MOBJECT 3) 6))) ;; 000...010 | STAG_MOBJECT | 110 => Length | Mobject | Permanent
+        
+  ;       ;; Create var in memory
+  ;       (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)) ;; X in mem
+  ;       (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+  ;       (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+        
+  ;       ;;TODO ;; Replace local
+  ;       (x86-mov cgc (x86-rax) alloc-ptr)
+  ;       (x86-add cgc alloc-ptr (x86-imm-int 16))
+  ;       (x86-add cgc (x86-rax) (x86-imm-int 1)) ;; TODO MEM TAG
+  ;       (x86-mov cgc (x86-mem (* (- (length (ctx-stack ctx)) 1 (cdr res)) 8) (x86-rsp)) (x86-rax))
+        
+  ;       ;; TODO
+  ;       ;; Replace ctx type
+  ;       (let* ((fs (length (ctx-stack ctx)))
+  ;              (stack-idx (- fs 1 (cdr res)))
+  ;              (new-type  (ctx-type-to-mtype ctx-type)))
+  ;          (set-car! (list-tail (ctx-stack ctx) stack-idx) new-type))
+        
+  ;       (gen-mutated cgc ctx (cdr mutated)))))
 
 
 
@@ -220,6 +300,8 @@
          (fvars #f)
          ;; TODO
          (mvars #f)
+         ;; 
+         (cap-env #f)
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code
                      (lambda (cgc ctx)
@@ -241,8 +323,7 @@
          ;; Lazy mutable : Move mutable vars in memory
          (lazy-mutable (make-lazy-code
                            (lambda (cgc ctx)
-                              ;;(gen-mutable cgc ctx mutable)
-                              ;(pp (ctx-env ctx))
+                              (gen-mutable cgc ctx mvars)
                               (jump-to-version cgc lazy-body ctx)))))
 
     ;; Lazy closure generation
@@ -253,10 +334,13 @@
                                              0
                                              (lambda (sp ctx ret-addr selector closure)
                                                ;; Extends env with params and free vars
-                                               (let* ((env (append (build-env mvars params 0) (build-fenv mvars fvars 0)))
+                                               (let* ((env (append (build-env mvars params 0) (build-fenv cap-env mvars fvars 0)))
                                                       (ctx (make-ctx (ctx-stack ctx) env)))
                                                  (gen-version-fn closure lazy-mutable ctx)))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
+
+          ;;
+          (set! cap-env (ctx-env ctx))
 
           ;; 0a - COMPUTE FREE VARS
           (set! fvars (free-vars (caddr ast) params ctx))
@@ -776,17 +860,29 @@
 ;; dest is the destination of free var. possible values are :
 ;;  'stack : push value on top of stack
 ;;  'gen-reg : general register (mov value into rax)
-(define (gen-get-freevar cgc ctx variable dest)
+(define (gen-get-freevar cgc ctx variable dest #!optional (DIRECT_VALUE #t))
    (let* ((offset (+ 15 (* 8 (identifier-offset (cdr variable)))))
           (clo-offset (* 8 (closure-pos (ctx-stack ctx)))))
-      ;; Get closure
-      (x86-mov cgc (x86-rax) (x86-mem clo-offset (x86-rsp)))
-      ;; Get value & push
-      (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
-      (cond  ((eq? dest 'stack)   (x86-push cgc (x86-rax)))
-             ((eq? dest 'gen-reg) #f) ;; Already in rax
-             (else (error "Invalid destination")))
-      CTX_UNK)) ;; TODO return free var info when implemented
+      
+      (if DIRECT_VALUE
+        (begin ;; Get closure
+               (x86-mov cgc (x86-rax) (x86-mem clo-offset (x86-rsp)))
+               ;; Get value & push
+               (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
+                (cond  ((eq? dest 'stack)   (x86-push cgc (x86-rax)))
+                       ((eq? dest 'gen-reg) #f) ;; Already in rax
+                       (else (error "Invalid destination"))))
+
+        (begin ;;
+               (x86-mov cgc (x86-rax) (x86-mem clo-offset (x86-rsp)))
+               (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
+               (if (identifier-mutable? (cdr variable))
+                 (x86-mov cgc (x86-rax) (x86-mem 7 (x86-rax))))
+               (cond  ((eq? dest 'stack)   (x86-push cgc (x86-rax)))
+                       ((eq? dest 'gen-reg) #f) ;; Already in rax
+                       (else (error "Invalid destination")))))
+              
+        CTX_UNK)) ;; TODO return free var info when implemented
 
 ;; Gen code to get a local var from stack
 ;; info is the lookup result which contains id info
@@ -794,12 +890,22 @@
 ;; dest is the destination of local var. possible values are :
 ;;  'stack : push value on top of stack
 ;;  'gen-reg : general register (mov value into rax)
-(define (gen-get-localvar cgc ctx variable dest)
+(define (gen-get-localvar cgc ctx variable dest #!optional (DIRECT_VALUE #t))
    (let* ((fs (length (ctx-stack ctx)))
           (pos (- fs 1 (identifier-offset (cdr variable)))))
-      (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* pos 8) (x86-rsp))))
-            ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp))))
-            (error "Invalid destination"))
+
+      (if DIRECT_VALUE
+        (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* pos 8) (x86-rsp))))
+              ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp))))
+              (else (error "Invalid destination")))
+        ;; TODO
+        (begin (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp)))
+               (if (identifier-mutable? (cdr variable))
+                  (x86-mov cgc (x86-rax) (x86-mem 7 (x86-rax))))
+               (if (eq? dest 'stack)
+                  (x86-push cgc (x86-rax))))) ;; TODO ELSE
+
+        ;(error "NYI"))
       (list-ref (ctx-stack ctx) pos)))
 
 ;; Gen code to get a global var from memory
@@ -819,15 +925,19 @@
 ;;
 
 ;; Extends env with 'fvars' free vars starting with offset
-(define (build-fenv mvars fvars offset)
+(define (build-fenv cap-env mvars fvars offset)
   (if (null? fvars)
       '()
       (cons (cons (car fvars) (make-identifier 'free
                                                offset
-                                               (if (member (car fvars) mvars)
-                                                  '(mutable)
-                                                  '())))
-            (build-fenv mvars (cdr fvars) (+ offset 1)))))
+                                               (let ((res (assoc (car fvars) cap-env)))
+                                                  (if (identifier-mutable? (cdr res))
+                                                    '(mutable)
+                                                    '()))))
+                                               ; (if (member (car fvars) mvars)
+                                               ;    '(mutable)
+                                               ;    '())))
+            (build-fenv cap-env mvars (cdr fvars) (+ offset 1)))))
 
 ;; Write free vars in closure
 (define (gen-free-vars cgc vars ctx offset)

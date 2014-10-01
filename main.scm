@@ -596,6 +596,11 @@
   flags  ;; List of flags (possible flags : mutable)
 )
 
+;; TODO : nom qui va avec les types gambit
+(define (set-itdentifier-mutable id)
+   (if (not (member 'mutable (identifier-flags id)))
+    (identifier-flags-set! (cons 'mutable (identifier-flags id)))))
+
 (define (identifier-mutable? id)
   (member 'mutable (identifier-flags id)))
 
