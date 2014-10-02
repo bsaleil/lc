@@ -78,36 +78,24 @@
 ;; Make lazy code from SET!
 ;;
 (define (mlc-set! ast succ)
-  (let* ((variable (cadr ast))
-        (lazy-set (make-lazy-code
-                    (lambda (cgc ctx)
-                      (let ((glookup-res (assoc variable globals)))
-                        (if glookup-res
-                            (begin (x86-pop cgc (x86-rax))
-                                   (x86-mov cgc (x86-mem (* 8 (cadr glookup-res)) (x86-r10)) (x86-rax))
-                                   ;; TODO set global + Reecrire cette fonction (factoriser)
-                                   (x86-push cgc (x86-imm-int ENCODING_VOID))
-                                   ;; Replace ctx type ;; TODO commentaire
-                                   (set-cdr! (cdr glookup-res) (car (ctx-stack ctx)))
-                                   (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))
-                            ;; TODO
-                            ;; (+ remplacer type)
-                            (let ((res (assoc variable (ctx-env ctx))))
-                              (if (eq? (identifier-type (cdr res)) 'free)
-                                (begin (gen-set-freevar cgc ctx res)
-                                       (x86-push cgc (x86-imm-int ENCODING_VOID))
-                                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))
-                                ;; LOCAL
-                                (begin (gen-set-localvar cgc ctx res)
-                                       (x86-push cgc (x86-imm-int ENCODING_VOID))
-                                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))))))))
-                                ;(error "NYO")))))))))
-                            ;; SET! inactif :
-                            ; (begin (x86-pop cgc (x86-rax))
-                            ;        (x86-push cgc (x86-imm-int ENCODING_VOID))
-                            ;        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))))))
-                            ;(error "NYI set!")))))))
-    (gen-ast (caddr ast) lazy-set)))
+  (let* ((id (cadr ast))
+         (lazy-set
+            (make-lazy-code
+               (lambda (cgc ctx)
+                  (let ((glookup-res (assoc id globals)))
+                     (if glookup-res
+                        ;; Global var
+                        (gen-set-globalvar cgc ctx glookup-res)
+                           (let ((res (assoc id (ctx-env ctx))))
+                              (if res
+                                 (if (eq? (identifier-type (cdr res)) 'free)
+                                    (gen-set-freevar  cgc ctx res)  ;; Free var
+                                    (gen-set-localvar cgc ctx res)) ;; Local var
+                                 (error "Can't find variable: " id)))))
+                  (x86-push cgc (x86-imm-int ENCODING_VOID))
+                  (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
+
+     (gen-ast (caddr ast) lazy-set)))
 
 ;;
 ;; Make lazy code from SYMBOL
@@ -332,7 +320,7 @@
           (set! fvars (free-vars (caddr ast) params ctx))
 
           ;; 0b - COMPUTE MUTABLE VARS
-          (set! mvars (mutable-vars (caddr ast) params ctx))
+          (set! mvars (mutable-vars (caddr ast) params))
 
           ;; 1 - WRITE OBJECT HEADER
           (let ((header-word (+ (arithmetic-shift (+ 2 (length fvars)) 8) (arithmetic-shift STAG_PROCEDURE 3) 6))) ;; 2 + nbFreeVars | STAG_PROCEDURE | 110 => Length | Procedure | Permanent
@@ -837,13 +825,12 @@
                      idx))))))
 
 ;;
-;; SYMBOL READ/WRITE
+;; VARIABLE SET
 ;;
 
 ;; Gen code to set a free var in closure
 ;; variable is the lookup result which contains id info
 ;;  ex: variable = '(n . identifier-obj)
-;; SRC TODO
 (define (gen-set-freevar cgc ctx variable)
    (let ((mutable (identifier-mutable? (cdr variable))))
       (if mutable
@@ -855,7 +842,6 @@
 ;; Gen code to set a local var
 ;; variable is the lookup result which contains id info
 ;;  ex: variable = '(n . identifier-obj)
-;; SRC
 (define (gen-set-localvar cgc ctx variable)
    (let ((mutable (identifier-mutable? (cdr variable))))
      (if mutable
@@ -865,72 +851,76 @@
                ;; TODO replace ctx
         (error "Compiler error : set a non mutable var"))))
 
-;; Gen code to get a free var from closure
-;; info is the lookup result which contains id info
-;;  ex: info = '(n free . 0) for free var 'n' at index '0'
-;; dest is the destination of free var. possible values are :
-;;  'stack : push value on top of stack
-;;  'gen-reg : general register (mov value into rax)
-;; TODO explication + param (et autres gen-get)
-(define (gen-get-freevar cgc ctx variable dest #!optional (DIRECT_VALUE #t))
+;; Global var ;; TODO : commentaire identique pour les 3
+;; Gen code to set a global var
+(define (gen-set-globalvar cgc ctx variable)
+   (x86-pop cgc (x86-rax))
+   (x86-mov cgc (x86-mem (* 8 (cadr variable)) (x86-r10)) (x86-rax))
+   ;; Replace global type information
+   (set-cdr! (cdr variable) (car (ctx-stack ctx))))
+;;
+;; VARIABLE GET
+;;
+
+;; Gen code to get a variable from closure/stack
+;; variable is the lookup result which contains id info
+;;  ex: variable = '(n . identifier-obj)
+;; dest is the destination. possible values are :
+;;  'stack : push value
+;;  'gen-reg : general register (mov value to rax)
+;; raw_value is #t if the value is copied directly from closure
+;;              #f if the value is copied from memory (id variable is mutable)
+
+;; Free variable
+(define (gen-get-freevar cgc ctx variable dest #!optional (raw_value? #t))
    (let* ((offset (+ 15 (* 8 (identifier-offset (cdr variable)))))
-          (clo-offset (* 8 (closure-pos (ctx-stack ctx)))))
-      
-      (if DIRECT_VALUE
-        (begin ;; Get closure
-               (x86-mov cgc (x86-rax) (x86-mem clo-offset (x86-rsp)))
-               ;; Get value & push
-               (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
-                (cond  ((eq? dest 'stack)   (x86-push cgc (x86-rax)))
-                       ((eq? dest 'gen-reg) #f) ;; Already in rax
-                       (else (error "Invalid destination"))))
+          (clo-offset (* 8 (closure-pos (ctx-stack ctx))))
+          (mutable (identifier-mutable? (cdr variable))))
 
-        (begin ;;
-               (x86-mov cgc (x86-rax) (x86-mem clo-offset (x86-rsp)))
-               (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
-               (if (identifier-mutable? (cdr variable))
-                 (x86-mov cgc (x86-rax) (x86-mem 7 (x86-rax))))
-               (cond  ((eq? dest 'stack)   (x86-push cgc (x86-rax)))
-                       ((eq? dest 'gen-reg) #f) ;; Already in rax
-                       (else (error "Invalid destination")))))
-              
-        CTX_UNK)) ;; TODO return free var info when implemented
+      ;; Get closure
+      (x86-mov cgc (x86-rax) (x86-mem clo-offset (x86-rsp)))
 
-;; Gen code to get a local var from stack
-;; info is the lookup result which contains id info
-;;  ex: info = '(n . 0) for local var 'n' at index '0'
-;; dest is the destination of local var. possible values are :
-;;  'stack : push value on top of stack
-;;  'gen-reg : general register (mov value into rax)
-(define (gen-get-localvar cgc ctx variable dest #!optional (DIRECT_VALUE #t))
+      (if (or raw_value? (not mutable))
+        ;; Raw value required (direct copy from closure)
+        ;; OR variable is not mutable
+        (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem offset (x86-rax))))
+              ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax))))
+              (else (error "Invalid destination")))
+        ;; Real value required and variable is mutable
+        (begin (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
+               (cond ((eq? dest 'stack) (x86-push cgc (x86-mem 7 (x86-rax))))
+                     ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem 7 (x86-rax))))
+                     (else (error "Invalid destination")))))
+
+      CTX_UNK)) ;; TODO return free var ctx info when implemented
+
+;; Local variable
+(define (gen-get-localvar cgc ctx variable dest #!optional (raw_value? #t))
    (let* ((fs (length (ctx-stack ctx)))
-          (pos (- fs 1 (identifier-offset (cdr variable)))))
+          (pos (- fs 1 (identifier-offset (cdr variable))))
+          (mutable (identifier-mutable? (cdr variable))))
 
-      (if DIRECT_VALUE
+      (if (or raw_value? (not mutable))
+        ;; Raw value required (direct copy from stack)
+        ;; OR variable is not mutable
         (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* pos 8) (x86-rsp))))
               ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp))))
               (else (error "Invalid destination")))
-        ;; TODO
+        ;; Real value required and variable is mutable
         (begin (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp)))
-               (if (identifier-mutable? (cdr variable))
-                  (x86-mov cgc (x86-rax) (x86-mem 7 (x86-rax))))
-               (if (eq? dest 'stack)
-                  (x86-push cgc (x86-rax))))) ;; TODO ELSE
+               (x86-mov cgc (x86-rax) (x86-mem 7 (x86-rax)))
+               (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem 7 (x86-rax))))
+                     ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem 7 (x86-rax))))
+                     (else (error "Invalid destination")))))
 
-        ;(error "NYI"))
       (list-ref (ctx-stack ctx) pos)))
 
-;; Gen code to get a global var from memory
-;; info is the lookup result which contains id info
-;;  ex: info = '(n 0 . number) for local var 'n' at global index 0 with type info 'number'
-;; dest is the destination of global var. possible values are :
-;;  'stack : push value on top of stack
-(define (gen-get-globalvar cgc ctx info dest)
-   (x86-mov cgc (x86-rax) (x86-mem (* 8 (cadr info)) (x86-r10)))
-   (if (eq? dest 'stack)
-      (x86-push cgc (x86-rax))
-      (error "Invalid destination"))
-   (cddr info))
+;; Gen code to get a global var
+(define (gen-get-globalvar cgc ctx variable dest)
+   (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* 8 (cadr variable)) (x86-r10))))
+         ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* 8 (cadr variable)) (x86-r10))))
+         (else (error "Invalid destination")))
+   (cddr variable))
 
 ;;
 ;; FREE VARS
@@ -968,35 +958,6 @@
          (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
          (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))))
 
-;; TODO
-(define (ensub lsta lstb res)
-  (if (null? lsta)
-    res
-    (if (member (car lsta) lstb)
-      (ensub (cdr lsta) lstb res)
-      (ensub (cdr lsta) lstb (cons (car lsta) res)))))
-
-
-;; TODO 
-(define (mutable-vars-l lst params ctx) ;; TODO ctx ?
-  (if (null? lst)
-    '()
-    (append (mutable-vars (car lst) params ctx) (mutable-vars-l (cdr lst) params ctx))))
-
-;; TODO
-(define (mutable-vars ast params ctx) ;; TODO ctx ?
-  (cond ;; Literal & Symbol 
-        ((or (null? ast) (number? ast) (boolean? ast) (symbol? ast)) '())
-        ;; Pair
-        ((pair? ast)
-           (let ((op (car ast)))
-              (cond ((eq? op 'lambda) (mutable-vars (caddr ast) (ensub params (cadr ast) '()) ctx))
-                    ((eq? op 'set!)
-                      (if (member (cadr ast) params)
-                        (list (cadr ast))
-                        '()))
-                    (else (mutable-vars-l ast params ctx)))))))
-
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst clo-env ctx)
   (if (null? lst)
@@ -1031,12 +992,37 @@
                   (else (free-vars-l ast clo-env ctx)))))))
 
 ;;
+;; MUTABLE VARS
+;;
+
+;; Return all mutable vars used by the list of ast
+(define (mutable-vars-l lst params)
+  (if (null? lst)
+    '()
+    (append (mutable-vars (car lst) params) (mutable-vars-l (cdr lst) params))))
+
+;; Return all mutable vars used by ast
+(define (mutable-vars ast params)
+  (cond ;; Literal & Symbol 
+        ((or (null? ast) (number? ast) (boolean? ast) (symbol? ast)) '())
+        ;; Pair
+        ((pair? ast)
+           (let ((op (car ast)))
+              (cond ((eq? op 'lambda) (mutable-vars (caddr ast) (ensub params (cadr ast) '())))
+                    ((eq? op 'set!)
+                      (if (member (cadr ast) params)
+                        (list (cadr ast))
+                        '()))
+                    (else (mutable-vars-l ast params)))))))
+
+;;
 ;; UTILS
 ;;
 
-;; Build new environment with ids dtarting from 'start'
-;; ex : (buile-env '(a b c) 8) -> ((a . 8) (b . 9) (c . 10))
-(define (build-env mvars ids start) ;; TODO mutated
+;; Build new environment with ids starting from 'start'
+;; ex : (build-env '(...) '(a b c) 8) -> ((a . 8) (b . 9) (c . 10))
+;; mvars contains all mutable vars to tag created identifier objects
+(define (build-env mvars ids start)
   (if (null? ids)
     '()
     (cons (cons (car ids) (make-identifier 'local
@@ -1064,3 +1050,11 @@
 
 ;; TODO : ctx_ids to solve segfault on ctx read
 (define ctx_ids '())
+
+;; TODO
+(define (ensub lsta lstb res)
+  (if (null? lsta)
+    res
+    (if (member (car lsta) lstb)
+      (ensub (cdr lsta) lstb res)
+      (ensub (cdr lsta) lstb (cons (car lsta) res)))))
