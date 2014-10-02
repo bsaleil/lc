@@ -597,11 +597,6 @@
   flags  ;; List of flags (possible flags : mutable)
 )
 
-;; TODO : nom qui va avec les types gambit
-(define (set-itdentifier-mutable id)
-   (if (not (member 'mutable (identifier-flags id)))
-    (identifier-flags-set! (cons 'mutable (identifier-flags id)))))
-
 (define (identifier-mutable? id)
   (member 'mutable (identifier-flags id)))
 
@@ -646,11 +641,11 @@
 ;; Generate a continuation
 ;; First generate continuation lazy-code
 ;; Then patch mov before call to mov continuation address instead of stub address
-;;  TODO : clean code with patch function
 (define (gen-version-continuation load-ret-label lazy-code ctx)
   
   (let ((continuation-label (asm-make-label #f (new-sym 'continuation_)))
         (load-addr (asm-label-pos load-ret-label)))
+
     ;; Generate lazy-code
     (code-add 
       (lambda (cgc)
@@ -749,7 +744,6 @@
                  " (" (number->string (asm-label-pos continuation-label) 16) ")")))
   
   (code-gen 'x86-64 load-addr (lambda (cgc) (x86-mov cgc (x86-rax) (x86-imm-int (asm-label-pos continuation-label)))))
-
   (asm-label-pos continuation-label))
 
 ;; Patch jump at jump-addr: change jump destination to dest-addr

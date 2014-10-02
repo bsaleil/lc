@@ -807,7 +807,7 @@
         (begin (gen-get-freevar cgc ctx variable 'gen-reg)
                (x86-pop cgc (x86-rbx))
                (x86-mov cgc (x86-mem 7 (x86-rax)) (x86-rbx)))
-        ;; TODO replace ctx
+               ;; TODO replace ctx type when implemented for free vars
         (error "Compiler error : set a non mutable var"))))
 
 ;; Local var
