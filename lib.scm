@@ -66,8 +66,7 @@
 (define (print-pos-nz n)
     (if (> n 0)
         (begin (print-pos-nz (quotient n 10))
-               ($$putchar (+ (modulo n 10) 48)))
-        #f))
+               ($$putchar (+ (modulo n 10) 48)))))
 
 (define (print-pos n)
     (if (= n 0)
