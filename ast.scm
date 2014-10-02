@@ -207,62 +207,32 @@
                                          (else (gen-error cgc ERR_PAIR_EXPECTED))))))))
              (gen-ast (cadr ast) lazy-main))))))
 
-;; TODO
-;; TODO
-;; gen LOCAL mutable (pas de free ici)
+;; Gen mutable variable
+;; This code is a function prelude. It transforms variable from stack (args) tagged as "mutable"
+;; into memory-allocated variables.
 (define (gen-mutable cgc ctx mutable)
+
     (if (not (null? mutable))
        
-       (let ((res (assoc (car mutable) (ctx-env ctx)))
-             (header-word (+ (arithmetic-shift 2 8) (arithmetic-shift 2 3) 6))) ;; 000...010 | STAG_MOBJECT | 110 => Length | Mobject | Permanent
-             
+       (let* ((res (assoc (car mutable) (ctx-env ctx)))
+             (header-word (+ (arithmetic-shift 2 8) (arithmetic-shift STAG_MOBJECT 3) 6)) ;; 000...010 | STAG_MOBJECT | 110 => Length | MObject | Permanent
+             (fs (length (ctx-stack ctx)))
+             (offset (* (- fs 1 (identifier-offset (cdr res))) 8)))
+
         ;; Create var in memory
-        (gen-get-localvar cgc ctx res 'gen-reg)
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)) ;; X in mem
+        (gen-get-localvar cgc ctx res 'gen-reg) ;; There are only localvar here (no free vars)
+        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
         (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
 
-        ;;TODO ;; Replace local
+        ;; Replace local
         (x86-mov cgc (x86-rax) alloc-ptr)
         (x86-add cgc alloc-ptr (x86-imm-int 16))
-        (x86-add cgc (x86-rax) (x86-imm-int 1)) ;; TODO MEM TAG
-        (x86-mov cgc (x86-mem (* (- (length (ctx-stack ctx)) 1 (identifier-offset (cdr res))) 8) (x86-rsp)) (x86-rax))
+        (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+        (x86-mov cgc (x86-mem offset (x86-rsp)) (x86-rax))
        
+        ;; Gen next mutable vars
         (gen-mutable cgc ctx (cdr mutable)))))
-
-  ; (if (not (null? mutable))
-
-  ;   (let ((res (assoc (car mutable) cap-env)))
-  ;      (set-itdentifier-mutable (cdr res)))))
-
-;(define (gen-mutated cgc ctx mutated)
-  ; (if (not (null? mutated)) ;; si y'a des variables a mettre en mémoire
-  ;     (let* ((res (assoc (car mutated) (ctx-env ctx)))
-  ;            (ctx-type (gen-get-localvar cgc ctx res 'gen-reg)) ;; X in rax ;; TODO : on est sur que pas boxé ici. Optimiser ?
-  ;            (header-word (+ (arithmetic-shift 2 8) (arithmetic-shift STAG_MOBJECT 3) 6))) ;; 000...010 | STAG_MOBJECT | 110 => Length | Mobject | Permanent
-        
-  ;       ;; Create var in memory
-  ;       (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)) ;; X in mem
-  ;       (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-  ;       (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-        
-  ;       ;;TODO ;; Replace local
-  ;       (x86-mov cgc (x86-rax) alloc-ptr)
-  ;       (x86-add cgc alloc-ptr (x86-imm-int 16))
-  ;       (x86-add cgc (x86-rax) (x86-imm-int 1)) ;; TODO MEM TAG
-  ;       (x86-mov cgc (x86-mem (* (- (length (ctx-stack ctx)) 1 (cdr res)) 8) (x86-rsp)) (x86-rax))
-        
-  ;       ;; TODO
-  ;       ;; Replace ctx type
-  ;       (let* ((fs (length (ctx-stack ctx)))
-  ;              (stack-idx (- fs 1 (cdr res)))
-  ;              (new-type  (ctx-type-to-mtype ctx-type)))
-  ;          (set-car! (list-tail (ctx-stack ctx) stack-idx) new-type))
-        
-  ;       (gen-mutated cgc ctx (cdr mutated)))))
-
-
-
 
 ;;
 ;; Make lazy code from LAMBDA
@@ -272,10 +242,10 @@
          (params (cadr ast))
          ;; Lambda free vars
          (fvars #f)
-         ;; TODO
+         ;; Lambda mutable vars
          (mvars #f)
-         ;; 
-         (cap-env #f)
+         ;; Saved env
+         (saved-env #f)
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code
                      (lambda (cgc ctx)
@@ -308,18 +278,16 @@
                                              0
                                              (lambda (sp ctx ret-addr selector closure)
                                                ;; Extends env with params and free vars
-                                               (let* ((env (append (build-env mvars params 0) (build-fenv cap-env mvars fvars 0)))
+                                               (let* ((env (append (build-env mvars params 0) (build-fenv saved-env mvars fvars 0)))
                                                       (ctx (make-ctx (ctx-stack ctx) env)))
                                                  (gen-version-fn closure lazy-mutable ctx)))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
 
-          ;;
-          (set! cap-env (ctx-env ctx))
-
-          ;; 0a - COMPUTE FREE VARS
+          ;; 0a - SAVE ENVIRONMENT
+          (set! saved-env (ctx-env ctx))
+          ;; 0b - COMPUTE FREE VARS
           (set! fvars (free-vars (caddr ast) params ctx))
-
-          ;; 0b - COMPUTE MUTABLE VARS
+          ;; 0c - COMPUTE MUTABLE VARS
           (set! mvars (mutable-vars (caddr ast) params))
 
           ;; 1 - WRITE OBJECT HEADER
@@ -828,36 +796,40 @@
 ;; VARIABLE SET
 ;;
 
-;; Gen code to set a free var in closure
+;; Gen code to set a free/local
 ;; variable is the lookup result which contains id info
 ;;  ex: variable = '(n . identifier-obj)
+
+;; Free var
 (define (gen-set-freevar cgc ctx variable)
    (let ((mutable (identifier-mutable? (cdr variable))))
       (if mutable
         (begin (gen-get-freevar cgc ctx variable 'gen-reg)
                (x86-pop cgc (x86-rbx))
                (x86-mov cgc (x86-mem 7 (x86-rax)) (x86-rbx)))
+        ;; TODO replace ctx
         (error "Compiler error : set a non mutable var"))))
 
-;; Gen code to set a local var
-;; variable is the lookup result which contains id info
-;;  ex: variable = '(n . identifier-obj)
+;; Local var
 (define (gen-set-localvar cgc ctx variable)
    (let ((mutable (identifier-mutable? (cdr variable))))
      (if mutable
         (begin (gen-get-localvar cgc ctx variable 'gen-reg)
                (x86-pop cgc (x86-rbx))
-               (x86-mov cgc (x86-mem 7 (x86-rax)) (x86-rbx)))
-               ;; TODO replace ctx
+               (x86-mov cgc (x86-mem 7 (x86-rax)) (x86-rbx))
+               ;; Replace ctx type
+               (let* ((fs (length (ctx-stack ctx)))
+                      (idx (- fs 1 (identifier-offset (cdr variable)))))
+               (set-car! (list-tail (ctx-stack ctx) idx) (car (ctx-stack ctx)))))
         (error "Compiler error : set a non mutable var"))))
 
-;; Global var ;; TODO : commentaire identique pour les 3
 ;; Gen code to set a global var
 (define (gen-set-globalvar cgc ctx variable)
    (x86-pop cgc (x86-rax))
    (x86-mov cgc (x86-mem (* 8 (cadr variable)) (x86-r10)) (x86-rax))
    ;; Replace global type information
    (set-cdr! (cdr variable) (car (ctx-stack ctx))))
+
 ;;
 ;; VARIABLE GET
 ;;
@@ -927,19 +899,16 @@
 ;;
 
 ;; Extends env with 'fvars' free vars starting with offset
-(define (build-fenv cap-env mvars fvars offset)
+(define (build-fenv saved-env mvars fvars offset)
   (if (null? fvars)
       '()
       (cons (cons (car fvars) (make-identifier 'free
                                                offset
-                                               (let ((res (assoc (car fvars) cap-env)))
+                                               (let ((res (assoc (car fvars) saved-env)))
                                                   (if (identifier-mutable? (cdr res))
                                                     '(mutable)
                                                     '()))))
-                                               ; (if (member (car fvars) mvars)
-                                               ;    '(mutable)
-                                               ;    '())))
-            (build-fenv cap-env mvars (cdr fvars) (+ offset 1)))))
+            (build-fenv saved-env mvars (cdr fvars) (+ offset 1)))))
 
 ;; Write free vars in closure
 (define (gen-free-vars cgc vars ctx offset)
@@ -1008,7 +977,7 @@
         ;; Pair
         ((pair? ast)
            (let ((op (car ast)))
-              (cond ((eq? op 'lambda) (mutable-vars (caddr ast) (ensub params (cadr ast) '())))
+              (cond ((eq? op 'lambda) (mutable-vars (caddr ast) (set-sub params (cadr ast) '())))
                     ((eq? op 'set!)
                       (if (member (cadr ast) params)
                         (list (cadr ast))
@@ -1051,10 +1020,12 @@
 ;; TODO : ctx_ids to solve segfault on ctx read
 (define ctx_ids '())
 
-;; TODO
-(define (ensub lsta lstb res)
+;; Set subtraction with lists
+;; return lsta - lstb
+;; res is accu
+(define (set-sub lsta lstb res)
   (if (null? lsta)
     res
     (if (member (car lsta) lstb)
-      (ensub (cdr lsta) lstb res)
-      (ensub (cdr lsta) lstb (cons (car lsta) res)))))
+      (set-sub (cdr lsta) lstb res)
+      (set-sub (cdr lsta) lstb (cons (car lsta) res)))))

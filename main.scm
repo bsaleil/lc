@@ -34,6 +34,7 @@
 ;; Types subtag
 (define STAG_PROCEDURE 14)
 (define STAG_PAIR    1)
+(define STAG_MOBJECT 2)
 
 ;; Context
 (define CTX_NUM   'number)
