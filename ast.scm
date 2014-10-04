@@ -93,6 +93,7 @@
                                     (gen-set-localvar cgc ctx res)) ;; Local var
                                  (error "Can't find variable: " id)))))
                   (x86-push cgc (x86-imm-int ENCODING_VOID))
+
                   (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
 
      (gen-ast (caddr ast) lazy-set)))
@@ -230,7 +231,7 @@
         (x86-add cgc alloc-ptr (x86-imm-int 16))
         (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
         (x86-mov cgc (x86-mem offset (x86-rsp)) (x86-rax))
-       
+
         ;; Gen next mutable vars
         (gen-mutable cgc ctx (cdr mutable)))))
 
@@ -925,13 +926,14 @@
             (error "Can't find variable: " var))
          ;; TODO : free vars ctx information
          (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
+
          (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst clo-env ctx)
   (if (null? lst)
       '()
-      (append (free-vars (car lst) clo-env ctx) (free-vars-l (cdr lst) clo-env ctx))))
+      (set-union (free-vars (car lst) clo-env ctx) (free-vars-l (cdr lst) clo-env ctx))))
 
 ;; Return all free vars used by ast knowing env 'clo-env'
 (define (free-vars ast clo-env ctx)
@@ -948,9 +950,9 @@
         ((pair? ast)
           (let ((op (car ast)))
             (cond ;; If
-                  ((eq? op 'if) (append (free-vars (cadr ast)   clo-env ctx)   ; cond
-                                        (free-vars (caddr ast)  clo-env ctx)   ; then
-                                        (free-vars (cadddr ast) clo-env ctx))) ; else
+                  ((eq? op 'if) (set-union (free-vars (cadr ast)   clo-env ctx)   ; cond
+                                           (set-union (free-vars (caddr ast)  clo-env ctx)   ; then
+                                                      (free-vars (cadddr ast) clo-env ctx)))) ; else
                   ;; Quote
                   ((eq? op 'quote) '())
                   ;; Lambda
@@ -1001,13 +1003,18 @@
                                               '())))
           (build-env mvars (cdr ids) (+ start 1)))))
 
+;; TODO refaire
 ;; Get position of first occurrence of CTX_CLO in ctx
 (define (closure-pos stack)
-  (if (null? stack)
+  (if (< (length stack) 2)
       (error "Can't find " CTX_CLO)
-      (if (eq? CTX_CLO (car stack))
-          0
-          (+ 1 (closure-pos (cdr stack))))))
+      (if (and (eq? CTX_RETAD (car stack))
+               (eq? CTX_CLO   (cadr stack)))
+        1
+        (+ 1 (closure-pos (cdr stack))))))
+      ; (if (eq? CTX_CLO (car stack))
+      ;     0
+      ;     (+ 1 (closure-pos (cdr stack))))))
 
 ;; Return label associated to function name
 (define (lookup-fn name)
@@ -1029,3 +1036,10 @@
     (if (member (car lsta) lstb)
       (set-sub (cdr lsta) lstb res)
       (set-sub (cdr lsta) lstb (cons (car lsta) res)))))
+
+(define (set-union lsta lstb)
+  (if (null? lsta)
+    lstb
+    (if (member (car lsta) lstb)
+      (set-union (cdr lsta) lstb)
+      (set-union (cdr lsta) (cons (car lsta) lstb)))))
