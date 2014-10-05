@@ -916,4 +916,5 @@
 (define prog (expand (read-all)))
 
 ;; Exec lib and prog
+;(pp prog)
 (exec lib prog)

@@ -8,6 +8,7 @@
       ((equal? (car expr) 'begin) (expand-begin expr))
       ((equal? (car expr) 'let) (expand-let expr))
       ((equal? (car expr) 'let*) (expand-let* expr))
+      ((equal? (car expr) 'letrec) (expand-letrec expr))
       ((equal? (car expr) 'lambda) (expand-lambda expr))
       ((equal? (car expr) 'or) (expand-or expr))
       ((equal? (car expr) 'and) (expand-and expr))
@@ -64,6 +65,16 @@
                         (let* ,(cdr bindings)
                            ,@body)))))))
       
+;; LETREC
+;; TODO : use set! for now
+(define (expand-letrec expr)
+  (let ((bindings (cadr expr))
+        (body     (cddr expr)))
+     (expand `(let ,(map (lambda (l) (list (car l) #f)) bindings)
+           ,@(map (lambda (l) (list 'set! (car l) (cadr l))) bindings)
+           ,@body))))
+
+
 ;; LAMBDA
 (define (expand-lambda expr)
   (if (eq? (length expr) 3)

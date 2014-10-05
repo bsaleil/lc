@@ -50,6 +50,22 @@
   (println lb)
   (println lc))
 
+(letrec ((f (lambda (n)
+              (if (= 0 n)
+                ($$putchar 80) ;; P
+                (g (- n 1)))))
+         (g (lambda (n)
+              (if (= 0 n)
+                ($$putchar 73) ;; I
+                (f (- n 1))))))
+   (f 11)
+   (f 12)
+   (f 13)
+   (f 14)
+   (f 15)
+   (f 16)
+   ($$putchar 10))
+
 ;1
 ;1
 ;2
@@ -67,3 +83,4 @@
 ;100
 ;210
 ;300
+;IPIPIP
