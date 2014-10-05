@@ -280,7 +280,7 @@
                                              (lambda (sp ctx ret-addr selector closure)
                                                ;; Extends env with params and free vars
                                                (let* ((env (append (build-env mvars params 0) (build-fenv saved-env mvars fvars 0)))
-                                                      (ctx (make-ctx (ctx-stack ctx) env)))
+                                                      (ctx (make-ctx (ctx-stack ctx) env (length params))))
                                                  (gen-version-fn closure lazy-mutable ctx)))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
 
@@ -467,7 +467,7 @@
 
                                         ;; Call ctx in rdx
                                         (let* ((call-stack    (cons CTX_CTXID (cons CTX_RETAD (list-head (ctx-stack ctx) (+ 1 (length args))))))
-                                               (call-ctx      (make-ctx call-stack '()))
+                                               (call-ctx      (make-ctx call-stack '() -1))
                                                (ctx-id        (length ctx_ids))
                                                (cct-offset    (* 8 (get-closure-index call-ctx))))
 
@@ -616,9 +616,9 @@
                                    ;; ctx with num for right operand
                                    (rctx  (ctx-push (ctx-pop ctx) CTX_NUM))
                                    ;; ctx with num for left operand
-                                   (lctx  (make-ctx (cons (car (ctx-stack ctx)) (cons CTX_NUM (cddr (ctx-stack ctx)))) (ctx-env ctx)))
+                                   (lctx  (make-ctx (cons (car (ctx-stack ctx)) (cons CTX_NUM (cddr (ctx-stack ctx)))) (ctx-env ctx) (ctx-nb-args ctx)))
                                    ;; ctx with num for left AND right operand
-                                   (lrctx (make-ctx (cons CTX_NUM (cons CTX_NUM (cddr (ctx-stack ctx)))) (ctx-env ctx))))
+                                   (lrctx (make-ctx (cons CTX_NUM (cons CTX_NUM (cddr (ctx-stack ctx)))) (ctx-env ctx) (ctx-nb-args ctx))))
 
                                (cond ((eq? left-type CTX_NUM)
                                       (cond ((eq? right-type CTX_NUM)     (jump-to-version cgc lazy-code-op ctx))
@@ -847,7 +847,7 @@
 ;; Free variable
 (define (gen-get-freevar cgc ctx variable dest #!optional (raw_value? #t))
    (let* ((offset (+ 15 (* 8 (identifier-offset (cdr variable)))))
-          (clo-offset (* 8 (closure-pos (ctx-stack ctx))))
+          (clo-offset (* 8 (closure-pos ctx)))
           (mutable (identifier-mutable? (cdr variable))))
 
       ;; Get closure
@@ -1003,18 +1003,9 @@
                                               '())))
           (build-env mvars (cdr ids) (+ start 1)))))
 
-;; TODO refaire
-;; Get position of first occurrence of CTX_CLO in ctx
-(define (closure-pos stack)
-  (if (< (length stack) 2)
-      (error "Can't find " CTX_CLO)
-      (if (and (eq? CTX_RETAD (car stack))
-               (eq? CTX_CLO   (cadr stack)))
-        1
-        (+ 1 (closure-pos (cdr stack))))))
-      ; (if (eq? CTX_CLO (car stack))
-      ;     0
-      ;     (+ 1 (closure-pos (cdr stack))))))
+;; Get position of current closure in stack
+(define (closure-pos ctx)
+  (- (length (ctx-stack ctx)) 1 (ctx-nb-args ctx)))
 
 ;; Return label associated to function name
 (define (lookup-fn name)

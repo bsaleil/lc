@@ -603,13 +603,14 @@
 (define-type ctx
   stack ;; compile time stack, containing types
   env   ;; compile time environment
+  nb-args ;;  TODO
 )
 
 (define (ctx-push ctx type)
-  (make-ctx (cons type (ctx-stack ctx)) (ctx-env ctx)))
+  (make-ctx (cons type (ctx-stack ctx)) (ctx-env ctx) (ctx-nb-args ctx)))
 
 (define (ctx-pop ctx)
-  (make-ctx (cdr (ctx-stack ctx)) (ctx-env ctx)))
+  (make-ctx (cdr (ctx-stack ctx)) (ctx-env ctx) (ctx-nb-args ctx)))
 
 (define (ctx-pop-nb ctx nb-pop)
   (cond ((= nb-pop 0) ctx)
@@ -902,7 +903,7 @@
     
     (gen-version code-alloc
                  lazy-lib
-                 (make-ctx '() '())))
+                 (make-ctx '() '() -1)))
   
   ;(print "RESULT = ")
   (##machine-code-block-exec mcb))
