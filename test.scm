@@ -1,17 +1,32 @@
 
-(letrec ((f (lambda (n)
-              (if (= 0 n)
-              	($$putchar 80) ;; P
-              	(g (- n 1)))))
-         (g (lambda (n)
-              (if (= 0 n)
-              	($$putchar 73) ;; I
-              	(f (- n 1))))))
-   (f 0)
-   (f 1)
-   (f 2)
-   (f 3)
-   (f 4)
-   (f 5)
-   ($$putchar 10))
+(println 
+
+
+
+)
+
+
+
+; (println 
+
+; ((letrec ((fact
+; 	         (lambda (n)
+;                 (if (= n 0)
+;                    1
+;                    (* n (fact (- n 1)))))))
+;    fact) 10)
+
+; )
+
+
+
+
+; ((letrec ((fact 
+; 	       (lambda (n)
+; 	       	  (println 111111)
+; 	       	  (if (= n 0)
+; 	       	  	1
+; 	       	  	(* n (fact (- n 1)))))))
+;    fact) (10))
+;  (((lambda (fact) (set! fact (lambda (n) ((lambda (#:g27) (if (= n 0) 1 (* n (fact (- n 1))))) (println 111111))))) #f))
 

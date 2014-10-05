@@ -42,17 +42,26 @@
 
 ;; LET
 (define (expand-let expr)
-  (let ((bindings (cadr  expr))
-        (body     (cddr expr)))
-    (cond ;; 2 body
-          ((and (list? body) (= (length body) 2))
-                `((lambda ,(map car bindings) ,(expand `(let ((,(gensym) ,(car body))) ,(cadr body)))) ,@(expand (map cadr bindings))))
-          ;; > 2 body
-          ((and (list? body) (> (length body) 2))
-                `((lambda ,(map car bindings) ,(expand `(let ((,(gensym) ,(car body))) ,@(cdr body)))) ,@(expand (map cadr bindings))))
-          ;; 1 body
-          (else `((lambda ,(map car bindings) ,(expand (car body))) ,@(expand (map cadr bindings)))))))
+  (if (symbol? (cadr expr))
+    (expand-letn expr)
+    (let ((bindings (cadr  expr))
+          (body     (cddr expr)))
+      (cond ;; 2 body
+            ((and (list? body) (= (length body) 2))
+                  `((lambda ,(map car bindings) ,(expand `(let ((,(gensym) ,(car body))) ,(cadr body)))) ,@(expand (map cadr bindings))))
+            ;; > 2 body
+            ((and (list? body) (> (length body) 2))
+                  `((lambda ,(map car bindings) ,(expand `(let ((,(gensym) ,(car body))) ,@(cdr body)))) ,@(expand (map cadr bindings))))
+            ;; 1 body
+            (else `((lambda ,(map car bindings) ,(expand (car body))) ,@(expand (map cadr bindings))))))))
       
+;; LETN (named let)
+(define (expand-letn expr)
+   (let ((id (cadr expr))
+         (bindings (caddr expr))
+         (body (cdddr expr)))
+   (expand `((letrec ((,id (lambda ,(map car bindings) ,@body))) ,id) ,@(map cadr bindings)))))
+
 ;; LET*
 (define (expand-let* expr)
   (let ((bindings (cadr expr))
