@@ -4,4 +4,3 @@
 
 -- tester en enlevant le passage du ctx par id pour bug
 -- letrec do let-nommé
--- la macro let peut etre réduite à une seule lambda ?
