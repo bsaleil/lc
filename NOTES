@@ -3,4 +3,5 @@
 ==
 
 -- tester en enlevant le passage du ctx par id pour bug
--- letrec do let-nommé
+-- macro 'do'
+-- make-vector avec 2 arg en macro en attendant l'implémentation du paramètre reste

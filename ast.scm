@@ -23,7 +23,7 @@
            (cond ;; Special with call
                  ((member op '($$putchar)) (mlc-special-c ast succ))
                  ;; Special without call
-                 ((member op '($cons $car $cdr)) (mlc-special-nc ast succ))
+                 ((member op '($vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ;; Set!
@@ -35,7 +35,7 @@
                  ;; Operator gen
                  ((member op '($eq?)) (mlc-op-gen ast succ op))
                  ;; Tests
-                 ((member op '($number? $procedure? $pair?)) (mlc-test ast succ))
+                 ((member op '($vector? $number? $procedure? $pair?)) (mlc-test ast succ))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -166,6 +166,7 @@
 ;;
 ;; Make lazy code from SPECIAL FORM (inlined specials)
 ;;
+;; TODO : reecrire mlc-special-nc ?
 (define (mlc-special-nc ast succ)
   (let* ((special (car ast))
          (lazy-special
@@ -183,6 +184,111 @@
                         (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
                         (x86-push cgc (x86-rax))
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK))))))
+                 ;; MAKE-VECTOR
+                 ((eq? special '$make-vector)
+                  (make-lazy-code
+                     (lambda (cgc ctx)
+                       (let ((header-word (mem-header 2 STAG_VECTOR))) ;; Get header word with size 2 (header & length)
+                       ;; Write header and length
+                       (x86-pop cgc (x86-rax))
+                       (x86-mov cgc (x86-rbx) (x86-rax))
+                       (x86-shl cgc (x86-rbx) (x86-imm-int 6)) ;; << 6 because rax contains an integer which is << 2
+                       (x86-add cgc (x86-rbx) (x86-imm-int header-word))
+                       (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rbx)) ;; Write header
+                       (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)) ;; Write encoded length
+                       
+                       
+                       
+                       
+                       (let ((label-fill (asm-make-label cgc (new-sym 'label-fill)))
+                             (label-end-fill (asm-make-label cgc (new-sym 'label-end-fill))))
+
+                       ;; TODO
+                       (x86-shl cgc (x86-rax) (x86-imm-int 1))
+                       (x86-push cgc (x86-rax))
+                       (x86-push cgc (x86-rcx))
+
+                       
+
+                       (x86-label cgc label-fill)
+
+                          ;; Si RAX == 0, fin
+                          (x86-cmp cgc (x86-rax) (x86-imm-int 0))
+                          (x86-je cgc label-end-fill)
+
+                          ;; Sinon
+                          ;; 1 ecrire valeur 0
+                          (x86-mov cgc (x86-rbx) alloc-ptr)
+                          (x86-add cgc (x86-rbx) (x86-imm-int 8))
+                          (x86-add cgc (x86-rbx) (x86-rax))
+                          (x86-mov cgc (x86-rcx) (x86-imm-int 0))
+                          (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-rcx))
+                          ;; 2 rax -= 8
+                          (x86-sub cgc (x86-rax) (x86-imm-int 8))
+                          (x86-jmp cgc label-fill)
+
+
+
+
+                       (x86-label cgc label-end-fill)
+
+                       (x86-pop cgc (x86-rcx))
+                       (x86-pop cgc (x86-rax)))                       
+
+                       ;; Encode & push vector
+                       (x86-mov cgc (x86-rbx) alloc-ptr)
+                       (x86-add cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
+                       (x86-push cgc (x86-rbx))
+                       ;; Update alloc ptr
+                       (x86-add cgc (x86-rax) (x86-imm-int 16))
+                       (x86-add cgc alloc-ptr (x86-rax))
+                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VECT))))))
+                 ;; VECTOR-LENGTH
+                 ((eq? special '$vector-length)
+                  (make-lazy-code
+                     (lambda (cgc ctx)
+                        (x86-pop cgc (x86-rax)) ;; Pop vector
+                        (x86-push cgc (x86-mem (+ 8 (* -1 TAG_MEMOBJ)) (x86-rax)))
+                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM)))))
+                 ;; VECTOR-REF
+                 ((eq? special '$vector-ref)
+                  (make-lazy-code
+                     (lambda (cgc ctx)
+                        (x86-pop cgc (x86-rax)) ;; pop index
+                        (x86-shl cgc (x86-rax) (x86-imm-int 1))
+
+                        (x86-pop cgc (x86-rbx)) ;; pop vector
+                        (x86-sub cgc (x86-rbx) (x86-imm-int 1))
+                        (x86-add cgc (x86-rbx) (x86-imm-int 16))
+                        (x86-add cgc (x86-rbx) (x86-rax))
+
+                        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rbx)))
+                        (x86-push cgc (x86-rax))
+
+                        
+                        (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_UNK)))))
+                 ;; VECTOR-SET
+                 ((eq? special '$vector-set!)
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                       (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp))) ;; get index
+                       (x86-shl cgc (x86-rax) (x86-imm-int 1))
+                       (x86-mov cgc (x86-rbx) (x86-mem 16 (x86-rsp))) ;; Get vector
+
+                       (x86-sub cgc (x86-rbx) (x86-imm-int 1)) ;; enleve tag
+                       (x86-add cgc (x86-rbx) (x86-imm-int 16)) ;; on se place sur la premiere case du tableau
+                       (x86-add cgc (x86-rbx) (x86-rax))
+
+                       (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; get new value
+                       (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-rax))
+
+                       (x86-add cgc (x86-rsp) (x86-imm-int 24))
+                       (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
+                       (x86-push cgc (x86-rax))
+
+                       (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 3) CTX_VOID)))))
+
+
                  ;; OTHERS
                  (else (error "NYI")))))
 
@@ -190,23 +296,20 @@
           ((eq? special '$cons)
            (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
              (gen-ast (cadr ast) lazy-right)))
-          ;; $CAR & $CDR
-          ((member special '($car $cdr))
-           (let* ((lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_PAIR_EXPECTED))))
-                  (lazy-main (make-lazy-code
-                               (lambda (cgc ctx)
-                                 (let ((type (car (ctx-stack ctx))))
-                                   (cond ((eq? type CTX_PAI) (jump-to-version cgc lazy-special ctx))
-                                         ((eq? type CTX_UNK) (jump-to-version cgc
-                                                                              (gen-dyn-type-test CTX_PAI
-                                                                                                 0
-                                                                                                 (ctx-push (ctx-pop ctx) CTX_PAI)
-                                                                                                 lazy-special
-                                                                                                 ctx
-                                                                                                 lazy-fail)
-                                                                              ctx))
-                                         (else (gen-error cgc ERR_PAIR_EXPECTED))))))))
-             (gen-ast (cadr ast) lazy-main))))))
+          ;; $CAR or $CDR or $MAKE-VECTOR
+          ((member special '($vector-length $make-vector $car $cdr))
+             (gen-ast (cadr ast) lazy-special))
+          ;; $VECTOR-REF
+          ((eq? special '$vector-ref)
+           (let ((lazy-index (gen-ast (caddr ast) lazy-special)))
+             (gen-ast (cadr ast) lazy-index)))
+          ;; $VECTOR-SET
+          ((eq? special '$vector-set!)
+           (let* ((lazy-value (gen-ast (cadddr ast) lazy-special))
+                  (lazy-index (gen-ast (caddr  ast) lazy-value)))
+              (gen-ast (cadr ast) lazy-index)))
+          ;; OTHERS
+          (else (error "NYI")))))
 
 ;; Gen mutable variable
 ;; This code is a function prelude. It transforms variable from stack (args) tagged as "mutable"
@@ -687,6 +790,7 @@
                                      (x86-and cgc (x86-rbx) (x86-imm-int 248))
                                      (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
                                            ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
+                                           ((eq? op '$vector?)    (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_VECTOR))))    ;; STAG_VECTOR << 3
                                            (else (error "NYI")))
                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
                                      (x86-jne cgc label-done)
@@ -958,7 +1062,7 @@
                   ;; Lambda
                   ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
                   ;; Special
-                  ((member op '(set! $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
+                  ((member op '(set! $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
 

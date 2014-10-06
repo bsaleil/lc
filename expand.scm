@@ -13,6 +13,7 @@
       ((equal? (car expr) 'or) (expand-or expr))
       ((equal? (car expr) 'and) (expand-and expr))
       ((equal? (car expr) 'cond) (expand-cond expr))
+      ((equal? (car expr) 'make-vector) (expand-make-vector expr))
       (else (if (list? (cdr expr))
                 (map expand expr)
                 (cons (expand (car expr)) (expand (cdr expr))))))) ;; (e1 . e2)
@@ -121,3 +122,12 @@
         (else `(if ,(expand (caadr expr))
                    ,(expand (cadr (cadr expr)))
                    ,(expand `(cond ,@(cddr expr)))))))
+
+
+;; TODO remove when rest parameter implemented
+(define (expand-make-vector expr)
+   (if (= (length expr) 3) ;; (make-vector len INIT)
+      (expand `(let ((VECTOR (make-vector ,(cadr expr))))
+          (vector-fill! VECTOR ,(expand (caddr expr)))
+          VECTOR))
+      `(make-vector ,(expand (cadr expr)))))

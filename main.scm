@@ -35,6 +35,7 @@
 (define STAG_PROCEDURE 14)
 (define STAG_PAIR    1)
 (define STAG_MOBJECT 2)
+(define STAG_VECTOR  0)
 
 ;; Context
 (define CTX_NUM   'number)
@@ -46,6 +47,7 @@
 (define CTX_NULL  'null)
 (define CTX_CTXID 'ctx)
 (define CTX_RETAD 'retAddr)
+(define CTX_VECT  'vector)
 
 ;;-----------------------------------------------------------------------------
 
