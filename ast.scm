@@ -216,9 +216,9 @@
     (if (not (null? mutable))
        
        (let* ((res (assoc (car mutable) (ctx-env ctx)))
-             (header-word (+ (arithmetic-shift 2 8) (arithmetic-shift STAG_MOBJECT 3) 6)) ;; 000...010 | STAG_MOBJECT | 110 => Length | MObject | Permanent
-             (fs (length (ctx-stack ctx)))
-             (offset (* (- fs 1 (identifier-offset (cdr res))) 8)))
+              (header-word (mem-header 2 STAG_MOBJECT))
+              (fs (length (ctx-stack ctx)))
+              (offset (* (- fs 1 (identifier-offset (cdr res))) 8)))
 
         ;; Create var in memory
         (gen-get-localvar cgc ctx res 'gen-reg) ;; There are only localvar here (no free vars)
@@ -292,7 +292,7 @@
           (set! mvars (mutable-vars (caddr ast) params))
 
           ;; 1 - WRITE OBJECT HEADER
-          (let ((header-word (+ (arithmetic-shift (+ 2 (length fvars)) 8) (arithmetic-shift STAG_PROCEDURE 3) 6))) ;; 2 + nbFreeVars | STAG_PROCEDURE | 110 => Length | Procedure | Permanent
+          (let ((header-word (mem-header (+ 2 (length fvars)) STAG_PROCEDURE)))
             (x86-mov cgc (x86-rax) (x86-imm-int header-word))
             (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax)))
 
@@ -704,7 +704,7 @@
 (define (mlc-pair succ)
   (make-lazy-code
     (lambda (cgc ctx)
-       (let ((header-word (+ (arithmetic-shift 3 8) (arithmetic-shift 1 3) 6))) ;; 000...011 | STAG_PAIR | 110 => Length | Pair | Permanent
+       (let ((header-word (mem-header 3 STAG_PAIR)))
          ;; TODO : mov directly to memory
          ;; Write object header
          (x86-mov cgc (x86-rax) (x86-imm-int header-word))
@@ -987,6 +987,17 @@
                     (else (mutable-vars-l ast params)))))))
 
 ;;
+;; ALLOCATOR
+;;
+
+;; NOTE : 'life' is fixed as 6 for now.
+;(define (memobj-header length stag life)
+(define (mem-header length stag)
+    ;; => Length (56 bits) | sTag (5 bits) | Life (3 bits)
+    (+ (arithmetic-shift length 8) (arithmetic-shift stag 3) 6))
+
+
+;;
 ;; UTILS
 ;;
 
@@ -1034,3 +1045,4 @@
     (if (member (car lsta) lstb)
       (set-union (cdr lsta) lstb)
       (set-union (cdr lsta) (cons (car lsta) lstb)))))
+
