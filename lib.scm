@@ -214,3 +214,13 @@
 (define (pp n)
   (pp-h n)
   ($$putchar 10))
+
+;; Others utils not in unit tests
+
+(define (newline)
+   ($$putchar 10))
+
+(define (expt n e)
+  (if (= e 0)
+    1
+    (* n (expt n (- e 1)))))
