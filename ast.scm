@@ -190,16 +190,13 @@
                      (lambda (cgc ctx)
                        (let ((header-word (mem-header 2 STAG_VECTOR))) ;; Get header word with size 2 (header & length)
                        ;; Write header and length
-                       (x86-pop cgc (x86-rax))
+                       (x86-pop cgc (x86-rax)) ;; Pop length
                        (x86-mov cgc (x86-rbx) (x86-rax))
                        (x86-shl cgc (x86-rbx) (x86-imm-int 6)) ;; << 6 because rax contains an integer which is << 2
                        (x86-add cgc (x86-rbx) (x86-imm-int header-word))
                        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rbx)) ;; Write header
                        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)) ;; Write encoded length
-                       
-                       
-                       
-                       
+                       ;; Write init value in vector
                        (let ((label-fill (asm-make-label cgc (new-sym 'label-fill)))
                              (label-end-fill (asm-make-label cgc (new-sym 'label-end-fill))))
 
@@ -212,18 +209,18 @@
 
                        (x86-label cgc label-fill)
 
-                          ;; Si RAX == 0, fin
+                          ;; If RAX == 0, stop
                           (x86-cmp cgc (x86-rax) (x86-imm-int 0))
                           (x86-je cgc label-end-fill)
 
-                          ;; Sinon
-                          ;; 1 ecrire valeur 0
+                          ;; Else
+                          ;; Write value in current index
                           (x86-mov cgc (x86-rbx) alloc-ptr)
                           (x86-add cgc (x86-rbx) (x86-imm-int 8))
                           (x86-add cgc (x86-rbx) (x86-rax))
                           (x86-mov cgc (x86-rcx) (x86-imm-int 0))
                           (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-rcx))
-                          ;; 2 rax -= 8
+                          ;; rax -= 8
                           (x86-sub cgc (x86-rax) (x86-imm-int 8))
                           (x86-jmp cgc label-fill)
 
@@ -873,7 +870,7 @@
 
 ;; Global closure context table
 (define global-cc-table '())
-(define global-cc-table-maxsize 20)
+(define global-cc-table-maxsize 30)
 
 ;; Gen a new cc-table at 'alloc-ptr' and write 'stub-addr' in each slot
 (define (gen-cc-table cgc stub-addr offset)

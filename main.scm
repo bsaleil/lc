@@ -276,12 +276,12 @@
 ;; Machine code block management
 
 ;; HEAP
-(define heap-len 50000)
+(define heap-len 100000)
 (define heap-addr #f)
 (define alloc-ptr (x86-r12))
 
 ;; CODE
-(define code-len 50000)
+(define code-len 100000)
 (define code-addr #f)
 
 ;; MCB :
