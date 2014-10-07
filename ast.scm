@@ -199,39 +199,27 @@
                        ;; Write init value in vector
                        (let ((label-fill (asm-make-label cgc (new-sym 'label-fill)))
                              (label-end-fill (asm-make-label cgc (new-sym 'label-end-fill))))
-
-                       ;; TODO
+                      
                        (x86-shl cgc (x86-rax) (x86-imm-int 1))
-                       (x86-push cgc (x86-rax))
+                       (x86-push cgc (x86-rax)) ;; Save regs
                        (x86-push cgc (x86-rcx))
-
-                       
-
                        (x86-label cgc label-fill)
-
                           ;; If RAX == 0, stop
                           (x86-cmp cgc (x86-rax) (x86-imm-int 0))
                           (x86-je cgc label-end-fill)
-
                           ;; Else
                           ;; Write value in current index
                           (x86-mov cgc (x86-rbx) alloc-ptr)
-                          (x86-add cgc (x86-rbx) (x86-imm-int 8))
                           (x86-add cgc (x86-rbx) (x86-rax))
                           (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-                          (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-rcx))
+                          (x86-mov cgc (x86-mem 8 (x86-rbx)) (x86-rcx))
                           ;; rax -= 8
                           (x86-sub cgc (x86-rax) (x86-imm-int 8))
                           (x86-jmp cgc label-fill)
-
-
-
-
                        (x86-label cgc label-end-fill)
 
-                       (x86-pop cgc (x86-rcx))
-                       (x86-pop cgc (x86-rax)))                       
-
+                       (x86-pop cgc (x86-rcx)) ;; Restore regs
+                       (x86-pop cgc (x86-rax)))
                        ;; Encode & push vector
                        (x86-mov cgc (x86-rbx) alloc-ptr)
                        (x86-add cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
@@ -251,40 +239,26 @@
                  ((eq? special '$vector-ref)
                   (make-lazy-code
                      (lambda (cgc ctx)
-                        (x86-pop cgc (x86-rax)) ;; pop index
+                        (x86-pop cgc (x86-rax)) ;; Pop index
                         (x86-shl cgc (x86-rax) (x86-imm-int 1))
-
-                        (x86-pop cgc (x86-rbx)) ;; pop vector
-                        (x86-sub cgc (x86-rbx) (x86-imm-int 1))
-                        (x86-add cgc (x86-rbx) (x86-imm-int 16))
+                        (x86-pop cgc (x86-rbx)) ;; Pop vector
                         (x86-add cgc (x86-rbx) (x86-rax))
-
-                        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rbx)))
-                        (x86-push cgc (x86-rax))
-
-                        
+                        (x86-push cgc (x86-mem (+ 16 (* -1 TAG_MEMOBJ)) (x86-rbx)))
                         (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_UNK)))))
                  ;; VECTOR-SET
                  ((eq? special '$vector-set!)
                   (make-lazy-code
                     (lambda (cgc ctx)
-                       (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp))) ;; get index
+                       (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))  ;; Get index
                        (x86-shl cgc (x86-rax) (x86-imm-int 1))
                        (x86-mov cgc (x86-rbx) (x86-mem 16 (x86-rsp))) ;; Get vector
-
-                       (x86-sub cgc (x86-rbx) (x86-imm-int 1)) ;; enleve tag
-                       (x86-add cgc (x86-rbx) (x86-imm-int 16)) ;; on se place sur la premiere case du tableau
                        (x86-add cgc (x86-rbx) (x86-rax))
-
-                       (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; get new value
-                       (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-rax))
-
+                       (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))  ;; Get new value
+                       (x86-mov cgc (x86-mem (+ 16 (* -1 TAG_MEMOBJ)) (x86-rbx)) (x86-rax))
                        (x86-add cgc (x86-rsp) (x86-imm-int 24))
                        (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
                        (x86-push cgc (x86-rax))
-
                        (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 3) CTX_VOID)))))
-
 
                  ;; OTHERS
                  (else (error "NYI")))))
