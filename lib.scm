@@ -224,3 +224,6 @@
   (if (= e 0)
     1
     (* n (expt n (- e 1)))))
+
+(define (cddr l)
+  (cdr (cdr l)))
