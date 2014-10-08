@@ -9,6 +9,7 @@
       ((equal? (car expr) 'let) (expand-let expr))
       ((equal? (car expr) 'let*) (expand-let* expr))
       ((equal? (car expr) 'letrec) (expand-letrec expr))
+      ((equal? (car expr) 'do) (expand-do expr))
       ((equal? (car expr) 'lambda) (expand-lambda expr))
       ((equal? (car expr) 'or) (expand-or expr))
       ((equal? (car expr) 'and) (expand-and expr))
@@ -84,6 +85,27 @@
            ,@(map (lambda (l) (list 'set! (car l) (cadr l))) bindings)
            ,@body))))
 
+;; TODO
+(define (do-steps ids)
+  (if (null? ids)
+    '()
+    (let ((stepl (cddr (car ids))))
+      (if (null? stepl)
+        (cons (car (car ids)) (do-steps (cdr ids)))
+        (cons (car stepl) (do-steps (cdr ids)))))))
+
+;; TODO
+(define (expand-do expr)
+   (let ((SYM (gensym))
+         (ids (cadr expr))
+         (stop (caddr expr))
+         (commands (cdddr expr)))
+      (expand `(letrec ((,SYM (lambda ,(map car ids)
+                         (if ,(car stop)
+                            (begin ,@(cdr stop))
+                            (begin ,@commands
+                                   (,SYM ,@(do-steps ids)))))))
+               (,SYM ,@(map cadr ids))))))
 
 ;; LAMBDA
 (define (expand-lambda expr)

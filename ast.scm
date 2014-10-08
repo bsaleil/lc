@@ -286,7 +286,6 @@
 ;; This code is a function prelude. It transforms variable from stack (args) tagged as "mutable"
 ;; into memory-allocated variables.
 (define (gen-mutable cgc ctx mutable)
-
     (if (not (null? mutable))
        
        (let* ((res (assoc (car mutable) (ctx-env ctx)))
@@ -956,8 +955,9 @@
               (else (error "Invalid destination")))
         ;; Real value required and variable is mutable
         (begin (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp)))
-               (x86-mov cgc (x86-rax) (x86-mem 7 (x86-rax)))
-               (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem 7 (x86-rax))))
+               (cond ((eq? dest 'stack)
+                        (begin 
+                               (x86-push cgc (x86-mem 7 (x86-rax)))))
                      ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem 7 (x86-rax))))
                      (else (error "Invalid destination")))))
 
