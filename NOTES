@@ -3,7 +3,6 @@
 ==
 
 -- tester en enlevant le passage du ctx par id pour bug
--- macro 'do'
 -- make-vector avec 2 arg en macro en attendant l'implémentation du paramètre reste
 -- Lazy expand, attendre le dernier moment pour expand? ex si on rencontre un let, on expand puis compile ?
 
