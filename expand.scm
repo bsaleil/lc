@@ -85,7 +85,7 @@
            ,@(map (lambda (l) (list 'set! (car l) (cadr l))) bindings)
            ,@body))))
 
-;; TODO
+;; DO-h
 (define (do-steps ids)
   (if (null? ids)
     '()
@@ -94,7 +94,7 @@
         (cons (car (car ids)) (do-steps (cdr ids)))
         (cons (car stepl) (do-steps (cdr ids)))))))
 
-;; TODO
+;; DO
 (define (expand-do expr)
    (let ((SYM (gensym))
          (ids (cadr expr))
