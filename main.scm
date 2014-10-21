@@ -102,11 +102,13 @@
 ;;-----------------------------------------------------------------------------
 
 ;; Errors
-(define ERR_MSG           "EXEC ERROR")
-(define ERR_NUM_EXPECTED  "NUMBER EXPECTED")
-(define ERR_PRO_EXPECTED  "PROCEDURE EXPECTED")
-(define ERR_PAIR_EXPECTED "PAIR EXPECTED")
-(define ERR_ARR_OVERFLOW  "ARITHMETIC OVERFLOW")
+(define ERR_MSG            "EXEC ERROR")
+(define ERR_NUM_EXPECTED   "NUMBER EXPECTED")
+(define ERR_PRO_EXPECTED   "PROCEDURE EXPECTED")
+(define ERR_PAIR_EXPECTED  "PAIR EXPECTED")
+(define ERR_ARR_OVERFLOW   "ARITHMETIC OVERFLOW")
+(define ERR_ARR_OVERFLOW   "ARITHMETIC OVERFLOW")
+(define ERR_WRONG_NUM_ARGS "WRONG NUMBER OF ARGUMENTS")
 
 ;; Gen code for error
 ;; stop-exec? to #f to continue after error

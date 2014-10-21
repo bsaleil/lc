@@ -21,7 +21,7 @@
 
 ;; DEFINE
 (define (expand-define expr)
-  (if (list? (cadr expr)) ;; (define (fn arg1 ... argN) ...)
+  (if (pair? (cadr expr)) ;; (define (fn arg1 ... argN) ...)
     `(define ,(caadr expr) ,(expand `(lambda ,(cdadr expr) ,@(cddr expr))))         
     `(define ,(cadr expr) ,(expand (caddr expr)))))
 
