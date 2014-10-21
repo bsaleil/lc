@@ -49,6 +49,9 @@
 (define CTX_RETAD 'retAddr)
 (define CTX_VECT  'vector)
 
+;; Base ctx for procedure call
+(define base-ctx (list CTX_CTXID CTX_RETAD CTX_CLO))
+
 ;;-----------------------------------------------------------------------------
 
 (define (alloc-still-vector len)

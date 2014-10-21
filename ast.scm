@@ -9,10 +9,6 @@
 ;; ex. '((foo 1 number) (bar 2 bool) (fun 3 closure))
 (define globals '())
 
-;; Base ctx for procedure call
-;; TODO : unbound unbound unbound
-(define base-ctx `(,CTX_CTXID ,CTX_RETAD ,CTX_CLO))
-
 ;;-----------------------------------------------------------------------------
 
 ;; Gen lazy code from ast
@@ -286,82 +282,11 @@
           ;; OTHERS
           (else (error "NYI")))))
 
-;; Gen mutable variable
-;; This code is a function prelude. It transforms variable from stack (args) tagged as "mutable"
-;; into memory-allocated variables.
-(define (gen-mutable cgc ctx mutable)
-    (if (not (null? mutable))
-       
-       (let* ((res (assoc (car mutable) (ctx-env ctx)))
-              (header-word (mem-header 2 STAG_MOBJECT))
-              (fs (length (ctx-stack ctx)))
-              (offset (* (- fs 1 (identifier-offset (cdr res))) 8)))
-
-        ;; Create var in memory
-        (gen-get-localvar cgc ctx res 'gen-reg) ;; There are only localvar here (no free vars)
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-
-        ;; Replace local
-        (x86-mov cgc (x86-rax) alloc-ptr)
-        (x86-add cgc alloc-ptr (x86-imm-int 16))
-        (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-        (x86-mov cgc (x86-mem offset (x86-rsp)) (x86-rax))
-
-        ;; Gen next mutable vars
-        (gen-mutable cgc ctx (cdr mutable)))))
-
-;; Get formal params from list of params
-;; Ex: (formal-params '(a b c)  ) -> '(a b c)
-;;     (formal-params '(a b . c)) -> '(a b)
-(define (formal-params l)
-  (if (not (pair? l))
-     '()
-     (cons (car l) (formal-params (cdr l)))))
-
-;; TODO
-(define (gen-rest-lst cgc ctx nb-pop sp-offset alloc-offset POS)
-
-  (if (= 0 POS)
-    (begin  ;; MOV REST PAIR
-            (x86-mov cgc (x86-rax) alloc-ptr)
-            (x86-sub cgc (x86-rax) (x86-imm-int (* 24 nb-pop)))
-            (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-            (x86-mov cgc (x86-mem (+ 16 (* 8 nb-pop)) (x86-rsp)) (x86-rax)) ;; 32
-
-            ;; GLISSEMENT DES INFOS CTX
-            (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
-            (x86-mov cgc (x86-mem (+ 16 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
-            (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
-            (x86-mov cgc (x86-mem (+ 8 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
-            (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-            (x86-mov cgc (x86-mem (+ 0 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
-            (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- nb-pop 1)))))
-
-    (let ((header (mem-header 3 STAG_PAIR)))
-
-      (x86-mov cgc (x86-rax) (x86-imm-int header))
-      (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-      (x86-mov cgc (x86-rax) (x86-mem sp-offset (x86-rsp)))
-      (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-      (x86-mov cgc (x86-rax) alloc-ptr)
-
-      (if (= 1 POS)
-        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-        (x86-add cgc (x86-rax) (x86-imm-int (+ 24 TAG_MEMOBJ))))
-
-      (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))
-      (x86-add cgc alloc-ptr (x86-imm-int 24))
-      (gen-rest-lst cgc ctx nb-pop (- sp-offset 8) alloc-offset (- POS 1)))))    
-
 ;;
 ;; Make lazy code from LAMBDA
 ;;
 (define (mlc-lambda ast succ)
-  (let* (;; Lambda parameters TODO
-
-         ;; Lambda free vars
+  (let* (;; Lambda free vars
          (fvars #f)
          ;; Lambda mutable vars
          (mvars #f)
@@ -374,19 +299,16 @@
            (if rest-param
               (formal-params (cadr ast))
               (cadr ast)))
+         ;; Flatten list of param (include rest param)
+         (all-params (flatten (cadr ast)))
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code
                      (lambda (cgc ctx)
                        ;; Here the stack is :
                        ;;         RSP
                        ;;     | ret-val |  ctx  | ret-addr | closure | arg n | ... | arg 1 |
-
-                       ;; TODO OR :
-                       ;;     | ret-val |  ctx  | ret-addr | closure | REST | b | a |
-                       ;; TODO 
-                       ;; TODO reecrire proprement le if
-                       ;; TODO : ne fonctionne pas si pas d'arguments donné, mais que rest param a #t 
-                       
+                       ;; Or if rest :
+                       ;;     | ret-val |  ctx  | ret-addr | closure | rest | arg n | ... | arg 1 |
                        (let ((retval-offset
                                 (if rest-param
                                    (* 8 (+ 3 (length params)))
@@ -403,57 +325,39 @@
                          (x86-jmp cgc (x86-rax))))))
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
-         ;; Lazy mutable : Move mutable vars in memory
-         (lazy-mutable (make-lazy-code
+         ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
+         (lazy-prologue (make-lazy-code
                            (lambda (cgc ctx)
+
                               (let* ((actual-p (- (length (ctx-stack ctx)) (length base-ctx)))
                                      (formal-p (ctx-nb-args ctx)))
-                                (cond ((and (not rest-param) (= actual-p formal-p))
-                                          (begin (gen-mutable cgc ctx mvars)
-                                                 (jump-to-version cgc lazy-body ctx)))
-                                      ;; TODO
-                                      ((and rest-param (= actual-p formal-p))
-                                          ;; TODO TODO
-                                          ;(error "REST SANS ARG")) ;; TODO : rest mais rest vide
-                                          (begin (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                                                 (x86-push cgc (x86-rax))
 
-                                                 (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
-                                                 (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
-
-                                                 (x86-mov cgc (x86-rax) (x86-mem 24 (x86-rsp)))
-                                                 (x86-mov cgc (x86-mem 16 (x86-rsp)) (x86-rax))
-
-                                                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                                                 (x86-mov cgc (x86-mem 24 (x86-rsp)) (x86-rax))
-
-                                                 ;; TODO
-                                                 (ctx-stack-set! ctx (list CTX_CTXID CTX_RETAD CTX_CLO 'pair 'number 'number))
-                                                 ; (ctx-env-set! ctx (cons (cons 'c (make-identifier 'local
-                                                 ;                       2
-                                                 ;                       '())) (ctx-env ctx)))
-                                                 
-
-                                                 ;; TODO generer les mutables
-                                                 (gen-mutable cgc ctx mvars)
-                                                 (jump-to-version cgc lazy-body ctx)))
-
-
-                                      ((and rest-param (> actual-p formal-p))
-                                          (begin
-                                                 (gen-rest-lst cgc ctx (- actual-p formal-p) (+ 24 (* 8 (- actual-p formal-p 1))) 0 (- actual-p formal-p))
-                                                 
-                                                 (ctx-stack-set! ctx (list CTX_CTXID CTX_RETAD CTX_CLO 'pair 'number 'number))
-                                                 ; (ctx-env-set! ctx (cons (cons 'c (make-identifier 'local
-                                                 ;                       2
-                                                 ;                       '())) (ctx-env ctx)))
-                                                
-
-                                                 ;; TODO generer les mutables
-                                                 (gen-mutable cgc ctx mvars)
-                                                 (jump-to-version cgc lazy-body ctx)))
-                                      (else
-                                         (gen-error cgc ERR_WRONG_NUM_ARGS))))))))
+                                (if (or (and (not rest-param) (not (= actual-p formal-p)))
+                                        (and rest-param (< actual-p formal-p)))
+                                   ;; Wrong number of arguments
+                                   (gen-error cgc ERR_WRONG_NUM_ARGS)
+                                   ;; Correct number of arguments
+                                   (begin (cond ;; Rest param declared but not given
+                                                ((and rest-param (= actual-p formal-p))
+                                                    ;; Shift 3 values on stack
+                                                    (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                                                    (x86-push cgc (x86-rax))
+                                                    (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
+                                                    (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
+                                                    (x86-mov cgc (x86-rax) (x86-mem 24 (x86-rsp)))
+                                                    (x86-mov cgc (x86-mem 16 (x86-rsp)) (x86-rax))
+                                                    ;; Mov '() in rest param slot
+                                                    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+                                                    (x86-mov cgc (x86-mem 24 (x86-rsp)) (x86-rax))
+                                                    ;; Add type information to ctx
+                                                    (ctx-stack-set! ctx (append base-ctx (list 'pair) (list-tail (ctx-stack ctx) (length base-ctx)))))
+                                                ;; Rest param declared and given
+                                                ((and rest-param (> actual-p formal-p))
+                                                    (begin (gen-rest-lst cgc ctx (- actual-p formal-p) (+ 24 (* 8 (- actual-p formal-p 1))) 0 (- actual-p formal-p)) ;; TODO
+                                                    (ctx-stack-set! ctx (list CTX_CTXID CTX_RETAD CTX_CLO 'pair 'number 'number)))))
+                                          
+                                          (gen-mutable cgc ctx mvars)
+                                          (jump-to-version cgc lazy-body ctx))))))))
 
     ;; Lazy closure generation
     (make-lazy-code
@@ -463,24 +367,17 @@
                                              0
                                              (lambda (sp ctx ret-addr selector closure)
                                                ;; Extends env with params and free vars
-                                               ;; TODO : if rest-param...
-                                               (let* ((env (append (build-env mvars (if rest-param (append params '(c)) params) 0) (build-fenv saved-env mvars fvars 0)))
+                                               (let* ((env (append (build-env mvars all-params 0) (build-fenv saved-env mvars fvars 0)))
                                                       (ctx (make-ctx (ctx-stack ctx) env (length params))))
-                                                 (gen-version-fn closure lazy-mutable ctx)))))
+                                                 (gen-version-fn closure lazy-prologue ctx)))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
 
           ;; 0a - SAVE ENVIRONMENT
           (set! saved-env (ctx-env ctx))
           ;; 0b - COMPUTE FREE VARS
-          ;; TODO REST
-          (if rest-param
-            (set! fvars (free-vars (caddr ast) (cons 'c params) ctx))
-            (set! fvars (free-vars (caddr ast) params ctx)))
+          (set! fvars (free-vars (caddr ast) all-params ctx))
           ;; 0c - COMPUTE MUTABLE VARS
-          ;; TODO REST
-          (if rest-param
-            (set! mvars (mutable-vars (caddr ast) (cons 'c params)))
-            (set! mvars (mutable-vars (caddr ast) params)))
+          (set! mvars (mutable-vars (caddr ast) all-params))
 
           ;; 1 - WRITE OBJECT HEADER
           (let ((header-word (mem-header (+ 2 (length fvars)) STAG_PROCEDURE)))
@@ -1232,6 +1129,8 @@
       (set-sub (cdr lsta) lstb res)
       (set-sub (cdr lsta) lstb (cons (car lsta) res)))))
 
+;; Set union with lists
+;; return lsta U lstb
 (define (set-union lsta lstb)
   (if (null? lsta)
     lstb
@@ -1239,3 +1138,76 @@
       (set-union (cdr lsta) lstb)
       (set-union (cdr lsta) (cons (car lsta) lstb)))))
 
+;; Flatten list x
+(define (flatten x)
+   (cond ((null? x) '())
+         ((not (pair? x)) (list x))
+         (else (append (flatten (car x))
+                       (flatten (cdr x))))))
+
+;; Get formal params from list of params
+;; Ex: (formal-params '(a b c)  ) -> '(a b c)
+;;     (formal-params '(a b . c)) -> '(a b)
+(define (formal-params l)
+  (if (not (pair? l))
+     '()
+     (cons (car l) (formal-params (cdr l)))))
+
+;; Gen mutable variable
+;; This code is a function prelude. It transforms variable from stack (args) tagged as "mutable"
+;; into memory-allocated variables.
+(define (gen-mutable cgc ctx mutable)
+    (if (not (null? mutable))
+       
+       (let* ((res (assoc (car mutable) (ctx-env ctx)))
+              (header-word (mem-header 2 STAG_MOBJECT))
+              (fs (length (ctx-stack ctx)))
+              (offset (* (- fs 1 (identifier-offset (cdr res))) 8)))
+
+        ;; Create var in memory
+        (gen-get-localvar cgc ctx res 'gen-reg) ;; There are only localvar here (no free vars)
+        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+
+        ;; Replace local
+        (x86-mov cgc (x86-rax) alloc-ptr)
+        (x86-add cgc alloc-ptr (x86-imm-int 16))
+        (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+        (x86-mov cgc (x86-mem offset (x86-rsp)) (x86-rax))
+
+        ;; Gen next mutable vars
+        (gen-mutable cgc ctx (cdr mutable)))))
+
+;; TODO
+(define (gen-rest-lst cgc ctx nb-pop sp-offset alloc-offset pos)
+
+  (if (= 0 pos)
+    (begin  ;; MOV REST PAIR
+            (x86-lea cgc (x86-rax) (x86-mem (* -1 (- (* 24 nb-pop) TAG_MEMOBJ)) alloc-ptr))
+            (x86-mov cgc (x86-mem (+ 16 (* 8 nb-pop)) (x86-rsp)) (x86-rax)) ;; 32
+
+            ;; GLISSEMENT DES INFOS CTX
+            (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
+            (x86-mov cgc (x86-mem (+ 16 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
+            (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
+            (x86-mov cgc (x86-mem (+ 8 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
+            (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+            (x86-mov cgc (x86-mem (+ 0 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
+            (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- nb-pop 1)))))
+
+    (let ((header (mem-header 3 STAG_PAIR)))
+
+      (x86-mov cgc (x86-rax) (x86-imm-int header))
+      (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+      (x86-mov cgc (x86-rax) (x86-mem sp-offset (x86-rsp)))
+      (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+      (x86-mov cgc (x86-rax) alloc-ptr)
+
+      (if (= 1 pos)
+        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+        (x86-add cgc (x86-rax) (x86-imm-int (+ 24 TAG_MEMOBJ))))
+
+      (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))
+      (x86-add cgc alloc-ptr (x86-imm-int 24))
+      (gen-rest-lst cgc ctx nb-pop (- sp-offset 8) alloc-offset (- pos 1)))))    
