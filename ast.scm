@@ -1186,7 +1186,6 @@
     (begin  ;; MOV REST PAIR
             (x86-lea cgc (x86-rax) (x86-mem (* -1 (- (* 24 nb-pop) TAG_MEMOBJ)) alloc-ptr))
             (x86-mov cgc (x86-mem (+ 16 (* 8 nb-pop)) (x86-rsp)) (x86-rax)) ;; 32
-
             ;; GLISSEMENT DES INFOS CTX
             (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
             (x86-mov cgc (x86-mem (+ 16 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
