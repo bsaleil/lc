@@ -290,9 +290,9 @@
 (define code-addr #f)
 
 ;; MCB :
-;; 0                 heap-len              mcb-len
+;; 0                 code-len              mcb-len
 ;; +--------------------+--------------------+
-;; |    Heap            |    Code            |
+;; |    Code            |    Heap            |
 ;; |                    |                    |
 ;; |                    |                    |
 ;; +--------------------+--------------------+
@@ -304,8 +304,8 @@
 (define (init-mcb)
   (set! mcb (##make-machine-code-block mcb-len))
   (set! mcb-addr (##foreign-address mcb))
-  (set! heap-addr (+ mcb-addr 8))
-  (set! code-addr (+ mcb-addr heap-len)))
+  (set! code-addr mcb-addr)
+  (set! heap-addr (+ mcb-addr code-len)))
 
 ;; BLOCK :
 ;; 0          8                       (nb-globals * 8 + 8)
@@ -914,7 +914,7 @@
   
   ;(print "RESULT = ")
   (##machine-code-block-exec mcb))
-  ;(pp (##machine-code-block-exec mcb)))
+  ;(##machine-code-block-exec mcb))
 
 ;; Get lib
 (define lib  (expand (read-all (open-input-file "./lib.scm"))))
