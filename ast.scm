@@ -293,7 +293,8 @@
          ;; Saved env
          (saved-env #f)
          ;; Rest param ?
-         (rest-param (and (pair? (cadr ast)) (not (list? (cadr ast)))))
+         (rest-param (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
+                         (and (pair? (cadr ast)) (not (list? (cadr ast)))))) ;; (foo a..z . rest)
          ;; Params list
          (params
            (if rest-param
@@ -353,8 +354,9 @@
                                                     (ctx-stack-set! ctx (append base-ctx (list 'pair) (list-tail (ctx-stack ctx) (length base-ctx)))))
                                                 ;; Rest param declared and given
                                                 ((and rest-param (> actual-p formal-p))
-                                                    (begin (gen-rest-lst cgc ctx (- actual-p formal-p) (+ 24 (* 8 (- actual-p formal-p 1))) 0 (- actual-p formal-p)) ;; TODO
-                                                    (ctx-stack-set! ctx (list CTX_CTXID CTX_RETAD CTX_CLO 'pair 'number 'number)))))
+                                                    (gen-rest-lst cgc ctx (- actual-p formal-p) (+ 24 (* 8 (- actual-p formal-p 1))) 0 (- actual-p formal-p))
+                                                    (ctx-stack-set! ctx (append (list CTX_CTXID CTX_RETAD CTX_CLO 'pair) (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p)))) ;; TODO : write context one time
+                                                    ))
                                           
                                           (gen-mutable cgc ctx mvars)
                                           (jump-to-version cgc lazy-body ctx))))))))
@@ -858,7 +860,7 @@
 
 ;; Global closure context table
 (define global-cc-table '())
-(define global-cc-table-maxsize 30)
+(define global-cc-table-maxsize 50)
 
 ;; Gen a new cc-table at 'alloc-ptr' and write 'stub-addr' in each slot
 (define (gen-cc-table cgc stub-addr offset)
@@ -1184,8 +1186,15 @@
 
   (if (= 0 pos)
     (begin  ;; MOV REST PAIR
-            (x86-lea cgc (x86-rax) (x86-mem (* -1 (- (* 24 nb-pop) TAG_MEMOBJ)) alloc-ptr))
+            (x86-mov cgc (x86-rax) alloc-ptr)
+            (x86-sub cgc (x86-rax) (x86-imm-int (* 24 nb-pop)))
+            (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
             (x86-mov cgc (x86-mem (+ 16 (* 8 nb-pop)) (x86-rsp)) (x86-rax)) ;; 32
+
+
+
+            ; (x86-lea cgc (x86-rax) (x86-mem (* -1 (- (* 24 nb-pop) TAG_MEMOBJ)) alloc-ptr))
+            ; (x86-mov cgc (x86-mem (+ 16 (* 8 nb-pop)) (x86-rsp)) (x86-rax)) ;; 32
             ;; GLISSEMENT DES INFOS CTX
             (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
             (x86-mov cgc (x86-mem (+ 16 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))

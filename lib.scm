@@ -58,6 +58,8 @@
       0
       (+ 1 (length (cdr l)))))
 
+(define (list . l) l)
+
 ;; TODO : type test 
 (define (list? n)
   (cond ((null? n) #t)
@@ -65,9 +67,6 @@
         (else #f)))
 
 ;; VECTORS
-
-(define (make-vector l)
-   ($make-vector l))
 
 (define (vector-length v)
    ($vector-length v))
@@ -86,6 +85,14 @@
 
 (define (vector-fill! v val)
   (vector-fill!-h v 0 val (vector-length v)))
+
+(define (make-vector size . init)
+  (let ((v ($make-vector size)))
+    (cond ((null? init)
+            (begin (vector-fill! v 0) v))
+        ((= (length init) 1)
+            (begin (vector-fill! v (car init)) v))
+        (else #f)))) ;; TODO ERR
 
 ;; TYPES CONVERSION
 
@@ -106,6 +113,9 @@
 (define (list->vector l)
   (let ((v (make-vector (length l))))
      (list->vector-h l v 0 (length l))))
+
+;; TODO wrong place
+(define (vector . l) (list->vector l))
 
 ;; PRINT
 (define print #f)
