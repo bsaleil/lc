@@ -1,3 +1,3 @@
 
-(pp 100)
-(pp (list 1 2 3 4 5 6 7 8 9 0))
+(println 100)
+(println 200)

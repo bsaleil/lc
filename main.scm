@@ -1,3 +1,4 @@
+#! gsi-script
 ;; File: lazy-comp4.scm
 
 ;; June 26, 2014
@@ -901,26 +902,71 @@
       (gen-ast (car exprs)
                (lazy-exprs (cdr exprs) succ))))
 
-(define (exec lib prog)
-  
+;;
+;; REPL
+;;
+(define (repl lib)
+
+  (println "REPL")
+
   (init)
-  
+
+  (letrec (;; Lazy return
+           (lazy-ret (make-lazy-code
+                        (lambda (cgc ctx)
+                           (x86-pop cgc (x86-rax))
+                           (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
+                           (pop-regs-reverse cgc prog-regs)
+                           (x86-ret cgc))))
+           ;; Lazy lib
+           (lazy-lib (lazy-exprs lib lazy-read-eval))
+           ;; Lazy print
+           (lazy-print (make-lazy-code
+              (lambda (cgc ctx)
+                 (x86-pop cgc (x86-rax))
+                 (x86-mov cgc (x86-mem 0 (x86-r10)) (x86-rax))
+                 (jump-to-version cgc (gen-ast '(pp $$REPL-RES) lazy-read-eval) (ctx-pop ctx)))))
+           ;; Lazy read-eval
+           (lazy-read-eval (make-lazy-code
+          (lambda (cgc ctx)
+             (print "> ")
+             (let ((lecture (expand (read))))
+                (if (eq? lecture '$q)
+                   (jump-to-version cgc lazy-ret ctx)
+                   (jump-to-version cgc (gen-ast lecture lazy-print) ctx)))))))
+    ;; Global var for print step
+    (set! globals '(($$REPL-RES 0 . unknown)))
+    ;; Gen
+    (gen-version code-alloc lazy-lib (make-ctx '() '() -1)))
+
+  ;; EXEC
+  (##machine-code-block-exec mcb))
+
+;;
+;; Exec
+;;
+(define (exec lib prog)
+
+  (init)
+
   (let* ((lazy-prog (lazy-exprs prog #f))
          (lazy-lib  (lazy-exprs lib  lazy-prog)))
     
-    (gen-version code-alloc
-                 lazy-lib
-                 (make-ctx '() '() -1)))
+     (gen-version code-alloc
+                  lazy-lib
+                  (make-ctx '() '() -1)))
   
-  ;(print "RESULT = ")
   (##machine-code-block-exec mcb))
-  ;(##machine-code-block-exec mcb))
 
 ;; Get lib
-(define lib  (expand (read-all (open-input-file "./lib.scm"))))
+(define lib (expand (read-all (open-input-file "./lib.scm"))))
 
-;; Get prog
-(define prog (expand (read-all)))
+;; Get args
+(define args (list-tail (command-line) 1))
 
-;; Exec lib and prog
-(exec lib prog)
+(cond ((null? args)
+          (repl lib)) ;; TODO
+      ((= (length args) 1)
+          (let ((file-content (expand (read-all (open-input-file (car args))))))
+             (exec lib file-content)))
+      (else (error "NYI")))
