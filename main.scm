@@ -935,7 +935,7 @@
                    (jump-to-version cgc lazy-ret ctx)
                    (jump-to-version cgc (gen-ast lecture lazy-print) ctx)))))))
     ;; Global var for print step
-    (set! globals '(($$REPL-RES 0 . unknown)))
+    (set! globals '(($$REPL-RES . 0)))
     ;; Gen
     (gen-version code-alloc lazy-lib (make-ctx '() '() -1)))
 
