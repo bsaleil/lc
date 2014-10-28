@@ -128,12 +128,8 @@
          (lazy-bind (make-lazy-code (lambda (cgc ctx)
                                      (x86-pop cgc (x86-rax))
                                      (let* ((res (assoc identifier globals)) ;; Lookup in globals
-                                           (pos (cadr res))                  ;; Get global pos
-                                           (ctx-type (car (ctx-stack ctx)))) ;; Get type from top of stack
-                                       
-                                       ;; Set global type in globals
-                                       (set-cdr! (cdr res) ctx-type)
-                                                                              
+                                            (pos (cdr res)))                 ;; Get global pos
+                                                   
                                        (x86-mov cgc (x86-mem (* 8 pos) (x86-r10)) (x86-rax)))
 
                                      (x86-push cgc (x86-imm-int ENCODING_VOID))
@@ -144,7 +140,7 @@
     (make-lazy-code (lambda (cgc ctx)
                       (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
                       (x86-mov cgc (x86-mem (* 8 (length globals)) (x86-r10)) (x86-rax))
-                      (set! globals (cons (cons identifier (cons (length globals) CTX_VOID)) globals))
+                      (set! globals (cons (cons identifier (length globals)) globals))
                       (jump-to-version cgc lazy-val ctx)
                       ))))
 
@@ -918,9 +914,7 @@
 ;; Gen code to set a global var
 (define (gen-set-globalvar cgc ctx variable)
    (x86-pop cgc (x86-rax))
-   (x86-mov cgc (x86-mem (* 8 (cadr variable)) (x86-r10)) (x86-rax))
-   ;; Replace global type information
-   (set-cdr! (cdr variable) (car (ctx-stack ctx))))
+   (x86-mov cgc (x86-mem (* 8 (cdr variable)) (x86-r10)) (x86-rax)))
 
 ;;
 ;; VARIABLE GET
@@ -982,10 +976,10 @@
 
 ;; Gen code to get a global var
 (define (gen-get-globalvar cgc ctx variable dest)
-   (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* 8 (cadr variable)) (x86-r10))))
-         ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* 8 (cadr variable)) (x86-r10))))
+   (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* 8 (cdr variable)) (x86-r10))))
+         ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* 8 (cdr variable)) (x86-r10))))
          (else (error "Invalid destination")))
-   (cddr variable))
+   CTX_UNK)
 
 ;;
 ;; FREE VARS
