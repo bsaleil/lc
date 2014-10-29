@@ -117,8 +117,49 @@
   (let ((v (make-vector (length l))))
      (list->vector-h l v 0 (length l))))
 
+(define (char->integer c)
+  ($char->integer c))
+
 ;; TODO wrong place
 (define (vector . l) (list->vector l))
+
+;; CHAR
+
+(define (char=? c1 c2)
+   (= (char->integer c1) (char->integer c2)))
+
+(define (char<? c1 c2)
+   (< (char->integer c1) (char->integer c2)))
+
+(define (char>? c1 c2)
+   (> (char->integer c1) (char->integer c2)))
+
+(define (char<=? c1 c2)
+   (<= (char->integer c1) (char->integer c2)))
+
+(define (char>=? c1 c2)
+   (>= (char->integer c1) (char->integer c2)))
+
+(define (char-alphabetic? c)
+  (let ((c (char->integer c)))
+    (or (and (> c 64) (< c 91))
+      (and (> c 96) (< c 123)))))
+
+(define (char-numeric? c)
+  (let ((c (char->integer c)))
+    (and (> c 47) (< c 58))))
+
+(define (char-whitespace? c)
+  (let ((c (char->integer c)))
+    (or (= c 32) (= c 9) (= c 10) (= c 12) (= c 13))))
+
+(define (char-upper-case? c)
+  (let ((c (char->integer c)))
+    (and (> c 64) (< c 91))))
+
+(define (char-lower-case? c)
+  (let ((c (char->integer c)))
+    (and (> c 96) (< c 123))))
 
 ;; PRINT
 (define print #f)
@@ -138,6 +179,9 @@
         (begin ($$putchar 45)
                (print-pos (* -1 n)))
         (print-pos n)))
+
+(define (print-char n)
+  ($$putchar (char->integer n)))
 
 (define (print-bool n)
   (if ($eq? n #t)
@@ -169,6 +213,7 @@
   (lambda (n)
     (cond ((null? n) #f)
           ((number? n) (print-nb n))
+          ((char? n) (print-char n))
           ((procedure? n) (print-procedure n))
           ((pair? n) (begin (print (car n))
                             (print (cdr n))))
@@ -202,6 +247,11 @@
   (pp-pair-h n)
   ($$putchar 41))
 
+(define (pp-char n)
+  ($$putchar 35)
+  ($$putchar 92)
+  ($$putchar 84) ($$putchar 79) ($$putchar 68) ($$putchar 79)) ;; TODO when strings implemented
+
 (define (pp-vector-h vector idx length)
   (cond ((= idx (- length 1))
             (pp-h (vector-ref vector idx)))
@@ -219,6 +269,7 @@
 (set! pp-h (lambda (n)
   (cond ((null? n) (begin ($$putchar 40) ($$putchar 41))) ;; ()
         ((number? n) (print-nb n))
+        ((char? n) (pp-char n))
         ((procedure? n) (print-procedure n))
         ((pair? n) (pp-pair n))
         ((vector? n) (pp-vector n))

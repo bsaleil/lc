@@ -27,7 +27,7 @@
            (cond ;; Special with call
                  ((member op '($$putchar)) (mlc-special-c ast succ))
                  ;; Special without call
-                 ((member op '($vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr)) (mlc-special-nc ast succ))
+                 ((member op '($char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ;; Set!
@@ -65,6 +65,7 @@
                        (ctx-push ctx
                                  (cond ((number? ast)  CTX_NUM)
                                        ((boolean? ast) CTX_BOOL)
+                                       ((char? ast)    CTX_CHAR)
                                        ((null? ast)    CTX_NULL)))))))
 
 ;;
@@ -184,6 +185,19 @@
                         (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
                         (x86-push cgc (x86-rax))
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK))))))
+                 ;; TODO + ajouter dans free vars
+                 ((eq? special '$char->integer)
+                   (let ((lazy-charint
+                            (make-lazy-code
+                              (lambda (cgc ctx)
+                                 (x86-xor cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8)
+                                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM))))))
+                     (make-lazy-code
+                        (lambda (cgc ctx)
+                          (let ((ctx-type (car (ctx-stack ctx))))
+                            (if (eq? ctx-type CTX_CHAR)
+                              (jump-to-version cgc lazy-charint ctx)
+                              (error "NYI char->integer")))))))
                  ;; MAKE-VECTOR
                  ((eq? special '$make-vector)
                   (make-lazy-code
@@ -268,7 +282,7 @@
            (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
              (gen-ast (cadr ast) lazy-right)))
           ;; $CAR or $CDR or $MAKE-VECTOR
-          ((member special '($vector-length $make-vector $car $cdr))
+          ((member special '($char->integer $vector-length $make-vector $car $cdr))
              (gen-ast (cadr ast) lazy-special))
           ;; $VECTOR-REF
           ((eq? special '$vector-ref)
@@ -1059,7 +1073,7 @@
                   ;; Lambda
                   ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
                   ;; Special
-                  ((member op '(set! $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
+                  ((member op '(set! $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
 

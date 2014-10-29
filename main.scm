@@ -41,6 +41,7 @@
 
 ;; Context
 (define CTX_NUM   'number)
+(define CTX_CHAR  'char)
 (define CTX_BOOL  'boolean)
 (define CTX_CLO   'closure)
 (define CTX_PAI   'pair)
@@ -929,12 +930,17 @@
                  (jump-to-version cgc (gen-ast '(pp $$REPL-RES) lazy-read-eval) (ctx-pop ctx)))))
            ;; Lazy read-eval
            (lazy-read-eval (make-lazy-code
-          (lambda (cgc ctx)
-             (print "> ")
-             (let ((lecture (expand (read))))
-                (if (eq? lecture '$q)
-                   (jump-to-version cgc lazy-ret ctx)
-                   (jump-to-version cgc (gen-ast lecture lazy-print) ctx)))))))
+              (lambda (cgc ctx)
+                 (print "> ")
+                 (let ((lecture (expand (read)))) ;; TODO lecture
+                    (cond ((equal? lecture '(unquote LC))
+                              (let ((lecture (read)))
+                                (eval lecture)
+                                (jump-to-version cgc (gen-ast #f lazy-print) ctx)))
+                          ((equal? lecture '(unquote q))
+                              (jump-to-version cgc lazy-ret ctx))
+                          (else
+                              (jump-to-version cgc (gen-ast lecture lazy-print) ctx))))))))
     ;; Global var for print step
     (set! globals '(($$REPL-RES . 0)))
     ;; Gen
