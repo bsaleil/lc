@@ -29,7 +29,8 @@
 
 ;; Types tag
 (define TAG_NUMBER  0)
-(define TAG_MEMOBJ 1)
+(define TAG_MEMOBJ  1)
+(define TAG_SPECIAL 2)
 (define ENCODING_VOID -18)
 
 ;; Types subtag

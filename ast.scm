@@ -11,10 +11,14 @@
 
 ;;-----------------------------------------------------------------------------
 
+;; TODO
+(define (literal? v)
+   (or (char? v) (number? v) (boolean? v) (null? v)))
+
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
   (cond ;; Literal
-        ((or (number? ast) (boolean? ast) (null? ast)) (mlc-literal ast succ))
+        ((literal? ast) (mlc-literal ast succ))
         ;; Symbol
         ((symbol? ast) (mlc-symbol ast succ))
         ;; Pair
@@ -35,7 +39,7 @@
                  ;; Operator gen
                  ((member op '($eq?)) (mlc-op-gen ast succ op))
                  ;; Tests
-                 ((member op '($vector? $number? $procedure? $pair?)) (mlc-test ast succ))
+                 ((member op '($char? $vector? $number? $procedure? $pair?)) (mlc-test ast succ))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -756,28 +760,39 @@
                       (lambda (cgc ctx)
                         (let ((label-done (asm-make-label cgc (new-sym 'label_done))))
                           (x86-pop   cgc (x86-rax))
-                          (if (eq? op '$number?)
-                              ;; $number?
-                              (begin (x86-and   cgc (x86-rax) (x86-imm-int 3))
-                                     (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                     (x86-je    cgc label-done)
-                                     (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #f))))
-                              ;; Others
-                              (begin (x86-mov cgc (x86-rbx) (x86-rax))
-                                     (x86-and cgc (x86-rax) (x86-imm-int 3))
-                                     (x86-cmp cgc (x86-rax) (x86-imm-int 1)) ;; CMP avec tag memory allocated obj
-                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                     (x86-jne cgc label-done)
-                                     ;; It's a memory allocated obj
-                                     (x86-mov cgc (x86-rbx) (x86-mem -1 (x86-rbx)))
-                                     (x86-and cgc (x86-rbx) (x86-imm-int 248))
-                                     (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
-                                           ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
-                                           ((eq? op '$vector?)    (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_VECTOR))))    ;; STAG_VECTOR << 3
-                                           (else (error "NYI")))
-                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                     (x86-jne cgc label-done)
-                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))))
+                          (cond ;; $number?
+                                ((eq? op '$number?)
+                                    (x86-and   cgc (x86-rax) (x86-imm-int 3))
+                                    (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                                    (x86-je    cgc label-done)
+                                    (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #f))))
+                                ;; TODO $char?
+                                ((eq? op '$char?)
+                                    (x86-mov cgc (x86-rbx) (x86-rax))
+                                    (x86-and cgc (x86-rax) (x86-imm-int 3))
+                                    (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
+                                    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                    (x86-jne cgc label-done) ;; No tag for special, then not char
+                                    ;; Tag is 'special', test value
+                                    (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
+                                    (x86-jl cgc label-done) ;; <0 is !char and >=0 is char
+                                    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t))))
+                                ;; Others
+                                (else (x86-mov cgc (x86-rbx) (x86-rax))
+                                      (x86-and cgc (x86-rax) (x86-imm-int 3))
+                                      (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                      (x86-jne cgc label-done)
+                                      ;; It's a memory allocated obj
+                                      (x86-mov cgc (x86-rbx) (x86-mem -1 (x86-rbx)))
+                                      (x86-and cgc (x86-rbx) (x86-imm-int 248))
+                                      (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
+                                            ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
+                                            ((eq? op '$vector?)    (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_VECTOR))))    ;; STAG_VECTOR << 3
+                                            (else (error "NYI")))
+                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                      (x86-jne cgc label-done)
+                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))))
                           ;;
                           (x86-label cgc label-done)
                           (x86-push  cgc (x86-rax))
@@ -1024,7 +1039,7 @@
 ;; Return all free vars used by ast knowing env 'clo-env'
 (define (free-vars ast clo-env ctx)
   (cond ;; Literal
-        ((or (number? ast) (boolean? ast)) '())
+        ((literal? ast) '())
         ;; Symbol
         ((symbol? ast)
           (cond ((member ast clo-env) '())
@@ -1044,7 +1059,7 @@
                   ;; Lambda
                   ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
                   ;; Special
-                  ((member op '(set! $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
+                  ((member op '(set! $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
 

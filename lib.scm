@@ -25,6 +25,9 @@
 (define (number? n)
   ($number? n))
 
+(define (char? n)
+  ($char? n))
+
 (define (procedure? n)
   ($procedure? n))
 
