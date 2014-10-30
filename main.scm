@@ -971,9 +971,25 @@
 ;; Get args
 (define args (list-tail (command-line) 1))
 
-(cond ((null? args)
+(define opts  '())
+(define files '())
+
+(define (handle-args args)
+  (if (not (null? args))
+     (let ((e (car args)))
+        (if (eq? (string-ref e 0) #\-)
+           (set! opts  (cons e opts))
+           (set! files (cons e files)))
+        (handle-args (cdr args)))))
+
+(handle-args args)
+
+(if (member "-d" opts)
+   (set! dev-log #t))
+
+(cond ((null? files)
           (repl lib)) ;; TODO
-      ((= (length args) 1)
+      ((= (length files) 1)
           (let ((file-content (expand (read-all (open-input-file (car args))))))
              (exec lib file-content)))
       (else (error "NYI")))
