@@ -120,6 +120,9 @@
 (define (char->integer c)
   ($char->integer c))
 
+(define (integer->char n)
+  ($integer->char n))
+
 ;; TODO wrong place
 (define (vector . l) (list->vector l))
 
@@ -160,6 +163,38 @@
 (define (char-lower-case? c)
   (let ((c (char->integer c)))
     (and (> c 96) (< c 123))))
+
+(define (char-upcase c)
+   (let ((v (char->integer c)))
+     (if (and (> v 96) (< v 123))
+        (integer->char (- v 32))
+        c)))
+
+(define (char-downcase c)
+   (let ((v (char->integer c)))
+     (if (and (> v 64) (< v 91))
+        (integer->char (+ v 32))
+        c)))
+
+(define (char-ci=? c1 c2)
+   (= (char->integer (char-downcase c1))
+      (char->integer (char-downcase c2))))
+
+(define (char-ci<? c1 c2)
+   (< (char->integer (char-downcase c1))
+      (char->integer (char-downcase c2))))
+
+(define (char-ci>? c1 c2)
+   (> (char->integer (char-downcase c1))
+      (char->integer (char-downcase c2))))
+
+(define (char-ci<=? c1 c2)
+   (<= (char->integer (char-downcase c1))
+       (char->integer (char-downcase c2))))
+
+(define (char-ci>=? c1 c2)
+   (>= (char->integer (char-downcase c1))
+       (char->integer (char-downcase c2))))
 
 ;; PRINT
 (define print #f)
@@ -250,7 +285,10 @@
 (define (pp-char n)
   ($$putchar 35)
   ($$putchar 92)
-  ($$putchar 84) ($$putchar 79) ($$putchar 68) ($$putchar 79)) ;; TODO when strings implemented
+  (let ((v (char->integer n)))
+    (if (> v 32)
+       (print-char n)
+       (begin ($$putchar 84) ($$putchar 79) ($$putchar 68) ($$putchar 79))))) ;; TODO when strings implemented
 
 (define (pp-vector-h vector idx length)
   (cond ((= idx (- length 1))

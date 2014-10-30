@@ -110,6 +110,7 @@
 ;; Errors
 (define ERR_MSG            "EXEC ERROR")
 (define ERR_NUM_EXPECTED   "NUMBER EXPECTED")
+(define ERR_CHAR_EXPECTED  "CHAR EXPECTED")
 (define ERR_PRO_EXPECTED   "PROCEDURE EXPECTED")
 (define ERR_PAIR_EXPECTED  "PAIR EXPECTED")
 (define ERR_ARR_OVERFLOW   "ARITHMETIC OVERFLOW")
@@ -284,12 +285,12 @@
 ;; Machine code block management
 
 ;; HEAP
-(define heap-len 200000)
+(define heap-len 500000)
 (define heap-addr #f)
 (define alloc-ptr (x86-r12))
 
 ;; CODE
-(define code-len 200000)
+(define code-len 500000)
 (define code-addr #f)
 
 ;; MCB :
@@ -871,6 +872,13 @@
                    (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
                    (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                    (x86-cmp cgc (x86-rax) (x86-imm-int 0)))
+               ;; TODO
+               ((eq? type CTX_CHAR)
+                   (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
+                   (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
+                   (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
+                   ;(x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
+                   ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
                ;; Procedure type test
                ;((eq? type 'procedure)
                ((member type (list CTX_CLO CTX_PAI))

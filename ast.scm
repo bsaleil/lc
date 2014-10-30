@@ -27,7 +27,7 @@
            (cond ;; Special with call
                  ((member op '($$putchar)) (mlc-special-c ast succ))
                  ;; Special without call
-                 ((member op '($char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr)) (mlc-special-nc ast succ))
+                 ((member op '($integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ;; Set!
@@ -186,18 +186,48 @@
                         (x86-push cgc (x86-rax))
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK))))))
                  ;; TODO + ajouter dans free vars
-                 ((eq? special '$char->integer)
+                 ((or (eq? special '$char->integer)
+                      (eq? special '$integer->char))
                    (let ((lazy-charint
                             (make-lazy-code
                               (lambda (cgc ctx)
-                                 (x86-xor cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8)
-                                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM))))))
+                                 (cond ((eq? special '$char->integer)
+                                           (x86-xor cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8))
+                                       ((eq? special '$integer->char)
+                                           (x86-or  cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8)))
+                                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
+                                                                     (cond ((eq? special '$char->integer) CTX_NUM)
+                                                                           ((eq? special '$integer->char) CTX_CHAR))))))))
                      (make-lazy-code
                         (lambda (cgc ctx)
-                          (let ((ctx-type (car (ctx-stack ctx))))
-                            (if (eq? ctx-type CTX_CHAR)
-                              (jump-to-version cgc lazy-charint ctx)
-                              (error "NYI char->integer")))))))
+                          (let ((ctx-type  (car (ctx-stack ctx)))
+                                (lazy-fail (lambda (ERR) (make-lazy-code
+                                                           (lambda (cgc ctx)
+                                                             (gen-error cgc ERR))))))
+                            (cond ((or (and (eq? special '$char->integer) (eq? ctx-type CTX_CHAR))
+                                       (and (eq? special '$integer->char) (eq? ctx-type CTX_NUM)))
+                                      (jump-to-version cgc lazy-charint ctx))
+                                  ((and (eq? special '$char->integer) (eq? ctx-type CTX_UNK)) ;; TODO : gen dyn commun
+                                      (jump-to-version cgc
+                                                       (gen-dyn-type-test CTX_CHAR
+                                                                          0
+                                                                          (ctx-push (ctx-pop ctx) CTX_CHAR)
+                                                                          lazy-charint
+                                                                          ctx
+                                                                          (lazy-fail ERR_CHAR_EXPECTED))
+                                                       ctx))
+                                  ((and (eq? special '$integer->char) (eq? ctx-type CTX_UNK))
+                                      (jump-to-version cgc
+                                                       (gen-dyn-type-test CTX_NUM
+                                                                          0
+                                                                          (ctx-push (ctx-pop ctx) CTX_NUM)
+                                                                          lazy-charint
+                                                                          ctx
+                                                                          (lazy-fail ERR_NUM_EXPECTED))
+                                                       ctx))
+                                  (else (if (eq? special '$char->integer)
+                                           (gen-error cgc ERR_CHAR_EXPECTED)
+                                           (gen-error cgc ERR_NUM_EXPECTED)))))))))
                  ;; MAKE-VECTOR
                  ((eq? special '$make-vector)
                   (make-lazy-code
@@ -282,7 +312,7 @@
            (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
              (gen-ast (cadr ast) lazy-right)))
           ;; $CAR or $CDR or $MAKE-VECTOR
-          ((member special '($char->integer $vector-length $make-vector $car $cdr))
+          ((member special '($integer->char $char->integer $vector-length $make-vector $car $cdr))
              (gen-ast (cadr ast) lazy-special))
           ;; $VECTOR-REF
           ((eq? special '$vector-ref)
@@ -1073,7 +1103,7 @@
                   ;; Lambda
                   ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
                   ;; Special
-                  ((member op '(set! $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
+                  ((member op '(set! $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
 
