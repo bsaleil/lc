@@ -1,19 +1,25 @@
-;;-----------------------------------------------------------------------------
 
-;; AST FUNCTIONS
+(include "~~lib/_x86#.scm")
+(include "~~lib/_asm#.scm")
+
+;; Base ctx for procedure call
+(define base-ctx (list CTX_CTXID CTX_RETAD CTX_CLO))
 
 ;;-----------------------------------------------------------------------------
 
 ;; Global ids
-;; Contains a list of global ids with id,position,type-information
-;; ex. '((foo 1 number) (bar 2 bool) (fun 3 closure))
+;; Contains a list of global ids with id,position
+;; ex. '((foo 1) (bar 2) (fun 3))
 (define globals '())
 
 ;;-----------------------------------------------------------------------------
+;; AST FUNCTIONS
 
-;; TODO
-(define (literal? v)
-   (or (char? v) (number? v) (string? v) (boolean? v) (null? v)))
+;; Gen lazy code from a list of exprs
+(define (gen-ast-l lst succ)
+  (cond ((null? lst) (error "Empty list"))
+        ((= (length lst) 1) (gen-ast (car lst) succ))
+        (else (gen-ast (car lst) (gen-ast-l (cdr lst) succ)))))
 
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
@@ -51,6 +57,10 @@
         ;; *unknown*
         (else
          (error "unknown ast" ast))))
+
+;;-----------------------------------------------------------------------------
+;; MLC FUNCTIONS :
+;; Make a lazy code from ast
 
 ;;
 ;; Make lazy code from LITERAL
@@ -985,7 +995,6 @@
 
 ;; Global closure context table
 (define global-cc-table '())
-(define global-cc-table-maxsize 50)
 
 ;; Gen a new cc-table at 'alloc-ptr' and write 'stub-addr' in each slot
 (define (gen-cc-table cgc stub-addr offset)
@@ -997,17 +1006,6 @@
   (if (> nb-slots 0)
       (begin (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
              (gen-cc-table-h cgc (+ offset 8) (- nb-slots 1)))))
-
-;; Get cc-table index for 'ctx'. Associates a new index if ctx is a new one
-(define (get-closure-index ctx)
-  (let ((r (assoc (ctx-stack ctx) global-cc-table)))
-    (if r
-        (cdr r)
-        (let ((idx (length global-cc-table)))
-          (if (= idx global-cc-table-maxsize)
-              (error "CC Table is full")
-              (begin (set! global-cc-table (cons (cons (ctx-stack ctx) idx) global-cc-table))
-                     idx))))))
 
 ;;
 ;; VARIABLE SET
@@ -1241,9 +1239,6 @@
       (cond ((eq? name '$$putchar)  label-$$putchar)
             (else (error "NYI"))))))
 
-;; TODO : ctx_ids to solve segfault on ctx read
-(define ctx_ids '())
-
 ;; Set subtraction with lists
 ;; return lsta - lstb
 ;; res is accu
@@ -1342,3 +1337,7 @@
       (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))
       (x86-add cgc alloc-ptr (x86-imm-int 24))
       (gen-rest-lst cgc ctx nb-pop (- sp-offset 8) alloc-offset (- pos 1)))))    
+
+;; TODO
+(define (literal? v)
+   (or (char? v) (number? v) (string? v) (boolean? v) (null? v)))
