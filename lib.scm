@@ -37,6 +37,9 @@
 (define (vector? n)
   ($vector? n))
 
+(define (string? s)
+  ($string? s))
+
 (define (boolean? n)
   (cond ((eq? n #t) #t)
         ((eq? n #f) #t)
@@ -96,6 +99,17 @@
         ((= (length init) 1)
             (begin (vector-fill! v (car init)) v))
         (else #f)))) ;; TODO ERR
+
+;; STRINGS
+
+(define (string-length s)
+  ($string-length s))
+
+(define (string-ref s i)
+  ($string-ref s i))
+
+(define (make-string s)
+  ($make-string s))
 
 ;; TYPES CONVERSION
 

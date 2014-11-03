@@ -1,16 +1,23 @@
-;; TODO : integer->char pour pouvoir faire
-;;        char-upcase, char-downcase, et *ci?
+;; STRINGS. Tester :
+;; string?
+;; string-length
+;; string-ref
+;; make-string (+ ajouter avec param rest)
 
-(define (integer->char n)
-  ($integer->char n))
+;($make-string 10)
+; (pp (string-length "test"))
 
-(define (print-str-h str pos len)
-  (if (< pos len)
-     (begin (print ($string-ref str pos))
-            (print-str-h str (+ pos 1) len))))
+; (pp (string? "Hello"))
 
-(define (print-str str)
-  (print-str-h str 0 ($string-length str))
-  ($$putchar 10))
-  
-(print-str "erer€oioi")
+; (println (string-ref (make-string 3) 0))
+; (println (string-ref (make-string 3) 1))
+; (println (string-ref (make-string 3) 2))
+
+(define (string->list-h s pos)
+   (pp (string-length s))
+   (pp (cons (string-ref s 0) '())))
+
+(define (string->list s)
+   (string->list-h s 0))
+
+(pp (string->list-h "bonjour" 0))

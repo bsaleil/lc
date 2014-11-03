@@ -35,7 +35,7 @@
            (cond ;; Special with call
                  ((member op '($$putchar)) (mlc-special-c ast succ))
                  ;; Special without call
-                 ((member op '($string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr)) (mlc-special-nc ast succ))
+                 ((member op '($make-string $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ;; Set!
@@ -47,7 +47,7 @@
                  ;; Operator gen
                  ((member op '($eq?)) (mlc-op-gen ast succ op))
                  ;; Tests
-                 ((member op '($char? $vector? $number? $procedure? $pair?)) (mlc-test ast succ))
+                 ((member op '($string? $char? $vector? $number? $procedure? $pair?)) (mlc-test ast succ))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -285,6 +285,60 @@
                                   (else (if (eq? special '$char->integer)
                                            (gen-error cgc ERR_CHAR_EXPECTED)
                                            (gen-error cgc ERR_NUM_EXPECTED)))))))))
+                 
+                 ;; MAKE-STRING
+                 ;; TODO : factoriser avec make-vector
+                 ((eq? special '$make-string)
+                  (make-lazy-code
+                     (lambda (cgc ctx)
+                       (let ((header-word (mem-header 2 STAG_STRING)))
+                          ;; Write header and length
+                          (x86-pop cgc (x86-rax)) ;; Pop length
+                          (x86-mov cgc (x86-rbx) (x86-rax))
+                          (x86-shl cgc (x86-rbx) (x86-imm-int 6)) ;; << 6 because rax contains an integer which is << 2
+                          (x86-add cgc (x86-rbx) (x86-imm-int header-word))
+                          (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rbx)) ;; Write header
+                          (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)) ;; Write encoded length
+                          ;; Write init value in string
+                          (let ((label-fill (asm-make-label cgc (new-sym 'label-fill)))
+                                (label-end-fill (asm-make-label cgc (new-sym 'label-end-fill))))
+
+                             (x86-shr cgc (x86-rax) (x86-imm-int 2)) ;; TODO poru avoir la vrai taille !encodee
+                             
+                             (x86-push cgc (x86-rax))
+                             (x86-push cgc (x86-rcx))
+                             (x86-mov cgc (x86-rcx) (x86-imm-int 0))
+                             (x86-label cgc label-fill)
+                                ;; If RAX == 0, stop
+                                (x86-cmp cgc (x86-rax) (x86-imm-int 0))
+                                (x86-je cgc label-end-fill)
+                                ;; Else
+                                ;; Write value in current index
+                                (x86-mov cgc (x86-rbx) alloc-ptr)
+                                (x86-add cgc (x86-rbx) (x86-rax))
+                                (x86-mov cgc (x86-cl) (x86-imm-int 0));; TODO null char
+                                (x86-mov cgc (x86-mem 15 (x86-rbx)) (x86-cl))
+                                ;; rax -= 1
+                                (x86-sub cgc (x86-rax) (x86-imm-int 1))
+                                (x86-jmp cgc label-fill)
+                              (x86-label cgc label-end-fill)
+
+                              (x86-pop cgc (x86-rcx)) ;; Restore regs
+                               (x86-pop cgc (x86-rax)))
+                               ;; Encode & push vector
+                               (x86-mov cgc (x86-rbx) alloc-ptr)
+
+                               
+
+
+                               (x86-add cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
+                               (x86-push cgc (x86-rbx))
+                               ;; Update alloc ptr
+                               (x86-add cgc (x86-rax) (x86-imm-int 16))
+                               (x86-add cgc alloc-ptr (x86-rax))
+                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR))))))
+
+
                  ;; MAKE-VECTOR
                  ((eq? special '$make-vector)
                   (make-lazy-code
@@ -392,7 +446,7 @@
            (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
              (gen-ast (cadr ast) lazy-right)))
           ;; $CAR or $CDR or $MAKE-VECTOR
-          ((member special '($string-length $integer->char $char->integer $vector-length $make-vector $car $cdr))
+          ((member special '($string-length $integer->char $char->integer $vector-length $make-string $make-vector $car $cdr))
              (gen-ast (cadr ast) lazy-special))
           ;; $VECTOR-REF
           ((member special '($string-ref $vector-ref))
@@ -913,6 +967,7 @@
                                       (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
                                             ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
                                             ((eq? op '$vector?)    (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_VECTOR))))    ;; STAG_VECTOR << 3
+                                            ((eq? op '$string?)    (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_STRING))))    ;; STAG_STRING << 3
                                             (else (error "NYI")))
                                       (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
                                       (x86-jne cgc label-done)
@@ -1171,7 +1226,7 @@
                   ;; Lambda
                   ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
                   ;; Special
-                  ((member op '(set! $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
+                  ((member op '(set! $make-string $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $string? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
 
