@@ -108,8 +108,29 @@
 (define (string-ref s i)
   ($string-ref s i))
 
+(define (string-set! s i v)
+  ($string-set! s i v))
+
 (define (make-string s)
   ($make-string s))
+
+(define (string->list-h s pos)
+  (if (= (string-length s) pos)
+      '()
+      (cons (string-ref s pos) (string->list-h s (+ pos 1)))))
+
+(define (string->list s)
+  (string->list-h s 0))
+
+(define (list->string-h l str pos) ;; TODO : char list
+  (if (null? l)
+     str
+     (begin (string-set! str pos (car l))
+            (list->string-h (cdr l) str (+ pos 1)))))
+
+(define (list->string l)
+  (let ((str (make-string (length l))))
+     (list->string-h l str 0)))
 
 ;; TYPES CONVERSION
 
@@ -258,6 +279,11 @@
     (begin (print (vector-ref vector idx))
            (print-vector vector (+ idx 1) length))))
 
+(define (print-string str pos len)
+  (if (< pos len)
+     (begin (print (string-ref str pos))
+            (print-string str (+ pos 1) len))))
+
 (set! print
   (lambda (n)
     (cond ((null? n) #f)
@@ -267,6 +293,7 @@
           ((pair? n) (begin (print (car n))
                             (print (cdr n))))
           ((vector? n) (print-vector n 0 (vector-length n)))
+          ((string? n) (print-string n 0 (string-length n)))
           (else (print-bool n)))))
   
 (define (println n)

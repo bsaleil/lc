@@ -35,7 +35,7 @@
            (cond ;; Special with call
                  ((member op '($$putchar)) (mlc-special-c ast succ))
                  ;; Special without call
-                 ((member op '($make-string $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr)) (mlc-special-nc ast succ))
+                 ((member op '($string-set! $make-string $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ;; Set!
@@ -89,7 +89,7 @@
 (define (mlc-string ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (let ((header-word (mem-header (+ (string-length ast) 1) STAG_STRING)))
+      (let ((header-word (mem-header (+ (string-length ast) 16) STAG_STRING)))
         ;; Write header
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
         (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
@@ -102,8 +102,11 @@
         (x86-mov cgc (x86-rax) alloc-ptr)
         (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
         (x86-push cgc (x86-rax))
-        (x86-add cgc alloc-ptr (x86-imm-int (+ 16 (string-length ast))))
-        (jump-to-version cgc succ (ctx-push ctx CTX_STR))))))
+        (let* ((len (string-length ast))
+               (s (quotient len 8))
+               (size (* 8 (if (> (modulo len 8) 0) (+ s 1) s))))
+           (x86-add cgc alloc-ptr (x86-imm-int (+ 16 size))))
+        (jump-to-version cgc succ (ctx-push ctx CTX_NUM))))))
       
       ;TODO
 (define (write-chars cgc str pos offset)
@@ -423,6 +426,21 @@
                                   ; (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
                                   ; (x86-push cgc (x86-rax)))) ;; TODO : push ctx char                                  
                         (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_UNK)))))
+                 ;; TODO string-set! fusionner avec vector-set! ?
+                 ((eq? special '$string-set!)
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                       (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))  ;; Get index
+                       (x86-shr cgc (x86-rax) (x86-imm-int 2))
+                       (x86-mov cgc (x86-rbx) (x86-mem 16 (x86-rsp))) ;; Get vector
+                       (x86-add cgc (x86-rbx) (x86-rax))
+                       (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))  ;; Get new value
+                       (x86-shr cgc (x86-rax) (x86-imm-int 2))
+                       (x86-mov cgc (x86-mem (+ 16 (* -1 TAG_MEMOBJ)) (x86-rbx)) (x86-al))
+                       (x86-add cgc (x86-rsp) (x86-imm-int 24))
+                       (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
+                       (x86-push cgc (x86-rax))
+                       (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 3) CTX_VOID)))))
                  ;; VECTOR-SET
                  ((eq? special '$vector-set!)
                   (make-lazy-code
@@ -452,8 +470,8 @@
           ((member special '($string-ref $vector-ref))
            (let ((lazy-index (gen-ast (caddr ast) lazy-special)))
              (gen-ast (cadr ast) lazy-index)))
-          ;; $VECTOR-SET
-          ((eq? special '$vector-set!)
+          ;; $VECTOR-SET & TODO
+          ((member special '($string-set! $vector-set!))
            (let* ((lazy-value (gen-ast (cadddr ast) lazy-special))
                   (lazy-index (gen-ast (caddr  ast) lazy-value)))
               (gen-ast (cadr ast) lazy-index)))
@@ -1226,7 +1244,7 @@
                   ;; Lambda
                   ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
                   ;; Special
-                  ((member op '(set! $make-string $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $string? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
+                  ((member op '(set! $string-set! $make-string $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $string? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
 

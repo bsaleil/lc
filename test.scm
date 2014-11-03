@@ -3,21 +3,23 @@
 ;; string-length
 ;; string-ref
 ;; make-string (+ ajouter avec param rest)
+;; string->list
+;; println string
+;; list->string
+;; string-set!
+; TODO : pp-string
 
-;($make-string 10)
-; (pp (string-length "test"))
+(define s "BONJour")
 
-; (pp (string? "Hello"))
+(println s)
+(println s)
+(println (string? s))
+(pp (string->list s))
+;(pp s)
 
-; (println (string-ref (make-string 3) 0))
-; (println (string-ref (make-string 3) 1))
-; (println (string-ref (make-string 3) 2))
+(string-set! s 0 #\a)
+(println s)
 
-(define (string->list-h s pos)
-   (pp (string-length s))
-   (pp (cons (string-ref s 0) '())))
-
-(define (string->list s)
-   (string->list-h s 0))
-
-(pp (string->list-h "bonjour" 0))
+(pp (string? (string->list s)))
+(pp (list? (string->list s)))
+(pp (string->list s))
