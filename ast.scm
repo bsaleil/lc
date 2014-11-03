@@ -13,11 +13,13 @@
 
 ;; TODO
 (define (literal? v)
-   (or (char? v) (number? v) (boolean? v) (null? v)))
+   (or (char? v) (number? v) (string? v) (boolean? v) (null? v)))
 
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
-  (cond ;; Literal
+  (cond ;; String
+        ((string? ast)  (mlc-string ast succ))
+        ;; Literal
         ((literal? ast) (mlc-literal ast succ))
         ;; Symbol
         ((symbol? ast) (mlc-symbol ast succ))
@@ -27,7 +29,7 @@
            (cond ;; Special with call
                  ((member op '($$putchar)) (mlc-special-c ast succ))
                  ;; Special without call
-                 ((member op '($integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr)) (mlc-special-nc ast succ))
+                 ((member op '($string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ;; Set!
@@ -67,6 +69,51 @@
                                        ((boolean? ast) CTX_BOOL)
                                        ((char? ast)    CTX_CHAR)
                                        ((null? ast)    CTX_NULL)))))))
+
+;; TODO
+;;
+;;
+;;
+;; TODO : build str literal in memory (shared)
+;; TODO : modifier les appels à mem-header pour mettre la taille en octet
+(define (mlc-string ast succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let ((header-word (mem-header (+ (string-length ast) 1) STAG_STRING)))
+        ;; Write header
+        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+        ;; Write length
+        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (string-length ast))))
+        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)) 
+        ;; Write chars (utf8?)
+        (write-chars cgc ast 0 16)
+        ;; Push str ;; TODO LEA
+        (x86-mov cgc (x86-rax) alloc-ptr)
+        (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+        (x86-push cgc (x86-rax))
+        (x86-add cgc alloc-ptr (x86-imm-int (+ 16 (string-length ast))))
+        (jump-to-version cgc succ (ctx-push ctx CTX_STR))))))
+      
+      ;TODO
+(define (write-chars cgc str pos offset)
+   (if (< pos (string-length str))
+      ;(x86-mov cgc (x86-al) (x86-imm-int (char->integer (string-ref str pos))))
+             (let* ((int (char->integer (string-ref str pos)))
+                    (encoded (if (> int 127)
+                                 (* -1 (- 256 int))
+                                 int)))
+             (x86-mov cgc (x86-al) (x86-imm-int encoded))
+             (x86-mov cgc (x86-mem offset alloc-ptr) (x86-al))
+             ;(x86-mov cgc (x86-mem offset alloc-ptr) (x86-imm-int (char->integer (string-ref str pos))) 8)
+             (write-chars cgc str (+ pos 1) (+ offset 1)))))
+
+      ;; TODO
+(define (print-utf8 str pos)
+  (if (< pos (string-length str))
+     (begin (print (char->integer (string-ref str pos)))
+            (print " ")
+            (print-utf8 str (+ pos 1)))))
 
 ;;
 ;; Make lazy code from QUOTE
@@ -272,22 +319,45 @@
                        (x86-add cgc (x86-rax) (x86-imm-int 16))
                        (x86-add cgc alloc-ptr (x86-rax))
                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VECT))))))
-                 ;; VECTOR-LENGTH
-                 ((eq? special '$vector-length)
+                 ;; VECTOR-LENGTH ;; TODO
+                 ((member special '($string-length $vector-length))
                   (make-lazy-code
                      (lambda (cgc ctx)
                         (x86-pop cgc (x86-rax)) ;; Pop vector
                         (x86-push cgc (x86-mem (+ 8 (* -1 TAG_MEMOBJ)) (x86-rax)))
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM)))))
-                 ;; VECTOR-REF
-                 ((eq? special '$vector-ref)
+                 ;; VECTOR-REF TODO
+                 ((member special '($string-ref $vector-ref))
                   (make-lazy-code
                      (lambda (cgc ctx)
                         (x86-pop cgc (x86-rax)) ;; Pop index
-                        (x86-shl cgc (x86-rax) (x86-imm-int 1))
+                        (cond ((eq? special '$vector-length)
+                                  (x86-shl cgc (x86-rax) (x86-imm-int 1))))
                         (x86-pop cgc (x86-rbx)) ;; Pop vector
-                        (x86-add cgc (x86-rbx) (x86-rax))
-                        (x86-push cgc (x86-mem (+ 16 (* -1 TAG_MEMOBJ)) (x86-rbx)))
+                        (cond ((eq? special '$vector-ref)
+                                  (x86-add cgc (x86-rbx) (x86-rax))
+                                  (x86-push cgc (x86-mem (+ 16 (* -1 TAG_MEMOBJ)) (x86-rbx))))
+                              ((eq? special '$string-ref)
+                                  ;; STRING in rbx
+                                  (x86-shr cgc (x86-rax) (x86-imm-int 2))
+                                  (x86-add cgc (x86-rbx) (x86-rax))
+                                  (x86-sub cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
+                                  (x86-mov cgc (x86-rax) (x86-imm-int 0))
+                                  (x86-mov cgc (x86-al) (x86-mem 16 (x86-rbx)))
+                                  (x86-shl cgc (x86-rax) (x86-imm-int 2))
+                                  (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
+                                  (x86-push cgc (x86-rax))))
+                                  
+                                  
+                                  ; (x86-mov cgc (x86-rax) (x86-imm-int 0))
+                                  ; (x86-mov cgc (x86-al) (x86-mem (+ 16 (* -1 TAG_MEMOBJ)) (x86-rbx)))
+                                  ; ;; TODO : on a un char sur 64 bits
+                                  ; (gen-dump-regs cgc)
+                                  ; (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #\a)))
+                                  ; (x86-push cgc (x86-rax))))
+                                  ; (x86-shl cgc (x86-rax) (x86-imm-int 2))
+                                  ; (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
+                                  ; (x86-push cgc (x86-rax)))) ;; TODO : push ctx char                                  
                         (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_UNK)))))
                  ;; VECTOR-SET
                  ((eq? special '$vector-set!)
@@ -307,15 +377,15 @@
                  ;; OTHERS
                  (else (error "NYI")))))
 
-    (cond ;; $CONS
+    (cond ;; $CONS ;; TODO : commentaires
           ((eq? special '$cons)
            (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
              (gen-ast (cadr ast) lazy-right)))
           ;; $CAR or $CDR or $MAKE-VECTOR
-          ((member special '($integer->char $char->integer $vector-length $make-vector $car $cdr))
+          ((member special '($string-length $integer->char $char->integer $vector-length $make-vector $car $cdr))
              (gen-ast (cadr ast) lazy-special))
           ;; $VECTOR-REF
-          ((eq? special '$vector-ref)
+          ((member special '($string-ref $vector-ref))
            (let ((lazy-index (gen-ast (caddr ast) lazy-special)))
              (gen-ast (cadr ast) lazy-index)))
           ;; $VECTOR-SET
@@ -1103,7 +1173,7 @@
                   ;; Lambda
                   ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
                   ;; Special
-                  ((member op '(set! $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
+                  ((member op '(set! $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
 
@@ -1120,7 +1190,7 @@
 ;; Return all mutable vars used by ast
 (define (mutable-vars ast params)
   (cond ;; Literal & Symbol 
-        ((or (null? ast) (number? ast) (boolean? ast) (symbol? ast)) '())
+        ((or (null? ast) (char? ast) (string? ast) (number? ast) (boolean? ast) (symbol? ast)) '())
         ;; Pair
         ((pair? ast)
            (let ((op (car ast)))

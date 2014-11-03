@@ -31,13 +31,15 @@
 (define TAG_NUMBER  0)
 (define TAG_MEMOBJ  1)
 (define TAG_SPECIAL 2)
+
 (define ENCODING_VOID -18)
 
 ;; Types subtag
 (define STAG_PROCEDURE 14)
-(define STAG_PAIR    1)
-(define STAG_MOBJECT 2)
-(define STAG_VECTOR  0)
+(define STAG_PAIR       1)
+(define STAG_MOBJECT    2)
+(define STAG_VECTOR     0)
+(define STAG_STRING    19)
 
 ;; Context
 (define CTX_NUM   'number)
@@ -51,6 +53,7 @@
 (define CTX_CTXID 'ctx)
 (define CTX_RETAD 'retAddr)
 (define CTX_VECT  'vector)
+(define CTX_STR   'string)
 
 ;; Base ctx for procedure call
 (define base-ctx (list CTX_CTXID CTX_RETAD CTX_CLO))
