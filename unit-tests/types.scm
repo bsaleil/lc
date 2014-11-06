@@ -1,4 +1,6 @@
 
+(println "Number")
+
 (println (number?  1))
 (println (number? -1))
 (println (number?  0))
@@ -11,8 +13,10 @@
 (println (number? (make-vector 10 #t)))
 (println (number? #\newline))
 (println (number? #\a))
+(println (number? "Hello World"))
+(println (number? (make-string 4 42)))
 
-(println 123456789)
+(println "Boolean")
 
 (println (boolean?  1))
 (println (boolean? -1))
@@ -26,8 +30,10 @@
 (println (boolean? (make-vector 10 #t)))
 (println (boolean? #\newline))
 (println (boolean? #\a))
+(println (boolean? "Hello World"))
+(println (boolean? (make-string 4 42)))
 
-(println 123456789)
+(println "Null")
 
 (println (null?  1))
 (println (null? -1))
@@ -41,8 +47,10 @@
 (println (null? (make-vector 10 #t)))
 (println (null? #\newline))
 (println (null? #\a))
+(println (null? "Hello World"))
+(println (null? (make-string 4 42)))
 
-(println 123456789)
+(println "Pair")
 
 (println (pair?  1))
 (println (pair? -1))
@@ -56,8 +64,10 @@
 (println (pair? (make-vector 10 #t)))
 (println (pair? #\newline))
 (println (pair? #\a))
+(println (pair? "Hello World"))
+(println (pair? (make-string 4 42)))
 
-(println 123456789)
+(println "Procedure")
 
 (println (procedure?  1))
 (println (procedure? -1))
@@ -71,8 +81,10 @@
 (println (procedure? (make-vector 10 #t)))
 (println (procedure? #\newline))
 (println (procedure? #\a))
+(println (procedure? "Hello World"))
+(println (procedure? (make-string 4 42)))
 
-(println 123456789)
+(println "List")
 
 (println (list?  1))
 (println (list? -1))
@@ -86,8 +98,10 @@
 (println (list? (make-vector 10 #t)))
 (println (list? #\newline))
 (println (list? #\a))
+(println (list? "Hello World"))
+(println (list? (make-string 4 42)))
 
-(println 123456789)
+(println "Vector")
 
 (println (vector?  1))
 (println (vector? -1))
@@ -101,8 +115,10 @@
 (println (vector? (make-vector 10 #t)))
 (println (vector? #\newline))
 (println (vector? #\a))
+(println (vector? "Hello World"))
+(println (vector? (make-string 4 42)))
 
-(println 123456789)
+(println "Char")
 
 (println (char?  1))
 (println (char? -1))
@@ -116,7 +132,27 @@
 (println (char? (make-vector 10 #t)))
 (println (char? #\newline))
 (println (char? #\a))
+(println (char? "Hello World"))
+(println (char? (make-string 4 42)))
 
+(println "String")
+
+(println (string?  1))
+(println (string? -1))
+(println (string?  0))
+(println (string? #t))
+(println (string? #f))
+(println (string? '()))
+(println (string? (cons 1 2)))
+(println (string? (cons 1 (cons 2 '()))))
+(println (string? (lambda (a b c) (+ a c))))
+(println (string? (make-vector 10 #t)))
+(println (string? #\newline))
+(println (string? #\a))
+(println (string? "Hello World"))
+(println (string? (make-string 4 42)))
+
+;Number
 ;#t
 ;#t
 ;#t
@@ -129,7 +165,9 @@
 ;#f
 ;#f
 ;#f
-;123456789
+;#f
+;#f
+;Boolean
 ;#f
 ;#f
 ;#f
@@ -142,7 +180,9 @@
 ;#f
 ;#f
 ;#f
-;123456789
+;#f
+;#f
+;Null
 ;#f
 ;#f
 ;#f
@@ -155,7 +195,9 @@
 ;#f
 ;#f
 ;#f
-;123456789
+;#f
+;#f
+;Pair
 ;#f
 ;#f
 ;#f
@@ -168,7 +210,9 @@
 ;#f
 ;#f
 ;#f
-;123456789
+;#f
+;#f
+;Procedure
 ;#f
 ;#f
 ;#f
@@ -181,7 +225,9 @@
 ;#f
 ;#f
 ;#f
-;123456789
+;#f
+;#f
+;List
 ;#f
 ;#f
 ;#f
@@ -194,7 +240,9 @@
 ;#f
 ;#f
 ;#f
-;123456789
+;#f
+;#f
+;Vector
 ;#f
 ;#f
 ;#f
@@ -207,7 +255,26 @@
 ;#t
 ;#f
 ;#f
-;123456789
+;#f
+;#f
+;Char
+;#f
+;#f
+;#f
+;#f
+;#f
+;#f
+;#f
+;#f
+;#f
+;#f
+;#t
+;#t
+;#f
+;#f
+;String
+;#f
+;#f
 ;#f
 ;#f
 ;#f
