@@ -59,6 +59,12 @@
 (define (cdr l)
   ($cdr l))
 
+(define (cddr l)
+  (cdr (cdr l)))
+
+(define (cadr l)
+  (car (cdr l)))
+
 (define (length l)
   (if (null? l)
       0
@@ -100,68 +106,13 @@
             (begin (vector-fill! v (car init)) v))
         (else #f)))) ;; TODO ERR
 
-;; STRINGS
-
-(define (string-length s)
-  ($string-length s))
-
-(define (string-ref s i)
-  ($string-ref s i))
-
-(define (string-set! s i v)
-  ($string-set! s i v))
-
-(define (make-string s)
-  ($make-string s))
-
-(define (string->list-h s pos)
-  (if (= (string-length s) pos)
-      '()
-      (cons (string-ref s pos) (string->list-h s (+ pos 1)))))
-
-(define (string->list s)
-  (string->list-h s 0))
-
-(define (list->string-h l str pos) ;; TODO : char list
-  (if (null? l)
-     str
-     (begin (string-set! str pos (car l))
-            (list->string-h (cdr l) str (+ pos 1)))))
-
-(define (list->string l)
-  (let ((str (make-string (length l))))
-     (list->string-h l str 0)))
-
-;; TYPES CONVERSION
-
-(define (vector->list-h vector idx length)
-   (if (= idx length)
-      '()
-      (cons (vector-ref vector idx) (vector->list-h vector (+ idx 1) length))))
-
-(define (vector->list v)
-   (vector->list-h v 0 (vector-length v)))
-
-(define (list->vector-h lst vec pos len)
-  (if (null? lst)
-    vec
-    (begin (vector-set! vec pos (car lst))
-           (list->vector-h (cdr lst) vec (+ pos 1) len))))
-
-(define (list->vector l)
-  (let ((v (make-vector (length l))))
-     (list->vector-h l v 0 (length l))))
+;; CHAR
 
 (define (char->integer c)
   ($char->integer c))
 
 (define (integer->char n)
   ($integer->char n))
-
-;; TODO wrong place
-(define (vector . l) (list->vector l))
-
-;; CHAR
 
 (define (char=? c1 c2)
    (= (char->integer c1) (char->integer c2)))
@@ -230,6 +181,135 @@
 (define (char-ci>=? c1 c2)
    (>= (char->integer (char-downcase c1))
        (char->integer (char-downcase c2))))
+
+;; STRINGS
+
+(define (string-length s)
+  ($string-length s))
+
+(define (string-ref s i)
+  ($string-ref s i))
+
+(define (string-set! s i v)
+  ($string-set! s i v))
+
+(define (string->list-h s pos)
+  (if (= (string-length s) pos)
+      '()
+      (cons (string-ref s pos) (string->list-h s (+ pos 1)))))
+
+(define (string->list s)
+  (string->list-h s 0))
+
+(define (string-fill!-h str char pos len)
+  (if (< pos len)
+    (begin (string-set! str pos char)
+         (string-fill!-h str char (+ pos 1) len))
+    str))
+
+(define (string-fill! str char)
+  (string-fill!-h str char 0 (string-length str)))
+
+(define (make-string size . init)
+  (let ((s ($make-string size)))
+    (cond ((null? init)
+            s)
+          ((= (length init) 1)
+            (string-fill! s (car init))
+            s)
+          (else #f)))) ;; TODO ERR
+
+(define (list->string-h l str pos) ;; TODO : char list
+  (if (null? l)
+     str
+     (begin (string-set! str pos (car l))
+            (list->string-h (cdr l) str (+ pos 1)))))
+
+(define (list->string l)
+  (let ((str (make-string (length l))))
+     (list->string-h l str 0)))
+
+(define (string-h str chars pos)
+  (if (null? chars)
+     str
+     (begin (string-set! str pos (car chars))
+            (string-h str (cdr chars) (+ pos 1)))))
+
+(define (string . chars)
+   (if (null? chars)
+      ""
+      (let ((str (make-string (length chars))))
+         (string-h str chars 0))))
+
+(define (substring-h to from posf post end)
+  (if (= posf end)
+     to
+     (begin (string-set! to post (string-ref from posf))
+            (substring-h to from (+ posf 1) (+ post 1) end))))
+
+(define (substring string start end)
+   (if (or (< start 0) (> end (string-length string)) (< end start))
+      "" ;; TODO error
+      (let ((new-str (make-string (- end start))))
+        (substring-h new-str string start 0 end))))
+
+(define (string-append-two str str2)
+  (let* ((l1 (string-length str))
+       (l2 (string-length str2))
+       (new-str (make-string (+ l1 l2))))
+    (do ((pos 0 (+ pos 1)))
+      ((= pos (+ l1 l2)) new-str)
+      (if (< pos l1)
+         (string-set! new-str pos (string-ref str pos))
+         (string-set! new-str pos (string-ref str2 (- pos l1)))))))
+
+(define (string-append-h strings)
+   (cond ((null? strings) "")
+         ((null? (cdr strings)) (car strings))
+         (else (string-append-h (cons (string-append-two (car strings) (cadr strings))
+                                      (cddr strings))))))
+
+(define (string-append . strings)
+   (string-append-h strings))
+
+(define (string-copy str)
+   (do ((new-str (make-string (string-length str)))
+        (pos 0 (+ pos 1)))
+       ((= pos (string-length str)) new-str)
+       (string-set! new-str pos (string-ref str pos))))
+
+(define (string=?-h str1 str2 pos)
+   (cond ((= pos (string-length str1)) (= pos (string-length str2)))
+         ((= pos (string-length str2)) #f)
+         (else (if (char=? (string-ref str1 pos) (string-ref str2 pos))
+                  (string=?-h str1 str2 (+ pos 1))
+                  #f))))
+
+(define (string=? str1 str2)
+  (string=?-h str1 str2 0))
+
+;; TYPES CONVERSION
+
+(define (vector->list-h vector idx length)
+   (if (= idx length)
+      '()
+      (cons (vector-ref vector idx) (vector->list-h vector (+ idx 1) length))))
+
+(define (vector->list v)
+   (vector->list-h v 0 (vector-length v)))
+
+(define (list->vector-h lst vec pos len)
+  (if (null? lst)
+    vec
+    (begin (vector-set! vec pos (car lst))
+           (list->vector-h (cdr lst) vec (+ pos 1) len))))
+
+(define (list->vector l)
+  (let ((v (make-vector (length l))))
+     (list->vector-h l v 0 (length l))))
+
+;; TODO wrong place
+(define (vector . l) (list->vector l))
 
 ;; PRINT
 (define print #f)
@@ -329,7 +409,26 @@
   (let ((v (char->integer n)))
     (if (> v 32)
        (print-char n)
-       (begin ($$putchar 84) ($$putchar 79) ($$putchar 68) ($$putchar 79))))) ;; TODO when strings implemented
+       (cond ((eq? v  0) (print "nul"))
+             ((<   v  7) (begin (print "x0") (print v)))
+             ((eq? v  7) (print "alarm"))
+             ((eq? v  8) (print "backspace"))
+             ((eq? v  9) (print "tab"))
+             ((eq? v 10) (print "newline"))
+             ((eq? v 11) (print "vtab"))
+             ((eq? v 12) (print "page"))
+             ((eq? v 13) (print "return"))
+             ((eq? v 14) (print "x0e"))
+             ((eq? v 15) (print "x0f"))
+             ((<   v 26) (begin (print "x") (print (- v 6))))
+             ((eq? v 26) (print "x1a"))
+             ((eq? v 27) (print "esc"))
+             ((eq? v 28) (print "x1c"))
+             ((eq? v 29) (print "x1d"))
+             ((eq? v 30) (print "x1e"))
+             ((eq? v 31) (print "x1f"))
+             ((eq? v 32) (print "space"))
+             (else (print "TODO"))))))
 
 (define (pp-vector-h vector idx length)
   (cond ((= idx (- length 1))
@@ -345,6 +444,16 @@
   (pp-vector-h vector 0 (vector-length vector))
   ($$putchar 41))
 
+(define (pp-string-h string idx length)
+  (if (< idx length)
+     (begin (print (string-ref string idx))
+            (pp-string-h string (+ idx 1) length))))
+
+(define (pp-string string)
+  ($$putchar 34)
+  (pp-string-h string 0 (string-length string))
+  ($$putchar 34))
+
 (set! pp-h (lambda (n)
   (cond ((null? n) (begin ($$putchar 40) ($$putchar 41))) ;; ()
         ((number? n) (print-nb n))
@@ -352,6 +461,7 @@
         ((procedure? n) (print-procedure n))
         ((pair? n) (pp-pair n))
         ((vector? n) (pp-vector n))
+        ((string? n) (pp-string n))
         (else (print-bool n)))))
 
 (define (pp n)
@@ -368,5 +478,3 @@
     1
     (* n (expt n (- e 1)))))
 
-(define (cddr l)
-  (cdr (cdr l)))

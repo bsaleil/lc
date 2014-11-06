@@ -274,7 +274,7 @@
 ;; Machine code block management
 
 ;; HEAP
-(define heap-len 500000)
+(define heap-len 800000)
 (define heap-addr #f)
 (define alloc-ptr (x86-r12))
 

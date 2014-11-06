@@ -10,6 +10,12 @@
           (make-lazy-code
             (lambda (cgc ctx)
               (x86-pop cgc (x86-rax))
+ 
+              ;(x86-mov cgc (x86-rbx) (x86-imm-int 0))
+              ;:(x86-mov cgc (x86-rax) (x86-mem (+ -1) (x86-rax)))
+              ;(gen-dump-regs cgc)
+
+
               (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
               (pop-regs-reverse cgc prog-regs)
               (x86-ret cgc))))
@@ -74,7 +80,6 @@
      (gen-version code-alloc
                   lazy-lib
                   (make-ctx '() '() -1)))
-  
   (##machine-code-block-exec mcb))
 
 ;;-----------------------------------------------------------------------------

@@ -2,24 +2,21 @@
 ;; string?
 ;; string-length
 ;; string-ref
-;; make-string (+ ajouter avec param rest)
+;; make-string
 ;; string->list
 ;; println string
 ;; list->string
 ;; string-set!
-; TODO : pp-string
+;; string-fill!
+;; pp-chars
+;; pp-strings
+;; (string ...)
+;; substring
+;; string-append
+;; string=?
 
-(define s "BONJour")
+(define a (make-vector 5))
 
-(println s)
-(println s)
-(println (string? s))
-(pp (string->list s))
-;(pp s)
+(vector-set! a 1 10)
 
-(string-set! s 0 #\a)
-(println s)
-
-(pp (string? (string->list s)))
-(pp (list? (string->list s)))
-(pp (string->list s))
+(pp a)

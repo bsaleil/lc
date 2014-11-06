@@ -337,7 +337,8 @@
                                (x86-add cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
                                (x86-push cgc (x86-rbx))
                                ;; Update alloc ptr
-                               (x86-add cgc (x86-rax) (x86-imm-int 16))
+                               (x86-add cgc (x86-rax) (x86-imm-int (+ 16 8))) ;; TODO 16 HW & taille, 8 len+8&(!7)
+                               (x86-and cgc (x86-rax) (x86-imm-int (bitwise-not 7))) ;; TODO : le bump ptr doit rester un multiple de 8 
                                (x86-add cgc alloc-ptr (x86-rax))
                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR))))))
 
@@ -398,7 +399,7 @@
                   (make-lazy-code
                      (lambda (cgc ctx)
                         (x86-pop cgc (x86-rax)) ;; Pop index
-                        (cond ((eq? special '$vector-length)
+                        (cond ((eq? special '$vector-ref)
                                   (x86-shl cgc (x86-rax) (x86-imm-int 1))))
                         (x86-pop cgc (x86-rbx)) ;; Pop vector
                         (cond ((eq? special '$vector-ref)
