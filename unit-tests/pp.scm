@@ -26,6 +26,14 @@
 (pp (list->vector '(1 2 3 4 5)))
 (pp (make-vector 0))
 
+(pp #\a)
+(pp #\A)
+(pp #\newline)
+(pp (string-ref "a a" 1))
+
+(pp "Hello World")
+(pp (make-string 4 #\Z))
+
 ;0
 ;0
 ;0
@@ -46,3 +54,9 @@
 ;#(42 42)
 ;#(1 2 3 4 5)
 ;#()
+;#\a
+;#\A
+;#\newline
+;#\space
+;"Hello World"
+;"ZZZZ"
