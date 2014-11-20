@@ -74,3 +74,4 @@
        (equal? (substring str 0 9) "!!! ERROR")))
 
 (check tests)
+(run "rm" "ERR.scm")
