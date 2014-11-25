@@ -1,3 +1,4 @@
+;; TODO Internal definition: let*, letrec
 
 (define (expand expr)
   (cond
@@ -47,15 +48,13 @@
     (expand-letn expr)
     (let ((bindings (cadr  expr))
           (body     (cddr expr)))
-      (cond ;; 2 body
-            ((and (list? body) (= (length body) 2))
-                  `((lambda ,(map car bindings) ,(expand `(let ((,(gensym) ,(car body))) ,(cadr body)))) ,@(expand (map cadr bindings))))
-            ;; > 2 body
-            ((and (list? body) (> (length body) 2))
-                  `((lambda ,(map car bindings) ,(expand `(let ((,(gensym) ,(car body))) ,@(cdr body)))) ,@(expand (map cadr bindings))))
-            ;; 1 body
-            (else `((lambda ,(map car bindings) ,(expand (car body))) ,@(expand (map cadr bindings))))))))
-      
+      `((lambda ,(map car bindings)
+                ,(if (and (list? (car body))
+                          (eq? (car (car body)) 'define))
+                     (expand-internal body)
+                     (expand `(begin ,@body))))
+                ,@(map (lambda (n) (expand (cadr n))) bindings)))))
+
 ;; LETN (named let)
 (define (expand-letn expr)
    (let ((id (cadr expr))
@@ -106,13 +105,40 @@
                                    (,SYM ,@(do-steps ids)))))))
                (,SYM ,@(map cadr ids))))))
 
+;; Expand-internal helper
+;; binds is formatted list of bindings (accu)
+(define (expand-internal-h binds expr)
+  (if (null? expr)
+      (cons binds '())
+      (let ((first (car expr)))
+        (if (and (list? first)
+                 (eq? (car first) 'define))
+            (let ((exp (expand first)))
+              (expand-internal-h (append binds (list (list (cadr exp) (expand (caddr exp)))))
+                                 (cdr expr)))
+            (cons binds expr)))))
+        
+;; Expand a body which contains internal definitions
+(define (expand-internal expr)
+  (let ((ret (expand-internal-h '() expr)))
+    (expand `(letrec ,(car ret)
+                ,(if (null? (cdr ret))
+                   #f ;; TODO #f
+                   (expand `(begin ,@(cdr ret))))))))
+
 ;; LAMBDA
 (define (expand-lambda expr)
   (if (eq? (length expr) 3)
       ;; 1 body
       `(lambda ,(cadr expr) ,(expand (caddr expr)))
       ;; > 1 body
-      `(lambda ,(cadr expr) ,(expand `(begin ,@(cddr expr))))))
+      (let ((first-body (caddr expr)))
+        (if (and (list? first-body)
+                 (eq? (car first-body) 'define))
+            ;; Internal def
+            `(lambda ,(cadr expr) ,(expand-internal (cddr expr)))
+            ;; No internal def
+            `(lambda ,(cadr expr) ,(expand `(begin ,@(cddr expr))))))))
 
 ;; OR
 (define (expand-or expr)

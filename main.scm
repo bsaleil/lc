@@ -108,6 +108,9 @@
 ;;-----------------------------------------------------------------------------
 ;; MAIN
 
+; (define c (read-all (open-input-file (car args))))
+; (pp (expand (car c)))
+
 (cond ((null? files)
           (repl lib))
       ((= (length files) 1)

@@ -1,5 +1,8 @@
 #! /usr/bin/env gsi
-                  
+;; Check if compiler correctly handles type error on primitives
+   
+
+;; TODO :              
 ;; $$putchar
 ;; out of bounds
 
