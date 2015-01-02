@@ -1,1 +1,1 @@
-(println "ok")
+(println (+ 1 2))
