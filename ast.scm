@@ -82,6 +82,7 @@
 
 
 ;; TODO : build str literal in memory (shared)
+;; TODO : modifier les appels à mem-header pour mettre la taille en octet
 ;;
 ;; Make lazy code from string literal
 ;;
@@ -89,25 +90,24 @@
   (make-lazy-code
     (lambda (cgc ctx)
       (let* ((len (string-length ast))
-             (s   (quotient len 8))
-             (size (+ 16 (* 8 (if (> (modulo len 8) 0) (+ s 1) s)))) ;; + 16 (header,length)
-             (header-word (mem-header size STAG_STRING)))
+             (s (quotient len 8))
+             (size (if (> (modulo len 8) 0) (+ s 1) s))
+             (header-word (mem-header (+ size 2) STAG_STRING)))
         
-        (gen-alloc cgc STAG_STRING size)
+        (gen-alloc cgc STAG_STRING (+ size 2))
         
         ;; Write header
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-        (x86-mov cgc (x86-mem (* -1 size) alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-mem (- (* -8 size) 16) alloc-ptr) (x86-rax))
         ;; Write length
         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (string-length ast))))
-        (x86-mov cgc (x86-mem (+ 8 (* -1 size)) alloc-ptr) (x86-rax)) 
+        (x86-mov cgc (x86-mem (- (* -8 size) 8) alloc-ptr) (x86-rax)) 
         ;; Write chars
-        (write-chars cgc ast 0 (+ 16 (* -1 size)))
+        (write-chars cgc ast 0 (* -8 size))
         ;; Push str ;; TODO LEA
         (x86-mov cgc (x86-rax) alloc-ptr)
-        (x86-add cgc (x86-rax) (x86-imm-int (- TAG_MEMOBJ size)))
+        (x86-add cgc (x86-rax) (x86-imm-int (- TAG_MEMOBJ (* 8 (+ size 2)))))
         (x86-push cgc (x86-rax))
-        ;;
         (jump-to-version cgc succ (ctx-push ctx CTX_NUM)))))) ;; TODO ??
       
       ;TODO

@@ -27,7 +27,7 @@
 (define (gen-alloc cgc stag length)
   (let ((label-allok (asm-make-label cgc (new-sym 'alloc-ok))))
 	  (x86-mov cgc (x86-rax) alloc-ptr)
-	  (x86-add cgc (x86-rax) (x86-imm-int (* length 8))) ;; (pair + header word)
+	  (x86-add cgc (x86-rax) (x86-imm-int (* length 8)))
 	  (x86-mov cgc (x86-rbx) (x86-imm-int (+ heap-addr heap-len)))
    	  (x86-cmp cgc (x86-rax) (x86-rbx)) ;; TODO
    	  (x86-jl  cgc label-allok)

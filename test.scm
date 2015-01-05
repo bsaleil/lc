@@ -1,10 +1,4 @@
 
-;; string=?
-(define s20 "Hello")
-(define s21 "Hello World")
-(define s23 (list->string (list #\H #\e #\l #\l #\o)))
-
-(pp (string=? s20 s23))
 
 ; ;; LENGTH 8 TAG pair(1)
 ; (define p (cons 1 2))
