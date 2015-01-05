@@ -82,31 +82,33 @@
 
 
 ;; TODO : build str literal in memory (shared)
-;; TODO : modifier les appels à mem-header pour mettre la taille en octet
 ;;
 ;; Make lazy code from string literal
 ;;
 (define (mlc-string ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (let ((header-word (mem-header (+ (string-length ast) 16) STAG_STRING)))
+      (let* ((len (string-length ast))
+             (s   (quotient len 8))
+             (size (+ 16 (* 8 (if (> (modulo len 8) 0) (+ s 1) s)))) ;; + 16 (header,length)
+             (header-word (mem-header size STAG_STRING)))
+        
+        (gen-alloc cgc STAG_STRING size)
+        
         ;; Write header
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-mem (* -1 size) alloc-ptr) (x86-rax))
         ;; Write length
         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (string-length ast))))
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)) 
-        ;; Write chars (utf8?)
-        (write-chars cgc ast 0 16)
+        (x86-mov cgc (x86-mem (+ 8 (* -1 size)) alloc-ptr) (x86-rax)) 
+        ;; Write chars
+        (write-chars cgc ast 0 (+ 16 (* -1 size)))
         ;; Push str ;; TODO LEA
         (x86-mov cgc (x86-rax) alloc-ptr)
-        (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+        (x86-add cgc (x86-rax) (x86-imm-int (- TAG_MEMOBJ size)))
         (x86-push cgc (x86-rax))
-        (let* ((len (string-length ast))
-               (s (quotient len 8))
-               (size (* 8 (if (> (modulo len 8) 0) (+ s 1) s))))
-           (x86-add cgc alloc-ptr (x86-imm-int (+ 16 size))))
-        (jump-to-version cgc succ (ctx-push ctx CTX_NUM))))))
+        ;;
+        (jump-to-version cgc succ (ctx-push ctx CTX_NUM)))))) ;; TODO ??
       
       ;TODO
 (define (write-chars cgc str pos offset)
@@ -942,20 +944,24 @@
   (make-lazy-code
     (lambda (cgc ctx)
        (let ((header-word (mem-header 3 STAG_PAIR)))
+         
+         ;; PAIR ALLOCATION
+         (gen-alloc cgc STAG_PAIR 3)
+         
          ;; TODO : mov directly to memory
          ;; Write object header
          (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-         (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+         (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))
          (x86-pop cgc (x86-rbx)) ;; pop CDR
          (x86-pop cgc (x86-rax)) ;; pop CAR
          ;; Write pair
-         (x86-mov cgc (x86-mem 8 alloc-ptr)  (x86-rax))
-         (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
+         (x86-mov cgc (x86-mem -16 alloc-ptr)  (x86-rax))
+         (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rbx))
          ;; Tag,Push closure and update alloc-ptr
          (x86-mov cgc (x86-rax) alloc-ptr)
-         (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+         (x86-add cgc (x86-rax) (x86-imm-int (- TAG_MEMOBJ 24)))
          (x86-push cgc (x86-rax))
-         (x86-add cgc alloc-ptr (x86-imm-int 24))
+         ;(x86-add cgc alloc-ptr (x86-imm-int 24))
          (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI))))))
 
 ;;-----------------------------------------------------------------------------
@@ -1209,17 +1215,6 @@
                         (list (cadr ast))
                         '()))
                     (else (mutable-vars-l ast params)))))))
-
-;;
-;; ALLOCATOR
-;;
-
-;; NOTE : 'life' is fixed as 6 for now.
-;(define (memobj-header length stag life)
-(define (mem-header length stag)
-    ;; => Length (56 bits) | sTag (5 bits) | Life (3 bits)
-    (+ (arithmetic-shift length 8) (arithmetic-shift stag 3) 6))
-
 
 ;;
 ;; UTILS
