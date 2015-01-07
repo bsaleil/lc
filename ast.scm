@@ -82,7 +82,6 @@
 
 
 ;; TODO : build str literal in memory (shared)
-;; TODO : modifier les appels à mem-header pour mettre la taille en octet
 ;;
 ;; Make lazy code from string literal
 ;;
@@ -510,36 +509,39 @@
                                                  (gen-version-fn closure lazy-prologue ctx)))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
 
-          ;; 0a - SAVE ENVIRONMENT
+          ;; SAVE ENVIRONMENT
           (set! saved-env (ctx-env ctx))
-          ;; 0b - COMPUTE FREE VARS
+          ;; COMPUTE FREE VARS
           (set! fvars (free-vars (caddr ast) all-params ctx))
-          ;; 0c - COMPUTE MUTABLE VARS
-          (set! mvars (mutable-vars (caddr ast) all-params))
-
-          ;; 1 - WRITE OBJECT HEADER
-          (let ((header-word (mem-header (+ 2 (length fvars)) STAG_PROCEDURE)))
+          ;; COMPUTE MUTABLE VARS
+          (set! mvars (mutable-vars (caddr ast) all-params)) 
+          
+          (let* ((closure-size (+ 2 (length fvars)))
+                 (total-size (+ closure-size global-cc-table-maxsize))
+                 (header-word (mem-header closure-size STAG_PROCEDURE)))
+            
+            ;; ALLOC
+            (gen-alloc cgc STAG_PROCEDURE total-size)
+            
+            ;; 1 - WRITE OBJECT HEADER
             (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-            (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax)))
+            (x86-mov cgc (x86-mem (* -8 total-size) alloc-ptr) (x86-rax))
 
-          ;; 2 - WRITE CC TABLE LOCATION
-          (x86-mov cgc (x86-rax) (x86-imm-int (+ 16 (* 8 (length fvars))))) ;; 16 = 8(header) + 8(location)
-          (x86-add cgc (x86-rax) alloc-ptr)
-          (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+            ;; 2 - WRITE CC TABLE LOCATION
+            (x86-mov cgc (x86-rax) alloc-ptr)
+            (x86-sub cgc (x86-rax) (x86-imm-int (* 8 global-cc-table-maxsize)))
+            (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax))
 
-          ;; 3 - WRITE FREE VARS
-          (gen-free-vars cgc fvars ctx 16) ;; 16 = 8(header) + 8(location)
+            ;; 3 - WRITE FREE VARS
+            (gen-free-vars cgc fvars ctx (+ 16 (* -8 total-size)))
 
-          ;; 4 - WRITE CC TABLE
-          (gen-cc-table cgc stub-addr (+ 16 (* 8 (length fvars))))
+            ;; 4 - WRITE CC TABLE
+            (gen-cc-table cgc stub-addr (+ (* 8 closure-size) (* -8 total-size)))
 
-          ;; 5 - TAG AND PUSH CLOSURE
-          (x86-mov cgc (x86-rax) alloc-ptr)
-          (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-          (x86-push cgc (x86-rax))
-
-          ;; 6 - UPDATE ALLOC PTR
-          (x86-add cgc alloc-ptr (x86-imm-int (* 8 (+ 2 (length fvars) global-cc-table-maxsize))))
+            ;; TAG AND PUSH CLOSURE
+            (x86-mov cgc (x86-rax) alloc-ptr)
+            (x86-add cgc (x86-rax) (x86-imm-int (- TAG_MEMOBJ (* 8 total-size))))
+            (x86-push cgc (x86-rax)))
 
           ;; Jump to next
           (jump-to-version cgc
