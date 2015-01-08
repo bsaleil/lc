@@ -35,7 +35,22 @@
       ;;
       (x86-label cgc label-allok)
       (x86-add cgc alloc-ptr (x86-imm-int (* length 8)))))
-  
+
+;; Gen-alloc avec taille encodee dans RAX. Peut aussi ajouter une taille fixe length
+;; ATTENTION, DETRUIT RAX
+(define (gen-alloc-n cgc stag #!optional length)
+  (let ((label-allok (asm-make-label cgc (new-sym 'alloc-ok))))
+    (x86-shl cgc (x86-rax) (x86-imm-int 1))
+    (x86-add cgc alloc-ptr (x86-rax))
+    (if length
+        (x86-add cgc alloc-ptr (x86-imm-int (* 8 length))))
+    (x86-mov cgc (x86-rax) (x86-imm-int (+ heap-addr heap-len)))
+    (x86-cmp cgc alloc-ptr (x86-rax))
+    (x86-jl cgc label-allok)
+    (gen-error cgc "HEAP OVERFLOW")
+    ;;
+    (x86-label cgc label-allok)))
+;; perofrmance add vs and ? 
   
 
 ;;

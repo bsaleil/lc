@@ -1,5 +1,4 @@
-(println 20)
-(println 10)
+
 
 ; ;; LENGTH 8 TAG pair(1)
 ; (define p (cons 1 2))
