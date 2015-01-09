@@ -41,6 +41,7 @@
 ;; Dans make-string et make-vector OR au lieu de add ?
 ;; utiliser la solution avec & !7 pour avoir la taille ?
 ;; TODO : encodée en option, pour eviter shr/shl dans make-string
+;; Nettoyer todos
 (define (gen-alloc-n cgc stag #!optional length)
   (let ((label-allok (asm-make-label cgc (new-sym 'alloc-ok))))
     (x86-shl cgc (x86-rax) (x86-imm-int 1))

@@ -1,8 +1,9 @@
-(define s (make-string 10))
+(define (heap-stress n)
+  (if (> n 0)
+      (begin ($make-vector 100)
+             (heap-stress (- n 1)))))
 
-(pp (string-length s))
-(pp s)
-
+(heap-stress 1000)
 
 
 ; ; ;; LENGTH 8 TAG pair(1)

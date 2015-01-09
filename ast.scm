@@ -940,7 +940,6 @@
          (x86-mov cgc (x86-rax) alloc-ptr)
          (x86-add cgc (x86-rax) (x86-imm-int (- TAG_MEMOBJ 24)))
          (x86-push cgc (x86-rax))
-         ;(x86-add cgc alloc-ptr (x86-imm-int 24))
          (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI))))))
 
 ;;-----------------------------------------------------------------------------
