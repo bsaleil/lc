@@ -213,6 +213,7 @@
 (define (make-string size . init)
   (let ((s ($make-string size)))
     (cond ((null? init)
+            (string-fill! s (integer->char 0))  
             s)
           ((= (length init) 1)
             (string-fill! s (car init))

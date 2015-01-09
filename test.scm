@@ -1,23 +1,28 @@
+(define s (make-string 10))
+
+(pp (string-length s))
+(pp s)
 
 
-; ;; LENGTH 8 TAG pair(1)
-; (define p (cons 1 2))
 
-; ;; LENGTH 1 TAG mobject(2)
-; ;;
+; ; ;; LENGTH 8 TAG pair(1)
+; ; (define p (cons 1 2))
 
-; ;; LENGTH 12 TAG vector(0)
-; ;; TODO (voir code)
+; ; ;; LENGTH 1 TAG mobject(2)
+; ; ;;
 
-; ;; LENGTH 20 TAG string(19)
-; (define s "Test")
+; ; ;; LENGTH 12 TAG vector(0)
+; ; ;; TODO (voir code)
 
-; ;; LENGTH 1 TAG procedure(14)
-; (define (f a) (println a))
+; ; ;; LENGTH 20 TAG string(19)
+; ; (define s "Test")
 
-; ;; LENGTH 1 TAG procedure(14)
-; ;; LENGTH 2 TAG procedure(14)
-; (define (g a)
-;   (lambda () (+ 1 a)))
+; ; ;; LENGTH 1 TAG procedure(14)
+; ; (define (f a) (println a))
 
-; (g 10)
+; ; ;; LENGTH 1 TAG procedure(14)
+; ; ;; LENGTH 2 TAG procedure(14)
+; ; (define (g a)
+; ;   (lambda () (+ 1 a)))
+
+; ; (g 10)

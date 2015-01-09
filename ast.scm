@@ -281,94 +281,50 @@
                                           (gen-error cgc ERR_NUM_EXPECTED)))))))))
                  
                  ;; MAKE-VECTOR & MAKE-STRING
-                 ((member special '($make-string))
+                 ((member special '($make-vector $make-string))
                   (make-lazy-code
                     (lambda (cgc ctx)
-                      (let* ((header-word (mem-header 2 STAG_STRING)))
+                      (let* ((ms? (eq? special '$make-string))
+                             (header-word (mem-header 2 (if ms? STAG_STRING STAG_VECTOR)))
+                             (header-reg (if ms? (x86-rdx) (x86-rbx))))
                         
-                        ;; Write header and length
-                        (x86-pop cgc (x86-rax)) ;; Pop length
-                        (x86-mov cgc (x86-rbx) (x86-rax))
-                        (x86-shl cgc (x86-rbx) (x86-imm-int 6)) ;; << 6 because rax contains an integer which is << 2
-                        (x86-add cgc (x86-rbx) (x86-imm-int header-word))
-                        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rbx)) ;; Write header
-                        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)) ;; Write encoded length
+                        (x86-pop cgc (x86-rax))           ;; RAX = encoded length
+                        (x86-mov cgc (x86-rcx) alloc-ptr) ;; RCX = initial alloc-ptr state
+                        (x86-mov cgc (x86-rbx) (x86-rax)) ;;
                         
-                        ;; Write init value in string TODO
-                        (let ((label-fill (asm-make-label cgc (new-sym 'label-fill)))
-                              (label-end-fill (asm-make-label cgc (new-sym 'label-end-fill))))
-                          
-                          (x86-shr cgc (x86-rax) (x86-imm-int 2))
-                          (x86-push cgc (x86-rax))
-                          (x86-push cgc (x86-rcx))
-                          (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-                          (x86-label cgc label-fill)
-                          ;; If RAX == 0, stop
-                          (x86-cmp cgc (x86-rax) (x86-imm-int 0))
-                          (x86-je cgc label-end-fill)
-                          ;; Else
-                          ;; Write value in current index
-                          (x86-mov cgc (x86-rbx) alloc-ptr)
-                          (x86-add cgc (x86-rbx) (x86-rax))
-                          (x86-mov cgc (x86-rcx) (x86-imm-int 0));; null char for string and 0 for vector
-                          (x86-mov cgc (x86-mem 15 (x86-rbx)) (x86-cl))
-                          (x86-sub cgc (x86-rax) (x86-imm-int 1))
-                          (x86-jmp cgc label-fill)
-                          (x86-label cgc label-end-fill)
-                          
-                          (x86-pop cgc (x86-rcx)) ;; Restore regs
-                          (x86-pop cgc (x86-rax)))
-                        
-                        ;; Encode & push vector
-                        (x86-mov cgc (x86-rbx) alloc-ptr)
-                        (x86-add cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
-                        (x86-push cgc (x86-rbx))
-                        ;; Update alloc ptr
-                        (x86-add cgc (x86-rax) (x86-imm-int (+ 16 8))) ;; TODO 16 HW & taille, 8 len+8&(!7)
-                        (x86-and cgc (x86-rax) (x86-imm-int (bitwise-not 7))) ;; TODO : le bump ptr doit rester un multiple de 8 
-                        (x86-add cgc alloc-ptr (x86-rax))
-                        
-                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR))))))
-                 
-                 ;; TODO_C MAKE-VECTOR
-                 ((member special '($make-vector))
-                  (make-lazy-code
-                    (lambda (cgc ctx)
-                      (let* ((header-word (mem-header 2 STAG_VECTOR)))
-                        
-                        (x86-pop cgc (x86-rax))                  ;; RAX = encoded length
-                        (x86-mov cgc (x86-rcx) alloc-ptr)        ;; RCX = initial alloc-ptr state
-                        (x86-mov cgc (x86-rbx) (x86-rax))        ;;
+                        (if ms?
+                          ;; Byte size in rax
+                          (begin (x86-shr cgc (x86-rax) (x86-imm-int 2))
+                                 (x86-and cgc (x86-rax) (x86-imm-int (bitwise-not 7)))
+                                 (x86-shr cgc (x86-rax) (x86-imm-int 1))
+                                 (x86-mov cgc (x86-rdx) (x86-rax))))
                         
                         ;; Alloc
-                        (gen-alloc-n cgc STAG_VECTOR 2)
-                        (x86-mov cgc (x86-rax) (x86-rbx)) ;; Restore RAX (killed by gen-alloc-n)
+                        (if ms?
+                          (gen-alloc-n cgc STAG_STRING 3)
+                          (gen-alloc-n cgc STAG_VECTOR 2))
                         
-                        (x86-shl cgc (x86-rbx) (x86-imm-int 1))  ;; RBX = length * 8
-            
+                        ;; Write encoded length
+                        (x86-mov cgc (x86-mem 8 (x86-rcx)) (x86-rbx))
+                        
+                        ;; Write header
+                        (x86-shl cgc (if ms? (x86-rdx) (x86-rbx)) (x86-imm-int 6))
+                        (x86-add cgc (if ms? (x86-rdx) (x86-rbx)) (x86-imm-int header-word))
+                        (x86-mov cgc (x86-mem 0 (x86-rcx)) (if ms? (x86-rdx) (x86-rbx)))
+                        
                         ;; Push vector
                         (x86-add cgc (x86-rcx) (x86-imm-int TAG_MEMOBJ))
                         (x86-push cgc (x86-rcx))
                         
-                        (x86-neg cgc (x86-rbx)) ;; RBX = length * -8
-                        
-                        ;; Write encoded length
-                        (x86-mov cgc (x86-mem -8 alloc-ptr (x86-rbx)) (x86-rax))
-                        
-                        ;; Write header
-                        (x86-shl cgc (x86-rax) (x86-imm-int 6))
-                        (x86-and cgc (x86-rbx) (x86-imm-int header-word))
-                        (x86-mov cgc (x86-mem -16 alloc-ptr (x86-rbx)) (x86-rax))
-                        
                         ;;
-                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VECT))))))
+                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (if ms? CTX_STR CTX_VECT)))))))
                  
                  ;; VECTOR-LENGTH & STRING-LENGTH
                  ((member special '($vector-length $string-length))
                   (make-lazy-code
                     (lambda (cgc ctx)
                       (x86-pop cgc (x86-rax)) ;; Pop vector
-                      (x86-push cgc (x86-mem (+ 8 (* -1 TAG_MEMOBJ)) (x86-rax)))
+                      (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM)))))
                  
                  ;; VECTOR-REF & STRING-REF
@@ -382,7 +338,7 @@
                         (x86-pop cgc (x86-rbx)) ;; Pop vector
                         (cond (vr?
                                 (x86-add cgc (x86-rbx) (x86-rax))
-                                (x86-push cgc (x86-mem (+ 16 (* -1 TAG_MEMOBJ)) (x86-rbx))))
+                                (x86-push cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx))))
                               ((not vr?)
                                ;; STRING in rbx TODO commentaire
                                (x86-shr cgc (x86-rax) (x86-imm-int 2))
@@ -408,9 +364,9 @@
                         (x86-add cgc (x86-rbx) (x86-rax))
                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))  ;; Get new value
                         (if vs?
-                            (x86-mov cgc (x86-mem (+ 16 (* -1 TAG_MEMOBJ)) (x86-rbx)) (x86-rax))
+                            (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx)) (x86-rax))
                             (begin (x86-shr cgc (x86-rax) (x86-imm-int 2))
-                              (x86-mov cgc (x86-mem (+ 16 (* -1 TAG_MEMOBJ)) (x86-rbx)) (x86-al))))
+                              (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx)) (x86-al))))
                         (x86-add cgc (x86-rsp) (x86-imm-int 24))
                         (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
                         (x86-push cgc (x86-rax))

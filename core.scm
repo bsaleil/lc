@@ -538,6 +538,7 @@
 (define prog-regs ;; Registers at entry and exit points of program
   (list (x86-rcx)
         (x86-rbx)
+        (x86-rdx)
         alloc-ptr
         (x86-r10) ;; Globals
         ))
