@@ -93,7 +93,7 @@
              (size (if (> (modulo len 8) 0) (+ s 1) s))
              (header-word (mem-header (+ size 2) STAG_STRING)))
         
-        (gen-alloc cgc STAG_STRING (+ size 2))
+        (gen-allocation cgc STAG_STRING (+ size 2))
         
         ;; Write header
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
@@ -301,8 +301,8 @@
                         
                         ;; Alloc
                         (if ms?
-                          (gen-alloc-n cgc STAG_STRING 3)
-                          (gen-alloc-n cgc STAG_VECTOR 2))
+                          (gen-allocation cgc STAG_STRING 3 #t)
+                          (gen-allocation cgc STAG_VECTOR 2 #t))
                         
                         ;; Write encoded length
                         (x86-mov cgc (x86-mem 8 (x86-rcx)) (x86-rbx))
@@ -498,7 +498,7 @@
                  (header-word (mem-header closure-size STAG_PROCEDURE)))
             
             ;; ALLOC
-            (gen-alloc cgc STAG_PROCEDURE total-size)
+            (gen-allocation cgc STAG_PROCEDURE total-size)
             
             ;; 1 - WRITE OBJECT HEADER
             (x86-mov cgc (x86-rax) (x86-imm-int header-word))
@@ -925,7 +925,7 @@
        (let ((header-word (mem-header 3 STAG_PAIR)))
          
          ;; PAIR ALLOCATION
-         (gen-alloc cgc STAG_PAIR 3)
+         (gen-allocation cgc STAG_PAIR 3)
          
          ;; TODO : mov directly to memory
          ;; Write object header
@@ -1269,7 +1269,7 @@
               (offset (* (- fs 1 (identifier-offset (cdr res))) 8)))
 
         ;; Alloc
-        (gen-alloc cgc STAG_MOBJECT 2)
+        (gen-allocation cgc STAG_MOBJECT 2)
         
         ;; Create var in memory
         (gen-get-localvar cgc ctx res 'gen-reg) ;; There are only localvar here (no free vars)
@@ -1306,7 +1306,7 @@
     (let ((header (mem-header 3 STAG_PAIR)))
 
       ;; Alloc pair
-      (gen-alloc cgc STAG_PAIR 3)
+      (gen-allocation cgc STAG_PAIR 3)
       
       ;; Write header and car
       (x86-mov cgc (x86-rax) (x86-imm-int header))
