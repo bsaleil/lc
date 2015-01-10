@@ -1,9 +1,9 @@
-(define (heap-stress n)
-  (if (> n 0)
-      (begin ($make-vector 100)
-             (heap-stress (- n 1)))))
+(define (f a b)
+  (pp a)
+  (set! a 10)
+  (pp a))
 
-(heap-stress 1000)
+(f 100 200)
 
 
 ; ; ;; LENGTH 8 TAG pair(1)

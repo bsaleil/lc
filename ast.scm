@@ -1268,16 +1268,17 @@
               (fs (length (ctx-stack ctx)))
               (offset (* (- fs 1 (identifier-offset (cdr res))) 8)))
 
+        ;; Alloc
+        (gen-alloc cgc STAG_MOBJECT 2)
+        
         ;; Create var in memory
         (gen-get-localvar cgc ctx res 'gen-reg) ;; There are only localvar here (no free vars)
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
 
         ;; Replace local
-        (x86-mov cgc (x86-rax) alloc-ptr)
-        (x86-add cgc alloc-ptr (x86-imm-int 16))
-        (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+        (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
         (x86-mov cgc (x86-mem offset (x86-rsp)) (x86-rax))
 
         ;; Gen next mutable vars
