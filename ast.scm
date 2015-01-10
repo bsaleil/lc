@@ -1284,7 +1284,7 @@
         ;; Gen next mutable vars
         (gen-mutable cgc ctx (cdr mutable)))))
 
-;; TODO
+;; Gen code to create rest list from stack in heap.
 (define (gen-rest-lst cgc ctx nb-pop sp-offset alloc-offset pos)
 
   (if (= 0 pos)
@@ -1293,11 +1293,7 @@
             (x86-sub cgc (x86-rax) (x86-imm-int (* 24 nb-pop)))
             (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
             (x86-mov cgc (x86-mem (+ 16 (* 8 nb-pop)) (x86-rsp)) (x86-rax)) ;; 32
-
-
-
-            ; (x86-lea cgc (x86-rax) (x86-mem (* -1 (- (* 24 nb-pop) TAG_MEMOBJ)) alloc-ptr))
-            ; (x86-mov cgc (x86-mem (+ 16 (* 8 nb-pop)) (x86-rsp)) (x86-rax)) ;; 32
+            
             ;; GLISSEMENT DES INFOS CTX
             (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
             (x86-mov cgc (x86-mem (+ 16 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
@@ -1309,18 +1305,22 @@
 
     (let ((header (mem-header 3 STAG_PAIR)))
 
+      ;; Alloc pair
+      (gen-alloc cgc STAG_PAIR 3)
+      
+      ;; Write header and car
       (x86-mov cgc (x86-rax) (x86-imm-int header))
-      (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+      (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))
       (x86-mov cgc (x86-rax) (x86-mem sp-offset (x86-rsp)))
-      (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-      (x86-mov cgc (x86-rax) alloc-ptr)
-
+      (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
+      
+      ;; Write cdr
       (if (= 1 pos)
         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-        (x86-add cgc (x86-rax) (x86-imm-int (+ 24 TAG_MEMOBJ))))
-
-      (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))
-      (x86-add cgc alloc-ptr (x86-imm-int 24))
+        (begin (x86-mov cgc (x86-rax) alloc-ptr)
+               (x86-add cgc (x86-rax) (x86-imm-int (+ 0 TAG_MEMOBJ)))))
+      (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
+      
       (gen-rest-lst cgc ctx nb-pop (- sp-offset 8) alloc-offset (- pos 1)))))    
 
 ;; TODO
