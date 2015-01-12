@@ -16,8 +16,8 @@
 ;;-----------------------------------------------------------------------------
 
 ;; Tags
-(define TAG_NUMBER  0)
-(define TAG_MEMOBJ  1)
+(define TAG_NUMBER  0) ;; Must be 0
+(define TAG_MEMOBJ  1) 
 (define TAG_SPECIAL 2)
 
 ;; Sub tag
@@ -854,8 +854,8 @@
          (cond ;; Number type test
                ((eq? type CTX_NUM)
                    (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
-                   (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
-                   (x86-cmp cgc (x86-rax) (x86-imm-int 0)))
+                   (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
+                   ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_NUMBER)))
                ;; TODO
                ((eq? type CTX_CHAR)
                    (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
@@ -869,7 +869,7 @@
                    (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                    (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
                    (x86-and cgc (x86-rax) (x86-imm-int 3))
-                   (x86-cmp cgc (x86-rax) (x86-imm-int 1))
+                   (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
                    (x86-jne cgc (list-ref stub-labels 1)) ;; it is not a memory allocated object then error
                    (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
                    (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header

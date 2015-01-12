@@ -1,4 +1,4 @@
-
+(print-nb 80)
 
 ; ; ;; LENGTH 8 TAG pair(1)
 ; ; (define p (cons 1 2))

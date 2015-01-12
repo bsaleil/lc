@@ -374,23 +374,20 @@
                  ;; OTHERS
                  (else (error "NYI")))))
     
-    (cond ;; $CONS ;; TODO : commentaires
-          ((eq? special '$cons)
+    ;; Build lazy objects chain
+    (cond ;; $cons, $string-ref, $vector-ref 
+          ((member special '($cons $string-ref $vector-ref))
            (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
              (gen-ast (cadr ast) lazy-right)))
-          ;; $CAR or $CDR or $MAKE-VECTOR
+          ;; $car, $cdr, $make-vector
           ((member special '($string-length $integer->char $char->integer $vector-length $make-string $make-vector $car $cdr))
            (gen-ast (cadr ast) lazy-special))
-          ;; $VECTOR-REF
-          ((member special '($string-ref $vector-ref))
-           (let ((lazy-index (gen-ast (caddr ast) lazy-special)))
-             (gen-ast (cadr ast) lazy-index)))
-          ;; $VECTOR-SET & TODO
+          ;; $string-set!, $vector-set!
           ((member special '($string-set! $vector-set!))
            (let* ((lazy-value (gen-ast (cadddr ast) lazy-special))
                   (lazy-index (gen-ast (caddr  ast) lazy-value)))
              (gen-ast (cadr ast) lazy-index)))
-          ;; OTHERS
+          ;; Others
           (else (error "NYI")))))
 
 ;;
@@ -876,11 +873,11 @@
                           (x86-pop   cgc (x86-rax))
                           (cond ;; $number?
                                 ((eq? op '$number?)
-                                    (x86-and   cgc (x86-rax) (x86-imm-int 3))
+                                    (x86-and   cgc (x86-rax) (x86-imm-int 3)) ;; If equal, set ZF to 1
                                     (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
                                     (x86-je    cgc label-done)
                                     (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #f))))
-                                ;; TODO $char?
+                                ;; $char?
                                 ((eq? op '$char?)
                                     (x86-mov cgc (x86-rbx) (x86-rax))
                                     (x86-and cgc (x86-rax) (x86-imm-int 3))
@@ -898,7 +895,7 @@
                                       (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
                                       (x86-jne cgc label-done)
                                       ;; It's a memory allocated obj
-                                      (x86-mov cgc (x86-rbx) (x86-mem -1 (x86-rbx)))
+                                      (x86-mov cgc (x86-rbx) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
                                       (x86-and cgc (x86-rbx) (x86-imm-int 248))
                                       (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
                                             ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
@@ -1015,7 +1012,7 @@
       (if mutable
         (begin (gen-get-freevar cgc ctx variable 'gen-reg)
                (x86-pop cgc (x86-rbx))
-               (x86-mov cgc (x86-mem 7 (x86-rax)) (x86-rbx)))
+               (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (x86-rbx)))
                ;; TODO replace ctx type when implemented for free vars
         (error "Compiler error : set a non mutable var"))))
 
@@ -1025,7 +1022,7 @@
      (if mutable
         (begin (gen-get-localvar cgc ctx variable 'gen-reg)
                (x86-pop cgc (x86-rbx))
-               (x86-mov cgc (x86-mem 7 (x86-rax)) (x86-rbx))
+               (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (x86-rbx))
                ;; Replace ctx type
                (let* ((fs (length (ctx-stack ctx)))
                       (idx (- fs 1 (identifier-offset (cdr variable)))))
@@ -1052,7 +1049,7 @@
 
 ;; Free variable
 (define (gen-get-freevar cgc ctx variable dest #!optional (raw_value? #t))
-   (let* ((offset (+ 15 (* 8 (identifier-offset (cdr variable)))))
+   (let* ((offset (+ (- 16 TAG_MEMOBJ) (* 8 (identifier-offset (cdr variable)))))
           (clo-offset (* 8 (closure-pos ctx)))
           (mutable (identifier-mutable? (cdr variable))))
 
@@ -1067,8 +1064,8 @@
               (else (error "Invalid destination")))
         ;; Real value required and variable is mutable
         (begin (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
-               (cond ((eq? dest 'stack) (x86-push cgc (x86-mem 7 (x86-rax))))
-                     ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem 7 (x86-rax))))
+               (cond ((eq? dest 'stack) (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                     ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
                      (else (error "Invalid destination")))))
 
       CTX_UNK)) ;; TODO return free var ctx info when implemented
@@ -1089,8 +1086,8 @@
         (begin (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp)))
                (cond ((eq? dest 'stack)
                         (begin 
-                               (x86-push cgc (x86-mem 7 (x86-rax)))))
-                     ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem 7 (x86-rax))))
+                               (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))))
+                     ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
                      (else (error "Invalid destination")))))
 
       (list-ref (ctx-stack ctx) pos)))
