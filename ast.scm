@@ -920,10 +920,9 @@
     (lambda (cgc ctx)
        (let ((header-word (mem-header 3 STAG_PAIR)))
          
-         ;; PAIR ALLOCATION
+         ;; Alloc
          (gen-allocation cgc STAG_PAIR 3)
          
-         ;; TODO : mov directly to memory
          ;; Write object header
          (x86-mov cgc (x86-rax) (x86-imm-int header-word))
          (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))
@@ -1319,6 +1318,6 @@
       
       (gen-rest-lst cgc ctx nb-pop (- sp-offset 8) alloc-offset (- pos 1)))))    
 
-;; TODO
+;; Is the v a literal ?
 (define (literal? v)
    (or (char? v) (number? v) (string? v) (boolean? v) (null? v)))
