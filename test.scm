@@ -1,9 +1,3 @@
-(define (f a b)
-  (pp a)
-  (set! a 10)
-  (pp a))
-
-(f 100 200)
 
 
 ; ; ;; LENGTH 8 TAG pair(1)

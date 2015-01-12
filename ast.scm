@@ -103,11 +103,10 @@
         (x86-mov cgc (x86-mem (- (* -8 size) 8) alloc-ptr) (x86-rax)) 
         ;; Write chars
         (write-chars cgc ast 0 (* -8 size))
-        ;; Push str ;; TODO LEA
-        (x86-mov cgc (x86-rax) alloc-ptr)
-        (x86-add cgc (x86-rax) (x86-imm-int (- TAG_MEMOBJ (* 8 (+ size 2)))))
+        ;; Push string
+        (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 (+ size 2))) alloc-ptr))
         (x86-push cgc (x86-rax))
-        (jump-to-version cgc succ (ctx-push ctx CTX_NUM)))))) ;; TODO ??
+        (jump-to-version cgc succ (ctx-push ctx CTX_STR))))))
       
       ;TODO
 (define (write-chars cgc str pos offset)
@@ -340,16 +339,13 @@
                                 (x86-add cgc (x86-rbx) (x86-rax))
                                 (x86-push cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx))))
                               ((not vr?)
-                               ;; STRING in rbx TODO commentaire
-                               (x86-shr cgc (x86-rax) (x86-imm-int 2))
-                               (x86-add cgc (x86-rbx) (x86-rax))
-                               (x86-sub cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
-                               (x86-mov cgc (x86-rax) (x86-imm-int 0))
-                               (x86-mov cgc (x86-al) (x86-mem 16 (x86-rbx)))
-                               (x86-shl cgc (x86-rax) (x86-imm-int 2))
+                               (x86-shr cgc (x86-rax) (x86-imm-int 2)) ;; Decode position
+                               (x86-mov cgc (x86-al) (x86-mem (- 16 TAG_MEMOBJ) (x86-rax) (x86-rbx))) ;; Get Char
+                               (x86-and cgc (x86-rax) (x86-imm-int 255)) ;; Clear bits before al
+                               (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode char
                                (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
-                               (x86-push cgc (x86-rax))))                            
-                        (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_UNK))))))
+                               (x86-push cgc (x86-rax)))) ;; Push char                         
+                        (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_UNK)))))) ;; ?? TODO
                  
                  ;; VECTOR-SET! & STRING-SET!
                  ((member special '($vector-set! $string-set!))
