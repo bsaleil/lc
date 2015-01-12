@@ -352,12 +352,11 @@
                  ((member special '($vector-set! $string-set!))
                   (make-lazy-code
                     (lambda (cgc ctx)
-                      (let ((vs? (eq? special '$vector-set!)))
                         (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))  ;; Get index
                         (x86-mov cgc (x86-rbx) (x86-mem 16 (x86-rsp))) ;; Get vector
                         (x86-mov cgc (x86-rdx) (x86-mem 0 (x86-rsp)))  ;; Get new value
                         
-                        (cond (vs?
+                        (cond ((eq? special '$vector-set!)
                                 (x86-shl cgc (x86-rax) (x86-imm-int 1))
                                 (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx) (x86-rax)) (x86-rdx)))
                               
@@ -370,7 +369,7 @@
                         (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
                         (x86-push cgc (x86-rax))
                         
-                        (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 3) CTX_VOID))))))
+                        (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 3) CTX_VOID)))))
                  
                  ;; OTHERS
                  (else (error "NYI")))))
