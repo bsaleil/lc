@@ -106,6 +106,28 @@
 
 ;;-----------------------------------------------------------------------------
 
+(define run-gc #f) ;; Forward declaration (see mem.scm)
+
+(c-define (gc sp) (long) void "gc" ""
+  (let* ((err-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
+        (err (encoding-obj err-enc)))
+    (run-gc)))
+
+(define (gen-gc-call cgc)
+  (push-pop-regs
+     cgc
+     c-caller-save-regs ;; preserve regs for C call
+     (lambda (cgc)
+       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
+       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+       (x86-push cgc (x86-rdi))
+       (x86-call cgc label-gc) ;; call C function
+       (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
+       )))
+
+;;-----------------------------------------------------------------------------
+
 ;; Gen code for error
 ;; stop-exec? to #f to continue after error
 (define (gen-error cgc err #!optional (stop-exec? #t))
@@ -219,6 +241,7 @@
 
 ;; The label for procedure do-callback
 (define label-exec-error     #f)
+(define label-gc             #f)
 (define label-do-callback    #f)
 (define label-do-callback-fn #f)
 
@@ -232,6 +255,15 @@
           ((c-lambda ()
                      (pointer void)
                      "___result = ___CAST(void*,exec_error);")))))
+  
+  (set! label-gc
+        (asm-make-label
+         cgc
+         'gc
+         (##foreign-address
+          ((c-lambda ()
+                     (pointer void)
+                     "___result = ___CAST(void*,gc);")))))
 
   (set! label-do-callback
         (asm-make-label
@@ -275,7 +307,10 @@
 
 ;; HEAP
 (define heap-len 4000000)
-(define heap-addr #f)
+(define heap-addr  #f)
+(define from-space #f)
+(define to-space   #f)
+(define space-len (quotient heap-len 2))
 (define alloc-ptr (x86-r12))
 
 ;; CODE
@@ -298,7 +333,9 @@
   (set! mcb (##make-machine-code-block mcb-len))
   (set! mcb-addr (##foreign-address mcb))
   (set! code-addr mcb-addr)
-  (set! heap-addr (+ mcb-addr code-len)))
+  (set! heap-addr (+ mcb-addr code-len))
+  (set! from-space heap-addr)
+  (set! to-space (+ from-space space-len)))
 
 ;; BLOCK :
 ;; 0          8                       (nb-globals * 8 + 8)

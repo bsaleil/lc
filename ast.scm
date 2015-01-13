@@ -501,8 +501,7 @@
             (x86-mov cgc (x86-mem (* -8 total-size) alloc-ptr) (x86-rax))
 
             ;; 2 - WRITE CC TABLE LOCATION
-            (x86-mov cgc (x86-rax) alloc-ptr)
-            (x86-sub cgc (x86-rax) (x86-imm-int (* 8 global-cc-table-maxsize)))
+            (x86-lea cgc (x86-rax) (x86-mem (* -8 global-cc-table-maxsize) alloc-ptr))
             (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax))
 
             ;; 3 - WRITE FREE VARS
@@ -512,8 +511,7 @@
             (gen-cc-table cgc stub-addr (+ (* 8 closure-size) (* -8 total-size)))
 
             ;; TAG AND PUSH CLOSURE
-            (x86-mov cgc (x86-rax) alloc-ptr)
-            (x86-add cgc (x86-rax) (x86-imm-int (- TAG_MEMOBJ (* 8 total-size))))
+            (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 total-size)) alloc-ptr))
             (x86-push cgc (x86-rax)))
 
           ;; Jump to next

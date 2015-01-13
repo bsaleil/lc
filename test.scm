@@ -1,4 +1,9 @@
-(print-nb 80)
+(define (stress-heap n)
+  (if (> n 0)
+      (begin ($make-vector 10000)
+             (stress-heap (- n 1)))))
+
+(stress-heap 30)
 
 ; ; ;; LENGTH 8 TAG pair(1)
 ; ; (define p (cons 1 2))
