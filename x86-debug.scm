@@ -38,7 +38,7 @@
 ;; NOTE : hardcoded registers positions in stack to match 'all-regs' list
 (c-define (dump-regs sp) (long) void "dump_regs" ""
    (let* ((regs-pos '(15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0))
-         (regs-name '("RAX" "RBX" "RCX" "RDX" "RSP" "RBP" "RSI" "RDI"
+         (regs-name '("RSP" "RAX" "RBX" "RCX" "RDX" "RBP" "RSI" "RDI"
                       "R8 "  "R9 "  "R10" "R11" "R12" "R13" "R14" "R15"))
          (regs-val (get-regs-val regs-pos sp)))
      

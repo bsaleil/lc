@@ -26,6 +26,7 @@
 (define STAG_MOBJECT    2)
 (define STAG_VECTOR     0)
 (define STAG_STRING    19)
+(define STAG_CCTABLE   16)
 
 ;; Context types
 (define CTX_NUM   'number)
@@ -108,10 +109,8 @@
 
 (define run-gc #f) ;; Forward declaration (see mem.scm)
 
-(c-define (gc sp) (long) void "gc" ""
-  (let* ((err-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
-        (err (encoding-obj err-enc)))
-    (run-gc)))
+(c-define (gc sp) (long) long "gc" ""
+    (run-gc sp))
 
 (define (gen-gc-call cgc)
   (push-pop-regs
@@ -124,6 +123,7 @@
        (x86-push cgc (x86-rdi))
        (x86-call cgc label-gc) ;; call C function
        (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
+       (x86-mov cgc alloc-ptr (x86-rax)) ;; TODO : update alloc-ptr
        )))
 
 ;;-----------------------------------------------------------------------------
@@ -219,7 +219,7 @@
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
          
-         (ctx-id (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
+         (ctx-id (quotient (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)) 4)) ;; '/4' to Decode ctx
          (ctx (cdr (assoc ctx-id ctx_ids)))
          
          (closure
@@ -508,7 +508,7 @@
     (gen-native cgc)
     
     (x86-label cgc label-rtlib-skip)
-
+    
     (push-regs cgc prog-regs)
     
     ;; Put bottom of the stack (after saving registers) at "block-addr + 0"
@@ -516,7 +516,7 @@
     (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rsp))
     
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-    (x86-mov cgc alloc-ptr  (x86-imm-int heap-addr))       ;; Heap addr ub alloc-ptr
+    (x86-mov cgc alloc-ptr  (x86-imm-int heap-addr))       ;; Heap addr in alloc-ptr
     (x86-mov cgc (x86-r10) (x86-imm-int (+ block-addr 8))) ;; Globals addr in r10
     ))
 
@@ -555,11 +555,11 @@
         ))
 
 (define all-regs
-  (list (x86-rax)
+  (list (x86-rsp)
+        (x86-rax)
         (x86-rbx)
         (x86-rcx)
         (x86-rdx)
-        (x86-rsp)
         (x86-rbp)
         (x86-rsi)
         (x86-rdi)
@@ -697,7 +697,7 @@
 ;; First generate function lazy-code
 ;; Then patch closure slot to jump directly to generated function
 (define (gen-version-fn closure lazy-code ctx)
-  
+
   (if dev-log
       (begin
         (print "GEN VERSION FN")
@@ -805,7 +805,7 @@
   (let* ((label-addr (asm-label-pos  label))
          (label-name (asm-label-name label))
          (index (get-closure-index ctx))
-         (offset (* index 8)))
+         (offset (+ 8 (* index 8)))) ;; +8 because of header
     
     (if dev-log
         (println ">>> patching closure " (number->string closure 16) " at "
@@ -902,7 +902,7 @@
                    ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
                ;; Procedure type test
                ;((eq? type 'procedure)
-               ((member type (list CTX_CLO CTX_PAI))
+               ((member type (list CTX_CLO CTX_PAI))      
                    (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                    (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
                    (x86-and cgc (x86-rax) (x86-imm-int 3))

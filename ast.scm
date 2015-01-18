@@ -490,7 +490,7 @@
           (set! mvars (mutable-vars (caddr ast) all-params)) 
           
           (let* ((closure-size (+ 2 (length fvars)))
-                 (total-size (+ closure-size global-cc-table-maxsize))
+                 (total-size (+ closure-size global-cc-table-maxsize 1)) ;; TODO
                  (header-word (mem-header closure-size STAG_PROCEDURE)))
             
             ;; ALLOC
@@ -501,15 +501,18 @@
             (x86-mov cgc (x86-mem (* -8 total-size) alloc-ptr) (x86-rax))
 
             ;; 2 - WRITE CC TABLE LOCATION
-            (x86-lea cgc (x86-rax) (x86-mem (* -8 global-cc-table-maxsize) alloc-ptr))
+            (x86-lea cgc (x86-rax) (x86-mem (- (* -8 global-cc-table-maxsize) 8) alloc-ptr)) ;; TODO -8 header
             (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax))
 
             ;; 3 - WRITE FREE VARS
             (gen-free-vars cgc fvars ctx (+ 16 (* -8 total-size)))
 
             ;; 4 - WRITE CC TABLE
-            (gen-cc-table cgc stub-addr (+ (* 8 closure-size) (* -8 total-size)))
-
+            (let ((cc-header (mem-header (+ 1 global-cc-table-maxsize) STAG_CCTABLE)))
+              (x86-mov cgc (x86-rax) (x86-imm-int cc-header))
+              (x86-mov cgc (x86-mem (+ (* 8 closure-size) (* -8 total-size)) alloc-ptr) (x86-rax)))
+            (gen-cc-table cgc stub-addr (+ 8 (* 8 closure-size) (* -8 total-size)))
+              
             ;; TAG AND PUSH CLOSURE
             (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 total-size)) alloc-ptr))
             (x86-push cgc (x86-rax)))
@@ -658,20 +661,20 @@
                                                                                                                          succ
                                                                                                                          ctx-continuation)))
                                                                             gen-flag)))))
-
+                                       
                                         ;; Return address (continuation label)
                                         (x86-label cgc load-ret-label)
                                         (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
                                         (x86-push cgc (x86-rax))
-
+                                        
                                         ;; Call ctx in rdx
                                         (let* ((call-stack    (append base-ctx (list-head (cdr (ctx-stack ctx)) (length args))))
                                                (call-ctx      (make-ctx call-stack '() -1))
                                                (ctx-id        (length ctx_ids))
-                                               (cct-offset    (* 8 (get-closure-index call-ctx))))
+                                               (cct-offset    (* 8 (+ 1 (get-closure-index call-ctx)))))
 
                                           (set! ctx_ids (cons (cons ctx-id call-ctx) ctx_ids))
-                                          (x86-mov cgc (x86-rax) (x86-imm-int ctx-id))
+                                          (x86-mov cgc (x86-rax) (x86-imm-int (* 4 ctx-id))) ;; '*4' to encode ctx
                                           (x86-push cgc (x86-rax))
 
                                         ;; 1 - Get cc-table
