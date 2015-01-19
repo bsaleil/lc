@@ -1,4 +1,5 @@
-;; TODO Internal definition: let*, letrec
+;; EXPAND
+;; public (expand expr)
 
 (define (expand expr)
   (cond

@@ -1,6 +1,6 @@
 all: main.o1 mem.o1 ast.o1 core.o1 expand.o1
 	@echo "#!/bin/bash" > lazy-comp
-	@echo -n "gsc -i  core.o1 mem.o1 ast.o1 expand.o1 main.o1 $$" >> lazy-comp
+	@echo -n "gsc -i core.o1 mem.o1 ast.o1 expand.o1 main.o1 $$" >> lazy-comp
 	@echo "@" >> lazy-comp
 	chmod u+x lazy-comp
 

@@ -7,11 +7,18 @@
 
 (include "native.scm")
 (include "x86-debug.scm")
-(include "expand.scm")
 
 ;;-----------------------------------------------------------------------------
+;; GLOBALS
 
-(define dev-log #f)
+;; Global ids
+;; Contains a list of global ids with id,position
+;; ex. '((foo 1) (bar 2) (fun 3))
+(define globals '())
+
+;; Compiler options
+(define verbose-jit #f) ;; JIT Verbose debugging
+(define verbose-gc  #f) ;; GC  Verbose debugging
 
 ;;-----------------------------------------------------------------------------
 
@@ -378,7 +385,7 @@
       (gen cgc))
     
     (let ((code (asm-assemble-to-u8vector cgc)))
-      (if dev-log
+      (if verbose-jit
           (begin
             (println "------------------------------------------------------------------------")
             (asm-display-listing cgc (current-output-port) #t)))
@@ -449,7 +456,7 @@
            (lambda (cgc)
              (call-handler cgc label-handler obj)))))
     (subvector-move! (list->vector args) 0 len obj 0)
-    (if dev-log
+    (if verbose-jit
         (pp (list 'obj= obj)))
     stub-labels))
 
@@ -698,7 +705,7 @@
 ;; Then patch closure slot to jump directly to generated function
 (define (gen-version-fn closure lazy-code ctx)
 
-  (if dev-log
+  (if verbose-jit
       (begin
         (print "GEN VERSION FN")
         (print " >>> ")
@@ -730,7 +737,7 @@
 
 (define (gen-version jump-addr lazy-code ctx)
 
-  (if dev-log
+  (if verbose-jit
       (begin
         (print "GEN VERSION")
         (print " >>> ")
@@ -757,7 +764,7 @@
                  ;; (fall-through optimization)
                  ;; the jump is the last instruction previously generated, so
                  ;; just overwrite the jump
-                 (if dev-log (println ">>> fall-through-optimization"))
+                 (if verbose-jit (println ">>> fall-through-optimization"))
                  (set! code-alloc jump-addr)) 
 
                 (else
@@ -774,7 +781,7 @@
 
 ;; Patch load at a call site to load continuation addr instead of continuation stub addr
 (define (patch-continuation load-addr continuation-label)
-  (if dev-log
+  (if verbose-jit
       (begin
         (println ">>> patching mov at "
                  (number->string load-addr 16)
@@ -788,7 +795,7 @@
 ;; Patch jump at jump-addr: change jump destination to dest-addr
 (define (patch-jump jump-addr dest-addr)
 
-  (if dev-log
+  (if verbose-jit
     (println ">>> patching jump at "
              (number->string jump-addr 16)
              " -> "
@@ -807,7 +814,7 @@
          (index (get-closure-index ctx))
          (offset (+ 8 (* index 8)))) ;; +8 because of header
     
-    (if dev-log
+    (if verbose-jit
         (println ">>> patching closure " (number->string closure 16) " at "
                  (number->string (+ closure offset) 16)
                  " : slot contains now label "
@@ -847,7 +854,7 @@
                             (let ((stub-addr (- ret-addr 5 2))
                                   (jump-addr (asm-label-pos label-jump)))
                             
-                              (if dev-log
+                              (if verbose-jit
                                   (begin
                                     (println ">>> selector= " selector)
                                     (println ">>> prev-action= " prev-action)))
@@ -862,7 +869,7 @@
                                           
                                             (if (= (+ jump-addr 6 5) code-alloc)
 
-                                              (begin (if dev-log (println ">>> swapping-branches"))
+                                              (begin (if verbose-jit (println ">>> swapping-branches"))
                                                      (set! prev-action 'swap)
                                                      ;; invert jump direction
                                                      (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
@@ -885,7 +892,7 @@
                                             (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-success)
                                             (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-fail))))))))))
 
-         (if dev-log
+         (if verbose-jit
              (println ">>> Gen dynamic type test at index " stack-idx))
          
          (cond ;; Number type test

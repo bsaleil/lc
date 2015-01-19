@@ -17,7 +17,7 @@
                (lazy-exprs (cdr exprs) succ))))
 
 ;;-----------------------------------------------------------------------------
-;; REPL
+;; Interactive mode (REPL)
 
 (define (repl lib)
 
@@ -62,7 +62,7 @@
   (##machine-code-block-exec mcb))
 
 ;;-----------------------------------------------------------------------------
-;; FILE EXEC
+;; Bash mode
 
 (define (exec lib prog)
 
@@ -77,37 +77,47 @@
   (##machine-code-block-exec mcb))
 
 ;;-----------------------------------------------------------------------------
-;; Get lib and args
+;; Command line args parser
 
-(define lib (expand (read-all (open-input-file "./lib.scm"))))
+;; Set options to #t and return list of files to execute
+(define (parse-args args)
+  (parse-args-h args '()))
 
-(define args (list-tail (command-line) 1))
-
-(define opts  '())
-(define files '())
-
-(define (handle-args args)
-  (if (not (null? args))
-     (let ((e (car args)))
-        (if (eq? (string-ref e 0) #\-)
-           (set! opts  (cons e opts))
-           (set! files (cons e files)))
-        (handle-args (cdr args)))))
-
-(handle-args args)
-
-(if (member "-d" opts)
-   (set! dev-log #t))
-
+(define (parse-args-h args files)
+  (if (null? args)
+      files
+      (let ((arg (car args)))
+        (if (eq? (string-ref arg 0) #\-)
+          ;; Arg is an option
+          (begin (cond ;; '-v-jit' to enable JIT verbose debugging
+                       ((equal? arg "-v-jit") (set! verbose-jit #t))
+                       ;; '-v-gc' to enable GC verbose debugging
+                       ((equal? arg "-v-gc")  (set! verbose-gc  #t))
+                       ;; '-v' to enable both JIT and GC verbose debugging
+                       ((equal? arg "-v")     (set! verbose-jit #t)
+                                              (set! verbose-gc  #t))
+                       ;; Other option stops exec
+                       (else (print "Unknown option ")
+                             (println arg)
+                             (exit 1)))
+                 (parse-args-h (cdr args) files))
+          ;; Arg is a file to execute
+          (parse-args-h (cdr args) (cons arg files))))))
+  
 ;;-----------------------------------------------------------------------------
-;; MAIN
+;; Main
 
-; (define c (read-all (open-input-file (car args))))
-; (pp (expand (car c)))
-
-(cond ((null? files)
-          (repl lib))
-      ((= (length files) 1)
-          (let ((file-content (expand (read-all (open-input-file (car args))))))
-             (exec lib file-content)))
-      (else (error "NYI")))
+(define (main . args)
+  ;; Get library
+  (define lib (expand (read-all (open-input-file "./lib.scm"))))
+  ;; Get options and files from cl args
+  (define files (parse-args args))
+    
+    (cond ;; If no files specified then start REPL
+          ((null? files)
+            (repl lib))
+          ;; Can only exec 1 file
+          ((= (length files) 1)
+            (let ((file-content (expand (read-all (open-input-file (car args))))))
+               (exec lib file-content)))
+          (else (error "NYI"))))

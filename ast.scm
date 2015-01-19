@@ -6,13 +6,6 @@
 (define base-ctx (list CTX_CTXID CTX_RETAD CTX_CLO))
 
 ;;-----------------------------------------------------------------------------
-
-;; Global ids
-;; Contains a list of global ids with id,position
-;; ex. '((foo 1) (bar 2) (fun 3))
-(define globals '())
-
-;;-----------------------------------------------------------------------------
 ;; AST FUNCTIONS
 
 ;; Gen lazy code from a list of exprs
@@ -556,7 +549,7 @@
                                     (jump-addr
                                       (asm-label-pos label-jump)))
 
-                                (if dev-log
+                                (if verbose-jit
                                     (begin
                                       (println ">>> selector= " selector)
                                       (println ">>> prev-action= " prev-action)))
@@ -579,7 +572,7 @@
 
                                               (begin
 
-                                                (if dev-log (println ">>> swapping-branches"))
+                                                (if verbose-jit (println ">>> swapping-branches"))
 
                                                 (set! prev-action 'swap)
 
