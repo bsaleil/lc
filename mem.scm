@@ -5,7 +5,6 @@
 ;; TODO : 'encoded' as parameter to avoid shr/shl of make-string
 ;; TODO : mlc-lambda offset 8 for cc-table header
 ;; TODO : améliorer init-rtlib (x86)
-;; TODO : Fusionner copie des locales (stack) et globaless
 ;; TODO : renommer BH
 
 ;;-----------------------------------------------------------------------------
@@ -15,8 +14,7 @@
   `(if verbose-gc
        (println ,msg)))
 
-;;-----------------------------------------------------------------------------
-
+;; Out of memory error
 (define (out-of-memory)
   (println "GC: Out of memory.")
   (exit 1))
@@ -79,7 +77,24 @@
     (+ (arithmetic-shift length 8) (arithmetic-shift stag 3) 6))
 
 ;;-----------------------------------------------------------------------------
-;; COLLECTOR
+;; COLLECTOR :
+;;
+;; This garbage collector implements Cheney's algorithm.
+;; The algorithm uses 4 phases :
+;;   1 - Copy all roots from stack
+;;   2 - Copy all roots from global values
+;;   3 - Scan copied roots to copy referenced objects
+;;   4 - Update to/from-space pointers and alloc pointer
+;;
+;; When the GC copy an object it replaces the header [obj-addr + 0] with the value '-1'
+;; and replaces the first slot [obj-addr + 8] with forwarding pointer to the new addr
+;; Each time the GC tries to copy an object it first checks if the object is already copied
+;; (i.e. [obj-addr + 0] == -1). If already copied it only patches the reference from forwarding
+;; pointer.
+;;
+;;
+;;-----------------------------------------------------------------------------
+;; COLLECTOR - Utils
 ;;
 
 ;; Pretty print stag
@@ -102,17 +117,15 @@
   (print   "  stag   = ") (pp-stag (cadr header))
   (print   "  length = ") (println (caddr header)))
 
-;; TODO
-(define (read-header-a addr)
+;; Return tag from qword (qword & 3)
+(define (get-tag qword)
+  (bitwise-and qword 3))
+
+;; Read header at address 'addr'
+;; Return a list representing a formatted header :
+;; ex. (head stag length)
+(define (read-header addr)
   (let ((qword (get-i64 addr)))
-    (list (bitwise-and qword 7)                         ;; Get head
-          (arithmetic-shift (bitwise-and qword 248) -3) ;; Get stag
-          (arithmetic-shift qword -8))))                ;; Get length
-  
-;; Read header from heap and return formatted list:
-;; (head stag length)
-(define (read-header byte-idx)
-  (let ((qword (get-i64 (+ from-space (* 8 byte-idx)))))
     (list (bitwise-and qword 7)                         ;; Get head
           (arithmetic-shift (bitwise-and qword 248) -3) ;; Get stag
           (arithmetic-shift qword -8))))                ;; Get length
@@ -136,10 +149,16 @@
              (copy-bytes-h (+ from 8) (+ to 8) (- len 1)))
       to))
 
-;;-------------
 
-;; TODO SECTION
+;;-----------------------------------------------------------------------------
+;; COLLECTOR - Copy phase
 
+;; Copy root
+;; Check if the value at 'slot-addr' is a root (memory allocated object).
+;; If it's a non yet copied root, then copy to to-space and patch slot
+;; If it's a copied root then update slot from forwarding pointer
+;; If it's not a root do nothing
+;; Return new position of copy-ptr
 (define (copy-root slot-addr current-copy-ptr)
    (let* ((value (get-i64 slot-addr))
           (tag (bitwise-and value 3)))
@@ -158,7 +177,7 @@
               ;; Object is not yet copied
               ;; Copy object and get new copy-ptr pos
               (let* (;; Object header
-                    (header (read-header-a obj-addr))
+                    (header (read-header obj-addr))
                     ;; Object stag
                     (stag (cadr header))
                     ;; Object length
@@ -176,61 +195,25 @@
                  (set! current-copy-ptr c)))))
      
      current-copy-ptr))
-              
-               
 
-
-;;-------------
+;;---------------
 ;; STACK ROOTS
-;; Frist step of the GC. Read each stack slot. If a slot is a memory object
-;; then the GC copy this object in to-space and update copy-ptr
-
 ;; Copy all stack roots to to-space
 ;; sbegin: First stack address to scan
 ;; send:   Last stack address to scan
 ;; current-copy-ptr: current position of copy-ptr in to-space
 (define (copy-stack-roots sbegin send current-copy-ptr)
-  (if (< sbegin send);; TODO < ?
+  (if (< sbegin send)
       ;; All roots are copied then return new position of copy-ptr
       current-copy-ptr
-      ;; Else, get read first value and copy if memobj
-      (let* ((stack-val (get-i64 sbegin))
-             (tag (bitwise-and stack-val 3)))
-        ;; This stack slot is a memobj
-        (if (= tag TAG_MEMOBJ) ;; TODO read-header
-           (let* (;; Object address in heap
-                  (addr (- stack-val tag))
-                  ;; Object header
-                  (header (get-i64 addr))
-                  ;; Object stag
-                  (stag   (arithmetic-shift (bitwise-and header 248) -3))
-                  ;; Object length
-                  (length (arithmetic-shift header -8)))
-          
-             (if (= header -1)
-                 ;; Header is BH
-                 ;; Patch stack slot
-                 (let ((new-pos (get-i64 (+ 8 addr))))
-                   (put-i64 sbegin new-pos))
-                 ;; Object is not yet copied
-                 ;; Copy object and get new copy-ptr pos
-                 (let ((c (copy-bytes addr current-copy-ptr length)))
-                        ;; Write BH
-                        (put-i64 addr -1)
-                        ;; Write new position (tagged)
-                        (put-i64 (+ 8 addr) (+ current-copy-ptr TAG_MEMOBJ))
-                        ;; Patch stack slot
-                        (put-i64 sbegin (+ current-copy-ptr TAG_MEMOBJ))
-                        ;; Update copy-ptr
-                        (set! current-copy-ptr c)))))
-        ;; Read next stack slot       
-        (copy-stack-roots (- sbegin 8) send current-copy-ptr))))
+      ;; Else get first stack value and copy
+      (let (;; Copy slot if it's a heap obj
+            (c (copy-root sbegin current-copy-ptr)))
+          ;; Continue with next globals    
+          (copy-stack-roots (- sbegin 8) send c))))
 
-;;--------------
+;;---------------
 ;; GLOBAL ROOTS
-;; Second step of the GC. Read each global value. If a value is a memory object
-;; then the GC copy this object in to-space and update copy-ptr
-
 ;; Copy all global roots to to-space
 ;; globals: globals to read
 ;; current-copy-ptr: current position of copy-ptr in to-space
@@ -248,14 +231,9 @@
           ;; Continue with next globals    
           (copy-global-roots (cdr globals) c))))
 
-;;--------------
+;;---------------
 ;; SCAN OBJECTS
-;; Third and last step of the GC. Read each object in to-space starting from scan-ptr.
-;; If an object contains references to memory objects the GC copy these referenced objects
-;; in to-space and update copy-ptr.
-;; Read all object in to-space until scan-ptr == copy-ptr
-
-;; Copy all stack roots to to-space
+;; Scan copied object in to-space and update/copy referenced objects
 ;; scan: address of object to scan
 ;; copy: address of copy ptr
 (define (scan-references scan copy)
@@ -268,10 +246,10 @@
         ;; Else continue to scan
         (else
             ;; Read header of object
-            (let ((qword (get-i64 scan))) ;; TODO read-header
-              (let ((h (bitwise-and qword 7)) ;; Get head
-                    (s (arithmetic-shift (bitwise-and qword 248) -3)) ;; Get stag
-                    (l (arithmetic-shift qword -8))) ;; Get length
+            (let* ((header (read-header scan))
+                   (h (car header))
+                   (s (cadr header))
+                   (l (caddr header)))
               
               (cond ;; Procedure object
                     ((= s STAG_PROCEDURE)
@@ -287,7 +265,26 @@
                       (scan-references (+ scan (* 8 l)) copy))
                     ;; Unknown stag
                     (else (pp-stag s)
-                          (error "Unknown stag while scanning references"))))))))
+                          (error "Unknown stag while scanning references")))))))
+
+;; Scan field
+;; This function scans a field of an object (vector element, pair car/cdr, ...)
+;; If the field is a reference to a memory allocated object, then copy the object
+;; and return new position of copy-ptr
+(define (scan-field addr copy)
+  (let* ((qword (get-i64 addr))   ;; Get field value
+         (tag   (get-tag qword))) ;; Get field tag
+    
+    (cond ;; Number & Special
+          ;; Nothing to do
+          ((or (= tag TAG_NUMBER)
+               (= tag TAG_SPECIAL))
+              copy)
+          ;; Heap object
+          ((= tag TAG_MEMOBJ)
+              (error "NYI"))
+          ;; Other
+          (else (error "NYI")))))
 
 ;; Scan procedure
 ;; Copy cc-table to to-space
@@ -307,7 +304,6 @@
             ;; New copy position
             c))))
 
-;; 
 ;; Scan vector
 ;; Scan all fields of vector
 ;; Return new scan/copy-ptr positions
@@ -327,10 +323,14 @@
       (let ((c (scan-field pos copy)))
         (scan-vector-h (+ pos 8) (- length 1) c))))
 
-;; GC main
+;;---------------
+;; GC MAIN
+;; This is the entry point of the GC.
+;; This function will execute a complete collection phase :
+;; copy stack roots, copy global roots, scan objects, update pointers
+;; Returns the new position of alloc-ptr
 (define (run-gc sp alloc-size)
   
-  ;; Set used values
   (define scan-ptr to-space)
   (define copy-ptr to-space)
   (define stack-begin (- (get-i64 block-addr) 8))
@@ -356,6 +356,7 @@
   (log-gc "--------------")
   (set! copy-ptr (scan-references scan-ptr copy-ptr))
   
+  ;; Check if there is enough memory for alloc request
   (if (>= (+ copy-ptr alloc-size) (+ to-space space-len))
     (out-of-memory))
   
@@ -366,28 +367,3 @@
   
   ;; Return new position of alloc-ptr
   copy-ptr)
-
-
-;; TODO SECTION
-;;-------------
-
-(define (get-tag qword)
-  (bitwise-and qword 3))
-
-;; Scan field
-;; This function scan a field of an object (vector element, pair car/cdr, ...)
-;; If the field is a reference to a memory allocated object, then copy the object
-;; and return new copy-ptr value
-(define (scan-field addr copy)
-  (let* ((qword (get-i64 addr))
-         (tag   (get-tag qword)))
-    
-    (cond ;; Number & Special
-          ((or (= tag TAG_NUMBER)
-               (= tag TAG_SPECIAL))
-              copy)
-          ;; Heap object
-          ((= tag TAG_MEMOBJ)
-              (error "NYI"))
-          ;; Other
-          (else (error "NYI")))))
