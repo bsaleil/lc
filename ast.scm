@@ -271,9 +271,82 @@
                                 (else (if (eq? special '$char->integer)
                                           (gen-error cgc ERR_CHAR_EXPECTED)
                                           (gen-error cgc ERR_NUM_EXPECTED)))))))))
-                 
-                 ;; MAKE-VECTOR & MAKE-STRING
-                 ((member special '($make-vector $make-string))
+                 ;; MAKE-STRING
+                 ((eq? special '$make-string)
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      (let* ((header-word (mem-header 2 STAG_STRING)))
+                        
+                        (x86-pop cgc (x86-rax))
+                        ;(x86-mov cgc (x86-rcx) alloc-ptr) ;; TODO
+                        (x86-mov cgc (x86-rbx) (x86-rax))
+                        
+                        (x86-shr cgc (x86-rax) (x86-imm-int 2))
+                        (x86-and cgc (x86-rax) (x86-imm-int (bitwise-not 7)))
+                        (x86-shr cgc (x86-rax) (x86-imm-int 1))
+                        (x86-mov cgc (x86-rdx) (x86-rax))
+                        
+                        (gen-allocation cgc ctx STAG_STRING 3 #t)
+                        
+                        ;; TODO
+                        (x86-mov cgc (x86-rcx) (x86-rdx))
+                        (x86-shl cgc (x86-rcx) (x86-imm-int 1))
+                        (x86-neg cgc (x86-rcx))
+                        (x86-add cgc (x86-rcx) alloc-ptr)
+                        (x86-sub cgc (x86-rcx) (x86-imm-int 24))
+                        
+                        ;; BEGIN TODO
+                        ;; TODO : pour make-string et make-vector, changer les fonctions de lib
+                        ;;        parce que le tableau et chaine sont initialisés
+                        ;; Fill vector with init value
+                        (x86-push cgc (x86-rcx))
+                        (x86-push cgc (x86-rbx))
+                        (x86-push cgc (x86-rax))
+                        
+                        ;; RCX contient la position du vecteur
+                        (x86-add cgc (x86-rcx) (x86-imm-int 16))
+                        ;; RCX contient la position du 1er element du vecteur
+                        (x86-shr cgc (x86-rbx) (x86-imm-int 2))
+                        ;; RBX contient le nb d'elements du tableau
+                        (x86-mov cgc (x86-rax) (x86-imm-int 0))
+                        ;; RAX contient la valeur initiale
+                        
+                        (let ((label-LOOP (asm-make-label cgc (new-sym 'labelLOOP)))
+                              (label-FIN  (asm-make-label cgc (new-sym 'labelFIN))))
+                          
+                        (x86-label cgc label-LOOP)
+                        (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
+                        (x86-je  cgc label-FIN)
+                        
+                          (x86-mov cgc (x86-mem 0 (x86-rcx)) (x86-rax))
+                          (x86-add cgc (x86-rcx) (x86-imm-int 1))
+                          (x86-sub cgc (x86-rbx) (x86-imm-int 1))
+                          (x86-jmp cgc label-LOOP)
+                        
+                        (x86-label cgc label-FIN)
+                        (x86-pop cgc (x86-rax))
+                        (x86-pop cgc (x86-rbx))
+                        (x86-pop cgc (x86-rcx)))
+                        ;; END TOTO
+                        
+                        
+                        ;; Write encoded length
+                        (x86-mov cgc (x86-mem 8 (x86-rcx)) (x86-rbx))
+                        
+                        ;; Write header
+                        (x86-shl cgc (x86-rdx) (x86-imm-int 6))
+                        (x86-add cgc (x86-rdx) (x86-imm-int header-word))
+                        (x86-mov cgc (x86-mem 0 (x86-rcx)) (x86-rdx))
+                        
+                        ;; Push vector
+                        (x86-add cgc (x86-rcx) (x86-imm-int TAG_MEMOBJ))
+                        (x86-push cgc (x86-rcx))
+                        
+                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR))))))
+                        
+                        
+                 ;; MAKE-VECTOR
+                 ((eq? special '$make-vector)
                   (make-lazy-code
                     (lambda (cgc ctx)
                       (let* ((ms? (eq? special '$make-string))
@@ -281,7 +354,7 @@
                              (header-reg (if ms? (x86-rdx) (x86-rbx))))
                         
                         (x86-pop cgc (x86-rax))           ;; RAX = encoded length
-                        ;(x86-mov cgc (x86-rcx) alloc-ptr) ;; RCX = initial alloc-ptr state
+                        ;(x86-mov cgc (x86-rcx) alloc-ptr) ;; RCX = initial alloc-ptr state TODO
                         (x86-mov cgc (x86-rbx) (x86-rax)) ;;
                         
                         (if ms?
@@ -299,7 +372,7 @@
                         ;; TODO
                         ;; Can't use previous value of alloc-ptr because GC could allocate object in to-space
                         (if ms?
-                            (error "NYI")
+                            (error "NYO")
                             (begin (x86-mov cgc (x86-rax) (x86-rbx))
                                    (x86-shl cgc (x86-rax) (x86-imm-int 1))
                                    (x86-add cgc (x86-rax) (x86-imm-int 16))
