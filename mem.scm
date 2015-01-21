@@ -40,9 +40,11 @@
 
 ;; Allocate RAX(reg) + length(imm) bytes in heap
 ;; DESTROY RAX !!
+;; TODO : Rewrite alloc guard
 (define (gen-alloc-regimm cgc stag length)
   (let ((label-allok (asm-make-label cgc (new-sym 'alloc-ok))))
     (x86-push cgc (x86-rbx))
+    (x86-push cgc (x86-rax))
     (x86-shl cgc (x86-rax) (x86-imm-int 1))
     (x86-add cgc (x86-rax) alloc-ptr)  
     (if (> length 0)
@@ -53,7 +55,11 @@
       (gen-gc-call cgc)
     ;; Can be allocated
     (x86-label cgc label-allok)
-    (x86-mov cgc alloc-ptr (x86-rax))
+    (x86-pop cgc (x86-rax))
+    (x86-shl cgc (x86-rax) (x86-imm-int 1))
+    (if (> length 0)
+      (x86-add cgc (x86-rax) (x86-imm-int (* 8 length))))
+    (x86-add cgc alloc-ptr (x86-rax))
     (x86-pop cgc (x86-rbx))))
 
 ;; Generate an heap object header

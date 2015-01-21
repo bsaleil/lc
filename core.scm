@@ -130,7 +130,7 @@
        (x86-push cgc (x86-rdi))
        (x86-call cgc label-gc) ;; call C function
        (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-       (x86-mov cgc alloc-ptr (x86-rax)) ;; TODO : update alloc-ptr
+       (x86-mov cgc alloc-ptr (x86-rax)) ;; TODO : Update alloc-ptr
        )))
 
 ;;-----------------------------------------------------------------------------
