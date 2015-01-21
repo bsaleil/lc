@@ -121,7 +121,7 @@
 ;; send:   Last stack address to scan
 ;; current-copy-ptr: current position of copy-ptr in to-space
 (define (copy-stack-roots sbegin send current-copy-ptr)
-  (if (<= sbegin send);; TODO < ?
+  (if (< sbegin send);; TODO < ?
       ;; All roots are copied then return new position of copy-ptr
       current-copy-ptr
       ;; Else, get read first value and copy if memobj

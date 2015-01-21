@@ -695,6 +695,7 @@
     ;; Generate lazy-code
     (code-add 
       (lambda (cgc)
+        (asm-align cgc 4 0 #x90)
         (x86-label cgc continuation-label)
         ((lazy-code-generator lazy-code) cgc ctx)))
     
@@ -728,6 +729,7 @@
           ;; Gen version
           (code-add
              (lambda (cgc)
+                (asm-align cgc 4 0 #x90)
                 (x86-label cgc fn-label)
                 ((lazy-code-generator lazy-code) cgc ctx)))
           ;; Put version matching this ctx
