@@ -15,6 +15,12 @@
        (println ,msg)))
 
 ;;-----------------------------------------------------------------------------
+
+(define (out-of-memory)
+  (println "GC: Out of memory.")
+  (exit 1))
+
+;;-----------------------------------------------------------------------------
 ;; ALLOCATOR
 
 ;; Generate allocation code
@@ -52,6 +58,7 @@
     (x86-mov cgc (x86-rbx) (x86-imm-int (+ from-space space-len)))
       (x86-cmp cgc (x86-rax) (x86-rbx))
       (x86-jl cgc label-allok)
+      (x86-sub cgc (x86-rax) alloc-ptr)
       (gen-gc-call cgc)
     ;; Can be allocated
     (x86-label cgc label-allok)
@@ -111,8 +118,7 @@
                          (number->string to)))
   (let ((copy-ptr (copy-bytes-h from to len)))
     (if (>= copy-ptr (+ to-space space-len))
-        (begin (println "Heap overflow, too many reachable objects.")
-               (exit 1))
+        (out-of-memory)
         copy-ptr)))
 
 (define (copy-bytes-h from to len)
@@ -276,6 +282,7 @@
 ;; to to-space and update copy-ptr
 ;; Return new position of copy-ptr
 (define (scan-vector scan copy head stag length)
+  
   (let* (;; Get vector length from (vector-pos + 8)
          (length (/ (get-i64 (+ scan 8)) 4))
          ;; Scan vector and get new copy-ptr position
@@ -302,7 +309,7 @@
                   (error "Unknown referenced object"))))))
 
 ;; GC main
-(define (run-gc sp)
+(define (run-gc sp alloc-size)
   
   ;; Set used values
   (define scan-ptr to-space)
@@ -331,6 +338,8 @@
   (log-gc "--------------")
   (set! copy-ptr (scan-references scan-ptr copy-ptr))
   
+  (if (>= (+ copy-ptr alloc-size) (+ to-space space-len))
+    (out-of-memory))
   
   ;; Update from/to-spaces positions
   (let ((tmp from-space))
@@ -339,5 +348,3 @@
   
   ;; Return new position of alloc-ptr
   copy-ptr)
-  
-  

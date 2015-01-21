@@ -117,7 +117,8 @@
 (define run-gc #f) ;; Forward declaration (see mem.scm)
 
 (c-define (gc sp) (long) long "gc" ""
-    (run-gc sp))
+    (let ((alloc-size (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8)))))
+      (run-gc sp alloc-size)))
 
 (define (gen-gc-call cgc)
   (push-pop-regs

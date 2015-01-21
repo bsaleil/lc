@@ -306,6 +306,38 @@
                                    (x86-mov cgc (x86-rcx) alloc-ptr)
                                    (x86-sub cgc (x86-rcx) (x86-rax))))
                         
+                        ;; BEGIN TODO
+                        ;; Fill vector with init value
+                        (x86-push cgc (x86-rcx))
+                        (x86-push cgc (x86-rbx))
+                        (x86-push cgc (x86-rax))
+                        
+                        ;; RCX contient la position du vecteur
+                        (x86-add cgc (x86-rcx) (x86-imm-int 16))
+                        ;; RCX contient la position du 1er element du vecteur
+                        (x86-shr cgc (x86-rbx) (x86-imm-int 2))
+                        ;; RBX contient le nb d'elements du tableau
+                        (x86-mov cgc (x86-rax) (x86-imm-int 8))
+                        ;; RAX contient la valeur initiale
+                        
+                        (let ((label-LOOP (asm-make-label cgc (new-sym 'labelLOOP)))
+                              (label-FIN  (asm-make-label cgc (new-sym 'labelFIN))))
+                          
+                        (x86-label cgc label-LOOP)
+                        (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
+                        (x86-je  cgc label-FIN)
+                        
+                          (x86-mov cgc (x86-mem 0 (x86-rcx)) (x86-rax))
+                          (x86-add cgc (x86-rcx) (x86-imm-int 8))
+                          (x86-sub cgc (x86-rbx) (x86-imm-int 1))
+                          (x86-jmp cgc label-LOOP)
+                        
+                        (x86-label cgc label-FIN)
+                        (x86-pop cgc (x86-rax))
+                        (x86-pop cgc (x86-rbx))
+                        (x86-pop cgc (x86-rcx)))
+                        ;; END TOTO
+                        
                         ;; Write encoded length
                         (x86-mov cgc (x86-mem 8 (x86-rcx)) (x86-rbx))
                         
