@@ -23,14 +23,26 @@
 ; ; ;832040
 ; ; ;832040
 
-(define (stress-heap n)
-  (if ($> n 0)
-      (let ((v ($make-vector 10000)))
+; (define (stress-heap n)
+;   (if ($> n 0)
+;       (let ((v ($make-vector 10000)))
         
-        (stress-heap ($- n 1)))))
+;         (stress-heap ($- n 1)))))
 
-(stress-heap 4)
+; (stress-heap 4)
 
+(pp (vector-length ($make-vector 10000)))
+(pp (vector-length ($make-vector 10000)))
+(pp (vector-length ($make-vector 10000)))
+(pp (vector-length ($make-vector 10000)))
+(pp (vector-length ($make-vector 10000)))
+(pp (vector-length ($make-vector 10000)))
+(pp (vector-length ($make-vector 10000)))
+(pp (vector-length ($make-vector 10000)))
+(pp (vector-length ($make-vector 10000)))
+(pp (vector-length ($make-vector 10000)))
+(pp (vector-length ($make-vector 10000)))
+(pp (vector-length ($make-vector 10000)))
 
 ; ; ; ; ; ;; LENGTH 8 TAG pair(1)
 ; ; ; ; ; (define p (cons 1 2))

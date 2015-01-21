@@ -6,6 +6,7 @@
 ;; TODO : mlc-lambda offset 8 for cc-table header
 ;; TODO : améliorer init-rtlib (x86)
 ;; TODO : Fusionner copie des locales (stack) et globaless
+;; TODO : renommer BH
 
 ;;-----------------------------------------------------------------------------
 
@@ -101,6 +102,13 @@
   (print   "  stag   = ") (pp-stag (cadr header))
   (print   "  length = ") (println (caddr header)))
 
+;; TODO
+(define (read-header-a addr)
+  (let ((qword (get-i64 addr)))
+    (list (bitwise-and qword 7)                         ;; Get head
+          (arithmetic-shift (bitwise-and qword 248) -3) ;; Get stag
+          (arithmetic-shift qword -8))))                ;; Get length
+  
 ;; Read header from heap and return formatted list:
 ;; (head stag length)
 (define (read-header byte-idx)
@@ -127,6 +135,50 @@
       (begin (put-i64 to (get-i64 from))
              (copy-bytes-h (+ from 8) (+ to 8) (- len 1)))
       to))
+
+;;-------------
+
+;; TODO SECTION
+
+(define (copy-root slot-addr current-copy-ptr)
+   (let* ((value (get-i64 slot-addr))
+          (tag (bitwise-and value 3)))
+     
+     (if (= tag TAG_MEMOBJ)
+         (let* (;; Object address in heap
+                (obj-addr (- value tag))
+                ;; Object header
+                (header-qword (get-i64 obj-addr)))
+           
+           (if (= header-qword -1)
+              ;; Header is BH
+              ;; Patch memory slot
+              (let ((new-pos (get-i64 (+ 8 obj-addr))))
+                (put-i64 slot-addr new-pos))
+              ;; Object is not yet copied
+              ;; Copy object and get new copy-ptr pos
+              (let* (;; Object header
+                    (header (read-header-a obj-addr))
+                    ;; Object stag
+                    (stag (cadr header))
+                    ;; Object length
+                    (length (caddr header))
+                    ;;
+                    (c (copy-bytes obj-addr current-copy-ptr length)))
+                
+                 ;; Write BH
+                 (put-i64 obj-addr -1)
+                 ;; Write new position (tagged)
+                 (put-i64 (+ 8 obj-addr) (+ current-copy-ptr TAG_MEMOBJ))
+                 ;; Patch slot
+                 (put-i64 slot-addr (+ current-copy-ptr TAG_MEMOBJ))
+                 ;; Update copy-ptr
+                 (set! current-copy-ptr c)))))
+     
+     current-copy-ptr))
+              
+               
+
 
 ;;-------------
 ;; STACK ROOTS
@@ -186,39 +238,15 @@
   (if (null? globals)
       ;; All roots are copied then return new position of copy-ptr
       current-copy-ptr
-      ;; Else, get read first value and copy if memobj
-      (let* ((global (car globals))
-             (global-val (get-i64 (+ 8 (* 8 (cdr global)) block-addr))) ;; TODO global addr
-             (tag (bitwise-and global-val 3)))
-        ;; This global is a memobj
-        (if (= tag TAG_MEMOBJ) ;; TODO read-header
-            (let* (;; Object address in heap
-                   (addr (- global-val tag))
-                   ;; Object header
-                   (header (get-i64 addr))
-                   ;; Object stag
-                   (stag   (arithmetic-shift (bitwise-and header 248) -3))
-                   ;; Object length
-                   (length (arithmetic-shift header -8)))
-            
-              (if (= header -1)
-                  ;; Header is BH
-                  ;; Patch global var
-                  (let ((new-pos (get-i64 (+ 8 addr))))
-                    (put-i64 (+ 8 (* 8 (cdr global)) block-addr) new-pos))
-                  ;; Object is not yet copied
-                  ;; Copy object and get new copy-ptr pos
-                  (let ((c (copy-bytes addr current-copy-ptr length)))
-                        ;; Write BH
-                        (put-i64 addr -1)
-                        ;; Write TAGGED new position
-                        (put-i64 (+ 8 addr) (+ current-copy-ptr TAG_MEMOBJ))
-                        ;; Patch stack slot
-                        (put-i64 (+ 8 (* 8 (cdr global)) block-addr) (+ current-copy-ptr TAG_MEMOBJ))
-                        ;; Update copy-ptr
-                        (set! current-copy-ptr c)))))
-        ;; Read next stack slot       
-        (copy-global-roots (cdr globals) current-copy-ptr))))
+      ;; Else get first global value and copy
+      (let* (;; Get global info
+             (global (car globals))
+             ;; Get global address
+             (global-addr (+ 8 (* 8 (cdr global)) block-addr))
+             ;; Copy global if it's a heap obj
+             (c (copy-root global-addr current-copy-ptr)))
+          ;; Continue with next globals    
+          (copy-global-roots (cdr globals) c))))
 
 ;;--------------
 ;; SCAN OBJECTS
@@ -244,6 +272,7 @@
               (let ((h (bitwise-and qword 7)) ;; Get head
                     (s (arithmetic-shift (bitwise-and qword 248) -3)) ;; Get stag
                     (l (arithmetic-shift qword -8))) ;; Get length
+              
               (cond ;; Procedure object
                     ((= s STAG_PROCEDURE)
                       (let ((sc (scan-procedure scan copy h s l)))
@@ -261,13 +290,13 @@
                           (error "Unknown stag while scanning references"))))))))
 
 ;; Scan procedure
-;; Copy cc-table to to-space and update copy-ptr
-;; Copy all memory allocated free-var to to-space and update copy-ptr
-;; Return new copy-ptr position
+;; Copy cc-table to to-space
+;; Scan all fields of closure
+;; Return new scan/copy-ptr position
 (define (scan-procedure scan copy head stag length)
   (let* ((cc-table-loc (get-i64 (+ 8 scan)))
          (cc-head (get-i64 cc-table-loc)))
-    ;; BH tests sis useless because cc-table is not yet copied (1 cc-table <-> 1 closure)
+    ;; BH tests is useless because cc-table is not yet copied (1 cc-table <-> 1 closure)
     ;; Patch closure (cc-table location)
     (put-i64 (+ 8 scan) copy)
     ;; Copy cc-table
@@ -278,12 +307,11 @@
             ;; New copy position
             c))))
 
+;; 
 ;; Scan vector
-;; Read all values in vector. If a value is a memobj then copy this object
-;; to to-space and update copy-ptr
-;; Return new position of copy-ptr
+;; Scan all fields of vector
+;; Return new scan/copy-ptr positions
 (define (scan-vector scan copy head stag length)
-  
   (let* (;; Get vector length from (vector-pos + 8)
          (length (/ (get-i64 (+ scan 8)) 4))
          ;; Scan vector and get new copy-ptr position
@@ -339,6 +367,9 @@
   ;; Return new position of alloc-ptr
   copy-ptr)
 
+
+;; TODO SECTION
+;;-------------
 
 (define (get-tag qword)
   (bitwise-and qword 3))
