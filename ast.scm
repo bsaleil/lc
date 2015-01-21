@@ -86,7 +86,7 @@
              (size (if (> (modulo len 8) 0) (+ s 1) s))
              (header-word (mem-header (+ size 2) STAG_STRING)))
         
-        (gen-allocation cgc STAG_STRING (+ size 2))
+        (gen-allocation cgc ctx STAG_STRING (+ size 2))
         
         ;; Write header
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
@@ -293,8 +293,8 @@
                         
                         ;; Alloc
                         (if ms?
-                          (gen-allocation cgc STAG_STRING 3 #t)
-                          (gen-allocation cgc STAG_VECTOR 2 #t))
+                          (gen-allocation cgc ctx STAG_STRING 3 #t)
+                          (gen-allocation cgc ctx STAG_VECTOR 2 #t))
                         
                         ;; TODO
                         ;; Can't use previous value of alloc-ptr because GC could allocate object in to-space
@@ -529,7 +529,7 @@
                  (header-word (mem-header closure-size STAG_PROCEDURE)))
             
             ;; ALLOC
-            (gen-allocation cgc STAG_PROCEDURE total-size)
+            (gen-allocation cgc ctx STAG_PROCEDURE total-size)
             
             ;; 1 - WRITE OBJECT HEADER
             (x86-mov cgc (x86-rax) (x86-imm-int header-word))
@@ -957,7 +957,7 @@
        (let ((header-word (mem-header 3 STAG_PAIR)))
          
          ;; Alloc
-         (gen-allocation cgc STAG_PAIR 3)
+         (gen-allocation cgc ctx STAG_PAIR 3)
          
          ;; Write object header
          (x86-mov cgc (x86-rax) (x86-imm-int header-word))
@@ -1300,7 +1300,7 @@
               (offset (* (- fs 1 (identifier-offset (cdr res))) 8)))
 
         ;; Alloc
-        (gen-allocation cgc STAG_MOBJECT 2)
+        (gen-allocation cgc ctx STAG_MOBJECT 2)
         
         ;; Create var in memory
         (gen-get-localvar cgc ctx res 'gen-reg) ;; There are only localvar here (no free vars)
@@ -1337,7 +1337,7 @@
     (let ((header (mem-header 3 STAG_PAIR)))
 
       ;; Alloc pair
-      (gen-allocation cgc STAG_PAIR 3)
+      (gen-allocation cgc ctx STAG_PAIR 3)
       
       ;; Write header and car
       (x86-mov cgc (x86-rax) (x86-imm-int header))

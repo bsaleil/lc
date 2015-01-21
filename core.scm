@@ -314,7 +314,7 @@
 ;; Machine code block management
 
 ;; HEAP
-(define heap-len 400000)
+(define heap-len 800000)
 (define heap-addr  #f)
 (define from-space #f)
 (define to-space   #f)

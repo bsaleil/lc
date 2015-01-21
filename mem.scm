@@ -26,7 +26,7 @@
 ;; Generate allocation code
 ;; use-rax to #t to allocate from register (with optional imm length)
 ;; use-rax to #f to allocate only from immediate
-(define (gen-allocation cgc stag length #!optional use-rax)
+(define (gen-allocation cgc ctx stag length #!optional use-rax)
   (if use-rax
       (gen-alloc-regimm cgc stag length)
       (gen-alloc-imm    cgc stag length)))
@@ -39,6 +39,7 @@
 	  (x86-mov cgc (x86-rbx) (x86-imm-int (+ from-space space-len)))
    	  (x86-cmp cgc (x86-rax) (x86-rbx)) ;; TODO
    	  (x86-jl  cgc label-allok)
+      (x86-sub cgc (x86-rax) alloc-ptr) ;; TODO PARAM RAX = allocsize
       (gen-gc-call cgc)
     ;; Can be allocated
     (x86-label cgc label-allok)
@@ -58,7 +59,7 @@
     (x86-mov cgc (x86-rbx) (x86-imm-int (+ from-space space-len)))
       (x86-cmp cgc (x86-rax) (x86-rbx))
       (x86-jl cgc label-allok)
-      (x86-sub cgc (x86-rax) alloc-ptr)
+      (x86-sub cgc (x86-rax) alloc-ptr) ;; TODO PARAM RAX = allocsize
       (gen-gc-call cgc)
     ;; Can be allocated
     (x86-label cgc label-allok)
@@ -294,19 +295,9 @@
 
 (define (scan-vector-h pos length copy)
   (if (= length 0)
-    ;; Vector is scanned then return new copy-ptr pos
-    copy
-    ;; Else scan next object in vector
-    (let* ((obj (get-i64 pos))
-           (tag (bitwise-and obj 3)))
-      
-      (cond ;; Object in vector is a number
-            ((= tag TAG_NUMBER)
-               ;; Nothing to do
-               (scan-vector-h (+ pos 8) (- length 1) copy))
-            ;; Unknown object
-            (else (pp tag)
-                  (error "Unknown referenced object"))))))
+      copy
+      (let ((c (scan-field pos copy)))
+        (scan-vector-h (+ pos 8) (- length 1) c))))
 
 ;; GC main
 (define (run-gc sp alloc-size)
@@ -318,7 +309,6 @@
   (define stack-end   (+ sp (* 8 (length c-caller-save-regs))))
   
   (log-gc "GC BEGIN")
-  (pp "GC BEGIN")
   
   ;; 1 - Copy roots from stack
   (log-gc "--------------")
@@ -348,3 +338,25 @@
   
   ;; Return new position of alloc-ptr
   copy-ptr)
+
+
+(define (get-tag qword)
+  (bitwise-and qword 3))
+
+;; Scan field
+;; This function scan a field of an object (vector element, pair car/cdr, ...)
+;; If the field is a reference to a memory allocated object, then copy the object
+;; and return new copy-ptr value
+(define (scan-field addr copy)
+  (let* ((qword (get-i64 addr))
+         (tag   (get-tag qword)))
+    
+    (cond ;; Number & Special
+          ((or (= tag TAG_NUMBER)
+               (= tag TAG_SPECIAL))
+              copy)
+          ;; Heap object
+          ((= tag TAG_MEMOBJ)
+              (error "NYI"))
+          ;; Other
+          (else (error "NYI")))))
