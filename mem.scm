@@ -103,7 +103,11 @@
                          (number->string from)
                          " to "
                          (number->string to)))
-  (copy-bytes-h from to len))
+  (let ((copy-ptr (copy-bytes-h from to len)))
+    (if (>= copy-ptr (+ to-space space-len))
+        (begin (println "Heap overflow, too many reachable objects.")
+               (exit 1))
+        copy-ptr)))
 
 (define (copy-bytes-h from to len)
   (if (> len 0)
@@ -288,7 +292,8 @@
                ;; Nothing to do
                (scan-vector-h (+ pos 8) (- length 1) copy))
             ;; Unknown object
-            (else (error "Unknown referenced object"))))))
+            (else (pp tag)
+                  (error "Unknown referenced object"))))))
 
 ;; GC main
 (define (run-gc sp)
@@ -300,6 +305,7 @@
   (define stack-end   (+ sp (* 8 (length c-caller-save-regs))))
   
   (log-gc "GC BEGIN")
+  (pp "GC BEGIN")
   
   ;; 1 - Copy roots from stack
   (log-gc "--------------")
@@ -324,8 +330,6 @@
   (let ((tmp from-space))
     (set! from-space to-space)
     (set! to-space tmp))
-  
-  (log-gc "GC END")
   
   ;; Return new position of alloc-ptr
   copy-ptr)

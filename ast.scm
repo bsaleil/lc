@@ -281,7 +281,7 @@
                              (header-reg (if ms? (x86-rdx) (x86-rbx))))
                         
                         (x86-pop cgc (x86-rax))           ;; RAX = encoded length
-                        (x86-mov cgc (x86-rcx) alloc-ptr) ;; RCX = initial alloc-ptr state
+                        ;(x86-mov cgc (x86-rcx) alloc-ptr) ;; RCX = initial alloc-ptr state
                         (x86-mov cgc (x86-rbx) (x86-rax)) ;;
                         
                         (if ms?
@@ -295,6 +295,16 @@
                         (if ms?
                           (gen-allocation cgc STAG_STRING 3 #t)
                           (gen-allocation cgc STAG_VECTOR 2 #t))
+                        
+                        ;; TODO
+                        ;; Can't use previous value of alloc-ptr because GC could allocate object in to-space
+                        (if ms?
+                            (error "NYI")
+                            (begin (x86-mov cgc (x86-rax) (x86-rbx))
+                                   (x86-shl cgc (x86-rax) (x86-imm-int 1))
+                                   (x86-add cgc (x86-rax) (x86-imm-int 16))
+                                   (x86-mov cgc (x86-rcx) alloc-ptr)
+                                   (x86-sub cgc (x86-rcx) (x86-rax))))
                         
                         ;; Write encoded length
                         (x86-mov cgc (x86-mem 8 (x86-rcx)) (x86-rbx))

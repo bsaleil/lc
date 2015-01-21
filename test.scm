@@ -29,7 +29,7 @@
         
         (stress-heap ($- n 1)))))
 
-(stress-heap 10)
+(stress-heap 4)
 
 ; ; ; ; ; ;; LENGTH 8 TAG pair(1)
 ; ; ; ; ; (define p (cons 1 2))
