@@ -263,6 +263,10 @@
                     ((= s STAG_CCTABLE)
                       ;; Nothing to do
                       (scan-references (+ scan (* 8 l)) copy))
+                    ;; Mobject
+                    ((= s STAG_MOBJECT)
+                      (let ((sc (scan-mobject scan copy h s l)))
+                        (scan-references (car sc) (cdr sc))))
                     ;; Unknown stag
                     (else (pp-stag s)
                           (error "Unknown stag while scanning references")))))))
@@ -285,6 +289,16 @@
               (error "NYI"))
           ;; Other
           (else (error "NYI")))))
+
+;; Scan mobject
+;; Scan object reference of mobject
+;; Return new scan/copy-ptr position
+(define (scan-mobject scan copy head stag length)
+  (let ((c (scan-field (+ scan 8) copy)))
+    (cons ;; New scan position
+          (+ scan 16)
+          ;; New copy position
+          c)))
 
 ;; Scan procedure
 ;; Copy cc-table to to-space
