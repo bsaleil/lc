@@ -251,21 +251,25 @@
                    (s (cadr header))
                    (l (caddr header)))
               
-              (cond ;; Procedure object
+              (cond ;; Procedure
                     ((= s STAG_PROCEDURE)
                       (let ((sc (scan-procedure scan copy h s l)))
                         (scan-references (car sc) (cdr sc))))
-                    ;; Vector object
+                    ;; Vector
                     ((= s STAG_VECTOR)
                       (let ((sc (scan-vector scan copy h s l)))
                         (scan-references (car sc) (cdr sc))))
-                    ;; Cc-table Object
-                    ((= s STAG_CCTABLE)
+                    ;; CC-table & String
+                    ((or (= s STAG_CCTABLE) (= s STAG_STRING))
                       ;; Nothing to do
                       (scan-references (+ scan (* 8 l)) copy))
-                    ;; Mobject
+                    ;; MObject
                     ((= s STAG_MOBJECT)
                       (let ((sc (scan-mobject scan copy h s l)))
+                        (scan-references (car sc) (cdr sc))))
+                    ;; Pair
+                    ((= s STAG_PAIR)
+                      (let ((sc (scan-pair scan copy h s l)))
                         (scan-references (car sc) (cdr sc))))
                     ;; Unknown stag
                     (else (pp-stag s)
@@ -286,9 +290,9 @@
               copy)
           ;; Heap object
           ((= tag TAG_MEMOBJ)
-              (error "NYI"))
+              (copy-root addr copy))
           ;; Other
-          (else (error "NYI")))))
+          (else (error "GC - Can't scan object field")))))
 
 ;; Scan mobject
 ;; Scan object reference of mobject
@@ -299,6 +303,17 @@
           (+ scan 16)
           ;; New copy position
           c)))
+
+;; Scan pair
+;; Scan car/cdr references
+;; Return new scan/copy-ptr position
+(define (scan-pair scan copy head stag length)
+  (let* ((ccar (scan-field (+ scan  8) copy))
+         (ccdr (scan-field (+ scan 16) ccar)))
+    (cons ;; New scan position
+          (+ scan 24)
+          ;; New copy position
+          ccdr)))
 
 ;; Scan procedure
 ;; Copy cc-table to to-space
@@ -312,11 +327,18 @@
     (put-i64 (+ 8 scan) copy)
     ;; Copy cc-table
     (let ((c (copy-bytes cc-table-loc copy (arithmetic-shift cc-head -8))))
-      ;; TODO COPY MEMORY ALLOCATED FREE VARIABLES
-      (cons ;; New scan position
-            (+ scan (* 8 length))
-            ;; New copy position
-            c))))
+      (let ((cc (scan-freevars (+ scan 16) (- length 2) c)))
+        (cons ;; New scan position
+              (+ scan (* 8 length))
+              ;; New copy position
+              c)))))
+
+;; Scaan free vars of procedure object
+(define (scan-freevars pos nb-free copy)
+  (if (= nb-free 0)
+      copy
+      (let ((c (scan-field pos copy)))
+        (scan-freevars (+ pos 8) (- nb-free 1) c))))
 
 ;; Scan vector
 ;; Scan all fields of vector
