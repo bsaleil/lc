@@ -119,5 +119,6 @@
           ;; Can only exec 1 file
           ((= (length files) 1)
             (let ((file-content (expand (read-all (open-input-file (car args))))))
+               ;(pp file-content)))
                (exec lib file-content)))
           (else (error "NYI"))))

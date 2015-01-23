@@ -82,8 +82,7 @@
   (make-lazy-code
     (lambda (cgc ctx)
       (let* ((len (string-length ast))
-             (s (quotient len 8))
-             (size (if (> (modulo len 8) 0) (+ s 1) s))
+             (size (arithmetic-shift (bitwise-and (+ len 8) (bitwise-not 7)) -3))
              (header-word (mem-header (+ size 2) STAG_STRING)))
         
         (gen-allocation cgc ctx STAG_STRING (+ size 2))
@@ -275,12 +274,13 @@
                  ((eq? special '$make-string)
                   (make-lazy-code
                     (lambda (cgc ctx)
-                      (let* ((header-word (mem-header 2 STAG_STRING)))
+                      (let* ((header-word (mem-header 3 STAG_STRING)))
                         
                         (x86-pop cgc (x86-rax))
                         ;(x86-mov cgc (x86-rcx) alloc-ptr) ;; TODO
                         (x86-mov cgc (x86-rbx) (x86-rax))
                         
+                         ;; TODO
                         (x86-shr cgc (x86-rax) (x86-imm-int 2))
                         (x86-and cgc (x86-rax) (x86-imm-int (bitwise-not 7)))
                         (x86-shr cgc (x86-rax) (x86-imm-int 1))

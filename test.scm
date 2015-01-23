@@ -1,72 +1,33 @@
+"0"
+($make-string 0)
+
+; ;;; ARRAY1 -- One of the Kernighan and Van Wyk benchmarks.
+
+; (define (create-x n)
+;   (define result (make-vector n))
+;   (do ((i 0 (+ i 1)))
+;       ((>= i n) result)
+;     (vector-set! result i i)))
+
+; (define (create-y x)
+;   (let* ((n (vector-length x))
+;          (result (make-vector n)))
+;     (do ((i (- n 1) (- i 1)))
+;         ((< i 0) result)
+;       (vector-set! result i (vector-ref x i)))))
+
+; (define (my-try n)
+;   (vector-length (create-y (create-x n))))
 
 
-; ; ;;;;GC
-
-; ;(lambda () 10)
-
-
-; (define (fib n)
-;   (if ($< n 2)
-;       ($cons n '())
-;       ($cons ($+ ($car (fib ($- n 1))) ($car (fib ($- n 2)))) '()))
-; )
-
-; ($car (fib 30))
-; ($car (fib 30))
-; ($car (fib 30))
-; ($car (fib 30))
-; ($car (fib 30))
-
-; ; ;832040
-; ; ;832040
-; ; ;832040
-; ; ;832040
-; ; ;832040
-
-; (define (stress-heap n)
-;   (if ($> n 0)
-;       (let ((v ($make-vector 10000)))
-        
-;         (stress-heap ($- n 1)))))
-
-; (stress-heap 4)
-
-; (pp (vector-length ($make-vector 10000)))
-; (pp (vector-length ($make-vector 10000)))
-; (pp (vector-length ($make-vector 10000)))
-; (pp (vector-length ($make-vector 10000)))
-; (pp (vector-length ($make-vector 10000)))
-; (pp (vector-length ($make-vector 10000)))
-; (pp (vector-length ($make-vector 10000)))
-; (pp (vector-length ($make-vector 10000)))
-; (pp (vector-length ($make-vector 10000)))
-; (pp (vector-length ($make-vector 10000)))
-; (pp (vector-length ($make-vector 10000)))
-; (pp (vector-length ($make-vector 10000)))
-
-(let ((s ($make-string 6)))
-  (pp (string-length s))
-  (pp s))
+; (((lambda (loop)
+;  ((lambda (#:g62) loop)
+;   (set! loop
+;         (lambda (repeat result)
+;           (if (> repeat 0) (loop (- repeat 1) (my-try 5)) result)))))
+; #f)
+; 100
+; '())
 
 
-; ; ; ; ; ;; LENGTH 8 TAG pair(1)
-; ; ; ; ; (define p (cons 1 2))
-
-; ; ; ; ; ;; LENGTH 1 TAG mobject(2)
-; ; ; ; ; ;;
-
-; ; ; ; ; ;; LENGTH 12 TAG vector(0)
-; ; ; ; ; ;; TODO (voir code)
-
-; ; ; ; ; ;; LENGTH 20 TAG string(19)
-; ; ; ; ; (define s "Test")
-
-; ; ; ; ; ;; LENGTH 1 TAG procedure(14)
-; ; ; ; ; (define (f a) (println a))
-
-; ; ; ; ; ;; LENGTH 1 TAG procedure(14)
-; ; ; ; ; ;; LENGTH 2 TAG procedure(14)
-; ; ; ; ; (define (g a)
-; ; ; ; ;   (lambda () (+ 1 a)))
-
-; ; ; ; ; (g 10)
+; ;5

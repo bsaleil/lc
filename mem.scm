@@ -1,7 +1,7 @@
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
-;; Use & !7 for string size (make-string)
+;; Pour la chaine, éviter de consommer un octet de plus si taille est un multiple de 8
 ;; TODO : 'encoded' as parameter to avoid shr/shl of make-string
 ;; TODO : mlc-lambda offset 8 for cc-table header
 ;; TODO : améliorer init-rtlib (x86)
@@ -396,6 +396,9 @@
   (if (>= (+ copy-ptr alloc-size) (+ to-space space-len))
     (out-of-memory))
   
+  ;; TODO
+  (check-heap to-space copy-ptr)
+  
   ;; Update from/to-spaces positions
   (let ((tmp from-space))
     (set! from-space to-space)
@@ -403,3 +406,67 @@
   
   ;; Return new position of alloc-ptr
   copy-ptr)
+
+;;----------
+;; TODO
+
+(define (check-intospace addr)
+  (if (or (< addr to-space)
+          (>= addr (+ to-space space-len)))
+    (error "Referenced object out of to-space, heap check failed")
+    #t))
+
+(define (check-validheader addr)
+  (let ((h (get-i64 addr)))
+    (if (< h 0)
+        (error "Invalid header, heap check failed")
+        #t)))
+
+(define (check-field addr)
+  (let* ((val (get-i64 addr))
+         (tag (bitwise-and val 3)))
+    (if (= tag TAG_MEMOBJ)
+       (begin ;; 1 - Object is in to space
+              (check-intospace (- val tag))
+              ;; 2 - Object header != -1
+              (check-validheader (- val tag)))
+       #t)))
+
+(define (check-vector scan l)
+  (if (= l 0)
+      #t
+      (begin (check-field scan)
+             (check-vector (+ scan 8) (- l 1)))))
+
+(define (check-heap scan copy)
+  (cond ((> scan copy)
+            (error "Unexpected behavior, heap check failed."))
+        ((= scan copy)
+            #t)
+        ((< scan copy)
+            (let* ((obj-header (read-header scan))
+                   (h (car   obj-header))
+                   (s (cadr  obj-header))
+                   (l (caddr obj-header)))
+              ;; stag
+              (cond ;; CCTABLE & STRING
+                    ((or (= s STAG_CCTABLE)
+                         (= s STAG_STRING))
+                        ;; Nothing to do
+                        (check-heap (+ scan (* 8 l)) copy))
+                    ;; PROCEDURE
+                    ((= s STAG_PROCEDURE)
+                        ;; CCtable is special (not tagged)
+                        (check-intospace   (+ scan 8))
+                        (check-validheader (+ scan 8))
+                        (check-heap (+ scan (* 8 l)) copy))
+                    ;; MOBJECT
+                    ((= s STAG_MOBJECT)
+                        (check-field (+ scan 8))
+                        (check-heap (+ scan 16) copy))
+                    ;; VECTOR
+                    ((= s STAG_VECTOR)
+                        (check-vector scan l)
+                        (check-heap (+ scan (* 8 l)) copy))
+                    (else (pp-stag s)
+                          (error "NYI")))))))
