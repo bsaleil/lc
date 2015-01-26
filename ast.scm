@@ -391,7 +391,7 @@
                         ;; RCX contient la position du 1er element du vecteur
                         (x86-shr cgc (x86-rbx) (x86-imm-int 2))
                         ;; RBX contient le nb d'elements du tableau
-                        (x86-mov cgc (x86-rax) (x86-imm-int 8))
+                        (x86-mov cgc (x86-rax) (x86-imm-int 0))
                         ;; RAX contient la valeur initiale
                         
                         (let ((label-LOOP (asm-make-label cgc (new-sym 'labelLOOP)))

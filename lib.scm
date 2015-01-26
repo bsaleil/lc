@@ -100,11 +100,9 @@
 
 (define (make-vector size . init)
   (let ((v ($make-vector size)))
-    (cond ((null? init)
-            (begin (vector-fill! v 0) v))
-        ((= (length init) 1)
-            (begin (vector-fill! v (car init)) v))
-        (else #f)))) ;; TODO ERR
+    (if (not (null? init))
+        (vector-fill! v (car init)))
+    v))
 
 ;; CHAR
 
@@ -212,13 +210,9 @@
 
 (define (make-string size . init)
   (let ((s ($make-string size)))
-    (cond ((null? init)
-            (string-fill! s (integer->char 0))  
-            s)
-          ((= (length init) 1)
-            (string-fill! s (car init))
-            s)
-          (else #f)))) ;; TODO ERR
+    (if (not (null? init))
+        (string-fill! s (car init)))
+    s))
 
 (define (list->string-h l str pos) ;; TODO : char list
   (if (null? l)
