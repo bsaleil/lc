@@ -1,5 +1,4 @@
 ;; EXPAND
-;; public (expand expr)
 
 (define (expand expr)
   (cond
@@ -164,9 +163,17 @@
                 (expand (cadr (cadr expr)))
                 ;; (cond (e1 e2))
                 `(if ,(expand (caadr expr))
-                     ,(expand (cadr (cadr expr)))
+                     ,(if (null? (cdr (cadr expr)))
+                          ;; (cond (e1))
+                          '#t
+                          ;; (cond (e1 e2))
+                          (expand (cadr (cadr expr))))
                      #f))) ;; NOTE : Should return #!void
-        ;; (cond (e1 e1) ...)
+        ;; (cond (e1 e2) ...)
         (else `(if ,(expand (caadr expr))
-                   ,(expand (cadr (cadr expr)))
+                   ,(if (null? (cdr (cadr expr)))
+                        ;; (cond (e1) ...)
+                        '#t
+                        ;; (cond (e1 e2) ...)
+                        (expand (cadr (cadr expr))))
                    ,(expand `(cond ,@(cddr expr)))))))

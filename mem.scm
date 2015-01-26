@@ -161,7 +161,7 @@
 ;; Return new position of copy-ptr
 (define (copy-root slot-addr current-copy-ptr)
    (let* ((value (get-i64 slot-addr))
-          (tag (bitwise-and value 3)))
+          (tag (bitwise-and value 3))) ;; TODO get-tag
      
      (if (= tag TAG_MEMOBJ)
          (let* (;; Object address in heap
@@ -331,7 +331,7 @@
         (cons ;; New scan position
               (+ scan (* 8 length))
               ;; New copy position
-              c)))))
+              cc)))))
 
 ;; Scaan free vars of procedure object
 (define (scan-freevars pos nb-free copy)
@@ -374,6 +374,13 @@
   
   (log-gc "GC BEGIN")
   
+  ;; CHECK BEFORE
+  (check-heap to-space copy-ptr)
+  (set! STACK_TYPES '())
+  (get-stack-types stack-begin stack-end)
+  (set! GLOBAL_TYPES '())
+  (get-global-types globals)
+  
   ;; 1 - Copy roots from stack
   (log-gc "--------------")
   (log-gc "-- STACK ROOTS")
@@ -396,8 +403,16 @@
   (if (>= (+ copy-ptr alloc-size) (+ to-space space-len))
     (out-of-memory))
   
-  ;; TODO
-  (check-heap to-space copy-ptr)
+  ;; CHECK AFTER
+  ; (check-heap to-space copy-ptr)
+  ; (let ((stack-before STACK_TYPES))
+  ;   (set! STACK_TYPES '())
+  ;   (get-stack-types stack-begin stack-end))
+  ;   ;(pp (equal? stack-before STACK_TYPES)))
+  ; (let ((global-before GLOBAL_TYPES))
+  ;   (set! GLOBAL_TYPES '())
+  ;   (get-global-types globals))
+  ;   ;(pp (equal? global-before GLOBAL_TYPES)))
   
   ;; Update from/to-spaces positions
   (let ((tmp from-space))
@@ -409,6 +424,31 @@
 
 ;;----------
 ;; TODO
+
+(define STACK_TYPES '())
+(define (get-stack-types sbegin send)
+  (if (>= sbegin send)
+      (let* ((slot-val (get-i64 sbegin))
+             (tag (bitwise-and slot-val 3)))
+        (if (= tag TAG_MEMOBJ)
+            (let ((header (get-i64 (- slot-val tag))))
+               (set! STACK_TYPES (cons (cons sbegin header) STACK_TYPES)))
+            (set! STACK_TYPES (cons (cons sbegin tag) STACK_TYPES)))
+        (get-stack-types (- sbegin 8) send))))
+
+(define GLOBAL_TYPES '())
+(define (get-global-types globals)
+  (if (not (null? globals))
+      (let* ((global (car globals))
+             (global-addr (+ 8 (* 8 (cdr global)) block-addr))
+             (slot-val (get-i64 global-addr))
+             (tag (bitwise-and slot-val 3)))
+        (if (= tag TAG_MEMOBJ)
+            (let ((header (get-i64 (- slot-val tag))))
+               (set! GLOBAL_TYPES (cons (cons global header) GLOBAL_TYPES)))
+            (set! GLOBAL_TYPES (cons (cons global tag) GLOBAL_TYPES)))
+        (get-global-types (cdr globals)))))
+
 
 (define (check-intospace addr)
   (if (or (< addr to-space)
@@ -448,6 +488,7 @@
                    (h (car   obj-header))
                    (s (cadr  obj-header))
                    (l (caddr obj-header)))
+              
               ;; stag
               (cond ;; CCTABLE & STRING
                     ((or (= s STAG_CCTABLE)
