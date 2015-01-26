@@ -1,11 +1,7 @@
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
-;; Pour la chaine, éviter de consommer un octet de plus si taille est un multiple de 8
 ;; TODO : 'encoded' as parameter to avoid shr/shl of make-string
-;; TODO : mlc-lambda offset 8 for cc-table header
-;; TODO : améliorer init-rtlib (x86)
-;; TODO : renommer BH
 
 ;;-----------------------------------------------------------------------------
 
@@ -19,6 +15,11 @@
   (println "GC: Out of memory.")
   (exit 1))
 
+;; When the GC copy an object to the to-space, it writes the
+;; BROKEN-HEART value at [addr + 0] and write forwarding
+;; pointer at [addr + 8].
+(define BROKEN-HEART -1)
+
 ;;-----------------------------------------------------------------------------
 ;; ALLOCATOR
 
@@ -31,43 +32,44 @@
       (gen-alloc-imm    cgc stag length)))
 
 ;; Allocate length(imm) bytes in heap
+;; DESTROY RAX !!
 (define (gen-alloc-imm cgc stag length)
-  (let ((label-allok (asm-make-label cgc (new-sym 'alloc-ok))))
-	  (x86-mov cgc (x86-rax) alloc-ptr)
-	  (x86-add cgc (x86-rax) (x86-imm-int (* length 8)))
-	  (x86-mov cgc (x86-rbx) (x86-imm-int (+ from-space space-len)))
-   	  (x86-cmp cgc (x86-rax) (x86-rbx)) ;; TODO
-   	  (x86-jl  cgc label-allok)
-      (x86-sub cgc (x86-rax) alloc-ptr) ;; TODO PARAM RAX = allocsize
+  (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok))))
+    ;; Remaining space in RAX
+    (x86-mov cgc (x86-rax) (x86-imm-int (+ from-space space-len)))
+    (x86-sub cgc (x86-rax) alloc-ptr)
+    
+      (x86-cmp cgc (x86-rax) (x86-imm-int (* length 8)))
+   	  (x86-jge  cgc label-alloc-ok)
+      ;; Allocation size in rax used by GC
+      (x86-mov cgc (x86-rax) (x86-imm-int (* length 8)))
       (gen-gc-call cgc)
-    ;; Can be allocated
-    (x86-label cgc label-allok)
+      
+    (x86-label cgc label-alloc-ok)
+    ;; Update alloc-ptr
     (x86-add cgc alloc-ptr (x86-imm-int (* length 8)))))
 
 ;; Allocate RAX(reg) + length(imm) bytes in heap
 ;; DESTROY RAX !!
-;; TODO : Rewrite alloc guard
+;; DESTROY RCX !!
 (define (gen-alloc-regimm cgc stag length)
-  (let ((label-allok (asm-make-label cgc (new-sym 'alloc-ok))))
-    (x86-push cgc (x86-rbx))
-    (x86-push cgc (x86-rax))
-    (x86-shl cgc (x86-rax) (x86-imm-int 1))
-    (x86-add cgc (x86-rax) alloc-ptr)  
-    (if (> length 0)
-      (x86-add cgc (x86-rax) (x86-imm-int (* 8 length))))
-    (x86-mov cgc (x86-rbx) (x86-imm-int (+ from-space space-len)))
-      (x86-cmp cgc (x86-rax) (x86-rbx))
-      (x86-jl cgc label-allok)
-      (x86-sub cgc (x86-rax) alloc-ptr) ;; TODO PARAM RAX = allocsize
-      (gen-gc-call cgc)
-    ;; Can be allocated
-    (x86-label cgc label-allok)
-    (x86-pop cgc (x86-rax))
+  (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok))))
+    
+    ;; Remaining space in RAX
+    (x86-mov cgc (x86-rcx) (x86-imm-int (+ from-space space-len)))
+    (x86-sub cgc (x86-rcx) alloc-ptr)
+    
     (x86-shl cgc (x86-rax) (x86-imm-int 1))
     (if (> length 0)
       (x86-add cgc (x86-rax) (x86-imm-int (* 8 length))))
-    (x86-add cgc alloc-ptr (x86-rax))
-    (x86-pop cgc (x86-rbx))))
+    
+    (x86-cmp cgc (x86-rcx) (x86-rax))
+    (x86-jge cgc label-alloc-ok)
+    ;; Allocation size is in RAX (used by GC)
+    (gen-gc-call cgc)
+      
+    (x86-label cgc label-alloc-ok)
+    (x86-add cgc alloc-ptr (x86-rax))))
 
 ;; Generate an heap object header
 ;; NOTE : 'life' is fixed as 6 for now.
@@ -86,10 +88,10 @@
 ;;   3 - Scan copied roots to copy referenced objects
 ;;   4 - Update to/from-space pointers and alloc pointer
 ;;
-;; When the GC copy an object it replaces the header [obj-addr + 0] with the value '-1'
+;; When the GC copy an object it replaces the header [obj-addr + 0] with the BROKEN-HEART
 ;; and replaces the first slot [obj-addr + 8] with forwarding pointer to the new addr
 ;; Each time the GC tries to copy an object it first checks if the object is already copied
-;; (i.e. [obj-addr + 0] == -1). If already copied it only patches the reference from forwarding
+;; (i.e. [obj-addr + 0] == BROKEN-HEART). If already copied it only patches the reference from forwarding
 ;; pointer.
 ;;
 ;;
@@ -161,7 +163,7 @@
 ;; Return new position of copy-ptr
 (define (copy-root slot-addr current-copy-ptr)
    (let* ((value (get-i64 slot-addr))
-          (tag (bitwise-and value 3))) ;; TODO get-tag
+          (tag (get-tag value)))
      
      (if (= tag TAG_MEMOBJ)
          (let* (;; Object address in heap
@@ -169,7 +171,7 @@
                 ;; Object header
                 (header-qword (get-i64 obj-addr)))
            
-           (if (= header-qword -1)
+           (if (= header-qword BROKEN-HEART)
               ;; Header is BH
               ;; Patch memory slot
               (let ((new-pos (get-i64 (+ 8 obj-addr))))
@@ -186,7 +188,7 @@
                     (c (copy-bytes obj-addr current-copy-ptr length)))
                 
                  ;; Write BH
-                 (put-i64 obj-addr -1)
+                 (put-i64 obj-addr BROKEN-HEART)
                  ;; Write new position (tagged)
                  (put-i64 (+ 8 obj-addr) (+ current-copy-ptr TAG_MEMOBJ))
                  ;; Patch slot
@@ -374,13 +376,6 @@
   
   (log-gc "GC BEGIN")
   
-  ;; CHECK BEFORE
-  (check-heap to-space copy-ptr)
-  (set! STACK_TYPES '())
-  (get-stack-types stack-begin stack-end)
-  (set! GLOBAL_TYPES '())
-  (get-global-types globals)
-  
   ;; 1 - Copy roots from stack
   (log-gc "--------------")
   (log-gc "-- STACK ROOTS")
@@ -403,17 +398,6 @@
   (if (>= (+ copy-ptr alloc-size) (+ to-space space-len))
     (out-of-memory))
   
-  ;; CHECK AFTER
-  ; (check-heap to-space copy-ptr)
-  ; (let ((stack-before STACK_TYPES))
-  ;   (set! STACK_TYPES '())
-  ;   (get-stack-types stack-begin stack-end))
-  ;   ;(pp (equal? stack-before STACK_TYPES)))
-  ; (let ((global-before GLOBAL_TYPES))
-  ;   (set! GLOBAL_TYPES '())
-  ;   (get-global-types globals))
-  ;   ;(pp (equal? global-before GLOBAL_TYPES)))
-  
   ;; Update from/to-spaces positions
   (let ((tmp from-space))
     (set! from-space to-space)
@@ -422,92 +406,106 @@
   ;; Return new position of alloc-ptr
   copy-ptr)
 
-;;----------
-;; TODO
+;;-------------------------
+;; HEAP DEV DEBUG FUNCTIONS
+;;-------------------------
 
-(define STACK_TYPES '())
-(define (get-stack-types sbegin send)
-  (if (>= sbegin send)
-      (let* ((slot-val (get-i64 sbegin))
-             (tag (bitwise-and slot-val 3)))
-        (if (= tag TAG_MEMOBJ)
-            (let ((header (get-i64 (- slot-val tag))))
-               (set! STACK_TYPES (cons (cons sbegin header) STACK_TYPES)))
-            (set! STACK_TYPES (cons (cons sbegin tag) STACK_TYPES)))
-        (get-stack-types (- sbegin 8) send))))
+;; Fill assoc list STACK_TYPES.
+;; Each stack slot is associated to a tag (or stag if mem obj)
+;; Ex ((addrSlot1 2) (addrSlot2 630) ...)
+;; Used to check that reachable objects from stack keep the same shape after GC.
+; (define STACK_TYPES '())
+; (define (get-stack-types sbegin send)
+;   (if (>= sbegin send)
+;       (let* ((slot-val (get-i64 sbegin))
+;              (tag (bitwise-and slot-val 3)))
+;         (if (= tag TAG_MEMOBJ)
+;             (let ((header (get-i64 (- slot-val tag))))
+;                (set! STACK_TYPES (cons (cons sbegin header) STACK_TYPES)))
+;             (set! STACK_TYPES (cons (cons sbegin tag) STACK_TYPES)))
+;         (get-stack-types (- sbegin 8) send))))
 
-(define GLOBAL_TYPES '())
-(define (get-global-types globals)
-  (if (not (null? globals))
-      (let* ((global (car globals))
-             (global-addr (+ 8 (* 8 (cdr global)) block-addr))
-             (slot-val (get-i64 global-addr))
-             (tag (bitwise-and slot-val 3)))
-        (if (= tag TAG_MEMOBJ)
-            (let ((header (get-i64 (- slot-val tag))))
-               (set! GLOBAL_TYPES (cons (cons global header) GLOBAL_TYPES)))
-            (set! GLOBAL_TYPES (cons (cons global tag) GLOBAL_TYPES)))
-        (get-global-types (cdr globals)))))
+;; Fill assoc list GLOBAL_TYPES.
+;; Each global slot is associated to a tag (or stag if mem obj)
+;; Ex ((addrSlot1 2) (addrSlot2 630) ...)
+;; Used to check that reachable objects from globals keep the same shape after GC.
+; (define GLOBAL_TYPES '())
+; (define (get-global-types globals)
+;   (if (not (null? globals))
+;       (let* ((global (car globals))
+;              (global-addr (+ 8 (* 8 (cdr global)) block-addr))
+;              (slot-val (get-i64 global-addr))
+;              (tag (bitwise-and slot-val 3)))
+;         (if (= tag TAG_MEMOBJ)
+;             (let ((header (get-i64 (- slot-val tag))))
+;                (set! GLOBAL_TYPES (cons (cons global header) GLOBAL_TYPES)))
+;             (set! GLOBAL_TYPES (cons (cons global tag) GLOBAL_TYPES)))
+;         (get-global-types (cdr globals)))))
 
+;; Check if addr is in to space
+; (define (check-intospace addr)
+;   (if (or (< addr to-space)
+;           (>= addr (+ to-space space-len)))
+;     (error "Referenced object out of to-space, heap check failed")
+;     #t))
 
-(define (check-intospace addr)
-  (if (or (< addr to-space)
-          (>= addr (+ to-space space-len)))
-    (error "Referenced object out of to-space, heap check failed")
-    #t))
+;; Check if header at addr is not a BH
+; (define (check-validheader addr)
+;   (let ((h (get-i64 addr)))
+;     (if (< h 0)
+;         (error "Invalid header, heap check failed")
+;         #t)))
 
-(define (check-validheader addr)
-  (let ((h (get-i64 addr)))
-    (if (< h 0)
-        (error "Invalid header, heap check failed")
-        #t)))
+;; Check if the field at 'addr' is in to space and is not a BH
+; (define (check-field addr)
+;   (let* ((val (get-i64 addr))
+;          (tag (bitwise-and val 3)))
+;     (if (= tag TAG_MEMOBJ)
+;        (begin ;; 1 - Object is in to space
+;               (check-intospace (- val tag))
+;               ;; 2 - Object header != BROKEN-HEART
+;               (check-validheader (- val tag)))
+;        #t)))
 
-(define (check-field addr)
-  (let* ((val (get-i64 addr))
-         (tag (bitwise-and val 3)))
-    (if (= tag TAG_MEMOBJ)
-       (begin ;; 1 - Object is in to space
-              (check-intospace (- val tag))
-              ;; 2 - Object header != -1
-              (check-validheader (- val tag)))
-       #t)))
+;; Check all vector fields
+; (define (check-vector scan l)
+;   (if (= l 0)
+;       #t
+;       (begin (check-field scan)
+;              (check-vector (+ scan 8) (- l 1)))))
 
-(define (check-vector scan l)
-  (if (= l 0)
-      #t
-      (begin (check-field scan)
-             (check-vector (+ scan 8) (- l 1)))))
-
-(define (check-heap scan copy)
-  (cond ((> scan copy)
-            (error "Unexpected behavior, heap check failed."))
-        ((= scan copy)
-            #t)
-        ((< scan copy)
-            (let* ((obj-header (read-header scan))
-                   (h (car   obj-header))
-                   (s (cadr  obj-header))
-                   (l (caddr obj-header)))
+;; Check all heap objects after GC (scan to space)
+; (define (check-heap scan copy)
+;   (cond ((> scan copy)
+;             (error "Unexpected behavior, heap check failed."))
+;         ((= scan copy)
+;             #t)
+;         ((< scan copy)
+;             (let* ((obj-header (read-header scan))
+;                    (h (car   obj-header))
+;                    (s (cadr  obj-header))
+;                    (l (caddr obj-header)))
               
-              ;; stag
-              (cond ;; CCTABLE & STRING
-                    ((or (= s STAG_CCTABLE)
-                         (= s STAG_STRING))
-                        ;; Nothing to do
-                        (check-heap (+ scan (* 8 l)) copy))
-                    ;; PROCEDURE
-                    ((= s STAG_PROCEDURE)
-                        ;; CCtable is special (not tagged)
-                        (check-intospace   (+ scan 8))
-                        (check-validheader (+ scan 8))
-                        (check-heap (+ scan (* 8 l)) copy))
-                    ;; MOBJECT
-                    ((= s STAG_MOBJECT)
-                        (check-field (+ scan 8))
-                        (check-heap (+ scan 16) copy))
-                    ;; VECTOR
-                    ((= s STAG_VECTOR)
-                        (check-vector scan l)
-                        (check-heap (+ scan (* 8 l)) copy))
-                    (else (pp-stag s)
-                          (error "NYI")))))))
+;               ;; stag
+;               (cond ;; CCTABLE & STRING
+;                     ((or (= s STAG_CCTABLE)
+;                          (= s STAG_STRING))
+;                         ;; Nothing to do
+;                         (check-heap (+ scan (* 8 l)) copy))
+;                     ;; PROCEDURE
+;                     ((= s STAG_PROCEDURE)
+;                         ;; CCtable is special (not tagged)
+;                         ;; Free vars are not checked
+;                         (check-intospace   (+ scan 8))
+;                         (check-validheader (+ scan 8))
+;                         (check-heap (+ scan (* 8 l)) copy))
+;                     ;; MOBJECT
+;                     ((= s STAG_MOBJECT)
+;                         (check-field (+ scan 8))
+;                         (check-heap (+ scan 16) copy))
+;                     ;; VECTOR
+;                     ((= s STAG_VECTOR)
+;                         (check-vector scan l)
+;                         (check-heap (+ scan (* 8 l)) copy))
+;                     (else (pp-stag s)
+;                           (error "NYI")))))))

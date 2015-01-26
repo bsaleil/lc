@@ -121,7 +121,9 @@
          (let* ((lazy-pair (mlc-pair succ))
                 (lazy-cdr  (mlc-quote (cdr ast) lazy-pair)))
            (mlc-quote (car ast) lazy-cdr)))
-        ((symbol? ast) (begin (pp ast) (error "NYI quoted symbol")))
+        ((symbol? ast)
+            (pp ast)
+            (error "NYI quoted symbol"))
         (else (gen-ast ast succ))))
 
 ;;
@@ -354,7 +356,6 @@
                              (header-reg (if ms? (x86-rdx) (x86-rbx))))
                         
                         (x86-pop cgc (x86-rax))           ;; RAX = encoded length
-                        ;(x86-mov cgc (x86-rcx) alloc-ptr) ;; RCX = initial alloc-ptr state TODO
                         (x86-mov cgc (x86-rbx) (x86-rax)) ;;
                         
                         (if ms?
