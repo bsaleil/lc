@@ -22,6 +22,21 @@
 (pp '(1 () (#f 4) 5 #t))
 (pp '(1 #f (3 4) ()))
 
+(pp (make-vector 2 42))
+(pp (list->vector '(1 2 3 4 5)))
+(pp (make-vector 0))
+
+(pp #\a)
+(pp #\A)
+(pp #\newline)
+(pp (string-ref "a a" 1))
+
+(pp "Hello World")
+(pp (make-string 4 #\Z))
+
+(pp 'SYMBOL)
+(pp (string->symbol (string-append "SYM" (symbol->string 'BOL))))
+
 ;0
 ;0
 ;0
@@ -39,3 +54,14 @@
 ;(1 #f 3)
 ;(1 () (#f 4) 5 #t)
 ;(1 #f (3 4) ())
+;#(42 42)
+;#(1 2 3 4 5)
+;#()
+;#\a
+;#\A
+;#\newline
+;#\space
+;"Hello World"
+;"ZZZZ"
+;SYMBOL
+;SYMBOL

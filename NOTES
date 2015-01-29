@@ -3,5 +3,13 @@
 ==
 
 -- tester en enlevant le passage du ctx par id pour bug
--- letrec do let-nommé
--- la macro let peut etre réduite à une seule lambda ?
+-- make-vector avec 2 arg en macro en attendant l'implémentation du paramètre reste
+-- Lazy expand, attendre le dernier moment pour expand? ex si on rencontre un let, on expand puis compile ?
+-- Modifier les tailles pour 'header-word' pour taille en octets (pair,vector,string,...)
+
+
+Pour benchmarks :
+
+-- Char et Strings
+-- Define internes
+-- 'Do'

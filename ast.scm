@@ -1,22 +1,29 @@
-;;-----------------------------------------------------------------------------
 
+(include "~~lib/_x86#.scm")
+(include "~~lib/_asm#.scm")
+
+;; Base ctx for procedure call
+(define base-ctx (list CTX_CTXID CTX_RETAD CTX_CLO))
+
+;; TODO : RCX global ? (used by if/else stubs)
+
+;;-----------------------------------------------------------------------------
 ;; AST FUNCTIONS
 
-;;-----------------------------------------------------------------------------
-
-;; Global ids
-;; Contains a list of global ids with id,position,type-information
-;; ex. '((foo 1 number) (bar 2 bool) (fun 3 closure))
-(define globals '())
-
-;;-----------------------------------------------------------------------------
+;; Gen lazy code from a list of exprs
+(define (gen-ast-l lst succ)
+  (cond ((null? lst) (error "Empty list"))
+        ((= (length lst) 1) (gen-ast (car lst) succ))
+        (else (gen-ast (car lst) (gen-ast-l (cdr lst) succ)))))
 
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
-  (cond ;; Literal
-        ((or (number? ast) (boolean? ast) (null? ast)) (mlc-literal ast succ))
+  (cond ;; String
+        ((string? ast)  (mlc-string ast succ #f))
+        ;; Literal
+        ((literal? ast) (mlc-literal ast succ))
         ;; Symbol
-        ((symbol? ast) (mlc-symbol ast succ))
+        ((symbol? ast)  (mlc-identifier ast succ))
         ;; Pair
         ((pair? ast)
          (let ((op (car ast)))
@@ -25,7 +32,7 @@
                  ;; TODO VERIF
                  ((eq? op '$verif) (mlc-verif ast succ))
                  ;; Special without call
-                 ((member op '($cons $car $cdr)) (mlc-special-nc ast succ))
+                 ((member op '($string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ)) ;; TODO : (eq? op 'quote)
                  ;; Set!
@@ -37,7 +44,7 @@
                  ;; Operator gen
                  ((member op '($eq?)) (mlc-op-gen ast succ op))
                  ;; Tests
-                 ((member op '($number? $procedure? $pair?)) (mlc-test ast succ))
+                 ((member op '($symbol? $string? $char? $vector? $number? $procedure? $pair?)) (mlc-test ast succ))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -47,6 +54,10 @@
         ;; *unknown*
         (else
          (error "unknown ast" ast))))
+
+;;-----------------------------------------------------------------------------
+;; MLC FUNCTIONS :
+;; Make a lazy code from ast
 
 ;;
 ;; Make lazy code from LITERAL
@@ -63,7 +74,53 @@
                        (ctx-push ctx
                                  (cond ((number? ast)  CTX_NUM)
                                        ((boolean? ast) CTX_BOOL)
+                                       ((char? ast)    CTX_CHAR)
                                        ((null? ast)    CTX_NULL)))))))
+;;
+;; Make lazy code from symbol literal
+;; (ex. 'Hello)
+;;
+(define (mlc-symbol ast succ)
+  (mlc-string (symbol->string ast) succ #t))
+
+;;
+;; Make lazy code from string literal
+;;
+(define (mlc-string ast succ symbol?)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((len (string-length ast))
+             (size (arithmetic-shift (bitwise-and (+ len 8) (bitwise-not 7)) -3))
+             (header-word (mem-header (+ size 2) (if symbol?
+                                                     STAG_SYMBOL
+                                                     STAG_STRING))))
+        
+        (gen-allocation cgc ctx (if symbol? STAG_SYMBOL STAG_STRING) (+ size 2))
+        
+        ;; Write header
+        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+        (x86-mov cgc (x86-mem (- (* -8 size) 16) alloc-ptr) (x86-rax))
+        ;; Write length
+        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (string-length ast))))
+        (x86-mov cgc (x86-mem (- (* -8 size) 8) alloc-ptr) (x86-rax)) 
+        ;; Write chars
+        (write-chars cgc ast 0 (* -8 size))
+        ;; Push string
+        (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 (+ size 2))) alloc-ptr))
+        (x86-push cgc (x86-rax))
+        (jump-to-version cgc succ (ctx-push ctx (if symbol? CTX_SYM CTX_STR)))))))
+      
+;; Write chars of the literal string 'str':
+;; Write str[pos] char to [alloc-ptr+offset], and write next chars
+(define (write-chars cgc str pos offset)
+   (if (< pos (string-length str))
+             (let* ((int (char->integer (string-ref str pos)))
+                    (encoded (if (> int 127)
+                                 (* -1 (- 256 int))
+                                 int)))
+             (x86-mov cgc (x86-al) (x86-imm-int encoded))
+             (x86-mov cgc (x86-mem offset alloc-ptr) (x86-al))
+             (write-chars cgc str (+ pos 1) (+ offset 1)))))
 
 ;;
 ;; Make lazy code from QUOTE
@@ -73,43 +130,48 @@
          (let* ((lazy-pair (mlc-pair succ))
                 (lazy-cdr  (mlc-quote (cdr ast) lazy-pair)))
            (mlc-quote (car ast) lazy-cdr)))
-        ((symbol? ast) (begin (pp ast) (error "NYI quoted symbol")))
+        ((symbol? ast)
+            (mlc-symbol ast succ))
         (else (gen-ast ast succ))))
 
 ;;
 ;; Make lazy code from SET!
 ;;
 (define (mlc-set! ast succ)
-  (let* ((variable (cadr ast))
-        (lazy-set (make-lazy-code
-                    (lambda (cgc ctx)
-                      (let ((glookup-res (assoc variable globals)))
-                        (if glookup-res
-                            ;; Global
-                            (begin (x86-pop cgc (x86-rax))
-                                   (x86-mov cgc (x86-mem (* 8 (cdr glookup-res)) (x86-r10)) (x86-rax))
-                                   (jump-to-version cgc succ (ctx-pop ctx)))
-                            ;;
-                            (let ((res (assoc variable (ctx-env ctx))))
-                               (if (pair? (cdr res))
-                                  (error "NYI set! freevar")
-                                  (error "NTI set! localvar")))))))))
-    (gen-ast (caddr ast) lazy-set)))
+  (let* ((id (cadr ast))
+         (lazy-set
+            (make-lazy-code
+               (lambda (cgc ctx)
+                  (let ((glookup-res (assoc id globals)))
+                     (if glookup-res
+                        ;; Global var
+                        (gen-set-globalvar cgc ctx glookup-res)
+                           (let ((res (assoc id (ctx-env ctx))))
+                              (if res
+                                 (if (eq? (identifier-type (cdr res)) 'free)
+                                    (gen-set-freevar  cgc ctx res)  ;; Free var
+                                    (gen-set-localvar cgc ctx res)) ;; Local var
+                                 (error "Can't find variable: " id)))))
+                  (x86-push cgc (x86-imm-int ENCODING_VOID))
+
+                  (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
+
+     (gen-ast (caddr ast) lazy-set)))
 
 ;;
 ;; Make lazy code from SYMBOL
 ;;
-(define (mlc-symbol ast succ)
+(define (mlc-identifier ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
       ;; Lookup in local env
       (let* ((res (assoc ast (ctx-env ctx)))
              (ctx-type (if res
-                          (if (pair? (cdr res))
+                          (if (eq? (identifier-type (cdr res)) 'free)
                              ;; Free var
-                             (gen-get-freevar  cgc ctx res 'stack)
+                             (gen-get-freevar  cgc ctx res 'stack #f)
                              ;; Local var
-                             (gen-get-localvar cgc ctx res 'stack))
+                             (gen-get-localvar cgc ctx res 'stack #f))
                           (let ((res (assoc ast globals)))
                              (if res
                                 ;; Global var
@@ -126,12 +188,8 @@
          (lazy-bind (make-lazy-code (lambda (cgc ctx)
                                      (x86-pop cgc (x86-rax))
                                      (let* ((res (assoc identifier globals)) ;; Lookup in globals
-                                           (pos (cadr res))                  ;; Get global pos
-                                           (ctx-type (car (ctx-stack ctx)))) ;; Get type from top of stack
-                                       
-                                       ;; Set global type in globals
-                                       (set-cdr! (cdr res) ctx-type)
-                                                                              
+                                            (pos (cdr res)))                 ;; Get global pos
+                                                   
                                        (x86-mov cgc (x86-mem (* 8 pos) (x86-r10)) (x86-rax)))
 
                                      (x86-push cgc (x86-imm-int ENCODING_VOID))
@@ -142,7 +200,7 @@
     (make-lazy-code (lambda (cgc ctx)
                       (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
                       (x86-mov cgc (x86-mem (* 8 (length globals)) (x86-r10)) (x86-rax))
-                      (set! globals (cons (cons identifier (cons (length globals) CTX_VOID)) globals))
+                      (set! globals (cons (cons identifier (length globals)) globals))
                       (jump-to-version cgc lazy-val ctx)
                       ))))
 
@@ -175,64 +233,399 @@
                     (lambda (cgc ctx)
                       (let ((offset
                               (if (eq? special '$car)
-                                  (- 8 TAG_MEMOBJ)
+                                  (-  8 TAG_MEMOBJ)
                                   (- 16 TAG_MEMOBJ))))
                         (x86-pop cgc (x86-rax))
                         (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
                         (x86-push cgc (x86-rax))
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK))))))
+                 ;; CHAR<->INTEGER
+                 ((member special '($char->integer $integer->char))
+                  (let ((lazy-charint
+                          (make-lazy-code
+                            (lambda (cgc ctx)
+                              (if (eq? special '$char->integer)
+                                  (x86-xor cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8)
+                                  (x86-or  cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8))
+                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
+                                                                  (cond ((eq? special '$char->integer) CTX_NUM)
+                                                                        ((eq? special '$integer->char) CTX_CHAR))))))))
+                    (make-lazy-code
+                      (lambda (cgc ctx)
+                        (let ((ctx-type  (car (ctx-stack ctx)))
+                              (lazy-fail (lambda (ERR) (make-lazy-code
+                                                         (lambda (cgc ctx)
+                                                           (gen-error cgc ERR))))))
+                          (cond ((or (and (eq? special '$char->integer) (eq? ctx-type CTX_CHAR))
+                                     (and (eq? special '$integer->char) (eq? ctx-type CTX_NUM)))
+                                 (jump-to-version cgc lazy-charint ctx))
+                                ((and (eq? special '$char->integer) (eq? ctx-type CTX_UNK)) ;; TODO : gen dyn commun
+                                 (jump-to-version cgc
+                                                  (gen-dyn-type-test CTX_CHAR
+                                                                     0
+                                                                     (ctx-push (ctx-pop ctx) CTX_CHAR)
+                                                                     lazy-charint
+                                                                     ctx
+                                                                     (lazy-fail ERR_CHAR_EXPECTED))
+                                                  ctx))
+                                ((and (eq? special '$integer->char) (eq? ctx-type CTX_UNK))
+                                 (jump-to-version cgc
+                                                  (gen-dyn-type-test CTX_NUM
+                                                                     0
+                                                                     (ctx-push (ctx-pop ctx) CTX_NUM)
+                                                                     lazy-charint
+                                                                     ctx
+                                                                     (lazy-fail ERR_NUM_EXPECTED))
+                                                  ctx))
+                                (else (if (eq? special '$char->integer)
+                                          (gen-error cgc ERR_CHAR_EXPECTED)
+                                          (gen-error cgc ERR_NUM_EXPECTED)))))))))
+                 ;; MAKE-STRING
+                 ((eq? special '$make-string)
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      (let* ((header-word (mem-header 3 STAG_STRING)))
+                        
+                        (x86-pop cgc (x86-rax)) ;; Pop encoded length
+                        (x86-mov cgc (x86-rbx) (x86-rax))
+                        
+                        ;; Nb chars to byte size
+                        (x86-shr cgc (x86-rax) (x86-imm-int 2))
+                        (x86-and cgc (x86-rax) (x86-imm-int (bitwise-not 7)))
+                        (x86-shr cgc (x86-rax) (x86-imm-int 1))
+                        (x86-mov cgc (x86-rdx) (x86-rax))
+                        
+                        ;; Alloc
+                        (gen-allocation cgc ctx STAG_STRING 3 #t)
+                        
+                        ;; Get string position in RCX
+                        (x86-mov cgc (x86-rcx) (x86-rdx))
+                        (x86-shl cgc (x86-rcx) (x86-imm-int 1))
+                        (x86-neg cgc (x86-rcx))
+                        (x86-add cgc (x86-rcx) alloc-ptr)
+                        (x86-sub cgc (x86-rcx) (x86-imm-int 24))
+                        
+                        ;; Fill string
+                        (x86-push cgc (x86-rbx))
+                        
+                        ;; RCX contient la position du vecteur
+                        (x86-mov cgc (x86-rax) (x86-rcx))
+                        
+                        (let ((label-loop (asm-make-label cgc (new-sym 'fill-vector-loop)))
+                              (label-end  (asm-make-label cgc (new-sym 'fill-vector-end))))
+                        
+                        ;; LOOP:
+                        ;;   if (rbx == 0) jump END
+                        (x86-label cgc label-loop)
+                        (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
+                        (x86-jle  cgc label-end)
+                        
+                          ;; Init string slot
+                          (x86-mov cgc (x86-mem 16 (x86-rax)) (x86-imm-int 0) 64) ;; Write 0 in 8 chars
+                          ;; Update offset and remaining elements nb
+                          (x86-add cgc (x86-rax) (x86-imm-int 8))
+                          ;; Loop
+                          (x86-sub cgc (x86-rbx) (x86-imm-int 32)) ;; Remove 8 to encoded number (=8*4=32)
+                          (x86-jmp cgc label-loop)
+                        
+                        ;; END:
+                        (x86-label cgc label-end)
+                        (x86-pop cgc (x86-rbx)))  
+                        
+                        ;; Write encoded length
+                        (x86-mov cgc (x86-mem 8 (x86-rcx)) (x86-rbx))
+                        
+                        ;; Write header
+                        (x86-shl cgc (x86-rdx) (x86-imm-int 6))
+                        (x86-add cgc (x86-rdx) (x86-imm-int header-word))
+                        (x86-mov cgc (x86-mem 0 (x86-rcx)) (x86-rdx))
+                        
+                        ;; Push vector
+                        (x86-add cgc (x86-rcx) (x86-imm-int TAG_MEMOBJ))
+                        (x86-push cgc (x86-rcx))
+                        
+                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR))))))
+                        
+                        
+                 ;; MAKE-VECTOR
+                 ((eq? special '$make-vector)
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      (let* ((header-word (mem-header 2 STAG_VECTOR))
+                             (header-reg (x86-rbx)))
+                        
+                        (x86-pop cgc (x86-rax)) ;; Pop encoded length
+                        (x86-mov cgc (x86-rbx) (x86-rax))
+                        
+                        ;; Alloc
+                        (gen-allocation cgc ctx STAG_VECTOR 2 #t)
+                        
+                        ;; Get vector position in RCX
+                        (x86-mov cgc (x86-rax) (x86-rbx))
+                        (x86-shl cgc (x86-rax) (x86-imm-int 1))
+                        (x86-add cgc (x86-rax) (x86-imm-int 16))
+                        (x86-mov cgc (x86-rcx) alloc-ptr)
+                        (x86-sub cgc (x86-rcx) (x86-rax))
+                        
+                        ;; Fill vector
+                        (x86-push cgc (x86-rcx))
+                        (x86-push cgc (x86-rbx))
+                        
+                          ;; Init value in RAX (0)
+                          (x86-mov cgc (x86-rax) (x86-imm-int 0))
+                          
+                          (let ((label-loop (asm-make-label cgc (new-sym 'fill-vector-loop)))
+                                (label-end  (asm-make-label cgc (new-sym 'fill-vector-end))))
+                          
+                          ;; LOOP:
+                          ;;    if (rbx == 0) jump END
+                          (x86-label cgc label-loop)
+                          (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
+                          (x86-je  cgc label-end)
+                          
+                            ;; Init vector slot
+                            (x86-mov cgc (x86-mem 16 (x86-rcx)) (x86-rax))
+                            ;; Update offset and remaining elements nb
+                            (x86-add cgc (x86-rcx) (x86-imm-int 8))
+                            (x86-sub cgc (x86-rbx) (x86-imm-int 4))
+                            ;; loop
+                            (x86-jmp cgc label-loop)
+                        
+                        ;; END:  
+                        (x86-label cgc label-end)
+                        (x86-pop cgc (x86-rbx))
+                        (x86-pop cgc (x86-rcx)))
+                        
+                        ;; Write encoded length
+                        (x86-mov cgc (x86-mem 8 (x86-rcx)) (x86-rbx))
+                        
+                        ;; Write header
+                        (x86-shl cgc (x86-rbx) (x86-imm-int 6))
+                        (x86-add cgc (x86-rbx) (x86-imm-int header-word))
+                        (x86-mov cgc (x86-mem 0 (x86-rcx)) (x86-rbx))
+                        
+                        ;; Push vector
+                        (x86-add cgc (x86-rcx) (x86-imm-int TAG_MEMOBJ))
+                        (x86-push cgc (x86-rcx))
+                        
+                        ;;
+                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VECT))))))
+                 
+                 ;; STRING<->SYMBOL
+                 ;; TODO comentaires
+                 ;; TODO optimiser x86
+                 ((member special '($string->symbol $symbol->string))
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      
+                      ;; Alloc
+                      (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                      (x86-sub cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                      (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax)))
+                      (x86-shr cgc (x86-rax) (x86-imm-int 8))
+                      (x86-shl cgc (x86-rax) (x86-imm-int 2))
+                      (x86-mov cgc (x86-rbx) (x86-rax))
+                      (gen-allocation cgc ctx STAG_SYMBOL 0 #t)
+                
+                      ;; Symbol address in rbx
+                      (x86-shl cgc (x86-rbx) (x86-imm-int 1))
+                      (x86-neg cgc (x86-rbx))
+                      (x86-add cgc (x86-rbx) alloc-ptr)
+                      
+                      ;; String address in rax
+                      (x86-pop cgc (x86-rax))
+                      (x86-sub cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                      
+                      ;; Mov length in symbol
+                      (x86-mov cgc (x86-rcx) (x86-mem 8 (x86-rax)))
+                      (x86-mov cgc (x86-mem 8 (x86-rbx)) (x86-rcx))
+                      
+                      ;; Mov header in symbol
+                      (x86-mov cgc (x86-rcx) (x86-mem 0 (x86-rax)))
+                      (if (eq? special '$string->symbol)
+                         (x86-sub cgc (x86-rcx) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3)))
+                         (x86-add cgc (x86-rcx) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3))))
+                      (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-rcx))
+                      
+                      ;; Encoded length in rcx
+                      (x86-shr cgc (x86-rcx) (x86-imm-int 8))
+                      (x86-shl cgc (x86-rcx) (x86-imm-int 3))
+                                            
+                      ;; If encoded length == 16
+                      ;;    jump label-fin
+                      (let ((label-loop (asm-make-label cgc (new-sym 'label-loop)))
+                            (label-fin  (asm-make-label cgc (new-sym 'label-fin))))
+                        
+                        (x86-label cgc label-loop)
+                        (x86-cmp cgc (x86-rcx) (x86-imm-int 16))
+                        (x86-jle cgc label-fin)
+                        
+                          (x86-mov cgc (x86-rdx) (x86-mem -8 (x86-rcx) (x86-rax)))
+                          (x86-mov cgc (x86-mem -8 (x86-rcx) (x86-rbx)) (x86-rdx))
+                          (x86-sub cgc (x86-rcx) (x86-imm-int 8))
+                          (x86-jmp cgc label-loop)
+                      
+                        (x86-label cgc label-fin))
+                        
+                      (x86-add cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
+                      (x86-push cgc (x86-rbx))
+                      
+                      (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM)))))
+                      
+                      
+                      
+                 
+                 
+                 ;; VECTOR-LENGTH & STRING-LENGTH
+                 ((member special '($vector-length $string-length))
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      (x86-pop cgc (x86-rax)) ;; Pop vector
+                      (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+                      (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM)))))
+                 
+                 ;; VECTOR-REF & STRING-REF
+                 ((member special '($vector-ref $string-ref))
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      (let ((vr? (eq? special '$vector-ref)))
+                        (x86-pop cgc (x86-rax)) ;; Pop index
+                        (x86-pop cgc (x86-rbx)) ;; Pop vector
+                        (cond (vr?
+                                (x86-shl cgc (x86-rax) (x86-imm-int 1))
+                                (x86-add cgc (x86-rbx) (x86-rax))
+                                (x86-push cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx)))
+                                (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_UNK)))
+                              ((not vr?)
+                               (x86-shr cgc (x86-rax) (x86-imm-int 2)) ;; Decode position
+                               (x86-mov cgc (x86-al) (x86-mem (- 16 TAG_MEMOBJ) (x86-rax) (x86-rbx))) ;; Get Char
+                               (x86-and cgc (x86-rax) (x86-imm-int 255)) ;; Clear bits before al
+                               (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode char
+                               (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
+                               (x86-push cgc (x86-rax)) ;; Push char
+                               (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_CHAR))))))))                         
+                        
+                 
+                 ;; VECTOR-SET! & STRING-SET!
+                 ((member special '($vector-set! $string-set!))
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                        (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))  ;; Get index
+                        (x86-mov cgc (x86-rbx) (x86-mem 16 (x86-rsp))) ;; Get vector
+                        (x86-mov cgc (x86-rdx) (x86-mem 0 (x86-rsp)))  ;; Get new value
+                        
+                        (cond ((eq? special '$vector-set!)
+                                (x86-shl cgc (x86-rax) (x86-imm-int 1))
+                                (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx) (x86-rax)) (x86-rdx)))
+                              
+                              (else
+                                (x86-shr cgc (x86-rdx) (x86-imm-int 2))
+                                (x86-shr cgc (x86-rax) (x86-imm-int 2))
+                                (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx) (x86-rax)) (x86-dl))))
+                        
+                        (x86-add cgc (x86-rsp) (x86-imm-int 24))
+                        (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
+                        (x86-push cgc (x86-rax))
+                        
+                        (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 3) CTX_VOID)))))
+                 
                  ;; OTHERS
                  (else (error "NYI")))))
-
-    (cond ;; $CONS
-          ((eq? special '$cons)
+    
+    ;; Build lazy objects chain
+    (cond ;; $cons, $string-ref, $vector-ref 
+          ((member special '($cons $string-ref $vector-ref))
            (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
              (gen-ast (cadr ast) lazy-right)))
-          ;; $CAR & $CDR
-          ((member special '($car $cdr))
-           (let* ((lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_PAIR_EXPECTED))))
-                  (lazy-main (make-lazy-code
-                               (lambda (cgc ctx)
-                                 (let ((type (car (ctx-stack ctx))))
-                                   (cond ((eq? type CTX_PAI) (jump-to-version cgc lazy-special ctx))
-                                         ((eq? type CTX_UNK) (jump-to-version cgc
-                                                                              (gen-dyn-type-test CTX_PAI
-                                                                                                 0
-                                                                                                 (ctx-push (ctx-pop ctx) CTX_PAI)
-                                                                                                 lazy-special
-                                                                                                 ctx
-                                                                                                 lazy-fail)
-                                                                              ctx))
-                                         (else (gen-error cgc ERR_PAIR_EXPECTED))))))))
-             (gen-ast (cadr ast) lazy-main))))))
-
+          ;; $car, $cdr, $make-vector, $string->symbol, $symbol->string
+          ((member special '($symbol->string $string->symbol $string-length $integer->char $char->integer $vector-length $make-string $make-vector $car $cdr))
+           (gen-ast (cadr ast) lazy-special))
+          ;; $string-set!, $vector-set!
+          ((member special '($string-set! $vector-set!))
+           (let* ((lazy-value (gen-ast (cadddr ast) lazy-special))
+                  (lazy-index (gen-ast (caddr  ast) lazy-value)))
+             (gen-ast (cadr ast) lazy-index)))
+          ;; Others
+          (else (error "NYI")))))
 
 ;;
 ;; Make lazy code from LAMBDA
 ;;
 (define (mlc-lambda ast succ)
-  (let* (;; Lambda parameters
-         (params (cadr ast))
-         ;; Lambda free vars
+  (let* (;; Lambda free vars
          (fvars #f)
+         ;; Lambda mutable vars
+         (mvars #f)
+         ;; Saved env
+         (saved-env #f)
+         ;; Rest param ?
+         (rest-param (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
+                         (and (pair? (cadr ast)) (not (list? (cadr ast)))))) ;; (foo a..z . rest)
+         ;; Params list
+         (params
+           (if rest-param
+              (formal-params (cadr ast))
+              (cadr ast)))
+         ;; Flatten list of param (include rest param)
+         (all-params (flatten (cadr ast)))
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code
                      (lambda (cgc ctx)
                        ;; Here the stack is :
                        ;;         RSP
                        ;;     | ret-val |  ctx  | ret-addr | closure | arg n | ... | arg 1 |
-                       ;; Pop return value
-                       (x86-pop cgc (x86-rax))
-                       ;; Mov return value at bottom of the frame
-                       (x86-mov cgc (x86-mem (* 8 (+ 2 (length params))) (x86-rsp)) (x86-rax))
-                       ;; Mov ret-addr in rax
-                       (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
-                       ;; RSP now point to return value
-                       (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (+ 2 (length params)))))
-                       ;; Jump to continuation
-                       (x86-jmp cgc (x86-rax)))))
+                       ;; Or if rest :
+                       ;;     | ret-val |  ctx  | ret-addr | closure | rest | arg n | ... | arg 1 |
+                       (let ((retval-offset
+                                (if rest-param
+                                   (* 8 (+ 3 (length params)))
+                                   (* 8 (+ 2 (length params))))))
+                         ;; Pop return value
+                         (x86-pop cgc (x86-rax))
+                         ;; Mov return value at bottom of the frame
+                         (x86-mov cgc (x86-mem retval-offset (x86-rsp)) (x86-rax))
+                         ;; Mov ret-addr in rax
+                         (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
+                         ;; RSP now point to return value
+                         (x86-add cgc (x86-rsp) (x86-imm-int retval-offset))
+                         ;; Jump to continuation
+                         (x86-jmp cgc (x86-rax))))))
          ;; Lazy lambda body
-         (lazy-body (gen-ast (caddr ast) lazy-ret)))
+         (lazy-body (gen-ast (caddr ast) lazy-ret))
+         ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
+         (lazy-prologue (make-lazy-code
+                           (lambda (cgc ctx)
+
+                              (let* ((actual-p (- (length (ctx-stack ctx)) (length base-ctx)))
+                                     (formal-p (ctx-nb-args ctx)))
+
+                                (if (or (and (not rest-param) (not (= actual-p formal-p)))
+                                        (and rest-param (< actual-p formal-p)))
+                                   ;; Wrong number of arguments
+                                   (gen-error cgc ERR_WRONG_NUM_ARGS)
+                                   ;; Correct number of arguments
+                                   (begin (cond ;; Rest param declared but not given
+                                                ((and rest-param (= actual-p formal-p))
+                                                    ;; Shift 3 values on stack
+                                                    (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                                                    (x86-push cgc (x86-rax))
+                                                    (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
+                                                    (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
+                                                    (x86-mov cgc (x86-rax) (x86-mem 24 (x86-rsp)))
+                                                    (x86-mov cgc (x86-mem 16 (x86-rsp)) (x86-rax))
+                                                    ;; Mov '() in rest param slot
+                                                    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+                                                    (x86-mov cgc (x86-mem 24 (x86-rsp)) (x86-rax))
+                                                    ;; Add type information to ctx
+                                                    (ctx-stack-set! ctx (append base-ctx (list 'pair) (list-tail (ctx-stack ctx) (length base-ctx)))))
+                                                ;; Rest param declared and given
+                                                ((and rest-param (> actual-p formal-p))
+                                                    (gen-rest-lst cgc ctx (- actual-p formal-p) (+ 24 (* 8 (- actual-p formal-p 1))) 0 (- actual-p formal-p))
+                                                    (ctx-stack-set! ctx (append (list CTX_CTXID CTX_RETAD CTX_CLO 'pair) (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p)))) ;; TODO : write context one time
+                                                    ))
+                                          
+                                          (gen-mutable cgc ctx mvars)
+                                          (jump-to-version cgc lazy-body ctx))))))))
 
     ;; Lazy closure generation
     (make-lazy-code
@@ -242,59 +635,45 @@
                                              0
                                              (lambda (sp ctx ret-addr selector closure)
                                                ;; Extends env with params and free vars
-                                               (let* ((env (append (build-env params 0) (build-fenv fvars 0)))
-                                                      (ctx (make-ctx (ctx-stack ctx) env)))
-                                                 (gen-version-fn closure lazy-body ctx)))))
+                                               (let* ((env (append (build-env mvars all-params 0) (build-fenv saved-env mvars fvars 0)))
+                                                      (ctx (make-ctx (ctx-stack ctx) env (length params))))
+                                                 (gen-version-fn closure lazy-prologue ctx)))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
 
-          ;; 0 - COMPUTE FREE VARS
-          (set! fvars (free-vars (caddr ast) params ctx))
-
-          ;; 1 - WRITE OBJECT HEADER
-          (let ((header-word (+ (arithmetic-shift (+ 2 (length fvars)) 8) (arithmetic-shift STAG_PROCEDURE 3) 6))) ;; 2 + nbFreeVars | STAG_PROCEDURE | 110 => Length | Procedure | Permanent
+          ;; SAVE ENVIRONMENT
+          (set! saved-env (ctx-env ctx))
+          ;; COMPUTE FREE VARS
+          (set! fvars (free-vars (caddr ast) all-params ctx))
+          ;; COMPUTE MUTABLE VARS
+          (set! mvars (mutable-vars (caddr ast) all-params)) 
+          
+          (let* ((closure-size (+ 2 (length fvars)))
+                 (total-size (+ closure-size global-cc-table-maxsize 1)) ;; CCtable header -> +1
+                 (header-word (mem-header closure-size STAG_PROCEDURE)))
+            
+            ;; ALLOC
+            (gen-allocation cgc ctx STAG_PROCEDURE total-size)
+            
+            ;; 1 - WRITE OBJECT HEADER
             (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-            (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax)))
+            (x86-mov cgc (x86-mem (* -8 total-size) alloc-ptr) (x86-rax))
 
-          ;; TODO
-          (x86-mov cgc (x86-rbx) (x86-imm-int 0))
+            ;; 2 - WRITE CC TABLE LOCATION
+            (x86-lea cgc (x86-rax) (x86-mem (- (* -8 global-cc-table-maxsize) 8) alloc-ptr)) ;; CCtable header -> -8
+            (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax))
 
-          (let ((lazy-end
-                   (make-lazy-code
-                      (lambda (cgc ctx)
-                          (pp "GENERATION DE LA FERMETURE APRES VARS")
+            ;; 3 - WRITE FREE VARS
+            (gen-free-vars cgc fvars ctx (+ 16 (* -8 total-size)))
 
-                          ;; 2 - WRITE CC TABLE LOCATION
-                          (x86-push cgc alloc-ptr) ;; push closure pos
-                          (x86-mov cgc (x86-rax) (x86-imm-int (+ 16 (* 8 (length fvars))))) ;; 16 = 8(header) + 8(location)
-                          (x86-add cgc (x86-rax) alloc-ptr)
-                          (x86-add cgc (x86-rax) (x86-rbx))
-                          (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-
-                          ;; 4 - WRITE CC TABLE
-                          (x86-add cgc alloc-ptr (x86-imm-int (* 8 (+ 2 (length fvars)))))
-                          (x86-add cgc alloc-ptr (x86-rbx))
-                          (gen-cc-table cgc stub-addr 0)
-
-                          ;; 5 - TAG AND PUSH CLOSURE
-                          (x86-pop cgc (x86-rax))
-                          ;(x86-mov cgc (x86-rax) alloc-ptr)
-                          (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-                          (x86-push cgc (x86-rax))
-
-                          (x86-add cgc alloc-ptr (x86-rbx))
-
-                          ;; 6 - UPDATE ALLOC PTR
-                          (x86-add cgc alloc-ptr (x86-imm-int (* 8 global-cc-table-maxsize)))
-
-                          (pp "FERMETURE GENEREE")
-
-                          ;; Jump to next
-                          (jump-to-version cgc
-                                           succ
-                                           (ctx-push ctx
-                                                     CTX_CLO))))))
-
-
+            ;; 4 - WRITE CC TABLE
+            (let ((cc-header (mem-header (+ 1 global-cc-table-maxsize) STAG_CCTABLE)))
+              (x86-mov cgc (x86-rax) (x86-imm-int cc-header))
+              (x86-mov cgc (x86-mem (+ (* 8 closure-size) (* -8 total-size)) alloc-ptr) (x86-rax)))
+            (gen-cc-table cgc stub-addr (+ 8 (* 8 closure-size) (* -8 total-size)))
+              
+            ;; TAG AND PUSH CLOSURE
+            (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 total-size)) alloc-ptr))
+            (x86-push cgc (x86-rax)))
 
              ;; 3 - WRITE FREE VARS
              (let ((box-offset (+ 16 (* 8 (length fvars)))))
@@ -335,7 +714,7 @@
                                     (jump-addr
                                       (asm-label-pos label-jump)))
 
-                                (if dev-log
+                                (if verbose-jit
                                     (begin
                                       (println ">>> selector= " selector)
                                       (println ">>> prev-action= " prev-action)))
@@ -358,7 +737,7 @@
 
                                               (begin
 
-                                                (if dev-log (println ">>> swapping-branches"))
+                                                (if verbose-jit (println ">>> swapping-branches"))
 
                                                 (set! prev-action 'swap)
 
@@ -440,20 +819,20 @@
                                                                                                                          succ
                                                                                                                          ctx-continuation)))
                                                                             gen-flag)))))
-
+                                       
                                         ;; Return address (continuation label)
                                         (x86-label cgc load-ret-label)
                                         (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
                                         (x86-push cgc (x86-rax))
-
+                                        
                                         ;; Call ctx in rdx
-                                        (let* ((call-stack    (cons CTX_CTXID (cons CTX_RETAD (list-head (ctx-stack ctx) (+ 1 (length args))))))
-                                               (call-ctx      (make-ctx call-stack '()))
+                                        (let* ((call-stack    (append base-ctx (list-head (cdr (ctx-stack ctx)) (length args))))
+                                               (call-ctx      (make-ctx call-stack '() -1))
                                                (ctx-id        (length ctx_ids))
-                                               (cct-offset    (* 8 (get-closure-index call-ctx))))
+                                               (cct-offset    (* 8 (+ 1 (get-closure-index call-ctx)))))
 
                                           (set! ctx_ids (cons (cons ctx-id call-ctx) ctx_ids))
-                                          (x86-mov cgc (x86-rax) (x86-imm-int ctx-id))
+                                          (x86-mov cgc (x86-rax) (x86-imm-int (* 4 ctx-id))) ;; '*4' to encode ctx
                                           (x86-push cgc (x86-rax))
 
                                         ;; 1 - Get cc-table
@@ -597,9 +976,9 @@
                                    ;; ctx with num for right operand
                                    (rctx  (ctx-push (ctx-pop ctx) CTX_NUM))
                                    ;; ctx with num for left operand
-                                   (lctx  (make-ctx (cons (car (ctx-stack ctx)) (cons CTX_NUM (cddr (ctx-stack ctx)))) (ctx-env ctx)))
+                                   (lctx  (make-ctx (cons (car (ctx-stack ctx)) (cons CTX_NUM (cddr (ctx-stack ctx)))) (ctx-env ctx) (ctx-nb-args ctx)))
                                    ;; ctx with num for left AND right operand
-                                   (lrctx (make-ctx (cons CTX_NUM (cons CTX_NUM (cddr (ctx-stack ctx)))) (ctx-env ctx))))
+                                   (lrctx (make-ctx (cons CTX_NUM (cons CTX_NUM (cddr (ctx-stack ctx)))) (ctx-env ctx) (ctx-nb-args ctx))))
 
                                (cond ((eq? left-type CTX_NUM)
                                       (cond ((eq? right-type CTX_NUM)     (jump-to-version cgc lazy-code-op ctx))
@@ -651,27 +1030,41 @@
                       (lambda (cgc ctx)
                         (let ((label-done (asm-make-label cgc (new-sym 'label_done))))
                           (x86-pop   cgc (x86-rax))
-                          (if (eq? op '$number?)
-                              ;; $number?
-                              (begin (x86-and   cgc (x86-rax) (x86-imm-int 3))
-                                     (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                     (x86-je    cgc label-done)
-                                     (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #f))))
-                              ;; Others
-                              (begin (x86-mov cgc (x86-rbx) (x86-rax))
-                                     (x86-and cgc (x86-rax) (x86-imm-int 3))
-                                     (x86-cmp cgc (x86-rax) (x86-imm-int 1)) ;; CMP avec tag memory allocated obj
-                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                     (x86-jne cgc label-done)
-                                     ;; It's a memory allocated obj
-                                     (x86-mov cgc (x86-rbx) (x86-mem -1 (x86-rbx)))
-                                     (x86-and cgc (x86-rbx) (x86-imm-int 248))
-                                     (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
-                                           ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
-                                           (else (error "NYI")))
-                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                     (x86-jne cgc label-done)
-                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))))
+                          (cond ;; $number?
+                                ((eq? op '$number?)
+                                    (x86-and   cgc (x86-rax) (x86-imm-int 3)) ;; If equal, set ZF to 1
+                                    (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                                    (x86-je    cgc label-done)
+                                    (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #f))))
+                                ;; $char?
+                                ((eq? op '$char?)
+                                    (x86-mov cgc (x86-rbx) (x86-rax))
+                                    (x86-and cgc (x86-rax) (x86-imm-int 3))
+                                    (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
+                                    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                    (x86-jne cgc label-done) ;; No tag for special, then not char
+                                    ;; Tag is 'special', test value
+                                    (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
+                                    (x86-jl cgc label-done) ;; <0 is !char and >=0 is char
+                                    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t))))
+                                ;; Others
+                                (else (x86-mov cgc (x86-rbx) (x86-rax))
+                                      (x86-and cgc (x86-rax) (x86-imm-int 3))
+                                      (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                      (x86-jne cgc label-done)
+                                      ;; It's a memory allocated obj
+                                      (x86-mov cgc (x86-rbx) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
+                                      (x86-and cgc (x86-rbx) (x86-imm-int 248))
+                                      (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
+                                            ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
+                                            ((eq? op '$vector?)    (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_VECTOR))))    ;; STAG_VECTOR << 3
+                                            ((eq? op '$string?)    (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_STRING))))    ;; STAG_STRING << 3
+                                            ((eq? op '$symbol?)    (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_SYMBOL))))    ;; STAG_SYMBOL << 3
+                                            (else (error "NYI")))
+                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                      (x86-jne cgc label-done)
+                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))))
                           ;;
                           (x86-label cgc label-done)
                           (x86-push  cgc (x86-rax))
@@ -685,21 +1078,23 @@
 (define (mlc-pair succ)
   (make-lazy-code
     (lambda (cgc ctx)
-       (let ((header-word (+ (arithmetic-shift 3 8) (arithmetic-shift 1 3) 6))) ;; 000...011 | STAG_PAIR | 110 => Length | Pair | Permanent
-         ;; TODO : mov directly to memory
+       (let ((header-word (mem-header 3 STAG_PAIR)))
+         
+         ;; Alloc
+         (gen-allocation cgc ctx STAG_PAIR 3)
+         
          ;; Write object header
          (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-         (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+         (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))
          (x86-pop cgc (x86-rbx)) ;; pop CDR
          (x86-pop cgc (x86-rax)) ;; pop CAR
          ;; Write pair
-         (x86-mov cgc (x86-mem 8 alloc-ptr)  (x86-rax))
-         (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
+         (x86-mov cgc (x86-mem -16 alloc-ptr)  (x86-rax))
+         (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rbx))
          ;; Tag,Push closure and update alloc-ptr
          (x86-mov cgc (x86-rax) alloc-ptr)
-         (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+         (x86-add cgc (x86-rax) (x86-imm-int (- TAG_MEMOBJ 24)))
          (x86-push cgc (x86-rax))
-         (x86-add cgc alloc-ptr (x86-imm-int 24))
          (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI))))))
 
 ;;-----------------------------------------------------------------------------
@@ -750,7 +1145,6 @@
 
 ;; Global closure context table
 (define global-cc-table '())
-(define global-cc-table-maxsize 20)
 
 ;; Gen a new cc-table at 'alloc-ptr' and write 'stub-addr' in each slot
 (define (gen-cc-table cgc stub-addr offset)
@@ -763,78 +1157,122 @@
       (begin (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
              (gen-cc-table-h cgc (+ offset 8) (- nb-slots 1)))))
 
-;; Get cc-table index for 'ctx'. Associates a new index if ctx is a new one
-(define (get-closure-index ctx)
-  (let ((r (assoc (ctx-stack ctx) global-cc-table)))
-    (if r
-        (cdr r)
-        (let ((idx (length global-cc-table)))
-          (if (= idx global-cc-table-maxsize)
-              (error "CC Table is full")
-              (begin (set! global-cc-table (cons (cons (ctx-stack ctx) idx) global-cc-table))
-                     idx))))))
-
 ;;
-;; SYMBOL READ/WRITE
+;; VARIABLE SET
 ;;
 
-;; Gen code to get a free var from closure
-;; info is the lookup result which contains id info
-;;  ex: info = '(n free . 0) for free var 'n' at index '0'
-;; dest is the destination of free var. possible values are :
-;;  'stack : push value on top of stack
-;;  'gen-reg : general register (mov value into rax)
-(define (gen-get-freevar cgc ctx info dest)
-   (let* ((offset (+ 15 (* 8 (cdr (cdr info)))))
-          (clo-offset (* 8 (closure-pos (ctx-stack ctx)))))
+;; Gen code to set a free/local
+;; variable is the lookup result which contains id info
+;;  ex: variable = '(n . identifier-obj)
+
+;; Free var
+(define (gen-set-freevar cgc ctx variable)
+   (let ((mutable (identifier-mutable? (cdr variable))))
+      (if mutable
+        (begin (gen-get-freevar cgc ctx variable 'gen-reg)
+               (x86-pop cgc (x86-rbx))
+               (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (x86-rbx)))
+               ;; TODO replace ctx type when implemented for free vars
+        (error "Compiler error : set a non mutable var"))))
+
+;; Local var
+(define (gen-set-localvar cgc ctx variable)
+   (let ((mutable (identifier-mutable? (cdr variable))))
+     (if mutable
+        (begin (gen-get-localvar cgc ctx variable 'gen-reg)
+               (x86-pop cgc (x86-rbx))
+               (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (x86-rbx))
+               ;; Replace ctx type
+               (let* ((fs (length (ctx-stack ctx)))
+                      (idx (- fs 1 (identifier-offset (cdr variable)))))
+               (set-car! (list-tail (ctx-stack ctx) idx) (car (ctx-stack ctx)))))
+        (error "Compiler error : set a non mutable var"))))
+
+;; Gen code to set a global var
+(define (gen-set-globalvar cgc ctx variable)
+   (x86-pop cgc (x86-rax))
+   (x86-mov cgc (x86-mem (* 8 (cdr variable)) (x86-r10)) (x86-rax)))
+
+;;
+;; VARIABLE GET
+;;
+
+;; Gen code to get a variable from closure/stack
+;; variable is the lookup result which contains id info
+;;  ex: variable = '(n . identifier-obj)
+;; dest is the destination. possible values are :
+;;  'stack : push value
+;;  'gen-reg : general register (mov value to rax)
+;; raw_value is #t if the value is copied directly from closure
+;;              #f if the value is copied from memory (id variable is mutable)
+
+;; Free variable
+(define (gen-get-freevar cgc ctx variable dest #!optional (raw_value? #t))
+   (let* ((offset (+ (- 16 TAG_MEMOBJ) (* 8 (identifier-offset (cdr variable)))))
+          (clo-offset (* 8 (closure-pos ctx)))
+          (mutable (identifier-mutable? (cdr variable))))
+
       ;; Get closure
       (x86-mov cgc (x86-rax) (x86-mem clo-offset (x86-rsp)))
-      ;; Get value & push
-      (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
-      (cond  ((eq? dest 'stack)   (x86-push cgc (x86-rax)))
-             ((eq? dest 'gen-reg) #f) ;; Already in rax
-             (else (error "Invalid destination")))
-      CTX_UNK)) ;; TODO return free var info when implemented
 
-;; Gen code to get a local var from stack
-;; info is the lookup result which contains id info
-;;  ex: info = '(n . 0) for local var 'n' at index '0'
-;; dest is the destination of local var. possible values are :
-;;  'stack : push value on top of stack
-;;  'gen-reg : general register (mov value into rax)
-(define (gen-get-localvar cgc ctx info dest)
+      (if (or raw_value? (not mutable))
+        ;; Raw value required (direct copy from closure)
+        ;; OR variable is not mutable
+        (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem offset (x86-rax))))
+              ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax))))
+              (else (error "Invalid destination")))
+        ;; Real value required and variable is mutable
+        (begin (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
+               (cond ((eq? dest 'stack) (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                     ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                     (else (error "Invalid destination")))))
 
-  ;; ajouter flag boxing
+      CTX_UNK)) ;; TODO return free var ctx info when implemented
 
+;; Local variable
+(define (gen-get-localvar cgc ctx variable dest #!optional (raw_value? #t))
    (let* ((fs (length (ctx-stack ctx)))
-          (pos (- fs 1 (cdr info))))
+          (pos (- fs 1 (identifier-offset (cdr variable))))
+          (mutable (identifier-mutable? (cdr variable))))
 
-      (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* pos 8) (x86-rsp))))
-            ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp))))
-            (error "Invalid destination"))
+      (if (or raw_value? (not mutable))
+        ;; Raw value required (direct copy from stack)
+        ;; OR variable is not mutable
+        (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* pos 8) (x86-rsp))))
+              ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp))))
+              (else (error "Invalid destination")))
+        ;; Real value required and variable is mutable
+        (begin (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp)))
+               (cond ((eq? dest 'stack)
+                        (begin 
+                               (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))))
+                     ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                     (else (error "Invalid destination")))))
+
       (list-ref (ctx-stack ctx) pos)))
 
-;; Gen code to get a global var from memory
-;; info is the lookup result which contains id info
-;;  ex: info = '(n 0 . number) for local var 'n' at global index 0 with type info 'number'
-;; dest is the destination of global var. possible values are :
-;;  'stack : push value on top of stack
-(define (gen-get-globalvar cgc ctx info dest)
-   (x86-mov cgc (x86-rax) (x86-mem (* 8 (cadr info)) (x86-r10)))
-   (if (eq? dest 'stack)
-      (x86-push cgc (x86-rax))
-      (error "Invalid destination"))
-   (cddr info))
+;; Gen code to get a global var
+(define (gen-get-globalvar cgc ctx variable dest)
+   (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* 8 (cdr variable)) (x86-r10))))
+         ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* 8 (cdr variable)) (x86-r10))))
+         (else (error "Invalid destination")))
+   CTX_UNK)
 
 ;;
 ;; FREE VARS
 ;;
 
 ;; Extends env with 'fvars' free vars starting with offset
-(define (build-fenv fvars offset)
+(define (build-fenv saved-env mvars fvars offset)
   (if (null? fvars)
       '()
-      (cons (cons (car fvars) (cons 'free offset)) (build-fenv (cdr fvars) (+ offset 1)))))
+      (cons (cons (car fvars) (make-identifier 'free
+                                               offset
+                                               (let ((res (assoc (car fvars) saved-env)))
+                                                  (if (identifier-mutable? (cdr res))
+                                                    '(mutable)
+                                                    '()))))
+            (build-fenv saved-env mvars (cdr fvars) (+ offset 1)))))
 
 (define (mlc-verif ast succ)
   (let ((lazy-VERIF
@@ -925,7 +1363,7 @@
       (let* ((var (car vars))
              (res (assoc var (ctx-env ctx))))
          (if res
-            (if (pair? (cdr res))
+            (if (eq? (identifier-type (cdr res)) 'free)
                ;; Free var
                (begin (gen-get-freevar cgc ctx res 'gen-reg)
                       (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
@@ -938,18 +1376,20 @@
                ;;(gen-get-localvar cgc ctx res 'gen-reg))
             (error "Can't find variable: " var)))))
          ;; TODO : free vars ctx information
+         (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
 
+         (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst clo-env ctx)
   (if (null? lst)
       '()
-      (append (free-vars (car lst) clo-env ctx) (free-vars-l (cdr lst) clo-env ctx))))
+      (set-union (free-vars (car lst) clo-env ctx) (free-vars-l (cdr lst) clo-env ctx))))
 
 ;; Return all free vars used by ast knowing env 'clo-env'
 (define (free-vars ast clo-env ctx)
   (cond ;; Literal
-        ((or (number? ast) (boolean? ast)) '())
+        ((literal? ast) '())
         ;; Symbol
         ((symbol? ast)
           (cond ((member ast clo-env) '())
@@ -961,37 +1401,62 @@
         ((pair? ast)
           (let ((op (car ast)))
             (cond ;; If
-                  ((eq? op 'if) (append (free-vars (cadr ast)   clo-env ctx)   ; cond
-                                        (free-vars (caddr ast)  clo-env ctx)   ; then
-                                        (free-vars (cadddr ast) clo-env ctx))) ; else
+                  ((eq? op 'if) (set-union (free-vars (cadr ast)   clo-env ctx)   ; cond
+                                           (set-union (free-vars (caddr ast)  clo-env ctx)   ; then
+                                                      (free-vars (cadddr ast) clo-env ctx)))) ; else
                   ;; Quote
                   ((eq? op 'quote) '())
                   ;; Lambda
                   ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
                   ;; Special
-                  ;; TODO : remove $verif
-                  ((member op '(set! $verif $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
+                  ((member op '(set! $string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
+
+;;
+;; MUTABLE VARS
+;;
+
+;; Return all mutable vars used by the list of ast
+(define (mutable-vars-l lst params)
+  (if (null? lst)
+    '()
+    (append (mutable-vars (car lst) params) (mutable-vars-l (cdr lst) params))))
+
+;; Return all mutable vars used by ast
+(define (mutable-vars ast params)
+  (cond ;; Literal & Symbol 
+        ((or (null? ast) (char? ast) (string? ast) (number? ast) (boolean? ast) (symbol? ast)) '())
+        ;; Pair
+        ((pair? ast)
+           (let ((op (car ast)))
+              (cond ((eq? op 'lambda) (mutable-vars (caddr ast) (set-sub params (cadr ast) '())))
+                    ((eq? op 'set!)
+                      (if (member (cadr ast) params)
+                        (list (cadr ast))
+                        '()))
+                    (else (mutable-vars-l ast params)))))))
 
 ;;
 ;; UTILS
 ;;
 
-;; Build new environment with ids dtarting from 'start'
-;; ex : (buile-env '(a b c) 8) -> ((a . 8) (b . 9) (c . 10))
-(define (build-env ids start)
+;; Build new environment with ids starting from 'start'
+;; ex : (build-env '(...) '(a b c) 8) -> ((a . 8) (b . 9) (c . 10))
+;; mvars contains all mutable vars to tag created identifier objects
+(define (build-env mvars ids start)
   (if (null? ids)
     '()
-    (cons (cons (car ids) start) (build-env (cdr ids) (+ start 1)))))
+    (cons (cons (car ids) (make-identifier 'local
+                                           start
+                                           (if (member (car ids) mvars)
+                                              '(mutable)
+                                              '())))
+          (build-env mvars (cdr ids) (+ start 1)))))
 
-;; Get position of first occurrence of CTX_CLO in ctx
-(define (closure-pos stack)
-  (if (null? stack)
-      (error "Can't find " CTX_CLO)
-      (if (eq? CTX_CLO (car stack))
-          0
-          (+ 1 (closure-pos (cdr stack))))))
+;; Get position of current closure in stack
+(define (closure-pos ctx)
+  (- (length (ctx-stack ctx)) 1 (ctx-nb-args ctx)))
 
 ;; Return label associated to function name
 (define (lookup-fn name)
@@ -1001,5 +1466,106 @@
       (cond ((eq? name '$$putchar)  label-$$putchar)
             (else (error "NYI"))))))
 
-;; TODO : ctx_ids to solve segfault on ctx read
-(define ctx_ids '())
+;; Set subtraction with lists
+;; return lsta - lstb
+;; res is accu
+(define (set-sub lsta lstb res)
+  (if (null? lsta)
+    res
+    (if (member (car lsta) lstb)
+      (set-sub (cdr lsta) lstb res)
+      (set-sub (cdr lsta) lstb (cons (car lsta) res)))))
+
+;; Set union with lists
+;; return lsta U lstb
+(define (set-union lsta lstb)
+  (if (null? lsta)
+    lstb
+    (if (member (car lsta) lstb)
+      (set-union (cdr lsta) lstb)
+      (set-union (cdr lsta) (cons (car lsta) lstb)))))
+
+;; Flatten list x
+(define (flatten x)
+   (cond ((null? x) '())
+         ((not (pair? x)) (list x))
+         (else (append (flatten (car x))
+                       (flatten (cdr x))))))
+
+;; Get formal params from list of params
+;; Ex: (formal-params '(a b c)  ) -> '(a b c)
+;;     (formal-params '(a b . c)) -> '(a b)
+(define (formal-params l)
+  (if (not (pair? l))
+     '()
+     (cons (car l) (formal-params (cdr l)))))
+
+;; Gen mutable variable
+;; This code is a function prelude. It transforms variable from stack (args) tagged as "mutable"
+;; into memory-allocated variables.
+(define (gen-mutable cgc ctx mutable)
+    (if (not (null? mutable))
+       
+       (let* ((res (assoc (car mutable) (ctx-env ctx)))
+              (header-word (mem-header 2 STAG_MOBJECT))
+              (fs (length (ctx-stack ctx)))
+              (offset (* (- fs 1 (identifier-offset (cdr res))) 8)))
+
+        ;; Alloc
+        (gen-allocation cgc ctx STAG_MOBJECT 2)
+        
+        ;; Create var in memory
+        (gen-get-localvar cgc ctx res 'gen-reg) ;; There are only localvar here (no free vars)
+        (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+        (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
+
+        ;; Replace local
+        (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
+        (x86-mov cgc (x86-mem offset (x86-rsp)) (x86-rax))
+
+        ;; Gen next mutable vars
+        (gen-mutable cgc ctx (cdr mutable)))))
+
+;; Gen code to create rest list from stack in heap.
+(define (gen-rest-lst cgc ctx nb-pop sp-offset alloc-offset pos)
+
+  (if (= 0 pos)
+    (begin  ;; MOV REST PAIR
+            (x86-mov cgc (x86-rax) alloc-ptr)
+            (x86-sub cgc (x86-rax) (x86-imm-int (* 24 nb-pop)))
+            (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+            (x86-mov cgc (x86-mem (+ 16 (* 8 nb-pop)) (x86-rsp)) (x86-rax)) ;; 32
+            
+            ;; GLISSEMENT DES INFOS CTX
+            (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
+            (x86-mov cgc (x86-mem (+ 16 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
+            (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
+            (x86-mov cgc (x86-mem (+ 8 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
+            (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+            (x86-mov cgc (x86-mem (+ 0 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
+            (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- nb-pop 1)))))
+
+    (let ((header (mem-header 3 STAG_PAIR)))
+
+      ;; Alloc pair
+      (gen-allocation cgc ctx STAG_PAIR 3)
+      
+      ;; Write header and car
+      (x86-mov cgc (x86-rax) (x86-imm-int header))
+      (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))
+      (x86-mov cgc (x86-rax) (x86-mem sp-offset (x86-rsp)))
+      (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
+      
+      ;; Write cdr
+      (if (= 1 pos)
+        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+        (begin (x86-mov cgc (x86-rax) alloc-ptr)
+               (x86-add cgc (x86-rax) (x86-imm-int (+ 0 TAG_MEMOBJ)))))
+      (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
+      
+      (gen-rest-lst cgc ctx nb-pop (- sp-offset 8) alloc-offset (- pos 1)))))    
+
+;; Is the v a literal ?
+(define (literal? v)
+   (or (char? v) (number? v) (string? v) (boolean? v) (null? v)))
