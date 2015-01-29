@@ -45,6 +45,8 @@
   ;; Types
   "($integer->char #f)"
   "($char->integer #f)"
+  "($string->symbol 100)"
+  "($symbol->string 100)"
 ))
   
 (define (run path . args)

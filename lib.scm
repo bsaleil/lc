@@ -40,6 +40,9 @@
 (define (string? s)
   ($string? s))
 
+(define (symbol? s)
+  ($symbol? s))
+
 (define (boolean? n)
   (cond ((eq? n #t) #t)
         ((eq? n #f) #t)
@@ -303,6 +306,12 @@
   (let ((v (make-vector (length l))))
      (list->vector-h l v 0 (length l))))
 
+(define (string->symbol str)
+  ($string->symbol str))
+
+(define (symbol->string sym)
+  ($symbol->string sym))
+
 ;; TODO wrong place
 (define (vector . l) (list->vector l))
 
@@ -369,6 +378,9 @@
                             (print (cdr n))))
           ((vector? n) (print-vector n 0 (vector-length n)))
           ((string? n) (print-string n 0 (string-length n)))
+          ((symbol? n)
+             (let ((str (symbol->string n)))
+               (print-string str 0 (string-length str))))
           (else (print-bool n)))))
   
 (define (println n)
@@ -457,6 +469,9 @@
         ((pair? n) (pp-pair n))
         ((vector? n) (pp-vector n))
         ((string? n) (pp-string n))
+        ((symbol? n)
+           (let ((str (symbol->string n)))
+             (print-string str 0 (string-length str))))
         (else (print-bool n)))))
 
 (define (pp n)

@@ -48,6 +48,12 @@
 (println v)
 (println (vector-ref v 0))
 
+;; Symbol
+(println 'Hello)
+(define sym 'Dark)
+(define str " Vador")
+(println (string->symbol (string-append (symbol->string sym) str)))
+
 ;0
 ;0
 ;0
@@ -79,3 +85,5 @@
 ;Hi.Hi.Hi.Hi.
 ;00Hey0
 ;0
+;Hello
+;Dark Vador

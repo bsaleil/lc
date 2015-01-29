@@ -19,18 +19,18 @@
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
   (cond ;; String
-        ((string? ast)  (mlc-string ast succ))
+        ((string? ast)  (mlc-string ast succ #f))
         ;; Literal
         ((literal? ast) (mlc-literal ast succ))
         ;; Symbol
-        ((symbol? ast) (mlc-symbol ast succ))
+        ((symbol? ast)  (mlc-identifier ast succ))
         ;; Pair
         ((pair? ast)
          (let ((op (car ast)))
            (cond ;; Special with call
                  ((member op '($$putchar)) (mlc-special-c ast succ))
                  ;; Special without call
-                 ((member op '($string-set! $make-string $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr)) (mlc-special-nc ast succ))
+                 ((member op '($string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ;; Set!
@@ -42,7 +42,7 @@
                  ;; Operator gen
                  ((member op '($eq?)) (mlc-op-gen ast succ op))
                  ;; Tests
-                 ((member op '($string? $char? $vector? $number? $procedure? $pair?)) (mlc-test ast succ))
+                 ((member op '($symbol? $string? $char? $vector? $number? $procedure? $pair?)) (mlc-test ast succ))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -74,18 +74,26 @@
                                        ((boolean? ast) CTX_BOOL)
                                        ((char? ast)    CTX_CHAR)
                                        ((null? ast)    CTX_NULL)))))))
+;;
+;; Make lazy code from symbol literal
+;; (ex. 'Hello)
+;;
+(define (mlc-symbol ast succ)
+  (mlc-string (symbol->string ast) succ #t))
 
 ;;
 ;; Make lazy code from string literal
 ;;
-(define (mlc-string ast succ)
+(define (mlc-string ast succ symbol?)
   (make-lazy-code
     (lambda (cgc ctx)
       (let* ((len (string-length ast))
              (size (arithmetic-shift (bitwise-and (+ len 8) (bitwise-not 7)) -3))
-             (header-word (mem-header (+ size 2) STAG_STRING)))
+             (header-word (mem-header (+ size 2) (if symbol?
+                                                     STAG_SYMBOL
+                                                     STAG_STRING))))
         
-        (gen-allocation cgc ctx STAG_STRING (+ size 2))
+        (gen-allocation cgc ctx (if symbol? STAG_SYMBOL STAG_STRING) (+ size 2))
         
         ;; Write header
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
@@ -98,19 +106,18 @@
         ;; Push string
         (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 (+ size 2))) alloc-ptr))
         (x86-push cgc (x86-rax))
-        (jump-to-version cgc succ (ctx-push ctx CTX_STR))))))
+        (jump-to-version cgc succ (ctx-push ctx (if symbol? CTX_SYM CTX_STR)))))))
       
-      ;TODO
+;; Write chars of the literal string 'str':
+;; Write str[pos] char to [alloc-ptr+offset], and write next chars
 (define (write-chars cgc str pos offset)
    (if (< pos (string-length str))
-      ;(x86-mov cgc (x86-al) (x86-imm-int (char->integer (string-ref str pos))))
              (let* ((int (char->integer (string-ref str pos)))
                     (encoded (if (> int 127)
                                  (* -1 (- 256 int))
                                  int)))
              (x86-mov cgc (x86-al) (x86-imm-int encoded))
              (x86-mov cgc (x86-mem offset alloc-ptr) (x86-al))
-             ;(x86-mov cgc (x86-mem offset alloc-ptr) (x86-imm-int (char->integer (string-ref str pos))) 8)
              (write-chars cgc str (+ pos 1) (+ offset 1)))))
 
 ;;
@@ -122,8 +129,7 @@
                 (lazy-cdr  (mlc-quote (cdr ast) lazy-pair)))
            (mlc-quote (car ast) lazy-cdr)))
         ((symbol? ast)
-            (pp ast)
-            (error "NYI quoted symbol"))
+            (mlc-symbol ast succ))
         (else (gen-ast ast succ))))
 
 ;;
@@ -153,7 +159,7 @@
 ;;
 ;; Make lazy code from SYMBOL
 ;;
-(define (mlc-symbol ast succ)
+(define (mlc-identifier ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
       ;; Lookup in local env
@@ -403,6 +409,71 @@
                         ;;
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VECT))))))
                  
+                 ;; STRING<->SYMBOL
+                 ;; TODO comentaires
+                 ;; TODO optimiser x86
+                 ((member special '($string->symbol $symbol->string))
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      
+                      ;; Alloc
+                      (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                      (x86-sub cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                      (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax)))
+                      (x86-shr cgc (x86-rax) (x86-imm-int 8))
+                      (x86-shl cgc (x86-rax) (x86-imm-int 2))
+                      (x86-mov cgc (x86-rbx) (x86-rax))
+                      (gen-allocation cgc ctx STAG_SYMBOL 0 #t)
+                
+                      ;; Symbol address in rbx
+                      (x86-shl cgc (x86-rbx) (x86-imm-int 1))
+                      (x86-neg cgc (x86-rbx))
+                      (x86-add cgc (x86-rbx) alloc-ptr)
+                      
+                      ;; String address in rax
+                      (x86-pop cgc (x86-rax))
+                      (x86-sub cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                      
+                      ;; Mov length in symbol
+                      (x86-mov cgc (x86-rcx) (x86-mem 8 (x86-rax)))
+                      (x86-mov cgc (x86-mem 8 (x86-rbx)) (x86-rcx))
+                      
+                      ;; Mov header in symbol
+                      (x86-mov cgc (x86-rcx) (x86-mem 0 (x86-rax)))
+                      (if (eq? special '$string->symbol)
+                         (x86-sub cgc (x86-rcx) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3)))
+                         (x86-add cgc (x86-rcx) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3))))
+                      (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-rcx))
+                      
+                      ;; Encoded length in rcx
+                      (x86-shr cgc (x86-rcx) (x86-imm-int 8))
+                      (x86-shl cgc (x86-rcx) (x86-imm-int 3))
+                                            
+                      ;; If encoded length == 16
+                      ;;    jump label-fin
+                      (let ((label-loop (asm-make-label cgc (new-sym 'label-loop)))
+                            (label-fin  (asm-make-label cgc (new-sym 'label-fin))))
+                        
+                        (x86-label cgc label-loop)
+                        (x86-cmp cgc (x86-rcx) (x86-imm-int 16))
+                        (x86-jle cgc label-fin)
+                        
+                          (x86-mov cgc (x86-rdx) (x86-mem -8 (x86-rcx) (x86-rax)))
+                          (x86-mov cgc (x86-mem -8 (x86-rcx) (x86-rbx)) (x86-rdx))
+                          (x86-sub cgc (x86-rcx) (x86-imm-int 8))
+                          (x86-jmp cgc label-loop)
+                      
+                        (x86-label cgc label-fin))
+                        
+                      (x86-add cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
+                      (x86-push cgc (x86-rbx))
+                      
+                      (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM)))))
+                      
+                      
+                      
+                 
+                 
                  ;; VECTOR-LENGTH & STRING-LENGTH
                  ((member special '($vector-length $string-length))
                   (make-lazy-code
@@ -464,8 +535,8 @@
           ((member special '($cons $string-ref $vector-ref))
            (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
              (gen-ast (cadr ast) lazy-right)))
-          ;; $car, $cdr, $make-vector
-          ((member special '($string-length $integer->char $char->integer $vector-length $make-string $make-vector $car $cdr))
+          ;; $car, $cdr, $make-vector, $string->symbol, $symbol->string
+          ((member special '($symbol->string $string->symbol $string-length $integer->char $char->integer $vector-length $make-string $make-vector $car $cdr))
            (gen-ast (cadr ast) lazy-special))
           ;; $string-set!, $vector-set!
           ((member special '($string-set! $vector-set!))
@@ -987,6 +1058,7 @@
                                             ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
                                             ((eq? op '$vector?)    (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_VECTOR))))    ;; STAG_VECTOR << 3
                                             ((eq? op '$string?)    (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_STRING))))    ;; STAG_STRING << 3
+                                            ((eq? op '$symbol?)    (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_SYMBOL))))    ;; STAG_SYMBOL << 3
                                             (else (error "NYI")))
                                       (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
                                       (x86-jne cgc label-done)
@@ -1247,7 +1319,7 @@
                   ;; Lambda
                   ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
                   ;; Special
-                  ((member op '(set! $string-set! $make-string $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $string? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
+                  ((member op '(set! $string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
 

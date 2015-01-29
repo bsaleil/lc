@@ -34,6 +34,9 @@
 (pp "Hello World")
 (pp (make-string 4 #\Z))
 
+(pp 'SYMBOL)
+(pp (string->symbol (string-append "SYM" (symbol->string 'BOL))))
+
 ;0
 ;0
 ;0
@@ -60,3 +63,5 @@
 ;#\space
 ;"Hello World"
 ;"ZZZZ"
+;SYMBOL
+;SYMBOL

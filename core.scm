@@ -34,6 +34,7 @@
 (define STAG_VECTOR     0)
 (define STAG_STRING    19)
 (define STAG_CCTABLE   16)
+(define STAG_SYMBOL     8)
 
 ;; Context types
 (define CTX_NUM   'number)
@@ -48,6 +49,7 @@
 (define CTX_RETAD 'retAddr)
 (define CTX_VECT  'vector)
 (define CTX_STR   'string)
+(define CTX_SYM   'symbol)
 
 ;; Exec errors
 (define ERR_MSG            "EXEC ERROR")
