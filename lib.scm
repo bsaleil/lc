@@ -73,7 +73,7 @@
       0
       (+ 1 (length (cdr l)))))
 
-(define (list . l) l)
+(define list (lambda x x))
 
 ;; TODO : type test 
 (define (list? n)

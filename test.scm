@@ -1,21 +1,17 @@
 ;; Heap test
-;; Symbol test
-;; Ajoute dans check-err les fonctions liées aux symboles
-;; TESTS : symbol?, symbol<->string
+;; Test (lambda x x)
 
-; (let ((s 'montest))
-;   (pp (symbol? s))
-;   (pp s))
+; (define A 10)
 
-(pp (symbol->string (string->symbol (string-append "Bonjour" "Monde"))))
+; (let ((a 10)
+;       (b 200))
+  
+;   (define B 10)
+;   (pp a)
+;   (define C 10)
+;   (pp b)
+;   (define D 10))
+
+; (define E 10)
 
 
-; (make-vector 200 100)
-; (make-vector 200 100)
-; (make-vector 200 100)
-; (make-vector 200 100)
-
-
-; (let ((v ($make-string 28)))
-;   (pp (string-length v))
-;   (pp v))
