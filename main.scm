@@ -44,7 +44,7 @@
            (lazy-read-eval (make-lazy-code
               (lambda (cgc ctx)
                  (print "> ")
-                 (let ((r (expand (read))))
+                 (let ((r (expand-tl (read))))
                     (cond ((equal? r '(unquote LC))
                               (let ((r (read)))
                                 (eval r)
@@ -109,7 +109,7 @@
 
 (define (main . args)
   ;; Get library
-  (define lib (expand (read-all (open-input-file "./lib.scm"))))
+  (define lib (expand-tl (read-all (open-input-file "./lib.scm"))))
   ;; Get options and files from cl args
   (define files (parse-args args))
     
@@ -118,7 +118,7 @@
             (repl lib))
           ;; Can only exec 1 file
           ((= (length files) 1)
-            (let ((file-content (expand (read-all (open-input-file (car args))))))
+            (let ((file-content (expand-tl (read-all (open-input-file (car args))))))
                ;(pp file-content)))
                (exec lib file-content)))
           (else (error "NYI"))))

@@ -1,9 +1,23 @@
 ;; EXPAND
 
+;; ERRORS
+(define ILL-DEFINE "Ill-placed 'define'")
+(define EMPTY-BODY "Body must contain at least one expression")
+
+;; Expand function called from top-level (allows define)
+(define (expand-tl exprs)
+  (if (null? exprs)
+      '()
+      (let ((expr (car exprs)))
+        (if (and (list? expr) (eq? (car expr) 'define))
+            (cons (expand-define expr) (expand-tl (cdr exprs)))
+            (cons (expand expr) (expand-tl (cdr exprs)))))))
+
+;; Expand function called outside top-level
 (define (expand expr)
   (cond
       ((or (null? expr) (vector? expr) (symbol? expr) (number? expr) (char? expr) (string? expr) (boolean? expr)) expr)
-      ((equal? (car expr) 'define) (expand-define expr))
+      ((equal? (car expr) 'define) (error ILL-DEFINE))
       ((equal? (car expr) 'if) (expand-if expr))
       ((equal? (car expr) 'begin) (expand-begin expr))
       ((equal? (car expr) 'let) (expand-let expr))
@@ -44,14 +58,13 @@
 ;; LET
 (define (expand-let expr)
   (if (symbol? (cadr expr))
+    ;; Named let
     (expand-letn expr)
+    ;; Normale let
     (let ((bindings (cadr  expr))
           (body     (cddr expr)))
       `((lambda ,(map car bindings)
-                ,(if (and (list? (car body))
-                          (eq? (car (car body)) 'define))
-                     (expand-internal body)
-                     (expand `(begin ,@body))))
+                ,(body-pdefine body))
                 ,@(map (lambda (n) (expand (cadr n))) bindings)))))
 
 ;; LETN (named let)
@@ -104,40 +117,18 @@
                                    (,SYM ,@(do-steps ids)))))))
                (,SYM ,@(map cadr ids))))))
 
-;; Expand-internal helper
-;; binds is formatted list of bindings (accu)
-(define (expand-internal-h binds expr)
-  (if (null? expr)
-      (cons binds '())
-      (let ((first (car expr)))
-        (if (and (list? first)
-                 (eq? (car first) 'define))
-            (let ((exp (expand first)))
-              (expand-internal-h (append binds (list (list (cadr exp) (expand (caddr exp)))))
-                                 (cdr expr)))
-            (cons binds expr)))))
-        
-;; Expand a body which contains internal definitions
-(define (expand-internal expr)
-  (let ((ret (expand-internal-h '() expr)))
-    (expand `(letrec ,(car ret)
-                ,(if (null? (cdr ret))
-                   #f ;; TODO #f
-                   (expand `(begin ,@(cdr ret))))))))
-
 ;; LAMBDA
 (define (expand-lambda expr)
-  (if (eq? (length expr) 3)
-      ;; 1 body
-      `(lambda ,(cadr expr) ,(expand (caddr expr)))
-      ;; > 1 body
-      (let ((first-body (caddr expr)))
-        (if (and (list? first-body)
-                 (eq? (car first-body) 'define))
-            ;; Internal def
-            `(lambda ,(cadr expr) ,(expand-internal (cddr expr)))
-            ;; No internal def
-            `(lambda ,(cadr expr) ,(expand `(begin ,@(cddr expr))))))))
+  (cond ((< (length expr) 3) (error EMPTY-BODY))
+        (;; 1 body
+         (eq? (length expr) 3)
+          (if (and (list? (caddr expr))
+                   (eq? (car (caddr expr)) 'define))
+              (error EMPTY-BODY)
+              `(lambda ,(cadr expr) ,(expand (caddr expr)))))   
+         ;; > 1 body
+         (else (let ((first-body (caddr expr)))
+                 `(lambda ,(cadr expr) ,(body-pdefine (cddr expr)))))))
 
 ;; OR
 (define (expand-or expr)
@@ -176,3 +167,31 @@
                         ;; (cond (e1 e2) ...)
                         (expand (cadr (cadr expr))))
                    ,(expand `(cond ,@(cddr expr)))))))
+
+;;----------
+
+;; Expand list of expressions (body).
+;; Transforms internal definitions into a 'letrec' then expand the letrec
+(define (body-pdefine body)
+  (cond ((null? body)
+           (error "NYI ERR ILL FORMED"))
+        ((and (list? (car body))
+              (eq? (caar body) 'define))
+           (let ((r (body-pdefine-h body '())))
+              (expand `(letrec ,(car r) ,(cdr r)))))
+        (else (expand `(begin ,@body)))))
+
+(define (body-pdefine-h body accu)
+  (if (null? body)
+      (error EMPTY-BODY)
+      (let ((bfirst (car body)))
+        (if (not (list? bfirst))
+            (cons accu `(begin ,@body))
+            (if (eq? 'define (car bfirst))
+                ;; INTERNAL DEF
+                (begin (if (list? (cadr bfirst))
+                          (set! bfirst `(define ,(caadr bfirst) (lambda ,(cdadr bfirst) ,@(cddr bfirst)))))
+                       (body-pdefine-h (cdr body) (append accu (list (list (cadr bfirst)
+                                                                           (caddr bfirst))))))
+                ;; NOT DEFINE
+                (cons accu `(begin ,@body)))))))
