@@ -60,7 +60,7 @@
   (if (symbol? (cadr expr))
     ;; Named let
     (expand-letn expr)
-    ;; Normale let
+    ;; Normal let
     (let ((bindings (cadr  expr))
           (body     (cddr expr)))
       `((lambda ,(map car bindings)
