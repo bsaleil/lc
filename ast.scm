@@ -82,6 +82,53 @@
   (mlc-string (symbol->string ast) succ #t))
 
 ;;
+;; Make lazy code from vector
+;;
+(define (mlc-vector ast succ)
+  
+  ;; Generate lazy object which pop object from stack
+  ;; and mov it to vector slot and jump to next element
+  (define (lazy-vector-set-gen idx)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (x86-pop cgc (x86-rax)) ;; el
+        (x86-pop cgc (x86-rbx)) ;; vector
+        (x86-mov cgc (x86-mem (- (+ 16 (* idx 8)) TAG_MEMOBJ) (x86-rbx)) (x86-rax))
+        (x86-push cgc (x86-rbx)) ;; TODO + Pas besoin des deux si l'élément est un literal ?
+        (if (= idx (- (vector-length ast) 1))
+           (jump-to-version cgc
+                            succ
+                            (ctx-pop ctx))
+           (jump-to-version cgc
+                            (lazy-el-gen (+ idx 1))
+                            (ctx-pop ctx))))))
+    
+  ;; Generate lazy-object which gen and push the value
+  ;; at vector[idx].
+  (define (lazy-el-gen idx)
+    (gen-ast (vector-ref ast idx)
+             (lazy-vector-set-gen idx)))                  
+  
+  ;; Main lazy code  
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let ((header-word (mem-header (+ 2 (vector-length ast)) STAG_VECTOR)))
+        ;; Alloc
+        (gen-allocation cgc ctx STAG_VECTOR (+ (vector-length ast) 2))
+        ;; Write header
+        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+        (x86-mov cgc (x86-mem (- (* -8 (vector-length ast)) 16) alloc-ptr) (x86-rax))
+        ;; Write length
+        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (vector-length ast))))
+        (x86-mov cgc (x86-mem (- (* -8 (vector-length ast)) 8) alloc-ptr) (x86-rax))
+        ;; Push vector
+        (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 (+ (vector-length ast) 2))) alloc-ptr))
+        (x86-push cgc (x86-rax))
+        (jump-to-version cgc
+                         (lazy-el-gen 0)
+                         (ctx-push ctx CTX_VECT))))))
+
+;;
 ;; Make lazy code from string literal
 ;;
 (define (mlc-string ast succ symbol?)
@@ -130,6 +177,8 @@
            (mlc-quote (car ast) lazy-cdr)))
         ((symbol? ast)
             (mlc-symbol ast succ))
+        ((vector? ast)
+            (mlc-vector ast succ))            
         (else (gen-ast ast succ))))
 
 ;;
