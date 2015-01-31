@@ -75,6 +75,12 @@
 
 (define list (lambda x x))
 
+(define append ;; TODO : append-two 
+   (lambda (lst1 lst2)
+      (if (null? lst1)
+         lst2
+         (cons (car lst1) (append (cdr lst1) lst2)))))
+
 ;; TODO : type test 
 (define (list? n)
   (cond ((null? n) #t)
@@ -479,6 +485,8 @@
   ($$putchar 10))
 
 ;; Others utils not in unit tests
+
+(define write pp)
 
 (define (newline)
    ($$putchar 10))
