@@ -52,8 +52,15 @@
     ;; 1 expr
     (expand (cadr expr))
     ;; > 1 expr
-    (let ((v (gensym)))
-           (expand `(let ((,v ,(expand (cadr expr)))) ,(expand `(begin ,@(cddr expr))))))))
+    (let* ((r (get-internal-defs (cdr expr)))
+           (defs (car r))
+           (body (cdr r)))
+      
+      (if (not (null? defs))
+        ;; Internal def
+        (expand (build-internal-defs defs body))
+        (let ((v (gensym)))
+           (expand `(let ((,v ,(expand (cadr expr)))) ,(expand `(begin ,@(cddr expr))))))))))
 
 ;; LET
 (define (expand-let expr)
@@ -64,8 +71,7 @@
     (let ((bindings (cadr  expr))
           (body     (cddr expr)))
       `((lambda ,(map car bindings)
-                ,(body-pdefine body))
-                ,@(map (lambda (n) (expand (cadr n))) bindings)))))
+                ,(expand `(begin ,@body))) ,@(map expand (map cadr bindings))))))
 
 ;; LETN (named let)
 (define (expand-letn expr)
@@ -127,8 +133,14 @@
               (error EMPTY-BODY)
               `(lambda ,(cadr expr) ,(expand (caddr expr)))))   
          ;; > 1 body
-         (else (let ((first-body (caddr expr)))
-                 `(lambda ,(cadr expr) ,(body-pdefine (cddr expr)))))))
+         (else
+           (let* ((r (get-internal-defs (cddr expr)))
+                  (defs (car r))
+                  (body (cdr r)))
+             
+             (if (not (null? defs))
+                `(lambda ,(cadr expr) ,(expand (build-internal-defs defs body)))
+                `(lambda ,(cadr expr) ,(expand `(begin ,@body))))))))
 
 ;; OR
 (define (expand-or expr)
@@ -170,28 +182,41 @@
 
 ;;----------
 
-;; Expand list of expressions (body).
-;; Transforms internal definitions into a 'letrec' then expand the letrec
-(define (body-pdefine body)
-  (cond ((null? body)
-           (error "NYI ERR ILL FORMED"))
-        ((and (list? (car body))
-              (eq? (caar body) 'define))
-           (let ((r (body-pdefine-h body '())))
-              (expand `(letrec ,(car r) ,(cdr r)))))
-        (else (expand `(begin ,@body)))))
+;; Get exprs (list of lists)
+;; Return '(defs body)
+;; defs : list of internal definitions
+;; body : list of body expressions
+(define (get-internal-defs exprs)
+  (get-internal-defs-h exprs '() '() #t))
 
-(define (body-pdefine-h body accu)
-  (if (null? body)
-      (error EMPTY-BODY)
-      (let ((bfirst (car body)))
-        (if (not (list? bfirst))
-            (cons accu `(begin ,@body))
-            (if (eq? 'define (car bfirst))
-                ;; INTERNAL DEF
-                (begin (if (list? (cadr bfirst))
-                          (set! bfirst `(define ,(caadr bfirst) (lambda ,(cdadr bfirst) ,@(cddr bfirst)))))
-                       (body-pdefine-h (cdr body) (append accu (list (list (cadr bfirst)
-                                                                           (caddr bfirst))))))
-                ;; NOT DEFINE
-                (cons accu `(begin ,@body)))))))
+(define (get-internal-defs-h exprs def body def-allowed)
+  (cond ((null? exprs)
+           (cons def body))
+        ((and (list? (car exprs))
+              (eq? (caar exprs) 'define))
+           (if def-allowed
+            (get-internal-defs-h (cdr exprs) (append def (list (car exprs))) body #t)
+            (error ILL-DEFINE)))
+        (else (get-internal-defs-h (cdr exprs)
+                         def
+                         (append body (list (car exprs)))
+                         #f))))
+
+;; Build bindings for letrec from list of definitions
+;; Ex :
+;; defs = '((define A 10) (define B 20))
+;; Return : ((A 10) (B 20))
+(define (build-defs-bindings defs)
+  (if (null? defs)
+      '()
+      (let ((f (car defs)))
+        ;; (define (id) ...)
+        (if (list? (cadr f))
+            (let ((fn `(lambda ,(cdadr f) ,@(cddr f))))
+              (cons (list (car (cadr f)) fn) (build-defs-bindings (cdr defs))))
+            (cons (list (cadr f) (caddr f)) (build-defs-bindings (cdr defs)))))))
+
+;; Build letrec for internal defs from defs and body
+(define (build-internal-defs defs body)
+  `(letrec ,(build-defs-bindings defs)
+                    ,@body))
