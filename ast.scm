@@ -1364,19 +1364,6 @@
         ((literal? ast) '())
         ;; Symbol
         ((symbol? ast)
-          ;; Dans free var si : 
-          ;; membre de ctx-env
-          ;; MAIS pas membre de clo-env
-          ;; sinon -> global TODO
-          ; (pp ast)
-          ; (pp clo-env)
-          ; (pp (ctx-env ctx))
-          ;; OLD :
-          ; (cond ((member ast clo-env) '())
-          ;       ((and (assoc ast globals)
-          ;             (not (assoc ast (ctx-env ctx))))
-          ;               '())
-          ;       (else (list ast))))
           (if (and (assoc ast (ctx-env ctx))
                    (not (member ast clo-env)))
               (list ast)
