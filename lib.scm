@@ -62,6 +62,12 @@
 (define (cdr l)
   ($cdr l))
 
+(define (set-car! p v)
+  ($set-car! p v))
+
+(define (set-cdr! p v)
+  ($set-cdr! p v))
+
 (define (cddr l)
   (cdr (cdr l)))
 

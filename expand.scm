@@ -118,7 +118,9 @@
          (commands (cdddr expr)))
       (expand `(letrec ((,SYM (lambda ,(map car ids)
                          (if ,(car stop)
-                            (begin ,@(cdr stop))
+                            ,(if (null? (cdr stop))
+                                #t
+                                `(begin ,@(cdr stop)))
                             (begin ,@commands
                                    (,SYM ,@(do-steps ids)))))))
                (,SYM ,@(map cadr ids))))))
