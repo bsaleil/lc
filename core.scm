@@ -649,9 +649,9 @@
   (member 'mutable (identifier-flags id)))
 
 (define-type ctx
-  stack ;; compile time stack, containing types
-  env   ;; compile time environment
-  nb-args ;;  TODO
+  stack   ;; compile time stack, containing types
+  env     ;; compile time environment
+  nb-args ;; nb of arguments of current frame
 )
 
 (define (ctx-push ctx type)
@@ -904,6 +904,7 @@
                    (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
                    (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
                    ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_NUMBER)))
+               ;; Char type test
                ;; TODO
                ((eq? type CTX_CHAR)
                    (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
@@ -912,7 +913,6 @@
                    ;(x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                    ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
                ;; Procedure type test
-               ;((eq? type 'procedure)
                ((member type (list CTX_CLO CTX_PAI))      
                    (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                    (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
