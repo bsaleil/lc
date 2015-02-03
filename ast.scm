@@ -641,21 +641,14 @@
                                    (* 8 (+ 3 (length params)))
                                    (* 8 (+ 2 (length params))))))
                          
-                         (x86-pop  cgc (x86-rax)) ;; RAX = retval
+                         ;; Pop return value
+                         (x86-pop  cgc (x86-rax))
+                         ;; Swap return value (rax) and return address ([rsp+offset])
                          (x86-xchg cgc (x86-rax) (x86-mem retval-offset (x86-rsp)))
+                         ;; Update SP to return value
                          (x86-add  cgc (x86-rsp) (x86-imm-int retval-offset))
+                         ;; Jump to continuation
                          (x86-jmp cgc (x86-rax))))))
-                         
-                         ; ;; Pop return value
-                         ; (x86-pop cgc (x86-rax))
-                         ; ;; Mov return value at bottom of the frame
-                         ; (x86-mov cgc (x86-mem retval-offset (x86-rsp)) (x86-rax))
-                         ; ;; Mov ret-addr in rax
-                         ; (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
-                         ; ;; RSP now point to return value
-                         ; (x86-add cgc (x86-rsp) (x86-imm-int retval-offset))
-                         ; ;; Jump to continuation
-                         ; (x86-jmp cgc (x86-rax))))))
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
