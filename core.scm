@@ -233,7 +233,7 @@
          (ctx (cdr (assoc ctx-id ctx_ids)))
          
          (closure
-          (get-i64 (+ sp (* nb-c-caller-save-regs 8) 24)))
+          (get-i64 (+ sp (* nb-c-caller-save-regs 8) 16)))
          
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
@@ -708,7 +708,6 @@
 ;; First generate function lazy-code
 ;; Then patch closure slot to jump directly to generated function
 (define (gen-version-fn closure lazy-code ctx)
-
   (if verbose-jit
       (begin
         (print "GEN VERSION FN")

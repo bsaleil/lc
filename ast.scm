@@ -3,7 +3,7 @@
 (include "~~lib/_asm#.scm")
 
 ;; Base ctx for procedure call
-(define base-ctx (list CTX_CTXID CTX_RETAD CTX_CLO))
+(define base-ctx (list CTX_CTXID CTX_CLO))
 
 ;; TODO : RCX global ? (used by if/else stubs)
 
@@ -199,8 +199,8 @@
                                     (gen-set-freevar  cgc ctx res)  ;; Free var
                                     (gen-set-localvar cgc ctx res)) ;; Local var
                                  (error "Can't find variable: " id)))))
+                  
                   (x86-push cgc (x86-imm-int ENCODING_VOID))
-
                   (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
 
      (gen-ast (caddr ast) lazy-set)))
@@ -640,23 +640,29 @@
                                 (if rest-param
                                    (* 8 (+ 3 (length params)))
                                    (* 8 (+ 2 (length params))))))
-                         ;; Pop return value
-                         (x86-pop cgc (x86-rax))
-                         ;; Mov return value at bottom of the frame
-                         (x86-mov cgc (x86-mem retval-offset (x86-rsp)) (x86-rax))
-                         ;; Mov ret-addr in rax
-                         (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
-                         ;; RSP now point to return value
-                         (x86-add cgc (x86-rsp) (x86-imm-int retval-offset))
-                         ;; Jump to continuation
+                         
+                         (x86-pop  cgc (x86-rax)) ;; RAX = retval
+                         (x86-xchg cgc (x86-rax) (x86-mem retval-offset (x86-rsp)))
+                         (x86-add  cgc (x86-rsp) (x86-imm-int retval-offset))
                          (x86-jmp cgc (x86-rax))))))
+                         
+                         ; ;; Pop return value
+                         ; (x86-pop cgc (x86-rax))
+                         ; ;; Mov return value at bottom of the frame
+                         ; (x86-mov cgc (x86-mem retval-offset (x86-rsp)) (x86-rax))
+                         ; ;; Mov ret-addr in rax
+                         ; (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
+                         ; ;; RSP now point to return value
+                         ; (x86-add cgc (x86-rsp) (x86-imm-int retval-offset))
+                         ; ;; Jump to continuation
+                         ; (x86-jmp cgc (x86-rax))))))
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
          (lazy-prologue (make-lazy-code
                            (lambda (cgc ctx)
 
-                              (let* ((actual-p (- (length (ctx-stack ctx)) (length base-ctx)))
+                              (let* ((actual-p (- (length (ctx-stack ctx)) (length base-ctx) 1)) ;; 1 for return address
                                      (formal-p (ctx-nb-args ctx)))
 
                                 (if (or (and (not rest-param) (not (= actual-p formal-p)))
@@ -666,22 +672,20 @@
                                    ;; Correct number of arguments
                                    (begin (cond ;; Rest param declared but not given
                                                 ((and rest-param (= actual-p formal-p))
-                                                    ;; Shift 3 values on stack
+                                                    ;; Shift 2 values on stack
                                                     (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
                                                     (x86-push cgc (x86-rax))
                                                     (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
                                                     (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
-                                                    (x86-mov cgc (x86-rax) (x86-mem 24 (x86-rsp)))
-                                                    (x86-mov cgc (x86-mem 16 (x86-rsp)) (x86-rax))
                                                     ;; Mov '() in rest param slot
                                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                                                    (x86-mov cgc (x86-mem 24 (x86-rsp)) (x86-rax))
+                                                    (x86-mov cgc (x86-mem 16 (x86-rsp)) (x86-rax))
                                                     ;; Add type information to ctx
                                                     (ctx-stack-set! ctx (append base-ctx (list 'pair) (list-tail (ctx-stack ctx) (length base-ctx)))))
                                                 ;; Rest param declared and given
                                                 ((and rest-param (> actual-p formal-p))
-                                                    (gen-rest-lst cgc ctx (- actual-p formal-p) (+ 24 (* 8 (- actual-p formal-p 1))) 0 (- actual-p formal-p))
-                                                    (ctx-stack-set! ctx (append (list CTX_CTXID CTX_RETAD CTX_CLO 'pair) (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p)))) ;; TODO : write context one time
+                                                    (gen-rest-lst cgc ctx (- actual-p formal-p) (+ 16 (* 8 (- actual-p formal-p 1))) 0 (- actual-p formal-p))
+                                                    (ctx-stack-set! ctx (append base-ctx '(pair) (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1)))) ;; 1 for return address ;; TODO : write context one time
                                                     ))
                                           
                                           (gen-mutable cgc ctx mvars)
@@ -864,29 +868,9 @@
          (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_PRO_EXPECTED))))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
-                                      (let* (;; Flag in stub : is the continuation already generated ?
-                                             (gen-flag #f)
-                                             ;; Label for return address loading
-                                             (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
-                                             ;; Continuation stub
-                                             (stub-labels (add-callback cgc
-                                                                        0
-                                                                        (lambda (ret-addr selector)
-                                                                          ;; Remove lambda and args from ctx, and add retval (unknown)
-                                                                          (let ((ctx-continuation (ctx-push (ctx-pop (ctx-pop-nb ctx (length args))) CTX_UNK)))
-                                                                            (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
-                                                                                (set! gen-flag (gen-version-continuation load-ret-label
-                                                                                                                         succ
-                                                                                                                         ctx-continuation)))
-                                                                            gen-flag)))))
-                                       
-                                        ;; Return address (continuation label)
-                                        (x86-label cgc load-ret-label)
-                                        (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
-                                        (x86-push cgc (x86-rax))
-                                        
+                                      
                                         ;; Call ctx in rdx
-                                        (let* ((call-stack    (append base-ctx (list-head (cdr (ctx-stack ctx)) (length args))))
+                                        (let* ((call-stack    (append base-ctx (list-head (cdr (ctx-stack ctx)) (+ (length args) 1))))
                                                (call-ctx      (make-ctx call-stack '() -1))
                                                (ctx-id        (length ctx_ids))
                                                (cct-offset    (* 8 (+ 1 (get-closure-index call-ctx)))))
@@ -896,14 +880,14 @@
                                           (x86-push cgc (x86-rax))
 
                                         ;; 1 - Get cc-table
-                                        (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))               ;; get closure
+                                        (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))               ;; get closure
                                         (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; get cc-table
 
                                         ;; 2 - Get entry point in cc-table
                                         (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
 
                                         ;; 3 - Jump to entry point
-                                        (x86-jmp cgc (x86-rax)))))))
+                                        (x86-jmp cgc (x86-rax))))))
          ;; Lazy main
          (lazy-main (make-lazy-code (lambda (cgc ctx)
                                       (let ((op-type (car (ctx-stack ctx))))
@@ -920,10 +904,37 @@
          ;; Lazy callee
          (lazy-operator (gen-ast (car ast) lazy-main)))
 
-
-    (if (> (length args) 0)
-        (gen-ast-l args lazy-operator)
-        lazy-operator)))
+    ;; Build first lazy code
+    ;; This lazy code creates continuation stub and push return address
+    (make-lazy-code
+       (lambda (cgc ctx)
+          (let* (;; Flag in stub : is the continuation already generated ?
+                 (gen-flag #f)
+                 ;; Label for return address loading
+                 (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
+                 ;; Continuation stub
+                 (stub-labels (add-callback cgc
+                                            0
+                                            (lambda (ret-addr selector)
+                                               ;; Remove lambda and args from ctx, and add retval (unknown)
+                                               (let ((ctx-continuation (ctx-push ctx CTX_UNK)))
+                                                  (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
+                                                     (set! gen-flag (gen-version-continuation load-ret-label
+                                                                                              succ
+                                                                                              ctx-continuation)))
+                                                   gen-flag)))))
+             ;; Return address (continuation label)
+             (x86-label cgc load-ret-label)
+             (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
+             (x86-push cgc (x86-rax))
+              
+             (let ((succ (if (> (length args) 0)
+                            ;; If args, then compile args
+                            (gen-ast-l args lazy-operator)
+                            ;; Else, compile call
+                            lazy-operator)))
+                        
+                (jump-to-version cgc succ (ctx-push ctx CTX_RETAD))))))))
 
 ;;
 ;; Make lazy code from NUMBER OPERATOR
@@ -1237,15 +1248,18 @@
 
 ;; Local var
 (define (gen-set-localvar cgc ctx variable)
+
    (let ((mutable (identifier-mutable? (cdr variable))))
      (if mutable
         (begin (gen-get-localvar cgc ctx variable 'gen-reg)
                (x86-pop cgc (x86-rbx))
                (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (x86-rbx))
+               
                ;; Replace ctx type
                (let* ((fs (length (ctx-stack ctx)))
-                      (idx (- fs 1 (identifier-offset (cdr variable)))))
+                      (idx (- fs 2 (identifier-offset (cdr variable)))))
                (set-car! (list-tail (ctx-stack ctx) idx) (car (ctx-stack ctx)))))
+               
         (error "Compiler error : set a non mutable var"))))
 
 ;; Gen code to set a global var
@@ -1292,7 +1306,7 @@
 ;; Local variable
 (define (gen-get-localvar cgc ctx variable dest #!optional (raw_value? #t))
    (let* ((fs (length (ctx-stack ctx)))
-          (pos (- fs 1 (identifier-offset (cdr variable))))
+          (pos (- fs 2 (identifier-offset (cdr variable))))
           (mutable (identifier-mutable? (cdr variable))))
 
       (if (or raw_value? (not mutable))
@@ -1308,7 +1322,7 @@
                                (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))))
                      ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
                      (else (error "Invalid destination")))))
-
+      
       (list-ref (ctx-stack ctx) pos)))
 
 ;; Gen code to get a global var
@@ -1427,7 +1441,7 @@
 
 ;; Get position of current closure in stack
 (define (closure-pos ctx)
-  (- (length (ctx-stack ctx)) 1 (ctx-nb-args ctx)))
+  (- (length (ctx-stack ctx)) 2 (ctx-nb-args ctx))) ;; 2= 1length + 1retAddr
 
 ;; Return label associated to function name
 (define (lookup-fn name)
@@ -1480,7 +1494,7 @@
        (let* ((res (assoc (car mutable) (ctx-env ctx)))
               (header-word (mem-header 2 STAG_MOBJECT))
               (fs (length (ctx-stack ctx)))
-              (offset (* (- fs 1 (identifier-offset (cdr res))) 8)))
+              (offset (* (- fs 2 (identifier-offset (cdr res))) 8)))
 
         ;; Alloc
         (gen-allocation cgc ctx STAG_MOBJECT 2)
@@ -1499,18 +1513,16 @@
         (gen-mutable cgc ctx (cdr mutable)))))
 
 ;; Gen code to create rest list from stack in heap.
+;; TODO rewrite with GC 
 (define (gen-rest-lst cgc ctx nb-pop sp-offset alloc-offset pos)
-
   (if (= 0 pos)
     (begin  ;; MOV REST PAIR
             (x86-mov cgc (x86-rax) alloc-ptr)
             (x86-sub cgc (x86-rax) (x86-imm-int (* 24 nb-pop)))
             (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-            (x86-mov cgc (x86-mem (+ 16 (* 8 nb-pop)) (x86-rsp)) (x86-rax)) ;; 32
+            (x86-mov cgc (x86-mem (+ 8 (* 8 nb-pop)) (x86-rsp)) (x86-rax)) ;; 32
             
-            ;; GLISSEMENT DES INFOS CTX
-            (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
-            (x86-mov cgc (x86-mem (+ 16 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
+            ;; MOV CTXID AND CLOSURE
             (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
             (x86-mov cgc (x86-mem (+ 8 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
             (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))

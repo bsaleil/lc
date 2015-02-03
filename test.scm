@@ -6,17 +6,29 @@
 ;; Test bind define
 
 
-(define (string . chars)
-   (if (null? chars)
-      ""
-      (let ((str (make-string (length chars))))
-         (string-h str chars 0))))
 
-(define string
-  (lambda chars
-    (if (null? chars)
-        ""
-        ((lambda (str) (string-h str chars 0)) (make-string (length chars))))))
+
+
+
+(define (foo a . b)
+	($+ a 10))
+
+
+(foo 1 2)
+
+
+
+
+
+
+
+; (define (string-append-h strings)
+;   (cond ((null? strings) "")
+;         ((null? (cdr strings)) (car strings))
+;         (else
+;          (string-append-h
+;           (cons (string-append-two (car strings) (cadr strings))
+;                 (cddr strings))))))
 
 
 ; (foo 10)
