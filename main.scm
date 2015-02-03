@@ -14,7 +14,8 @@
               (pop-regs-reverse cgc prog-regs)
               (x86-ret cgc))))
       (gen-ast (car exprs)
-               (lazy-exprs (cdr exprs) succ))))
+               (lazy-exprs (cdr exprs) succ)
+               #f)))
 
 ;;-----------------------------------------------------------------------------
 ;; Interactive mode (REPL)
@@ -39,7 +40,7 @@
               (lambda (cgc ctx)
                  (x86-pop cgc (x86-rax))
                  (x86-mov cgc (x86-mem 0 (x86-r10)) (x86-rax))
-                 (jump-to-version cgc (gen-ast '(pp $$REPL-RES) lazy-read-eval) (ctx-pop ctx)))))
+                 (jump-to-version cgc (gen-ast '(pp $$REPL-RES) lazy-read-eval #f) (ctx-pop ctx)))))
            ;; Lazy read-eval
            (lazy-read-eval (make-lazy-code
               (lambda (cgc ctx)
@@ -48,11 +49,11 @@
                     (cond ((equal? r '(unquote LC))
                               (let ((r (read)))
                                 (eval r)
-                                (jump-to-version cgc (gen-ast #f lazy-print) ctx)))
+                                (jump-to-version cgc (gen-ast #f lazy-print #f) ctx)))
                           ((equal? r '(unquote q))
                               (jump-to-version cgc lazy-ret ctx))
                           (else
-                              (jump-to-version cgc (gen-ast r lazy-print) ctx))))))))
+                              (jump-to-version cgc (gen-ast r lazy-print #f) ctx))))))))
     ;; Global var for print step
     (set! globals '(($$REPL-RES . 0)))
     ;; Gen
