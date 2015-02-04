@@ -2,23 +2,17 @@
 (define (cons a b)
   ($cons a b))
 
-(define (car l)
-  ($car l))
-
-(define (cdr l)
-  ($cdr l))
+(define (car l)   ($car l))
+(define (cdr l)   ($cdr l))
+(define (cddr l)  (cdr (cdr l)))
+(define (cadr l)  (car (cdr l)))
+(define (caddr l) (car (cddr l)))
 
 (define (set-car! p v)
   ($set-car! p v))
 
 (define (set-cdr! p v)
   ($set-cdr! p v))
-
-(define (cddr l)
-  (cdr (cdr l)))
-
-(define (cadr l)
-  (car (cdr l)))
 
 (define (length l)
   (if (null? l)
