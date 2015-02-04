@@ -7,7 +7,8 @@
     "./lib/vector.scm"
     "./lib/types.scm"
     "./lib/char.scm"
-    "./lib/list.scm"))
+    "./lib/list.scm"
+    "./lib/fn.scm"))
 
 (define (get-lib files)
     (if (null? files)

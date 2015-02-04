@@ -31,3 +31,19 @@
   (cond ((null? n) #t)
         ((pair? n) (list? (cdr n)))
         (else #f)))
+
+(define (list-ref lst i)
+  (if (= i 0)
+    (car lst)
+    (list-ref (cdr lst) (- i 1))))
+
+(define (reverse lst)
+   (if (null? lst)
+       '()
+       (append (reverse (cdr lst))
+               (list (car lst)))))
+
+(define (for-each f lst)
+   (if (pair? lst)
+     (begin (f (car lst))
+            (for-each f (cdr lst)))))
