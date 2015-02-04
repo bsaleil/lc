@@ -359,7 +359,8 @@
 
 (define block #f)
 ;; TODO : fixed number of globals
-(define block-len (* 8 (+ 1 100))) ;; 1 stack addr, 100 globals
+(define global-offset 3) ;; Stack addr, current input, current output
+(define block-len (* 8 (+ global-offset 100))) ;; 1 stack addr, 100 globals
 (define block-addr #f)
 
 (define (init-block)
@@ -529,7 +530,7 @@
     
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
     (x86-mov cgc alloc-ptr  (x86-imm-int heap-addr))       ;; Heap addr in alloc-ptr
-    (x86-mov cgc (x86-r10) (x86-imm-int (+ block-addr 8))) ;; Globals addr in r10
+    (x86-mov cgc (x86-r10) (x86-imm-int (+ block-addr (* 8 global-offset)))) ;; Globals addr in r10
     ))
 
 (define (init)

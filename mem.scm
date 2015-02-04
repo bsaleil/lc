@@ -230,7 +230,7 @@
       (let* (;; Get global info
              (global (car globals))
              ;; Get global address
-             (global-addr (+ 8 (* 8 (cdr global)) block-addr))
+             (global-addr (+ (* 8 global-offset) (* 8 (cdr global)) block-addr))
              ;; Copy global if it's a heap obj
              (c (copy-root global-addr current-copy-ptr)))
           ;; Continue with next globals    
