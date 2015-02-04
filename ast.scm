@@ -30,7 +30,7 @@
            (cond ;; Special with call
                  ((member op '($$putchar)) (mlc-special-c ast succ))
                  ;; Special without call
-                 ((member op '($string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $set-car! $set-cdr! $car $cdr)) (mlc-special-nc ast succ))
+                 ((member op '($error $string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $set-car! $set-cdr! $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ;; Set!
@@ -273,7 +273,12 @@
 (define (mlc-special-nc ast succ)
   (let* ((special (car ast))
          (lazy-special
-           (cond ;; CONS
+           (cond ;; ERROR
+                 ((eq? special '$error)
+                    (make-lazy-code
+                      (lambda (cgc ctx)
+                         (gen-error cgc ""))))
+                 ;; CONS
                  ((eq? special '$cons) (mlc-pair succ))
                  ;; CAR & CDR
                  ((member special '($car $cdr))
@@ -592,7 +597,10 @@
                  (else (error "NYI")))))
     
     ;; Build lazy objects chain
-    (cond ;; $cons, $string-ref, $vector-ref, $set-car!, $set-cdr!
+    (cond ;; $error
+          ((eq? special '$error)
+             lazy-special)
+          ;; $cons, $string-ref, $vector-ref, $set-car!, $set-cdr!
           ((member special '($cons $string-ref $vector-ref $set-car! $set-cdr!))
            (let ((lazy-right (gen-ast (caddr ast) lazy-special #f)))
              (gen-ast (cadr ast) lazy-right #f)))
@@ -1406,7 +1414,7 @@
                   ;; Lambda
                   ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
                   ;; Special
-                  ((member op '(set! $string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $set-car! $set-cdr! $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
+                  ((member op '(set! $error $string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $set-car! $set-cdr! $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
 
