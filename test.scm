@@ -5,19 +5,24 @@
 ;; Test set-car, set-cdr + Check err
 ;; Test bind define
 
+; (define (bar n m)
+;   (begin ($$putchar ($+ n m))
+;          (foo 55)))
+
+; (define (foo n)
+;   (begin ($$putchar n)
+;          (bar 55 2)))
+
+; (foo 55)
+
+(define (foo n)
+  10)
+
+(define (make-string size . init)
+    (foo 20))
 
 
-
-
-
-(define (foo a . b)
-	($+ a 10))
-
-
-(foo 1 2)
-
-
-
+(make-string 4)
 
 
 

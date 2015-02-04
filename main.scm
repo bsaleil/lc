@@ -111,6 +111,7 @@
 (define (main . args)
     
   ;; Get library
+  ;(define lib '())
   (define lib (expand-tl (read-all (open-input-file "./lib.scm"))))
   ;; Get options and files from cl args
   (define files (parse-args args))
