@@ -11,3 +11,27 @@
 ;; Test reverse
 ;; Test for-each
 ;; Test ERROR
+;; Ajouter port au GC
+;; Test open-input-file, read-char, eof-object ?
+;; Test print symbol, print eof
+;; +++ Check-err de tout ça
+
+; (define (rch port)
+;   (let ((r (read-char port)))
+;     (println (eof-object? r))
+;     (pp (char? r))
+;     (pp r)))
+
+; (let ((f (open-input-file "in")))
+;   (pp (port? f))
+;   (println "-----")
+;   (rch f)
+;   (rch f)
+;   (rch f)
+;   (rch f)
+;   (rch f)
+;   (rch f)
+;   (rch f)
+;   (rch f)
+;   (rch f)
+;   (rch f))

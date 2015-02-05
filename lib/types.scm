@@ -22,6 +22,9 @@
 (define (symbol? s)
   ($symbol? s))
 
+(define (port? p)
+  ($port? p))
+
 (define (boolean? n)
   (cond ((eq? n #t) #t)
         ((eq? n #f) #t)

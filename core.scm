@@ -3,9 +3,11 @@
 (include "~~lib/_x86#.scm")
 (include "~~lib/_codegen#.scm")
 
+;; TODO : forward declaration. Use gambit module system
+(define gen-native #f)
+
 ;;-----------------------------------------------------------------------------
 
-(include "native.scm")
 (include "x86-debug.scm")
 
 ;;-----------------------------------------------------------------------------
@@ -35,6 +37,7 @@
 (define STAG_STRING    19)
 (define STAG_CCTABLE   16)
 (define STAG_SYMBOL     8)
+(define STAG_PORT      17)
 
 ;; Context types
 (define CTX_NUM   'number)
@@ -50,19 +53,25 @@
 (define CTX_VECT  'vector)
 (define CTX_STR   'string)
 (define CTX_SYM   'symbol)
+(define CTX_PORT  'port)
 
 ;; Exec errors
-(define ERR_MSG            "EXEC ERROR")
-(define ERR_NUM_EXPECTED   "NUMBER EXPECTED")
-(define ERR_CHAR_EXPECTED  "CHAR EXPECTED")
-(define ERR_PRO_EXPECTED   "PROCEDURE EXPECTED")
-(define ERR_PAIR_EXPECTED  "PAIR EXPECTED")
-(define ERR_ARR_OVERFLOW   "ARITHMETIC OVERFLOW")
-(define ERR_ARR_OVERFLOW   "ARITHMETIC OVERFLOW")
-(define ERR_WRONG_NUM_ARGS "WRONG NUMBER OF ARGUMENTS")
+(define ERR_MSG             "EXEC ERROR")
+(define ERR_NUM_EXPECTED    "NUMBER EXPECTED")
+(define ERR_CHAR_EXPECTED   "CHAR EXPECTED")
+(define ERR_PRO_EXPECTED    "PROCEDURE EXPECTED")
+(define ERR_PAIR_EXPECTED   "PAIR EXPECTED")
+(define ERR_ARR_OVERFLOW    "ARITHMETIC OVERFLOW")
+(define ERR_ARR_OVERFLOW    "ARITHMETIC OVERFLOW")
+(define ERR_WRONG_NUM_ARGS  "WRONG NUMBER OF ARGUMENTS")
+
+(define ERR_OPEN_INPUT_FILE "CAN'T OPEN FILE")
+(define ERR_READ_CHAR       "CAN'T READ CHAR")
 
 ;;
-(define ENCODING_VOID -18)
+(define ENCODING_VOID -18) ;; encoded VOID
+(define ENCODING_EOF  -14) ;; encoded EOF
+(define NENCODING_EOF  -4) ;; non encoded EOF
 
 ;;-----------------------------------------------------------------------------
 

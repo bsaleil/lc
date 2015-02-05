@@ -49,6 +49,14 @@
      (begin (print (string-ref str pos))
             (print-string str (+ pos 1) len))))
 
+(define (print-eof)
+  ($$putchar 35)  ;#
+  ($$putchar 33)  ;!
+  ($$putchar 101) ;e
+  ($$putchar 111) ;o
+  ($$putchar 102));f
+  
+
 (define (print n)
     (cond ((null? n) #f)
           ((number? n) (print-nb n))
@@ -61,6 +69,8 @@
           ((symbol? n)
              (let ((str (symbol->string n)))
                (print-string str 0 (string-length str))))
+          ((eof-object? n)
+             (print-eof))
           (else (print-bool n))))
   
 (define (println n)
@@ -153,6 +163,8 @@
         ((symbol? n)
            (let ((str (symbol->string n)))
              (print-string str 0 (string-length str))))
+        ((eof-object? n)
+           (print-eof))
         (else (print-bool n))))
 
 (define (pp n)
