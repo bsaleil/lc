@@ -53,19 +53,19 @@
 
 ;; Allocate RAX(reg) + length(imm) bytes in heap
 ;; DESTROY RAX !!
-;; DESTROY RCX !!
+;; DESTROY R15 !!
 (define (gen-alloc-regimm cgc stag length)
   (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok))))
     
     ;; Remaining space in RAX
-    (x86-mov cgc (x86-rcx) (x86-imm-int (+ from-space space-len)))
-    (x86-sub cgc (x86-rcx) alloc-ptr)
+    (x86-mov cgc (x86-r15) (x86-imm-int (+ from-space space-len)))
+    (x86-sub cgc (x86-r15) alloc-ptr)
     
     (x86-shl cgc (x86-rax) (x86-imm-int 1))
     (if (> length 0)
       (x86-add cgc (x86-rax) (x86-imm-int (* 8 length))))
     
-    (x86-cmp cgc (x86-rcx) (x86-rax))
+    (x86-cmp cgc (x86-r15) (x86-rax))
     (x86-jge cgc label-alloc-ok)
     ;; Allocation size is in RAX (used by GC)
     (gen-gc-call cgc)
@@ -137,12 +137,12 @@
 
 ;; Copy 'len' bytes from address 'from' to address 'to'
 (define (copy-bytes from to len)
-  (log-gc (string-append "Copy "
-                         (number->string len)
-                         " bytes from "
-                         (number->string from)
-                         " to "
-                         (number->string to)))
+  ; (log-gc (string-append "Copy "
+  ;                        (number->string len)
+  ;                        " bytes from "
+  ;                        (number->string from)
+  ;                        " to "
+  ;                        (number->string to)))
   (let ((copy-ptr (copy-bytes-h from to len)))
     (if (>= copy-ptr (+ to-space space-len))
         (out-of-memory)
@@ -400,11 +400,13 @@
   ;; Check if there is enough memory for alloc request
   (if (>= (+ copy-ptr alloc-size) (+ to-space space-len))
     (out-of-memory))
-  
+    
   ;; Update from/to-spaces positions
   (let ((tmp from-space))
     (set! from-space to-space)
     (set! to-space tmp))
+  
+  (log-gc "GC END")
   
   ;; Return new position of alloc-ptr
   copy-ptr)
@@ -413,10 +415,10 @@
 ;; HEAP DEV DEBUG FUNCTIONS
 ;;-------------------------
 
-;; Fill assoc list STACK_TYPES.
-;; Each stack slot is associated to a tag (or stag if mem obj)
-;; Ex ((addrSlot1 2) (addrSlot2 630) ...)
-;; Used to check that reachable objects from stack keep the same shape after GC.
+; ; Fill assoc list STACK_TYPES.
+; ; Each stack slot is associated to a tag (or stag if mem obj)
+; ; Ex ((addrSlot1 2) (addrSlot2 630) ...)
+; ; Used to check that reachable objects from stack keep the same shape after GC.
 ; (define STACK_TYPES '())
 ; (define (get-stack-types sbegin send)
 ;   (if (>= sbegin send)
@@ -428,10 +430,10 @@
 ;             (set! STACK_TYPES (cons (cons sbegin tag) STACK_TYPES)))
 ;         (get-stack-types (- sbegin 8) send))))
 
-;; Fill assoc list GLOBAL_TYPES.
-;; Each global slot is associated to a tag (or stag if mem obj)
-;; Ex ((addrSlot1 2) (addrSlot2 630) ...)
-;; Used to check that reachable objects from globals keep the same shape after GC.
+; ; Fill assoc list GLOBAL_TYPES.
+; ; Each global slot is associated to a tag (or stag if mem obj)
+; ; Ex ((addrSlot1 2) (addrSlot2 630) ...)
+; ; Used to check that reachable objects from globals keep the same shape after GC.
 ; (define GLOBAL_TYPES '())
 ; (define (get-global-types globals)
 ;   (if (not (null? globals))
@@ -445,21 +447,21 @@
 ;             (set! GLOBAL_TYPES (cons (cons global tag) GLOBAL_TYPES)))
 ;         (get-global-types (cdr globals)))))
 
-;; Check if addr is in to space
+; ; Check if addr is in to space
 ; (define (check-intospace addr)
 ;   (if (or (< addr to-space)
 ;           (>= addr (+ to-space space-len)))
 ;     (error "Referenced object out of to-space, heap check failed")
 ;     #t))
 
-;; Check if header at addr is not a BH
+; ; Check if header at addr is not a BH
 ; (define (check-validheader addr)
 ;   (let ((h (get-i64 addr)))
 ;     (if (< h 0)
 ;         (error "Invalid header, heap check failed")
 ;         #t)))
 
-;; Check if the field at 'addr' is in to space and is not a BH
+; ; Check if the field at 'addr' is in to space and is not a BH
 ; (define (check-field addr)
 ;   (let* ((val (get-i64 addr))
 ;          (tag (bitwise-and val 3)))
@@ -470,14 +472,14 @@
 ;               (check-validheader (- val tag)))
 ;        #t)))
 
-;; Check all vector fields
+; ; Check all vector fields
 ; (define (check-vector scan l)
 ;   (if (= l 0)
 ;       #t
 ;       (begin (check-field scan)
 ;              (check-vector (+ scan 8) (- l 1)))))
 
-;; Check all heap objects after GC (scan to space)
+; ; Check all heap objects after GC (scan to space)
 ; (define (check-heap scan copy)
 ;   (cond ((> scan copy)
 ;             (error "Unexpected behavior, heap check failed."))
@@ -511,5 +513,10 @@
 ;                     ((= s STAG_VECTOR)
 ;                         (check-vector scan l)
 ;                         (check-heap (+ scan (* 8 l)) copy))
+;                     ;; PAIR
+;                     ((= s STAG_PAIR)
+;                         (check-field (+ scan  8))
+;                         (check-field (+ scan 16))
+;                         (check-heap (+ scan 24) copy))                            
 ;                     (else (pp-stag s)
 ;                           (error "NYI")))))))

@@ -21,11 +21,16 @@
 
 (define list (lambda x x))
 
-(define append ;; TODO : append-two 
-   (lambda (lst1 lst2)
-      (if (null? lst1)
-         lst2
-         (cons (car lst1) (append (cdr lst1) lst2)))))
+(define (append . lsts)
+  (define (append-two lst1 lst2)
+    (if (null? lst1)
+      lst2
+      (cons (car lst1) (append-two (cdr lst1) lst2))))
+  (define (append-h lsts)
+    (if (null? lsts)
+      '()
+      (append-two (car lsts) (append-h (cdr lsts)))))
+  (append-h lsts))
 
 (define (list? n)
   (cond ((null? n) #t)
@@ -47,3 +52,13 @@
    (if (pair? lst)
      (begin (f (car lst))
             (for-each f (cdr lst)))))
+
+(define (memq el lst)
+  (cond ((null? lst) #f)
+        ((eq? el (car lst)) lst)
+        (else (memq el (cdr lst)))))
+
+(define (member el lst)
+  (cond ((null? lst) #f)
+        ((equal? el (car lst)) lst)
+        (else (member el (cdr lst)))))

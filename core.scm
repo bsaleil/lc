@@ -335,7 +335,7 @@
 (define alloc-ptr (x86-r12))
 
 ;; CODE
-(define code-len 500000)
+(define code-len 5000000)
 (define code-addr #f)
 
 ;; MCB :
@@ -369,7 +369,7 @@
 (define block #f)
 ;; TODO : fixed number of globals
 (define global-offset 3) ;; Stack addr, current input, current output
-(define block-len (* 8 (+ global-offset 100))) ;; 1 stack addr, 100 globals
+(define block-len (* 8 (+ global-offset 1000))) ;; 1 stack addr, 1000 globals
 (define block-addr #f)
 
 (define (init-block)
@@ -600,6 +600,7 @@
         (x86-rdx)
         alloc-ptr
         (x86-r10) ;; Globals
+        (x86-r15)
         ))
 
 (define nb-c-caller-save-regs
@@ -715,7 +716,7 @@
         ((lazy-code-generator lazy-code) cgc ctx)))
     
     (patch-continuation load-addr continuation-label)))
-  
+
 ;; Generate a function
 ;; First generate function lazy-code
 ;; Then patch closure slot to jump directly to generated function
@@ -740,12 +741,14 @@
         ;; That version is not yet generated, so generate it and then patch call
         (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
 
+            
           ;; Gen version
           (code-add
              (lambda (cgc)
                 (asm-align cgc 4 0 #x90)
                 (x86-label cgc fn-label)
                 ((lazy-code-generator lazy-code) cgc ctx)))
+          
           ;; Put version matching this ctx
           (put-version lazy-code ctx fn-label)
           ;; Patch closure
@@ -955,7 +958,7 @@
     (if r
         (cdr r)
         (let ((idx (length global-cc-table)))
-          (if (= idx global-cc-table-maxsize)
+          (if (>= idx global-cc-table-maxsize)
               (error "CC Table is full")
               (begin (set! global-cc-table (cons (cons (ctx-stack ctx) idx) global-cc-table))
                      idx))))))

@@ -9,7 +9,8 @@
     "./lib/char.scm"
     "./lib/list.scm"
     "./lib/fn.scm"
-    "./lib/port.scm"))
+    "./lib/port.scm"
+    "./lib/num.scm"))
 
 (define (get-lib files)
     (if (null? files)

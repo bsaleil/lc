@@ -60,3 +60,15 @@
 
 (define (symbol->string sym)
   ($symbol->string sym))
+
+(define (number->string num)
+  (define (digit->string d)
+    (make-string 1 (integer->char (+ d 48))))
+  (define (number->string-h num)
+    (if (= num 0)
+        ""
+        (string-append (number->string-h (quotient num 10))
+                       (digit->string    (modulo   num 10)))))
+  (if (= num 0)
+      "0"
+      (number->string-h num)))

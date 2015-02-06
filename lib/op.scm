@@ -8,6 +8,9 @@
 (define (> x y)        ($> x y))
 (define (= x y)        ($= x y))
 
+;; TODO : IT IS NOT THE SAME FUNCTION !
+(define remainder modulo)
+
 (define (not x)
   (eq? x #f))
 

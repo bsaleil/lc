@@ -54,6 +54,7 @@
   
   ;; Save destroyed regs
   ;; Note : The kernel also destroys RCX but saveing rcx is useless ?
+  (x86-push cgc (x86-rcx))
   (x86-push cgc (x86-r11)) ;; Destroyed by kernel 
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
@@ -87,7 +88,8 @@
   ;; Restore destroyed regs
   (x86-pop cgc (x86-rsi))
   (x86-pop cgc (x86-rdi))
-  (x86-pop cgc (x86-r11)))
+  (x86-pop cgc (x86-r11))
+  (x86-pop cgc (x86-rcx)))
 
 ;;-----------------------------------------------------------------------------
 ;; READ-CHAR
@@ -96,6 +98,7 @@
 
   ;; Save destroyed regs
   ;; Note : The kernel also destroys RCX but saveing rcx is useless ?
+  (x86-push cgc (x86-rcx))
   (x86-push cgc (x86-r11)) ;; Destroyed by kernel 
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
@@ -136,4 +139,5 @@
   ;; Restore destroyed regs
   (x86-pop cgc (x86-rsi))
   (x86-pop cgc (x86-rdi))
-  (x86-pop cgc (x86-r11)))
+  (x86-pop cgc (x86-r11))
+  (x86-pop cgc (x86-rcx)))

@@ -408,17 +408,17 @@
                         (gen-allocation cgc ctx STAG_STRING 3 #t)
                         
                         ;; Get string position in RCX
-                        (x86-mov cgc (x86-rcx) (x86-rdx))
-                        (x86-shl cgc (x86-rcx) (x86-imm-int 1))
-                        (x86-neg cgc (x86-rcx))
-                        (x86-add cgc (x86-rcx) alloc-ptr)
-                        (x86-sub cgc (x86-rcx) (x86-imm-int 24))
+                        (x86-mov cgc (x86-r15) (x86-rdx))
+                        (x86-shl cgc (x86-r15) (x86-imm-int 1))
+                        (x86-neg cgc (x86-r15))
+                        (x86-add cgc (x86-r15) alloc-ptr)
+                        (x86-sub cgc (x86-r15) (x86-imm-int 24))
                         
                         ;; Fill string
                         (x86-push cgc (x86-rbx))
                         
                         ;; RCX contient la position du vecteur
-                        (x86-mov cgc (x86-rax) (x86-rcx))
+                        (x86-mov cgc (x86-rax) (x86-r15))
                         
                         (let ((label-loop (asm-make-label cgc (new-sym 'fill-vector-loop)))
                               (label-end  (asm-make-label cgc (new-sym 'fill-vector-end))))
@@ -442,16 +442,16 @@
                         (x86-pop cgc (x86-rbx)))  
                         
                         ;; Write encoded length
-                        (x86-mov cgc (x86-mem 8 (x86-rcx)) (x86-rbx))
+                        (x86-mov cgc (x86-mem 8 (x86-r15)) (x86-rbx))
                         
                         ;; Write header
                         (x86-shl cgc (x86-rdx) (x86-imm-int 6))
                         (x86-add cgc (x86-rdx) (x86-imm-int header-word))
-                        (x86-mov cgc (x86-mem 0 (x86-rcx)) (x86-rdx))
+                        (x86-mov cgc (x86-mem 0 (x86-r15)) (x86-rdx))
                         
                         ;; Push vector
-                        (x86-add cgc (x86-rcx) (x86-imm-int TAG_MEMOBJ))
-                        (x86-push cgc (x86-rcx))
+                        (x86-add cgc (x86-r15) (x86-imm-int TAG_MEMOBJ))
+                        (x86-push cgc (x86-r15))
                         
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR))))))
                         
@@ -473,11 +473,11 @@
                         (x86-mov cgc (x86-rax) (x86-rbx))
                         (x86-shl cgc (x86-rax) (x86-imm-int 1))
                         (x86-add cgc (x86-rax) (x86-imm-int 16))
-                        (x86-mov cgc (x86-rcx) alloc-ptr)
-                        (x86-sub cgc (x86-rcx) (x86-rax))
+                        (x86-mov cgc (x86-r15) alloc-ptr)
+                        (x86-sub cgc (x86-r15) (x86-rax))
                         
                         ;; Fill vector
-                        (x86-push cgc (x86-rcx))
+                        (x86-push cgc (x86-r15))
                         (x86-push cgc (x86-rbx))
                         
                           ;; Init value in RAX (0)
@@ -493,9 +493,9 @@
                           (x86-je  cgc label-end)
                           
                             ;; Init vector slot
-                            (x86-mov cgc (x86-mem 16 (x86-rcx)) (x86-rax))
+                            (x86-mov cgc (x86-mem 16 (x86-r15)) (x86-rax))
                             ;; Update offset and remaining elements nb
-                            (x86-add cgc (x86-rcx) (x86-imm-int 8))
+                            (x86-add cgc (x86-r15) (x86-imm-int 8))
                             (x86-sub cgc (x86-rbx) (x86-imm-int 4))
                             ;; loop
                             (x86-jmp cgc label-loop)
@@ -503,19 +503,19 @@
                         ;; END:  
                         (x86-label cgc label-end)
                         (x86-pop cgc (x86-rbx))
-                        (x86-pop cgc (x86-rcx)))
+                        (x86-pop cgc (x86-r15)))
                         
                         ;; Write encoded length
-                        (x86-mov cgc (x86-mem 8 (x86-rcx)) (x86-rbx))
+                        (x86-mov cgc (x86-mem 8 (x86-r15)) (x86-rbx))
                         
                         ;; Write header
                         (x86-shl cgc (x86-rbx) (x86-imm-int 6))
                         (x86-add cgc (x86-rbx) (x86-imm-int header-word))
-                        (x86-mov cgc (x86-mem 0 (x86-rcx)) (x86-rbx))
+                        (x86-mov cgc (x86-mem 0 (x86-r15)) (x86-rbx))
                         
                         ;; Push vector
-                        (x86-add cgc (x86-rcx) (x86-imm-int TAG_MEMOBJ))
-                        (x86-push cgc (x86-rcx))
+                        (x86-add cgc (x86-r15) (x86-imm-int TAG_MEMOBJ))
+                        (x86-push cgc (x86-r15))
                         
                         ;;
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VECT))))))
@@ -544,19 +544,19 @@
                       (x86-sub cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
                       
                       ;; Mov length in symbol
-                      (x86-mov cgc (x86-rcx) (x86-mem 8 (x86-rax)))
-                      (x86-mov cgc (x86-mem 8 (x86-rbx)) (x86-rcx))
+                      (x86-mov cgc (x86-r15) (x86-mem 8 (x86-rax)))
+                      (x86-mov cgc (x86-mem 8 (x86-rbx)) (x86-r15))
                       
                       ;; Mov header in symbol
-                      (x86-mov cgc (x86-rcx) (x86-mem 0 (x86-rax)))
+                      (x86-mov cgc (x86-r15) (x86-mem 0 (x86-rax)))
                       (if (eq? special '$string->symbol)
-                         (x86-sub cgc (x86-rcx) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3)))
-                         (x86-add cgc (x86-rcx) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3))))
-                      (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-rcx))
+                         (x86-sub cgc (x86-r15) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3)))
+                         (x86-add cgc (x86-r15) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3))))
+                      (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-r15))
                       
-                      ;; Encoded length in rcx
-                      (x86-shr cgc (x86-rcx) (x86-imm-int 8))
-                      (x86-shl cgc (x86-rcx) (x86-imm-int 3))
+                      ;; Encoded length in r15
+                      (x86-shr cgc (x86-r15) (x86-imm-int 8))
+                      (x86-shl cgc (x86-r15) (x86-imm-int 3))
                                             
                       ;; If encoded length == 16
                       ;;    jump label-fin
@@ -564,12 +564,12 @@
                             (label-fin  (asm-make-label cgc (new-sym 'label-fin))))
                         
                         (x86-label cgc label-loop)
-                        (x86-cmp cgc (x86-rcx) (x86-imm-int 16))
+                        (x86-cmp cgc (x86-r15) (x86-imm-int 16))
                         (x86-jle cgc label-fin)
                         
-                          (x86-mov cgc (x86-rdx) (x86-mem -8 (x86-rcx) (x86-rax)))
-                          (x86-mov cgc (x86-mem -8 (x86-rcx) (x86-rbx)) (x86-rdx))
-                          (x86-sub cgc (x86-rcx) (x86-imm-int 8))
+                          (x86-mov cgc (x86-rdx) (x86-mem -8 (x86-r15) (x86-rax)))
+                          (x86-mov cgc (x86-mem -8 (x86-r15) (x86-rbx)) (x86-rdx))
+                          (x86-sub cgc (x86-r15) (x86-imm-int 8))
                           (x86-jmp cgc label-loop)
                       
                         (x86-label cgc label-fin))
@@ -700,11 +700,10 @@
                          ;; Jump to continuation
                          (x86-jmp cgc (x86-rax))))))
          ;; Lazy lambda body
-         (lazy-body (gen-ast (caddr ast) lazy-ret #t))
+         (lazy-body (gen-ast (caddr ast) lazy-ret #f))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
          (lazy-prologue (make-lazy-code
                            (lambda (cgc ctx)
-
                               (let* ((actual-p (- (length (ctx-stack ctx)) (length base-ctx) 1)) ;; 1 for return address
                                      (formal-p (ctx-nb-args ctx)))
 
@@ -724,13 +723,27 @@
                                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
                                                     (x86-mov cgc (x86-mem 16 (x86-rsp)) (x86-rax))
                                                     ;; Add type information to ctx
-                                                    (ctx-stack-set! ctx (append base-ctx (list 'pair) (list-tail (ctx-stack ctx) (length base-ctx))))
-                                                    (ctx-nb-args-set! ctx (+ (ctx-nb-args ctx) 1)))
+                                                    ;; TODO
+                                                    (let* ((cstack (append base-ctx (list 'pair) (list-tail (ctx-stack ctx) (length base-ctx))))
+                                                           (cnbargs (+ (ctx-nb-args ctx) 1))
+                                                           (cenv (ctx-env ctx))
+                                                           (cctx (make-ctx cstack cenv cnbargs)))
+                                                     (set! ctx cctx)))
+                                                    ;(ctx-stack-set! ctx (append base-ctx (list 'pair) (list-tail (ctx-stack ctx) (length base-ctx))))
+                                                    ;(ctx-nb-args-set! ctx (+ (ctx-nb-args ctx) 1)))
                                                 ;; Rest param declared and given
                                                 ((and rest-param (> actual-p formal-p))
-                                                    (gen-rest-lst cgc ctx (- actual-p formal-p) (+ 16 (* 8 (- actual-p formal-p 1))) 0 (- actual-p formal-p))
-                                                    (ctx-stack-set! ctx (append base-ctx '(pair) (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1)))) ;; 1 for return address ;; TODO : write context one time
-                                                    (ctx-nb-args-set! ctx (+ (ctx-nb-args ctx) 1))
+                                                 
+                                                    (gen-rest-lst cgc ctx (- actual-p formal-p))
+                                                    
+                                                    ;; TODO
+                                                    (let* ((cstack (append base-ctx '(pair) (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1))))
+                                                           (cnbargs (+ (ctx-nb-args ctx) 1))
+                                                           (cenv (ctx-env ctx))
+                                                           (cctx (make-ctx cstack cenv cnbargs)))
+                                                      (set! ctx cctx))
+                                                    ;(ctx-stack-set! ctx (append base-ctx '(pair) (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1)))) ;; 1 for return address ;; TODO : write context one time
+                                                    ;(ctx-nb-args-set! ctx (+ (ctx-nb-args ctx) 1))
                                                     ))
                                           
                                           (gen-mutable cgc ctx mvars)
@@ -739,6 +752,7 @@
     ;; Lazy closure generation
     (make-lazy-code
       (lambda (cgc ctx)
+        
         (let* (;; Lambda stub
                (stub-labels (add-fn-callback cgc
                                              0
@@ -748,7 +762,7 @@
                                                       (ctx (make-ctx (ctx-stack ctx) env (length params))))
                                                  (gen-version-fn closure lazy-prologue ctx)))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
-
+          
           ;; SAVE ENVIRONMENT
           (set! saved-env (ctx-env ctx))
           ;; COMPUTE FREE VARS
@@ -942,7 +956,7 @@
 
                                         ;; 2 - Get entry point in cc-table
                                         (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
-
+                                        
                                         ;; 3 - Jump to entry point
                                         (x86-jmp cgc (x86-rax))))))
          ;; Lazy main
@@ -1597,41 +1611,50 @@
         (gen-mutable cgc ctx (cdr mutable)))))
 
 ;; Gen code to create rest list from stack in heap.
-;; TODO rewrite with GC 
-(define (gen-rest-lst cgc ctx nb-pop sp-offset alloc-offset pos)
-  (if (= 0 pos)
-    (begin  ;; MOV REST PAIR
-            (x86-mov cgc (x86-rax) alloc-ptr)
-            (x86-sub cgc (x86-rax) (x86-imm-int (* 24 nb-pop)))
-            (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-            (x86-mov cgc (x86-mem (+ 8 (* 8 nb-pop)) (x86-rsp)) (x86-rax)) ;; 32
-            
-            ;; MOV CTXID AND CLOSURE
-            (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
-            (x86-mov cgc (x86-mem (+ 8 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
-            (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-            (x86-mov cgc (x86-mem (+ 0 (* 8 (- nb-pop 1))) (x86-rsp)) (x86-rax))
-            (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- nb-pop 1)))))
+;; nb-pop: Number of values in rest list
+;; sp-offset: offset from rsp of the first value in rest list
+(define (gen-rest-lst cgc ctx nb-pop)
+  ;; Push the last cdr
+  (x86-push cgc (x86-imm-int (obj-encoding '())))
+  ;; Buils rest list
+  (gen-rest-lst-h cgc ctx nb-pop nb-pop 24)) ;; 24: '(), ctx, closure
 
-    (let ((header (mem-header 3 STAG_PAIR)))
-
-      ;; Alloc pair
-      (gen-allocation cgc ctx STAG_PAIR 3)
-      
-      ;; Write header and car
-      (x86-mov cgc (x86-rax) (x86-imm-int header))
-      (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))
-      (x86-mov cgc (x86-rax) (x86-mem sp-offset (x86-rsp)))
-      (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
-      
-      ;; Write cdr
-      (if (= 1 pos)
-        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-        (begin (x86-mov cgc (x86-rax) alloc-ptr)
-               (x86-add cgc (x86-rax) (x86-imm-int (+ 0 TAG_MEMOBJ)))))
-      (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
-      
-      (gen-rest-lst cgc ctx nb-pop (- sp-offset 8) alloc-offset (- pos 1)))))    
+;; Create a pair with top of stack in cdr
+;; and argument slot (rsp + sp-offset) in car
+;; then push this pair and create next.
+(define (gen-rest-lst-h cgc ctx pos nb sp-offset)
+  (if (= pos 0)
+      ;; All pairs created, then change stack layout
+      (begin ;; Mov rest list to stack
+             (x86-pop cgc (x86-rax))
+             (x86-mov cgc (x86-mem (+ 8 (* nb 8)) (x86-rsp)) (x86-rax))
+             ;; Update closure position in stack
+             (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
+             (x86-mov cgc (x86-mem (* 8 nb) (x86-rsp)) (x86-rax))
+             ;; Update context position in stack
+             (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+             (x86-mov cgc (x86-mem (- (* 8 nb) 8) (x86-rsp)) (x86-rax))
+             ;; Update rsp
+             (x86-add cgc (x86-rsp) (x86-imm-int (- (* 8 nb) 8))))
+      ;; Create a pair and continue
+      (begin ;; Alloc pair
+             (gen-allocation cgc ctx STAG_PAIR 3)
+             
+             (let ((header (mem-header 3 STAG_PAIR)))
+               ;; Write header in pair
+               (x86-mov cgc (x86-rax) (x86-imm-int header))
+               (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))
+               ;; Get car from stack (arg slot) and write in pair
+               (x86-mov cgc (x86-rax) (x86-mem sp-offset (x86-rsp)))
+               (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
+               ;; Get cdr from stack (top of stack) and write in pair
+               (x86-pop cgc (x86-rax))
+               (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
+               ;; Tag & push
+               (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 24) alloc-ptr))
+               (x86-push cgc (x86-rax)))
+             ;; Create next pair
+             (gen-rest-lst-h cgc ctx(- pos 1) nb (+ sp-offset 8)))))
 
 ;; Is the v a literal ?
 (define (literal? v)
