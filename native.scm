@@ -53,8 +53,7 @@
 (define (gen-syscall-open cgc)
   
   ;; Save destroyed regs
-  ;; Note : The kernel also destroys RCX but saveing rcx is useless ?
-  (x86-push cgc (x86-rcx))
+  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel 
   (x86-push cgc (x86-r11)) ;; Destroyed by kernel 
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
@@ -97,8 +96,7 @@
 (define (gen-syscall-read-char cgc)
 
   ;; Save destroyed regs
-  ;; Note : The kernel also destroys RCX but saveing rcx is useless ?
-  (x86-push cgc (x86-rcx))
+  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel
   (x86-push cgc (x86-r11)) ;; Destroyed by kernel 
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))

@@ -4,7 +4,7 @@
 ;; Test quoted vector ex. '#(1 2 "Hello" ...)
 ;; Test set-car, set-cdr + Check err
 ;; Test bind define
-;; Test appel terminal
+;; Test appel terminal (+ ajouter if then else comme position terminale, ... ?)
 ;; Test eq? eqv? equal?
 ;; Test list-ref
 ;; Test map

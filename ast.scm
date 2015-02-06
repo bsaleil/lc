@@ -700,7 +700,7 @@
                          ;; Jump to continuation
                          (x86-jmp cgc (x86-rax))))))
          ;; Lazy lambda body
-         (lazy-body (gen-ast (caddr ast) lazy-ret #f))
+         (lazy-body (gen-ast (caddr ast) lazy-ret #t))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
          (lazy-prologue (make-lazy-code
                            (lambda (cgc ctx)
