@@ -23,6 +23,7 @@
 ;;     ctx-stack-set!
 ;;     avec segfault ctx id
 ;; Revoir test rest avec des cts existants
+;; Enlever les deux TODO dans ast.scm au moment de la création des deux nouveaux contextes
 
 ;; Todo : pb quand fonction à un seul arg qui est le rest, et aucun donné
 ;; Todo : ajouter print port quand input-port? et output-port? sont implémentées
