@@ -59,7 +59,7 @@
   (x86-push cgc (x86-rsi))
   
   ;; c-string argument (rdi)
-  (x86-mov cgc (x86-rdi) (x86-mem 24 (x86-rsp))) ;; Str in rdi
+  (x86-mov cgc (x86-rdi) (x86-mem 32 (x86-rsp))) ;; Str in rdi
   (x86-mov cgc (x86-rbx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rdi)))  ;; Str length in rbx
   (x86-shr cgc (x86-rbx) (x86-imm-int 2))        ;; Decode str length
   (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx) (x86-rdi)) (x86-imm-int 0) 8) ;; Add null char (c string)
@@ -83,7 +83,6 @@
       ;; Else syscall failed
       (gen-error cgc ERR_OPEN_INPUT_FILE)
     (x86-label cgc label-syscall-ok))
-  
   ;; Restore destroyed regs
   (x86-pop cgc (x86-rsi))
   (x86-pop cgc (x86-rdi))
@@ -102,7 +101,7 @@
   (x86-push cgc (x86-rsi))
 
   ;; file descriptor (rdi)
-  (x86-mov cgc (x86-rdi) (x86-mem 24 (x86-rsp))) ;; Port object in rdi
+  (x86-mov cgc (x86-rdi) (x86-mem 32 (x86-rsp))) ;; Port object in rdi
   (x86-mov cgc (x86-rdi) (x86-mem (- 8 TAG_MEMOBJ) (x86-rdi)))
   ;; syscall number (rax)
   (x86-mov cgc (x86-rax) (x86-imm-int (cdr (assoc 'read LINUX_SYSCALL))))

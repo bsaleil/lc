@@ -710,7 +710,7 @@
                                 (if (or (and (not rest-param) (not (= actual-p formal-p)))
                                         (and rest-param (< actual-p formal-p)))
                                    ;; Wrong number of arguments
-                                   (gen-error cgc ERR_WRONG_NUM_ARGS)
+                                   (begin (pp ast) (gen-error cgc ERR_WRONG_NUM_ARGS))
                                    ;; Correct number of arguments
                                    (begin (cond ;; Rest param declared but not given
                                                 ((and rest-param (= actual-p formal-p))

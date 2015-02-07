@@ -53,6 +53,11 @@
      (begin (f (car lst))
             (for-each f (cdr lst)))))
 
+(define (assq el lst)
+  (cond ((null? lst) #f)
+        ((eq? el (car lst)) (car lst))
+        (else (assq el lst))))
+
 (define (memq el lst)
   (cond ((null? lst) #f)
         ((eq? el (car lst)) lst)

@@ -108,6 +108,7 @@
         ((eq? stag STAG_MOBJECT)   (println "MOBJECT"))
         ((eq? stag STAG_VECTOR)    (println "VECTOR"))
         ((eq? stag STAG_STRING)    (println "STRING"))
+        ((eq? stag STAG_PORT)      (println "PORT"))
         ((eq? stag STAG_SYMBOL)    (println "SYMBOL"))
         ((eq? stag STAG_CCTABLE)   (println "CCTABLE"))
         (else
@@ -265,7 +266,7 @@
                       (let ((sc (scan-vector scan copy h s l)))
                         (scan-references (car sc) (cdr sc))))
                     ;; CC-table & String & Symbol
-                    ((or (= s STAG_CCTABLE) (= s STAG_STRING) (= s STAG_SYMBOL))
+                    ((or (= s STAG_CCTABLE) (= s STAG_STRING) (= s STAG_SYMBOL) (= s STAG_PORT))
                       ;; Nothing to do
                       (scan-references (+ scan (* 8 l)) copy))
                     ;; MObject
@@ -495,6 +496,7 @@
 ;               (cond ;; CCTABLE & STRING
 ;                     ((or (= s STAG_CCTABLE)
 ;                          (= s STAG_STRING)
+;                          (= s STAG_PORT)
 ;                          (= s STAG_SYMBOL))
 ;                         ;; Nothing to do
 ;                         (check-heap (+ scan (* 8 l)) copy))
