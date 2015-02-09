@@ -44,7 +44,7 @@
                  ;; Tests
                  ((member op '($port? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (mlc-test ast succ))
                  ;; If
-                 ((eq? op 'if) (mlc-if ast succ))
+                 ((eq? op 'if) (mlc-if ast succ tail))
                  ;; Define
                  ((eq? op 'define) (mlc-define ast succ))
                  ;; Call expr
@@ -807,11 +807,11 @@
 ;;
 ;; Make lazy code from IF
 ;;
-(define (mlc-if ast succ)
+(define (mlc-if ast succ tail)
   (let* ((lazy-code0
-           (gen-ast (cadddr ast) succ #f))
+           (gen-ast (cadddr ast) succ tail))
          (lazy-code1
-           (gen-ast (caddr ast) succ #f))
+           (gen-ast (caddr ast) succ tail))
          (lazy-code-test
            (make-lazy-code
              (lambda (cgc ctx)
