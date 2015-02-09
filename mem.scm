@@ -165,7 +165,8 @@
 ;; If it's a copied root then update slot from forwarding pointer
 ;; If it's not a root do nothing
 ;; Return new position of copy-ptr
-(define (copy-root slot-addr current-copy-ptr)
+(define (copy-root slot-addr current-copy-ptr #!optional (stack-root? #f))
+    
    (let* ((value (get-i64 slot-addr))
           (tag (get-tag value)))
      
@@ -175,6 +176,10 @@
                 ;; Object header
                 (header-qword (get-i64 obj-addr)))
            
+           ; (if (= current-copy-ptr to-space)
+           ;        (begin (pp "IS MEMOBJ")
+           ;               (println "Obj addr: " obj-addr)
+           ;               (println "Header: " header-qword)))
            (if (= header-qword BROKEN-HEART)
               ;; Header is BH
               ;; Patch memory slot
@@ -199,7 +204,7 @@
                  (put-i64 slot-addr (+ current-copy-ptr TAG_MEMOBJ))
                  ;; Update copy-ptr
                  (set! current-copy-ptr c)))))
-     
+
      current-copy-ptr))
 
 ;;---------------
@@ -209,12 +214,13 @@
 ;; send:   Last stack address to scan
 ;; current-copy-ptr: current position of copy-ptr in to-space
 (define (copy-stack-roots sbegin send current-copy-ptr)
+  
   (if (< sbegin send)
       ;; All roots are copied then return new position of copy-ptr
       current-copy-ptr
       ;; Else get first stack value and copy
       (let (;; Copy slot if it's a heap obj
-            (c (copy-root sbegin current-copy-ptr)))
+            (c (copy-root sbegin current-copy-ptr #t)))
           ;; Continue with next globals    
           (copy-stack-roots (- sbegin 8) send c))))
 
@@ -371,13 +377,14 @@
 ;; This function will execute a complete collection phase :
 ;; copy stack roots, copy global roots, scan objects, update pointers
 ;; Returns the new position of alloc-ptr
+
 (define (run-gc sp alloc-size)
   
   (define scan-ptr to-space)
   (define copy-ptr to-space)
   (define stack-begin (- (get-i64 block-addr) 8))
   (define stack-end   (+ sp (* 8 (length c-caller-save-regs))))
-  
+
   (log-gc "GC BEGIN")
   
   ;; 1 - Copy roots from stack

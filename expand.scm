@@ -165,14 +165,14 @@
         ((eq? (length expr) 2)
             (if (eq? (caadr expr) 'else) 
                 ;; (cond (else ...))
-                (expand (cadr (cadr expr)))
+                (expand `(begin ,@(cdr (cadr expr))))
                 ;; (cond (e1 e2))
                 `(if ,(expand (caadr expr))
                      ,(if (null? (cdr (cadr expr)))
                           ;; (cond (e1))
                           '#t
-                          ;; (cond (e1 e2))
-                          (expand (cadr (cadr expr))))
+                          ;; (cond (e1 e2 [e3 ...]))
+                          (expand `(begin ,@(cdr (cadr expr)))))
                      #f))) ;; NOTE : Should return #!void
         ;; (cond (e1 e2) ...)
         (else `(if ,(expand (caadr expr))
@@ -180,7 +180,7 @@
                         ;; (cond (e1) ...)
                         '#t
                         ;; (cond (e1 e2) ...)
-                        (expand (cadr (cadr expr))))
+                        (expand `(begin  ,@(cdr (cadr expr)))))
                    ,(expand `(cond ,@(cddr expr)))))))
 
 ;;----------

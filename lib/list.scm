@@ -56,7 +56,7 @@
 (define (assq el lst)
   (cond ((null? lst) #f)
         ((eq? el (car lst)) (car lst))
-        (else (assq el lst))))
+        (else (assq el (cdr lst)))))
 
 (define (memq el lst)
   (cond ((null? lst) #f)

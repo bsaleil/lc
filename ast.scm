@@ -522,6 +522,7 @@
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VECT))))))
                  
                  ;; STRING<->SYMBOL
+                 ;; TODO : tags
                  ((member special '($string->symbol $symbol->string))
                   (make-lazy-code
                     (lambda (cgc ctx)
