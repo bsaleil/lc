@@ -165,7 +165,7 @@
 ;; If it's a copied root then update slot from forwarding pointer
 ;; If it's not a root do nothing
 ;; Return new position of copy-ptr
-(define (copy-root slot-addr current-copy-ptr #!optional (stack-root? #f))
+(define (copy-root slot-addr current-copy-ptr)
     
    (let* ((value (get-i64 slot-addr))
           (tag (get-tag value)))
@@ -220,7 +220,7 @@
       current-copy-ptr
       ;; Else get first stack value and copy
       (let (;; Copy slot if it's a heap obj
-            (c (copy-root sbegin current-copy-ptr #t)))
+            (c (copy-root sbegin current-copy-ptr)))
           ;; Continue with next globals    
           (copy-stack-roots (- sbegin 8) send c))))
 
