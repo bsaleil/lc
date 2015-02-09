@@ -261,6 +261,7 @@
                       (else "NYI special")))
          (lazy-special (make-lazy-code
                          (lambda (cgc ctx)
+                           
                            (x86-call cgc label)
                            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
     (if (> (length (cdr ast)) 0)
@@ -768,7 +769,7 @@
           ;; COMPUTE FREE VARS
           (set! fvars (free-vars (caddr ast) all-params ctx))
           ;; COMPUTE MUTABLE VARS
-          (set! mvars (mutable-vars (caddr ast) all-params)) 
+          (set! mvars (mutable-vars (caddr ast) all-params))
           
           (let* ((closure-size (+ 2 (length fvars)))
                  (total-size (+ closure-size global-cc-table-maxsize 1)) ;; CCtable header -> +1
@@ -1322,7 +1323,7 @@
                (x86-pop cgc (x86-rbx))
                (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (x86-rbx)))
                ;; TODO replace ctx type when implemented for free vars
-        (error "Compiler error : set a non mutable var"))))
+        (error "Compiler error : set a non mutable free var"))))
 
 ;; Local var
 (define (gen-set-localvar cgc ctx variable)
@@ -1338,7 +1339,7 @@
                       (idx (- fs 2 (identifier-offset (cdr variable)))))
                (set-car! (list-tail (ctx-stack ctx) idx) (car (ctx-stack ctx)))))
                
-        (error "Compiler error : set a non mutable var"))))
+        (error "Compiler error : set a non mutable local var"))))
 
 ;; Gen code to set a global var
 (define (gen-set-globalvar cgc ctx variable)
@@ -1484,7 +1485,7 @@
 (define (mutable-vars-l lst params)
   (if (null? lst)
     '()
-    (append (mutable-vars (car lst) params) (mutable-vars-l (cdr lst) params))))
+    (set-union (mutable-vars (car lst) params) (mutable-vars-l (cdr lst) params))))
 
 ;; Return all mutable vars used by ast
 (define (mutable-vars ast params)
@@ -1495,9 +1496,10 @@
            (let ((op (car ast)))
               (cond ((eq? op 'lambda) (mutable-vars (caddr ast) (set-sub params (cadr ast) '())))
                     ((eq? op 'set!)
-                      (if (member (cadr ast) params)
-                        (list (cadr ast))
-                        '()))
+                      (set-union (mutable-vars (caddr ast) params)
+                                 (if (member (cadr ast) params)
+                                   (list (cadr ast))
+                                   '())))
                     (else (mutable-vars-l ast params)))))))
 
 ;;

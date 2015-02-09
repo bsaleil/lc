@@ -112,6 +112,7 @@
 
 ;; DO
 (define (expand-do expr)
+  
    (let ((SYM (gensym))
          (ids (cadr expr))
          (stop (caddr expr))
