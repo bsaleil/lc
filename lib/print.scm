@@ -56,6 +56,12 @@
   ($$putchar 111) ;o
   ($$putchar 102));f
   
+(define (print-port p)
+  (print "#<")
+  (if ($input-port? p)
+    (print "input")
+    (print "output"))
+  (print "-port>"))
 
 (define (print n)
     (cond ((null? n) #f)
@@ -71,6 +77,7 @@
                (print-string str 0 (string-length str))))
           ((eof-object? n)
              (print-eof))
+          ((port? n) (print-port n))
           (else (print-bool n))))
   
 (define (println n)
@@ -165,6 +172,7 @@
              (print-string str 0 (string-length str))))
         ((eof-object? n)
            (print-eof))
+        ((port? n) (print-port n))
         (else (print-bool n))))
 
 (define (pp n)

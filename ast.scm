@@ -30,7 +30,7 @@
            (cond ;; Special with call
                  ((member op '($$putchar)) (mlc-special-c ast succ))
                  ;; Special without call
-                 ((member op '($eof-object? $read-char $open-input-file $error $string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $set-car! $set-cdr! $car $cdr)) (mlc-special-nc ast succ))
+                 ((member op '($eof-object? $write-char $read-char $close-output-port $close-input-port $open-output-file $open-input-file $error $string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $set-car! $set-cdr! $car $cdr)) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ;; Set!
@@ -42,7 +42,7 @@
                  ;; Operator gen
                  ((member op '($eq?)) (mlc-op-gen ast succ op))
                  ;; Tests
-                 ((member op '($port? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (mlc-test ast succ))
+                 ((member op '($input-port? $output-port? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (mlc-test ast succ))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ tail))
                  ;; Define
@@ -306,16 +306,26 @@
                         (x86-mov cgc (x86-mem offset (x86-rbx)) (x86-rax))
                         (x86-push cgc (x86-rbx))
                         (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI))))))
-                 ;; OPEN-INPUT-FILE
-                 ((eq? special '$open-input-file)
+                 ;; CLOSE-INPUT-PORT
+                 ((member special '($close-output-port $close-input-port))
                    (make-lazy-code
                      (lambda (cgc ctx)
-                       (let ((header-word (mem-header 2 STAG_PORT)))
+                       (gen-syscall-close cgc)
+                       (x86-push cgc (x86-imm-int ENCODING_VOID))
+                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))
+                 ;; OPEN-INPUT-FILE
+                 ;; TODO output port STAG ET CTX
+                 ((member special '($open-output-file $open-input-file))
+                   (make-lazy-code
+                     (lambda (cgc ctx)
+                       (let* ((direction   (if (eq? special '$open-output-file) 'out 'in))
+                              (stag        (if (eq? direction 'in) STAG_IPORT STAG_OPORT))
+                              (header-word (mem-header 2 stag)))
                          ;; Gen 'open' syscall, file descriptor in rax
-                         (gen-syscall-open cgc)
+                         (gen-syscall-open cgc direction)
                          (x86-mov cgc (x86-rbx) (x86-rax))
                          ;; Allocate port object
-                         (gen-allocation cgc ctx STAG_PORT 2)
+                         (gen-allocation cgc ctx stag 2)
                          ;; Mov header
                          (x86-mov cgc (x86-rax) (x86-imm-int header-word))
                          (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
@@ -325,7 +335,7 @@
                          (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
                          (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
                          ;; Jump to succ
-                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_PORT))))))
+                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (if (eq? direction 'in) CTX_IPORT CTX_OPORT)))))))
                  ;; EOF-OBJECT?
                  ((eq? special '$eof-object?)
                   (make-lazy-code
@@ -349,6 +359,17 @@
                       (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
                       ;; Jump to succ
                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_CHAR)))))
+                 ;; WRITE-CHAR
+                 ((eq? special '$write-char)
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      ;; Gen 'read' syscall (read 1 byte), encoded value (char or eof) in rax
+                      (gen-syscall-write-char cgc)
+                      (x86-add cgc (x86-rsp) (x86-imm-int 16)) ;; TODO
+                      ;; Push encoded result
+                      (x86-push cgc (x86-imm-int ENCODING_VOID))
+                      ;; Jump to succ
+                      (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_VOID)))))
                  ;; CHAR<->INTEGER
                  ((member special '($char->integer $integer->char))
                   (let ((lazy-charint
@@ -645,12 +666,12 @@
     (cond ;; $error
           ((eq? special '$error)
              lazy-special)
-          ;; $cons, $string-ref, $vector-ref, $set-car!, $set-cdr!
-          ((member special '($cons $string-ref $vector-ref $set-car! $set-cdr!))
+          ;; $cons, $string-ref, $vector-ref, $set-car!, $set-cdr!, $write-char
+          ((member special '($cons $string-ref $vector-ref $set-car! $set-cdr! $write-char))
            (let ((lazy-right (gen-ast (caddr ast) lazy-special #f)))
              (gen-ast (cadr ast) lazy-right #f)))
           ;; $car, $cdr, $make-vector, $string->symbol, $symbol->string, ...
-          ((member special '($eof-object? $read-char $open-input-file $symbol->string $string->symbol $string-length $integer->char $char->integer $vector-length $make-string $make-vector $car $cdr))
+          ((member special '($eof-object? $read-char $close-output-port $close-input-port $open-output-file $open-input-file $symbol->string $string->symbol $string-length $integer->char $char->integer $vector-length $make-string $make-vector $car $cdr))
            (gen-ast (cadr ast) lazy-special #f))
           ;; $string-set!, $vector-set!
           ((member special '($string-set! $vector-set!))
@@ -1206,12 +1227,13 @@
                                       ;; It's a memory allocated obj
                                       (x86-mov cgc (x86-rbx) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
                                       (x86-and cgc (x86-rbx) (x86-imm-int 248))
-                                      (cond ((eq? op '$procedure?) (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
-                                            ((eq? op '$pair?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
-                                            ((eq? op '$vector?)    (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_VECTOR))))    ;; STAG_VECTOR << 3
-                                            ((eq? op '$string?)    (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_STRING))))    ;; STAG_STRING << 3
-                                            ((eq? op '$symbol?)    (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_SYMBOL))))    ;; STAG_SYMBOL << 3
-                                            ((eq? op '$port?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PORT))))      ;; STAG_PORT << 3
+                                      (cond ((eq? op '$procedure?)   (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
+                                            ((eq? op '$pair?)        (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
+                                            ((eq? op '$vector?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_VECTOR))))    ;; STAG_VECTOR << 3
+                                            ((eq? op '$string?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_STRING))))    ;; STAG_STRING << 3
+                                            ((eq? op '$symbol?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_SYMBOL))))    ;; STAG_SYMBOL << 3
+                                            ((eq? op '$input-port?)  (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_IPORT))))     ;; STAG_IPORT << 3
+                                            ((eq? op '$output-port?) (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_OPORT))))     ;; STAG_OPORT << 3
                                             (else (error "NYI")))
                                       (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
                                       (x86-jne cgc label-done)
@@ -1474,7 +1496,7 @@
                   ;; Lambda
                   ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
                   ;; Special
-                  ((member op '(set! $eof-object? $read-char $open-input-file $error $string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $set-car! $set-cdr! $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $port? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
+                  ((member op '(set! $eof-object? $write-char $read-char $close-output-port $close-input-port $open-output-file $open-input-file $error $string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $set-car! $set-cdr! $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $output-port? $input-port? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
 

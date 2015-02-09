@@ -25,6 +25,10 @@
 ;; Revoir test rest avec des cts existants
 ;; Enlever les deux TODO dans ast.scm au moment de la création des deux nouveaux contextes
 ;; Test cond avec (e1 e2 e3 ...) et (else e1 e2 e3 ...)
+;; Test TOUTES fonctions des ports + pp et print ports
+;; TODO : uniformiser protocole des fonctions de native.scm (aussi enlever $$putchar pour write-char?)
+;; Current in/output-port
+
 
 ;; Todo : pb quand fonction à un seul arg qui est le rest, et aucun donné
 ;; Todo : ajouter print port quand input-port? et output-port? sont implémentées
@@ -54,3 +58,30 @@
 ;=============================================================================
 
 
+;;; CAT -- One of the Kernighan and Van Wyk benchmarks.
+
+(define inport #f)
+(define outport #f)
+
+(define (catport port)
+  (let ((x (read-char port)))
+    (if (eof-object? x)
+        (close-output-port outport)
+        (begin
+          (write-char x outport)
+          (catport port)))))
+
+(define (go)
+  (set! inport (open-input-file "./bib"))
+  (set! outport (open-output-file "./foo"))
+  (catport inport)
+  (close-input-port inport))
+
+(go)
+
+(define (main . args)
+  (run-benchmark
+   "cat"
+   cat-iters
+   (lambda (result) #t)
+   (lambda () (lambda () (go)))))

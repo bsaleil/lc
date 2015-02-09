@@ -37,7 +37,8 @@
 (define STAG_STRING    19)
 (define STAG_CCTABLE   16)
 (define STAG_SYMBOL     8)
-(define STAG_PORT      17)
+(define STAG_IPORT     17)
+(define STAG_OPORT     18)
 
 ;; Context types
 (define CTX_NUM   'number)
@@ -53,7 +54,8 @@
 (define CTX_VECT  'vector)
 (define CTX_STR   'string)
 (define CTX_SYM   'symbol)
-(define CTX_PORT  'port)
+(define CTX_IPORT 'inport)
+(define CTX_OPORT 'outport)
 
 ;; Exec errors
 (define ERR_MSG             "EXEC ERROR")
@@ -65,8 +67,10 @@
 (define ERR_ARR_OVERFLOW    "ARITHMETIC OVERFLOW")
 (define ERR_WRONG_NUM_ARGS  "WRONG NUMBER OF ARGUMENTS")
 
-(define ERR_OPEN_INPUT_FILE "CAN'T OPEN FILE")
-(define ERR_READ_CHAR       "CAN'T READ CHAR")
+(define ERR_OPEN_INPUT_FILE  "CAN'T OPEN INPUT FILE")
+(define ERR_OPEN_OUTPUT_FILE "CAN'T OPEN OUTPUT FILE")
+(define ERR_READ_CHAR        "CAN'T READ CHAR")
+(define ERR_WRITE_CHAR       "CAN'T WRITE CHAR")
 
 ;;
 (define ENCODING_VOID -18) ;; encoded VOID

@@ -28,6 +28,7 @@
       ((equal? (car expr) 'or) (expand-or expr))
       ((equal? (car expr) 'and) (expand-and expr))
       ((equal? (car expr) 'cond) (expand-cond expr))
+      ((equal? (car expr) 'quote) expr)
       (else (if (list? (cdr expr))
                 (map expand expr)
                 (cons (expand (car expr)) (expand (cdr expr))))))) ;; (e1 . e2)

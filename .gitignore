@@ -4,3 +4,4 @@ lazy-comp
 out
 in
 lib.scm
+./unit-tests/benchmarks/foo
