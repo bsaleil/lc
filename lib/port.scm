@@ -17,8 +17,10 @@
 (define (read-char port)
   ($read-char port))
 
-(define (write-char char port)
-  ($write-char char port))
+(define (write-char char . port)
+  (if (null? port)
+    (print char)
+    ($write-char char (car port))))
 
 (define (input-port? port)
   ($input-port? port))

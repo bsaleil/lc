@@ -99,3 +99,22 @@
 
 (define (string=? str1 str2)
   (string=?-h str1 str2 0))
+
+;; Rewrite stirng<?
+(define (string<? str1 str2)
+  (define (string<?-h str1 str2 pos)
+    (cond ((= pos (- (string-length str2) 1))
+             (char<? (string-ref str1 pos)
+                     (string-ref str2 pos)))
+          ((= pos (- (string-length str1) 1))
+             (char<=? (string-ref str1 pos)
+                     (string-ref str2 pos)))
+          (else (and (char<=? (string-ref str1 pos)
+                             (string-ref str2 pos))
+                     (string<?-h str1 str2 (+ pos 1))))))
+  
+  (cond ((= (string-length str1) 0)
+           (> (string-length str2) 0))
+        ((= (string-length str2) 0)
+           #f)
+        (else (string<?-h str1 str2 0))))

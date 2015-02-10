@@ -20,6 +20,13 @@
 (println (list? '(1 . 2)))
 (println (pair? '(1 . 2)))
 
+(pp (vector-length '#(1 2 3)))
+(pp (vector? '#(1 2 3)))
+(pp '#(1 2 3))
+(pp (vector-length '#("Hello" #\W #\o #\r #\l #\d)))
+(pp (vector? '#("Hello" #\W #\o #\r #\l #\d)))
+(pp '#("Hello" #\W #\o #\r #\l #\d))
+
 ;
 ;#t
 ;#f
@@ -36,3 +43,9 @@
 ;12
 ;#f
 ;#t
+;3
+;#t
+;#(1 2 3)
+;6
+;#t
+;#("Hello" #\W #\o #\r #\l #\d)

@@ -139,12 +139,12 @@
 
 ;; Copy 'len' bytes from address 'from' to address 'to'
 (define (copy-bytes from to len)
-  (log-gc (string-append "Copy "
-                         (number->string len)
-                         " bytes from "
-                         (number->string from)
-                         " to "
-                         (number->string to)))
+  ; (log-gc (string-append "Copy "
+  ;                        (number->string len)
+  ;                        " bytes from "
+  ;                        (number->string from)
+  ;                        " to "
+  ;                        (number->string to)))
   (let ((copy-ptr (copy-bytes-h from to len)))
     (if (>= copy-ptr (+ to-space space-len))
         (out-of-memory)
