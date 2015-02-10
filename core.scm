@@ -72,6 +72,8 @@
 (define ERR_READ_CHAR        "CAN'T READ CHAR")
 (define ERR_WRITE_CHAR       "CAN'T WRITE CHAR")
 
+(define ERR_BEGIN            "ILL-FORMED BEGIN")
+
 ;;
 (define ENCODING_VOID -18) ;; encoded VOID
 (define ENCODING_EOF  -14) ;; encoded EOF
@@ -642,10 +644,14 @@
   constructor: make-lazy-code*
   generator
   versions
+  flags
 )
 
 (define (make-lazy-code generator)
-  (make-lazy-code* generator (make-table)))
+  (make-lazy-code* generator (make-table) '()))
+
+(define (make-lazy-code-ret generator)
+  (make-lazy-code* generator (make-table) '(ret)))
 
 (define (get-version lazy-code ctx)
   (let ((versions (lazy-code-versions lazy-code)))
@@ -954,7 +960,7 @@
 ;; TODO : ctx_ids to solve segfault on ctx read
 (define ctx_ids '())
 
-(define global-cc-table-maxsize 50)
+(define global-cc-table-maxsize 100)
 
 ;; Get cc-table index for 'ctx'. Associates a new index if ctx is a new one
 (define (get-closure-index ctx)

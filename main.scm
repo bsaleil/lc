@@ -14,8 +14,7 @@
               (pop-regs-reverse cgc prog-regs)
               (x86-ret cgc))))
       (gen-ast (car exprs)
-               (lazy-exprs (cdr exprs) succ)
-               #f)))
+               (lazy-exprs (cdr exprs) succ))))
 
 ;;-----------------------------------------------------------------------------
 ;; Interactive mode (REPL)
@@ -49,11 +48,11 @@
                     (cond ((equal? r '(unquote LC))
                               (let ((r (read)))
                                 (eval r)
-                                (jump-to-version cgc (gen-ast #f lazy-print #f) ctx)))
+                                (jump-to-version cgc (gen-ast #f lazy-print) ctx)))
                           ((equal? r '(unquote q))
                               (jump-to-version cgc lazy-ret ctx))
                           (else
-                              (jump-to-version cgc (gen-ast r lazy-print #f) ctx))))))))
+                              (jump-to-version cgc (gen-ast r lazy-print) ctx))))))))
     ;; Global var for print step
     (set! globals '(($$REPL-RES . 0)))
     ;; Gen
@@ -75,6 +74,7 @@
      (gen-version code-alloc
                   lazy-lib
                   (make-ctx '() '() -1)))
+  
   (##machine-code-block-exec mcb))
 
 ;;-----------------------------------------------------------------------------
@@ -125,3 +125,5 @@
                ;(pp file-content)))
                (exec lib file-content)))
           (else (error "NYI"))))
+  ; (pp "Global cctable size=")
+  ; (pp (length global-cc-table)))

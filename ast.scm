@@ -11,13 +11,13 @@
 ;; AST FUNCTIONS
 
 ;; Gen lazy code from a list of exprs
-(define (gen-ast-l lst succ tail)
+(define (gen-ast-l lst succ)
   (cond ((null? lst) (error "Empty list"))
-        ((= (length lst) 1) (gen-ast (car lst) succ #f))
-        (else (gen-ast (car lst) (gen-ast-l (cdr lst) succ #f) #f))))
+        ((= (length lst) 1) (gen-ast (car lst) succ))
+        (else (gen-ast (car lst) (gen-ast-l (cdr lst) succ)))))
 
 ;; Gen lazy code from ast
-(define (gen-ast ast succ tail)
+(define (gen-ast ast succ)
   (cond ;; String
         ((string? ast)  (mlc-string ast succ #f))
         ;; Literal
@@ -37,6 +37,8 @@
                  ((eq? 'set! (car ast)) (mlc-set! ast succ))
                  ;; Lambda
                  ((eq? op 'lambda) (mlc-lambda ast succ))
+                 ;; Begin
+                 ((eq? op 'begin) (mlc-begin ast succ))
                  ;; Operator num
                  ((member op '($+ $- $* $quotient $modulo $< $> $=)) (mlc-op-num ast succ op))
                  ;; Operator gen
@@ -44,11 +46,11 @@
                  ;; Tests
                  ((member op '($input-port? $output-port? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (mlc-test ast succ))
                  ;; If
-                 ((eq? op 'if) (mlc-if ast succ tail))
+                 ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
                  ((eq? op 'define) (mlc-define ast succ))
                  ;; Call expr
-                 (else (mlc-call ast succ tail)))))
+                 (else (mlc-call ast succ)))))
         ;; *unknown*
         (else
          (error "unknown ast" ast))))
@@ -107,8 +109,7 @@
   ;; at vector[idx].
   (define (lazy-el-gen idx)
     (gen-ast (vector-ref ast idx)
-             (lazy-vector-set-gen idx)
-             #f))                  
+             (lazy-vector-set-gen idx)))                  
   
   ;; Main lazy code  
   (make-lazy-code
@@ -180,7 +181,7 @@
             (mlc-symbol ast succ))
         ((vector? ast)
             (mlc-vector ast succ))            
-        (else (gen-ast ast succ #f))))
+        (else (gen-ast ast succ))))
 
 ;;
 ;; Make lazy code from SET!
@@ -204,7 +205,7 @@
                   (x86-push cgc (x86-imm-int ENCODING_VOID))
                   (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
 
-     (gen-ast (caddr ast) lazy-set #f)))
+     (gen-ast (caddr ast) lazy-set)))
 
 ;;
 ;; Make lazy code from SYMBOL
@@ -243,7 +244,7 @@
                                      (x86-push cgc (x86-imm-int ENCODING_VOID))
 
                                      (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))
-         (lazy-val (gen-ast (caddr ast) lazy-bind #f)))
+         (lazy-val (gen-ast (caddr ast) lazy-bind)))
 
     (make-lazy-code (lambda (cgc ctx)
                       (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
@@ -265,7 +266,7 @@
                            (x86-call cgc label)
                            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
     (if (> (length (cdr ast)) 0)
-        (gen-ast-l (cdr ast) lazy-special #f)
+        (gen-ast-l (cdr ast) lazy-special)
         lazy-special)))
 
 ;;
@@ -668,16 +669,16 @@
              lazy-special)
           ;; $cons, $string-ref, $vector-ref, $set-car!, $set-cdr!, $write-char
           ((member special '($cons $string-ref $vector-ref $set-car! $set-cdr! $write-char))
-           (let ((lazy-right (gen-ast (caddr ast) lazy-special #f)))
-             (gen-ast (cadr ast) lazy-right #f)))
+           (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
+             (gen-ast (cadr ast) lazy-right)))
           ;; $car, $cdr, $make-vector, $string->symbol, $symbol->string, ...
           ((member special '($eof-object? $read-char $close-output-port $close-input-port $open-output-file $open-input-file $symbol->string $string->symbol $string-length $integer->char $char->integer $vector-length $make-string $make-vector $car $cdr))
-           (gen-ast (cadr ast) lazy-special #f))
+           (gen-ast (cadr ast) lazy-special))
           ;; $string-set!, $vector-set!
           ((member special '($string-set! $vector-set!))
-           (let* ((lazy-value (gen-ast (cadddr ast) lazy-special #f))
-                  (lazy-index (gen-ast (caddr  ast) lazy-value #f)))
-             (gen-ast (cadr ast) lazy-index #f)))
+           (let* ((lazy-value (gen-ast (cadddr ast) lazy-special))
+                  (lazy-index (gen-ast (caddr  ast) lazy-value)))
+             (gen-ast (cadr ast) lazy-index)))
           ;; Others
           (else (error "NYI")))))
 
@@ -702,7 +703,7 @@
          ;; Flatten list of param (include rest param)
          (all-params (flatten (cadr ast)))
          ;; Lazy lambda return
-         (lazy-ret (make-lazy-code
+         (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
                      (lambda (cgc ctx)
                        ;; Here the stack is :
                        ;;         RSP
@@ -723,7 +724,7 @@
                          ;; Jump to continuation
                          (x86-jmp cgc (x86-rax))))))
          ;; Lazy lambda body
-         (lazy-body (gen-ast (caddr ast) lazy-ret #t))
+         (lazy-body (gen-ast (caddr ast) lazy-ret))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
          (lazy-prologue (make-lazy-code
                            (lambda (cgc ctx)
@@ -828,13 +829,51 @@
                                      CTX_CLO)))))))
 
 ;;
+;; Make lazy code from BEGIN
+;; 
+(define (mlc-begin ast succ)
+  (cond ;; There is no body
+        ((null? (cdr ast))
+           (if (member 'ret (lazy-code-flags succ))
+             ;; No body and succ is a ret object
+             (error ERR_BEGIN)
+             ;; No body and succ is NOT a ret object
+             (make-lazy-code
+               (lambda (cgc ctx)
+                 (x86-push cgc (x86-imm-int ENCODING_VOID))
+                 (jump-to-version cgc succ (ctx-push ctx CTX_VOID))))))
+        ;; Only one body
+        ((= (length (cdr ast)) 1)
+           (gen-ast (cadr ast) succ))
+        ;; >1 body
+        (else
+           (lazy-bodies (cdr ast) succ (cdr ast)))))
+
+;; Build lazy code object chain for sequential bodies
+(define (lazy-bodies exprs succ bodies)
+  (cond ;; Last body
+        ((= (length exprs) 1)
+          ;; Create lazy object which clean stack before last body
+          ;; This ensure that is succ is a ret object, then successor of
+          ;; the last body of begin is also a ret (so a tail call position)
+          (make-lazy-code
+            (lambda (cgc ctx)
+              (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (length bodies) 1))))
+              (jump-to-version cgc
+                               (gen-ast (car exprs) succ)
+                               (ctx-pop-nb ctx (- (length bodies) 1))))))
+        (else
+          (gen-ast (car exprs)
+                   (lazy-bodies (cdr exprs) succ bodies)))))
+
+;;
 ;; Make lazy code from IF
 ;;
-(define (mlc-if ast succ tail)
+(define (mlc-if ast succ)
   (let* ((lazy-code0
-           (gen-ast (cadddr ast) succ tail))
+           (gen-ast (cadddr ast) succ))
          (lazy-code1
-           (gen-ast (caddr ast) succ tail))
+           (gen-ast (caddr ast) succ))
          (lazy-code-test
            (make-lazy-code
              (lambda (cgc ctx)
@@ -938,14 +977,15 @@
                  (x86-jmp cgc (list-ref stub-labels 1)))))))
     (gen-ast
       (cadr ast)
-      lazy-code-test
-      #f)))
+      lazy-code-test)))
 
 ;;
 ;; Make lazy code from CALL EXPRESSION
 ;;
-(define (mlc-call ast succ tail)
-  (let* (;; Call arguments
+(define (mlc-call ast succ)
+  (let* (;; Tail call if successor's flags set contains 'ret flag
+         (tail (member 'ret (lazy-code-flags succ)))
+         ;; Call arguments
          (args (cdr ast))
          ;; Lazy fail
          (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_PRO_EXPECTED))))
@@ -996,14 +1036,14 @@
                                                                                       ctx))
                                               (else (gen-error cgc ERR_PRO_EXPECTED)))))))
          ;; Lazy callee
-         (lazy-operator (gen-ast (car ast) lazy-main #f)))
+         (lazy-operator (gen-ast (car ast) lazy-main)))
 
     ;; Build first lazy code
     ;; This lazy code creates continuation stub and push return address
     (if tail
         (if (> (length args) 0)
           ;; If args, then compile args
-          (gen-ast-l args lazy-operator #f)
+          (gen-ast-l args lazy-operator)
           ;; Else, compile call
           lazy-operator)
         (make-lazy-code
@@ -1030,7 +1070,7 @@
                   
                  (let ((succ (if (> (length args) 0)
                                 ;; If args, then compile args
-                                (gen-ast-l args lazy-operator #f)
+                                (gen-ast-l args lazy-operator)
                                 ;; Else, compile call
                                 lazy-operator)))
                             
@@ -1043,9 +1083,9 @@
   (letrec (   ;; Lazy code used if type test fail
               (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_NUM_EXPECTED))))
               ;; Lazy code of left operand
-              (lazy-ast-left  (gen-ast (cadr ast)  lazy-ast-right #f))
+              (lazy-ast-left  (gen-ast (cadr ast)  lazy-ast-right))
               ;; Lazy code of right operand
-              (lazy-ast-right (gen-ast (caddr ast) lazy-main #f))
+              (lazy-ast-right (gen-ast (caddr ast) lazy-main))
               ;; Gen operation code (assumes both operands are num)
               (lazy-code-op (make-lazy-code
                               (lambda (cgc ctx)
@@ -1190,7 +1230,7 @@
                                            (ctx-push
                                              (ctx-pop (ctx-pop ctx))
                                              (cond ((member op '($eq?)) CTX_BOOL))))))))
-    (gen-ast-l (cdr ast) lazy-code-op #f)))
+    (gen-ast-l (cdr ast) lazy-code-op)))
 
 ;;
 ;; Make lazy code from TYPE TEST
@@ -1242,7 +1282,7 @@
                           (x86-label cgc label-done)
                           (x86-push  cgc (x86-rax))
                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))))
-    (gen-ast (cadr ast) lazy-test #f)))
+    (gen-ast (cadr ast) lazy-test)))
 
 ;;
 ;; Make lazy code to create pair

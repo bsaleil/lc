@@ -48,6 +48,10 @@
       `(if ,(expand (cadr expr)) ,(expand (caddr expr)) ,(expand (cadddr expr)))))
 
 ;; BEGIN
+;; TODO : begin is a special form
+;; compiler is able to build a lazy object chain from begin
+;; WITHOUT internal defs. For now, begin with internal defs are 
+;; transformed into lambda.
 (define (expand-begin expr)
   (if (eq? (length expr) 2)
     ;; 1 expr
@@ -60,8 +64,7 @@
       (if (not (null? defs))
         ;; Internal def
         (expand (build-internal-defs defs body))
-        (let ((v (gensym)))
-           (expand `(let ((,v ,(expand (cadr expr)))) ,(expand `(begin ,@(cddr expr))))))))))
+        `(begin ,@(map expand (cdr expr)))))))
 
 ;; LET
 (define (expand-let expr)
