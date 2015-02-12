@@ -74,6 +74,7 @@
 
 (define ERR_BEGIN            "ILL-FORMED BEGIN")
 (define ERR_LET              "ILL-FORMED LET")
+(define ERR_LETREC           "ILL-FORMED LETREC")
 
 ;;
 (define ENCODING_VOID -18) ;; encoded VOID
