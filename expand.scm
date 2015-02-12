@@ -67,6 +67,7 @@
         `(begin ,@(map expand (cdr expr)))))))
 
 ;; LET
+;; TODO : letn and let with internal defs are not handled by compiler (mlc-let)
 (define (expand-let expr)
   (if (symbol? (cadr expr))
     ;; Named let
@@ -78,17 +79,6 @@
     `(let ,(map (lambda (i v)
                      (list i (expand v))) ids values)
        ,@(map expand bodies)))))
-
-
-; (define (expand-let expr)
-;   (if (symbol? (cadr expr))
-;     ;; Named let
-;     (expand-letn expr)
-;     ;; Normal let
-;     (let ((bindings (cadr  expr))
-;           (body     (cddr expr)))
-;       `((lambda ,(map car bindings)
-;                 ,(expand `(begin ,@body))) ,@(map expand (map cadr bindings))))))
 
 ;; LETN (named let)
 (define (expand-letn expr)

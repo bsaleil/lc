@@ -1058,7 +1058,6 @@
                                                       (+ (length args) 2) ;; +1 fermeture, +1 ctx
                                                       ;; Initial from slot
                                                       (+ 1 (length args))
-                                                      ;(- (length (ctx-stack ctx)) 3 (ctx-nb-args ctx))
                                                       ;; Initial to slot
                                                       (- (length (ctx-stack ctx)) 1)))
                                         
