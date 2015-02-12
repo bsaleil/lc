@@ -102,11 +102,14 @@
 ;; LETREC
 ;; TODO : use set! for now
 (define (expand-letrec expr)
-  (let ((bindings (cadr expr))
-        (body     (cddr expr)))
-     (expand `(let ,(map (lambda (l) (list (car l) #f)) bindings)
-           ,@(map (lambda (l) (list 'set! (car l) (cadr l))) bindings)
-           ,@body))))
+  (let ((ids    (map car (cadr expr)))
+        (values (map cadr (cadr expr)))
+        (bodies (cddr expr)))
+    
+     `(letrec ,(map (lambda (i v)
+                      (list i (expand v))) ids values)
+        ,@(map expand bodies))))
+     
 
 ;; DO-h
 (define (do-steps ids)

@@ -41,6 +41,8 @@
                  ((eq? op 'begin) (mlc-begin ast succ))
                  ;; Let
                  ((eq? op 'let) (mlc-let ast succ))
+                 ;; Letrec
+                 ((eq? op 'letrec) (mlc-letrec ast succ))
                  ;; Operator num
                  ((member op '($+ $- $* $quotient $modulo $< $> $=)) (mlc-op-num ast succ op))
                  ;; Operator gen
@@ -229,6 +231,7 @@
                                 (gen-get-globalvar cgc ctx res 'stack)
                                 ;; Unknown
                                 (error "Can't find variable: " ast))))))
+           
            (jump-to-version cgc succ (ctx-push ctx ctx-type))))))
 
 ;;
@@ -867,6 +870,112 @@
              (gen-ast-l (cdr ast) lazy-begin-out)))))
 
 ;;
+;; Make lazy code from LETREC
+;;
+;; UPDATE RSP SI > 1 body (let aussi)
+;; TODO : env = cdr env ?
+(define (mlc-letrec ast succ)
+  (let ((ids (map car (cadr ast)))
+        (values (map cadr (cadr ast)))
+        (bodies (cddr ast)))
+    
+    (cond ;; No bindings, it is a begin
+          ((null? ids) (mlc-begin (cons 'begin bodies) succ))
+          ;; No body, error
+          ((null? bodies) (error ERR_LET))
+          ;; >= 1 body
+          (else
+            (let* (;; LAZY-LET-OUT
+                   (lazy-let-out
+                     (let ((make-lc (if (member 'ret (lazy-code-flags succ))
+                                      make-lazy-code-ret
+                                      make-lazy-code)))
+                       (make-lc ;; If succ is a ret object, then last object of begin is also a ret object
+                         (lambda (cgc ctx)
+                           (let* ((ctx-type (car (ctx-stack ctx)))
+                                  (stack (ctx-stack (ctx-push (ctx-pop-nb ctx (+ (length ids) (length bodies))) ctx-type)))
+                                  (env (cdr (ctx-env ctx)))
+                                  (nb-args (ctx-nb-args ctx))
+                                  (nctx (make-ctx stack env nb-args)))
+                            
+                            (x86-pop cgc (x86-rax))
+                            (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (+ (length ids) (length bodies) -1))))
+                            (x86-push cgc (x86-rax))
+                            (jump-to-version cgc succ nctx))))))
+                   ;; LAZY BODIES
+                   (lazy-bodies (gen-ast-l bodies lazy-let-out))
+                   ;; LAZY LET MID
+                   (lazy-let-mid
+                     (make-lazy-code
+                       (lambda (cgc ctx)
+                         (let ((ctx (set-letrec-vals cgc ctx ids)))
+                           (jump-to-version cgc lazy-bodies ctx)))))
+                  ;; LAZY BINDINGS
+                  (lazy-bindings (gen-ast-l values lazy-let-mid))
+                     (lazy-inin
+                       (make-lazy-code
+                         (lambda (cgc ctx)
+                            (let* (;(mvars (mutable-vars ast ids)) ;;TODO all ids mutable, améliorer ca ?
+                                   (stack (append (make-list (length ids) CTX_BOOL) (ctx-stack ctx)))
+                                   (start (- (length stack) (length ids) 1))
+                                   (env (build-env ids ids start (ctx-env ctx)))
+                                   (nctx (make-ctx stack env (ctx-nb-args ctx))))
+                            ;; N push
+                            ;(call-n (length ids) x86-push cgc (x86-imm-int (obj-encoding #f)))
+                            (n-push cgc (length ids))
+                            (gen-mutable cgc nctx ids)
+                            (jump-to-version cgc
+                                             lazy-bindings
+                                             nctx))))))
+              
+              lazy-inin)))))
+
+;; TODO
+;; Enlever from et to 
+(define (set-letrec-vals cgc ctx ids)
+  
+  (define (set-letrec-vals-h cgc ctx all ids from to)
+    (if (null? ids)
+      ;; No more id
+      (begin (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (length all))))
+             (ctx-pop-nb ctx (length all)))
+      ;; 
+      (let* ((ctx-type (list-ref (ctx-stack ctx) from))
+             (nstack (append (list-head (ctx-stack ctx) to) (cons ctx-type (list-tail (ctx-stack ctx) (+ to 1))))))
+        (x86-mov cgc (x86-rax) (x86-mem (* 8 from) (x86-rsp))) ;; Get val
+        ;; TODO : ATTENTION SI MUTABLE
+        ;; TODO : #unbound ?
+        ;(x86-mov cgc (x86-mem (* 8 to) (x86-rsp)) (x86-rax))   ;; Set val
+        (x86-mov cgc (x86-rbx) (x86-mem (* 8 to) (x86-rsp))) ;; MVARS
+        (x86-sub cgc (x86-rbx) (x86-imm-int 1)) ; MEM OBJ TAG
+        (x86-mov cgc (x86-mem 8 (x86-rbx)) (x86-rax)) ;; MOV after header
+        ;; TODO améliorer code x86
+        (set-letrec-vals-h cgc
+                           (make-ctx nstack (ctx-env ctx) (ctx-nb-args ctx))
+                           all
+                           (cdr ids)
+                           (+ from 1)
+                           (+ to 1)))))
+  
+  (set-letrec-vals-h cgc ctx ids ids 0 (length ids)))
+              
+;; TODO
+(define (n-push cgc n)
+  (if (> n 0)
+    (begin (x86-push cgc (x86-imm-int (obj-encoding #f)))
+           (n-push cgc (- n 1)))))
+; (define (call-n n fn . args)
+;   (if (> n 0)
+;     (begin (apply fn args)
+;            (apply call-n (append (list (- n 1) fn ) args)))))
+
+;; TODO
+(define (make-list n #!optional (init #f))
+  (if (= 0 n)
+    '()
+    (cons init (make-list (- n 1) init))))
+          
+;;
 ;; Make lazy code from LET
 ;;
 (define (mlc-let ast succ)
@@ -898,7 +1007,7 @@
                              (x86-push cgc (x86-rax))
                              (jump-to-version cgc succ nctx))))))
                    ;; LAZY BODIES
-                   (lazy-bbbb (gen-ast-l bodies lazy-let-out))
+                   (lazy-bodies (gen-ast-l bodies lazy-let-out))
                    ;; LAZY LET IN
                    (lazy-let-in
                      (make-lazy-code
@@ -910,7 +1019,7 @@
                            ;; Gen mutable vars
                            (gen-mutable cgc nctx mvars)
                            ;; Jump to first body
-                           (jump-to-version cgc lazy-bbbb nctx))))))
+                           (jump-to-version cgc lazy-bodies nctx))))))
               ;; LAZY BINDINGS
               (gen-ast-l values lazy-let-in))))))
              
@@ -1039,7 +1148,6 @@
          (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_PRO_EXPECTED))))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
-                                        
                                         ;; Call ctx in rdx
                                         (let* ((call-stack    (if tail
                                                                 (append base-ctx (list-head (cdr (ctx-stack ctx)) (length args)) (list CTX_RETAD))
@@ -1498,7 +1606,7 @@
    (let* ((fs (length (ctx-stack ctx)))
           (pos (- fs 2 (identifier-offset (cdr variable))))
           (mutable (identifier-mutable? (cdr variable))))
-     
+      
       (if (or raw_value? (not mutable))
         ;; Raw value required (direct copy from stack)
         ;; OR variable is not mutable
@@ -1552,7 +1660,6 @@
             (error "Can't find variable: " var))
          ;; TODO : free vars ctx information
          (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
-
          (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
