@@ -72,10 +72,23 @@
     ;; Named let
     (expand-letn expr)
     ;; Normal let
-    (let ((bindings (cadr  expr))
-          (body     (cddr expr)))
-      `((lambda ,(map car bindings)
-                ,(expand `(begin ,@body))) ,@(map expand (map cadr bindings))))))
+    (let ((ids (map car (cadr expr)))
+          (values (map cadr (cadr expr)))
+          (bodies (cddr expr)))
+    `(let ,(map (lambda (i v)
+                     (list i (expand v))) ids values)
+       ,@(map expand bodies)))))
+
+
+; (define (expand-let expr)
+;   (if (symbol? (cadr expr))
+;     ;; Named let
+;     (expand-letn expr)
+;     ;; Normal let
+;     (let ((bindings (cadr  expr))
+;           (body     (cddr expr)))
+;       `((lambda ,(map car bindings)
+;                 ,(expand `(begin ,@body))) ,@(map expand (map cadr bindings))))))
 
 ;; LETN (named let)
 (define (expand-letn expr)

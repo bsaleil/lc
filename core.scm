@@ -73,6 +73,7 @@
 (define ERR_WRITE_CHAR       "CAN'T WRITE CHAR")
 
 (define ERR_BEGIN            "ILL-FORMED BEGIN")
+(define ERR_LET              "ILL-FORMED LET")
 
 ;;
 (define ENCODING_VOID -18) ;; encoded VOID
@@ -873,7 +874,7 @@
 
     (make-lazy-code
        (lambda (cgc ctx)
-
+         
          (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
                 (stub-labels
                       (add-callback cgc 1
