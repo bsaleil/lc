@@ -40,7 +40,7 @@
                  ;; Begin
                  ((eq? op 'begin) (mlc-begin ast succ))
                  ;; Binding
-                 ((member op '(let letrec)) (mlc-binding ast succ op))
+                 ((member op '(let let* letrec)) (mlc-binding ast succ op))
                  ;; Operator num
                  ((member op '($+ $- $* $quotient $modulo $< $> $=)) (mlc-op-num ast succ op))
                  ;; Operator gen
@@ -872,18 +872,19 @@
 
 ;; TODO: Implement #!unbound ?
 ;; NOTE: Letrec: All ids are considered as mutable. Analysis to detect recursive use of ids?
+;; TODO : envoyer ids values et bodies à mlc-let...
 
 ;; Entry point to compile let, letrec
 (define (mlc-binding ast succ op)
   (let ((ids (map car (cadr ast)))
-        (values (map car (cadr ast)))
         (bodies (cddr ast)))
     
     (cond ;; No bindings, it is a begin
           ((null? ids) (mlc-begin (cons 'begin bodies) succ))
           ;; No body, error
           ((null? bodies) (error (cond ((eq? op 'let)    ERR_LET)
-                                       ((eq? op 'letrec) ERR_LETREC))))
+                                       ((eq? op 'letrec) ERR_LETREC)
+                                       ((eq? op 'let*)   ERR_LET*))))
           ;; >= 1 body
           (else
             (let* (;; LAZY LET OUT
@@ -910,15 +911,45 @@
             ;; Delegate with bodies as successor
             (cond ((eq? op 'let)    (mlc-let ast lazy-bodies))
                   ((eq? op 'letrec) (mlc-letrec ast lazy-bodies))
+                  ((eq? op 'let*)   (mlc-let* ast lazy-bodies))
                   (else (error "Unknown ast"))))))))
-           
+   
+;;
+;; Make lazy code from LET*
+;;
+(define (mlc-let* ast succ)
+  ;; Build lazy objects chain for let* bindings
+  (define (gen-let*-bindings ids values mvars)
+    (if (null? ids)
+      succ
+      (let ((lazy-bind
+              (make-lazy-code
+                (lambda (cgc ctx)
+                  (let* ((start (- (length (ctx-stack ctx)) 2))
+                         (env (build-env mvars (list (car ids)) start (ctx-env ctx)))
+                         (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx))))
+                      ;; If this id is mutable then gen mobject
+                      (if (member (car ids) mvars)
+                        (gen-mutable cgc nctx (list (car ids))))
+                      ;; Jump to next id (or succ) with new ctx
+                      (jump-to-version cgc
+                                       (gen-let*-bindings (cdr ids) (cdr values) mvars)
+                                       nctx))))))
+        ;; Gen value
+        (gen-ast (car values) lazy-bind))))
+
+  (let* ((ids (map car (cadr ast)))
+         (values (map cadr (cadr ast)))
+         (mvars (mutable-vars ast ids)))
+    ;; Init call with all ids
+    (gen-let*-bindings ids values mvars)))
+          
 ;;
 ;; Make lazy code from LETREC
 ;;
 (define (mlc-letrec ast succ)
   (let* ((ids (map car (cadr ast)))
          (values (map cadr (cadr ast)))
-         (bodies (cddr ast))
          ;; 3 - Bind values to their locations and jump to bodies
          (lazy-let-mid
             (make-lazy-code
@@ -961,14 +992,18 @@
   
   ;; Initial call
   (gen-letrec-binds-h cgc ctx all-ids 0 (length all-ids)))
-          
+ 
+;;
+;; Make lazy code from LET*
+;;
+
+  
 ;;
 ;; Make lazy code from LET
 ;;
 (define (mlc-let ast succ)
   (let* ((ids (map car (cadr ast)))
          (values (map cadr (cadr ast)))
-         (bodies (cddr ast))
          ;; 2 - Update env, ctx, gen mutable and jump to bodies
          (lazy-let-in
             (make-lazy-code

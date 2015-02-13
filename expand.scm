@@ -21,8 +21,7 @@
       ((equal? (car expr) 'if) (expand-if expr))
       ((equal? (car expr) 'begin) (expand-begin expr))
       ((equal? (car expr) 'let) (expand-let expr))
-      ((equal? (car expr) 'let*) (expand-let* expr))
-      ((equal? (car expr) 'letrec) (expand-letrec expr))
+      ((member (car expr) '(let* letrec)) (expand-binding expr))
       ((equal? (car expr) 'do) (expand-do expr))
       ((equal? (car expr) 'lambda) (expand-lambda expr))
       ((equal? (car expr) 'or) (expand-or expr))
@@ -69,47 +68,29 @@
 ;; LET
 ;; TODO : letn and let with internal defs are not handled by compiler (mlc-let)
 (define (expand-let expr)
+  
+  ;; NAMED LET
+  (define (expand-letn expr)
+     (let ((id (cadr expr))
+           (bindings (caddr expr))
+           (body (cdddr expr)))
+       (expand `((letrec ((,id (lambda ,(map car bindings) ,@body))) ,id) ,@(map cadr bindings)))))
+  
   (if (symbol? (cadr expr))
     ;; Named let
     (expand-letn expr)
     ;; Normal let
-    (let ((ids (map car (cadr expr)))
-          (values (map cadr (cadr expr)))
-          (bodies (cddr expr)))
-    `(let ,(map (lambda (i v)
-                     (list i (expand v))) ids values)
-       ,@(map expand bodies)))))
+    (expand-binding expr)))
 
-;; LETN (named let)
-(define (expand-letn expr)
-   (let ((id (cadr expr))
-         (bindings (caddr expr))
-         (body (cdddr expr)))
-   (expand `((letrec ((,id (lambda ,(map car bindings) ,@body))) ,id) ,@(map cadr bindings)))))
-
-;; LET*
-(define (expand-let* expr)
-  (let ((bindings (cadr expr))
-        (body     (cddr expr)))
-    (cond ;; 1 body
-          ((and (list? body) (= (length bindings) 1))
-              (expand `(let ,bindings ,@body)))
-          ;; > 1 body
-          (else (expand `(let ,(list (car bindings))
-                        (let* ,(cdr bindings)
-                           ,@body)))))))
-      
-;; LETREC
-;; TODO : use set! for now
-(define (expand-letrec expr)
+;; LET, LET*, LETREC
+(define (expand-binding expr)
   (let ((ids    (map car (cadr expr)))
         (values (map cadr (cadr expr)))
         (bodies (cddr expr)))
     
-     `(letrec ,(map (lambda (i v)
+     `(,(car expr) ,(map (lambda (i v)
                       (list i (expand v))) ids values)
         ,@(map expand bodies))))
-     
 
 ;; DO-h
 (define (do-steps ids)
