@@ -249,8 +249,8 @@
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
          
-         (ctx-id (quotient (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)) 4)) ;; '/4' to Decode ctx
-         (ctx (cdr (assoc ctx-id ctx_ids)))
+         (ctx-serial (quotient (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)) 4)) ;; '/4' to Decode ctx
+         (ctx (serial-number->object ctx-serial)) ;; Get ctx from serial number
          
          (closure
           (get-i64 (+ sp (* nb-c-caller-save-regs 8) 16)))
@@ -958,20 +958,38 @@
          (x86-je cgc (list-ref stub-labels 0))
          (x86-jmp cgc (list-ref stub-labels 1))))))
 
+;;-----------------------------------------------------------------------------
+;; Global cc table
 
-
-;; TODO : ctx_ids to solve segfault on ctx read
-(define ctx_ids '())
-
+;; Current fixed global-cc-table max size
 (define global-cc-table-maxsize 100)
+;; Current shape of the global cc table
+(define global-cc-table (make-table))
 
-;; Get cc-table index for 'ctx'. Associates a new index if ctx is a new one
+;; Get closure index associated to ctx. If ctx is not in the
+;; global cc table, then this function adds it and returns
+;; the new associated index. Index starts from 0.
+;; Store and compare ctx-stack in enough because environment is
+;; the same for all versions of a lazy-object.
 (define (get-closure-index ctx)
-  (let ((r (assoc (ctx-stack ctx) global-cc-table)))
-    (if r
-        (cdr r)
-        (let ((idx (length global-cc-table)))
-          (if (>= idx global-cc-table-maxsize)
-              (error "CC Table is full")
-              (begin (set! global-cc-table (cons (cons (ctx-stack ctx) idx) global-cc-table))
-                     idx))))))
+  (register-ctx ctx)
+  (let ((res (table-ref global-cc-table (ctx-stack ctx) #f)))
+    (if res
+      res
+      (let ((value (table-length global-cc-table)))
+        (table-set! global-cc-table (ctx-stack ctx) value)
+        value))))
+
+;; Contains all ctx used to get/set a closure index
+;; This does not allow the GC to recycle ctx between the creation of call site
+;; and the lazy-object generation.
+;; (to prevent 'Unbound serial number' error)
+(define ctx-table (make-table test: eq?))
+
+;; Add ctx to ctx_table or do nothing if already stored
+(define (register-ctx ctx)
+  (let ((res (table-ref ctx-table ctx #f)))
+    (if (not res)
+      (table-set! ctx-table ctx #t))))
+
+

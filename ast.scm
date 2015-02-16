@@ -1151,11 +1151,10 @@
                                                                 (append base-ctx (list-head (cdr (ctx-stack ctx)) (length args)) (list CTX_RETAD))
                                                                 (append base-ctx (list-head (cdr (ctx-stack ctx)) (+ (length args) 1))))) ;; CTX : list CTX_RETAD au lieu de +1 ?
                                                (call-ctx      (make-ctx call-stack '() -1))
-                                               (ctx-id        (length ctx_ids))
                                                (cct-offset    (* 8 (+ 1 (get-closure-index call-ctx)))))
 
-                                          (set! ctx_ids (cons (cons ctx-id call-ctx) ctx_ids))
-                                          (x86-mov cgc (x86-rax) (x86-imm-int (* 4 ctx-id))) ;; '*4' to encode ctx
+                                          ;; Push encoded ctx serial number
+                                          (x86-mov cgc (x86-rax) (x86-imm-int (* 4 (object->serial-number call-ctx))))
                                           (x86-push cgc (x86-rax))
                                           
                                         (if tail 
@@ -1509,9 +1508,6 @@
 ;; |(ctx1)   |         |(ctx5)   |         |         |
 ;; +---------+---------+---------+---------+---------+
 ;;  index  0  index  1  index  2     ...    index  n
-
-;; Global closure context table
-(define global-cc-table '())
 
 ;; Gen a new cc-table at 'alloc-ptr' and write 'stub-addr' in each slot
 (define (gen-cc-table cgc stub-addr offset)
