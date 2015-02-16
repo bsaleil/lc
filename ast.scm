@@ -3,7 +3,8 @@
 (include "~~lib/_asm#.scm")
 
 ;; Base ctx for procedure call
-(define base-ctx (list CTX_CTXID CTX_CLO))
+;; TODO : cons where used
+(define base-ctx (list CTX_CLO))
 
 ;; TODO : RCX global ? (used by if/else stubs)
 
@@ -708,15 +709,16 @@
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
                      (lambda (cgc ctx)
+                       ;; TODO : wrong ?
                        ;; Here the stack is :
                        ;;         RSP
-                       ;;     | ret-val |  ctx  | ret-addr | closure | arg n | ... | arg 1 |
+                       ;;     | ret-val | ret-addr | closure | arg n | ... | arg 1 |
                        ;; Or if rest :
-                       ;;     | ret-val |  ctx  | ret-addr | closure | rest | arg n | ... | arg 1 |
+                       ;;     | ret-val | ret-addr | closure | rest | arg n | ... | arg 1 |
                        (let ((retval-offset
                                 (if rest-param
-                                   (* 8 (+ 3 (length params)))
-                                   (* 8 (+ 2 (length params))))))
+                                   (* 8 (+ 2 (length params)))
+                                   (* 8 (+ 1 (length params))))))
                          
                          ;; Pop return value
                          (x86-pop  cgc (x86-rax))
@@ -741,14 +743,12 @@
                                    ;; Correct number of arguments
                                    (begin (cond ;; Rest param declared but not given
                                                 ((and rest-param (= actual-p formal-p))
-                                                    ;; Shift 2 values on stack
+                                                    ;; Shift closure
                                                     (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
                                                     (x86-push cgc (x86-rax))
-                                                    (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp)))
-                                                    (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
                                                     ;; Mov '() in rest param slot
                                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                                                    (x86-mov cgc (x86-mem 16 (x86-rsp)) (x86-rax))
+                                                    (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
                                                     ;; Add type information to ctx
                                                     ;; TODO
                                                     (let* ((cstack (append base-ctx (list 'pair) (list-tail (ctx-stack ctx) (length base-ctx))))
@@ -872,7 +872,6 @@
 
 ;; TODO: Implement #!unbound ?
 ;; NOTE: Letrec: All ids are considered as mutable. Analysis to detect recursive use of ids?
-;; TODO : envoyer ids values et bodies à mlc-let...
 
 ;; Entry point to compile let, letrec
 (define (mlc-binding ast succ op)
@@ -1153,21 +1152,20 @@
                                                (call-ctx      (make-ctx call-stack '() -1))
                                                (cct-offset    (* 8 (+ 1 (get-closure-index call-ctx)))))
 
-                                          ;; Push encoded ctx serial number
-                                          (x86-mov cgc (x86-rax) (x86-imm-int (* 4 (object->serial-number call-ctx))))
-                                          (x86-push cgc (x86-rax))
-                                          
                                         (if tail 
                                           (tail-shift cgc
                                                       ;; Nb slots to shift
-                                                      (+ (length args) 2) ;; +1 fermeture, +1 ctx
+                                                      (+ (length args) 1) ;; +1 closure
                                                       ;; Initial from slot
-                                                      (+ 1 (length args))
+                                                      (length args)
                                                       ;; Initial to slot
-                                                      (- (length (ctx-stack ctx)) 1)))
+                                                      (- (length (ctx-stack ctx)) 2)))
+                                        
+                                        ;; 0 - CTX serial number in r11
+                                        (x86-mov cgc (x86-r11) (x86-imm-int (* 4 (object->serial-number call-ctx))))
                                         
                                         ;; 1 - Get cc-table
-                                        (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))               ;; get closure
+                                        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))                ;; get closure
                                         (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; get cc-table
 
                                         ;; 2 - Get entry point in cc-table
@@ -1834,7 +1832,7 @@
   ;; Push the last cdr
   (x86-push cgc (x86-imm-int (obj-encoding '())))
   ;; Buils rest list
-  (gen-rest-lst-h cgc ctx nb-pop nb-pop 24)) ;; 24: '(), ctx, closure
+  (gen-rest-lst-h cgc ctx nb-pop nb-pop 16)) ;; 24: '(), ctx, closure
 
 ;; Create a pair with top of stack in cdr
 ;; and argument slot (rsp + sp-offset) in car
@@ -1844,11 +1842,8 @@
       ;; All pairs created, then change stack layout
       (begin ;; Mov rest list to stack
              (x86-pop cgc (x86-rax))
-             (x86-mov cgc (x86-mem (+ 8 (* nb 8)) (x86-rsp)) (x86-rax))
-             ;; Update closure position in stack
-             (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
-             (x86-mov cgc (x86-mem (* 8 nb) (x86-rsp)) (x86-rax))
-             ;; Update context position in stack
+             (x86-mov cgc (x86-mem (* nb 8) (x86-rsp)) (x86-rax))
+             ;; Update closure position
              (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
              (x86-mov cgc (x86-mem (- (* 8 nb) 8) (x86-rsp)) (x86-rax))
              ;; Update rsp

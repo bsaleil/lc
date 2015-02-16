@@ -249,11 +249,15 @@
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
          
-         (ctx-serial (quotient (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)) 4)) ;; '/4' to Decode ctx
+         ;; TODO
+         (ctx-serial
+          (quotient (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8))) 4))
+         
+         ;(ctx-serial (quotient (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)) 4)) ;; '/4' to Decode ctx
          (ctx (serial-number->object ctx-serial)) ;; Get ctx from serial number
          
          (closure
-          (get-i64 (+ sp (* nb-c-caller-save-regs 8) 16)))
+          (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
          
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
@@ -623,6 +627,10 @@
 (define rcx-pos
   (- nb-c-caller-save-regs
      (length (member (x86-rcx) c-caller-save-regs))))
+
+(define r11-pos
+  (- nb-c-caller-save-regs
+     (length (member (x86-r11) c-caller-save-regs))))
 
 (define rax-pos
   (- nb-c-caller-save-regs

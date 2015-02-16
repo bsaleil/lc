@@ -10,10 +10,22 @@
 ;; Set! dans le corps
 ;; Set! dans les valeurs
 
-(define (foo n)
-  (let* ((a 10)
-         (b (begin (set! a 1000) 1)))
-    (pp a)
-    (pp b)))
+;; TODO : corps define begin ?
 
-(foo 10)
+; (define (foo n m)
+;   ($$putchar n)
+;   ($$putchar m))
+
+; (foo 55 56)
+
+(define (bar n)
+  ($$putchar n))
+
+(define (foo a)
+  (bar 56))
+
+(foo 55)
+
+(println 10)
+
+;(print-pos 10)
