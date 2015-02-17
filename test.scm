@@ -18,14 +18,9 @@
 
 ; (foo 55 56)
 
-(define (bar n)
-  ($$putchar n))
+(define (foo)
+  10)
 
-(define (foo a)
-  (bar 56))
-
-(foo 55)
-
-(println 10)
+(foo)
 
 ;(print-pos 10)

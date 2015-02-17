@@ -49,7 +49,6 @@
 (define CTX_UNK   'unknown)
 (define CTX_VOID  'void)
 (define CTX_NULL  'null)
-(define CTX_CTXID 'ctx)
 (define CTX_RETAD 'retAddr)
 (define CTX_VECT  'vector)
 (define CTX_STR   'string)
@@ -249,12 +248,12 @@
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
          
-         ;; TODO
-         (ctx-serial
-          (quotient (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8))) 4))
+         ;; R11 is the still-box containing call-ctx
+         (still-encoding
+          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8))))
          
-         ;(ctx-serial (quotient (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)) 4)) ;; '/4' to Decode ctx
-         (ctx (serial-number->object ctx-serial)) ;; Get ctx from serial number
+         ;; Get ctx from still-box address
+         (ctx (still-ref->ctx still-encoding))
          
          (closure
           (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
@@ -980,7 +979,6 @@
 ;; Store and compare ctx-stack in enough because environment is
 ;; the same for all versions of a lazy-object.
 (define (get-closure-index ctx)
-  (register-ctx ctx)
   (let ((res (table-ref global-cc-table (ctx-stack ctx) #f)))
     (if res
       res
@@ -988,16 +986,26 @@
         (table-set! global-cc-table (ctx-stack ctx) value)
         value))))
 
-;; Contains all ctx used to get/set a closure index
-;; This does not allow the GC to recycle ctx between the creation of call site
-;; and the lazy-object generation.
-;; (to prevent 'Unbound serial number' error)
-(define ctx-table (make-table test: eq?))
+;; Associates a ctx to the address of a still-vector of length 1 containing only this ctx.
+;; This table keep a reference to all ctx of call-sites because these ctx must
+;; NOT be collected by scheme GC.
+;; This table also keep the address of the still-box associated to the ctx because we can't release
+;; this box when version is generated in case of the same call site is used with a 
+;; non yet generated procedure.
+(define ctx-boxes (make-table))
 
-;; Add ctx to ctx_table or do nothing if already stored
-(define (register-ctx ctx)
-  (let ((res (table-ref ctx-table ctx #f)))
-    (if (not res)
-      (table-set! ctx-table ctx #t))))
-
-
+;; Get ctx object from still-vector address
+(define (still-ref->ctx addr)
+  (let ((v (encoding-obj addr)))
+    (vector-ref v 0)))
+    
+;; Get still-vector address from ctx
+;; This still vector of length 1 contains only ctx
+(define (ctx->still-ref ctx)
+  (let ((r (table-ref ctx-boxes ctx #f)))
+    (if r
+      r
+      (let ((v (alloc-still-vector 1)))
+        (vector-set! v 0 ctx)
+        (table-set! ctx-boxes ctx (obj-encoding v))
+        (obj-encoding v)))))

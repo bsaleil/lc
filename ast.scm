@@ -1161,8 +1161,8 @@
                                                       ;; Initial to slot
                                                       (- (length (ctx-stack ctx)) 2)))
                                         
-                                        ;; 0 - CTX serial number in r11
-                                        (x86-mov cgc (x86-r11) (x86-imm-int (* 4 (object->serial-number call-ctx))))
+                                        ;; 0 - R11 = still-box address containing call-ctx
+                                        (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
                                         
                                         ;; 1 - Get cc-table
                                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))                ;; get closure
