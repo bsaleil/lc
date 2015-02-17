@@ -17,8 +17,3 @@
 ;   ($$putchar m))
 
 ; (foo 55 56)
-
-(let ((a 48))
-  (define b 55)
-  (pp a)
-  (pp b))

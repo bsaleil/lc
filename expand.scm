@@ -96,7 +96,7 @@
               ,@(map expand bodies))
           `(,(car expr) ,(map (lambda (i v)
                       (list i (expand v))) ids values)
-              ,(build-internal-defs (car r) (cdr r)))))))
+              ,(expand (build-internal-defs (car r) (cdr r))))))))
 
 ;; DO-h
 (define (do-steps ids)
