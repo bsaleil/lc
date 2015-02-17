@@ -18,9 +18,7 @@
 
 ; (foo 55 56)
 
-(define (foo)
-  10)
-
-(foo)
-
-;(print-pos 10)
+(let ((a 48))
+  (define b 55)
+  (pp a)
+  (pp b))

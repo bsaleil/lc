@@ -17,7 +17,7 @@
 (define (expand expr)
   (cond
       ((or (null? expr) (vector? expr) (symbol? expr) (number? expr) (char? expr) (string? expr) (boolean? expr)) expr)
-      ((equal? (car expr) 'define) (error ILL-DEFINE))
+      ((equal? (car expr) 'define) (pp expr) (error ILL-DEFINE))
       ((equal? (car expr) 'if) (expand-if expr))
       ((equal? (car expr) 'begin) (expand-begin expr))
       ((equal? (car expr) 'let) (expand-let expr))
@@ -88,9 +88,15 @@
         (values (map cadr (cadr expr)))
         (bodies (cddr expr)))
     
-     `(,(car expr) ,(map (lambda (i v)
+      (let ((r (get-internal-defs bodies)))
+        
+        (if (null? (car r)) ;; no def
+          `(,(car expr) ,(map (lambda (i v)
                       (list i (expand v))) ids values)
-        ,@(map expand bodies))))
+              ,@(map expand bodies))
+          `(,(car expr) ,(map (lambda (i v)
+                      (list i (expand v))) ids values)
+              ,(build-internal-defs (car r) (cdr r)))))))
 
 ;; DO-h
 (define (do-steps ids)
