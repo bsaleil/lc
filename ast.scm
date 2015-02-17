@@ -1682,7 +1682,11 @@
                   ;; Quote
                   ((eq? op 'quote) '())
                   ;; Lambda
-                  ((eq? op 'lambda) (free-vars (caddr ast) (append (cadr ast) clo-env) ctx))
+                  ((eq? op 'lambda) (free-vars (caddr ast) 
+                                               (if (list? (cadr ast))
+                                                  (append (cadr ast) clo-env)
+                                                  (cons (cadr ast) clo-env))
+                                               ctx))
                   ;; Special
                   ((member op '(set! $eof-object? $write-char $read-char $close-output-port $close-input-port $open-output-file $open-input-file $error $string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $set-car! $set-cdr! $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $output-port? $input-port? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
@@ -1705,7 +1709,11 @@
         ;; Pair
         ((pair? ast)
            (let ((op (car ast)))
-              (cond ((eq? op 'lambda) (mutable-vars (caddr ast) (set-sub params (cadr ast) '())))
+              (cond ((eq? op 'lambda) (mutable-vars (caddr ast) (set-sub params 
+                                                                         (if (list? (cadr ast))
+                                                                           (cadr ast)
+                                                                           (list (cadr ast)))
+                                                                         '())))
                     ((eq? op 'set!)
                       (set-union (mutable-vars (caddr ast) params)
                                  (if (member (cadr ast) params)

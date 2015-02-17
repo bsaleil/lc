@@ -17,3 +17,12 @@
 ;   ($$putchar m))
 
 ; (foo 55 56)
+
+(define (foo a b)
+  (define (bar . msgs)
+    10)
+  
+  (pp 20))
+
+(foo 1 2)
+

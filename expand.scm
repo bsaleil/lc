@@ -195,7 +195,7 @@
         ((and (list? (car exprs))
               (eq? (caar exprs) 'define))
            (if def-allowed
-            (get-internal-defs-h (cdr exprs) (append def (list (car exprs))) body #t)
+            (get-internal-defs-h (cdr exprs) (append def (list (expand-define (car exprs)))) body #t)
             (error ILL-DEFINE)))
         (else (get-internal-defs-h (cdr exprs)
                          def
