@@ -21,10 +21,10 @@
 (define (gen-ast ast succ)
   (cond ;; String
         ((string? ast)  (mlc-string ast succ #f))
-        ;; Literal
-        ((literal? ast) (mlc-literal ast succ))
         ;; Symbol
         ((symbol? ast)  (mlc-identifier ast succ))
+        ;; Literal
+        ((literal? ast) (mlc-literal ast succ))
         ;; Pair
         ((pair? ast)
          (let ((op (car ast)))
@@ -1137,6 +1137,7 @@
 ;; Make lazy code from CALL EXPRESSION
 ;;
 (define (mlc-call ast succ)
+
   (let* (;; Tail call if successor's flags set contains 'ret flag
          (tail (member 'ret (lazy-code-flags succ)))
          ;; Call arguments
@@ -1664,14 +1665,14 @@
 ;; TODO : inutile de traiter le cas 'Special' parce qu'on utilise
 ;;        assoc dans l'environement dans le cas d'un symbole ?
 (define (free-vars ast clo-env ctx)
-  (cond ;; Literal
-        ((literal? ast) '())
-        ;; Symbol
+  (cond ;; Symbol
         ((symbol? ast)
           (if (and (assoc ast (ctx-env ctx))
                    (not (member ast clo-env)))
               (list ast)
               '()))
+        ;; Literal
+        ((literal? ast) '())
         ;; Pair
         ((pair? ast)
           (let ((op (car ast)))
@@ -1704,8 +1705,8 @@
 
 ;; Return all mutable vars used by ast
 (define (mutable-vars ast params)
-  (cond ;; Literal & Symbol 
-        ((or (null? ast) (char? ast) (string? ast) (number? ast) (boolean? ast) (symbol? ast)) '())
+  (cond ;; Literal 
+        ((literal? ast) '())
         ;; Pair
         ((pair? ast)
            (let ((op (car ast)))
@@ -1881,7 +1882,7 @@
 
 ;; Is the v a literal ?
 (define (literal? v)
-   (or (char? v) (number? v) (string? v) (boolean? v) (null? v)))
+   (or (char? v) (number? v) (symbol? v) (vector? v) (string? v) (boolean? v) (null? v)))
 
 ;; Build list of length n with optional init value
 (define (make-list n #!optional (init #f))

@@ -339,7 +339,7 @@
 ;; Machine code block management
 
 ;; HEAP
-(define heap-len 1000000)
+(define heap-len 2000000)
 (define heap-addr  #f)
 (define from-space #f)
 (define to-space   #f)
@@ -347,7 +347,7 @@
 (define alloc-ptr (x86-r12))
 
 ;; CODE
-(define code-len 10000000)
+(define code-len 1000000000)
 (define code-addr #f)
 
 ;; MCB :
@@ -381,7 +381,7 @@
 (define block #f)
 ;; TODO : fixed number of globals
 (define global-offset 3) ;; Stack addr, current input, current output
-(define block-len (* 8 (+ global-offset 1000))) ;; 1 stack addr, 1000 globals
+(define block-len (* 8 (+ global-offset 10000))) ;; 1 stack addr, 1000 globals
 (define block-addr #f)
 
 (define (init-block)

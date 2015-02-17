@@ -18,11 +18,9 @@
 
 ; (foo 55 56)
 
-(define (foo a b)
-  (define (bar . msgs)
-    10)
-  
-  (pp 20))
+(define (- n . l)
+  (cond ((null? l) ($- 0 n))
+        ((= (length l) 1) ($- n (car l)))
 
-(foo 1 2)
-
+(pp (- 1 2))
+(pp (- 1))
