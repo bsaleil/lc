@@ -17,7 +17,7 @@
 (define (expand expr)
   (cond
       ((or (null? expr) (vector? expr) (symbol? expr) (number? expr) (char? expr) (string? expr) (boolean? expr)) expr)
-      ((equal? (car expr) 'define) (pp expr) (error ILL-DEFINE))
+      ((equal? (car expr) 'define) (error ILL-DEFINE))
       ((equal? (car expr) 'if) (expand-if expr))
       ((equal? (car expr) 'begin) (expand-begin expr))
       ((equal? (car expr) 'let) (expand-let expr))
