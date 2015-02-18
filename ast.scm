@@ -52,6 +52,8 @@
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
                  ((eq? op 'define) (mlc-define ast succ))
+                 ;; Apply
+                 ((eq? op '$apply) (mlc-apply ast succ))
                  ;; Call expr
                  (else (mlc-call ast succ)))))
         ;; *unknown*
@@ -784,6 +786,7 @@
                (stub-labels (add-fn-callback cgc
                                              0
                                              (lambda (sp ctx ret-addr selector closure)
+                                               
                                                ;; Extends env with params and free vars
                                                (let* ((env (build-env mvars all-params 0 (build-fenv saved-env mvars fvars 0)))
                                                       (ctx (make-ctx (ctx-stack ctx) env (length params))))
@@ -995,6 +998,7 @@
 ;;
 ;; Make lazy code from LET*
 ;;
+;; TODO ?
 
   
 ;;
@@ -1133,8 +1137,93 @@
       (cadr ast)
       lazy-code-test)))
 
+;;-----------------------------------------------------------------------------
+;; APPLY & CALL
+ 
 ;;
-;; Make lazy code from CALL EXPRESSION
+;; Make lazy code from APPLY
+;;
+;; TODO : factoriser avec mlc-call
+(define (mlc-apply ast succ)
+
+  (let* (;; LAZY CALL
+         (lazy-call
+          (make-lazy-code
+            ;; Remove apply op and lst, push args from lst,
+            ;; push closure, and call
+            (lambda (cgc ctx)
+              
+              ;; Remove lst and op from stack
+              (x86-pop cgc (x86-rax)) ;; lst
+              (x86-pop cgc (x86-rbx)) ;; op
+
+              ;; Read and push all args from lst until we reach '()
+              (let ((label-end  (asm-make-label #f (new-sym 'apply-args-end)))
+                    (label-loop (asm-make-label #f (new-sym 'apply-args-loop))))
+                ;; RDI contains the number of arguments
+                (x86-mov cgc (x86-rdi) (x86-imm-int 0))
+                (x86-label cgc label-loop)
+                ;; If current el is null, then jump to end
+                (x86-cmp cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+                (x86-je cgc label-end)
+                  ;; Else, push arg and update RDI
+                  (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))           ;; Push car
+                  (x86-mov cgc (x86-rax) (x86-mem (- 16 TAG_MEMOBJ) (x86-rax))) ;; Get cdr for next iteration
+                  (x86-inc cgc (x86-rdi))  ;; inc args number
+                  (x86-jmp cgc label-loop) ;; next iteration
+                ;; All args are pushed
+                (x86-label cgc label-end))
+
+              ;; Push closure
+              (x86-push cgc (x86-rbx))
+
+              (let* ((call-ctx (make-ctx fake-stack '() -1))
+                     (cct-offset    (* 8 (+ 1 (get-closure-index call-ctx)))))
+                ;; Put ctx with fake stack in r11 because we don't know the type/number of arguments
+                (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
+
+                ;; 1 - Get cc-table
+                (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))
+
+                ;; 2 - Get entry point in cc-table
+                (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
+
+                ;; 3 - Jump
+                (x86-jmp cgc (x86-rax))))))
+        
+         ;; LAZY APPLY
+         (lazy-apply
+           ;; Push operator and args lst 
+           (let ((lazy-right (gen-ast (caddr ast) lazy-call)))
+             (gen-ast (cadr ast) lazy-right))))
+        
+    ;; Create stub and push ret addr
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (let* (;; Flag in stub : is the continuation already generated ?
+               (gen-flag #f)
+               ;; Label for return address loading
+               (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
+               ;; Continuation stub
+               (stub-labels (add-callback cgc
+                                          0
+                                          (lambda (ret-addr selector)
+                                             ;; Remove lambda and args from ctx, and add retval (unknown)
+                                             (let ((ctx-continuation (ctx-push ctx CTX_UNK)))
+                                                (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
+                                                   (set! gen-flag (gen-version-continuation load-ret-label
+                                                                                            succ
+                                                                                            ctx-continuation)))
+                                                gen-flag)))))
+          ;; Return address (continuation label)
+          (x86-label cgc load-ret-label)
+          (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
+          (x86-push cgc (x86-rax))
+
+          (jump-to-version cgc lazy-apply (ctx-push ctx CTX_RETAD)))))))
+
+;;
+;; Make lazy code from CALL EXPR
 ;;
 (define (mlc-call ast succ)
 
@@ -1227,6 +1316,8 @@
                                 lazy-operator)))
                             
                     (jump-to-version cgc succ (ctx-push ctx CTX_RETAD)))))))))
+
+;;-----------------------------------------------------------------------------
 
 ;;
 ;; Make lazy code from NUMBER OPERATOR
@@ -1689,7 +1780,7 @@
                                                   (cons (cadr ast) clo-env))
                                                ctx))
                   ;; Special
-                  ((member op '(set! $eof-object? $write-char $read-char $close-output-port $close-input-port $open-output-file $open-input-file $error $string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $set-car! $set-cdr! $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $output-port? $input-port? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
+                  ((member op '(set! $eof-object? $write-char $read-char $close-output-port $close-input-port $open-output-file $open-input-file $error $string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $set-car! $set-cdr! $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $output-port? $apply $input-port? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
 
@@ -1883,12 +1974,6 @@
 ;; Is the v a literal ?
 (define (literal? v)
    (or (char? v) (number? v) (symbol? v) (vector? v) (string? v) (boolean? v) (null? v)))
-
-;; Build list of length n with optional init value
-(define (make-list n #!optional (init #f))
-  (if (= 0 n)
-    '()
-    (cons init (make-list (- n 1) init))))
 
 ;; Call n times the function fn with given args
 (define (call-n n fn . args)

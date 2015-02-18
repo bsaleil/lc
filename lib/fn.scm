@@ -17,3 +17,6 @@
   ($error))
 
 (define fatal-error error)
+
+(define (apply fn args)
+  ($apply fn args))

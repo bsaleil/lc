@@ -83,6 +83,10 @@
 
 ;;-----------------------------------------------------------------------------
 
+(define fake-stack (list 'FAKE))
+
+;;-----------------------------------------------------------------------------
+
 (define (alloc-still-vector len)
   ((c-lambda (int)
              scheme-object
@@ -253,7 +257,13 @@
           (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8))))
          
          ;; Get ctx from still-box address
-         (ctx (still-ref->ctx still-encoding))
+         (ctx
+           (let ((rctx (still-ref->ctx still-encoding)))
+             (if (equal? (ctx-stack rctx) fake-stack)
+               ;; If ctx contains fake stack, it's a call from apply, then read nb-args and create new ctx
+               (let ((nb-args (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8)))))
+                 (make-ctx (cons CTX_CLO (append (make-list nb-args CTX_UNK) (list CTX_RETAD))) (ctx-env rctx) (ctx-nb-args rctx)))
+               rctx)))
          
          (closure
           (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
@@ -626,6 +636,10 @@
 (define rcx-pos
   (- nb-c-caller-save-regs
      (length (member (x86-rcx) c-caller-save-regs))))
+
+(define rdi-pos
+  (- nb-c-caller-save-regs
+     (length (member (x86-rdi) c-caller-save-regs))))
 
 (define r11-pos
   (- nb-c-caller-save-regs
@@ -1009,3 +1023,12 @@
         (vector-set! v 0 ctx)
         (table-set! ctx-boxes ctx (obj-encoding v))
         (obj-encoding v)))))
+
+;;-----------------------------------------------------------------------------
+;; Utils
+
+;; Build list of length n with optional init value
+(define (make-list n #!optional (init #f))
+  (if (= 0 n)
+    '()
+    (cons init (make-list (- n 1) init))))

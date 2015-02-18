@@ -7,6 +7,8 @@
 ;rational?
 ;truncate
 
+;; Tests bindings let, let* et letrec avec definitions internes
+
 ;; Set! dans le corps
 ;; Set! dans les valeurs
 
@@ -18,9 +20,20 @@
 
 ; (foo 55 56)
 
-(define (- n . l)
-  (cond ((null? l) ($- 0 n))
-        ((= (length l) 1) ($- n (car l)))
+(apply (lambda () (println "Test1")) '())
 
-(pp (- 1 2))
-(pp (- 1))
+(apply (lambda (x)
+         (println x))
+       '("Test2"))
+
+(apply (lambda (x y z)
+         (println x)
+         (println y)
+         (println z))
+       '("Test3" "Test4" "Test5"))
+
+(apply (lambda (x y . z)
+         (println x)
+         (println y)
+         (pp z))
+       '("Hello" "World" 1 2 3 4 5))
