@@ -8,6 +8,7 @@
 ;truncate
 
 ;; Tests bindings let, let* et letrec avec definitions internes
+;; Test apply + check-err
 
 ;; Set! dans le corps
 ;; Set! dans les valeurs
