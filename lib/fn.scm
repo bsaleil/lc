@@ -18,5 +18,15 @@
 
 (define fatal-error error)
 
-(define (apply fn args)
-  ($apply fn args))
+(define (apply fn a . args)
+  (define (argslist args)
+    (cond ((null? args) '())
+          ((= (length args) 1)
+             (if (list? (car args))
+                (car args)
+                (error "EE")))
+          (else
+            (cons (car args) (argslist (cdr args))))))
+  (if (null? args)
+     ($apply fn a)
+     ($apply fn (argslist (cons a args)))))

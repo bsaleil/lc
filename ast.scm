@@ -1226,7 +1226,7 @@
 ;; Make lazy code from CALL EXPR
 ;;
 (define (mlc-call ast succ)
-
+  
   (let* (;; Tail call if successor's flags set contains 'ret flag
          (tail (member 'ret (lazy-code-flags succ)))
          ;; Call arguments

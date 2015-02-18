@@ -21,20 +21,22 @@
 
 ; (foo 55 56)
 
-(apply (lambda () (println "Test1")) '())
+; (apply (lambda () (println "Test1")) '())
 
-(apply (lambda (x)
-         (println x))
-       '("Test2"))
+; (apply (lambda (x)
+;          (println x))
+;        '("Test2"))
 
-(apply (lambda (x y z)
-         (println x)
-         (println y)
-         (println z))
-       '("Test3" "Test4" "Test5"))
+; (apply (lambda (x y z)
+;          (println x)
+;          (println y)
+;          (println z))
+;        '("Test3" "Test4" "Test5"))
 
-(apply (lambda (x y . z)
-         (println x)
-         (println y)
-         (pp z))
-       '("Hello" "World" 1 2 3 4 5))
+; (apply (lambda (x y . z)
+;          (println x)
+;          (println y)
+;          (pp z))
+;        '("Hello" "World" 1 2 3 4 5))
+
+;-----------------------------
