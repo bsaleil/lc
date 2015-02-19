@@ -2,6 +2,7 @@
 
 ;; ERRORS
 (define ILL-DEFINE "Ill-placed 'define'")
+(define ILL-CASE   "Ill-formed 'case'")
 (define EMPTY-BODY "Body must contain at least one expression")
 
 ;; Expand function called from top-level (allows define)
@@ -27,6 +28,7 @@
       ((equal? (car expr) 'or) (expand-or expr))
       ((equal? (car expr) 'and) (expand-and expr))
       ((equal? (car expr) 'cond) (expand-cond expr))
+      ((equal? (car expr) 'case) (expand-case expr))
       ((equal? (car expr) 'quote) expr)
       (else (if (list? (cdr expr))
                 (map expand expr)
@@ -179,6 +181,33 @@
                         ;; (cond (e1 e2) ...)
                         (expand `(begin  ,@(cdr (cadr expr)))))
                    ,(expand `(cond ,@(cddr expr)))))))
+
+;; CASE
+(define (expand-case expr)
+  (let ((key (cadr expr))
+        (clauses (cddr expr))
+        (sym (gensym)))
+    `(let ((,sym ,key))
+      ,(expand-case-clauses sym clauses))))
+
+;; CASE (clauses)
+(define (expand-case-clauses sym clauses)
+  (cond ;; 0 clause, error
+        ((null? clauses) (error ILL-CASE))
+        ;; 1 clause
+        ((= (length clauses) 1)
+           (let ((clause (car clauses)))
+             (if (eq? (car clause) 'else)
+                (expand (cons 'begin (cdr clause)))
+                `(if (memv ,sym (quote ,(car clause)))
+                    ,(expand (cons 'begin (cdr clause)))
+                    #f))))
+        ;; >1 clauses
+        (else
+          (let ((clause (car clauses)))
+            `(if (memv ,sym (quote ,(car clause)))
+                ,(expand (cons 'begin (cdr clause)))
+                ,(expand-case-clauses sym (cdr clauses)))))))
 
 ;;----------
 

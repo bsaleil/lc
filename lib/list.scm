@@ -68,6 +68,11 @@
         ((eq? el (car lst)) lst)
         (else (memq el (cdr lst)))))
 
+(define (memv el lst)
+  (cond ((null? lst) #f)
+        ((eqv? el (car lst)) lst)
+        (else (memv el (cdr lst)))))
+
 (define (member el lst)
   (cond ((null? lst) #f)
         ((equal? el (car lst)) lst)

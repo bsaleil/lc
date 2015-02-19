@@ -7,6 +7,8 @@
 ;rational?
 ;truncate
 
+;; Case : tester 
+
 ;; Tests bindings let, let* et letrec avec definitions internes
 ;; Test apply + check-err
 
@@ -39,4 +41,5 @@
 ;          (pp z))
 ;        '("Hello" "World" 1 2 3 4 5))
 
-;-----------------------------
+;; Que donne le expand de (begin expr) ?
+;-------------------------------
