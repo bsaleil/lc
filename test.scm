@@ -56,4 +56,5 @@
 
 ;-------------------------------
 
+TODO : Ajouter schema ordre lazy objects du do dans le wiki
 TODO: change LETRICK name (LETRICK lazy-success lazy-fail) in ast.scm mlc-do
