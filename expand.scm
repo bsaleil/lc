@@ -155,6 +155,24 @@
         ((eq? (length expr) 2) (expand (cadr expr))) ;; (and e1)
         (else `(if ,(expand (cadr expr)) ,(expand `(and ,@(cddr expr))) #f)))) ;; (and e1 ... en)
 
+;; TODO 
+(define (expand-cond-clause expr el)
+  (if (eq? (cadr (cadr expr)) '=>)
+    ;; (cond (e1 => e2))
+    (let ((sym (gensym)))
+      `(let ((,sym ,(car (cadr expr))))
+          (if ,sym
+            (,(caddr (cadr expr)) ,sym)
+            ,el)))
+    ;;
+    `(if ,(expand (caadr expr))
+        ,(if (null? (cdr (cadr expr)))
+            ;; (cond (e1))
+            '#t
+            ;; (cond (e1 e2 [e3 ...]))
+            (expand `(begin ,@(cdr (cadr expr)))))
+        ,el)))
+
 ;; COND
 (define (expand-cond expr)
   (cond ;; (cond)
@@ -165,21 +183,10 @@
                 ;; (cond (else ...))
                 (expand `(begin ,@(cdr (cadr expr))))
                 ;; (cond (e1 e2))
-                `(if ,(expand (caadr expr))
-                     ,(if (null? (cdr (cadr expr)))
-                          ;; (cond (e1))
-                          '#t
-                          ;; (cond (e1 e2 [e3 ...]))
-                          (expand `(begin ,@(cdr (cadr expr)))))
-                     #f))) ;; NOTE : Should return #!void
+                (expand-cond-clause expr '#f))) ;; NOTE : Should return #!void
         ;; (cond (e1 e2) ...)
-        (else `(if ,(expand (caadr expr))
-                   ,(if (null? (cdr (cadr expr)))
-                        ;; (cond (e1) ...)
-                        '#t
-                        ;; (cond (e1 e2) ...)
-                        (expand `(begin  ,@(cdr (cadr expr)))))
-                   ,(expand `(cond ,@(cddr expr)))))))
+        (else (expand-cond-clause expr
+                        (expand `(cond ,@(cddr expr)))))))
 
 ;; CASE
 (define (expand-case expr)
