@@ -48,16 +48,24 @@
 ;; Expand multiple corps des lambda et define en begin (fait ?)
 
 ;; TEST A PASSER :
-;; boyer.scm
-;; conform.scm
-;; earley.scm
+;; compiler.scm
+;; gc-bench.scm
 ;; lattice.scm
 ;; matrix.scm
+;; maze.scm decalages binaires
+;; peval.scm
+;; pi.scm ?
+;; sboyer.scm
+;; scheme.scm
 
 ;-------------------------------
 
 ;TODO : Ajouter schema ordre lazy objects du do dans le wiki
-;TODO: change LETRICK name (LETRICK lazy-success lazy-fail) in ast.scm mlc-do
+
+
+
+
+
 
 
 

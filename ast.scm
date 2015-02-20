@@ -1145,8 +1145,6 @@
 ;;
 ;; NOTE: optimization: if <step> is <variable> it is useless to compile
 ;;       and move in stack, we can use the value of previous iteration
-;; TODO : si pas de step, inutile de compiler / copier
-;; TODO : (LETRICK ...)
 ;;
 ;; Lazy objects chain :
 ;;
@@ -1235,8 +1233,8 @@
               (gen-ast-l bodies lazy-steps)))
          ;; LAZY-TEST-EXPRS
          (lazy-test-exprs (gen-ast-l test-exprs lazy-end))
-         ;; LAZY-DISPATCH: Read result of test and jump to body if #f or end if #t
-         (lazy-dispatch (LETRICK lazy-body lazy-test-exprs))
+         ;; LAZY-DISPATCH: Read result of test and jump to test-exors if #t or body if #f
+         (lazy-dispatch (get-lazy-dispatch lazy-test-exprs lazy-body))
          ;; LAZY-ADD-CTX
          (lazy-add-ctx
            ;; Add variables to env and gen mutable vars
@@ -1257,16 +1255,11 @@
     ;; Return first init lazy object
     (gen-ast-l inits lazy-add-ctx)))
 
-;;
-;;
-;;
-;;
-;;
-;;
-;;
-
-;; TODO
-(define (LETRICK lazy-success lazy-fail)
+;; Create a new lazy code object.
+;; Takes the value from stack and cmp to #f
+;; If == #f jump to lazy-fail
+;; If != #f jump to lazy-success
+(define (get-lazy-dispatch lazy-success lazy-fail)
 
     (make-lazy-code
        (lambda (cgc ctx)
@@ -1292,7 +1285,7 @@
                                          (if (= selector 1)
                                           
                                             ;; overwrite unconditional jump
-                                            (gen-version (+ jump-addr 6) lazy-fail ctx-OUT)
+                                            (gen-version (+ jump-addr 6) lazy-success ctx-OUT)
                                           
                                             (if (= (+ jump-addr 6 5) code-alloc)
 
@@ -1305,27 +1298,25 @@
                                                      ;; overwrite unconditional jump
                                                      (gen-version
                                                      (+ jump-addr 6)
-                                                     lazy-success
+                                                     lazy-fail
                                                      ctx-OUT))
 
                                               ;; make conditional jump to new version
-                                              (gen-version jump-addr lazy-success ctx-OUT))))
+                                              (gen-version jump-addr lazy-fail ctx-OUT))))
 
                                   (begin ;; one branch has already been patched
                                          ;; reclaim the stub
                                          (release-still-vector (get-scmobj ret-addr))
                                          (stub-reclaim stub-addr)
                                          (if (= selector 0)
-                                            (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-OUT)
-                                            (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-OUT))))))))))
+                                            (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-fail ctx-OUT)
+                                            (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-success ctx-OUT))))))))))
 
          (x86-pop cgc (x86-rax)) ;; pop TEST
          (x86-cmp cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
          (x86-label cgc label-jump)
          (x86-je cgc (list-ref stub-labels 0))
          (x86-jmp cgc (list-ref stub-labels 1))))))
-         
-         
 
 ;;-----------------------------------------------------------------------------
 ;; APPLY & CALL
