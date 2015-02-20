@@ -2,6 +2,8 @@
 
 (include "~~lib/_x86#.scm")
 
+(define pp pretty-print)
+
 ;;-----------------------------------------------------------------------------
 
 (define (lazy-exprs exprs succ)
@@ -127,3 +129,4 @@
           (else (error "NYI"))))
   ; (pp "Global cctable size=")
   ; (pp (length global-cc-table)))
+  

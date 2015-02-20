@@ -40,6 +40,8 @@
                  ((eq? op 'lambda) (mlc-lambda ast succ))
                  ;; Begin
                  ((eq? op 'begin) (mlc-begin ast succ))
+                 ;; Do
+                 ((eq? op 'do) (mlc-do ast succ))
                  ;; Binding
                  ((member op '(let let* letrec)) (mlc-binding ast succ op))
                  ;; Operator num
@@ -1136,6 +1138,194 @@
     (gen-ast
       (cadr ast)
       lazy-code-test)))
+
+;;-----------------------------------------------------------------------------
+;;
+;; Make lazy code from DO
+;;
+;; NOTE: optimization: if <step> is <variable> it is useless to compile
+;;       and move in stack, we can use the value of previous iteration
+;; TODO : si pas de step, inutile de compiler / copier
+;; TODO : (LETRICK ...)
+;;
+;; Lazy objects chain :
+;;
+;; +-------+  +---------+  +------+  +----------+  +------------+  +-----+  +------+
+;; | inits |->| ctx-add |->| test |->| dispatch |->| test-exprs |->| end |->| succ |-> ...
+;; +-------+  +---------+  +------+  +----------+  +------------+  +-----+  +------+
+;;                            ^           |
+;;                            |           V
+;;                            |       +--------+
+;;                            |       | bodies |
+;;                            |       +--------+
+;;                            |           |
+;;                            |           V
+;;                         +------+   +-------+
+;;                         | bind |<--| steps |
+;;                         +------+   +-------+
+(define (mlc-do ast succ)
+  
+  ;; Get list of steps
+  (define (get-steps variables)
+    (if (null? variables)
+      '()
+      (let ((variable (car variables)))
+        (if (null? (cddr variable))
+          ;; No step, use variable
+          (cons (car variable)   (get-steps (cdr variables)))
+          ;; Step exists, add step
+          (cons (caddr variable) (get-steps (cdr variables)))))))
+  
+  (let* (;; DO components
+         (test       (car (caddr ast)))
+         (test-exprs (if (null? (cdr (caddr ast)))
+                         '(#f)
+                         (cdr (caddr ast))))
+         (variables  (map car (cadr ast)))
+         (inits      (map cadr (cadr ast)))
+         (steps      (get-steps (cadr ast)))
+         (bodies     (cdddr ast))
+         (mvars      (mutable-vars ast variables))
+         ;; LAZY-END
+         (lazy-end
+           ;; Last object. Executed if test evaluates to true
+           ;; Update ctx and rsp
+           (make-lazy-code
+             (lambda (cgc ctx)
+               
+               (let* ((stack (cons (car (ctx-stack ctx)) (list-tail (ctx-stack ctx) (+ (length test-exprs) (length variables)))))
+                      (env (list-tail (ctx-env ctx) (length variables)))
+                      (nctx (make-ctx stack env (ctx-nb-args ctx))))
+               (x86-pop cgc (x86-rax))
+               (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (+ (length variables) (length test-exprs) -1))))
+               (x86-push cgc (x86-rax))
+               
+               (jump-to-version cgc succ nctx)))))
+         ;; LAZY-TEST
+         (lazy-test #f) ;; do test
+         ;; LAZY-BIND
+         (lazy-bind
+           (make-lazy-code
+             (lambda (cgc ctx)
+               ;; Update variables
+               (do ((it   variables (cdr it))
+                    (from (- (* 8 (length variables)) 8) (- from 8))
+                    (to   (- (* 8 (+ (length variables) (length variables) (length bodies))) 8) (- to 8)))
+                   ((null? it) #f)
+                   (x86-mov cgc (x86-rax) (x86-mem from (x86-rsp)))
+                   (if (member (car it) mvars)
+                     (begin (x86-mov cgc (x86-rbx) (x86-mem to (x86-rsp))) ;; mvar box
+                            (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)) (x86-rax)))
+                     (x86-mov cgc (x86-mem to (x86-rsp)) (x86-rax))))
+               
+               ;; MAJ RSP
+               (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (+ (length variables) (length bodies)))))
+               
+               (let* ((stack (append (list-head (ctx-stack ctx) (length variables))
+                                     (list-tail (ctx-stack ctx) (+ (* 2 (length variables)) (length bodies)))))
+                      (nctx (make-ctx stack (ctx-env ctx) (ctx-nb-args ctx))))
+                 (jump-to-version cgc lazy-test nctx)))))
+         ;; LAZY-STEP
+         (lazy-steps
+           (gen-ast-l steps lazy-bind))
+         ;; LAZY-BODY
+         (lazy-body
+           (if (null? bodies)
+              lazy-steps ;; Jump directly to lazy-steps if no body
+              (gen-ast-l bodies lazy-steps)))
+         ;; LAZY-TEST-EXPRS
+         (lazy-test-exprs (gen-ast-l test-exprs lazy-end))
+         ;; LAZY-DISPATCH: Read result of test and jump to body if #f or end if #t
+         (lazy-dispatch (LETRICK lazy-body lazy-test-exprs))
+         ;; LAZY-ADD-CTX
+         (lazy-add-ctx
+           ;; Add variables to env and gen mutable vars
+           (make-lazy-code
+             (lambda (cgc ctx)
+               (let* ((start (- (length (ctx-stack ctx)) (length variables) 1))
+                      (env  (build-env mvars variables start (ctx-env ctx)))
+                      (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx))))
+                 ;; Gen mutable vars
+                 (gen-mutable cgc nctx mvars)
+                 
+                 ;; Jump to test with new ctx
+                 (jump-to-version cgc lazy-test nctx))))))
+         
+    ;; Lazy-dispatch exists then generate test ast
+    (set! lazy-test (gen-ast test lazy-dispatch))
+    
+    ;; Return first init lazy object
+    (gen-ast-l inits lazy-add-ctx)))
+
+;;
+;;
+;;
+;;
+;;
+;;
+;;
+
+;; TODO
+(define (LETRICK lazy-success lazy-fail)
+
+    (make-lazy-code
+       (lambda (cgc ctx)
+         
+         (let* ((ctx-OUT (ctx-pop ctx)) ;; TODO
+                (label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
+                (stub-labels
+                      (add-callback cgc 1
+                        (let ((prev-action #f))
+
+                          (lambda (ret-addr selector)
+                            (let ((stub-addr (- ret-addr 5 2))
+                                  (jump-addr (asm-label-pos label-jump)))
+                            
+                              (if verbose-jit
+                                  (begin
+                                    (println ">>> selector= " selector)
+                                    (println ">>> prev-action= " prev-action)))
+                            
+                              (if (not prev-action)
+                                  
+                                  (begin (set! prev-action 'no-swap)
+                                         (if (= selector 1)
+                                          
+                                            ;; overwrite unconditional jump
+                                            (gen-version (+ jump-addr 6) lazy-fail ctx-OUT)
+                                          
+                                            (if (= (+ jump-addr 6 5) code-alloc)
+
+                                              (begin (if verbose-jit (println ">>> swapping-branches"))
+                                                     (set! prev-action 'swap)
+                                                     ;; invert jump direction
+                                                     (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
+                                                     ;; make conditional jump to stub
+                                                     (patch-jump jump-addr stub-addr)
+                                                     ;; overwrite unconditional jump
+                                                     (gen-version
+                                                     (+ jump-addr 6)
+                                                     lazy-success
+                                                     ctx-OUT))
+
+                                              ;; make conditional jump to new version
+                                              (gen-version jump-addr lazy-success ctx-OUT))))
+
+                                  (begin ;; one branch has already been patched
+                                         ;; reclaim the stub
+                                         (release-still-vector (get-scmobj ret-addr))
+                                         (stub-reclaim stub-addr)
+                                         (if (= selector 0)
+                                            (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-OUT)
+                                            (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-OUT))))))))))
+
+         (x86-pop cgc (x86-rax)) ;; pop TEST
+         (x86-cmp cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+         (x86-label cgc label-jump)
+         (x86-je cgc (list-ref stub-labels 0))
+         (x86-jmp cgc (list-ref stub-labels 1))))))
+         
+         
 
 ;;-----------------------------------------------------------------------------
 ;; APPLY & CALL

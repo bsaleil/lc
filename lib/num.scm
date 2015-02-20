@@ -13,3 +13,17 @@
 
 (define (odd? x)
   (= (modulo x 2) 1))
+
+(define (expt n m)
+  (if (= m 0)
+     1
+     (* n (expt n (- m 1)))))
+
+(define (max a . l)
+  (define (max-h els m)
+    (if (null? els)
+       m
+       (if (> (car els) m)
+          (max-h (cdr els) (car els))
+          (max-h (cdr els) m))))
+  (max-h l a))

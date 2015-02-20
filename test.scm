@@ -42,4 +42,18 @@
 ;        '("Hello" "World" 1 2 3 4 5))
 
 ;; Que donne le expand de (begin expr) ?
+;; + test.scm de baptHome
+
+
+;; Expand multiple corps des lambda et define en begin (fait ?)
+
+;; TEST A PASSER :
+;; boyer.scm
+;; conform.scm
+;; earley.scm
+;; lattice.scm
+;; matrix.scm
+
 ;-------------------------------
+
+TODO: change LETRICK name (LETRICK lazy-success lazy-fail) in ast.scm mlc-do

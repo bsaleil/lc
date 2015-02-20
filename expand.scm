@@ -23,7 +23,6 @@
       ((equal? (car expr) 'begin) (expand-begin expr))
       ((equal? (car expr) 'let) (expand-let expr))
       ((member (car expr) '(let* letrec)) (expand-binding expr))
-      ((equal? (car expr) 'do) (expand-do expr))
       ((equal? (car expr) 'lambda) (expand-lambda expr))
       ((equal? (car expr) 'or) (expand-or expr))
       ((equal? (car expr) 'and) (expand-and expr))
