@@ -2,6 +2,8 @@
 lazy-comp
 *~
 out
+out1
+out2
 in
 lib.scm
 unit-tests/benchmarks/foo
