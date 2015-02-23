@@ -147,7 +147,12 @@
 (define (expand-or expr)
   (cond ((eq? (length expr) 1) '#f) ;; (or)
         ((eq? (length expr) 2) (expand (cadr expr))) ;; (or e1)
-        (else `(if ,(expand (cadr expr)) #t ,(expand `(or ,@(cddr expr))))))) ;; (or e1 ... en)
+        (else
+          (let ((sym (gensym)))
+             `(let ((,sym ,(expand (cadr expr))))
+                (if ,sym
+                   ,sym
+                   ,(expand `(or ,@(cddr expr))))))))) ;; (or e1 ... en)
 
 ;; AND
 (define (expand-and expr)

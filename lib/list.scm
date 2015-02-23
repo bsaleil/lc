@@ -4,12 +4,13 @@
 
 (define (car l)    ($car l))
 (define (cdr l)    ($cdr l))
-(define (cddr l)   ($cdr ($cdr l)))
-(define (cadr l)   ($car ($cdr l)))
-(define (caddr l)  ($car ($cdr ($cdr l))))
-(define (cadddr l) ($car ($cdr ($cdr ($cdr l)))))
 (define (caar l)   ($car ($car l)))
+(define (cadr l)   ($car ($cdr l)))
 (define (cdar l)   ($cdr ($car l)))
+(define (cddr l)   ($cdr ($cdr l)))
+(define (caddr l)  ($car ($cdr ($cdr l))))
+(define (cdddr l)  ($cdr ($cdr ($cdr l))))
+(define (cadddr l) ($car ($cdr ($cdr ($cdr l)))))
 
 (define (set-car! p v)
   ($set-car! p v))
@@ -60,6 +61,11 @@
   (cond ((null? lst) #f)
         ((eq? el (car (car lst))) (car lst))
         (else (assq el (cdr lst)))))
+
+(define (assv el lst)
+  (cond ((null? lst) #f)
+        ((eqv? el (car (car lst))) (car lst))
+        (else (assv el (cdr lst)))))
 
 (define (assoc el lst)
   (cond ((null? lst) #f)

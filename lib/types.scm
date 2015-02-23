@@ -69,6 +69,23 @@
         ""
         (string-append (number->string-h (quotient num 10))
                        (digit->string    (modulo   num 10)))))
-  (if (= num 0)
-      "0"
-      (number->string-h num)))
+  (cond ((= num 0) "0")
+        ((< num 0) (string-append "-" (number->string-h (* num -1))))
+        (else (number->string-h num))))
+
+(define (string->number str . l)
+  (define (s->n str pos)
+    (if (= pos (string-length str))
+      ""
+      (let ((c (string-ref str pos)))
+        (if (char-numeric? c)
+          ;;
+          (let ((r (s->n str (+ pos 1))))
+            (if r
+               (string-append (make-string 1 c) r)
+               #f))
+          ;;
+          #f))))
+  (if (= (string-length str) 0)
+     #f
+     (s->n str 0)))

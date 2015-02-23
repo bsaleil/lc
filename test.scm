@@ -60,12 +60,4 @@
 
 ;-------------------------------
 
-;TODO : Ajouter schema ordre lazy objects du do dans le wiki
-
-
-
-
-
-
-
-
+(pp (+ 1 2 3))

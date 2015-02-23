@@ -27,3 +27,13 @@
           (max-h (cdr els) (car els))
           (max-h (cdr els) m))))
   (max-h l a))
+
+(define (min a . l)
+  (define (min-h els m)
+    (if (null? els)
+       m
+       (if (< (car els) m)
+          (min-h (cdr els) (car els))
+          (min-h (cdr els) m))))
+  (min-h l a))
+

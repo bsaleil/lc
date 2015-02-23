@@ -349,7 +349,7 @@
 ;; Machine code block management
 
 ;; HEAP
-(define heap-len 200000000)
+(define heap-len 400000000)
 (define heap-addr  #f)
 (define from-space #f)
 (define to-space   #f)
@@ -357,7 +357,7 @@
 (define alloc-ptr (x86-r12))
 
 ;; CODE
-(define code-len 1000000000)
+(define code-len 1200000000)
 (define code-addr #f)
 
 ;; MCB :
@@ -983,7 +983,7 @@
 ;; Global cc table
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 100)
+(define global-cc-table-maxsize 220)
 ;; Current shape of the global cc table
 (define global-cc-table (make-table))
 
@@ -993,6 +993,7 @@
 ;; Store and compare ctx-stack in enough because environment is
 ;; the same for all versions of a lazy-object.
 (define (get-closure-index ctx)
+  ;(pp (table-length global-cc-table))
   (let ((res (table-ref global-cc-table (ctx-stack ctx) #f)))
     (if res
       res

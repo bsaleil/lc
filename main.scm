@@ -127,6 +127,6 @@
                ;(pp file-content)))
                (exec lib file-content)))
           (else (error "NYI"))))
-  ; (pp "Global cctable size=")
-  ; (pp (length global-cc-table)))
+  ;(pp "Global cctable size=")
+  ;(pp (table-length global-cc-table)))
   

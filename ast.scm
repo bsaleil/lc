@@ -9,7 +9,63 @@
 ;; TODO : RCX global ? (used by if/else stubs)
 
 ;;-----------------------------------------------------------------------------
-;; AST FUNCTIONS
+;; Primitives
+
+;; Primitives for type tests
+(define prim-tests '(
+  $output-port?
+  $input-port?
+  $symbol?
+  $string?
+  $char?
+  $vector?
+  $number?
+  $procedure?
+  $pair?))
+
+;; Primitives for operators
+(define prim-operators '(
+  $+
+  $-
+  $*
+  $quotient
+  $modulo
+  $<
+  $>
+  $=
+))
+
+;; Primitives for funtions
+(define prim-fn '(
+  $eof-object?
+  $write-char
+  $read-char
+  $close-output-port
+  $close-input-port
+  $open-output-file
+  $open-input-file
+  $error
+  $string-set!
+  $make-string
+  $symbol->string
+  $string->symbol
+  $string-length
+  $string-ref
+  $integer->char
+  $char->integer
+  $vector-set!
+  $vector-ref
+  $vector-length
+  $make-vector
+  $cons
+  $set-car!
+  $set-cdr!
+  $car
+  $cdr
+))
+
+;;-----------------------------------------------------------------------------
+;; AST DISPATCH
 
 ;; Gen lazy code from a list of exprs
 (define (gen-ast-l lst succ)
@@ -29,9 +85,9 @@
         ((pair? ast)
          (let ((op (car ast)))
            (cond ;; Special with call
-                 ((member op '($$putchar)) (mlc-special-c ast succ))
+                 ((eq? op '$$putchar) (mlc-special-c ast succ))
                  ;; Special without call
-                 ((member op '($eof-object? $write-char $read-char $close-output-port $close-input-port $open-output-file $open-input-file $error $string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $set-car! $set-cdr! $car $cdr)) (mlc-special-nc ast succ))
+                 ((member op prim-fn) (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ;; Set!
@@ -45,11 +101,11 @@
                  ;; Binding
                  ((member op '(let let* letrec)) (mlc-binding ast succ op))
                  ;; Operator num
-                 ((member op '($+ $- $* $quotient $modulo $< $> $=)) (mlc-op-num ast succ op))
+                 ((member op prim-operators) (mlc-op-num ast succ op))
                  ;; Operator gen
-                 ((member op '($eq?)) (mlc-op-gen ast succ op))
+                 ((eq? op '$eq?) (mlc-op-gen ast succ op))
                  ;; Tests
-                 ((member op '($input-port? $output-port? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (mlc-test ast succ))
+                 ((member op prim-tests) (mlc-test ast succ))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -63,11 +119,10 @@
          (error "unknown ast" ast))))
 
 ;;-----------------------------------------------------------------------------
-;; MLC FUNCTIONS :
-;; Make a lazy code from ast
+;; LITERALS
 
 ;;
-;; Make lazy code from LITERAL
+;; Make lazy code from num/bool/char/null literal
 ;;
 (define (mlc-literal ast succ)
   (make-lazy-code
@@ -85,13 +140,12 @@
                                        ((null? ast)    CTX_NULL)))))))
 ;;
 ;; Make lazy code from symbol literal
-;; (ex. 'Hello)
 ;;
 (define (mlc-symbol ast succ)
   (mlc-string (symbol->string ast) succ #t))
 
 ;;
-;; Make lazy code from vector
+;; Make lazy code from vector literal
 ;;
 (define (mlc-vector ast succ)
   
@@ -190,6 +244,8 @@
             (mlc-vector ast succ))            
         (else (gen-ast ast succ))))
 
+;;-----------------------------------------------------------------------------
+
 ;;
 ;; Make lazy code from SET!
 ;;
@@ -260,6 +316,9 @@
                       (set! globals (cons (cons identifier (length globals)) globals))
                       (jump-to-version cgc lazy-val ctx)
                       ))))
+
+;;-----------------------------------------------------------------------------
+;; SPECIAL
 
 ;;
 ;; Make lazy code from SPECIAL FORM (called specials)
@@ -1025,6 +1084,7 @@
       (gen-ast-l values lazy-let-in)))
 
 ;;-----------------------------------------------------------------------------
+;; Conditionals
 
 ;;
 ;; Make lazy code from IF
@@ -1499,6 +1559,7 @@
                     (jump-to-version cgc succ (ctx-push ctx CTX_RETAD)))))))))
 
 ;;-----------------------------------------------------------------------------
+;; Operators
 
 ;;
 ;; Make lazy code from NUMBER OPERATOR
@@ -1618,7 +1679,7 @@
                                (cond ((eq? left-type CTX_NUM)
                                       (cond ((eq? right-type CTX_NUM)     (jump-to-version cgc lazy-code-op ctx))
                                             ((eq? right-type CTX_UNK) (jump-to-version cgc (gen-dyn-type-test CTX_NUM 0 rctx lazy-code-op ctx lazy-fail) ctx))
-                                            (else                      (gen-error cgc ERR_NUM_EXPECTED))))
+                                            (else                      (begin (pp ast) (pp right-type) (gen-error cgc ERR_NUM_EXPECTED)))))
 
                                      ((eq? left-type CTX_UNK)
                                       (cond ((eq? right-type CTX_NUM)     (jump-to-version cgc (gen-dyn-type-test CTX_NUM 1 lctx lazy-code-op ctx lazy-fail) ctx))
@@ -1934,8 +1995,6 @@
       (set-union (free-vars (car lst) clo-env ctx) (free-vars-l (cdr lst) clo-env ctx))))
 
 ;; Return all free vars used by ast knowing env 'clo-env'
-;; TODO : inutile de traiter le cas 'Special' parce qu'on utilise
-;;        assoc dans l'environement dans le cas d'un symbole ?
 (define (free-vars ast clo-env ctx)
   (cond ;; Symbol
         ((symbol? ast)
@@ -1960,8 +2019,6 @@
                                                   (append (cadr ast) clo-env)
                                                   (cons (cadr ast) clo-env))
                                                ctx))
-                  ;; Special
-                  ((member op '(set! $eof-object? $write-char $read-char $close-output-port $close-input-port $open-output-file $open-input-file $error $string-set! $make-string $symbol->string $string->symbol $string-length $string-ref $integer->char $char->integer $vector-set! $vector-ref $vector-length $make-vector $cons $set-car! $set-cdr! $car $cdr $$putchar $+ $- $* $quotient $modulo $< $> $= $eq? $output-port? $apply $input-port? $symbol? $string? $char? $vector? $number? $procedure? $pair?)) (free-vars-l (cdr ast) clo-env ctx))
                   ;; Call
                   (else (free-vars-l ast clo-env ctx)))))))
 

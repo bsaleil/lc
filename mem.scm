@@ -285,7 +285,10 @@
                       (let ((sc (scan-pair scan copy h s l)))
                         (scan-references (car sc) (cdr sc))))
                     ;; Unknown stag
+                    ((= s 4)
+                      (scan-references (+ scan (* 1 l)) copy))
                     (else (pp-stag s)
+                          (pp header)
                           (error "Unknown stag while scanning references")))))))
 
 ;; Scan field
