@@ -102,6 +102,8 @@
                  ((member op '(let let* letrec)) (mlc-binding ast succ op))
                  ;; Operator num
                  ((member op prim-operators) (mlc-op-num ast succ op))
+                 
+                 ((member op '(+)) (mlc-op-numn ast succ op))
                  ;; Operator gen
                  ((eq? op '$eq?) (mlc-op-gen ast succ op))
                  ;; Tests
@@ -1294,7 +1296,7 @@
          ;; LAZY-TEST-EXPRS
          (lazy-test-exprs (gen-ast-l test-exprs lazy-end))
          ;; LAZY-DISPATCH: Read result of test and jump to test-exors if #t or body if #f
-         (lazy-dispatch (get-lazy-dispatch lazy-test-exprs lazy-body))
+         (lazy-dispatch (get-lazy-dispatch lazy-test-exprs lazy-body #t #f))
          ;; LAZY-ADD-CTX
          (lazy-add-ctx
            ;; Add variables to env and gen mutable vars
@@ -1319,12 +1321,14 @@
 ;; Takes the value from stack and cmp to #f
 ;; If == #f jump to lazy-fail
 ;; If != #f jump to lazy-success
-(define (get-lazy-dispatch lazy-success lazy-fail)
+(define (get-lazy-dispatch lazy-success lazy-fail from-stack? cmp-val)
 
     (make-lazy-code
        (lambda (cgc ctx)
          
-         (let* ((ctx-OUT (ctx-pop ctx)) ;; TODO
+         (let* ((ctx-out (if from-stack?
+                            (ctx-pop ctx)
+                            ctx))
                 (label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
                 (stub-labels
                       (add-callback cgc 1
@@ -1345,7 +1349,7 @@
                                          (if (= selector 1)
                                           
                                             ;; overwrite unconditional jump
-                                            (gen-version (+ jump-addr 6) lazy-success ctx-OUT)
+                                            (gen-version (+ jump-addr 6) lazy-success ctx-out)
                                           
                                             (if (= (+ jump-addr 6 5) code-alloc)
 
@@ -1359,21 +1363,22 @@
                                                      (gen-version
                                                      (+ jump-addr 6)
                                                      lazy-fail
-                                                     ctx-OUT))
+                                                     ctx-out))
 
                                               ;; make conditional jump to new version
-                                              (gen-version jump-addr lazy-fail ctx-OUT))))
+                                              (gen-version jump-addr lazy-fail ctx-out))))
 
                                   (begin ;; one branch has already been patched
                                          ;; reclaim the stub
                                          (release-still-vector (get-scmobj ret-addr))
                                          (stub-reclaim stub-addr)
                                          (if (= selector 0)
-                                            (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-fail ctx-OUT)
-                                            (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-success ctx-OUT))))))))))
+                                            (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-fail ctx-out)
+                                            (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-success ctx-out))))))))))
 
-         (x86-pop cgc (x86-rax)) ;; pop TEST
-         (x86-cmp cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+         (if from-stack?
+          (x86-pop cgc (x86-rax)))
+         (x86-cmp cgc (x86-rax) (x86-imm-int (obj-encoding cmp-val)))
          (x86-label cgc label-jump)
          (x86-je cgc (list-ref stub-labels 0))
          (x86-jmp cgc (list-ref stub-labels 1))))))
@@ -1509,12 +1514,7 @@
                                       (let ((op-type (car (ctx-stack ctx))))
                                         (cond ((eq? op-type CTX_CLO) (jump-to-version cgc lazy-call ctx))
                                               ((eq? op-type CTX_UNK) (jump-to-version cgc
-                                                                                      (gen-dyn-type-test CTX_CLO
-                                                                                                         0
-                                                                                                         (ctx-push (ctx-pop ctx) CTX_CLO)
-                                                                                                         lazy-call
-                                                                                                         ctx
-                                                                                                         lazy-fail)
+                                                                                      (gen-fatal-type-test CTX_CLO 0 lazy-call)
                                                                                       ctx))
                                               (else (gen-error cgc ERR_PRO_EXPECTED)))))))
          ;; Lazy callee
@@ -1560,6 +1560,54 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
+
+;; TODO : check if redefined
+;; TODO : WIP
+(define (mlc-op-numn ast succ op)
+  
+  (let* (;; Overflow stub
+         (stub-labels (add-callback #f
+                                    0
+                                    (lambda (ret-addr selector)
+                                       (error "Arithmetic Overflow"))))
+         ;; Lazy operation
+         (lazy-op
+           (make-lazy-code
+             (lambda (cgc ctx)
+              
+               (define (op-get offset nb)
+                 (if (= nb 0)
+                   (begin (x86-add cgc (x86-mem offset (x86-rsp)) (x86-rax))
+                          (x86-jo cgc (list-ref stub-labels 0)))
+                   (begin (x86-add cgc (x86-rax) (x86-mem offset (x86-rsp)))
+                          (x86-jo cgc (list-ref stub-labels 0))
+                          (op-get (+ offset 8) (- nb 1)))))
+               
+               ;; Set RAX to 0
+               (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+               ;; Apply operation with opnd from stack
+               (op-get 8 (- (length (cdr ast)) 2))
+               ;; Update RSP
+               (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (length (cdr ast)) 1))))
+               ;; Jump to succ
+               (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx (length (cdr ast))) CTX_NUM))))))
+    
+    ;; Build lazy objects chain :
+    ;;   opnd1->test1->...->opndn->testn->succ
+    ;; Opnd is the operands list
+    (define (build-chain opnds succ)
+      (if (null? opnds)
+        succ
+        (let* ((next (build-chain (cdr opnds) succ))
+               (test (gen-fatal-type-test CTX_NUM 0 next)))
+          (gen-ast (car opnds) test))))
+    
+    (cond ;; No opnd, push 0 and jump to succ
+          ((= (length (cdr ast)) 0) (gen-ast 0 succ))
+          ;; 1 opnd,  push opnd, test type, and jump to succ
+          ((= (length (cdr ast)) 1) (build-chain (cdr ast) succ))
+          ;; >1 opnd, build chain
+          (else (build-chain (cdr ast) lazy-op)))))
 
 ;;
 ;; Make lazy code from NUMBER OPERATOR

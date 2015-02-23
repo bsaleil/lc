@@ -1,5 +1,5 @@
 
-(define (+ x y)        ($+ x y))
+;(define (+ x y)        ($+ x y))
 (define (- x y)        ($- x y))
 (define (* x y)        ($* x y))
 (define (quotient x y) ($quotient x y))
