@@ -58,5 +58,8 @@
 ;; sboyer.scm
 ;; scheme.scm
 
-;-------------------------------
+;; TODO : inliner les primitives
 
+;; TODO : MLC qui génere une erreur pour remplacer les (make-lazy-code) avec juste une erreur
+
+;-------------------------------

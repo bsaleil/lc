@@ -44,7 +44,7 @@
 (define CTX_NUM   'number)
 (define CTX_CHAR  'char)
 (define CTX_BOOL  'boolean)
-(define CTX_CLO   'closure)
+(define CTX_CLO   'procedure)
 (define CTX_PAI   'pair)
 (define CTX_UNK   'unknown)
 (define CTX_VOID  'void)
@@ -58,14 +58,11 @@
 
 ;; Exec errors
 (define ERR_MSG             "EXEC ERROR")
-(define ERR_NUM_EXPECTED    "NUMBER EXPECTED")
-(define ERR_CHAR_EXPECTED   "CHAR EXPECTED")
-(define ERR_PRO_EXPECTED    "PROCEDURE EXPECTED")
-(define ERR_PAIR_EXPECTED   "PAIR EXPECTED")
-(define ERR_ARR_OVERFLOW    "ARITHMETIC OVERFLOW")
 (define ERR_ARR_OVERFLOW    "ARITHMETIC OVERFLOW")
 (define ERR_WRONG_NUM_ARGS  "WRONG NUMBER OF ARGUMENTS")
-
+(define ERR_TYPE_EXPECTED (lambda (type)
+                            (string-append (string-upcase type)
+                                           " EXPECTED")))
 (define ERR_OPEN_INPUT_FILE  "CAN'T OPEN INPUT FILE")
 (define ERR_OPEN_OUTPUT_FILE "CAN'T OPEN OUTPUT FILE")
 (define ERR_READ_CHAR        "CAN'T READ CHAR")
@@ -895,23 +892,26 @@
 ;; TODO
 ;; TODO
 ;; It's fatal
+;; TODO : will replace gen-dyn-type-test ?
 (define (gen-fatal-type-test type stack-idx succ)
-;(define (gen-dyn-type-test-new type stack-idx succ)
 
     (make-lazy-code
        (lambda (cgc ctx)
          
-         (let ((lazy-fail
+         (let (;; Lazy type error
+               (lazy-fail
                  (make-lazy-code
                    (lambda (cgc ctx)
-                     (gen-error cgc "TYPE ERROR"))))
+                     (gen-error cgc (ERR_TYPE_EXPECTED type)))))
+               ;; Current information on type
                (known-type (list-ref (ctx-stack ctx) stack-idx)))
            
-           ;; TODO comment
-           (cond ((eq? known-type type)          (jump-to-version cgc succ ctx))
+           (cond ;; Known type is the expected type
+                 ((eq? known-type type)          (jump-to-version cgc succ ctx))
+                 ;; Known type is not the expected type and not unknown then type error
                  ((not (eq? known-type CTX_UNK)) (jump-to-version cgc lazy-fail ctx))
+                 ;; Known type is unknown
                  (else 
-         
                    (let* ((stack-succ (append (list-head (ctx-stack ctx) stack-idx)
                                               (cons type (list-tail (ctx-stack ctx) (+ stack-idx 1)))))
                           (ctx-succ (make-ctx stack-succ (ctx-env ctx) (ctx-nb-args ctx)))
@@ -1143,3 +1143,16 @@
   (if (= 0 n)
     '()
     (cons init (make-list (- n 1) init))))
+
+;; Returns a newly allocated string which is a copy of str with all chars upcase
+;; Accepts symbols
+(define (string-upcase str)
+  (define (string-upcase-h str pos newstr)
+    (if (= pos (string-length str))
+      newstr
+      (begin (string-set! newstr pos (char-upcase (string-ref str pos)))
+             (string-upcase-h str (+ pos 1) newstr))))
+  (if (symbol? str)
+    (let ((s (symbol->string str)))
+      (string-upcase-h s 0 (make-string (string-length s))))
+    (string-upcase-h str 0 (make-string (string-length str)))))

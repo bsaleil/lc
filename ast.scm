@@ -103,7 +103,7 @@
                  ;; Operator num
                  ((member op prim-operators) (mlc-op-num ast succ op))
                  
-                 ((member op '(+)) (mlc-op-numn ast succ op))
+                 ((member op '(+ -)) (mlc-op-numn ast succ op))
                  ;; Operator gen
                  ((eq? op '$eq?) (mlc-op-gen ast succ op))
                  ;; Tests
@@ -451,36 +451,11 @@
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
                                                                   (cond ((eq? special '$char->integer) CTX_NUM)
                                                                         ((eq? special '$integer->char) CTX_CHAR))))))))
-                    (make-lazy-code
-                      (lambda (cgc ctx)
-                        (let ((ctx-type  (car (ctx-stack ctx)))
-                              (lazy-fail (lambda (ERR) (make-lazy-code
-                                                         (lambda (cgc ctx)
-                                                           (gen-error cgc ERR))))))
-                          (cond ((or (and (eq? special '$char->integer) (eq? ctx-type CTX_CHAR))
-                                     (and (eq? special '$integer->char) (eq? ctx-type CTX_NUM)))
-                                 (jump-to-version cgc lazy-charint ctx))
-                                ((and (eq? special '$char->integer) (eq? ctx-type CTX_UNK)) ;; TODO : gen dyn commun
-                                 (jump-to-version cgc
-                                                  (gen-dyn-type-test CTX_CHAR
-                                                                     0
-                                                                     (ctx-push (ctx-pop ctx) CTX_CHAR)
-                                                                     lazy-charint
-                                                                     ctx
-                                                                     (lazy-fail ERR_CHAR_EXPECTED))
-                                                  ctx))
-                                ((and (eq? special '$integer->char) (eq? ctx-type CTX_UNK))
-                                 (jump-to-version cgc
-                                                  (gen-dyn-type-test CTX_NUM
-                                                                     0
-                                                                     (ctx-push (ctx-pop ctx) CTX_NUM)
-                                                                     lazy-charint
-                                                                     ctx
-                                                                     (lazy-fail ERR_NUM_EXPECTED))
-                                                  ctx))
-                                (else (if (eq? special '$char->integer)
-                                          (gen-error cgc ERR_CHAR_EXPECTED)
-                                          (gen-error cgc ERR_NUM_EXPECTED)))))))))
+                    (gen-fatal-type-test (if (eq? special '$char->integer)
+                                            CTX_CHAR
+                                            CTX_NUM)
+                                         0
+                                         lazy-charint)))
                  ;; MAKE-STRING
                  ((eq? special '$make-string)
                   (make-lazy-code
@@ -1478,7 +1453,7 @@
          ;; Call arguments
          (args (cdr ast))
          ;; Lazy fail
-         (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_PRO_EXPECTED))))
+         (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc (ERR_TYPE_EXPECTED CTX_CLO)))))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
                                         ;; Call ctx in rdx
@@ -1510,13 +1485,7 @@
                                         ;; 3 - Jump to entry point
                                         (x86-jmp cgc (x86-rax))))))
          ;; Lazy main
-         (lazy-main (make-lazy-code (lambda (cgc ctx)
-                                      (let ((op-type (car (ctx-stack ctx))))
-                                        (cond ((eq? op-type CTX_CLO) (jump-to-version cgc lazy-call ctx))
-                                              ((eq? op-type CTX_UNK) (jump-to-version cgc
-                                                                                      (gen-fatal-type-test CTX_CLO 0 lazy-call)
-                                                                                      ctx))
-                                              (else (gen-error cgc ERR_PRO_EXPECTED)))))))
+         (lazy-main (gen-fatal-type-test CTX_CLO 0 lazy-call))
          ;; Lazy callee
          (lazy-operator (gen-ast (car ast) lazy-main)))
 
@@ -1563,34 +1532,52 @@
 
 ;; TODO : check if redefined
 ;; TODO : WIP
+;; Will handle all operators with possibly multiple args
+;; The other function will only handle fixed args operators
 (define (mlc-op-numn ast succ op)
   
-  (let* (;; Overflow stub
-         (stub-labels (add-callback #f
-                                    0
-                                    (lambda (ret-addr selector)
-                                       (error "Arithmetic Overflow"))))
+  (let* (;; Operands number
+         (nb-opnd (length (cdr ast)))
+         ;; Overflow stub
+         (stub-labels (add-callback #f 0 (lambda (ret-addr selector)
+                                            (error ERR_ARR_OVERFLOW))))
          ;; Lazy operation
          (lazy-op
            (make-lazy-code
              (lambda (cgc ctx)
               
-               (define (op-get offset nb)
+               ;; NOTE: Optimization: if only 2 opnds we can write :
+               ;;       pop rax
+               ;;       sub [rsp+0], rax
+               ;; -> less instructions, and no rsp update
+               ;; Compute substraction with operands from stack
+               (define (compute- offset nb total)
+                 (if (= nb 0)
+                     (x86-mov cgc (x86-mem (* 8 (- total 1)) (x86-rsp)) (x86-rax))
+                     (begin (x86-sub cgc (x86-rax) (x86-mem offset (x86-rsp)))
+                            (x86-jo cgc (list-ref stub-labels 0))
+                            (compute- (- offset 8) (- nb 1) total))))
+              
+               ;; Compute addition with operands from stack
+               (define (compute+ offset nb)
                  (if (= nb 0)
                    (begin (x86-add cgc (x86-mem offset (x86-rsp)) (x86-rax))
                           (x86-jo cgc (list-ref stub-labels 0)))
                    (begin (x86-add cgc (x86-rax) (x86-mem offset (x86-rsp)))
                           (x86-jo cgc (list-ref stub-labels 0))
-                          (op-get (+ offset 8) (- nb 1)))))
+                          (compute+ (+ offset 8) (- nb 1)))))
                
-               ;; Set RAX to 0
-               (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-               ;; Apply operation with opnd from stack
-               (op-get 8 (- (length (cdr ast)) 2))
+               (cond ((eq? op '+)
+                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; RAX = 0
+                         (compute+ 8 (- nb-opnd 2)))
+                     ((eq? op '-)
+                         (x86-mov cgc (x86-rax) (x86-mem (* 8 (- nb-opnd 1)) (x86-rsp))) ;; RAX = first opnd
+                         (compute- (* 8 (- nb-opnd 2)) (- nb-opnd 1) nb-opnd)))
+               
                ;; Update RSP
-               (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (length (cdr ast)) 1))))
+               (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- nb-opnd 1))))
                ;; Jump to succ
-               (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx (length (cdr ast))) CTX_NUM))))))
+               (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx nb-opnd) CTX_NUM))))))
     
     ;; Build lazy objects chain :
     ;;   opnd1->test1->...->opndn->testn->succ
@@ -1603,9 +1590,13 @@
           (gen-ast (car opnds) test))))
     
     (cond ;; No opnd, push 0 and jump to succ
-          ((= (length (cdr ast)) 0) (gen-ast 0 succ))
+          ((= (length (cdr ast)) 0)
+             (cond ((eq? op '+) (gen-ast 0 succ))
+                   ((eq? op '-) (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_WRONG_NUM_ARGS))))))
           ;; 1 opnd,  push opnd, test type, and jump to succ
-          ((= (length (cdr ast)) 1) (build-chain (cdr ast) succ))
+          ((= (length (cdr ast)) 1)
+             (cond ((eq? op '+) (build-chain (cdr ast) succ))
+                   ((eq? op '-) (gen-ast (list '$* -1 (cadr ast)) succ)))) ;; TODO $* until * is supported
           ;; >1 opnd, build chain
           (else (build-chain (cdr ast) lazy-op)))))
 
@@ -1614,7 +1605,7 @@
 ;;
 (define (mlc-op-num ast succ op)
   (letrec (   ;; Lazy code used if type test fail
-              (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_NUM_EXPECTED))))
+              (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM)))))
               ;; Lazy code of left operand
               (lazy-ast-left  (gen-ast (cadr ast)  lazy-ast-right))
               ;; Lazy code of right operand
@@ -1727,15 +1718,15 @@
                                (cond ((eq? left-type CTX_NUM)
                                       (cond ((eq? right-type CTX_NUM)     (jump-to-version cgc lazy-code-op ctx))
                                             ((eq? right-type CTX_UNK) (jump-to-version cgc (gen-dyn-type-test CTX_NUM 0 rctx lazy-code-op ctx lazy-fail) ctx))
-                                            (else                      (begin (pp ast) (pp right-type) (gen-error cgc ERR_NUM_EXPECTED)))))
+                                            (else                     (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM)))))
 
                                      ((eq? left-type CTX_UNK)
                                       (cond ((eq? right-type CTX_NUM)     (jump-to-version cgc (gen-dyn-type-test CTX_NUM 1 lctx lazy-code-op ctx lazy-fail) ctx))
                                             ((eq? right-type CTX_UNK) (let* ((right-test (gen-dyn-type-test CTX_NUM 1 lrctx lazy-code-op ctx lazy-fail))
                                                                               (left-test  (gen-dyn-type-test CTX_NUM 0 lctx right-test ctx lazy-fail)))
                                                                          (jump-to-version cgc left-test ctx)))
-                                            (else                      (gen-error cgc ERR_NUM_EXPECTED))))
-                                     (else (gen-error cgc ERR_NUM_EXPECTED))))))))
+                                            (else                      (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM)))))
+                                     (else (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM)))))))))
     ;; Return left operand lazy-code
     lazy-ast-left))
 
