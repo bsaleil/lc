@@ -77,8 +77,9 @@
                   lazy-lib
                   (make-ctx '() '() -1)))
   
-  (time (##machine-code-block-exec mcb))
-  (time (##machine-code-block-exec mcb)))
+  ;(time (##machine-code-block-exec mcb))
+  ;(time (##machine-code-block-exec mcb)))
+  (##machine-code-block-exec mcb))
 
 ;;-----------------------------------------------------------------------------
 ;; Command line args parser
@@ -127,8 +128,8 @@
             (let ((file-content (expand-tl (read-all (open-input-file (car args))))))
                ;(pp file-content)))
                (exec lib file-content)))
-          (else (error "NYI")))
-  (pp "Global cctable size=")
-  (pp (table-length global-cc-table)))
+          (else (error "NYI"))))
+  ;(pp "Global cctable size=")
+  ;(pp (table-length global-cc-table)))
   ;(pp (table->list global-cc-table)))
   
