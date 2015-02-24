@@ -61,7 +61,11 @@
 ;; TODO : inliner les primitives
 
 ;; TODO : MLC qui génere une erreur pour remplacer les (make-lazy-code) avec juste une erreur
+;; TODO : Factoriser lazy-ret de apply et call
 
 ;-------------------------------
 
-(pp (* -10 2000))
+(define (fib n)
+  10)
+
+(fib 100)

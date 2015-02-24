@@ -760,14 +760,15 @@
                                    (* 8 (+ 2 (length params)))
                                    (* 8 (+ 1 (length params))))))
                          
+                         ;; TODO
                          ;; Pop return value
                          (x86-pop  cgc (x86-rax))
                          ;; Swap return value (rax) and return address ([rsp+offset])
-                         (x86-xchg cgc (x86-rax) (x86-mem retval-offset (x86-rsp)))
+                         ;(x86-xchg cgc (x86-rax) (x86-mem retval-offset (x86-rsp)))
                          ;; Update SP to return value
                          (x86-add  cgc (x86-rsp) (x86-imm-int retval-offset))
                          ;; Jump to continuation
-                         (x86-jmp cgc (x86-rax))))))
+                         (x86-ret cgc)))))
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
@@ -1417,7 +1418,7 @@
            ;; Push operator and args lst 
            (let ((lazy-right (gen-ast (caddr ast) lazy-call)))
              (gen-ast (cadr ast) lazy-right))))
-        
+    
     ;; Create stub and push ret addr
     (make-lazy-code
       (lambda (cgc ctx)
@@ -1429,13 +1430,14 @@
                (stub-labels (add-callback cgc
                                           0
                                           (lambda (ret-addr selector)
-                                             ;; Remove lambda and args from ctx, and add retval (unknown)
-                                             (let ((ctx-continuation (ctx-push ctx CTX_UNK)))
-                                                (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
-                                                   (set! gen-flag (gen-version-continuation load-ret-label
-                                                                                            succ
-                                                                                            ctx-continuation)))
-                                                gen-flag)))))
+                                              (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
+                                                 (set! gen-flag (gen-version-continuation load-ret-label
+                                                                                          (make-lazy-code ;; TODO : move 
+                                                                                            (lambda (cgc ctx)
+                                                                                              (x86-push cgc (x86-rax))
+                                                                                              (jump-to-version cgc succ (ctx-push ctx CTX_UNK))))
+                                                                                          ctx)))
+                                              gen-flag))))
           ;; Return address (continuation label)
           (x86-label cgc load-ret-label)
           (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
@@ -1507,13 +1509,14 @@
                      (stub-labels (add-callback cgc
                                                 0
                                                 (lambda (ret-addr selector)
-                                                   ;; Remove lambda and args from ctx, and add retval (unknown)
-                                                   (let ((ctx-continuation (ctx-push ctx CTX_UNK)))
-                                                      (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
-                                                         (set! gen-flag (gen-version-continuation load-ret-label
-                                                                                                  succ
-                                                                                                  ctx-continuation)))
-                                                       gen-flag)))))
+                                                    (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
+                                                       (set! gen-flag (gen-version-continuation load-ret-label
+                                                                                                (make-lazy-code ;; TODO : move 
+                                                                                                  (lambda (cgc ctx)
+                                                                                                    (x86-push cgc (x86-rax))
+                                                                                                    (jump-to-version cgc succ (ctx-push ctx CTX_UNK))))
+                                                                                                ctx)))
+                                                     gen-flag))))
                  ;; Return address (continuation label)
                  (x86-label cgc load-ret-label)
                  (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
