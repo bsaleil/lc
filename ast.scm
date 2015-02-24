@@ -104,6 +104,8 @@
                  ((member op prim-operators) (mlc-op-num ast succ op))
                  
                  ((member op '(+ - * < > <= >= =)) (mlc-op-numn ast succ op))
+                 
+                 ((member op '(quotient)) (mlc-op-bin ast succ op))
                  ;; Operator gen
                  ((eq? op '$eq?) (mlc-op-gen ast succ op))
                  ;; Tests
@@ -1531,8 +1533,46 @@
 ;;-----------------------------------------------------------------------------
 ;; Operators
 
+;; TODO
+(define (mlc-op-bin ast succ op)
+  (let ((opnds (cdr ast)))
+    (if (not (= (length opnds) 2))
+      ;; != 2 operands, error
+      (make-lazy-code
+        (lambda (cgc succ)
+          (gen-error cgc ERR_WRONG_NUM_ARGS)))
+      ;; == 2 operands
+      (let* (;; Overflow stub
+             (stub-labels (add-callback #f 0 (lambda (ret-addr selector)
+                                                (error ERR_ARR_OVERFLOW))))
+            
+             (lazy-op
+               (make-lazy-code
+                 (lambda (cgc ctx)
+                   (cond ((eq? op 'quotient) ;; TODO : check '/0'
+                           (x86-pop cgc (x86-rbx)) ;; Pop right
+                           (x86-pop cgc (x86-rax)) ;; Pop left
+                           (x86-sar cgc (x86-rax) (x86-imm-int 2))
+                           (x86-cqo cgc)
+                           (x86-sar cgc (x86-rbx) (x86-imm-int 2))
+                           (x86-idiv cgc (x86-rbx))
+                           (x86-shl cgc (x86-rax) (x86-imm-int 2))
+                           (x86-jo cgc (list-ref stub-labels 0))))
+                   (x86-push cgc (x86-rax))
+                   (jump-to-version cgc
+                                    succ
+                                    (ctx-push (ctx-pop-nb ctx 2) CTX_NUM)))))
+             (lazy-test-right (gen-fatal-type-test CTX_NUM 0 lazy-op))
+             (lazy-right      (gen-ast (cadr opnds) lazy-test-right))
+             (lazy-test-left  (gen-fatal-type-test CTX_NUM 0 lazy-right))
+             (lazy-left       (gen-ast (car opnds) lazy-test-left)))
+         lazy-left))))
+    
+;; Renommer stub-labels mlc-op-numn et mlc-op-bin
+
 ;; TODO : check if redefined
 ;; TODO : WIP
+;; TODO : constant folding
 ;; Will handle all operators with possibly multiple args
 ;; The other function will only handle fixed args operators
 (define (mlc-op-numn ast succ op)

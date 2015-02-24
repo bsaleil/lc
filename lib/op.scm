@@ -1,5 +1,4 @@
 
-(define (quotient x y) ($quotient x y))
 (define (modulo x y)   ($modulo x y))
 
 ;; TODO : IT IS NOT THE SAME FUNCTION !

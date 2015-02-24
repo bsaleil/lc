@@ -4,4 +4,4 @@
 ;; TODO : les tests de type sont toujours faits dans les prédicats (number?, ...) ?
 ;-------------------------------
 
-(= 1 2)
+(pp (quotient 12 3))
