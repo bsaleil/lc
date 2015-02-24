@@ -1,5 +1,9 @@
 
+(define / (lambda (x y) 0))
+
 (define (exact? n) #t)
+
+(define exact->inexact (lambda (x) x))
 
 (define integer? number?)
 
