@@ -103,7 +103,7 @@
                  ;; Operator num
                  ((member op prim-operators) (mlc-op-num ast succ op))
                  
-                 ((member op '(+ - * < > <= >=)) (mlc-op-numn ast succ op))
+                 ((member op '(+ - * < > <= >= =)) (mlc-op-numn ast succ op))
                  ;; Operator gen
                  ((eq? op '$eq?) (mlc-op-gen ast succ op))
                  ;; Tests
@@ -1602,12 +1602,13 @@
                      ((eq? op '*)
                          (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
                          (compute* 8 (- nb-opnd 2)))
-                     ((member op '(< > <= >=))
+                     ((member op '(< > <= >= =))
                          (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; TODO factoriser
                          (compute< (cond ((eq? op '<) x86-jle) ;; TODO : commentaire
                                          ((eq? op '>) x86-jge)
                                          ((eq? op '<=) x86-jl)
-                                         ((eq? op '>=) x86-jg))
+                                         ((eq? op '>=) x86-jg)
+                                         ((eq? op '=) x86-jne))
                                    8
                                    (- nb-opnd 1)
                                    (- nb-opnd 1)
@@ -1616,7 +1617,7 @@
                ;; Update RSP
                (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- nb-opnd 1))))
                ;; Jump to succ
-               (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx nb-opnd) (if (member op '(< > <= >=))
+               (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx nb-opnd) (if (member op '(< > <= >= =))
                                                                                CTX_BOOL
                                                                                CTX_NUM)))))))
     
@@ -1635,13 +1636,13 @@
              (cond ((eq? op '+) (gen-ast 0 succ))
                    ((eq? op '-) (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_WRONG_NUM_ARGS))))
                    ((eq? op '*) (gen-ast 1 succ))
-                   ((member op '(< > <= >=)) (gen-ast #t succ))))
+                   ((member op '(< > <= >= =)) (gen-ast #t succ))))
           ;; 1 opnd,  push opnd, test type, and jump to succ
           ((= (length (cdr ast)) 1)
              (cond ((eq? op '+) (build-chain (cdr ast) succ))
                    ((eq? op '-) (gen-ast (list '$* -1 (cadr ast)) succ)) ;; TODO $* until * is supported
                    ((eq? op '*) (build-chain (cdr ast) succ))
-                   ((member op '(< > <= >=)) (gen-ast #t succ))))
+                   ((member op '(< > <= >= =)) (gen-ast #t succ))))
           ;; >1 opnd, build chain
           (else (build-chain (cdr ast) lazy-op)))))
 

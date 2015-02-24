@@ -1,7 +1,6 @@
 
 (define (quotient x y) ($quotient x y))
 (define (modulo x y)   ($modulo x y))
-(define (= x y)        ($= x y))
 
 ;; TODO : IT IS NOT THE SAME FUNCTION !
 (define remainder modulo)
