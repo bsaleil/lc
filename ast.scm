@@ -103,7 +103,7 @@
                  ;; Operator num
                  ((member op prim-operators) (mlc-op-num ast succ op))
                  
-                 ((member op '(+ -)) (mlc-op-numn ast succ op))
+                 ((member op '(+ - *)) (mlc-op-numn ast succ op))
                  ;; Operator gen
                  ((eq? op '$eq?) (mlc-op-gen ast succ op))
                  ;; Tests
@@ -1567,12 +1567,27 @@
                           (x86-jo cgc (list-ref stub-labels 0))
                           (compute+ (+ offset 8) (- nb 1)))))
                
+               ;; Compute multiplication with operands from stack
+               (define (compute* offset nb)
+                 (if (= nb 0)
+                   (begin (x86-sar cgc (x86-rax) (x86-imm-int 2))
+                          (x86-imul cgc (x86-rax) (x86-mem offset (x86-rsp)))
+                          (x86-jo cgc (list-ref stub-labels 0))
+                          (x86-mov cgc (x86-mem offset (x86-rsp)) (x86-rax)))                          
+                   (begin (x86-sar cgc (x86-rax) (x86-imm-int 2))
+                          (x86-imul cgc (x86-rax) (x86-mem offset (x86-rsp)))
+                          (x86-jo cgc (list-ref stub-labels 0))
+                          (compute* (+ offset 8) (- nb 1)))))
+               
                (cond ((eq? op '+)
-                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; RAX = 0
+                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; RAX = firsts
                          (compute+ 8 (- nb-opnd 2)))
                      ((eq? op '-)
                          (x86-mov cgc (x86-rax) (x86-mem (* 8 (- nb-opnd 1)) (x86-rsp))) ;; RAX = first opnd
-                         (compute- (* 8 (- nb-opnd 2)) (- nb-opnd 1) nb-opnd)))
+                         (compute- (* 8 (- nb-opnd 2)) (- nb-opnd 1) nb-opnd))
+                     ((eq? op '*)
+                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                         (compute* 8 (- nb-opnd 2))))
                
                ;; Update RSP
                (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- nb-opnd 1))))
@@ -1592,11 +1607,13 @@
     (cond ;; No opnd, push 0 and jump to succ
           ((= (length (cdr ast)) 0)
              (cond ((eq? op '+) (gen-ast 0 succ))
-                   ((eq? op '-) (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_WRONG_NUM_ARGS))))))
+                   ((eq? op '-) (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_WRONG_NUM_ARGS))))
+                   ((eq? op '*) (gen-ast 1 succ))))
           ;; 1 opnd,  push opnd, test type, and jump to succ
           ((= (length (cdr ast)) 1)
              (cond ((eq? op '+) (build-chain (cdr ast) succ))
-                   ((eq? op '-) (gen-ast (list '$* -1 (cadr ast)) succ)))) ;; TODO $* until * is supported
+                   ((eq? op '-) (gen-ast (list '$* -1 (cadr ast)) succ)) ;; TODO $* until * is supported
+                   ((eq? op '*) (build-chain (cdr ast) succ))))
           ;; >1 opnd, build chain
           (else (build-chain (cdr ast) lazy-op)))))
 

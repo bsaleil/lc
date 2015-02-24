@@ -63,3 +63,5 @@
 ;; TODO : MLC qui génere une erreur pour remplacer les (make-lazy-code) avec juste une erreur
 
 ;-------------------------------
+
+(pp (* -10 2000))
