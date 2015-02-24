@@ -103,7 +103,7 @@
                  ;; Operator num
                  ((member op prim-operators) (mlc-op-num ast succ op))
                  
-                 ((member op '(+ - *)) (mlc-op-numn ast succ op))
+                 ((member op '(+ - * < > <= >=)) (mlc-op-numn ast succ op))
                  ;; Operator gen
                  ((eq? op '$eq?) (mlc-op-gen ast succ op))
                  ;; Tests
@@ -760,12 +760,9 @@
                                    (* 8 (+ 2 (length params)))
                                    (* 8 (+ 1 (length params))))))
                          
-                         ;; TODO
                          ;; Pop return value
                          (x86-pop  cgc (x86-rax))
-                         ;; Swap return value (rax) and return address ([rsp+offset])
-                         ;(x86-xchg cgc (x86-rax) (x86-mem retval-offset (x86-rsp)))
-                         ;; Update SP to return value
+                         ;; Update SP to ret addr
                          (x86-add  cgc (x86-rsp) (x86-imm-int retval-offset))
                          ;; Jump to continuation
                          (x86-ret cgc)))))
@@ -863,6 +860,7 @@
               (x86-mov cgc (x86-mem (+ (* 8 closure-size) (* -8 total-size)) alloc-ptr) (x86-rax)))
             (gen-cc-table cgc stub-addr (+ 8 (* 8 closure-size) (* -8 total-size)))
               
+            
             ;; TAG AND PUSH CLOSURE
             (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 total-size)) alloc-ptr))
             (x86-push cgc (x86-rax)))
@@ -1582,6 +1580,19 @@
                           (x86-jo cgc (list-ref stub-labels 0))
                           (compute* (+ offset 8) (- nb 1)))))
                
+               ;; Compute less with operands from stack
+               (define (compute< x86op offset nb total label-end)
+                 (if (= nb 0)
+                    (begin (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                           (x86-label cgc label-end)
+                           (x86-mov cgc (x86-mem (* 8 total) (x86-rsp)) (x86-rax)))
+                    (begin (x86-cmp cgc (x86-rax) (x86-mem offset (x86-rsp)))
+                           (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                           (x86op cgc label-end)
+                           (if (> nb 1)
+                            (x86-mov cgc (x86-rax) (x86-mem offset (x86-rsp))))
+                           (compute< x86op (+ offset 8) (- nb 1) total label-end))))
+               
                (cond ((eq? op '+)
                          (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; RAX = firsts
                          (compute+ 8 (- nb-opnd 2)))
@@ -1590,12 +1601,24 @@
                          (compute- (* 8 (- nb-opnd 2)) (- nb-opnd 1) nb-opnd))
                      ((eq? op '*)
                          (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                         (compute* 8 (- nb-opnd 2))))
+                         (compute* 8 (- nb-opnd 2)))
+                     ((member op '(< > <= >=))
+                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; TODO factoriser
+                         (compute< (cond ((eq? op '<) x86-jle) ;; TODO : commentaire
+                                         ((eq? op '>) x86-jge)
+                                         ((eq? op '<=) x86-jl)
+                                         ((eq? op '>=) x86-jg))
+                                   8
+                                   (- nb-opnd 1)
+                                   (- nb-opnd 1)
+                                   (asm-make-label #f (new-sym 'label-<-end)))))
                
                ;; Update RSP
                (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- nb-opnd 1))))
                ;; Jump to succ
-               (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx nb-opnd) CTX_NUM))))))
+               (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx nb-opnd) (if (member op '(< > <= >=))
+                                                                               CTX_BOOL
+                                                                               CTX_NUM)))))))
     
     ;; Build lazy objects chain :
     ;;   opnd1->test1->...->opndn->testn->succ
@@ -1611,12 +1634,14 @@
           ((= (length (cdr ast)) 0)
              (cond ((eq? op '+) (gen-ast 0 succ))
                    ((eq? op '-) (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_WRONG_NUM_ARGS))))
-                   ((eq? op '*) (gen-ast 1 succ))))
+                   ((eq? op '*) (gen-ast 1 succ))
+                   ((member op '(< > <= >=)) (gen-ast #t succ))))
           ;; 1 opnd,  push opnd, test type, and jump to succ
           ((= (length (cdr ast)) 1)
              (cond ((eq? op '+) (build-chain (cdr ast) succ))
                    ((eq? op '-) (gen-ast (list '$* -1 (cadr ast)) succ)) ;; TODO $* until * is supported
-                   ((eq? op '*) (build-chain (cdr ast) succ))))
+                   ((eq? op '*) (build-chain (cdr ast) succ))
+                   ((member op '(< > <= >=)) (gen-ast #t succ))))
           ;; >1 opnd, build chain
           (else (build-chain (cdr ast) lazy-op)))))
 
