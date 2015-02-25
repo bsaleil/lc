@@ -1,8 +1,5 @@
 ;; TODO : IT IS NOT THE SAME FUNCTION !
 
-(define (remainder a b)
-  (modulo a b))
-
 (define (not x)
   (eq? x #f))
 
