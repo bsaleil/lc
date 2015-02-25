@@ -101,7 +101,7 @@
                  ;; Binding
                  ((member op '(let let* letrec)) (mlc-binding ast succ op))
                  ;; Operator num
-                 ((member op prim-operators) (mlc-op-num ast succ op))
+                 ;((member op prim-operators) (mlc-op-num ast succ op))
                  
                  ((member op '(+ - * < > <= >= =)) (mlc-op-numn ast succ op))
                  
@@ -1690,7 +1690,7 @@
           ;; 1 opnd,  push opnd, test type, and jump to succ
           ((= (length (cdr ast)) 1)
              (cond ((eq? op '+) (build-chain (cdr ast) succ))
-                   ((eq? op '-) (gen-ast (list '$* -1 (cadr ast)) succ)) ;; TODO $* until * is supported
+                   ((eq? op '-) (gen-ast (list '* -1 (cadr ast)) succ))
                    ((eq? op '*) (build-chain (cdr ast) succ))
                    ((member op '(< > <= >= =)) (gen-ast #t succ))))
           ;; >1 opnd, build chain

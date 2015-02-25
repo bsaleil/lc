@@ -1,5 +1,3 @@
-;; TODO : IT IS NOT THE SAME FUNCTION !
-
 (define (not x)
   (eq? x #f))
 
