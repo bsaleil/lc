@@ -10,12 +10,6 @@
 (define (cdddr l)  (cdr (cdr (cdr l))))
 (define (cadddr l) (car (cdr (cdr (cdr l)))))
 
-(define (set-car! p v)
-  ($set-car! p v))
-
-(define (set-cdr! p v)
-  ($set-cdr! p v))
-
 (define (length l)
   (if (null? l)
       0

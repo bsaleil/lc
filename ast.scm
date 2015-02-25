@@ -46,8 +46,8 @@
   $vector-length
   $make-vector
   $cons
-  $set-car!
-  $set-cdr!
+  set-car!
+  set-cdr!
   car
   cdr
 ))
@@ -60,14 +60,18 @@
              (println "!!! ERROR : " ,err)
              (exit 1))))
 
+(define-macro (assert-args ast nb err)
+   `(assert (= (length (cdr ast)) ,nb) ,err))
+
 ;;-----------------------------------------------------------------------------
 ;; AST DISPATCH
 
 ;; Gen lazy code from a list of exprs
 (define (gen-ast-l lst succ)
-  (cond ((null? lst) (error "Empty list"))
-        ((= (length lst) 1) (gen-ast (car lst) succ))
-        (else (gen-ast (car lst) (gen-ast-l (cdr lst) succ)))))
+  (if (null? lst)
+     succ
+     (gen-ast (car lst)
+              (gen-ast-l (cdr lst) succ))))
 
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
@@ -339,7 +343,10 @@
 (define (mlc-special-nc ast succ)
   
   (case (car ast)
-    ((car cdr) (assert (= (length ast) 2) ERR_WRONG_NUM_ARGS)))
+    ((car cdr)
+        (assert-args ast 1 ERR_WRONG_NUM_ARGS))
+    ((set-car! set-cdr!)
+        (assert-args ast 2 ERR_WRONG_NUM_ARGS)))
   
   (let* ((special (car ast))
          (lazy-special
@@ -363,11 +370,11 @@
                         (x86-push cgc (x86-rax))
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK))))))
                  ;; SET-CAR! & SET-CDR!
-                 ((member special '($set-car! $set-cdr!))
+                 ((member special '(set-car! set-cdr!))
                   (make-lazy-code
                     (lambda (cgc ctx)
                       (let ((offset
-                              (if (eq? special '$set-car!)
+                              (if (eq? special 'set-car!)
                                   (-  8 TAG_MEMOBJ)
                                   (- 16 TAG_MEMOBJ))))
                         (x86-pop cgc (x86-rax)) ;; val
@@ -706,24 +713,8 @@
                  ;; OTHERS
                  (else (error "NYI")))))
     
-    ;; Build lazy objects chain
-    (cond ;; $error
-          ((eq? special '$error)
-             lazy-special)
-          ;; $cons, $string-ref, $vector-ref, $set-car!, $set-cdr!, $write-char
-          ((member special '($cons $string-ref $vector-ref $set-car! $set-cdr! $write-char))
-           (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
-             (gen-ast (cadr ast) lazy-right)))
-          ;; car, cdr, $make-vector, $string->symbol, $symbol->string, ...
-          ((member special '($eof-object? $read-char $close-output-port $close-input-port $open-output-file $open-input-file $symbol->string $string->symbol $string-length $integer->char $char->integer $vector-length $make-string $make-vector car cdr))
-           (gen-ast (cadr ast) lazy-special))
-          ;; $string-set!, $vector-set!
-          ((member special '($string-set! $vector-set!))
-           (let* ((lazy-value (gen-ast (cadddr ast) lazy-special))
-                  (lazy-index (gen-ast (caddr  ast) lazy-value)))
-             (gen-ast (cadr ast) lazy-index)))
-          ;; Others
-          (else (error "NYI")))))
+    ;; Buils lazy objects chaine
+    (gen-ast-l (cdr ast) lazy-special)))
 
 ;;
 ;; Make lazy code from LAMBDA
