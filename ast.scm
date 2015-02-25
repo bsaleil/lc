@@ -23,18 +23,6 @@
   $procedure?
   $pair?))
 
-;; Primitives for operators
-(define prim-operators '(
-  $+
-  $-
-  $*
-  $quotient
-  $modulo
-  $<
-  $>
-  $=
-))
-
 ;; Primitives for funtions
 (define prim-fn '(
   $eof-object?
@@ -60,9 +48,17 @@
   $cons
   $set-car!
   $set-cdr!
-  $car
-  $cdr
+  car
+  cdr
 ))
+
+;;-----------------------------------------------------------------------------
+
+(define-macro (assert c err)
+   `(if (not ,c)
+      (begin (pp ast)
+             (println "!!! ERROR : " ,err)
+             (exit 1))))
 
 ;;-----------------------------------------------------------------------------
 ;; AST DISPATCH
@@ -101,10 +97,7 @@
                  ;; Binding
                  ((member op '(let let* letrec)) (mlc-binding ast succ op))
                  ;; Operator num
-                 ;((member op prim-operators) (mlc-op-num ast succ op))
-                 
-                 ((member op '(+ - * < > <= >= =)) (mlc-op-numn ast succ op))
-                 
+                 ((member op '(+ - * < > <= >= =)) (mlc-op-n ast succ op))
                  ((member op '(quotient modulo remainder)) (mlc-op-bin ast succ op))
                  ;; Operator gen
                  ((eq? op '$eq?) (mlc-op-gen ast succ op))
@@ -344,6 +337,10 @@
 ;; Make lazy code from SPECIAL FORM (inlined specials)
 ;;
 (define (mlc-special-nc ast succ)
+  
+  (case (car ast)
+    ((car cdr) (assert (= (length ast) 2) ERR_WRONG_NUM_ARGS)))
+  
   (let* ((special (car ast))
          (lazy-special
            (cond ;; ERROR
@@ -354,11 +351,11 @@
                  ;; CONS
                  ((eq? special '$cons) (mlc-pair succ))
                  ;; CAR & CDR
-                 ((member special '($car $cdr))
+                 ((member special '(car cdr))
                   (make-lazy-code
                     (lambda (cgc ctx)
                       (let ((offset
-                              (if (eq? special '$car)
+                              (if (eq? special 'car)
                                   (-  8 TAG_MEMOBJ)
                                   (- 16 TAG_MEMOBJ))))
                         (x86-pop cgc (x86-rax))
@@ -717,8 +714,8 @@
           ((member special '($cons $string-ref $vector-ref $set-car! $set-cdr! $write-char))
            (let ((lazy-right (gen-ast (caddr ast) lazy-special)))
              (gen-ast (cadr ast) lazy-right)))
-          ;; $car, $cdr, $make-vector, $string->symbol, $symbol->string, ...
-          ((member special '($eof-object? $read-char $close-output-port $close-input-port $open-output-file $open-input-file $symbol->string $string->symbol $string-length $integer->char $char->integer $vector-length $make-string $make-vector $car $cdr))
+          ;; car, cdr, $make-vector, $string->symbol, $symbol->string, ...
+          ((member special '($eof-object? $read-char $close-output-port $close-input-port $open-output-file $open-input-file $symbol->string $string->symbol $string-length $integer->char $char->integer $vector-length $make-string $make-vector car cdr))
            (gen-ast (cadr ast) lazy-special))
           ;; $string-set!, $vector-set!
           ((member special '($string-set! $vector-set!))
@@ -1578,14 +1575,14 @@
              (lazy-left       (gen-ast (car opnds) lazy-test-left)))
          lazy-left))))
     
-;; Renommer stub-labels mlc-op-numn et mlc-op-bin
+;; Renommer stub-labels mlc-op-n et mlc-op-bin
 
 ;; TODO : check if redefined
 ;; TODO : WIP
 ;; TODO : constant folding
 ;; Will handle all operators with possibly multiple args
 ;; The other function will only handle fixed args operators
-(define (mlc-op-numn ast succ op)
+(define (mlc-op-n ast succ op)
   
   (let* (;; Operands number
          (nb-opnd (length (cdr ast)))
@@ -1695,136 +1692,6 @@
                    ((member op '(< > <= >= =)) (gen-ast #t succ))))
           ;; >1 opnd, build chain
           (else (build-chain (cdr ast) lazy-op)))))
-
-;;
-;; Make lazy code from NUMBER OPERATOR
-;;
-(define (mlc-op-num ast succ op)
-  (letrec (   ;; Lazy code used if type test fail
-              (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM)))))
-              ;; Lazy code of left operand
-              (lazy-ast-left  (gen-ast (cadr ast)  lazy-ast-right))
-              ;; Lazy code of right operand
-              (lazy-ast-right (gen-ast (caddr ast) lazy-main))
-              ;; Gen operation code (assumes both operands are num)
-              (lazy-code-op (make-lazy-code
-                              (lambda (cgc ctx)
-
-                                ;; Arithmetic overflow
-                                (let* ((ctx-overflow (ctx-pop ctx)) ;; First operand pop
-                                       (lazy-overflow (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_ARR_OVERFLOW))))
-                                       (label-jo (asm-make-label #f (new-sym 'jump-overflow)))
-                                       ;; TODO : new kind of stub (add-callback without ret-addr and without selector?)
-                                       ;; TODO : overflow stub could be global
-                                       (stub-labels (add-callback cgc
-                                                                  0
-                                                                  (lambda (ret-addr selector)
-                                                                    (gen-version (vector-ref label-jo 1) lazy-overflow ctx-overflow)))))
-
-                                (x86-pop cgc (x86-rbx))
-                                (case op
-                                  (($+)
-                                   (begin
-                                     (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
-                                     (x86-label cgc label-jo)
-                                     (x86-jo cgc (list-ref stub-labels 0))))
-                                  (($-)
-                                   (begin
-                                     (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
-                                     (x86-label cgc label-jo)
-                                     (x86-jo cgc (list-ref stub-labels 0))))
-                                  (($*)
-                                   (begin (x86-sar cgc (x86-rbx) (x86-imm-int 2))
-                                     (x86-imul cgc (x86-rbx) (x86-mem 0 (x86-rsp)))
-                                     (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
-                                     (x86-label cgc label-jo)
-                                     (x86-jo cgc (list-ref stub-labels 0))))
-                                  (($quotient) ;; TODO : check '/0'
-                                   (begin
-                                          (x86-pop cgc (x86-rax))
-                                          (x86-sar cgc (x86-rax) (x86-imm-int 2))
-                                          (x86-cqo cgc)
-                                          (x86-sar cgc (x86-rbx) (x86-imm-int 2))
-                                          (x86-idiv cgc (x86-rbx))
-                                          (x86-shl cgc (x86-rax) (x86-imm-int 2))
-                                          (x86-push cgc (x86-rax))
-                                          (x86-label cgc label-jo)
-                                          (x86-jo cgc (list-ref stub-labels 0))))
-                                  (($modulo) ;; TODO : check '/0'
-                                   (begin
-                                          (x86-pop cgc (x86-rax))
-                                          (x86-sar cgc (x86-rbx) (x86-imm-int 2))
-                                          (x86-sar cgc (x86-rax) (x86-imm-int 2))
-                                          (x86-cqo cgc)
-                                          (x86-idiv cgc (x86-rbx))
-                                          (x86-mov cgc (x86-rax) (x86-rdx)) ;; (a%b) in rax, b in rbx
-                                          (x86-add cgc (x86-rax) (x86-rbx)) ;; (a%b + b) in rax
-                                          (x86-cqo cgc)
-                                          (x86-idiv cgc (x86-rbx))
-                                          (x86-shl cgc (x86-rdx) (x86-imm-int 2))
-                                          (x86-push cgc (x86-rdx))))
-                                  (($<)
-                                   (let ((label-done
-                                           (asm-make-label cgc (new-sym 'done))))
-                                     (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
-                                     (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #t)))
-                                     (x86-jl  cgc label-done)
-                                     (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #f)))
-                                     (x86-label cgc label-done)
-                                     (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rbx))))
-                                  (($>)
-                                   (let ((label-done
-                                           (asm-make-label cgc (new-sym 'done))))
-                                     (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
-                                     (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #t)))
-                                     (x86-jg  cgc label-done)
-                                     (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #f)))
-                                     (x86-label cgc label-done)
-                                     (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rbx))))
-                                  (($=)
-                                   (let ((label-done
-                                           (asm-make-label cgc (new-sym 'done))))
-                                     (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
-                                     (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #t)))
-                                     (x86-je  cgc label-done)
-                                     (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #f)))
-                                     (x86-label cgc label-done)
-                                     (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rbx))))
-                                  (else
-                                    (error "unknown op" op)))
-                                (jump-to-version cgc
-                                                 succ
-                                                 (ctx-push
-                                                   (ctx-pop (ctx-pop ctx))
-                                                   (cond ((member op '($+ $- $* $modulo $quotient)) CTX_NUM)
-                                                         ((member op '($< $> $=)) CTX_BOOL))))))))
-              ;; Lazy code, tests types from ctx to jump to the correct lazy-code
-              (lazy-main (make-lazy-code
-                           (lambda (cgc ctx)
-                             
-                             (let ((left-type  (cadr (ctx-stack ctx)))
-                                   (right-type (car (ctx-stack ctx)))
-                                   ;; ctx with num for right operand
-                                   (rctx  (ctx-push (ctx-pop ctx) CTX_NUM))
-                                   ;; ctx with num for left operand
-                                   (lctx  (make-ctx (cons (car (ctx-stack ctx)) (cons CTX_NUM (cddr (ctx-stack ctx)))) (ctx-env ctx) (ctx-nb-args ctx)))
-                                   ;; ctx with num for left AND right operand
-                                   (lrctx (make-ctx (cons CTX_NUM (cons CTX_NUM (cddr (ctx-stack ctx)))) (ctx-env ctx) (ctx-nb-args ctx))))
-
-                               (cond ((eq? left-type CTX_NUM)
-                                      (cond ((eq? right-type CTX_NUM)     (jump-to-version cgc lazy-code-op ctx))
-                                            ((eq? right-type CTX_UNK) (jump-to-version cgc (gen-dyn-type-test CTX_NUM 0 rctx lazy-code-op ctx lazy-fail) ctx))
-                                            (else                     (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM)))))
-
-                                     ((eq? left-type CTX_UNK)
-                                      (cond ((eq? right-type CTX_NUM)     (jump-to-version cgc (gen-dyn-type-test CTX_NUM 1 lctx lazy-code-op ctx lazy-fail) ctx))
-                                            ((eq? right-type CTX_UNK) (let* ((right-test (gen-dyn-type-test CTX_NUM 1 lrctx lazy-code-op ctx lazy-fail))
-                                                                              (left-test  (gen-dyn-type-test CTX_NUM 0 lctx right-test ctx lazy-fail)))
-                                                                         (jump-to-version cgc left-test ctx)))
-                                            (else                      (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM)))))
-                                     (else (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM)))))))))
-    ;; Return left operand lazy-code
-    lazy-ast-left))
 
 ;;
 ;; Make lazy code from GENERIC OPERATOR

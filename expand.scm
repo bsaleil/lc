@@ -28,6 +28,7 @@
       ((equal? (car expr) 'and) (expand-and expr))
       ((equal? (car expr) 'cond) (expand-cond expr))
       ((equal? (car expr) 'case) (expand-case expr))
+      ((equal? (car expr) 'map) (expand-map expr))
       ((equal? (car expr) 'quote) expr)
       (else (if (list? (cdr expr))
                 (map expand expr)
@@ -225,6 +226,17 @@
             `(if (memv ,sym (quote ,(car clause)))
                 ,(expand (cons 'begin (cdr clause)))
                 ,(expand-case-clauses sym (cdr clauses)))))))
+
+;;----------
+
+(define inlined '(
+   car
+   cdr)) ;; TODO : remove when all primitives inlined (use prim-fn from ast.scm)
+
+(define (expand-map expr)
+  (if (member (cadr expr) inlined)
+     `(map (lambda (el) (,(cadr expr) el)) ,@(map expand (cddr expr)))
+     (map expand expr)))
 
 ;;----------
 
