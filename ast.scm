@@ -105,7 +105,7 @@
                  
                  ((member op '(+ - * < > <= >= =)) (mlc-op-numn ast succ op))
                  
-                 ((member op '(quotient)) (mlc-op-bin ast succ op))
+                 ((member op '(quotient modulo)) (mlc-op-bin ast succ op))
                  ;; Operator gen
                  ((eq? op '$eq?) (mlc-op-gen ast succ op))
                  ;; Tests
@@ -1549,16 +1549,23 @@
              (lazy-op
                (make-lazy-code
                  (lambda (cgc ctx)
+                   (x86-pop cgc (x86-rbx)) ;; Pop right
+                   (x86-pop cgc (x86-rax)) ;; Pop left
+                   (x86-sar cgc (x86-rax) (x86-imm-int 2))
+                   (x86-sar cgc (x86-rbx) (x86-imm-int 2))
+                   (x86-cqo cgc)
+                   (x86-idiv cgc (x86-rbx))
                    (cond ((eq? op 'quotient) ;; TODO : check '/0'
-                           (x86-pop cgc (x86-rbx)) ;; Pop right
-                           (x86-pop cgc (x86-rax)) ;; Pop left
-                           (x86-sar cgc (x86-rax) (x86-imm-int 2))
-                           (x86-cqo cgc)
-                           (x86-sar cgc (x86-rbx) (x86-imm-int 2))
-                           (x86-idiv cgc (x86-rbx))
                            (x86-shl cgc (x86-rax) (x86-imm-int 2))
-                           (x86-jo cgc (list-ref stub-labels 0))))
-                   (x86-push cgc (x86-rax))
+                           ;(x86-jo cgc (list-ref stub-labels 0)) ;; TODO ? jo modulo
+                           (x86-push cgc (x86-rax)))
+                         ((eq? op 'modulo)
+                           (x86-mov cgc (x86-rax) (x86-rdx)) ;; (a%b) in rax, b in rbx
+                           (x86-add cgc (x86-rax) (x86-rbx)) ;; (a%b + b) in rax
+                           (x86-cqo cgc)
+                           (x86-idiv cgc (x86-rbx))
+                           (x86-shl cgc (x86-rdx) (x86-imm-int 2))
+                           (x86-push cgc (x86-rdx))))
                    (jump-to-version cgc
                                     succ
                                     (ctx-push (ctx-pop-nb ctx 2) CTX_NUM)))))

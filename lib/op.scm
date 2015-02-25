@@ -1,8 +1,7 @@
-
-(define (modulo x y)   ($modulo x y))
-
 ;; TODO : IT IS NOT THE SAME FUNCTION !
-(define remainder modulo)
+
+(define (remainder a b)
+  (modulo a b))
 
 (define (not x)
   (eq? x #f))
