@@ -23,35 +23,40 @@
   $procedure?
   $pair?))
 
-;; Primitives for funtions
+;; Primitives for functions
 (define prim-fn '(
-  $eof-object?
-  $write-char
-  $read-char
-  $close-output-port
-  $close-input-port
-  $open-output-file
-  $open-input-file
-  $error
+  ;; Variable
   $make-vector
-  $string-set!
   $make-string
-  $string-length
-  $vector-set!
-  
-  symbol->string
-  string->symbol
-  
-  string-ref
-  integer->char
-  char->integer
-  vector-ref
-  vector-length
-  cons
-  set-car!
-  set-cdr!
-  car
-  cdr
+  $write-char
+  ;; infini
+  $error
+))
+
+;; Primitives: name, nb args min, fixed nb args
+(define primitives '(
+   (car               1  #t)
+   (cdr               1  #t)
+   (set-car!          2  #t)
+   (set-cdr!          2  #t)
+   (cons              2  #t)
+   (vector-length     1  #t)
+   (vector-ref        2  #t)
+   (char->integer     1  #t)
+   (integer->char     1  #t)
+   (string-ref        2  #t)
+   (string->symbol    1  #t)
+   (symbol->string    1  #t)
+   (close-output-port 1  #t)
+   (close-input-port  1  #t)
+   (open-output-file  1  #t)
+   (open-input-file   1  #t)
+   (string-set!       3  #t)
+   (vector-set!       3  #t)
+   (string-length     1  #t)
+   (read-char         1  #t)
+   
+   (eof-object? 1 #t) ;; TODO
 ))
 
 ;;-----------------------------------------------------------------------------
@@ -62,8 +67,11 @@
              (println "!!! ERROR : " ,err)
              (exit 1))))
 
-(define-macro (assert-args ast nb err)
-   `(assert (= (length (cdr ast)) ,nb) ,err))
+;; 
+(define (assert-nbargs ast err)
+  (assert (= (length (cdr ast))
+             (cadr (assoc (car ast) primitives)))
+          err))
 
 ;;-----------------------------------------------------------------------------
 ;; AST DISPATCH
@@ -89,7 +97,9 @@
            (cond ;; Special with call
                  ((eq? op '$$putchar) (mlc-special-c ast succ))
                  ;; Special without call
-                 ((member op prim-fn) (mlc-special-nc ast succ))
+                 ((or (member op prim-fn)
+                      (assoc op primitives))
+                    (mlc-special-nc ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ;; Set!
@@ -276,32 +286,46 @@
 ;;
 ;; Make lazy code from SYMBOL
 ;;
+
+;;TODO
+(define (build-list n proc)
+  
+  (define (build-list-h p proc)
+    (if (= p 0)
+      '()
+      (cons (proc (- n p)) (build-list-h (- p 1) proc))))
+  
+  (build-list-h n proc))
+  
+
 (define (mlc-identifier ast succ)
-  ;; If primitive, return function calling primitive
-  (case ast
-    ((car cdr vector-length char->integer integer->char symbol->string string->symbol)
-       (gen-ast `(lambda (a) (,ast a)) succ))
-    ((set-car! set-cdr! cons vector-ref string-ref)
-       (gen-ast `(lambda (a b) (,ast a b)) succ))
-    (else
-      (make-lazy-code
-        (lambda (cgc ctx)
-          ;; Lookup in local env
-          (let* ((res (assoc ast (ctx-env ctx)))
-                 (ctx-type (if res
-                            (if (eq? (identifier-type (cdr res)) 'free)
-                              ;; Free var
-                              (gen-get-freevar  cgc ctx res 'stack #f)
-                              ;; Local var
-                              (gen-get-localvar cgc ctx res 'stack #f))
-                            (let ((res (assoc ast globals)))
-                              (if res
-                                 ;; Global var
-                                 (gen-get-globalvar cgc ctx res 'stack)
-                                 ;; Unknown
-                                 (error "Can't find variable: " ast))))))
+  
+  (let ((r (assoc ast primitives)))
+    (if r
+       ;; If primitive, return function calling primitive
+       (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
+         (gen-ast `(lambda ,args
+                      (,ast ,@args))
+                  succ))
+       ;; 
+       (make-lazy-code
+         (lambda (cgc ctx)
+           ;; Lookup in local env
+           (let* ((res (assoc ast (ctx-env ctx)))
+                  (ctx-type (if res
+                             (if (eq? (identifier-type (cdr res)) 'free)
+                               ;; Free var
+                               (gen-get-freevar  cgc ctx res 'stack #f)
+                               ;; Local var
+                               (gen-get-localvar cgc ctx res 'stack #f))
+                             (let ((res (assoc ast globals)))
+                               (if res
+                                  ;; Global var
+                                  (gen-get-globalvar cgc ctx res 'stack)
+                                  ;; Unknown
+                                  (error "Can't find variable: " ast))))))
            
-            (jump-to-version cgc succ (ctx-push ctx ctx-type))))))))
+             (jump-to-version cgc succ (ctx-push ctx ctx-type))))))))
 
 ;;
 ;; Make lazy code from DEFINE
@@ -350,11 +374,8 @@
 ;;
 (define (mlc-special-nc ast succ)
   
-  (case (car ast)
-    ((car cdr vector-length char->integer integer->char symbol->string string->symbol)
-        (assert-args ast 1 ERR_WRONG_NUM_ARGS))
-    ((set-car! set-cdr! cons vector-ref string-ref)
-        (assert-args ast 2 ERR_WRONG_NUM_ARGS)))
+  (if (assoc (car ast) primitives) ;; TODO : remove when all primitives inlined
+    (assert-nbargs ast ERR_WRONG_NUM_ARGS))
   
   (let* ((special (car ast))
          (lazy-special
@@ -391,7 +412,7 @@
                         (x86-push cgc (x86-rbx))
                         (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI))))))
                  ;; CLOSE-INPUT-PORT
-                 ((member special '($close-output-port $close-input-port))
+                 ((member special '(close-output-port close-input-port))
                    (make-lazy-code
                      (lambda (cgc ctx)
                        (gen-syscall-close cgc)
@@ -399,10 +420,10 @@
                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))
                  ;; OPEN-INPUT-FILE
                  ;; TODO output port STAG ET CTX
-                 ((member special '($open-output-file $open-input-file))
+                 ((member special '(open-output-file open-input-file))
                    (make-lazy-code
                      (lambda (cgc ctx)
-                       (let* ((direction   (if (eq? special '$open-output-file) 'out 'in))
+                       (let* ((direction   (if (eq? special 'open-output-file) 'out 'in))
                               (stag        (if (eq? direction 'in) STAG_IPORT STAG_OPORT))
                               (header-word (mem-header 2 stag)))
                          ;; Gen 'open' syscall, file descriptor in rax
@@ -421,7 +442,7 @@
                          ;; Jump to succ
                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (if (eq? direction 'in) CTX_IPORT CTX_OPORT)))))))
                  ;; EOF-OBJECT?
-                 ((eq? special '$eof-object?)
+                 ((eq? special 'eof-object?)
                   (make-lazy-code
                     (lambda (cgc ctx)
                       (let ((label-end (asm-make-label #f (new-sym 'label-end))))
@@ -434,7 +455,7 @@
                         (x86-push cgc (x86-rax))
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL))))))
                  ;; READ-CHAR
-                 ((eq? special '$read-char)
+                 ((eq? special 'read-char)
                   (make-lazy-code
                     (lambda (cgc ctx)
                       ;; Gen 'read' syscall (read 1 byte), encoded value (char or eof) in rax
@@ -662,7 +683,7 @@
                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM)))))
                       
                  ;; VECTOR-LENGTH & STRING-LENGTH
-                 ((member special '(vector-length $string-length))
+                 ((member special '(vector-length string-length))
                   (make-lazy-code
                     (lambda (cgc ctx)
                       (x86-pop cgc (x86-rax)) ;; Pop vector
@@ -692,14 +713,14 @@
                         
                  
                  ;; VECTOR-SET! & STRING-SET!
-                 ((member special '($vector-set! $string-set!))
+                 ((member special '(vector-set! string-set!))
                   (make-lazy-code
                     (lambda (cgc ctx)
                         (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))  ;; Get index
                         (x86-mov cgc (x86-rbx) (x86-mem 16 (x86-rsp))) ;; Get vector
                         (x86-mov cgc (x86-rdx) (x86-mem 0 (x86-rsp)))  ;; Get new value
                         
-                        (cond ((eq? special '$vector-set!)
+                        (cond ((eq? special 'vector-set!)
                                 (x86-shl cgc (x86-rax) (x86-imm-int 1))
                                 (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx) (x86-rax)) (x86-rdx)))
                               

@@ -1,10 +1,4 @@
 
-(define (string-length s)
-  ($string-length s))
-
-(define (string-set! s i v)
-  ($string-set! s i v))
-
 (define (string->list-h s pos)
   (if (= (string-length s) pos)
       '()

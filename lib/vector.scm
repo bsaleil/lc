@@ -1,9 +1,6 @@
 
 (define (vector . l) (list->vector l))
 
-(define (vector-set! v i val)
-  ($vector-set! v i val))
-
 (define (vector-fill! v val)
   (vector-fill!-h v 0 val (vector-length v)))
 
