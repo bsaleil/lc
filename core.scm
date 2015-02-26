@@ -892,6 +892,9 @@
 ;; TODO
 ;; TODO
 ;; It's fatal
+
+
+
 (define (gen-fatal-type-test type stack-idx succ)
 
     (make-lazy-code
@@ -999,7 +1002,7 @@
 ;; Global cc table
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 250);;236)
+(define global-cc-table-maxsize 220);;236)
 ;; Current shape of the global cc table
 (define global-cc-table (make-table))
 

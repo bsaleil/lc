@@ -42,7 +42,7 @@
                (list (car lst)))))
 
 (define (for-each f lst)
-   (if (pair? lst)
+   (if (not (null? lst))
      (begin (f (car lst))
             (for-each f (cdr lst)))))
 

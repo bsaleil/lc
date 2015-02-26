@@ -12,16 +12,17 @@
 ;; Primitives
 
 ;; Primitives for type tests
-(define prim-tests '(
-  $output-port?
-  $input-port?
-  $symbol?
-  $string?
-  $char?
-  $vector?
-  $number?
-  $procedure?
-  $pair?))
+(define type-predicates `(
+  ($output-port? ,CTX_OPORT)
+  ($input-port?  ,CTX_IPORT)
+  ($symbol?      ,CTX_SYM)
+  ($string?      ,CTX_STR)
+  ($char?        ,CTX_CHAR)
+  ($vector?      ,CTX_VECT)
+  ($number?      ,CTX_NUM)
+  ($procedure?   ,CTX_CLO)
+  ($pair?        ,CTX_PAI)
+))
 
 ;; Primitives for functions
 (define prim-fn '(
@@ -68,10 +69,15 @@
              (exit 1))))
 
 ;; 
-(define (assert-nbargs ast err)
+(define (assert-p-nbargs ast)
   (assert (= (length (cdr ast))
              (cadr (assoc (car ast) primitives)))
-          err))
+          ERR_WRONG_NUM_ARGS))
+
+(define (assert-t-nbargs ast)
+  (assert (= (length (cdr ast))
+             1)
+          ERR_WRONG_NUM_ARGS))
 
 ;;-----------------------------------------------------------------------------
 ;; AST DISPATCH
@@ -118,7 +124,7 @@
                  ;; Operator gen
                  ((eq? op '$eq?) (mlc-op-gen ast succ op))
                  ;; Tests
-                 ((member op prim-tests) (mlc-test ast succ))
+                 ((assoc op type-predicates) (mlc-test ast succ))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -150,7 +156,8 @@
                                  (cond ((number? ast)  CTX_NUM)
                                        ((boolean? ast) CTX_BOOL)
                                        ((char? ast)    CTX_CHAR)
-                                       ((null? ast)    CTX_NULL)))))))
+                                       ((null? ast)    CTX_NULL)
+                                       (else (error "NYI"))))))))
 ;;
 ;; Make lazy code from symbol literal
 ;;
@@ -375,7 +382,7 @@
 (define (mlc-special-nc ast succ)
   
   (if (assoc (car ast) primitives) ;; TODO : remove when all primitives inlined
-    (assert-nbargs ast ERR_WRONG_NUM_ARGS))
+    (assert-p-nbargs ast))
   
   (let* ((special (car ast))
          (lazy-special
@@ -680,7 +687,10 @@
                       (x86-add cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
                       (x86-push cgc (x86-rbx))
                       
-                      (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM)))))
+                      (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
+                                                          (if (eq? special 'string->symbol)
+                                                             CTX_SYM
+                                                             CTX_STR))))))
                       
                  ;; VECTOR-LENGTH & STRING-LENGTH
                  ((member special '(vector-length string-length))
@@ -709,7 +719,10 @@
                                (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode char
                                (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
                                (x86-push cgc (x86-rax)) ;; Push char
-                               (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_CHAR))))))))                         
+                               (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2)
+                                                                   (if (eq? special 'string-ref)
+                                                                      CTX_CHAR
+                                                                      CTX_UNK)))))))))                        
                         
                  
                  ;; VECTOR-SET! & STRING-SET!
@@ -1739,52 +1752,73 @@
 ;; Make lazy code from TYPE TEST
 ;;
 (define (mlc-test ast succ)
+  
+  (assert-t-nbargs ast)
+  
   (let* ((op (car ast))
          (lazy-test (make-lazy-code
                       (lambda (cgc ctx)
-                        (let ((label-done (asm-make-label cgc (new-sym 'label_done))))
-                          (x86-pop   cgc (x86-rax))
-                          (cond ;; $number?
-                                ((eq? op '$number?)
-                                    (x86-and   cgc (x86-rax) (x86-imm-int 3)) ;; If equal, set ZF to 1
-                                    (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                    (x86-je    cgc label-done)
-                                    (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #f))))
-                                ;; $char?
-                                ((eq? op '$char?)
-                                    (x86-mov cgc (x86-rbx) (x86-rax))
-                                    (x86-and cgc (x86-rax) (x86-imm-int 3))
-                                    (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
+                        (let ((known-type    (car (ctx-stack ctx)))
+                              (tested-type   (cadr (assoc (car ast) type-predicates))))
+                          
+                          
+                          (cond ;; known == tested, right type
+                                ((eq? known-type tested-type)
+                                    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                                    (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                                    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))
+                                ;; known != unknown, wrong type
+                                ((not (eq? known-type CTX_UNK))
                                     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                    (x86-jne cgc label-done) ;; No tag for special, then not char
-                                    ;; Tag is 'special', test value
-                                    (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
-                                    (x86-jl cgc label-done) ;; <0 is !char and >=0 is char
-                                    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t))))
-                                ;; Others
-                                (else (x86-mov cgc (x86-rbx) (x86-rax))
-                                      (x86-and cgc (x86-rax) (x86-imm-int 3))
-                                      (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                      (x86-jne cgc label-done)
-                                      ;; It's a memory allocated obj
-                                      (x86-mov cgc (x86-rbx) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
-                                      (x86-and cgc (x86-rbx) (x86-imm-int 248))
-                                      (cond ((eq? op '$procedure?)   (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
-                                            ((eq? op '$pair?)        (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
-                                            ((eq? op '$vector?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_VECTOR))))    ;; STAG_VECTOR << 3
-                                            ((eq? op '$string?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_STRING))))    ;; STAG_STRING << 3
-                                            ((eq? op '$symbol?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_SYMBOL))))    ;; STAG_SYMBOL << 3
-                                            ((eq? op '$input-port?)  (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_IPORT))))     ;; STAG_IPORT << 3
-                                            ((eq? op '$output-port?) (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_OPORT))))     ;; STAG_OPORT << 3
-                                            (else (error "NYI")))
-                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                      (x86-jne cgc label-done)
-                                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))))
-                          ;;
-                          (x86-label cgc label-done)
-                          (x86-push  cgc (x86-rax))
-                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))))
+                                    (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                                    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))
+                                ;; known == unknown, test needed
+                                (else
+                                  (let ((label-done (asm-make-label cgc (new-sym 'label_done))))
+                                    (x86-pop   cgc (x86-rax))
+                                    
+                                    (cond ;; $number?
+                                          ((eq? op '$number?)
+                                              (x86-and   cgc (x86-rax) (x86-imm-int 3)) ;; If equal, set ZF to 1
+                                              (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                                              (x86-je    cgc label-done)
+                                              (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #f))))
+                                          ;; $char?
+                                          ((eq? op '$char?)
+                                              (x86-mov cgc (x86-rbx) (x86-rax))
+                                              (x86-and cgc (x86-rax) (x86-imm-int 3))
+                                              (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
+                                              (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                              (x86-jne cgc label-done) ;; No tag for special, then not char
+                                              ;; Tag is 'special', test value
+                                              (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
+                                              (x86-jl cgc label-done) ;; <0 is !char and >=0 is char
+                                              (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t))))
+                                          ;; Others
+                                          (else (x86-mov cgc (x86-rbx) (x86-rax))
+                                                (x86-and cgc (x86-rax) (x86-imm-int 3))
+                                                (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                                                (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                                (x86-jne cgc label-done)
+                                                ;; It's a memory allocated obj
+                                                (x86-mov cgc (x86-rbx) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
+                                                (x86-and cgc (x86-rbx) (x86-imm-int 248))
+                                                (cond ((eq? op '$procedure?)   (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
+                                                      ((eq? op '$pair?)        (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
+                                                      ((eq? op '$vector?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_VECTOR))))    ;; STAG_VECTOR << 3
+                                                      ((eq? op '$string?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_STRING))))    ;; STAG_STRING << 3
+                                                      ((eq? op '$symbol?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_SYMBOL))))    ;; STAG_SYMBOL << 3
+                                                      ((eq? op '$input-port?)  (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_IPORT))))     ;; STAG_IPORT << 3
+                                                      ((eq? op '$output-port?) (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_OPORT))))     ;; STAG_OPORT << 3
+                                                      (else (error "NYI")))
+                                                (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                                                (x86-jne cgc label-done)
+                                                (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))))
+                                    
+                                    ;;
+                                    (x86-label cgc label-done)
+                                    (x86-push  cgc (x86-rax))
+                                    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL))))))))))
     (gen-ast (cadr ast) lazy-test)))
 
 ;;
