@@ -33,18 +33,20 @@
   $open-output-file
   $open-input-file
   $error
+  $make-vector
   $string-set!
   $make-string
-  $symbol->string
-  $string->symbol
   $string-length
-  string-ref
-  $integer->char
-  $char->integer
   $vector-set!
+  
+  symbol->string
+  string->symbol
+  
+  string-ref
+  integer->char
+  char->integer
   vector-ref
   vector-length
-  $make-vector
   cons
   set-car!
   set-cdr!
@@ -277,7 +279,7 @@
 (define (mlc-identifier ast succ)
   ;; If primitive, return function calling primitive
   (case ast
-    ((car cdr vector-length)
+    ((car cdr vector-length char->integer integer->char symbol->string string->symbol)
        (gen-ast `(lambda (a) (,ast a)) succ))
     ((set-car! set-cdr! cons vector-ref string-ref)
        (gen-ast `(lambda (a b) (,ast a b)) succ))
@@ -349,7 +351,7 @@
 (define (mlc-special-nc ast succ)
   
   (case (car ast)
-    ((car cdr vector-length)
+    ((car cdr vector-length char->integer integer->char symbol->string string->symbol)
         (assert-args ast 1 ERR_WRONG_NUM_ARGS))
     ((set-car! set-cdr! cons vector-ref string-ref)
         (assert-args ast 2 ERR_WRONG_NUM_ARGS)))
@@ -453,17 +455,17 @@
                       ;; Jump to succ
                       (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_VOID)))))
                  ;; CHAR<->INTEGER
-                 ((member special '($char->integer $integer->char))
+                 ((member special '(char->integer integer->char))
                   (let ((lazy-charint
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (if (eq? special '$char->integer)
+                              (if (eq? special 'char->integer)
                                   (x86-xor cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8)
                                   (x86-or  cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8))
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
-                                                                  (cond ((eq? special '$char->integer) CTX_NUM)
-                                                                        ((eq? special '$integer->char) CTX_CHAR))))))))
-                    (gen-fatal-type-test (if (eq? special '$char->integer)
+                                                                  (cond ((eq? special 'char->integer) CTX_NUM)
+                                                                        ((eq? special 'integer->char) CTX_CHAR))))))))
+                    (gen-fatal-type-test (if (eq? special 'char->integer)
                                             CTX_CHAR
                                             CTX_NUM)
                                          0
@@ -601,7 +603,7 @@
                  
                  ;; STRING<->SYMBOL
                  ;; TODO : tags
-                 ((member special '($string->symbol $symbol->string))
+                 ((member special '(string->symbol symbol->string))
                   (make-lazy-code
                     (lambda (cgc ctx)
                       
@@ -629,7 +631,7 @@
                       
                       ;; Mov header in symbol
                       (x86-mov cgc (x86-r15) (x86-mem 0 (x86-rax)))
-                      (if (eq? special '$string->symbol)
+                      (if (eq? special 'string->symbol)
                          (x86-sub cgc (x86-r15) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3)))
                          (x86-add cgc (x86-r15) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3))))
                       (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-r15))

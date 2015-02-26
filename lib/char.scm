@@ -1,10 +1,4 @@
 
-(define (char->integer c)
-  ($char->integer c))
-
-(define (integer->char n)
-  ($integer->char n))
-
 (define (char=? c1 c2)
    (= (char->integer c1) (char->integer c2)))
 

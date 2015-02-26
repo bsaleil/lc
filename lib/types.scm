@@ -55,12 +55,6 @@
     (begin (vector-set! vec pos (car lst))
            (list->vector-h (cdr lst) vec (+ pos 1) len))))
 
-(define (string->symbol str)
-  ($string->symbol str))
-
-(define (symbol->string sym)
-  ($symbol->string sym))
-
 (define (number->string num)
   (define (digit->string d)
     (make-string 1 (integer->char (+ d 48))))
