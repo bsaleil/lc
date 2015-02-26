@@ -58,7 +58,7 @@
   
 (define (print-port p)
   (print "#<")
-  (if ($input-port? p)
+  (if (input-port? p)
     (print "input")
     (print "output"))
   (print "-port>"))

@@ -13,15 +13,15 @@
 
 ;; Primitives for type tests
 (define type-predicates `(
-  ($output-port? ,CTX_OPORT)
-  ($input-port?  ,CTX_IPORT)
-  ($symbol?      ,CTX_SYM)
-  ($string?      ,CTX_STR)
-  ($char?        ,CTX_CHAR)
-  ($vector?      ,CTX_VECT)
-  ($number?      ,CTX_NUM)
-  ($procedure?   ,CTX_CLO)
-  ($pair?        ,CTX_PAI)
+  (output-port? ,CTX_OPORT)
+  (input-port?  ,CTX_IPORT)
+  (symbol?      ,CTX_SYM)
+  (string?      ,CTX_STR)
+  (char?        ,CTX_CHAR)
+  (vector?      ,CTX_VECT)
+  (number?      ,CTX_NUM)
+  (procedure?   ,CTX_CLO)
+  (pair?        ,CTX_PAI)
 ))
 
 ;; Primitives for functions
@@ -307,6 +307,7 @@
 
 (define (mlc-identifier ast succ)
   
+  
   (let ((r (assoc ast primitives)))
     (if r
        ;; If primitive, return function calling primitive
@@ -314,25 +315,30 @@
          (gen-ast `(lambda ,args
                       (,ast ,@args))
                   succ))
-       ;; 
-       (make-lazy-code
-         (lambda (cgc ctx)
-           ;; Lookup in local env
-           (let* ((res (assoc ast (ctx-env ctx)))
-                  (ctx-type (if res
-                             (if (eq? (identifier-type (cdr res)) 'free)
-                               ;; Free var
-                               (gen-get-freevar  cgc ctx res 'stack #f)
-                               ;; Local var
-                               (gen-get-localvar cgc ctx res 'stack #f))
-                             (let ((res (assoc ast globals)))
-                               (if res
-                                  ;; Global var
-                                  (gen-get-globalvar cgc ctx res 'stack)
-                                  ;; Unknown
-                                  (error "Can't find variable: " ast))))))
-           
-             (jump-to-version cgc succ (ctx-push ctx ctx-type))))))))
+       ;;
+       (let ((r (assoc ast type-predicates)))
+         (if r
+            ;; If type predicate, return function calling primitive
+            (gen-ast `(lambda (a) (,ast a)) succ)
+             ;;
+             (make-lazy-code
+               (lambda (cgc ctx)
+                 ;; Lookup in local env
+                 (let* ((res (assoc ast (ctx-env ctx)))
+                        (ctx-type (if res
+                                   (if (eq? (identifier-type (cdr res)) 'free)
+                                     ;; Free var
+                                     (gen-get-freevar  cgc ctx res 'stack #f)
+                                     ;; Local var
+                                     (gen-get-localvar cgc ctx res 'stack #f))
+                                   (let ((res (assoc ast globals)))
+                                     (if res
+                                        ;; Global var
+                                        (gen-get-globalvar cgc ctx res 'stack)
+                                        ;; Unknown
+                                        (error "Can't find variable: " ast))))))
+                 
+                   (jump-to-version cgc succ (ctx-push ctx ctx-type))))))))))
 
 ;;
 ;; Make lazy code from DEFINE
@@ -1777,14 +1783,14 @@
                                   (let ((label-done (asm-make-label cgc (new-sym 'label_done))))
                                     (x86-pop   cgc (x86-rax))
                                     
-                                    (cond ;; $number?
-                                          ((eq? op '$number?)
+                                    (cond ;; number?
+                                          ((eq? op 'number?)
                                               (x86-and   cgc (x86-rax) (x86-imm-int 3)) ;; If equal, set ZF to 1
                                               (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
                                               (x86-je    cgc label-done)
                                               (x86-mov   cgc (x86-rax) (x86-imm-int (obj-encoding #f))))
-                                          ;; $char?
-                                          ((eq? op '$char?)
+                                          ;; char?
+                                          ((eq? op 'char?)
                                               (x86-mov cgc (x86-rbx) (x86-rax))
                                               (x86-and cgc (x86-rax) (x86-imm-int 3))
                                               (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
@@ -1803,13 +1809,13 @@
                                                 ;; It's a memory allocated obj
                                                 (x86-mov cgc (x86-rbx) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
                                                 (x86-and cgc (x86-rbx) (x86-imm-int 248))
-                                                (cond ((eq? op '$procedure?)   (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
-                                                      ((eq? op '$pair?)        (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
-                                                      ((eq? op '$vector?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_VECTOR))))    ;; STAG_VECTOR << 3
-                                                      ((eq? op '$string?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_STRING))))    ;; STAG_STRING << 3
-                                                      ((eq? op '$symbol?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_SYMBOL))))    ;; STAG_SYMBOL << 3
-                                                      ((eq? op '$input-port?)  (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_IPORT))))     ;; STAG_IPORT << 3
-                                                      ((eq? op '$output-port?) (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_OPORT))))     ;; STAG_OPORT << 3
+                                                (cond ((eq? op 'procedure?)   (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PROCEDURE)))) ;; STAG_PROCEDURE << 3
+                                                      ((eq? op 'pair?)        (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_PAIR))))      ;; STAG_PAIR << 3
+                                                      ((eq? op 'vector?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_VECTOR))))    ;; STAG_VECTOR << 3
+                                                      ((eq? op 'string?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_STRING))))    ;; STAG_STRING << 3
+                                                      ((eq? op 'symbol?)      (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_SYMBOL))))    ;; STAG_SYMBOL << 3
+                                                      ((eq? op 'input-port?)  (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_IPORT))))     ;; STAG_IPORT << 3
+                                                      ((eq? op 'output-port?) (x86-cmp cgc (x86-rbx) (x86-imm-int (* 8 STAG_OPORT))))     ;; STAG_OPORT << 3
                                                       (else (error "NYI")))
                                                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
                                                 (x86-jne cgc label-done)

@@ -1002,7 +1002,7 @@
 ;; Global cc table
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 220);;236)
+(define global-cc-table-maxsize 230)
 ;; Current shape of the global cc table
 (define global-cc-table (make-table))
 

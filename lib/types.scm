@@ -1,29 +1,9 @@
 
 ;; Predicates
 
-(define (number? n)
-  ($number? n))
-
-(define (char? n)
-  ($char? n))
-
-(define (procedure? n)
-  ($procedure? n))
-
-(define (pair? n)
-  ($pair? n))
-
-(define (vector? n)
-  ($vector? n))
-
-(define (string? s)
-  ($string? s))
-
-(define (symbol? s)
-  ($symbol? s))
-
 (define (port? p)
-  ($port? p))
+  (or (input-port? p)
+      (output-port? p)))
 
 (define (boolean? n)
   (cond ((eq? n #t) #t)
