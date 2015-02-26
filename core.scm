@@ -999,7 +999,7 @@
 ;; Global cc table
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 220)
+(define global-cc-table-maxsize 235)
 ;; Current shape of the global cc table
 (define global-cc-table (make-table))
 
@@ -1009,7 +1009,8 @@
 ;; Store and compare ctx-stack in enough because environment is
 ;; the same for all versions of a lazy-object.
 (define (get-closure-index ctx)
-  ;(pp (table-length global-cc-table))
+  (if (= (table-length global-cc-table) global-cc-table-maxsize)
+     (error "CC-TABLE OVERFLOW"))
   (let ((res (table-ref global-cc-table (ctx-stack ctx) #f)))
     (if res
       res

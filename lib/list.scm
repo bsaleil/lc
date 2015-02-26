@@ -1,7 +1,4 @@
 
-(define (cons a b)
-  ($cons a b))
-
 (define (caar l)   (car (car l)))
 (define (cadr l)   (car (cdr l)))
 (define (cdar l)   (cdr (car l)))

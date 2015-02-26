@@ -45,7 +45,7 @@
   $vector-ref
   $vector-length
   $make-vector
-  $cons
+  cons
   set-car!
   set-cdr!
   car
@@ -275,24 +275,31 @@
 ;; Make lazy code from SYMBOL
 ;;
 (define (mlc-identifier ast succ)
-  (make-lazy-code
-    (lambda (cgc ctx)
-      ;; Lookup in local env
-      (let* ((res (assoc ast (ctx-env ctx)))
-             (ctx-type (if res
-                          (if (eq? (identifier-type (cdr res)) 'free)
-                             ;; Free var
-                             (gen-get-freevar  cgc ctx res 'stack #f)
-                             ;; Local var
-                             (gen-get-localvar cgc ctx res 'stack #f))
-                          (let ((res (assoc ast globals)))
-                             (if res
-                                ;; Global var
-                                (gen-get-globalvar cgc ctx res 'stack)
-                                ;; Unknown
-                                (error "Can't find variable: " ast))))))
+  ;; If primitive, return function calling primitive
+  (case ast
+    ((car cdr)
+       (gen-ast `(lambda (a) (,ast a)) succ))
+    ((set-car! set-cdr! cons)
+       (gen-ast `(lambda (a b) (,ast a b)) succ))
+    (else
+      (make-lazy-code
+        (lambda (cgc ctx)
+          ;; Lookup in local env
+          (let* ((res (assoc ast (ctx-env ctx)))
+                 (ctx-type (if res
+                            (if (eq? (identifier-type (cdr res)) 'free)
+                              ;; Free var
+                              (gen-get-freevar  cgc ctx res 'stack #f)
+                              ;; Local var
+                              (gen-get-localvar cgc ctx res 'stack #f))
+                            (let ((res (assoc ast globals)))
+                              (if res
+                                 ;; Global var
+                                 (gen-get-globalvar cgc ctx res 'stack)
+                                 ;; Unknown
+                                 (error "Can't find variable: " ast))))))
            
-           (jump-to-version cgc succ (ctx-push ctx ctx-type))))))
+            (jump-to-version cgc succ (ctx-push ctx ctx-type))))))))
 
 ;;
 ;; Make lazy code from DEFINE
@@ -345,7 +352,7 @@
   (case (car ast)
     ((car cdr)
         (assert-args ast 1 ERR_WRONG_NUM_ARGS))
-    ((set-car! set-cdr!)
+    ((set-car! set-cdr! cons)
         (assert-args ast 2 ERR_WRONG_NUM_ARGS)))
   
   (let* ((special (car ast))
@@ -356,7 +363,7 @@
                       (lambda (cgc ctx)
                          (gen-error cgc ""))))
                  ;; CONS
-                 ((eq? special '$cons) (mlc-pair succ))
+                 ((eq? special 'cons) (mlc-pair succ))
                  ;; CAR & CDR
                  ((member special '(car cdr))
                   (make-lazy-code
