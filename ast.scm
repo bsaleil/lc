@@ -38,12 +38,12 @@
   $symbol->string
   $string->symbol
   $string-length
-  $string-ref
+  string-ref
   $integer->char
   $char->integer
   $vector-set!
-  $vector-ref
-  $vector-length
+  vector-ref
+  vector-length
   $make-vector
   cons
   set-car!
@@ -277,9 +277,9 @@
 (define (mlc-identifier ast succ)
   ;; If primitive, return function calling primitive
   (case ast
-    ((car cdr)
+    ((car cdr vector-length)
        (gen-ast `(lambda (a) (,ast a)) succ))
-    ((set-car! set-cdr! cons)
+    ((set-car! set-cdr! cons vector-ref string-ref)
        (gen-ast `(lambda (a b) (,ast a b)) succ))
     (else
       (make-lazy-code
@@ -337,7 +337,6 @@
                       (else "NYI special")))
          (lazy-special (make-lazy-code
                          (lambda (cgc ctx)
-                           
                            (x86-call cgc label)
                            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
     (if (> (length (cdr ast)) 0)
@@ -350,9 +349,9 @@
 (define (mlc-special-nc ast succ)
   
   (case (car ast)
-    ((car cdr)
+    ((car cdr vector-length)
         (assert-args ast 1 ERR_WRONG_NUM_ARGS))
-    ((set-car! set-cdr! cons)
+    ((set-car! set-cdr! cons vector-ref string-ref)
         (assert-args ast 2 ERR_WRONG_NUM_ARGS)))
   
   (let* ((special (car ast))
@@ -660,12 +659,8 @@
                       
                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM)))))
                       
-                      
-                      
-                 
-                 
                  ;; VECTOR-LENGTH & STRING-LENGTH
-                 ((member special '($vector-length $string-length))
+                 ((member special '(vector-length $string-length))
                   (make-lazy-code
                     (lambda (cgc ctx)
                       (x86-pop cgc (x86-rax)) ;; Pop vector
@@ -673,10 +668,10 @@
                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM)))))
                  
                  ;; VECTOR-REF & STRING-REF
-                 ((member special '($vector-ref $string-ref))
+                 ((member special '(vector-ref string-ref))
                   (make-lazy-code
                     (lambda (cgc ctx)
-                      (let ((vr? (eq? special '$vector-ref)))
+                      (let ((vr? (eq? special 'vector-ref)))
                         (x86-pop cgc (x86-rax)) ;; Pop index
                         (x86-pop cgc (x86-rbx)) ;; Pop vector
                         (cond (vr?

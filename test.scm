@@ -4,7 +4,3 @@
 ;; TODO : les tests de type sont toujours faits dans les prédicats (number?, ...) ?
 ;; TODO : test remainder (et mod vs rem)
 ;-------------------------------
-
-(define AA cons)
-
-(pp (AA 1 2))

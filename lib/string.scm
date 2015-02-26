@@ -2,9 +2,6 @@
 (define (string-length s)
   ($string-length s))
 
-(define (string-ref s i)
-  ($string-ref s i))
-
 (define (string-set! s i v)
   ($string-set! s i v))
 

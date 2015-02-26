@@ -1,12 +1,6 @@
 
 (define (vector . l) (list->vector l))
 
-(define (vector-length v)
-   ($vector-length v))
-
-(define (vector-ref v i)
-  ($vector-ref v i))
-
 (define (vector-set! v i val)
   ($vector-set! v i val))
 
