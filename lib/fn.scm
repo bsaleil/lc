@@ -16,7 +16,9 @@
   (print-msgs (cons msg msgs))
   ($error))
 
-(define fatal-error error)
+(define fatal-error
+  (lambda (msg . msgs)
+    (apply error (cons msg msgs))))
 
 (define (apply fn a . args)
   (define (argslist args)

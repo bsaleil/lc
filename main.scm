@@ -41,7 +41,7 @@
               (lambda (cgc ctx)
                  (x86-pop cgc (x86-rax))
                  (x86-mov cgc (x86-mem 0 (x86-r10)) (x86-rax))
-                 (jump-to-version cgc (gen-ast '(pp $$REPL-RES) lazy-read-eval #f) (ctx-pop ctx)))))
+                 (jump-to-version cgc (gen-ast '(pp $$REPL-RES) lazy-read-eval) (ctx-pop ctx)))))
            ;; Lazy read-eval
            (lazy-read-eval (make-lazy-code
               (lambda (cgc ctx)
@@ -68,8 +68,35 @@
 
 (define (exec lib prog)
 
+  ;; Récupérer les noms des fonctions de librairie
+  ;; Simplement détecter les appels à la librairie standard, opti
+  
+  ;; TODO
+  ;; TODO
+  ;; Idée : Stocker une table spéciale pour les fonctions de librairie avec chaque contexte
+  ;; (on garde l'addresse de la cc table de chaque fonction de lib) pour faire un appel sans indirection
+  ;; donc, quand on appelle une fonction de lib, pas d'indirection
+  ;; AU GC, MAJ des emplacement des fonctions, ou sinon, allouer les fonctions de lib dans un endroit special
+  (define (mytest lib accu)
+    (if (null? lib)
+       accu
+       (let ((entry (car lib)))
+         
+         (if (eq? (car entry) 'define)
+            (let ((cell (alloc-still-vector 2)))
+              (vector-set! cell 0 #f)
+              (vector-set! cell 1 #f)
+              (if (list? (cadr entry))
+                 (mytest (cdr lib) (cons (cons (caadr entry) cell) accu))
+                 (mytest (cdr lib) (cons (cons (cadr entry)  cell) accu))))
+            (mytest (cdr lib) accu)))))
+  
   (init)
-
+  
+  ;; TODO
+  (if libcall-optimization
+    (set! libids (mytest lib '())))
+  
   (let* ((lazy-prog (lazy-exprs prog #f))
          (lazy-lib  (lazy-exprs lib  lazy-prog)))
     
@@ -101,6 +128,11 @@
                        ;; '-v' to enable both JIT and GC verbose debugging
                        ((equal? arg "-v")     (set! verbose-jit #t)
                                               (set! verbose-gc  #t))
+                       ;; TODO
+                       ((equal? arg "-opt-libcall=true")
+                          (set! libcall-optimization #t))
+                       ((equal? arg "-opt-libcall=false")
+                          (set! libcall-optimization #f))
                        ;; Other option stops exec
                        (else (print "Unknown option ")
                              (println arg)

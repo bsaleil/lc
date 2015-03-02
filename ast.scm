@@ -2,10 +2,6 @@
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
-;; Base ctx for procedure call
-;; TODO : cons where used
-(define base-ctx (list CTX_CLO))
-
 ;; TODO : RCX global ? (used by if/else stubs)
 
 ;;-----------------------------------------------------------------------------
@@ -34,30 +30,30 @@
   $error
 ))
 
-;; Primitives: name, nb args min, fixed nb args
+;; Primitives: name, nb args min, nb args max, fixed nb args
 (define primitives '(
-   (car               1  #t)
-   (cdr               1  #t)
-   (set-car!          2  #t)
-   (set-cdr!          2  #t)
-   (cons              2  #t)
-   (vector-length     1  #t)
-   (vector-ref        2  #t)
-   (char->integer     1  #t)
-   (integer->char     1  #t)
-   (string-ref        2  #t)
-   (string->symbol    1  #t)
-   (symbol->string    1  #t)
-   (close-output-port 1  #t)
-   (close-input-port  1  #t)
-   (open-output-file  1  #t)
-   (open-input-file   1  #t)
-   (string-set!       3  #t)
-   (vector-set!       3  #t)
-   (string-length     1  #t)
-   (read-char         1  #t)
+   (car               1  1  #t)
+   (cdr               1  1  #t)
+   (set-car!          2  2  #t)
+   (set-cdr!          2  2  #t)
+   (cons              2  2  #t)
+   (vector-length     1  1  #t)
+   (vector-ref        2  2  #t)
+   (char->integer     1  1  #t)
+   (integer->char     1  1  #t)
+   (string-ref        2  2  #t)
+   (string->symbol    1  1  #t)
+   (symbol->string    1  1  #t)
+   (close-output-port 1  1  #t)
+   (close-input-port  1  1  #t)
+   (open-output-file  1  1  #t)
+   (open-input-file   1  1  #t)
+   (string-set!       3  3  #t)
+   (vector-set!       3  3  #t)
+   (string-length     1  1  #t)
+   (read-char         1  1  #t)
    
-   (eof-object? 1 #t) ;; TODO
+   (eof-object?       1  1  #t) ;; NOTE : move to type predicates ?
 ))
 
 ;;-----------------------------------------------------------------------------
@@ -100,18 +96,18 @@
         ;; Pair
         ((pair? ast)
          (let ((op (car ast)))
-           (cond ;; Special with call
-                 ((eq? op '$$putchar) (mlc-special-c ast succ))
+           (cond ;; Special
+                 ((member op '($$putchar breakpoint)) (mlc-special ast succ))
                  ;; Special without call
                  ((or (member op prim-fn)
                       (assoc op primitives))
-                    (mlc-special-nc ast succ))
+                    (mlc-primitive ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
                  ;; Set!
                  ((eq? 'set! (car ast)) (mlc-set! ast succ))
                  ;; Lambda
-                 ((eq? op 'lambda) (mlc-lambda ast succ))
+                 ((eq? op 'lambda) (mlc-lambda ast succ #f))
                  ;; Begin
                  ((eq? op 'begin) (mlc-begin ast succ))
                  ;; Do
@@ -177,7 +173,7 @@
         (x86-pop cgc (x86-rax)) ;; el
         (x86-pop cgc (x86-rbx)) ;; vector
         (x86-mov cgc (x86-mem (- (+ 16 (* idx 8)) TAG_MEMOBJ) (x86-rbx)) (x86-rax))
-        (x86-push cgc (x86-rbx)) ;; TODO + Pas besoin des deux si l'élément est un literal ?
+        (x86-push cgc (x86-rbx)) ;; TODO + Remove if element is a literal ?
         (if (= idx (- (vector-length ast) 1))
            (jump-to-version cgc
                             succ
@@ -270,6 +266,7 @@
 ;; Make lazy code from SET!
 ;;
 (define (mlc-set! ast succ)
+  
   (let* ((id (cadr ast))
          (lazy-set
             (make-lazy-code
@@ -293,20 +290,7 @@
 ;;
 ;; Make lazy code from SYMBOL
 ;;
-
-;;TODO
-(define (build-list n proc)
-  
-  (define (build-list-h p proc)
-    (if (= p 0)
-      '()
-      (cons (proc (- n p)) (build-list-h (- p 1) proc))))
-  
-  (build-list-h n proc))
-  
-
 (define (mlc-identifier ast succ)
-  
   
   (let ((r (assoc ast primitives)))
     (if r
@@ -344,6 +328,7 @@
 ;; Make lazy code from DEFINE
 ;;
 (define (mlc-define ast succ)
+  
   (let* ((identifier (cadr ast))
          (lazy-bind (make-lazy-code (lambda (cgc ctx)
                                      (x86-pop cgc (x86-rax))
@@ -355,7 +340,22 @@
                                      (x86-push cgc (x86-imm-int ENCODING_VOID))
 
                                      (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))
-         (lazy-val (gen-ast (caddr ast) lazy-bind)))
+         (lazy-val
+           (cond ;; (define LIB_ID (lambda ...))
+                 ((and libcall-optimization
+                       (assoc (cadr ast) libids)
+                       (list? (caddr ast))
+                       (eq? (caaddr ast) 'lambda))
+                    ;(gen-ast (caddr ast) lazy-bind))
+                    (mlc-lambda (caddr ast) lazy-bind (cadr ast)))
+                 ;; (define LIB_ID x)
+                 ((and libcall-optimization
+                       (assoc (cadr ast) libids)
+                       (not (list? (caddr ast))))
+                    (pp ast)
+                    (error "NYI"))
+                 (else
+                    (gen-ast (caddr ast) lazy-bind)))))
 
     (make-lazy-code (lambda (cgc ctx)
                       (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
@@ -368,24 +368,26 @@
 ;; SPECIAL
 
 ;;
-;; Make lazy code from SPECIAL FORM (called specials)
+;; Make lazy code from SPECIAL FORM
 ;;
-(define (mlc-special-c ast succ)
-  (let* ((name (car ast))
-         (label (cond ((eq? name '$$putchar) label-$$putchar)
-                      (else "NYI special")))
-         (lazy-special (make-lazy-code
-                         (lambda (cgc ctx)
-                           (x86-call cgc label)
-                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
-    (if (> (length (cdr ast)) 0)
-        (gen-ast-l (cdr ast) lazy-special)
-        lazy-special)))
+(define (mlc-special ast succ)
+  (cond ((eq? (car ast) 'breakpoint)
+           (make-lazy-code
+             (lambda (cgc ctx)
+               (gen-breakpoint cgc)
+               (x86-push cgc (x86-imm-int ENCODING_VOID))
+               (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))
+        ((eq? (car ast) '$$putchar)
+           (let ((l (make-lazy-code
+                       (lambda (cgc ctx)
+                          (x86-call cgc label-$$putchar)
+                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
+             (gen-ast (cadr ast) l)))))
 
 ;;
 ;; Make lazy code from SPECIAL FORM (inlined specials)
 ;;
-(define (mlc-special-nc ast succ)
+(define (mlc-primitive ast succ)
   
   (if (assoc (car ast) primitives) ;; TODO : remove when all primitives inlined
     (assert-p-nbargs ast))
@@ -432,7 +434,6 @@
                        (x86-push cgc (x86-imm-int ENCODING_VOID))
                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))
                  ;; OPEN-INPUT-FILE
-                 ;; TODO output port STAG ET CTX
                  ((member special '(open-output-file open-input-file))
                    (make-lazy-code
                      (lambda (cgc ctx)
@@ -483,7 +484,7 @@
                     (lambda (cgc ctx)
                       ;; Gen 'read' syscall (read 1 byte), encoded value (char or eof) in rax
                       (gen-syscall-write-char cgc)
-                      (x86-add cgc (x86-rsp) (x86-imm-int 16)) ;; TODO
+                      (x86-add cgc (x86-rsp) (x86-imm-int 16)) ;; NOTE: clean stack in gen-syscall-write-char?
                       ;; Push encoded result
                       (x86-push cgc (x86-imm-int ENCODING_VOID))
                       ;; Jump to succ
@@ -636,7 +637,6 @@
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VECT))))))
                  
                  ;; STRING<->SYMBOL
-                 ;; TODO : tags
                  ((member special '(string->symbol symbol->string))
                   (make-lazy-code
                     (lambda (cgc ctx)
@@ -648,7 +648,11 @@
                       (x86-shr cgc (x86-rax) (x86-imm-int 8))
                       (x86-shl cgc (x86-rax) (x86-imm-int 2))
                       (x86-mov cgc (x86-rbx) (x86-rax))
-                      (gen-allocation cgc ctx STAG_SYMBOL 0 #t)
+                      (gen-allocation cgc
+                                      ctx
+                                      (if (eq? special 'string->symbol) STAG_SYMBOL STAG_STRING)
+                                      0
+                                      #t)
                 
                       ;; Symbol address in rbx
                       (x86-shl cgc (x86-rbx) (x86-imm-int 1))
@@ -763,7 +767,7 @@
 ;;
 ;; Make lazy code from LAMBDA
 ;;
-(define (mlc-lambda ast succ)
+(define (mlc-lambda ast succ lib-define)
   (let* (;; Lambda free vars
          (fvars #f)
          ;; Lambda mutable vars
@@ -805,13 +809,15 @@
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
          (lazy-prologue (make-lazy-code
                            (lambda (cgc ctx)
-                              (let* ((actual-p (- (length (ctx-stack ctx)) (length base-ctx) 1)) ;; 1 for return address
+                              (let* ((actual-p (- (length (ctx-stack ctx)) 2)) ;; 1 for return address / closure
                                      (formal-p (ctx-nb-args ctx)))
 
                                 (if (or (and (not rest-param) (not (= actual-p formal-p)))
                                         (and rest-param (< actual-p formal-p)))
                                    ;; Wrong number of arguments
-                                   (begin (pp ast) (gen-error cgc ERR_WRONG_NUM_ARGS))
+                                   (begin
+                                     (pp ast)
+                                     (gen-error cgc ERR_WRONG_NUM_ARGS))
                                    ;; Correct number of arguments
                                    (begin (cond ;; Rest param declared but not given
                                                 ((and rest-param (= actual-p formal-p))
@@ -823,26 +829,22 @@
                                                     (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
                                                     ;; Add type information to ctx
                                                     ;; TODO
-                                                    (let* ((cstack (append base-ctx (list 'pair) (list-tail (ctx-stack ctx) (length base-ctx))))
+                                                    (let* ((cstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) 1)))) ;; TODO
                                                            (cnbargs (+ (ctx-nb-args ctx) 1))
                                                            (cenv (ctx-env ctx))
                                                            (cctx (make-ctx cstack cenv cnbargs)))
                                                      (set! ctx cctx)))
-                                                    ;(ctx-stack-set! ctx (append base-ctx (list 'pair) (list-tail (ctx-stack ctx) (length base-ctx))))
-                                                    ;(ctx-nb-args-set! ctx (+ (ctx-nb-args ctx) 1)))
                                                 ;; Rest param declared and given
                                                 ((and rest-param (> actual-p formal-p))
                                                  
                                                     (gen-rest-lst cgc ctx (- actual-p formal-p))
                                                     
                                                     ;; TODO
-                                                    (let* ((cstack (append base-ctx '(pair) (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1))))
+                                                    (let* ((cstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1)))))
                                                            (cnbargs (+ (ctx-nb-args ctx) 1))
                                                            (cenv (ctx-env ctx))
                                                            (cctx (make-ctx cstack cenv cnbargs)))
                                                       (set! ctx cctx))
-                                                    ;(ctx-stack-set! ctx (append base-ctx '(pair) (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1)))) ;; 1 for return address ;; TODO : write context one time
-                                                    ;(ctx-nb-args-set! ctx (+ (ctx-nb-args ctx) 1))
                                                     ))
                                           
                                           (gen-mutable cgc ctx mvars)
@@ -876,7 +878,7 @@
             
             ;; ALLOC
             (gen-allocation cgc ctx STAG_PROCEDURE total-size)
-            
+    
             ;; 1 - WRITE OBJECT HEADER
             (x86-mov cgc (x86-rax) (x86-imm-int header-word))
             (x86-mov cgc (x86-mem (* -8 total-size) alloc-ptr) (x86-rax))
@@ -894,6 +896,18 @@
               (x86-mov cgc (x86-mem (+ (* 8 closure-size) (* -8 total-size)) alloc-ptr) (x86-rax)))
             (gen-cc-table cgc stub-addr (+ 8 (* 8 closure-size) (* -8 total-size)))
               
+            ;; Libcall optimization
+            (if (and lib-define
+                     libcall-optimization)
+               (let ((r (assoc lib-define libids)))                 
+                 ;; Closure
+                 (x86-lea cgc (x86-rax) (x86-mem (* -8 total-size) alloc-ptr))
+                 (x86-mov cgc (x86-mem (+ (- (obj-encoding (cdr r)) 1)  8)) (x86-rax))
+                 ;; CC-table
+                 ;(x86-lea cgc (x86-rax) (x86-mem (* -8 (+ global-cc-table-maxsize 8)) alloc-ptr))
+                 (x86-lea cgc (x86-rax) (x86-mem (- (* -8 global-cc-table-maxsize) 8) alloc-ptr))
+                 (x86-mov cgc (x86-mem (+ (- (obj-encoding (cdr r)) 1) 16)) (x86-rax))
+                 ))
             
             ;; TAG AND PUSH CLOSURE
             (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 total-size)) alloc-ptr))
@@ -914,7 +928,7 @@
            (if (member 'ret (lazy-code-flags succ))
              ;; No body and succ is a ret object
              (error ERR_BEGIN)
-             ;; No body and succ is NOT a ret object
+             ;; No body and succ is *not* a ret object
              (make-lazy-code
                (lambda (cgc ctx)
                  (x86-push cgc (x86-imm-int ENCODING_VOID))
@@ -944,7 +958,6 @@
 ;;-----------------------------------------------------------------------------
 ;; Bdingings (let, letrec, let*)
 
-;; TODO: Implement #!unbound ?
 ;; NOTE: Letrec: All ids are considered as mutable. Analysis to detect recursive use of ids?
 
 ;; Entry point to compile let, letrec
@@ -1065,12 +1078,6 @@
   
   ;; Initial call
   (gen-letrec-binds-h cgc ctx all-ids 0 (length all-ids)))
- 
-;;
-;; Make lazy code from LET*
-;;
-;; TODO ?
-
   
 ;;
 ;; Make lazy code from LET
@@ -1482,6 +1489,10 @@
 ;;
 (define (mlc-call ast succ)
   
+  ;; TODO : valeur de retour pas unknown pour les fonctions de lib
+  ;; Libcall optimization
+  (define libcall (assoc (car ast) libids))
+  
   (let* (;; Tail call if successor's flags set contains 'ret flag
          (tail (member 'ret (lazy-code-flags succ)))
          ;; Call arguments
@@ -1492,11 +1503,11 @@
          (lazy-call (make-lazy-code (lambda (cgc ctx)
                                         ;; Call ctx in rdx
                                         (let* ((call-stack    (if tail
-                                                                (append base-ctx (list-head (cdr (ctx-stack ctx)) (length args)) (list CTX_RETAD))
-                                                                (append base-ctx (list-head (cdr (ctx-stack ctx)) (+ (length args) 1))))) ;; CTX : list CTX_RETAD au lieu de +1 ?
+                                                                (cons CTX_CLO (append (list-head (cdr (ctx-stack ctx)) (length args)) (list CTX_RETAD)))
+                                                                (cons CTX_CLO (append (list-head (cdr (ctx-stack ctx)) (+ (length args) 1)))))) ;; CTX : list CTX_RETAD au lieu de +1 ?
                                                (call-ctx      (make-ctx call-stack '() -1))
                                                (cct-offset    (* 8 (+ 1 (get-closure-index call-ctx)))))
-
+                                      
                                         (if tail 
                                           (tail-shift cgc
                                                       ;; Nb slots to shift
@@ -1508,11 +1519,21 @@
                                         
                                         ;; 0 - R11 = still-box address containing call-ctx
                                         (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
+                                      
+                                        ;; Libcall optimization
+                                        (if (and libcall
+                                                 libcall-optimization
+                                                 (not (assoc (car ast) (ctx-env ctx)))
+                                                 (not (> (assocount (car ast) globals) 1)))
+                                            
+                                           (begin (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (cdr libcall)) 1)) ;; Vector in rax
+                                                  (x86-mov cgc (x86-rax) (x86-mem (- 16 1) (x86-rax))))
                                         
-                                        ;; 1 - Get cc-table
-                                        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))                ;; get closure
-                                        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; get cc-table
-
+                                          ;; 1 - Get cc-table
+                                          (begin 
+                                            (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))                ;; get closure
+                                            (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))) ;; get cc-table
+                                        
                                         ;; 2 - Get entry point in cc-table
                                         (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
                                         
@@ -1521,7 +1542,25 @@
          ;; Lazy main
          (lazy-main (gen-fatal-type-test CTX_CLO 0 lazy-call))
          ;; Lazy callee
-         (lazy-operator (gen-ast (car ast) lazy-main)))
+         (lazy-operator
+            ;; Libcal optimization
+            (make-lazy-code
+              (lambda (cgc ctx)
+                (if (and libcall
+                         libcall-optimization
+                         (not (assoc (car ast) (ctx-env ctx)))
+                         (not (> (assocount (car ast) globals) 1)))
+                
+                  (begin 
+                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (cdr libcall)) 1))
+                      (x86-mov cgc (x86-rax) (x86-mem (- 8 1) (x86-rax)))
+                      (x86-add cgc (x86-rax) (x86-imm-int 1)) ;; tag closure
+                      (x86-push cgc (x86-rax))
+                      (jump-to-version cgc lazy-call (ctx-push ctx CTX_CLO)))
+                
+                  (jump-to-version cgc
+                                   (gen-ast (car ast) lazy-main)
+                                   ctx))))))
 
     ;; Build first lazy code
     ;; This lazy code creates continuation stub and push return address
@@ -1565,7 +1604,9 @@
 ;;-----------------------------------------------------------------------------
 ;; Operators
 
-;; TODO
+;;
+;; Make lazy code from BINARY OPERATOR
+;;
 (define (mlc-op-bin ast succ op)
   (let ((opnds (cdr ast)))
     (if (not (= (length opnds) 2))
@@ -1575,7 +1616,7 @@
           (gen-error cgc ERR_WRONG_NUM_ARGS)))
       ;; == 2 operands
       (let* (;; Overflow stub
-             (stub-labels (add-callback #f 0 (lambda (ret-addr selector)
+             (overflow-labels (add-callback #f 0 (lambda (ret-addr selector)
                                                 (error ERR_ARR_OVERFLOW))))
             
              (lazy-op
@@ -1609,20 +1650,17 @@
              (lazy-test-left  (gen-fatal-type-test CTX_NUM 0 lazy-right))
              (lazy-left       (gen-ast (car opnds) lazy-test-left)))
          lazy-left))))
-    
-;; Renommer stub-labels mlc-op-n et mlc-op-bin
 
-;; TODO : check if redefined
-;; TODO : WIP
-;; TODO : constant folding
-;; Will handle all operators with possibly multiple args
-;; The other function will only handle fixed args operators
+;;
+;; Make lazy code from N-ARY OPERATOR
+;;
 (define (mlc-op-n ast succ op)
+  ;; TODO : Inlined primitive: check if redefined
   
   (let* (;; Operands number
          (nb-opnd (length (cdr ast)))
          ;; Overflow stub
-         (stub-labels (add-callback #f 0 (lambda (ret-addr selector)
+         (overflow-labels (add-callback #f 0 (lambda (ret-addr selector)
                                             (error ERR_ARR_OVERFLOW))))
          ;; Lazy operation
          (lazy-op
@@ -1638,16 +1676,16 @@
                  (if (= nb 0)
                      (x86-mov cgc (x86-mem (* 8 (- total 1)) (x86-rsp)) (x86-rax))
                      (begin (x86-sub cgc (x86-rax) (x86-mem offset (x86-rsp)))
-                            (x86-jo cgc (list-ref stub-labels 0))
+                            (x86-jo cgc (list-ref overflow-labels 0))
                             (compute- (- offset 8) (- nb 1) total))))
               
                ;; Compute addition with operands from stack
                (define (compute+ offset nb)
                  (if (= nb 0)
                    (begin (x86-add cgc (x86-mem offset (x86-rsp)) (x86-rax))
-                          (x86-jo cgc (list-ref stub-labels 0)))
+                          (x86-jo cgc (list-ref overflow-labels 0)))
                    (begin (x86-add cgc (x86-rax) (x86-mem offset (x86-rsp)))
-                          (x86-jo cgc (list-ref stub-labels 0))
+                          (x86-jo cgc (list-ref overflow-labels 0))
                           (compute+ (+ offset 8) (- nb 1)))))
                
                ;; Compute multiplication with operands from stack
@@ -1655,11 +1693,11 @@
                  (if (= nb 0)
                    (begin (x86-sar cgc (x86-rax) (x86-imm-int 2))
                           (x86-imul cgc (x86-rax) (x86-mem offset (x86-rsp)))
-                          (x86-jo cgc (list-ref stub-labels 0))
+                          (x86-jo cgc (list-ref overflow-labels 0))
                           (x86-mov cgc (x86-mem offset (x86-rsp)) (x86-rax)))                          
                    (begin (x86-sar cgc (x86-rax) (x86-imm-int 2))
                           (x86-imul cgc (x86-rax) (x86-mem offset (x86-rsp)))
-                          (x86-jo cgc (list-ref stub-labels 0))
+                          (x86-jo cgc (list-ref overflow-labels 0))
                           (compute* (+ offset 8) (- nb 1)))))
                
                ;; Compute less with operands from stack
@@ -1685,8 +1723,8 @@
                          (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
                          (compute* 8 (- nb-opnd 2)))
                      ((member op '(< > <= >= =))
-                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; TODO factoriser
-                         (compute< (cond ((eq? op '<) x86-jle) ;; TODO : commentaire
+                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; RAX = last opnd
+                         (compute< (cond ((eq? op '<) x86-jle) ;; n-th opnd must be > than (n-1)-th opnd then if false jle to end
                                          ((eq? op '>) x86-jge)
                                          ((eq? op '<=) x86-jl)
                                          ((eq? op '>=) x86-jg)
@@ -2276,3 +2314,20 @@
   (if (> n 0)
     (begin (apply fn args)
            (apply call-n (append (list (- n 1) fn ) args)))))
+
+;; Build a new list of length n and apply proc to each element
+(define (build-list n proc)
+  (define (build-list-h p proc)
+    (if (= p 0)
+      '()
+      (cons (proc (- n p)) (build-list-h (- p 1) proc))))
+  (build-list-h n proc))
+
+;; Count assoc of el in lst
+(define (assocount el lst)
+  (if (null? lst)
+    0
+    (let ((c (car lst)))
+      (if (equal? (car c) el)
+        (+ 1 (assocount el (cdr lst)))
+        (assocount el (cdr lst))))))

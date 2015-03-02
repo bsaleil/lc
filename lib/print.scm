@@ -179,9 +179,9 @@
   (pp-h n)
   ($$putchar 10))
 
-
-
-(define write pp)
+(define write
+  (lambda (n)
+    (pp n)))
 
 (define (newline)
   ($$putchar 10))

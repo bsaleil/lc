@@ -49,6 +49,18 @@
 (set-cdr! l '(#f #f #f))
 (pp l)
 
+(println "Set-car!/Set-cdr!")
+
+(define l2 '(1 #t (1 2 3) #\T "Hello"))
+(set-car! (caddr l2) #t)
+(pp l2)
+(set-cdr! (caddr l2) 10)
+(pp l2)
+(set-car! l2 'Hello)
+(pp l2)
+(set-cdr! l2 (list 'World))
+(pp l2)
+
 (println "Append")
 
 (pp (append))
@@ -59,12 +71,12 @@
 
 (println "List-ref")
 
-(define l2 '(1 #t #\T "Hello"))
+(define l3 '(1 #t #\T "Hello"))
 
-(pp (list-ref l2 0))
-(pp (list-ref l2 1))
-(pp (list-ref l2 2))
-(pp (list-ref l2 3))
+(pp (list-ref l3 0))
+(pp (list-ref l3 1))
+(pp (list-ref l3 2))
+(pp (list-ref l3 3))
 
 (println "Reverse")
 
@@ -151,6 +163,11 @@
 ;#\T
 ;(#f #t #\T "Hello")
 ;(#f #f #f #f)
+;Set-car!/Set-cdr!
+;(1 #t (#t 2 3) #\T "Hello")
+;(1 #t (#t . 10) #\T "Hello")
+;(Hello #t (#t . 10) #\T "Hello")
+;(Hello World)
 ;Append
 ;()
 ;()

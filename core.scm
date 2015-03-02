@@ -8,6 +8,10 @@
 
 ;;-----------------------------------------------------------------------------
 
+(define libcall-optimization #t)
+
+;;-----------------------------------------------------------------------------
+
 (include "x86-debug.scm")
 
 ;;-----------------------------------------------------------------------------
@@ -21,6 +25,9 @@
 ;; Compiler options
 (define verbose-jit #f) ;; JIT Verbose debugging
 (define verbose-gc  #f) ;; GC  Verbose debugging
+
+;;TODO
+(define libids '())
 
 ;;-----------------------------------------------------------------------------
 
@@ -153,6 +160,102 @@
        (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
        (x86-mov cgc alloc-ptr (x86-rax)) ;; TODO : Update alloc-ptr
        )))
+
+;;-----------------------------------------------------------------------------
+
+(define label-breakpoint     #f)
+;; TODO
+(define (gen-breakpoint cgc)
+  
+  ;; TODO
+  (push-pop-regs
+     cgc
+     all-regs
+     (lambda (cgc)
+       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
+       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+       (x86-push cgc (x86-rdi))
+       (x86-call cgc label-breakpoint) ;; call C function
+       (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
+       )))
+
+;; The procedure exec-error is callable from generated machine code.
+;; This function print the error message in rax
+(c-define (break_point sp) (long) void "break_point" ""
+  
+  (let ((reg-names '("R15" "R14" "R13" "R12" "R11" "R10" " R9" " R8"
+                     "RDI" "RSI" "RBP" "RDX" "RCX" "RBX" "RAX" "RSP")))
+  
+  (define (get-regs regs offset)
+    (if (null? regs)
+      '()
+      (cons (cons (car regs) (get-i64 (+ sp offset)))
+            (get-regs (cdr regs) (+ offset 8)))))
+  
+  (define (println-slot slot)
+    (let ((str (number->string slot)))
+      (print slot (make-string (- 19 (string-length str)) #\space)))
+    (print "|  ")
+    (let ((tag (bitwise-and slot 3)))
+      (cond ((= tag 0) (print (quotient slot 4)))
+            ((= tag 1) (print "Mem object"))
+            ((= slot ENCODING_VOID) (print "void"))
+            ((= slot ENCODING_EOF)  (print "eof"))
+            ((= tag 2) (print (encoding-obj slot)))))
+    (newline))
+  
+  (define (print-stack n regs)
+    (cond ((= n 0))
+          ((= n 1)
+             (println "       +--------------------+--------------------+")
+             (print   "RSP -> | ") (println-slot (get-i64 (+ (* 8 (- n 1)) (cdr (assoc "RSP" regs)))))
+             (println "       +--------------------+--------------------+"))
+          (else
+             (print-stack (- n 1) regs)
+             (print   "       | ") (println-slot (get-i64 (+ (* 8 (- n 1)) (cdr (assoc "RSP" regs)))))
+             (println "       +--------------------+--------------------+"))))
+  
+  (define (print-regs regs)
+    (if (not (null? regs))
+      (begin (print-regs (cdr regs))
+             (print-reg  (car regs)))))
+  
+  (define (print-reg reg)
+    (println (car reg) " = " (cdr reg)))
+    
+  (let ((regs (get-regs reg-names 0)))
+    
+    (define (run)
+      (print ">")
+      (let ((r (read-line)))
+        (set! r (string-upcase r))
+        (let ((reg (assoc r regs)))
+          (cond ;; Print one reg
+                ((assoc r regs) => (lambda (r) (print-reg r)))
+                ;; Print all regs
+                ((string=? r "REGS")  (print-regs regs))
+                ;; Print stack (5 slots)
+                ((string=? r "STACK") (print-stack 5 regs))
+                ;; Print stack (n slots)
+                ((and (> (string-length r) 6)
+                      (string=? (substring r 0 5) "STACK")
+                      (char=? (string-ref r 5) #\space)
+                      (string->number (substring r 6 (string-length r))))
+                  (let ((num (string->number (substring r 6 (string-length r)))))
+                    (if (and (integer? num)
+                             (> num 0))
+                        (print-stack num regs)
+                        (println "Unknown command"))))
+                ;; Continue
+                ((string=? r "NEXT"))
+                ;; Unknown
+                (else (println "Unknown command")))
+          (if (not (string=? r "NEXT"))
+            (run)))))
+    
+    (println "\033[1;31m⚫ Breakpoint\033[0m")
+    (run))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -339,7 +442,17 @@
            (##foreign-address
             ((c-lambda ()
                        (pointer void)
-                       "___result = ___CAST(void*,dump_stack);"))))))
+                       "___result = ___CAST(void*,dump_stack);")))))
+  
+  ;; TODO
+  (set! label-breakpoint
+        (asm-make-label
+         cgc
+         'break_point
+         (##foreign-address
+          ((c-lambda ()
+                     (pointer void)
+                     "___result = ___CAST(void*,break_point);"))))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -387,7 +500,7 @@
 
 (define block #f)
 ;; TODO : fixed number of globals
-(define global-offset 3) ;; Stack addr, current input, current output
+(define global-offset 5) ;; Stack addr, current input, current output + 2 empty slot (used for debug)
 (define block-len (* 8 (+ global-offset 10000))) ;; 1 stack addr, 1000 globals
 (define block-addr #f)
 

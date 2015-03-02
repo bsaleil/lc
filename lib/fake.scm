@@ -5,7 +5,7 @@
 
 (define exact->inexact (lambda (x) x))
 
-(define integer? number?)
+(define integer? (lambda (n) (number? n)))
 
 (define call-with-current-continuation (lambda (r) (r #f)))
 

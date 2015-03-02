@@ -384,6 +384,19 @@
 
 (define (run-gc sp alloc-size)
   
+  ;; TODO
+  (define (mytest-gc lis)
+    (if (not (null? lis))
+      (let* ((li (car lis))
+             (global (assoc (car li) globals))
+             (new-addr (get-i64 (+ (* 8 global-offset) (* 8 (cdr global)) block-addr))))
+        
+        (put-i64 (+ (- (obj-encoding (cdr li)) 1) 8)  (- new-addr 1))
+        (put-i64 (+ (- (obj-encoding (cdr li)) 1) 16) (get-i64 (+ 8 (- new-addr 1))))
+        
+        (mytest-gc (cdr lis)))))
+        
+  
   (define scan-ptr to-space)
   (define copy-ptr to-space)
   (define stack-begin (- (get-i64 block-addr) 8))
@@ -402,12 +415,15 @@
   (log-gc "-- GLOBAL ROOTS")
   (log-gc "---------------")
   (set! copy-ptr (copy-global-roots globals copy-ptr))
-      
   ;; 3 - Copy referenced objects until scan == copy
   (log-gc "--------------")
   (log-gc "-- REFERENCES ")
   (log-gc "--------------")
   (set! copy-ptr (scan-references scan-ptr copy-ptr))
+  
+  ;; TODO
+  (if libcall-optimization
+    (mytest-gc libids))
   
   ;; Check if there is enough memory for alloc request
   (if (>= (+ copy-ptr alloc-size) (+ to-space space-len))

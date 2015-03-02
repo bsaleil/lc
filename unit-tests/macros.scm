@@ -1,4 +1,6 @@
 
+(println "AND")
+
 (println (and))
 (println (and #t))
 (println (and #f))
@@ -9,7 +11,7 @@
 (println (and 1 2 3))
 (println (and (and #t #t) (and #t #t)))
 
-(println 123456789)
+(println "OR")
 
 (println (or))
 (println (or #t))
@@ -20,7 +22,7 @@
 (println (or #f #f 10))
 (println (or (or #f #f) (or #f #t)))
 
-(println 123456789)
+(println "COND")
 
 (println (cond (else 99)))
 (println (cond (#t 50)))
@@ -44,8 +46,14 @@
 (println (cond ((= 1 2) #t)
                ((= 2 2) (and #t #f))
                (else 10)))
+(println (cond ((= 1 2) #t)
+               ((= 1 1) (print "=") (print "1") (println "2") #t)
+               (else #f)))
+(println (cond ((= 1 2) #t)
+               ((= 2 1) #f)
+               (else (print 'e) (print 'l) (print 's) (println 'e) #t)))
 
-(println 123456789)
+(println "BEGIN")
 
 (begin (println 0))
 (begin (println 1)
@@ -71,7 +79,7 @@
 (foo2 200)
 (foo3 300)
 
-(println 123456789)
+(println "IF")
 
 (if #t (println 100))
 (if #f (println 200))
@@ -80,6 +88,7 @@
 (if (or #t #f) (println (and #t #t)) (println (or #t #t)))
 (if (and #t #f) (println (and #t #t)) (println (or #t #t)))
 
+;AND
 ;#t
 ;#t
 ;#f
@@ -89,7 +98,7 @@
 ;
 ;3
 ;#t
-;123456789
+;OR
 ;#f
 ;#t
 ;#f
@@ -98,7 +107,7 @@
 ;#f
 ;10
 ;#t
-;123456789
+;COND
 ;99
 ;50
 ;#f
@@ -109,7 +118,11 @@
 ;#f
 ;#t
 ;#f
-;123456789
+;=12
+;#t
+;else
+;#t
+;BEGIN
 ;0
 ;1
 ;2
@@ -123,7 +136,7 @@
 ;10
 ;10
 ;300
-;123456789
+;IF
 ;100
 ;300
 ;600
