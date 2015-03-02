@@ -20,36 +20,33 @@
   (pair?        ,CTX_PAI)
 ))
 
-;; Primitives: name, nb args min, nb args max, fixed nb args
+;; Primitives: name, nb args min, nb args max
 (define primitives '(
-   (car               1  1  #t)
-   (cdr               1  1  #t)
-   (set-car!          2  2  #t)
-   (set-cdr!          2  2  #t)
-   (cons              2  2  #t)
-   (vector-length     1  1  #t)
-   (vector-ref        2  2  #t)
-   (char->integer     1  1  #t)
-   (integer->char     1  1  #t)
-   (string-ref        2  2  #t)
-   (string->symbol    1  1  #t)
-   (symbol->string    1  1  #t)
-   (close-output-port 1  1  #t)
-   (close-input-port  1  1  #t)
-   (open-output-file  1  1  #t)
-   (open-input-file   1  1  #t)
-   (string-set!       3  3  #t)
-   (vector-set!       3  3  #t)
-   (string-length     1  1  #t)
-   (read-char         1  1  #t)
-   (exit              0  0  #t)
-   
-   (make-vector       1  2  #t) ;; TOOD : enlever #t/#f inutiles
-   (make-string       1  2  #t)
-   
-   (eof-object?       1  1  #t) ;; NOTE : move to type predicates ?
-   
-   (write-char        1  2  #t)
+   (car               1  1)
+   (cdr               1  1)
+   (set-car!          2  2)
+   (set-cdr!          2  2)
+   (cons              2  2)
+   (vector-length     1  1)
+   (vector-ref        2  2)
+   (char->integer     1  1)
+   (integer->char     1  1)
+   (string-ref        2  2)
+   (string->symbol    1  1)
+   (symbol->string    1  1)
+   (close-output-port 1  1)
+   (close-input-port  1  1)
+   (open-output-file  1  1)
+   (open-input-file   1  1)
+   (string-set!       3  3)
+   (vector-set!       3  3)
+   (string-length     1  1)
+   (read-char         1  1)
+   (exit              0  0)
+   (make-vector       1  2) ;; TODO : enlever #t/#f inutiles
+   (make-string       1  2)
+   (eof-object?       1  1) ;; NOTE : move to type predicates ?
+   (write-char        1  2)
 ))
 
 ;;-----------------------------------------------------------------------------
