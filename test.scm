@@ -79,4 +79,15 @@
 ;          (pp z))
 ;        '("Hello" "World" 1 2 3 4 5))
 
-(println 20)
+;; TODO : apply write-char (list #\A (open-output-port "out") ne marche pas
+;;        car la fonction générée pour write-char a un seul arg. (modifier quand current-output-port implémenté)
+;; TODO : pareil pour apply make-vector (modifier quand optional param implémenté, sinon, créer des fonctions alternatives qui sont retournées avec rest en attendant)
+
+
+;; make-string
+;;;(define s1 (make-string 10))
+(define s1 (make-string 10 #\0))
+(define s2 (make-string 10 #\a))
+
+(pp s1)
+(pp s2)

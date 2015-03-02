@@ -9,9 +9,3 @@
     #f
     (begin (vector-set! v pos val)
            (vector-fill!-h v (+ pos 1) val len))))
-
-(define (make-vector size . init)
-  (let ((v ($make-vector size)))
-    (if (not (null? init))
-        (vector-fill! v (car init)))
-    v))

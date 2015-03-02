@@ -14,7 +14,7 @@
   
   (print "!!! ERROR - ")
   (print-msgs (cons msg msgs))
-  ($error))
+  (exit))
 
 (define fatal-error
   (lambda (msg . msgs)
