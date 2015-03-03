@@ -84,10 +84,6 @@
 ;; TODO : pareil pour apply make-vector (modifier quand optional param implémenté, sinon, créer des fonctions alternatives qui sont retournées avec rest en attendant)
 
 
-;; make-string
-;;;(define s1 (make-string 10))
-(define s1 (make-string 10 #\0))
-(define s2 (make-string 10 #\a))
-
-(pp s1)
-(pp s2)
+(let ((a ((lambda () 10))))
+  (+ a 1))
+  ;(+ a 2))

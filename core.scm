@@ -8,14 +8,11 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define libcall-optimization #t)
-
 ;;-----------------------------------------------------------------------------
 
 (include "x86-debug.scm")
 
 ;;-----------------------------------------------------------------------------
-;; GLOBALS
 
 ;; Global ids
 ;; Contains a list of global ids with id,position
@@ -23,10 +20,11 @@
 (define globals '())
 
 ;; Compiler options
-(define verbose-jit #f) ;; JIT Verbose debugging
-(define verbose-gc  #f) ;; GC  Verbose debugging
+(define verbose-jit          #f) ;; JIT Verbose debugging
+(define verbose-gc           #f) ;; GC  Verbose debugging
+(define libcall-optimization #t) ;; Enable optmizations on lib calls
 
-;;TODO
+;; Ids of lib functions
 (define libids '())
 
 ;;-----------------------------------------------------------------------------
@@ -1000,14 +998,9 @@
         ((null? lst) (error "Not enough els"))
         (else (cons (car lst) (list-head (cdr lst) (- n 1))))))
 
-
-;; TODO
-;; TODO
-;; TODO
-;; It's fatal
-
-
-
+;; Gen FATAL dynamic type test
+;; FATAL means that if type test fails, then it stops execution
+;; Check type 'type' for stack slot at 'stack-idx' and jump to 'succ' if succeess
 (define (gen-fatal-type-test type stack-idx succ)
 
     (make-lazy-code
@@ -1079,7 +1072,7 @@
 
                    (if verbose-jit
                        (println ">>> Gen dynamic type test at index " stack-idx))
-                   
+                   (gen-breakpoint cgc)
                    (cond ;; Number type test
                          ((eq? type CTX_NUM)
                              (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
