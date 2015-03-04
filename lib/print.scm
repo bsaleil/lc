@@ -2,42 +2,29 @@
 (define (print-pos-nz n)
     (if (> n 0)
         (begin (print-pos-nz (quotient n 10))
-               ($$putchar (+ (modulo n 10) 48)))))
+               (write-char (integer->char (+ (modulo n 10) 48))))))
 
 (define (print-pos n)
     (if (= n 0)
-        ($$putchar 48)
+        (write-char #\0 (current-output-port))
         (print-pos-nz n)))
 
 (define (print-nb n)
     (if (< n 0)
-        (begin ($$putchar 45)
+        (begin (print "-")
                (print-pos (* -1 n)))
         (print-pos n)))
 
 (define (print-char n)
-  ($$putchar (char->integer n)))
+  (write-char n (current-output-port)))
 
 (define (print-bool n)
   (if ($eq? n #t)
-      (begin ($$putchar  35)
-             ($$putchar 116))
-      (begin ($$putchar  35)
-             ($$putchar 102))))
+      (print "#t")
+      (print "#f")))
 
 (define (print-procedure n)
-  ($$putchar  35)
-  ($$putchar  60)
-  ($$putchar 112)
-  ($$putchar 114)
-  ($$putchar 111)
-  ($$putchar  99)
-  ($$putchar 101)
-  ($$putchar 100)
-  ($$putchar 117)
-  ($$putchar 114)
-  ($$putchar 101)
-  ($$putchar  62))
+  (print "#<procedure>"))
 
 (define (print-vector vector idx length)
   (if (< idx length)
@@ -50,11 +37,7 @@
             (print-string str (+ pos 1) len))))
 
 (define (print-eof)
-  ($$putchar 35)  ;#
-  ($$putchar 33)  ;!
-  ($$putchar 101) ;e
-  ($$putchar 111) ;o
-  ($$putchar 102));f
+  (print "#!eof"))
   
 (define (print-port p)
   (print "#<")
@@ -82,7 +65,7 @@
   
 (define (println n)
   (print n)
-  ($$putchar 10))
+  (newline))
 
 
 
@@ -94,23 +77,20 @@
         ;; (e1 . e2)
         ((not (pair? (cdr n)))
             (begin (pp-h (car n))
-                   ($$putchar 32)
-                   ($$putchar 46)
-                   ($$putchar 32)
+                   (print " . ")
                    (pp-h (cdr n))))
         ;; (e1 ...)
         (else (begin (pp-h (car n))
-                     ($$putchar 32)
+                     (print " ")
                      (pp-pair-h (cdr n))))))
 
 (define (pp-pair n)
-  ($$putchar 40)
+  (print "(")
   (pp-pair-h n)
-  ($$putchar 41))
+  (print ")"))
 
 (define (pp-char n)
-  ($$putchar 35)
-  ($$putchar 92)
+  (print "#\\")
   (let ((v (char->integer n)))
     (if (> v 32)
        (print-char n)
@@ -140,14 +120,13 @@
             (pp-h (vector-ref vector idx)))
         ((< idx length)
             (begin (pp-h (vector-ref vector idx))
-                   ($$putchar 32)
+                   (print " ")
                    (pp-vector-h vector (+ idx 1) length)))))
 
 (define (pp-vector vector)
-  ($$putchar 35)
-  ($$putchar 40)
+  (print "#(")
   (pp-vector-h vector 0 (vector-length vector))
-  ($$putchar 41))
+  (print ")"))
 
 (define (pp-string-h string idx length)
   (if (< idx length)
@@ -155,12 +134,12 @@
             (pp-string-h string (+ idx 1) length))))
 
 (define (pp-string string)
-  ($$putchar 34)
+  (print "\"")
   (pp-string-h string 0 (string-length string))
-  ($$putchar 34))
+  (print "\""))
 
 (define (pp-h n)
-  (cond ((null? n) (begin ($$putchar 40) ($$putchar 41))) ;; ()
+  (cond ((null? n) (print "()")) ;; ()
         ((number? n) (print-nb n))
         ((char? n) (pp-char n))
         ((procedure? n) (print-procedure n))
@@ -177,11 +156,11 @@
 
 (define (pp n)
   (pp-h n)
-  ($$putchar 10))
+  (newline))
 
 (define write
   (lambda (n)
     (pp n)))
 
 (define (newline)
-  ($$putchar 10))
+  (print #\newline))

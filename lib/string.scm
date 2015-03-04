@@ -16,12 +16,6 @@
 (define (string-fill! str char)
   (string-fill!-h str char 0 (string-length str)))
 
-(define (make-string size . init)
-  (let ((s ($make-string size)))
-    (if (not (null? init))
-        (string-fill! s (car init)))
-    s))
-
 (define (list->string-h l str pos) ;; TODO : char list
   (if (null? l)
      str

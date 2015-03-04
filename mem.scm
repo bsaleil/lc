@@ -5,6 +5,7 @@
 ;; TODO : return allocation position
 
 
+
 ;;-----------------------------------------------------------------------------
 
 ;; Print msg if gc log is enabled
@@ -21,6 +22,11 @@
 ;; BROKEN-HEART value at [addr + 0] and write forwarding
 ;; pointer at [addr + 8].
 (define BROKEN-HEART -1)
+
+;; Is the object at 'addr' a special object ?
+(define (is-special-object addr)
+  (and (>= addr block-addr)
+       (<= addr (+ block-addr global-offset))))
 
 ;;-----------------------------------------------------------------------------
 ;; ALLOCATOR
@@ -177,34 +183,33 @@
                 ;; Object header
                 (header-qword (get-i64 obj-addr)))
            
-           ; (if (= current-copy-ptr to-space)
-           ;        (begin (pp "IS MEMOBJ")
-           ;               (println "Obj addr: " obj-addr)
-           ;               (println "Header: " header-qword)))
-           (if (= header-qword BROKEN-HEART)
-              ;; Header is BH
-              ;; Patch memory slot
-              (let ((new-pos (get-i64 (+ 8 obj-addr))))
-                (put-i64 slot-addr new-pos))
-              ;; Object is not yet copied
-              ;; Copy object and get new copy-ptr pos
-              (let* (;; Object header
-                    (header (read-header obj-addr))
-                    ;; Object stag
-                    (stag (cadr header))
-                    ;; Object length
-                    (length (caddr header))
-                    ;;
-                    (c (copy-bytes obj-addr current-copy-ptr length)))
-                
-                 ;; Write BH
-                 (put-i64 obj-addr BROKEN-HEART)
-                 ;; Write new position (tagged)
-                 (put-i64 (+ 8 obj-addr) (+ current-copy-ptr TAG_MEMOBJ))
-                 ;; Patch slot
-                 (put-i64 slot-addr (+ current-copy-ptr TAG_MEMOBJ))
-                 ;; Update copy-ptr
-                 (set! current-copy-ptr c)))))
+           (cond ;; If it is a special object (in block) do nothing
+                 ((is-special-object obj-addr) #t)
+                 ;; Header is BH
+                 ;; Patch memory slot
+                 ((= header-qword BROKEN-HEART)
+                    (let ((new-pos (get-i64 (+ 8 obj-addr))))
+                      (put-i64 slot-addr new-pos)))
+                 (else
+                    ;; Object is not yet copied
+                    ;; Copy object and get new copy-ptr pos
+                    (let* (;; Object header
+                          (header (read-header obj-addr))
+                          ;; Object stag
+                          (stag (cadr header))
+                          ;; Object length
+                          (length (caddr header))
+                          ;;
+                          (c (copy-bytes obj-addr current-copy-ptr length)))
+                      
+                       ;; Write BH
+                       (put-i64 obj-addr BROKEN-HEART)
+                       ;; Write new position (tagged)
+                       (put-i64 (+ 8 obj-addr) (+ current-copy-ptr TAG_MEMOBJ))
+                       ;; Patch slot
+                       (put-i64 slot-addr (+ current-copy-ptr TAG_MEMOBJ))
+                       ;; Update copy-ptr
+                       (set! current-copy-ptr c))))))
 
      current-copy-ptr))
 
@@ -241,6 +246,7 @@
              (global-addr (+ (* 8 global-offset) (* 8 (cdr global)) block-addr))
              ;; Copy global if it's a heap obj
              (c (copy-root global-addr current-copy-ptr)))
+        
           ;; Continue with next globals    
           (copy-global-roots (cdr globals) c))))
 
@@ -382,20 +388,7 @@
 ;; copy stack roots, copy global roots, scan objects, update pointers
 ;; Returns the new position of alloc-ptr
 
-(define (run-gc sp alloc-size)
-  
-  ;; TODO
-  (define (mytest-gc lis)
-    (if (not (null? lis))
-      (let* ((li (car lis))
-             (global (assoc (car li) globals))
-             (new-addr (get-i64 (+ (* 8 global-offset) (* 8 (cdr global)) block-addr))))
-        
-        (put-i64 (+ (- (obj-encoding (cdr li)) 1) 8)  (- new-addr 1))
-        (put-i64 (+ (- (obj-encoding (cdr li)) 1) 16) (get-i64 (+ 8 (- new-addr 1))))
-        
-        (mytest-gc (cdr lis)))))
-        
+(define (run-gc sp alloc-size)        
   
   (define scan-ptr to-space)
   (define copy-ptr to-space)
@@ -420,10 +413,6 @@
   (log-gc "-- REFERENCES ")
   (log-gc "--------------")
   (set! copy-ptr (scan-references scan-ptr copy-ptr))
-  
-  ;; TODO
-  (if libcall-optimization
-    (mytest-gc libids))
   
   ;; Check if there is enough memory for alloc request
   (if (>= (+ copy-ptr alloc-size) (+ to-space space-len))

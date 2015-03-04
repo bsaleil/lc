@@ -22,31 +22,33 @@
 
 ;; Primitives: name, nb args min, nb args max
 (define primitives '(
-   (car               1  1)
-   (cdr               1  1)
-   (set-car!          2  2)
-   (set-cdr!          2  2)
-   (cons              2  2)
-   (vector-length     1  1)
-   (vector-ref        2  2)
-   (char->integer     1  1)
-   (integer->char     1  1)
-   (string-ref        2  2)
-   (string->symbol    1  1)
-   (symbol->string    1  1)
-   (close-output-port 1  1)
-   (close-input-port  1  1)
-   (open-output-file  1  1)
-   (open-input-file   1  1)
-   (string-set!       3  3)
-   (vector-set!       3  3)
-   (string-length     1  1)
-   (read-char         1  1)
-   (exit              0  0)
-   (make-vector       1  2) ;; TODO : enlever #t/#f inutiles
-   (make-string       1  2)
-   (eof-object?       1  1) ;; NOTE : move to type predicates ?
-   (write-char        1  2)
+   (car                 1  1)
+   (cdr                 1  1)
+   (set-car!            2  2)
+   (set-cdr!            2  2)
+   (cons                2  2)
+   (vector-length       1  1)
+   (vector-ref          2  2)
+   (char->integer       1  1)
+   (integer->char       1  1)
+   (string-ref          2  2)
+   (string->symbol      1  1)
+   (symbol->string      1  1)
+   (close-output-port   1  1)
+   (close-input-port    1  1)
+   (open-output-file    1  1)
+   (open-input-file     1  1)
+   (string-set!         3  3)
+   (vector-set!         3  3)
+   (string-length       1  1)
+   (read-char           1  1)
+   (exit                0  0)
+   (make-vector         1  2) ;; TODO : enlever #t/#f inutiles
+   (make-string         1  2)
+   (eof-object?         1  1) ;; NOTE : move to type predicates ?
+   (write-char          1  2)
+   (current-output-port 0  0)
+   (current-input-port  0  0)
 ))
 
 ;;-----------------------------------------------------------------------------
@@ -92,7 +94,7 @@
         ((pair? ast)
          (let ((op (car ast)))
            (cond ;; Special
-                 ((member op '($$putchar breakpoint)) (mlc-special ast succ))
+                 ((member op '(breakpoint)) (mlc-special ast succ))
                  ;; Special without call
                  ((assoc op primitives) (mlc-primitive ast succ))
                  ;; Quote
@@ -334,22 +336,7 @@
                                      (x86-push cgc (x86-imm-int ENCODING_VOID))
 
                                      (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))
-         (lazy-val
-           (cond ;; (define LIB_ID (lambda ...))
-                 ((and libcall-optimization
-                       (assoc (cadr ast) libids)
-                       (list? (caddr ast))
-                       (eq? (caaddr ast) 'lambda))
-                    ;(gen-ast (caddr ast) lazy-bind))
-                    (mlc-lambda (caddr ast) lazy-bind (cadr ast)))
-                 ;; (define LIB_ID x)
-                 ((and libcall-optimization
-                       (assoc (cadr ast) libids)
-                       (not (list? (caddr ast))))
-                    (pp ast)
-                    (error "NYI"))
-                 (else
-                    (gen-ast (caddr ast) lazy-bind)))))
+         (lazy-val (gen-ast (caddr ast) lazy-bind)))
 
     (make-lazy-code (lambda (cgc ctx)
                       (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
@@ -488,21 +475,7 @@
             (let ((cc-header (mem-header (+ 1 global-cc-table-maxsize) STAG_CCTABLE)))
               (x86-mov cgc (x86-rax) (x86-imm-int cc-header))
               (x86-mov cgc (x86-mem (+ (* 8 closure-size) (* -8 total-size)) alloc-ptr) (x86-rax)))
-            
             (gen-cc-table cgc stub-addr (+ 8 (* 8 closure-size) (* -8 total-size)))
-              
-            ;; Libcall optimization
-            (if (and lib-define
-                     libcall-optimization)
-               (let ((r (assoc lib-define libids)))                 
-                 ;; Closure
-                 (x86-lea cgc (x86-rax) (x86-mem (* -8 total-size) alloc-ptr))
-                 (x86-mov cgc (x86-mem (+ (- (obj-encoding (cdr r)) 1)  8)) (x86-rax))
-                 ;; CC-table
-                 ;(x86-lea cgc (x86-rax) (x86-mem (* -8 (+ global-cc-table-maxsize 8)) alloc-ptr))
-                 (x86-lea cgc (x86-rax) (x86-mem (- (* -8 global-cc-table-maxsize) 8) alloc-ptr))
-                 (x86-mov cgc (x86-mem (+ (- (obj-encoding (cdr r)) 1) 16)) (x86-rax))
-                 ))
             
             ;; TAG AND PUSH CLOSURE
             (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 total-size)) alloc-ptr))
@@ -707,13 +680,7 @@
              (lambda (cgc ctx)
                (gen-breakpoint cgc)
                (x86-push cgc (x86-imm-int ENCODING_VOID))
-               (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))
-        ((eq? (car ast) '$$putchar)
-           (let ((l (make-lazy-code
-                       (lambda (cgc ctx)
-                          (x86-call cgc label-$$putchar)
-                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
-             (gen-ast (cadr ast) l)))))
+               (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))))
 
 ;;
 ;; Make lazy code from SPECIAL FORM (inlined specials)
@@ -722,6 +689,11 @@
   
   ;; Assert nb args primitive
   (assert-p-nbargs ast)
+  
+  ;; Adjust args for some primitives
+  (cond ((and (eq? (car ast) 'write-char)
+              (= (length ast) 2))
+          (set! ast (append ast '((current-output-port))))))
   
   (let* ((special (car ast))
          (lazy-special
@@ -757,14 +729,27 @@
                         (x86-mov cgc (x86-mem offset (x86-rbx)) (x86-rax))
                         (x86-push cgc (x86-rbx))
                         (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI))))))
-                 ;; CLOSE-INPUT-PORT
+                 ;; CURRENT-INPUT-PORT / CURRENT-OUTPUT-PORT
+                 ((member special '(current-input-port current-output-port))
+                   (make-lazy-code
+                     (lambda (cgc ctx)
+                       (let ((block-offset (if (eq? special 'current-output-port)
+                                              8
+                                              24)))
+                         (x86-mov cgc (x86-rax) (x86-imm-int (+ TAG_MEMOBJ block-offset block-addr)))
+                         (x86-push cgc (x86-rax))
+                         (jump-to-version cgc succ (ctx-push ctx
+                                                             (if (eq? special 'current-output-port)
+                                                              CTX_OPORT
+                                                              CTX_IPORT)))))))
+                 ;; CLOSE-INPUT-PORT / CLOSE-OUTPUT-PORT
                  ((member special '(close-output-port close-input-port))
                    (make-lazy-code
                      (lambda (cgc ctx)
                        (gen-syscall-close cgc)
                        (x86-push cgc (x86-imm-int ENCODING_VOID))
                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))
-                 ;; OPEN-INPUT-FILE
+                 ;; OPEN-INPUT-FILE / OPEN-OUTPUT-FILE
                  ((member special '(open-output-file open-input-file))
                    (make-lazy-code
                      (lambda (cgc ctx)
@@ -811,17 +796,15 @@
                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_CHAR)))))
                  ;; WRITE-CHAR
                  ((eq? special 'write-char)
-                  (if (= (length (cdr ast)) 1) ;; NOTE : Remove when current-*-port is implemented
-                      (gen-ast (cons 'print (cdr ast)) succ)
-                      (make-lazy-code
-                        (lambda (cgc ctx)
-                          ;; Gen 'read' syscall (read 1 byte), encoded value (char or eof) in rax
-                          (gen-syscall-write-char cgc)
-                          (x86-add cgc (x86-rsp) (x86-imm-int 16)) ;; NOTE: clean stack in gen-syscall-write-char?
-                          ;; Push encoded result
-                          (x86-push cgc (x86-imm-int ENCODING_VOID))
-                          ;; Jump to succ
-                          (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_VOID))))))
+                    (make-lazy-code
+                      (lambda (cgc ctx)
+                        ;; Gen 'read' syscall (read 1 byte), encoded value (char or eof) in rax
+                        (gen-syscall-write-char cgc)
+                        (x86-add cgc (x86-rsp) (x86-imm-int 16)) ;; NOTE: clean stack in gen-syscall-write-char?
+                        ;; Push encoded result
+                        (x86-push cgc (x86-imm-int ENCODING_VOID))
+                        ;; Jump to succ
+                        (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_VOID)))))
                  ;; CHAR<->INTEGER
                  ((member special '(char->integer integer->char))
                   (let ((lazy-charint
@@ -1477,6 +1460,13 @@
                 ;; 2 - Get entry point in cc-table
                 (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
 
+                ;; TODO
+                (if (eq? (car ast) 'length)
+                  (let ((label (asm-make-label #f (new-sym 'label-here))))
+                    (x86-call cgc label)
+                    (x86-label cgc label)
+                    (x86-pop cgc (x86-rdx))))
+                
                 ;; 3 - Jump
                 (x86-jmp cgc (x86-rax))))))
         
@@ -1517,10 +1507,6 @@
 ;;
 (define (mlc-call ast succ)
   
-  ;; TODO : valeur de retour pas unknown pour les fonctions de lib
-  ;; Libcall optimization
-  (define libcall (assoc (car ast) libids))
-  
   (let* (;; Tail call if successor's flags set contains 'ret flag
          (tail (member 'ret (lazy-code-flags succ)))
          ;; Call arguments
@@ -1548,47 +1534,20 @@
                                         ;; 0 - R11 = still-box address containing call-ctx
                                         (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
                                       
-                                        ;; Libcall optimization
-                                        (if (and libcall
-                                                 libcall-optimization
-                                                 (not (assoc (car ast) (ctx-env ctx)))
-                                                 (not (> (assocount (car ast) globals) 1)))
-                                            
-                                           (begin (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (cdr libcall)) 1)) ;; Vector in rax
-                                                  (x86-mov cgc (x86-rax) (x86-mem (- 16 1) (x86-rax))))
                                         
-                                          ;; 1 - Get cc-table
-                                          (begin 
-                                            (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))                ;; get closure
-                                            (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))) ;; get cc-table
+                                        ;; 1 - Get cc-table
+                                        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))                ;; get closure
+                                        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; get cc-table
                                         
                                         ;; 2 - Get entry point in cc-table
                                         (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
-                                        
-                                        ;; 3 - Jump to entry point
+                                                                                
+                                        ;; 3 - Jump to entry point                                        
                                         (x86-jmp cgc (x86-rax))))))
          ;; Lazy main
          (lazy-main (gen-fatal-type-test CTX_CLO 0 lazy-call))
          ;; Lazy callee
-         (lazy-operator
-            ;; Libcal optimization
-            (make-lazy-code
-              (lambda (cgc ctx)
-                (if (and libcall
-                         libcall-optimization
-                         (not (assoc (car ast) (ctx-env ctx)))
-                         (not (> (assocount (car ast) globals) 1)))
-                
-                  (begin 
-                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (cdr libcall)) 1))
-                      (x86-mov cgc (x86-rax) (x86-mem (- 8 1) (x86-rax)))
-                      (x86-add cgc (x86-rax) (x86-imm-int 1)) ;; tag closure
-                      (x86-push cgc (x86-rax))
-                      (jump-to-version cgc lazy-call (ctx-push ctx CTX_CLO)))
-                
-                  (jump-to-version cgc
-                                   (gen-ast (car ast) lazy-main)
-                                   ctx))))))
+         (lazy-operator (gen-ast (car ast) lazy-main)))
 
     ;; Build first lazy code
     ;; This lazy code creates continuation stub and push return address
@@ -2216,14 +2175,6 @@
 ;; Get position of current closure in stack
 (define (closure-pos ctx)
   (- (length (ctx-stack ctx)) 2 (ctx-nb-args ctx))) ;; 2= 1length + 1retAddr
-
-;; Return label associated to function name
-(define (lookup-fn name)
-  (let ((r (assoc name functions)))
-    (if r
-      (cdr r)
-      (cond ((eq? name '$$putchar)  label-$$putchar)
-            (else (error "NYI"))))))
 
 ;; Set subtraction with lists
 ;; return lsta - lstb

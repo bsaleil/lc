@@ -84,6 +84,18 @@
 ;; TODO : pareil pour apply make-vector (modifier quand optional param implémenté, sinon, créer des fonctions alternatives qui sont retournées avec rest en attendant)
 
 
-(let ((a ((lambda () 10))))
-  (+ a 1))
-  ;(+ a 2))
+;; TODO : Voir pourquoi KO avec opt-libcall faux
+; (define (foo n)
+;   (pp (length n)))
+
+; (foo '(1 2 3))
+
+; (define (length n)
+;   10)
+
+; (foo '(1 2 3))
+
+; (define (length l)
+;   (if ($eq? l '())
+;     55
+;     (length (cdr l))))

@@ -3,10 +3,9 @@
 (include "~~lib/_x86#.scm")
 (include "~~lib/_codegen#.scm")
 
-;; TODO : forward declaration. Use gambit module system
-(define gen-native #f)
-
 ;;-----------------------------------------------------------------------------
+
+(define mem-header #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -22,10 +21,6 @@
 ;; Compiler options
 (define verbose-jit          #f) ;; JIT Verbose debugging
 (define verbose-gc           #f) ;; GC  Verbose debugging
-(define libcall-optimization #t) ;; Enable optmizations on lib calls
-
-;; Ids of lib functions
-(define libids '())
 
 ;;-----------------------------------------------------------------------------
 
@@ -365,13 +360,13 @@
          
          (closure
           (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
-         
+                  
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
                  
          (new-ret-addr
           (callback-fn sp ctx ret-addr 0 closure)))
-    
+                
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8))
              new-ret-addr)
@@ -498,7 +493,7 @@
 
 (define block #f)
 ;; TODO : fixed number of globals
-(define global-offset 5) ;; Stack addr, current input, current output + 2 empty slot (used for debug)
+(define global-offset 7) ;; [Stack addr], [def-out-port-header|def-out-port-fd], [def-in-port-header|def-in-port-fd] + 2 empty slot (used for debug)
 (define block-len (* 8 (+ global-offset 10000))) ;; 1 stack addr, 1000 globals
 (define block-addr #f)
 
@@ -657,8 +652,6 @@
     (set! label-do-callback-fn-handler
           (gen-handler cgc 'do_callback_fn_handler label-do-callback-fn))
     
-    (gen-native cgc)
-    
     (x86-label cgc label-rtlib-skip)
     
     (push-regs cgc prog-regs)
@@ -670,11 +663,22 @@
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
     (x86-mov cgc alloc-ptr  (x86-imm-int heap-addr))       ;; Heap addr in alloc-ptr
     (x86-mov cgc (x86-r10) (x86-imm-int (+ block-addr (* 8 global-offset)))) ;; Globals addr in r10
+    
     ))
 
 (define (init)
 
   (init-code-allocator)
+  
+  ;; Create default ports in 'block'
+  (let ((output-header (mem-header 2 STAG_OPORT))
+        (input-header  (mem-header 2 STAG_IPORT)))
+    ;; output
+    (put-i64 (+ block-addr 8) output-header)
+    (put-i64 (+ block-addr 16) 1)
+    ;; input
+    (put-i64 (+ block-addr 24) input-header)
+    (put-i64 (+ block-addr 32) 0))
 
   (code-add
    (lambda (cgc)
@@ -1072,7 +1076,7 @@
 
                    (if verbose-jit
                        (println ">>> Gen dynamic type test at index " stack-idx))
-                   (gen-breakpoint cgc)
+                   
                    (cond ;; Number type test
                          ((eq? type CTX_NUM)
                              (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b

@@ -34,11 +34,11 @@
 	  (g #f))
    (set! f (lambda (n)
               (if (= 0 n)
-              	($$putchar 80) ;; P
+              	(write-char #\P)
               	(g (- n 1)))))
    (set! g (lambda (n)
               (if (= 0 n)
-              	($$putchar 73) ;; I
+              	(write-char #\I)
               	(f (- n 1)))))
    (f 0)
    (f 1)
@@ -46,7 +46,7 @@
    (f 3)
    (f 4)
    (f 5)
-   ($$putchar 10))
+   (newline))
 
 ;1
 ;2

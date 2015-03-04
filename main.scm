@@ -93,10 +93,6 @@
   
   (init)
   
-  ;; TODO
-  (if libcall-optimization
-    (set! libids (mytest lib '())))
-  
   (let* ((lazy-prog (lazy-exprs prog #f))
          (lazy-lib  (lazy-exprs lib  lazy-prog)))
     
@@ -128,11 +124,6 @@
                        ;; '-v' to enable both JIT and GC verbose debugging
                        ((equal? arg "-v")     (set! verbose-jit #t)
                                               (set! verbose-gc  #t))
-                       ;; TODO
-                       ((equal? arg "-opt-libcall=true")
-                          (set! libcall-optimization #t))
-                       ((equal? arg "-opt-libcall=false")
-                          (set! libcall-optimization #f))
                        ;; Other option stops exec
                        (else (print "Unknown option ")
                              (println arg)

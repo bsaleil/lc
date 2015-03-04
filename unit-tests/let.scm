@@ -52,11 +52,11 @@
 
 (letrec ((f (lambda (n)
               (if (= 0 n)
-                ($$putchar 80) ;; P
+                (write-char #\P)
                 (g (- n 1)))))
          (g (lambda (n)
               (if (= 0 n)
-                ($$putchar 73) ;; I
+                (write-char #\I)
                 (f (- n 1))))))
    (f 11)
    (f 12)
@@ -64,7 +64,7 @@
    (f 14)
    (f 15)
    (f 16)
-   ($$putchar 10))
+   (newline))
 
 (println 
 
