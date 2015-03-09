@@ -83,6 +83,7 @@
 ;;        car la fonction générée pour write-char a un seul arg. (modifier quand current-output-port implémenté)
 ;; TODO : pareil pour apply make-vector (modifier quand optional param implémenté, sinon, créer des fonctions alternatives qui sont retournées avec rest en attendant)
 
+;; TODO : améliorer la detection des mutables : par exemple voir le test ut/Symbols.scm avec lc et gsi !
 
 ;; TODO : Voir pourquoi KO avec opt-libcall faux
 ; (define (foo n)
@@ -99,3 +100,7 @@
 ;   (if ($eq? l '())
 ;     55
 ;     (length (cdr l))))
+
+; (define (foo) 10)
+
+(number? #f)

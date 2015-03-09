@@ -5,11 +5,19 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define mem-header #f)
+(include "x86-debug.scm")
 
 ;;-----------------------------------------------------------------------------
 
-(include "x86-debug.scm")
+;; Compiler options
+(define verbose-jit          #f) ;; JIT Verbose debugging
+(define verbose-gc           #f) ;; GC  Verbose debugging
+
+;;-----------------------------------------------------------------------------
+
+(define mem-header #f)
+(define run-gc #f) ;; Forward declaration (see mem.scm)
+(define ctx-change-type #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -18,9 +26,12 @@
 ;; ex. '((foo 1) (bar 2) (fun 3))
 (define globals '())
 
-;; Compiler options
-(define verbose-jit          #f) ;; JIT Verbose debugging
-(define verbose-gc           #f) ;; GC  Verbose debugging
+(define fake-stack (list 'FAKE))
+
+(define label-exec-error     #f)
+(define label-gc             #f)
+(define label-do-callback    #f)
+(define label-do-callback-fn #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -80,10 +91,6 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define fake-stack (list 'FAKE))
-
-;;-----------------------------------------------------------------------------
-
 (define (alloc-still-vector len)
   ((c-lambda (int)
              scheme-object
@@ -134,8 +141,6 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define run-gc #f) ;; Forward declaration (see mem.scm)
-
 (c-define (gc sp) (long) long "gc" ""
     (let ((alloc-size (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8)))))
       (run-gc sp alloc-size)))
@@ -153,102 +158,6 @@
        (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
        (x86-mov cgc alloc-ptr (x86-rax)) ;; TODO : Update alloc-ptr
        )))
-
-;;-----------------------------------------------------------------------------
-
-(define label-breakpoint     #f)
-;; TODO
-(define (gen-breakpoint cgc)
-  
-  ;; TODO
-  (push-pop-regs
-     cgc
-     all-regs
-     (lambda (cgc)
-       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-       (x86-push cgc (x86-rdi))
-       (x86-call cgc label-breakpoint) ;; call C function
-       (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-       )))
-
-;; The procedure exec-error is callable from generated machine code.
-;; This function print the error message in rax
-(c-define (break_point sp) (long) void "break_point" ""
-  
-  (let ((reg-names '("R15" "R14" "R13" "R12" "R11" "R10" " R9" " R8"
-                     "RDI" "RSI" "RBP" "RDX" "RCX" "RBX" "RAX" "RSP")))
-  
-  (define (get-regs regs offset)
-    (if (null? regs)
-      '()
-      (cons (cons (car regs) (get-i64 (+ sp offset)))
-            (get-regs (cdr regs) (+ offset 8)))))
-  
-  (define (println-slot slot)
-    (let ((str (number->string slot)))
-      (print slot (make-string (- 19 (string-length str)) #\space)))
-    (print "|  ")
-    (let ((tag (bitwise-and slot 3)))
-      (cond ((= tag 0) (print (quotient slot 4)))
-            ((= tag 1) (print "Mem object"))
-            ((= slot ENCODING_VOID) (print "void"))
-            ((= slot ENCODING_EOF)  (print "eof"))
-            ((= tag 2) (print (encoding-obj slot)))))
-    (newline))
-  
-  (define (print-stack n regs)
-    (cond ((= n 0))
-          ((= n 1)
-             (println "       +--------------------+--------------------+")
-             (print   "RSP -> | ") (println-slot (get-i64 (+ (* 8 (- n 1)) (cdr (assoc "RSP" regs)))))
-             (println "       +--------------------+--------------------+"))
-          (else
-             (print-stack (- n 1) regs)
-             (print   "       | ") (println-slot (get-i64 (+ (* 8 (- n 1)) (cdr (assoc "RSP" regs)))))
-             (println "       +--------------------+--------------------+"))))
-  
-  (define (print-regs regs)
-    (if (not (null? regs))
-      (begin (print-regs (cdr regs))
-             (print-reg  (car regs)))))
-  
-  (define (print-reg reg)
-    (println (car reg) " = " (cdr reg)))
-    
-  (let ((regs (get-regs reg-names 0)))
-    
-    (define (run)
-      (print ">")
-      (let ((r (read-line)))
-        (set! r (string-upcase r))
-        (let ((reg (assoc r regs)))
-          (cond ;; Print one reg
-                ((assoc r regs) => (lambda (r) (print-reg r)))
-                ;; Print all regs
-                ((string=? r "REGS")  (print-regs regs))
-                ;; Print stack (5 slots)
-                ((string=? r "STACK") (print-stack 5 regs))
-                ;; Print stack (n slots)
-                ((and (> (string-length r) 6)
-                      (string=? (substring r 0 5) "STACK")
-                      (char=? (string-ref r 5) #\space)
-                      (string->number (substring r 6 (string-length r))))
-                  (let ((num (string->number (substring r 6 (string-length r)))))
-                    (if (and (integer? num)
-                             (> num 0))
-                        (print-stack num regs)
-                        (println "Unknown command"))))
-                ;; Continue
-                ((string=? r "NEXT"))
-                ;; Unknown
-                (else (println "Unknown command")))
-          (if (not (string=? r "NEXT"))
-            (run)))))
-    
-    (println "\033[1;31m⚫ Breakpoint\033[0m")
-    (run))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -375,12 +284,6 @@
     (put-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))
              0)))
 
-;; The label for procedure do-callback
-(define label-exec-error     #f)
-(define label-gc             #f)
-(define label-do-callback    #f)
-(define label-do-callback-fn #f)
-
 (define (init-labels cgc)
 
   (set! label-exec-error
@@ -437,7 +340,6 @@
                        (pointer void)
                        "___result = ___CAST(void*,dump_stack);")))))
   
-  ;; TODO
   (set! label-breakpoint
         (asm-make-label
          cgc
@@ -536,7 +438,6 @@
 
 ;; Code and stub management
 
-(define functions '())
 (define code-alloc #f)
 (define stub-alloc #f)
 (define stub-freelist #f)
@@ -801,6 +702,7 @@
 (define-type identifier
   type   ;; 'free or 'local
   offset ;; offset in closure or stack
+  pos    ;; TODO
   flags  ;; List of flags (possible flags : mutable)
 )
 
@@ -813,16 +715,16 @@
   nb-args ;; nb of arguments of current frame
 )
 
-(define (ctx-push ctx type)
-  (make-ctx (cons type (ctx-stack ctx)) (ctx-env ctx) (ctx-nb-args ctx)))
+; (define (ctx-push ctx type)
+;   (make-ctx (cons type (ctx-stack ctx)) (ctx-env ctx) (ctx-nb-args ctx)))
 
-(define (ctx-pop ctx)
-  (make-ctx (cdr (ctx-stack ctx)) (ctx-env ctx) (ctx-nb-args ctx)))
+; (define (ctx-pop ctx)
+;   (make-ctx (cdr (ctx-stack ctx)) (ctx-env ctx) (ctx-nb-args ctx)))
 
-(define (ctx-pop-nb ctx nb-pop)
-  (cond ((= nb-pop 0) ctx)
-        ((null? (ctx-stack ctx)) (error "pop empty ctx"))
-        (else (ctx-pop-nb (ctx-pop ctx) (- nb-pop 1)))))
+; (define (ctx-pop-nb ctx nb-pop)
+;   (cond ((= nb-pop 0) ctx)
+;         ((null? (ctx-stack ctx)) (error "pop empty ctx"))
+;         (else (ctx-pop-nb (ctx-pop ctx) (- nb-pop 1)))))
 
 (define (jump-to-version cgc lazy-code ctx)
 
@@ -1005,8 +907,8 @@
 ;; Gen FATAL dynamic type test
 ;; FATAL means that if type test fails, then it stops execution
 ;; Check type 'type' for stack slot at 'stack-idx' and jump to 'succ' if succeess
-(define (gen-fatal-type-test type stack-idx succ)
-
+(define (gen-fatal-type-test type stack-idx succ ast)
+  
     (make-lazy-code
        (lambda (cgc ctx)
          
@@ -1024,9 +926,12 @@
                  ((not (eq? known-type CTX_UNK)) (jump-to-version cgc lazy-fail ctx))
                  ;; Known type is unknown
                  (else 
-                   (let* ((stack-succ (append (list-head (ctx-stack ctx) stack-idx)
-                                              (cons type (list-tail (ctx-stack ctx) (+ stack-idx 1)))))
-                          (ctx-succ (make-ctx stack-succ (ctx-env ctx) (ctx-nb-args ctx)))
+                   (let* (;(stack-succ (append (list-head (ctx-stack ctx) stack-idx)
+                          ;                    (cons type (list-tail (ctx-stack ctx) (+ stack-idx 1)))))
+                          ;; TODO
+                          (nctx (ctx-change-type ctx stack-idx type))
+                          (ctx-succ (make-ctx (ctx-stack nctx) (ctx-env nctx) (ctx-nb-args nctx)))
+                          
                           (label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
                           (stub-labels
                                 (add-callback cgc 1
@@ -1074,6 +979,7 @@
                                                       (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) succ ctx-succ)
                                                       (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx))))))))))
 
+                     
                    (if verbose-jit
                        (println ">>> Gen dynamic type test at index " stack-idx))
                    
@@ -1091,7 +997,8 @@
                              ;(x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                              ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
                          ;; Procedure type test
-                         ((member type (list CTX_CLO CTX_PAI))      
+                         ((member type (list CTX_CLO CTX_PAI))
+                           
                              (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                              (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
                              (x86-and cgc (x86-rax) (x86-imm-int 3))
@@ -1107,6 +1014,107 @@
                    (x86-label cgc label-jump)
                    (x86-je cgc (list-ref stub-labels 0))
                    (x86-jmp cgc (list-ref stub-labels 1)))))))))
+
+;; TODO
+;; TODO
+;; TODO Factoriser avec gen-fatal-...
+
+;; Create lazy code for type test of stack slot (stack-idx)
+;; jump to lazy-success if test succeeds
+;; jump to lazy-fail if test fails
+;; Create lazy code for type test of stack slot (stack-idx)
+;; jump to lazy-success if test succeeds
+;; jump to lazy-fail if test fails
+(define (gen-dyn-type-test type stack-idx ctx-success lazy-success ctx-fail lazy-fail)
+
+    (make-lazy-code
+       (lambda (cgc ctx)
+         
+         (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
+                (stub-labels
+                      (add-callback cgc 1
+                        (let ((prev-action #f))
+
+                          (lambda (ret-addr selector)
+                            (let ((stub-addr (- ret-addr 5 2))
+                                  (jump-addr (asm-label-pos label-jump)))
+                            
+                              (if verbose-jit
+                                  (begin
+                                    (println ">>> selector= " selector)
+                                    (println ">>> prev-action= " prev-action)))
+                            
+                              (if (not prev-action)
+                                  
+                                  (begin (set! prev-action 'no-swap)
+                                         (if (= selector 1)
+                                          
+                                            ;; overwrite unconditional jump
+                                            (gen-version (+ jump-addr 6) lazy-fail ctx-fail)
+                                          
+                                            (if (= (+ jump-addr 6 5) code-alloc)
+
+                                              (begin (if verbose-jit (println ">>> swapping-branches"))
+                                                     (set! prev-action 'swap)
+                                                     ;; invert jump direction
+                                                     (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
+                                                     ;; make conditional jump to stub
+                                                     (patch-jump jump-addr stub-addr)
+                                                     ;; overwrite unconditional jump
+                                                     (gen-version
+                                                     (+ jump-addr 6)
+                                                     lazy-success
+                                                     ctx-success))
+
+                                              ;; make conditional jump to new version
+                                              (gen-version jump-addr lazy-success ctx-success))))
+
+                                  (begin ;; one branch has already been patched
+                                         ;; reclaim the stub
+                                         (release-still-vector (get-scmobj ret-addr))
+                                         (stub-reclaim stub-addr)
+                                         (if (= selector 0)
+                                            (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-success)
+                                            (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-fail))))))))))
+
+         (if verbose-jit
+             (println ">>> Gen dynamic type test at index " stack-idx))
+         
+         (cond ;; Number type test
+               ((eq? type CTX_NUM)
+                   (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
+                   (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
+                   ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_NUMBER)))
+               ;; Char type test
+               ;; TODO
+               ((eq? type CTX_CHAR)
+                   (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
+                   (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
+                   (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
+                   ;(x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
+                   ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
+               ;; Procedure type test
+               ((member type (list CTX_CLO CTX_PAI CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))      
+                   (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
+                   (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
+                   (x86-and cgc (x86-rax) (x86-imm-int 3))
+                   (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                   (x86-jne cgc label-jump) ;; TODO
+                   (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
+                   (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
+                   ;; STAG_XXX << 3
+                   (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_CLO)  STAG_PROCEDURE)
+                                                                  ((eq? type CTX_SYM)  STAG_SYMBOL)
+                                                                  ((eq? type CTX_STR)  STAG_STRING)
+                                                                  ((eq? type CTX_IPORT) STAG_IPORT)
+                                                                  ((eq? type CTX_OPORT) STAG_OPORT)
+                                                                  ((eq? type CTX_VECT) STAG_VECTOR)
+                                                                  ((eq? type CTX_PAI)  STAG_PAIR))))))
+               ;; Other
+               (else (error "Unknown type" type)))
+         (x86-label cgc label-jump)
+         (x86-je cgc (list-ref stub-labels 0))
+         (x86-jmp cgc (list-ref stub-labels 1))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Global cc table

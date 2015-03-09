@@ -10,7 +10,7 @@
   (if (null? exprs)
       (or succ
           (make-lazy-code
-            (lambda (cgc ctx)              
+            (lambda (cgc ctx)          
               (x86-pop cgc (x86-rax))
               (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
               (pop-regs-reverse cgc prog-regs)
@@ -100,9 +100,9 @@
                   lazy-lib
                   (make-ctx '() '() -1)))
   
-  ;(time (##machine-code-block-exec mcb))
-  ;(time (##machine-code-block-exec mcb)))
-  (##machine-code-block-exec mcb))
+  (time (##machine-code-block-exec mcb))
+  (time (##machine-code-block-exec mcb)))
+  ;(##machine-code-block-exec mcb))
 
 ;;-----------------------------------------------------------------------------
 ;; Command line args parser
