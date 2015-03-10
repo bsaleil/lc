@@ -1,6 +1,8 @@
 
 (define (caar l)   (car (car l)))
 (define (cadr l)   (car (cdr l)))
+(define (cadar l)  (car (cdr (car l))))
+(define (caddar l) (car (cdr (cdr (car l)))))
 (define (cdar l)   (cdr (car l)))
 (define (cddr l)   (cdr (cdr l)))
 (define (caddr l)  (car (cdr (cdr l))))

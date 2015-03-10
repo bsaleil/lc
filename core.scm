@@ -394,7 +394,6 @@
 ;; +----------+----------+----------+----------+
 
 (define block #f)
-;; TODO : fixed number of globals
 (define global-offset 7) ;; [Stack addr], [def-out-port-header|def-out-port-fd], [def-in-port-header|def-in-port-fd] + 2 empty slot (used for debug)
 (define block-len (* 8 (+ global-offset 10000))) ;; 1 stack addr, 1000 globals
 (define block-addr #f)
@@ -641,7 +640,6 @@
 (define nb-c-caller-save-regs
   (length c-caller-save-regs))
 
-;; TODO : *-pos: "nb-c-caller-save-regs" as parameter
 (define rdx-pos
   (- nb-c-caller-save-regs
      (length (member (x86-rdx) c-caller-save-regs))))
@@ -698,16 +696,49 @@
   (let ((versions (lazy-code-versions lazy-code)))
     (table-set! versions ctx v)))
 
+;;-----------------------------------------------------------------------------
+;; Identifier management
+
 ;; Identifier in environment associated to an identifier
 (define-type identifier
   type   ;; 'free or 'local
   offset ;; offset in closure or stack
-  pos    ;; TODO
-  flags  ;; List of flags (possible flags : mutable)
+  pos    ;; set of offset where the identifier is located
+  flags  ;; list of flags (possible flags : mutable)
 )
 
 (define (identifier-mutable? id)
   (member 'mutable (identifier-flags id)))
+
+;; Add pos to identifier object 'id'
+(define (identifier-addpos id pos)
+  ;; Add only if not member
+  (if (member pos (identifier-pos id))
+     id
+     (make-identifier (identifier-type id)
+                      (identifier-offset id)
+                      (cons pos (identifier-pos id))
+                      (identifier-flags id))))
+
+;; Remove pos from identifier object 'id'
+(define (identifier-rmpos id pos)
+  ;; Get new pos set
+  (let ((npos (foldr (lambda (x y)
+                       (if (= x pos)
+                          y
+                          (cons x y)))
+                     '()
+                     (identifier-pos id))))
+    
+    ;; Return new identifier
+    (make-identifier (identifier-type id)
+                     (identifier-offset id)
+                     npos
+                     (identifier-flags id))))
+
+;;-----------------------------------------------------------------------------
+;; Ctx management
+;; TODO : fonction pour supprimer des ids de l'environnement pour eviter des list-tails, et mettre dans let, begin et do
 
 (define-type ctx
   stack   ;; compile time stack, containing types
@@ -715,16 +746,159 @@
   nb-args ;; nb of arguments of current frame
 )
 
-; (define (ctx-push ctx type)
-;   (make-ctx (cons type (ctx-stack ctx)) (ctx-env ctx) (ctx-nb-args ctx)))
+;; Apply 'nb' push to ctx
+(define (ctx-push-nb ctx ctx-type nb)
+  (if (= nb 0)
+    ctx
+    (ctx-push-nb (ctx-push ctx ctx-type)
+                 ctx-type
+                 (- nb 1))))
 
-; (define (ctx-pop ctx)
-;   (make-ctx (cdr (ctx-stack ctx)) (ctx-env ctx) (ctx-nb-args ctx)))
+;; Push value to ctx
+;; (Add type to stack and update identifier pos if sym (identifier symbol) given)
+(define (ctx-push ctx ctx-type #!optional (sym #f))
+  ;; Update pos in identifiers
+  (define (push-pos env sym)
+    (if (null? env)
+       '()
+       (let ((id (car env)))
+         (if (eq? (car id) sym)
+            (let ((identifier (identifier-addpos (cdr id) (- (length (ctx-stack ctx)) 1))))
+              (cons (cons sym identifier)
+                    (push-pos (cdr env) sym)))
+            (cons id (push-pos (cdr env) sym))))))
+  (if sym
+    ;; If sym, update env and stack
+    (let* ((env (push-pos (ctx-env ctx) sym))
+           (stack (cons ctx-type (ctx-stack ctx))))
+      (make-ctx stack env (ctx-nb-args ctx)))
+    ;; Else, update only stack
+    (make-ctx (cons ctx-type (ctx-stack ctx)) (ctx-env ctx) (ctx-nb-args ctx))))
 
-; (define (ctx-pop-nb ctx nb-pop)
-;   (cond ((= nb-pop 0) ctx)
-;         ((null? (ctx-stack ctx)) (error "pop empty ctx"))
-;         (else (ctx-pop-nb (ctx-pop ctx) (- nb-pop 1)))))
+
+;; Apply 'nb' pop to ctx
+(define (ctx-pop-nb ctx nb)
+  (if (= nb 0)
+     ctx
+     (ctx-pop-nb (ctx-pop ctx)
+                 (- nb 1))))
+
+;; Pop value from ctx
+;; (Remove type from stack and update identifier pos)
+(define (ctx-pop ctx)
+  (let ((pos (- (length (ctx-stack ctx)) 2))) ;; Get pos from idx
+    ;; Remove pos in identifiers
+    (define (rm-pos env)
+      (if (null? env)
+        '()
+        (let ((id (car env)))
+          (cons (cons (car id)
+                      (identifier-rmpos (cdr id) pos))
+                (rm-pos (cdr env))))))
+  (let ((env (rm-pos (ctx-env ctx)))
+        (stack (cdr (ctx-stack ctx))))
+    (make-ctx stack env (ctx-nb-args ctx)))))
+
+;; Reset pos in identifier object associated to id 'sym'
+(define (ctx-reset-pos ctx sym)
+  (define (ctx-reset-pos-h env sym)
+    (if (null? env)
+       '()
+       (let ((l (car env)))
+         (if (eq? (car l) sym)
+            (cons (cons sym
+                        (make-identifier (identifier-type    (cdr l))
+                                         (identifier-offset  (cdr l))
+                                         ;; Set pos to a set of length 1 chich contains only offset
+                                         (list (identifier-offset  (cdr l)))
+                                         (identifier-flags   (cdr l))))
+                  (cdr env))
+            (cons (car env)
+                  (ctx-reset-pos-h (cdr env) sym))))))
+  
+  (make-ctx (ctx-stack ctx)
+            (ctx-reset-pos-h (ctx-env ctx) sym)
+            (ctx-nb-args ctx)))
+
+;; Change type of identifier located at 'stack-idx' (stack-idx must be converted to slot pos)
+(define (ctx-change-type ctx stack-idx type)
+  ;; Stack idx to slot pos
+  (let ((pos (- (length (ctx-stack ctx)) stack-idx 2)))
+    ;; Update stack types for each pos in 'pos' set
+    (define (update-stack curr stack pos)
+      (if (= curr 0)
+         stack
+         (if (member curr pos)
+            (cons type        (update-stack (- curr 1) (cdr stack) pos))
+            (cons (car stack) (update-stack (- curr 1) (cdr stack) pos)))))
+    ;; Get pair (sym . identifier object) corresponding to identifier at pos 'pos'
+    (define (get-id-at env pos)
+      (if (null? env)
+         #f
+         (let ((envl (car env)))
+           (if (member pos (identifier-pos (cdr envl)))
+              envl
+              (get-id-at (cdr env) pos)))))
+    ;;
+    (let* ((id (get-id-at (ctx-env ctx) pos))
+           (positions
+             (if id
+                (identifier-pos (cdr id))
+                (list pos)))
+           (stack (update-stack (- (length (ctx-stack ctx)) 2) (ctx-stack ctx) positions)))
+      (make-ctx stack
+                (ctx-env ctx)
+                (ctx-nb-args ctx)))))
+
+;; Move nb slot from l-from to l-to (ascending)
+(define (ctx-mov-nb ctx nb l-from l-to)
+  (if (= nb 0)
+     ctx
+     (ctx-mov-nb (ctx-move ctx l-from l-to)
+                 (- nb 1)
+                 (+ l-from 1)
+                 (+ l-to 1))))
+
+;; Move slot from stack index 'l-from' to stack-index 'l-to'
+;; Optionnally update env.
+(define (ctx-move ctx l-from l-to #!optional (update-env? #t))
+    
+  (let ((pos-from (- (length (ctx-stack ctx)) l-from 2)) ;; stack-idx to slot pos
+        (pos-to   (- (length (ctx-stack ctx)) l-to 2)))  ;; stack-idx to slot pos
+    
+    (define (update-env env)
+      (if (null? env)
+        '()
+        (let ((id (car env)))
+          (cond ;; a - if id contains 'from', add 'to'
+                ((and (member pos-from (identifier-pos (cdr id)))
+                      (not (member pos-to (identifier-pos (cdr id)))))
+                    (cons (cons (car id) (identifier-addpos (cdr id) pos-to))
+                          (update-env (cdr env))))
+                ;; b - if id contains 'to', remove 'from'
+                ((and (member pos-to (identifier-pos (cdr id)))
+                      (not (member pos-from (identifier-pos (cdr id)))))
+                    (cons (cons (car id) (identifier-rmpos (cdr id) pos-to))
+                          (update-env (cdr env))))
+                (else
+                    (cons id (update-env (cdr env))))))))
+    
+    ;; Update types in stack
+    (define (update-stack stack)
+      (append (list-head stack l-to)
+              (cons (list-ref stack l-from)
+                    (list-tail stack (+ l-to 1)))))
+    
+    (let (;; 1 - Update ctx-env
+          (env (if update-env?
+                  (update-env (ctx-env ctx))
+                  (ctx-env ctx)))
+          ;; 2 - Update ctx-stack
+          (stack (update-stack (ctx-stack ctx))))
+      
+      (make-ctx stack env (ctx-nb-args ctx)))))
+
+;;-----------------------------------------------------------------------------
 
 (define (jump-to-version cgc lazy-code ctx)
 
@@ -926,10 +1100,7 @@
                  ((not (eq? known-type CTX_UNK)) (jump-to-version cgc lazy-fail ctx))
                  ;; Known type is unknown
                  (else 
-                   (let* (;(stack-succ (append (list-head (ctx-stack ctx) stack-idx)
-                          ;                    (cons type (list-tail (ctx-stack ctx) (+ stack-idx 1)))))
-                          ;; TODO
-                          (nctx (ctx-change-type ctx stack-idx type))
+                   (let* ((nctx (ctx-change-type ctx stack-idx type))
                           (ctx-succ (make-ctx (ctx-stack nctx) (ctx-env nctx) (ctx-nb-args nctx)))
                           
                           (label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
@@ -989,7 +1160,6 @@
                              (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
                              ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_NUMBER)))
                          ;; Char type test
-                         ;; TODO
                          ((eq? type CTX_CHAR)
                              (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
                              (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
@@ -1015,10 +1185,9 @@
                    (x86-je cgc (list-ref stub-labels 0))
                    (x86-jmp cgc (list-ref stub-labels 1)))))))))
 
-;; TODO
-;; TODO
 ;; TODO Factoriser avec gen-fatal-...
 
+;; TODO
 ;; Create lazy code for type test of stack slot (stack-idx)
 ;; jump to lazy-success if test succeeds
 ;; jump to lazy-fail if test fails
@@ -1086,7 +1255,6 @@
                    (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
                    ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_NUMBER)))
                ;; Char type test
-               ;; TODO
                ((eq? type CTX_CHAR)
                    (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
                    (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
@@ -1184,3 +1352,10 @@
     (let ((s (symbol->string str)))
       (string-upcase-h s 0 (make-string (string-length s))))
     (string-upcase-h str 0 (make-string (string-length str)))))
+
+
+;; Foldr
+(define (foldr func end lst)
+  (if (null? lst)
+      end
+      (func (car lst) (foldr func end (cdr lst)))))
