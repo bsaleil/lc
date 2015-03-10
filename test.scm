@@ -14,7 +14,6 @@
 
 ;; 2 - TODO TESTS UNITAIRES
 ;;   * Heap
-;;   * case
 ;;   * apply
 ;;   * bind define
 ;;   * eq? eqv? equal?
