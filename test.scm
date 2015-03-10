@@ -1,15 +1,9 @@
 ;; 1 - TODO CODE
 ;;   * PB quoted vector avec liste
 ;;   * Enlever les deux TODO dans ast.scm au moment de la création des deux nouveaux contextes
-;;   * PB Registre RCX. Pour le moment, remplacé partout par R15 (A MODIFIER)
-;;   * CTX : enlever les ctx-stack-set! et autres
-;;           + ajouter des fonctions de copie etc de ctx
-;;           + segfault ctx id (pb résolu?)
-;;           + set-car set-cdr sur les ctx (dans patch-closure?)
 ;;   * MLC qui génere une erreur pour remplacer les (make-lazy-code) avec juste une erreur
 ;;   * Factoriser lazy-ret de apply et call
 ;;   * Factoriser gen-fatal et den-dyn
-;;   * Verifier que si (+ a b a), le deuxieme a n'a pas de test de type
 ;;   * Si redéfinition de globale, écraser l'ancienne ? (peut briser opti appels lib)
 ;;   * Bug gc a la lecture du tag 4 (sur compiler.scm)
 ;;   * Expand multiple corps des lambda et define en begin (fait ?)
@@ -97,6 +91,3 @@
 ;     (length (cdr l))))
 
 ; (define (foo) 10)
-
-
-(pp '#())

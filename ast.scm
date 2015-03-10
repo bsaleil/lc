@@ -863,7 +863,7 @@
                         ;; Alloc
                         (gen-allocation cgc ctx STAG_STRING 3 #t)
                         
-                        ;; Get string position in RCX
+                        ;; Get string position in R15
                         (x86-mov cgc (x86-r15) (x86-rsi))
                         (x86-shl cgc (x86-r15) (x86-imm-int 1))
                         (x86-neg cgc (x86-r15))
@@ -873,7 +873,7 @@
                         ;; Fill string
                         (x86-push cgc (x86-rbx))
                         
-                        ;; RCX contient la position du vecteur ;; TODO
+                        ;;
                         (x86-mov cgc (x86-rax) (x86-r15))
                         
                         (let ((label-loop (asm-make-label cgc (new-sym 'fill-vector-loop)))
@@ -944,7 +944,7 @@
                         ;; Alloc
                         (gen-allocation cgc ctx STAG_VECTOR 2 #t)
                         
-                        ;; Get vector position in RCX
+                        ;; Get vector position in R15
                         (x86-mov cgc (x86-rax) (x86-rbx))
                         (x86-shl cgc (x86-rax) (x86-imm-int 1))
                         (x86-add cgc (x86-rax) (x86-imm-int 16))

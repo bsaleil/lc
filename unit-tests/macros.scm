@@ -53,6 +53,27 @@
                ((= 2 1) #f)
                (else (print 'e) (print 'l) (print 's) (println 'e) #t)))
 
+(println "CASE")
+
+(let ((a 5)
+      (b 1))
+  
+  (println (case (+ a b)
+             (else #f)))
+  
+  (println (case (+ a b)
+             ((0 1 2 3 4) "<5")
+             ((5 6 7 8 9) ">4,<10")
+             (else ">9")))
+  
+  (println (case (car '(a b c))
+             ((d a r k)   "I'm your father")
+             ((v a d o r) "I'm your father again"))))
+
+(println (case 'a
+           ((f o o) (print "foo") 1)
+           ((b a r) (print "bar") 2)))
+
 (println "BEGIN")
 
 (begin (println 0))
@@ -122,6 +143,11 @@
 ;#t
 ;else
 ;#t
+;CASE
+;#f
+;>4,<10
+;I'm your father
+;bar2
 ;BEGIN
 ;0
 ;1

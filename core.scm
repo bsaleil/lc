@@ -1099,7 +1099,7 @@
                  ;; Known type is not the expected type and not unknown then type error
                  ((not (eq? known-type CTX_UNK)) (jump-to-version cgc lazy-fail ctx))
                  ;; Known type is unknown
-                 (else 
+                 (else                   
                    (let* ((nctx (ctx-change-type ctx stack-idx type))
                           (ctx-succ (make-ctx (ctx-stack nctx) (ctx-env nctx) (ctx-nb-args nctx)))
                           
