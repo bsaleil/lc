@@ -70,7 +70,7 @@
 ;; TODO : apply write-char (list #\A (open-output-port "out") ne marche pas
 ;;        car la fonction générée pour write-char a un seul arg. (modifier quand current-output-port implémenté)
 ;; TODO : pareil pour apply make-vector (modifier quand optional param implémenté, sinon, créer des fonctions alternatives qui sont retournées avec rest en attendant)
-
+;; INTERNED STRING (symbols)
 ;; TODO : améliorer la detection des mutables : par exemple voir le test ut/Symbols.scm avec lc et gsi !
 
 ;; TODO : Voir pourquoi KO avec opt-libcall faux
@@ -90,3 +90,19 @@
 ;     (length (cdr l))))
 
 ; (define (foo) 10)
+
+;; Compiler lvl :
+;; (define (get-symbol-word sym) ... ) ;; Retourne le mot machine correspondant au symbole
+
+;; Runtime lvl :
+;; (c-define (alloc-symbol sp)
+;;   ...
+;;   (let ((w (get-symbol-word sym)))
+;;     ;; Retournes le mot
+
+
+;; A modifier:
+;; string->symbol ;; Appeller le c-define du runtime lvl
+;; symbol->string ;; Creer nouvelle chaine avec header et len, et copier le contenu
+;; Revoir toutes les fonctions de symbole : length? , ...
+;; A chaque création de symbole, appeller le runtime lvl (ou compiler lvl selon l'endroit)
