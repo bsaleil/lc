@@ -1,26 +1,21 @@
 ;; 1 - TODO CODE
-;;   * Ajouter port au GC
-;;   * PB quoted vector vide et avec liste
+;;   * PB quoted vector avec liste
 ;;   * Enlever les deux TODO dans ast.scm au moment de la création des deux nouveaux contextes
 ;;   * PB Registre RCX. Pour le moment, remplacé partout par R15 (A MODIFIER)
 ;;   * CTX : enlever les ctx-stack-set! et autres
 ;;           + ajouter des fonctions de copie etc de ctx
 ;;           + segfault ctx id (pb résolu?)
 ;;           + set-car set-cdr sur les ctx (dans patch-closure?)
-;;   * pb quand fonction à un seul arg qui est le rest, et aucun donné
-;;   * Uniformiser protocole des fonctions de native.scm (que faire avec $$putchar?)
-;;   * Current in/output-port
-;;   * Inliner les primitives manquantes
 ;;   * MLC qui génere une erreur pour remplacer les (make-lazy-code) avec juste une erreur
 ;;   * Factoriser lazy-ret de apply et call
-;;   * Verfier que si (+ a b a), le deuxieme a n'a pas de test de type
-;;   * Les tests de type sont toujours faits dans les prédicats (number?, ...) ?
+;;   * Factoriser gen-fatal et den-dyn
+;;   * Verifier que si (+ a b a), le deuxieme a n'a pas de test de type
 ;;   * Si redéfinition de globale, écraser l'ancienne ? (peut briser opti appels lib)
-;;   * Bug gc a la lecture du tag 4  (sur compiler.scm)
+;;   * Bug gc a la lecture du tag 4 (sur compiler.scm)
 ;;   * Expand multiple corps des lambda et define en begin (fait ?)
+;;   * MLC-test peut etre modifié pour éviter d'utiliser trop de lazy-objects
 
 ;;   * Constantes en opérandes
-;;   * Correspondance id <-> stack slot
 ;;   * Ctx info sur les variables libres? (probleme des mutables)
 
 ;; 2 - TODO TESTS UNITAIRES
@@ -104,8 +99,4 @@
 ; (define (foo) 10)
 
 
-
-
-
-
-
+(pp '#())

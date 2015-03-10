@@ -2,9 +2,7 @@
 (include "~~lib/_asm#.scm")
 
 ;; TODO : 'encoded' as parameter to avoid shr/shl of make-string
-;; TODO : return allocation position
-
-
+;; TODO : return allocation positions
 
 ;;-----------------------------------------------------------------------------
 

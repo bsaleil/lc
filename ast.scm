@@ -211,9 +211,13 @@
         ;; Push vector
         (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 (+ (vector-length ast) 2))) alloc-ptr))
         (x86-push cgc (x86-rax))
-        (jump-to-version cgc
-                         (lazy-el-gen 0)
-                         (ctx-push ctx CTX_VECT))))))
+        (if (> (vector-length ast) 0)
+          (jump-to-version cgc
+                           (lazy-el-gen 0)
+                           (ctx-push ctx CTX_VECT))
+          (jump-to-version cgc
+                           succ
+                           (ctx-push ctx CTX_VECT)))))))
 
 ;;
 ;; Make lazy code from string literal
@@ -424,36 +428,30 @@
                                    (begin
                                      (pp ast)
                                      (gen-error cgc ERR_WRONG_NUM_ARGS))
-                                   ;; Correct number of arguments
-                                   (begin (cond ;; Rest param declared but not given
-                                                ((and rest-param (= actual-p formal-p))
-                                                    ;; Shift closure
-                                                    (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                                                    (x86-push cgc (x86-rax))
-                                                    ;; Mov '() in rest param slot
-                                                    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                                                    (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
-                                                    ;; Add type information to ctx
-                                                    ;; TODO
-                                                    (let* ((cstack (cons CTX_CLO (cons CTX_PAI (cdr (ctx-stack ctx)))))
-                                                           (cnbargs (+ (ctx-nb-args ctx) 1))
-                                                           (cenv (ctx-env ctx))
-                                                           (cctx (make-ctx cstack cenv cnbargs)))
-                                                     (set! ctx cctx)))
-                                                ;; Rest param declared and given
-                                                ((and rest-param (> actual-p formal-p))
-                                                 
-                                                    (gen-rest-lst cgc ctx (- actual-p formal-p))
-                                                    ;; TODO
-                                                    (let* ((cstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1)))))
-                                                           (cnbargs (+ (ctx-nb-args ctx) 1))
-                                                           (cenv (ctx-env ctx))
-                                                           (cctx (make-ctx cstack cenv cnbargs)))
-                                                      (set! ctx cctx))
-                                                    ))
-                                          
-                                          (gen-mutable cgc ctx mvars)
-                                          (jump-to-version cgc lazy-body ctx))))))))
+                                   ;; Right number of arguments
+                                   (let ((nstack  (ctx-stack ctx))    ;; New stack  (change if rest-param)
+                                         (nnbargs (ctx-nb-args ctx))) ;; New nbargs (change if rest-param)
+                                     (if rest-param
+                                         (cond ((= actual-p formal-p)
+                                                  ;; Shift closure
+                                                  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                                                  (x86-push cgc (x86-rax))
+                                                  ;; Mov '() in rest param slot
+                                                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+                                                  (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
+                                                  ;; Update ctx information
+                                                  (set! nstack (cons CTX_CLO (cons CTX_PAI (cdr (ctx-stack ctx)))))
+                                                  (set! nnbargs (+ (ctx-nb-args ctx) 1)))
+                                                    ;(set! ctx cctx)))
+                                               ((> actual-p formal-p)
+                                                  ;; Build rest argument
+                                                  (gen-rest-lst cgc ctx (- actual-p formal-p))
+                                                  ;; Update ctx information
+                                                  (set! nstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1)))))
+                                                  (set! nnbargs (+ (ctx-nb-args ctx) 1)))))
+                                     (let ((nctx (make-ctx nstack (ctx-env ctx) nnbargs)))
+                                       (gen-mutable cgc nctx mvars)
+                                       (jump-to-version cgc lazy-body nctx)))))))))
 
     ;; Lazy closure generation
     (make-lazy-code
