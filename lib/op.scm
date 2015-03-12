@@ -1,12 +1,3 @@
-(define (not x)
-  (eq? x #f))
-
-(define (eq? x y)
-  (if (symbol? x)
-      (and (symbol? y)
-           (string=? (symbol->string x) (symbol->string y)))
-      ($eq? x y)))
-
 (define (eqv? x y)
   (if (number? x)
       (and (number? y)

@@ -37,6 +37,8 @@
 (define primitives '(
    (car                 1  1)
    (cdr                 1  1)
+   (eq?                 2  2)
+   (not                 1  1)
    (set-car!            2  2)
    (set-cdr!            2  2)
    (cons                2  2)
@@ -125,8 +127,6 @@
                  ;; Operator num
                  ((member op '(+ - * < > <= >= =)) (mlc-op-n ast succ op))
                  ((member op '(quotient modulo remainder)) (mlc-op-bin ast succ op))
-                 ;; Operator gen
-                 ((eq? op '$eq?) (mlc-op-gen ast succ op))
                  ;; Tests
                  ((assoc op type-predicates) (mlc-test ast succ))
                  ;; If
@@ -165,8 +165,14 @@
 ;;
 ;; Make lazy code from symbol literal
 ;;
+;; TODO : GC
 (define (mlc-symbol ast succ)
-  (mlc-string (symbol->string ast) succ #t))
+  (make-lazy-code
+    (lambda (cgc ctx) 
+      (let ((qword (get-symbol-qword ast)))
+        (x86-mov cgc (x86-rax) (x86-imm-int qword))
+        (x86-push cgc (x86-rax))
+        (jump-to-version cgc succ (ctx-push ctx CTX_SYM))))))
 
 ;;
 ;; Make lazy code from vector literal
@@ -222,6 +228,7 @@
 ;;
 ;; Make lazy code from string literal
 ;;
+;; TODO : remove symbol
 (define (mlc-string ast succ symbol?)
   (make-lazy-code
     (lambda (cgc ctx)
@@ -723,6 +730,33 @@
                          (gen-error cgc ""))))
                  ;; CONS
                  ((eq? special 'cons) (mlc-pair succ))
+                 ;; NOT
+                 ((eq? special 'not)
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      (let ((label-done
+                              (asm-make-label cgc (new-sym 'done))))
+                        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                        (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                        (x86-jne cgc label-done)
+                        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                        (x86-label cgc label-done)
+                        (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL))))))
+                 ;; EQ?
+                 ((eq? special 'eq?)
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      (let ((label-done
+                              (asm-make-label cgc (new-sym 'done))))
+                        (x86-pop cgc (x86-rax))
+                        (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                        (x86-je  cgc label-done)
+                        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                        (x86-label cgc label-done)
+                        (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                        (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_BOOL))))))
                  ;; CAR & CDR
                  ((member special '(car cdr))
                   (make-lazy-code
@@ -1004,7 +1038,13 @@
                                                             CTX_VECT))))))
                  
                  ;; STRING<->SYMBOL
-                 ((member special '(string->symbol symbol->string))
+                 ((eq? special 'string->symbol)
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      (gen-interned-symbol cgc)
+                      (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM)))))
+                 
+                 ((eq? special 'symbol->string)
                   (make-lazy-code
                     (lambda (cgc ctx)
                       
@@ -1017,7 +1057,7 @@
                       (x86-mov cgc (x86-rbx) (x86-rax))
                       (gen-allocation cgc
                                       ctx
-                                      (if (eq? special 'string->symbol) STAG_SYMBOL STAG_STRING)
+                                      STAG_STRING
                                       0
                                       #t)
                 
@@ -1036,9 +1076,7 @@
                       
                       ;; Mov header in symbol
                       (x86-mov cgc (x86-r15) (x86-mem 0 (x86-rax)))
-                      (if (eq? special 'string->symbol)
-                         (x86-sub cgc (x86-r15) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3)))
-                         (x86-add cgc (x86-r15) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3))))
+                      (x86-add cgc (x86-r15) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3)))
                       (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-r15))
                       
                       ;; Encoded length in r15
@@ -1064,10 +1102,7 @@
                       (x86-add cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
                       (x86-push cgc (x86-rbx))
                       
-                      (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
-                                                          (if (eq? special 'string->symbol)
-                                                             CTX_SYM
-                                                             CTX_STR))))))
+                      (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR)))))
                       
                  ;; VECTOR-LENGTH & STRING-LENGTH
                  ((member special '(vector-length string-length))
@@ -1777,36 +1812,9 @@
           (else (build-chain (cdr ast) lazy-op)))))
 
 ;;
-;; Make lazy code from GENERIC OPERATOR
-;;
-(define (mlc-op-gen ast succ op)
-  (let ((lazy-code-op (make-lazy-code
-                        (lambda (cgc ctx)
-                          (x86-pop cgc (x86-rbx))
-                          (case op
-                            (($eq?)
-                             (let ((label-done
-                                     (asm-make-label cgc (new-sym 'done))))
-                               (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rbx))
-                               (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #t)))
-                               (x86-je  cgc label-done)
-                               (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding #f)))
-                               (x86-label cgc label-done)
-                               (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rbx))))
-                            (else
-                              (error "unknown op" op)))
-                          (jump-to-version cgc
-                                           succ
-                                           (ctx-push
-                                             (ctx-pop (ctx-pop ctx))
-                                             (cond ((member op '($eq?)) CTX_BOOL))))))))
-    (gen-ast-l (cdr ast) lazy-code-op)))
-
-;;
 ;; Make lazy code from TYPE TEST
 ;;
 (define (mlc-test ast succ)
-  ;type stack-idx ctx-success lazy-success ctx-fail lazy-fail
   (let ((lazy-test
           (make-lazy-code
             (lambda (cgc ctx)

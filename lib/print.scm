@@ -19,7 +19,7 @@
   (write-char n (current-output-port)))
 
 (define (print-bool n)
-  (if ($eq? n #t)
+  (if (eq? n #t)
       (print "#t")
       (print "#f")))
 

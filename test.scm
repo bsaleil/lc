@@ -73,9 +73,12 @@
 ;; INTERNED STRING (symbols)
 ;; TODO : améliorer la detection des mutables : par exemple voir le test ut/Symbols.scm avec lc et gsi !
 
+;; TODO : augmenter l'info de ctx avec eq? (ex. eq? a #t) ... et pour d'autres primitives si on a un id
 ;; TODO : Voir pourquoi KO avec opt-libcall faux
 ; (define (foo n)
 ;   (pp (length n)))
+
+;; Revoir allocation str/sym, taille dans header
 
 ; (foo '(1 2 3))
 
@@ -99,10 +102,58 @@
 ;;   ...
 ;;   (let ((w (get-symbol-word sym)))
 ;;     ;; Retournes le mot
-
+;; TODO : pas de gc pour les symboles. Pour que les symboles soient GC :
+;; 1 - dans core.scm partie interned symbol, les allouer dans le tas au lieu d'un endroit spécial
+;; 2 - dans mem.scm, enlever simplement les symboles de is-special ? (Et vérifier que ok dans scan-field, scan-ref et copy-root)
 
 ;; A modifier:
 ;; string->symbol ;; Appeller le c-define du runtime lvl
 ;; symbol->string ;; Creer nouvelle chaine avec header et len, et copier le contenu
 ;; Revoir toutes les fonctions de symbole : length? , ...
 ;; A chaque création de symbole, appeller le runtime lvl (ou compiler lvl selon l'endroit)
+
+(define A 'bonjour)
+
+(pp (symbol? A))
+
+
+(pp (eq? 1 2))
+
+;(define B 'bonjour)
+
+; (define C "bonjour")
+; (define D (string->symbol C))
+
+; (pp A)
+; (pp B)
+; (pp C)
+; (pp D)
+
+; (pp (eq? A B))
+; (pp (eq? A D))
+; (pp (eq? B D))
+
+; (define interned-symbols (make-table test: eq?))
+
+; (define addr 43524528) ;; TODO
+
+; (define (alloc-symbol sym)
+;   ;; TODO (put-i64, ...)
+;   (let ((r (+ addr 1))) ;; Encoded
+;     (set! addr (+ addr 256))
+;     r))
+  
+
+; (define (get-symbol-qword sym)
+;   (let ((r (table-ref interned-symbols sym #f)))
+;     (if r
+;        ;; Symbol exists
+;        r
+;        ;; Symbol does not exist
+;        (let ((c (alloc-symbol sym)))
+;          (table-set! interned-symbols sym c)
+;          c))))
+
+; (pp (get-symbol-qword 'aa))
+; (pp (get-symbol-qword 'bb))
+; (pp (get-symbol-qword (string->symbol "aa")))

@@ -23,8 +23,13 @@
 
 ;; Is the object at 'addr' a special object ?
 (define (is-special-object addr)
-  (and (>= addr block-addr)
-       (<= addr (+ block-addr global-offset))))
+  (cond ((and (>= addr block-addr)
+              (<= addr (+ block-addr global-offset)))
+          #t)
+        ((and (>= addr (##foreign-address sym-space))
+              (<= addr (+ ( ##foreign-address sym-space) sym-space-len)))
+          #t)
+        (else #f)))
 
 ;;-----------------------------------------------------------------------------
 ;; ALLOCATOR
