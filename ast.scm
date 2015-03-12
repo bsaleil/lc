@@ -100,7 +100,7 @@
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
   (cond ;; String
-        ((string? ast)  (mlc-string ast succ #f))
+        ((string? ast)  (mlc-string ast succ))
         ;; Symbol
         ((symbol? ast)  (mlc-identifier ast succ))
         ;; Literal
@@ -165,7 +165,6 @@
 ;;
 ;; Make lazy code from symbol literal
 ;;
-;; TODO : GC
 (define (mlc-symbol ast succ)
   (make-lazy-code
     (lambda (cgc ctx) 
@@ -228,17 +227,14 @@
 ;;
 ;; Make lazy code from string literal
 ;;
-;; TODO : remove symbol
-(define (mlc-string ast succ symbol?)
+(define (mlc-string ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
       (let* ((len (string-length ast))
              (size (arithmetic-shift (bitwise-and (+ len 8) (bitwise-not 7)) -3))
-             (header-word (mem-header (+ size 2) (if symbol?
-                                                     STAG_SYMBOL
-                                                     STAG_STRING))))
+             (header-word (mem-header (+ size 2) STAG_STRING)))
         
-        (gen-allocation cgc ctx (if symbol? STAG_SYMBOL STAG_STRING) (+ size 2))
+        (gen-allocation cgc ctx STAG_STRING (+ size 2))
         
         ;; Write header
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
@@ -251,7 +247,7 @@
         ;; Push string
         (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 (+ size 2))) alloc-ptr))
         (x86-push cgc (x86-rax))
-        (jump-to-version cgc succ (ctx-push ctx (if symbol? CTX_SYM CTX_STR)))))))
+        (jump-to-version cgc succ (ctx-push ctx CTX_STR))))))
       
 ;; Write chars of the literal string 'str':
 ;; Write str[pos] char to [alloc-ptr+offset], and write next chars

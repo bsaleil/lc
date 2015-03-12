@@ -94,23 +94,10 @@
 
 ; (define (foo) 10)
 
-;; Compiler lvl :
-;; (define (get-symbol-word sym) ... ) ;; Retourne le mot machine correspondant au symbole
 
-;; Runtime lvl :
-;; (c-define (alloc-symbol sp)
-;;   ...
-;;   (let ((w (get-symbol-word sym)))
-;;     ;; Retournes le mot
 ;; TODO : pas de gc pour les symboles. Pour que les symboles soient GC :
 ;; 1 - dans core.scm partie interned symbol, les allouer dans le tas au lieu d'un endroit spécial
 ;; 2 - dans mem.scm, enlever simplement les symboles de is-special ? (Et vérifier que ok dans scan-field, scan-ref et copy-root)
-
-;; A modifier:
-;; string->symbol ;; Appeller le c-define du runtime lvl
-;; symbol->string ;; Creer nouvelle chaine avec header et len, et copier le contenu
-;; Revoir toutes les fonctions de symbole : length? , ...
-;; A chaque création de symbole, appeller le runtime lvl (ou compiler lvl selon l'endroit)
 
 (define A 'bonjour)
 
