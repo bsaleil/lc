@@ -14,7 +14,7 @@
 (println (number? #\newline))
 (println (number? #\a))
 (println (number? "Hello World"))
-(println (number? (make-string 4 42)))
+(println (number? (make-string 4 #\A)))
 (println (number? 'Hello))
 (println (number? (string->symbol (string-append "Hi World"))))
 
@@ -33,7 +33,7 @@
 (println (boolean? #\newline))
 (println (boolean? #\a))
 (println (boolean? "Hello World"))
-(println (boolean? (make-string 4 42)))
+(println (boolean? (make-string 4 #\A)))
 (println (boolean? 'Hello))
 (println (boolean? (string->symbol (string-append "Hi World"))))
 
@@ -52,7 +52,7 @@
 (println (null? #\newline))
 (println (null? #\a))
 (println (null? "Hello World"))
-(println (null? (make-string 4 42)))
+(println (null? (make-string 4 #\A)))
 (println (null? 'Hello))
 (println (null? (string->symbol (string-append "Hi World"))))
 
@@ -71,7 +71,7 @@
 (println (pair? #\newline))
 (println (pair? #\a))
 (println (pair? "Hello World"))
-(println (pair? (make-string 4 42)))
+(println (pair? (make-string 4 #\A)))
 (println (pair? 'Hello))
 (println (pair? (string->symbol (string-append "Hi World"))))
 
@@ -90,7 +90,7 @@
 (println (procedure? #\newline))
 (println (procedure? #\a))
 (println (procedure? "Hello World"))
-(println (procedure? (make-string 4 42)))
+(println (procedure? (make-string 4 #\A)))
 (println (procedure? 'Hello))
 (println (procedure? (string->symbol (string-append "Hi World"))))
 
@@ -109,7 +109,7 @@
 (println (list? #\newline))
 (println (list? #\a))
 (println (list? "Hello World"))
-(println (list? (make-string 4 42)))
+(println (list? (make-string 4 #\A)))
 (println (list? 'Hello))
 (println (list? (string->symbol (string-append "Hi World"))))
 
@@ -128,7 +128,7 @@
 (println (vector? #\newline))
 (println (vector? #\a))
 (println (vector? "Hello World"))
-(println (vector? (make-string 4 42)))
+(println (vector? (make-string 4 #\A)))
 (println (vector? 'Hello))
 (println (vector? (string->symbol (string-append "Hi World"))))
 
@@ -147,7 +147,7 @@
 (println (char? #\newline))
 (println (char? #\a))
 (println (char? "Hello World"))
-(println (char? (make-string 4 42)))
+(println (char? (make-string 4 #\A)))
 (println (char? 'Hello))
 (println (char? (string->symbol (string-append "Hi World"))))
 
@@ -166,7 +166,7 @@
 (println (string? #\newline))
 (println (string? #\a))
 (println (string? "Hello World"))
-(println (string? (make-string 4 42)))
+(println (string? (make-string 4 #\A)))
 (println (string? 'Hello))
 (println (string? (string->symbol (string-append "Hi World"))))
 
@@ -185,7 +185,7 @@
 (println (symbol? #\newline))
 (println (symbol? #\a))
 (println (symbol? "Hello World"))
-(println (symbol? (make-string 4 42)))
+(println (symbol? (make-string 4 #\A)))
 (println (symbol? 'Hello))
 (println (symbol? (string->symbol (string-append "Hi World"))))
 

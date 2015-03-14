@@ -38,6 +38,7 @@
    (car                 1  1)
    (cdr                 1  1)
    (eq?                 2  2)
+   (null?               1  1)
    (not                 1  1)
    (set-car!            2  2)
    (set-cdr!            2  2)
@@ -127,6 +128,8 @@
                  ;; Operator num
                  ((member op '(+ - * < > <= >= =)) (mlc-op-n ast succ op))
                  ((member op '(quotient modulo remainder)) (mlc-op-bin ast succ op))
+                 ;; Debug
+                 ((member op '(INC_S1 ZERO_S1 PRINT_S1)) (mlc-debug-op ast succ))
                  ;; Tests
                  ((assoc op type-predicates) (mlc-test ast succ))
                  ;; If
@@ -734,8 +737,23 @@
                               (asm-make-label cgc (new-sym 'done))))
                         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
                         (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                        (x86-jne cgc label-done)
                         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                        (x86-je  cgc label-done)
+                        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+                        (x86-label cgc label-done)
+                        (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL))))))
+                 ;; NULL?
+                 ((eq? special 'null?)
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      (let ((label-done
+                              (asm-make-label cgc (new-sym 'done))))
+                        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+                        (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                        (x86-je  cgc label-done)
+                        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
                         (x86-label cgc label-done)
                         (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL))))))
@@ -1160,7 +1178,88 @@
                  (else (error "NYI")))))
     
     ;; Buils lazy objects chaine
-    (gen-ast-l (cdr ast) lazy-special)))
+    (let ((types (cond ;; CAR & CDR
+                       ((member special '(car cdr))
+                          (list CTX_PAI))
+                       ((member special '(null? not eof-object?))
+                          (list '*))
+                       ((member special '(cons eq?))
+                          (list '* '*))
+                       ((member special '(exit current-output-port current-input-port))
+                          '())
+                       ((member special '(char->integer))
+                          (list CTX_CHAR))
+                       ((member special '(write-char))
+                          (list CTX_CHAR CTX_OPORT))                       
+                       ((member special '(integer->char))
+                          (list CTX_NUM))
+                       ((member special '(vector-set!))
+                          (list CTX_VECT CTX_NUM '*))
+                       ((member special '(string-set!))
+                          (list CTX_STR CTX_NUM CTX_CHAR))
+                       ((member special '(symbol->string))
+                          (list CTX_SYM))
+                       ((member special '(string-length string->symbol open-input-file open-output-file))
+                          (list CTX_STR))
+                       ((member special '(vector-length))
+                          (list CTX_VECT))
+                       ((member special '(string-ref))
+                          (list CTX_STR CTX_NUM))
+                       ((member special '(vector-ref))
+                          (list CTX_VECT CTX_NUM))
+                       ((member special '(make-string))
+                          (if (= (length (cdr ast)) 1)
+                             (list CTX_NUM)
+                             (list CTX_NUM CTX_CHAR))) ;; TODO verifier ordre
+                       ((member special '(make-vector))
+                          (if (= (length (cdr ast)) 1)
+                             (list CTX_NUM)
+                             (list CTX_NUM '*)))
+                       ((member special '(set-car! set-cdr!))
+                          (list CTX_PAI '*))
+                       ((member special '(close-input-port read-char))
+                          (list CTX_IPORT))
+                       ((member special '(close-output-port))
+                          (list CTX_OPORT))
+                       (else (error "NYI " special)))))
+      ;; TODO + factoriser au dessus
+      (assert (= (length types)
+                 (length (cdr ast))) "JKK")
+      
+      (let ((next (check-types types (cdr ast) lazy-special ast)))
+        (make-lazy-code
+          (lambda (cgc ctx)
+            (pp ast)
+            (pp ctx)
+            (jump-to-version cgc next ctx)))))))
+                       
+    ;(gen-ast-l (cdr ast) lazy-special)))
+
+;(gen-fatal-type-test type stack-idx succ ast)
+;; TODO
+(define (check-types types args succ ast)
+  (if (null? types)
+     succ
+     (let ((next-arg (check-types (cdr types) (cdr args) succ ast)))
+        (if (eq? (car types) '*)
+           (gen-ast (car args) next-arg)
+           (gen-ast (car args)
+                    (gen-fatal-type-test (car types) 0 next-arg ast))))))
+            
+     ; (let ((first (gen-ast (car ast-l)
+     ;                       (check-types (cdr types) (cdr ast-l) succ (+ curr-idx 1)))))
+     ;   (pp (car types))
+     ;   (if (eq? (car types) '*)
+     ;      first
+     ;      (gen-fatal-type-test (car types)
+     ;                           curr-idx
+     ;                           first
+     ;                           (car ast-l))))))
+                          
+     ; (gen-ast (car lst)
+     ;          (gen-ast-l (cdr lst) succ))))
+     ;(gen-fatal-type-test type stack-idx succ ast)
+;(check-types '(1 2 3) (cdr ast) lazy-special)
 
 ;;-----------------------------------------------------------------------------
 ;; Conditionals
@@ -2288,6 +2387,29 @@
                (x86-push cgc (x86-rax)))
              ;; Create next pair
              (gen-rest-lst-h cgc ctx(- pos 1) nb (+ sp-offset 8)))))
+
+;;-----------------------------------------------------------------------------
+;; Debug ops
+
+(define (mlc-debug-op ast succ)
+  (cond ((eq? (car ast) 'INC_S1)
+           (make-lazy-code
+             (lambda (cgc ctx)
+                (gen-inc-slota cgc)
+                (x86-push cgc (x86-imm-int ENCODING_VOID))
+                (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))
+        ((eq? (car ast) 'ZERO_S1)
+           (make-lazy-code
+             (lambda (cgc ctx)
+                (gen-set-slota cgc 0)
+                (x86-push cgc (x86-imm-int ENCODING_VOID))
+                (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))
+        ((eq? (car ast) 'PRINT_S1)
+           (make-lazy-code
+             (lambda (cgc ctx)
+                (gen-get-slota cgc (x86-rax))
+                (gen-dump-regs cgc)
+                (jump-to-version cgc succ ctx))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Utils

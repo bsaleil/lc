@@ -99,12 +99,6 @@
 ;; 1 - dans core.scm partie interned symbol, les allouer dans le tas au lieu d'un endroit spécial
 ;; 2 - dans mem.scm, enlever simplement les symboles de is-special ? (Et vérifier que ok dans scan-field, scan-ref et copy-root)
 
-(define A 'bonjour)
-
-(pp (symbol? A))
-
-
-(pp (eq? 1 2))
 
 ;(define B 'bonjour)
 
@@ -144,3 +138,23 @@
 ; (pp (get-symbol-qword 'aa))
 ; (pp (get-symbol-qword 'bb))
 ; (pp (get-symbol-qword (string->symbol "aa")))
+
+
+;; TODO : pourquoi make-string  et d'autres passent par mlc-primitives avec uniquement (car #f)
+
+; (make-vector 10)
+
+; (car #f)
+;(write-char #\A (current-output-port))
+
+(define (foo n)
+  
+  (letrec ((test '())
+           (bar (lambda () (set! test '(1 2 3)))))
+  
+	  (println (list? test))
+      (bar)
+      (println (car test))))
+
+(foo 40)
+  

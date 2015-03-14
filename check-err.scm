@@ -2,51 +2,50 @@
 ;; Check if compiler correctly handles type error on primitives
    
 
-;; TODO :              
-;; $$putchar
+;; TODO :
 ;; out of bounds
 
 (define tests '(       
   ;; Primitives
-  "($+ #f 2)"
-  "($+ 2 #f)"
-  "($- #f 2)"
-  "($- 2 #f)"
-  "($* #f 2)"
-  "($* 2 #f)"
-  "($quotient #f 2)"
-  "($quotient 2 #f)"
-  "($modulo #f 2)"
-  "($modulo 2 #f)"
-  "($< #f 1)"
-  "($< 1 #f)"
-  "($> #f 1)"
-  "($> 1 #f)"
-  "($= #f 1)"
-  "($= 1 #f)"
+  "(+ #f 2)"
+  "(+ 2 #f)"
+  "(- #f 2)"
+  "(- 2 #f)"
+  "(* #f 2)"
+  "(* 2 #f)"
+  "(quotient #f 2)"
+  "(quotient 2 #f)"
+  "(modulo #f 2)"
+  "(modulo 2 #f)"
+  "(< #f 1)"
+  "(< 1 #f)"
+  "(> #f 1)"
+  "(> 1 #f)"
+  "(= #f 1)"
+  "(= 1 #f)"
   ;; 
-  "($car #f)"
-  "($cdr #f)"
+  "(car #f)"
+  "(cdr #f)"
   ;; Vectors
-  "($vector-length #f)"
-  "($vector-ref #f 1)"
-  "($vector-ref (make-vector 10) #f)"
-  "($vector-set! #f 1 1)"
-  "($vector-set! (make-vector 10) #t 1)"
-  "($make-vector #f)"
+  "(vector-length #f)"
+  "(vector-ref #f 1)"
+  "(vector-ref (make-vector 10) #f)"
+  "(vector-set! #f 1 1)"
+  "(vector-set! (make-vector 10) #t 1)"
+  "(make-vector #f)"
   ;; Strings
-  "($string-length #f)"
-  "($string-ref #f 1)"
-  "($string-ref \"Hi\" #f)"
-  "($string-set! #f 1 #\\A)"
-  "($string-set! \"Hi\" #f #\\A)"
-  "($string-set! \"Hi\" 1 #f)"
-  "($make-string #f)"
+  "(string-length #f)"
+  "(string-ref #f 1)"
+  "(string-ref \"Hi\" #f)"
+  "(string-set! #f 1 #\\A)"
+  "(string-set! \"Hi\" #f #\\A)"
+  "(string-set! \"Hi\" 1 #f)"
+  "(make-string #f)"
   ;; Types
-  "($integer->char #f)"
-  "($char->integer #f)"
-  "($string->symbol 100)"
-  "($symbol->string 100)"
+  "(integer->char #f)"
+  "(char->integer #f)"
+  "(string->symbol 100)"
+  "(symbol->string 100)"
 ))
   
 (define (run path . args)

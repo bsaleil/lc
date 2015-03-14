@@ -490,6 +490,29 @@
 (define block-len (* 8 (+ global-offset 10000))) ;; 1 stack addr, 1000 globals
 (define block-addr #f)
 
+(define (gen-set-slota cgc imm)
+  (x86-push cgc (x86-rax))
+  (x86-push cgc (x86-rbx))
+  (x86-mov  cgc (x86-rax) (x86-imm-int (+ block-addr (* 5 8))))
+  (x86-mov  cgc (x86-rbx) (x86-imm-int imm))
+  (x86-mov  cgc (x86-mem 0 (x86-rax)) (x86-rbx))
+  (x86-pop cgc (x86-rbx))
+  (x86-pop cgc (x86-rax)))
+
+(define (gen-get-slota cgc r)
+  (x86-mov cgc r (x86-imm-int (+ block-addr (* 5 8))))
+  (x86-mov cgc r (x86-mem 0 r)))
+
+(define (gen-inc-slota cgc)
+  (x86-push cgc (x86-rax))
+  (x86-push cgc (x86-rbx))
+  (x86-mov cgc (x86-rax) (x86-imm-int (+ block-addr (* 5 8))))
+  (x86-mov cgc (x86-rbx) (x86-mem 0 (x86-rax)))
+  (x86-inc cgc (x86-rbx))
+  (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rbx))
+  (x86-pop cgc (x86-rbx))
+  (x86-pop cgc (x86-rax)))
+
 (define (init-block)
   (set! block (##make-machine-code-block block-len))
   (set! block-addr (##foreign-address block)))
@@ -647,6 +670,9 @@
     (x86-label cgc label-rtlib-skip)
     
     (push-regs cgc prog-regs)
+    
+    ;; Init debug slots
+    (gen-set-slota cgc 0)
     
     ;; Put bottom of the stack (after saving registers) at "block-addr + 0"
     (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
@@ -1259,7 +1285,7 @@
                              ;(x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                              ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
                          ;; Procedure type test
-                         ((member type (list CTX_CLO CTX_PAI))
+                         ((member type (list CTX_CLO CTX_PAI CTX_STR CTX_VECT CTX_SYM CTX_IPORT CTX_OPORT))
                            
                              (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                              (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
@@ -1269,10 +1295,15 @@
                              (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
                              (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
                              ;; STAG_XXX << 3
-                             (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_CLO) STAG_PROCEDURE)
-                                                                            ((eq? type CTX_PAI) STAG_PAIR))))))
+                             (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_CLO)   STAG_PROCEDURE)
+                                                                            ((eq? type CTX_STR)   STAG_STRING)
+                                                                            ((eq? type CTX_SYM)   STAG_SYMBOL)
+                                                                            ((eq? type CTX_VECT)  STAG_VECTOR)
+                                                                            ((eq? type CTX_IPORT) STAG_IPORT)
+                                                                            ((eq? type CTX_OPORT) STAG_OPORT)
+                                                                            ((eq? type CTX_PAI)   STAG_PAIR))))))
                          ;; Other
-                         (else (error "Unknown type")))
+                         (else (error "Unknown type " type)))
                    (x86-label cgc label-jump)
                    (x86-je cgc (list-ref stub-labels 0))
                    (x86-jmp cgc (list-ref stub-labels 1)))))))))
@@ -1380,7 +1411,7 @@
 ;; Global cc table
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 220)
+(define global-cc-table-maxsize 230)
 ;; Current shape of the global cc table
 (define global-cc-table (make-table))
 

@@ -6,16 +6,10 @@
       (output-port? p)))
 
 (define (boolean? n)
-  (cond ((eq? n #t) #t)
-        ((eq? n #f) #t)
-        (else #f)))
-
-(define (null? n)
-	(eq? n '()))
-
+  (or (eq? n #t)
+      (eq? n #f)))
 
 ;; Conversion
-
 
 (define (vector->list v)
    (vector->list-h v 0 (vector-length v)))
