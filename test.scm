@@ -147,14 +147,8 @@
 ; (car #f)
 ;(write-char #\A (current-output-port))
 
-(define (foo n)
-  
-  (letrec ((test '())
-           (bar (lambda () (set! test '(1 2 3)))))
-  
-	  (println (list? test))
-      (bar)
-      (println (car test))))
+;; TODO : PROBLEME DE MUTABLE
 
-(foo 40)
-  
+(println 10)
+(exit)
+(pp "KK")

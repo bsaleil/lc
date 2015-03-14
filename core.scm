@@ -52,6 +52,7 @@
 (define STAG_OPORT     18)
 
 ;; Context types
+(define CTX_ALL   '*) ;; cts reprsenting all ctx types
 (define CTX_NUM   'number)
 (define CTX_CHAR  'char)
 (define CTX_BOOL  'boolean)
@@ -66,6 +67,7 @@
 (define CTX_SYM   'symbol)
 (define CTX_IPORT 'inport)
 (define CTX_OPORT 'outport)
+(define CTX_MOBJ  'mobject)
 
 ;; Exec errors
 (define ERR_MSG             "EXEC ERROR")
@@ -979,6 +981,7 @@
 
 ;; Move slot from stack index 'l-from' to stack-index 'l-to'
 ;; Optionnally update env.
+;; If update-env? is #f, checks if to type is mobj
 (define (ctx-move ctx l-from l-to #!optional (update-env? #t))
     
   (let ((pos-from (- (length (ctx-stack ctx)) l-from 2)) ;; stack-idx to slot pos
@@ -1003,9 +1006,12 @@
     
     ;; Update types in stack
     (define (update-stack stack)
-      (append (list-head stack l-to)
-              (cons (list-ref stack l-from)
-                    (list-tail stack (+ l-to 1)))))
+      (if (and (not update-env?)
+               (eq? (list-ref stack l-to) CTX_MOBJ)) ;; To-type is mobj
+        stack
+        (append (list-head stack l-to)
+                (cons (list-ref stack l-from)
+                      (list-tail stack (+ l-to 1))))))
     
     (let (;; 1 - Update ctx-env
           (env (if update-env?

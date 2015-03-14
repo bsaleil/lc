@@ -5,6 +5,27 @@
 ;; TODO : RCX global ? (used by if/else stubs)
 
 ;;-----------------------------------------------------------------------------
+;; Macros
+
+;; Generate primitive types lists from types pattern (used in 'primitives' set)
+(define-macro (prim-types . args)
+  (define (list-head l n)
+    (if (= n 0)
+       '()
+       (cons (car l)
+             (list-head (cdr l) (- n 1)))))
+  (if (= (length args) (+ (car args) 1))
+     `(list (list ,(car args) ,@(cdr args)))
+     `(cons (list ,(car args) ,@(list-head (cdr args) (car args)))
+            (prim-types ,@(list-tail args (+ (car args) 1))))))
+
+(define-macro (assert c err)
+   `(if (not ,c)
+      (begin (pp ast)
+             (println "!!! ERROR : " ,err)
+             (exit 1))))
+
+;;-----------------------------------------------------------------------------
 ;; Primitives
 
 ;; Primitives for type tests
@@ -34,48 +55,41 @@
           (error "NYI"))))
 
 ;; Primitives: name, nb args min, nb args max
-(define primitives '(
-   (car                 1  1)
-   (cdr                 1  1)
-   (eq?                 2  2)
-   (null?               1  1)
-   (not                 1  1)
-   (set-car!            2  2)
-   (set-cdr!            2  2)
-   (cons                2  2)
-   (vector-length       1  1)
-   (vector-ref          2  2)
-   (char->integer       1  1)
-   (integer->char       1  1)
-   (string-ref          2  2)
-   (string->symbol      1  1)
-   (symbol->string      1  1)
-   (close-output-port   1  1)
-   (close-input-port    1  1)
-   (open-output-file    1  1)
-   (open-input-file     1  1)
-   (string-set!         3  3)
-   (vector-set!         3  3)
-   (string-length       1  1)
-   (read-char           1  1)
-   (exit                0  0)
-   (make-vector         1  2)
-   (make-string         1  2)
-   (eof-object?         1  1) ;; NOTE : move to type predicates ?
-   (write-char          1  2)
-   (current-output-port 0  0)
-   (current-input-port  0  0)
+(define primitives `(
+   (car                 1  1  ,(prim-types 1 CTX_PAI))
+   (cdr                 1  1  ,(prim-types 1 CTX_PAI))
+   (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL))
+   (null?               1  1  ,(prim-types 1 CTX_ALL))
+   (not                 1  1  ,(prim-types 1 CTX_ALL))
+   (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL))
+   (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL))
+   (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL))
+   (vector-length       1  1  ,(prim-types 1 CTX_VECT))
+   (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM))
+   (char->integer       1  1  ,(prim-types 1 CTX_CHAR))
+   (integer->char       1  1  ,(prim-types 1 CTX_NUM))
+   (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM))
+   (string->symbol      1  1  ,(prim-types 1 CTX_STR))
+   (symbol->string      1  1  ,(prim-types 1 CTX_SYM))
+   (close-output-port   1  1  ,(prim-types 1 CTX_OPORT))
+   (close-input-port    1  1  ,(prim-types 1 CTX_IPORT))
+   (open-output-file    1  1  ,(prim-types 1 CTX_STR))
+   (open-input-file     1  1  ,(prim-types 1 CTX_STR))
+   (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_NUM CTX_CHAR))
+   (vector-set!         3  3  ,(prim-types 3 CTX_VECT CTX_NUM CTX_ALL))
+   (string-length       1  1  ,(prim-types 1 CTX_STR))
+   (read-char           1  1  ,(prim-types 1 CTX_IPORT))
+   (exit                0  0  ,(prim-types 0 ))
+   (make-vector         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_ALL))
+   (make-string         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_CHAR))
+   (eof-object?         1  1  ,(prim-types 1 CTX_ALL))
+   (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT))
+   (current-output-port 0  0  ,(prim-types 0 ))
+   (current-input-port  0  0  ,(prim-types 0 ))
 ))
 
 ;;-----------------------------------------------------------------------------
 
-(define-macro (assert c err)
-   `(if (not ,c)
-      (begin (pp ast)
-             (println "!!! ERROR : " ,err)
-             (exit 1))))
-
-;; 
 (define (assert-p-nbargs ast)
   (assert (and (>= (length (cdr ast))
                    (cadr (assoc (car ast) primitives)))
@@ -304,7 +318,10 @@
                                 ;; Unknown
                                 (error "Can't find variable: " ast))))))
          
-           (let* ((nctx (ctx-push ctx ctx-type ast)))
+           (let* ((nctx (if (eq? ctx-type CTX_MOBJ)
+                           (ctx-push ctx CTX_UNK ast)
+                           (ctx-push ctx ctx-type ast))))
+              
               (jump-to-version cgc succ nctx)))
          
          ;; TODO ELSE
@@ -455,9 +472,9 @@
                                                   ;; Update ctx information
                                                   (set! nstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1)))))
                                                   (set! nnbargs (+ (ctx-nb-args ctx) 1)))))
-                                     (let ((nctx (make-ctx nstack (ctx-env ctx) nnbargs)))
-                                       (gen-mutable cgc nctx mvars)
-                                       (jump-to-version cgc lazy-body nctx)))))))))
+                                     (let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
+                                            (mctx (gen-mutable cgc nctx mvars)))
+                                       (jump-to-version cgc lazy-body mctx)))))))))
 
     ;; Lazy closure generation
     (make-lazy-code
@@ -607,14 +624,15 @@
                 (lambda (cgc ctx)
                   (let* ((start (- (length (ctx-stack ctx)) 2))
                          (env (build-env mvars (list (car ids)) start (ctx-env ctx)))
-                         (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx))))
-                      ;; If this id is mutable then gen mobject
-                      (if (member (car ids) mvars)
-                        (gen-mutable cgc nctx (list (car ids))))
+                         (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx)))
+                         ;; If this id is mutable then gen mobject
+                         (mctx (if (member (car ids) mvars)
+                                  (gen-mutable cgc nctx (list (car ids)))
+                                  nctx)))
                       ;; Jump to next id (or succ) with new ctx
                       (jump-to-version cgc
                                        (gen-let*-bindings (cdr ids) (cdr values) mvars)
-                                       nctx))))))
+                                       mctx))))))
         ;; Gen value
         (gen-ast (car values) lazy-bind))))
 
@@ -645,13 +663,13 @@
        (lambda (cgc ctx)
           (let* ((stack (ctx-stack (ctx-push-nb ctx CTX_BOOL (length ids))))
                  (start (- (length stack) (length ids) 1))
-                 (env (build-env ids ids start (ctx-env ctx))) ;; All ids are considered as mutable
+                 (env (build-env ids ids start (ctx-env ctx))) ;; TODO: All ids are considered as mutable
                  (nctx (make-ctx stack env (ctx-nb-args ctx))))
              
              ;; Create values on stack (initial value is #f)
              (call-n (length ids) x86-push cgc (x86-imm-int (obj-encoding #f)))
-             (gen-mutable cgc nctx ids)
-             (jump-to-version cgc lazy-values nctx))))))
+             (let ((mctx (gen-mutable cgc nctx ids)))
+              (jump-to-version cgc lazy-values mctx)))))))
 
 ;; Mov values to their locations (letrec bind)
 (define (gen-letrec-binds cgc ctx all-ids)
@@ -685,11 +703,11 @@
                   (let* ((mvars (mutable-vars ast ids))
                          (start (- (length (ctx-stack ctx)) (length ids) 1))
                          (env (build-env mvars ids start (ctx-env ctx)))
-                         (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx))))
-                     ;; Gen mutable vars
-                     (gen-mutable cgc nctx mvars)
+                         (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx)))
+                         ;; Gen mutable vars
+                         (mctx (gen-mutable cgc nctx mvars)))
                      ;; Jump to first body
-                     (jump-to-version cgc succ nctx))))))
+                     (jump-to-version cgc succ mctx))))))
       ;; 1 - Gen all bound values
       (gen-ast-l values lazy-let-in)))
 
@@ -712,13 +730,13 @@
 ;;
 (define (mlc-primitive ast succ)
   
-  ;; Assert nb args primitive
-  (assert-p-nbargs ast)
-  
   ;; Adjust args for some primitives
   (cond ((and (eq? (car ast) 'write-char)
               (= (length ast) 2))
           (set! ast (append ast '((current-output-port))))))
+  
+  ;; Assert nb args primitive
+  (assert-p-nbargs ast)
   
   (let* ((special (car ast))
          (lazy-special
@@ -1173,70 +1191,21 @@
                         (x86-push cgc (x86-rax))
                         
                         (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 3) CTX_VOID)))))
-                 
                  ;; OTHERS
                  (else (error "NYI")))))
     
-    ;; Buils lazy objects chaine
-    (let ((types (cond ;; CAR & CDR
-                       ((member special '(car cdr))
-                          (list CTX_PAI))
-                       ((member special '(null? not eof-object?))
-                          (list '*))
-                       ((member special '(cons eq?))
-                          (list '* '*))
-                       ((member special '(exit current-output-port current-input-port))
-                          '())
-                       ((member special '(char->integer))
-                          (list CTX_CHAR))
-                       ((member special '(write-char))
-                          (list CTX_CHAR CTX_OPORT))                       
-                       ((member special '(integer->char))
-                          (list CTX_NUM))
-                       ((member special '(vector-set!))
-                          (list CTX_VECT CTX_NUM '*))
-                       ((member special '(string-set!))
-                          (list CTX_STR CTX_NUM CTX_CHAR))
-                       ((member special '(symbol->string))
-                          (list CTX_SYM))
-                       ((member special '(string-length string->symbol open-input-file open-output-file))
-                          (list CTX_STR))
-                       ((member special '(vector-length))
-                          (list CTX_VECT))
-                       ((member special '(string-ref))
-                          (list CTX_STR CTX_NUM))
-                       ((member special '(vector-ref))
-                          (list CTX_VECT CTX_NUM))
-                       ((member special '(make-string))
-                          (if (= (length (cdr ast)) 1)
-                             (list CTX_NUM)
-                             (list CTX_NUM CTX_CHAR))) ;; TODO verifier ordre
-                       ((member special '(make-vector))
-                          (if (= (length (cdr ast)) 1)
-                             (list CTX_NUM)
-                             (list CTX_NUM '*)))
-                       ((member special '(set-car! set-cdr!))
-                          (list CTX_PAI '*))
-                       ((member special '(close-input-port read-char))
-                          (list CTX_IPORT))
-                       ((member special '(close-output-port))
-                          (list CTX_OPORT))
-                       (else (error "NYI " special)))))
-      ;; TODO + factoriser au dessus
+    (let* ((primitive (assoc (car ast) primitives))
+           ;; Get list of types required by this primitive
+           (types (cdr (assoc (length (cdr ast))
+                              (cadddr primitive)))))
       (assert (= (length types)
-                 (length (cdr ast))) "JKK")
-      
-      (let ((next (check-types types (cdr ast) lazy-special ast)))
-        (make-lazy-code
-          (lambda (cgc ctx)
-            (pp ast)
-            (pp ctx)
-            (jump-to-version cgc next ctx)))))))
-                       
-    ;(gen-ast-l (cdr ast) lazy-special)))
+                 (length (cdr ast)))
+              "Compiler: primitive error")
+      ;; Build args lazy object chain (with type checks)
+      (check-types types (cdr ast) lazy-special ast))))
 
-;(gen-fatal-type-test type stack-idx succ ast)
-;; TODO
+;; Build lazy objects chain of 'args' list
+;; and insert type check for corresponding 'types'
 (define (check-types types args succ ast)
   (if (null? types)
      succ
@@ -1245,21 +1214,6 @@
            (gen-ast (car args) next-arg)
            (gen-ast (car args)
                     (gen-fatal-type-test (car types) 0 next-arg ast))))))
-            
-     ; (let ((first (gen-ast (car ast-l)
-     ;                       (check-types (cdr types) (cdr ast-l) succ (+ curr-idx 1)))))
-     ;   (pp (car types))
-     ;   (if (eq? (car types) '*)
-     ;      first
-     ;      (gen-fatal-type-test (car types)
-     ;                           curr-idx
-     ;                           first
-     ;                           (car ast-l))))))
-                          
-     ; (gen-ast (car lst)
-     ;          (gen-ast-l (cdr lst) succ))))
-     ;(gen-fatal-type-test type stack-idx succ ast)
-;(check-types '(1 2 3) (cdr ast) lazy-special)
 
 ;;-----------------------------------------------------------------------------
 ;; Conditionals
@@ -1493,12 +1447,11 @@
              (lambda (cgc ctx)
                (let* ((start (- (length (ctx-stack ctx)) (length variables) 1))
                       (env  (build-env mvars variables start (ctx-env ctx)))
-                      (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx))))
-                 ;; Gen mutable vars
-                 (gen-mutable cgc nctx mvars)
-                 
+                      (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx)))
+                      ;; Gen mutable vars
+                      (mctx (gen-mutable cgc nctx mvars)))
                  ;; Jump to test with new ctx
-                 (jump-to-version cgc lazy-test nctx))))))
+                 (jump-to-version cgc lazy-test mctx))))))
          
     ;; Lazy-dispatch exists then generate test ast
     (set! lazy-test (gen-ast test lazy-dispatch))
@@ -2322,12 +2275,13 @@
 ;; into memory-allocated variables.
 (define (gen-mutable cgc ctx mutable)
 
-    (if (not (null? mutable))
-       
+    (if (null? mutable)
+       ctx ;; Return new ctx
        (let* ((res (assoc (car mutable) (ctx-env ctx)))
               (header-word (mem-header 2 STAG_MOBJECT))
               (fs (length (ctx-stack ctx)))
-              (offset (* (- fs 2 (identifier-offset (cdr res))) 8)))
+              (l-pos (- fs 2 (identifier-offset (cdr res))))
+              (offset (* l-pos 8)))
          
         ;; Alloc
         (gen-allocation cgc ctx STAG_MOBJECT 2)
@@ -2342,8 +2296,12 @@
         (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
         (x86-mov cgc (x86-mem offset (x86-rsp)) (x86-rax))
 
-        ;; Gen next mutable vars
-        (gen-mutable cgc ctx (cdr mutable)))))
+        (let* ((nstack (append (list-head (ctx-stack ctx) l-pos)
+                              (cons CTX_MOBJ
+                                    (list-tail (ctx-stack ctx) (+ l-pos 1)))))
+               (nctx (make-ctx nstack (ctx-env ctx) (ctx-nb-args ctx))))
+          ;; Gen next mutable vars
+          (gen-mutable cgc nctx (cdr mutable))))))
 
 ;; Gen code to create rest list from stack in heap.
 ;; nb-pop: Number of values in rest list
