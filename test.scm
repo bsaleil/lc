@@ -139,6 +139,8 @@
 ; (pp (get-symbol-qword 'bb))
 ; (pp (get-symbol-qword (string->symbol "aa")))
 
+;; TODO : renommer saved-env
+;; TODO : enlever les variables mutables du letrec
 
 ;; TODO : pourquoi make-string  et d'autres passent par mlc-primitives avec uniquement (car #f)
 
@@ -149,6 +151,10 @@
 
 ;; TODO : PROBLEME DE MUTABLE
 
-(println 10)
-(exit)
-(pp "KK")
+
+
+;;-----
+;; MARDI : 
+;;   Nombre de pt entree max pour chaque test
+;;   Performances contre gsc avec options pour chaque test
+;;   Nombre d'appels pour chaque primitive

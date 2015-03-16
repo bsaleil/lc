@@ -401,12 +401,11 @@
 ;; Make lazy code from LAMBDA
 ;;
 (define (mlc-lambda ast succ lib-define)
+  
   (let* (;; Lambda free vars
          (fvars #f)
          ;; Lambda mutable vars
          (mvars #f)
-         ;; Saved env
-         (saved-env #f)
          ;; Rest param ?
          (rest-param (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
                          (and (pair? (cadr ast)) (not (list? (cadr ast)))))) ;; (foo a..z . rest)
@@ -442,6 +441,7 @@
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
          (lazy-prologue (make-lazy-code
                            (lambda (cgc ctx)
+                             
                               (let* ((actual-p (- (length (ctx-stack ctx)) 2)) ;; 1 for return address / closure
                                      (formal-p (ctx-nb-args ctx)))
 
@@ -483,16 +483,14 @@
         (let* (;; Lambda stub
                (stub-labels (add-fn-callback cgc
                                              0
-                                             (lambda (sp ctx ret-addr selector closure)
+                                             (lambda (sp sctx ret-addr selector closure)
                                                
                                                ;; Extends env with params and free vars
-                                               (let* ((env (build-env mvars all-params 0 (build-fenv saved-env mvars fvars 0)))
-                                                      (ctx (make-ctx (ctx-stack ctx) env (length params))))
-                                                 (gen-version-fn closure lazy-prologue ctx)))))
+                                               (let* ((env (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0)))
+                                                      (nctx (make-ctx (ctx-stack sctx) env (length params))))
+                                                 (gen-version-fn closure lazy-prologue nctx)))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
           
-          ;; SAVE ENVIRONMENT
-          (set! saved-env (ctx-env ctx))
           ;; COMPUTE FREE VARS
           (set! fvars (free-vars (caddr ast) all-params ctx))
           ;; COMPUTE MUTABLE VARS
@@ -525,7 +523,7 @@
             ;; TAG AND PUSH CLOSURE
             (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 total-size)) alloc-ptr))
             (x86-push cgc (x86-rax)))
-
+            
           ;; Jump to next
           (jump-to-version cgc
                            succ
@@ -1574,7 +1572,7 @@
 
                 ;; 2 - Get entry point in cc-table
                 (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
-
+                
                 ;; 3 - Jump
                 (x86-jmp cgc (x86-rax))))))
         
@@ -1863,9 +1861,11 @@
 ;; Make lazy code from TYPE TEST
 ;;
 (define (mlc-test ast succ)
+  
   (let ((lazy-test
           (make-lazy-code
             (lambda (cgc ctx)
+                            
               (let* ((type (type-from-predicate (car ast)))
                      (known-type (car (ctx-stack ctx)))
                      (ctx-true  (ctx-push (ctx-pop (ctx-change-type ctx 0 type)) CTX_BOOL))
@@ -2047,6 +2047,7 @@
 
 ;; Free variable
 (define (gen-get-freevar cgc ctx variable dest #!optional (raw_value? #t))
+  
    (let* ((offset (+ (- 16 TAG_MEMOBJ) (* 8 (identifier-offset (cdr variable)))))
           (clo-offset (* 8 (closure-pos ctx)))
           (mutable (identifier-mutable? (cdr variable))))
@@ -2065,8 +2066,9 @@
                (cond ((eq? dest 'stack) (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
                      ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
                      (else (error "Invalid destination")))))
-
-      CTX_UNK)) ;; TODO return free var ctx info when implemented
+      
+      (identifier-stype (cdr variable))))
+      ;CTX_UNK))
 
 ;; Local variable
 (define (gen-get-localvar cgc ctx variable dest #!optional (raw_value? #t))
@@ -2101,7 +2103,8 @@
 ;;
 
 ;; Extends env with 'fvars' free vars starting with offset
-(define (build-fenv saved-env mvars fvars offset)
+(define (build-fenv saved-stack saved-env mvars fvars offset)
+  
   (if (null? fvars)
       '()
       (cons (cons (car fvars) (make-identifier 'free
@@ -2110,8 +2113,15 @@
                                                (let ((res (assoc (car fvars) saved-env)))
                                                   (if (identifier-mutable? (cdr res))
                                                     '(mutable)
-                                                    '()))))
-            (build-fenv saved-env mvars (cdr fvars) (+ offset 1)))))
+                                                    '()))
+                                               ;; TODO:
+                                               (let* ((res (assoc (car fvars) saved-env)))
+                                                 (if (eq? (identifier-type (cdr res)) 'local)
+                                                    (let ((idx (- (length saved-stack) 2 (identifier-offset (cdr res)))))
+                                                      (list-ref saved-stack idx))
+                                                      (identifier-stype (cdr res))))))
+            
+            (build-fenv saved-stack saved-env mvars (cdr fvars) (+ offset 1)))))
 
 ;; Write free vars in closure
 (define (gen-free-vars cgc vars ctx offset)
@@ -2229,7 +2239,8 @@
                                            (list start)
                                            (if (member (car ids) mvars)
                                               '(mutable)
-                                              '())))
+                                              '())
+                                           '()))
           (build-env mvars (cdr ids) (+ start 1) env))))
 
 ;; Get position of current closure in stack

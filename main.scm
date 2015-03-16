@@ -100,9 +100,9 @@
                   lazy-lib
                   (make-ctx '() '() -1)))
   
-  ;(time (##machine-code-block-exec mcb))
-  ;(time (##machine-code-block-exec mcb)))
-  (##machine-code-block-exec mcb))
+  (time (##machine-code-block-exec mcb))
+  (time (##machine-code-block-exec mcb)))
+  ;(##machine-code-block-exec mcb))
 
 ;;-----------------------------------------------------------------------------
 ;; Command line args parser

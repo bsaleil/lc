@@ -825,6 +825,7 @@
   offset ;; offset in closure or stack
   pos    ;; set of offset where the identifier is located
   flags  ;; list of flags (possible flags : mutable)
+  stype  ;; TODO
 )
 
 (define (identifier-mutable? id)
@@ -838,7 +839,8 @@
      (make-identifier (identifier-type id)
                       (identifier-offset id)
                       (cons pos (identifier-pos id))
-                      (identifier-flags id))))
+                      (identifier-flags id)
+                      (identifier-stype id))))
 
 ;; Remove pos from identifier object 'id'
 (define (identifier-rmpos id pos)
@@ -854,7 +856,8 @@
     (make-identifier (identifier-type id)
                      (identifier-offset id)
                      npos
-                     (identifier-flags id))))
+                     (identifier-flags id)
+                     (identifier-stype id))))
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx management
@@ -931,7 +934,8 @@
                                          (identifier-offset  (cdr l))
                                          ;; Set pos to a set of length 1 chich contains only offset
                                          (list (identifier-offset  (cdr l)))
-                                         (identifier-flags   (cdr l))))
+                                         (identifier-flags   (cdr l))
+                                         (identifier-stype   (cdr l))))
                   (cdr env))
             (cons (car env)
                   (ctx-reset-pos-h (cdr env) sym))))))
@@ -1067,6 +1071,7 @@
 ;; First generate function lazy-code
 ;; Then patch closure slot to jump directly to generated function
 (define (gen-version-fn closure lazy-code ctx)
+  
   (if verbose-jit
       (begin
         (print "GEN VERSION FN")
@@ -1217,6 +1222,11 @@
                      (gen-error cgc (ERR_TYPE_EXPECTED type)))))
                ;; Current information on type
                (known-type (list-ref (ctx-stack ctx) stack-idx)))
+           
+           ; (pp "TEST")
+           ; (pp type)
+           ; (pp known-type)
+           ; (pp ast)
            
            (cond ;; Known type is the expected type
                  ((eq? known-type type)          (jump-to-version cgc succ ctx))
@@ -1417,7 +1427,7 @@
 ;; Global cc table
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 230)
+(define global-cc-table-maxsize 227)
 ;; Current shape of the global cc table
 (define global-cc-table (make-table))
 
