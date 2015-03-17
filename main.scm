@@ -151,8 +151,8 @@
             (let ((file-content (expand-tl (read-all (open-input-file (car args))))))
                ;(pp file-content)))
                (exec lib file-content)))
-          (else (error "NYI"))))
-  ;(pp "Global cctable size=")
-  ;(pp (table-length global-cc-table)))
+          (else (error "NYI")))
+  (pp "Global cctable size=")
+  (pp (table-length global-cc-table)))
   ;(pp (table->list global-cc-table)))
   
