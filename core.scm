@@ -825,7 +825,7 @@
   offset ;; offset in closure or stack
   pos    ;; set of offset where the identifier is located
   flags  ;; list of flags (possible flags : mutable)
-  stype  ;; TODO
+  stype  ;; ctx type if identifier is a free var
 )
 
 (define (identifier-mutable? id)
@@ -1427,7 +1427,7 @@
 ;; Global cc table
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 227)
+(define global-cc-table-maxsize 230)
 ;; Current shape of the global cc table
 (define global-cc-table (make-table))
 

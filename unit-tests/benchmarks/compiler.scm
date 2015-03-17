@@ -11195,7 +11195,7 @@
 
 (ce input-source-code 'm68000 'asm)
 
-;(pp-asm (asm-output-get))
+(pp-asm (asm-output-get))
 
 ;"|------------------------------------------------------"
 ;"| #[primitive #!program] ="
