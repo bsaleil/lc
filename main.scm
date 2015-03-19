@@ -10,8 +10,23 @@
   (if (null? exprs)
       (or succ
           (make-lazy-code
-            (lambda (cgc ctx)          
+            (lambda (cgc ctx)
               (x86-pop cgc (x86-rax))
+          
+              (if count-calls
+                (begin (gen-print-msg cgc "-----------------------------------")
+                       (gen-print-slot cgc
+                                       'calls
+                                       (string-append "Calls '"
+                                                      (symbol->string count-calls)
+                                                      "' = "))))
+              
+              (if count-tests
+                (begin (gen-print-msg cgc "-----------------------------------")
+                       (gen-print-slot cgc
+                                       'tests
+                                       "#Tests = ")))
+              
               (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
               (pop-regs-reverse cgc prog-regs)
               (x86-ret cgc))))
@@ -67,29 +82,6 @@
 ;; Bash mode
 
 (define (exec lib prog)
-
-  ;; Récupérer les noms des fonctions de librairie
-  ;; Simplement détecter les appels à la librairie standard, opti
-  
-  ;; TODO
-  ;; TODO
-  ;; Idée : Stocker une table spéciale pour les fonctions de librairie avec chaque contexte
-  ;; (on garde l'addresse de la cc table de chaque fonction de lib) pour faire un appel sans indirection
-  ;; donc, quand on appelle une fonction de lib, pas d'indirection
-  ;; AU GC, MAJ des emplacement des fonctions, ou sinon, allouer les fonctions de lib dans un endroit special
-  (define (mytest lib accu)
-    (if (null? lib)
-       accu
-       (let ((entry (car lib)))
-         
-         (if (eq? (car entry) 'define)
-            (let ((cell (alloc-still-vector 2)))
-              (vector-set! cell 0 #f)
-              (vector-set! cell 1 #f)
-              (if (list? (cadr entry))
-                 (mytest (cdr lib) (cons (cons (caadr entry) cell) accu))
-                 (mytest (cdr lib) (cons (cons (cadr entry)  cell) accu))))
-            (mytest (cdr lib) accu)))))
   
   (init)
   
@@ -118,23 +110,42 @@
         (if (eq? (string-ref arg 0) #\-)
           ;; Arg is an option
           (begin (cond ;; '-v-jit' to enable JIT verbose debugging
-                       ((equal? arg "-v-jit") (set! verbose-jit #t))
+                       ((equal? arg "-v-jit")
+                          (set! verbose-jit #t)
+                          (parse-args-h (cdr args) files))
                        ;; '-v-gc' to enable GC verbose debugging
-                       ((equal? arg "-v-gc")  (set! verbose-gc  #t))
+                       ((equal? arg "-v-gc")
+                          (set! verbose-gc  #t)
+                          (parse-args-h (cdr args) files))
                        ;; '-v' to enable both JIT and GC verbose debugging
-                       ((equal? arg "-v")     (set! verbose-jit #t)
-                                              (set! verbose-gc  #t))
+                       ((equal? arg "-v")
+                          (set! verbose-jit #t)
+                          (set! verbose-gc  #t)
+                          (parse-args-h (cdr args) files))
+                       ((equal? arg "--count-calls")
+                          (let ((call-name (cadr args)))
+                            (if (char=? (string-ref call-name 0) #\-)
+                               (error "Invalid argument --count-calls " call-name))
+                            (set! count-calls (string->symbol call-name))
+                            (parse-args-h (cddr args) files)))
+                       ((equal? arg "--print-ccsize")
+                          (set! print-ccsize #t)
+                          (parse-args-h (cdr args) files))
+                       ((equal? arg "--count-tests")
+                          (set! count-tests #t)
+                          (parse-args-h (cdr args) files))
+                       ((equal? arg "--all-tests")
+                          (set! all-tests #t)
+                          (parse-args-h (cdr args) files))
                        ;; Other option stops exec
                        (else (print "Unknown option ")
                              (println arg)
-                             (exit 1)))
-                 (parse-args-h (cdr args) files))
+                             (exit 1))))
           ;; Arg is a file to execute
           (parse-args-h (cdr args) (cons arg files))))))
   
 ;;-----------------------------------------------------------------------------
 ;; Main
-
 (define (main . args)
     
   ;; Get library
@@ -148,11 +159,42 @@
             (repl lib))
           ;; Can only exec 1 file
           ((= (length files) 1)
-            (let ((file-content (expand-tl (read-all (open-input-file (car args))))))
-               ;(pp file-content)))
-               (exec lib file-content)))
+            (let ((content (read-all (open-input-file (car args)))))
+                ;; TODO
+                (define (get-global-type g)
+                  (cond ((symbol? (cadr g))
+                            (cond ((symbol?  (caddr g)) CTX_UNK) ;; TODO si globale connue, mettre type
+                                  ((number?  (caddr g)) CTX_NUM)
+                                  ((char?    (caddr g)) CTX_CHAR)
+                                  ((string?  (caddr g)) CTX_STR)
+                                  ((boolean? (caddr g)) CTX_BOOL)
+                                  ((eq? (caaddr g) 'lambda) CTX_CLO)
+                                  ((pair? (caddr g)) CTX_UNK)
+                                  (else (error "NYI s"))))
+                        ((pair? (cadr g)) CTX_CLO)
+                        (else (error "NYI ns"))))
+                  
+                ;; TODO
+                (define (get-gids lib base)
+                  (if (null? lib)
+                     base
+                     (let ((el (car lib)))
+                       (if (eq? (car el) 'define)
+                          (if (pair? (cadr el))
+                             (cons (cons (caadr el) (get-global-type el)) (get-gids (cdr lib) base))
+                             (cons (cons (cadr el)  (get-global-type el)) (get-gids (cdr lib) base)))
+                          (get-gids (cdr lib) base)))))
+                
+                (set! gids (get-gids lib '()))
+                (set! gids (get-gids content gids))
+                
+                (let ((exp-content (expand-tl content)))
+                   ;(pp file-content)))
+                   (exec lib exp-content))))
           (else (error "NYI")))
-  (pp "Global cctable size=")
-  (pp (table-length global-cc-table)))
-  ;(pp (table->list global-cc-table)))
-  
+    
+    (if print-ccsize
+       (begin (println "-----------------------------------")
+              (println "Global cctable size = " (table-length global-cc-table)))))
+
+;;-----------------------------------------------------------------------------

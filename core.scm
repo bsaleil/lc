@@ -12,6 +12,10 @@
 ;; Compiler options
 (define verbose-jit          #f) ;; JIT Verbose debugging
 (define verbose-gc           #f) ;; GC  Verbose debugging
+(define count-calls          #f) ;; Count call for a given identifier
+(define print-ccsize         #f) ;; Print size of global cc table after exec
+(define all-tests            #f) ;; Remove type information (execute all type tests)
+(define count-tests          #f) ;; Count type tests and print number
 
 ;;-----------------------------------------------------------------------------
 
@@ -25,9 +29,12 @@
 ;; Contains a list of global ids with id,position
 ;; ex. '((foo 1) (bar 2) (fun 3))
 (define globals '())
+(define gids '()) ;; TODO : merge with 'globals'
 
 (define fake-stack (list 'FAKE))
 
+(define label-print-msg      #f)
+(define label-print-msg-val  #f)
 (define label-exec-error     #f)
 (define label-gc             #f)
 (define label-do-callback    #f)
@@ -52,13 +59,13 @@
 (define STAG_OPORT     18)
 
 ;; Context types
-(define CTX_ALL   '*) ;; cts reprsenting all ctx types
+(define CTX_UNK   'unknown)
+(define CTX_ALL   '*) ;; cst reprsenting all ctx types
 (define CTX_NUM   'number)
 (define CTX_CHAR  'char)
 (define CTX_BOOL  'boolean)
 (define CTX_CLO   'procedure)
 (define CTX_PAI   'pair)
-(define CTX_UNK   'unknown)
 (define CTX_VOID  'void)
 (define CTX_NULL  'null)
 (define CTX_RETAD 'retAddr)
@@ -202,6 +209,75 @@
         (err (encoding-obj err-enc)))
     (print "!!! ERROR : ")
     (println err)))
+
+;;-----------------------------------------------------------------------------
+
+(define (gen-print-slot cgc slot msg)
+  (x86-push cgc (x86-rax))
+  (gen-get-slot cgc slot (x86-rax))
+  (gen-print-reg cgc msg (x86-rax))
+  (x86-pop cgc (x86-rax)))
+
+(define (gen-print-msg cgc msg)
+  
+  (x86-push cgc (x86-rax))
+  (x86-push cgc (x86-rcx))
+  
+  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding msg)))
+  
+  (push-pop-regs
+       cgc
+       c-caller-save-regs ;; preserve regs for C call
+       (lambda (cgc)
+         (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
+         (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+         (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+         (x86-push cgc (x86-rdi))
+         (x86-call cgc label-print-msg) ;; call C function
+         (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
+         ))
+  
+  (x86-pop cgc (x86-rcx))
+  (x86-pop cgc (x86-rax)))
+
+(define (gen-print-reg cgc msg reg)
+  
+  (x86-push cgc (x86-rax))
+  (x86-push cgc (x86-rcx))
+  
+  (x86-mov cgc (x86-rcx) reg)
+  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding msg)))
+  
+  (push-pop-regs
+       cgc
+       c-caller-save-regs ;; preserve regs for C call
+       (lambda (cgc)
+         (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
+         (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+         (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+         (x86-push cgc (x86-rdi))
+         (x86-call cgc label-print-msg-val) ;; call C function
+         (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
+         ))
+  
+  (x86-pop cgc (x86-rcx))
+  (x86-pop cgc (x86-rax)))
+
+;; TODO
+(c-define (print-msg-val sp) (long) void "print_msg_val" ""
+  (let* ((msg-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
+         (val     (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
+         (msg     (encoding-obj msg-enc)))
+    
+    (print msg " ")
+    (println val)))
+
+;; TODO
+(c-define (print-msg sp) (long) void "print_msg" ""
+  (let* ((msg-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
+         (msg     (encoding-obj msg-enc)))
+    
+    (println msg)))
 
 ;;-----------------------------------------------------------------------------
 
@@ -380,6 +456,24 @@
                      (pointer void)
                      "___result = ___CAST(void*,exec_error);")))))
   
+  (set! label-print-msg
+        (asm-make-label
+         cgc
+         'print-msg
+         (##foreign-address
+          ((c-lambda ()
+                     (pointer void)
+                     "___result = ___CAST(void*,print_msg);")))))
+  
+  (set! label-print-msg-val
+        (asm-make-label
+         cgc
+         'print-msg-val
+         (##foreign-address
+          ((c-lambda ()
+                     (pointer void)
+                     "___result = ___CAST(void*,print_msg_val);")))))
+  
   (set! label-gc
         (asm-make-label
          cgc
@@ -488,32 +582,10 @@
 ;; +----------+----------+----------+----------+
 
 (define block #f)
-(define global-offset 7) ;; [Stack addr], [def-out-port-header|def-out-port-fd], [def-in-port-header|def-in-port-fd] + 2 empty slot (used for debug)
+(define global-offset 9) ;; [Stack addr], [def-out-port-header|def-out-port-fd], [def-in-port-header|def-in-port-fd] + n empty slot (used for debug)
 (define block-len (* 8 (+ global-offset 10000))) ;; 1 stack addr, 1000 globals
 (define block-addr #f)
-
-(define (gen-set-slota cgc imm)
-  (x86-push cgc (x86-rax))
-  (x86-push cgc (x86-rbx))
-  (x86-mov  cgc (x86-rax) (x86-imm-int (+ block-addr (* 5 8))))
-  (x86-mov  cgc (x86-rbx) (x86-imm-int imm))
-  (x86-mov  cgc (x86-mem 0 (x86-rax)) (x86-rbx))
-  (x86-pop cgc (x86-rbx))
-  (x86-pop cgc (x86-rax)))
-
-(define (gen-get-slota cgc r)
-  (x86-mov cgc r (x86-imm-int (+ block-addr (* 5 8))))
-  (x86-mov cgc r (x86-mem 0 r)))
-
-(define (gen-inc-slota cgc)
-  (x86-push cgc (x86-rax))
-  (x86-push cgc (x86-rbx))
-  (x86-mov cgc (x86-rax) (x86-imm-int (+ block-addr (* 5 8))))
-  (x86-mov cgc (x86-rbx) (x86-mem 0 (x86-rax)))
-  (x86-inc cgc (x86-rbx))
-  (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rbx))
-  (x86-pop cgc (x86-rbx))
-  (x86-pop cgc (x86-rax)))
+(define debug-slots '((calls . 5) (tests . 6) (extests . 7) (other . 8)))
 
 (define (init-block)
   (set! block (##make-machine-code-block block-len))
@@ -674,7 +746,9 @@
     (push-regs cgc prog-regs)
     
     ;; Init debug slots
-    (gen-set-slota cgc 0)
+    (for-each (lambda (s)
+                (gen-set-slot cgc (car s) 0))
+              debug-slots)
     
     ;; Put bottom of the stack (after saving registers) at "block-addr + 0"
     (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
@@ -1223,10 +1297,9 @@
                ;; Current information on type
                (known-type (list-ref (ctx-stack ctx) stack-idx)))
            
-           ; (pp "TEST")
-           ; (pp type)
-           ; (pp known-type)
-           ; (pp ast)
+           ;; If 'all-tests' option enabled, then remove type information
+           (if all-tests
+              (set! known-type CTX_UNK))
            
            (cond ;; Known type is the expected type
                  ((eq? known-type type)          (jump-to-version cgc succ ctx))
@@ -1288,6 +1361,10 @@
                    (if verbose-jit
                        (println ">>> Gen dynamic type test at index " stack-idx))
                    
+                   ;; If 'count-tests' option enabled, then inc slot
+                   (if count-tests
+                      (gen-inc-slot cgc 'tests))
+                   
                    (cond ;; Number type test
                          ((eq? type CTX_NUM)
                              (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
@@ -1337,7 +1414,6 @@
 
     (make-lazy-code
        (lambda (cgc ctx)
-         
          (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
                 (stub-labels
                       (add-callback cgc 1
@@ -1388,6 +1464,10 @@
          (if verbose-jit
              (println ">>> Gen dynamic type test at index " stack-idx))
          
+         ;; If 'count-tests' option enabled, then inc slot
+         (if count-tests
+             (gen-inc-slot cgc 'tests))
+         
          (cond ;; Number type test
                ((eq? type CTX_NUM)
                    (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
@@ -1427,7 +1507,7 @@
 ;; Global cc table
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 230)
+(define global-cc-table-maxsize 250)
 ;; Current shape of the global cc table
 (define global-cc-table (make-table))
 

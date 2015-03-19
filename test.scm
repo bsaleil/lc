@@ -158,3 +158,19 @@
 ;;   Nombre de pt entree max pour chaque test
 ;;   Performances contre gsc avec options pour chaque test
 ;;   Nombre d'appels pour chaque primitive
+
+;; Nettoyer optimisation variables globales
+
+(define (fibcps n k)
+  (if (< n 2)
+      (k n)
+      (fibcps (- n 1)
+              (lambda (r1)
+                 (fibcps (- n 2)
+                         (lambda (r2)
+                           (k (+ r1 r2))))))))
+
+(define (fib n)
+  (fibcps n (lambda (r) r)))
+
+(fib 20)

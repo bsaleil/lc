@@ -174,3 +174,35 @@
         (println "       " val)
         (println "-------------------------")
         (print-stack-slots sp (+ pos 1) (- n 1)))))
+
+;;-----------------------------------------------------------------------------
+;; SLOT DEBUG
+
+(define (gen-set-slot cgc slot imm)
+  (let ((res (assoc slot debug-slots)))
+    (if (not res) (error "Compiler error"))
+    (x86-push cgc (x86-rax))
+    (x86-push cgc (x86-rbx))
+    (x86-mov  cgc (x86-rax) (x86-imm-int (+ block-addr (* (cdr res) 8))))
+    (x86-mov  cgc (x86-rbx) (x86-imm-int imm))
+    (x86-mov  cgc (x86-mem 0 (x86-rax)) (x86-rbx))
+    (x86-pop cgc (x86-rbx))
+    (x86-pop cgc (x86-rax))))
+
+(define (gen-get-slot cgc slot r)
+  (let ((res (assoc slot debug-slots)))
+    (if (not res) (error "Compiler error"))
+    (x86-mov cgc r (x86-imm-int (+ block-addr (* (cdr res) 8))))
+    (x86-mov cgc r (x86-mem 0 r))))
+
+(define (gen-inc-slot cgc slot)
+  (let ((res (assoc slot debug-slots)))
+    (if (not res) (error "Compiler error"))
+    (x86-push cgc (x86-rax))
+    (x86-push cgc (x86-rbx))
+    (x86-mov cgc (x86-rax) (x86-imm-int (+ block-addr (* (cdr res) 8))))
+    (x86-mov cgc (x86-rbx) (x86-mem 0 (x86-rax)))
+    (x86-inc cgc (x86-rbx))
+    (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rbx))
+    (x86-pop cgc (x86-rbx))
+    (x86-pop cgc (x86-rax))))

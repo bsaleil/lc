@@ -140,10 +140,8 @@
                  ;; Binding
                  ((member op '(let let* letrec)) (mlc-binding ast succ op))
                  ;; Operator num
-                 ((member op '(+ - * < > <= >= =)) (mlc-op-n ast succ op))
+                 ((member op '(+ - * < > <= >= =))         (mlc-op-n ast succ op))
                  ((member op '(quotient modulo remainder)) (mlc-op-bin ast succ op))
-                 ;; Debug
-                 ((member op '(INC_S1 ZERO_S1 PRINT_S1)) (mlc-debug-op ast succ))
                  ;; Tests
                  ((assoc op type-predicates) (mlc-test ast succ))
                  ;; If
@@ -890,21 +888,15 @@
                         (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_VOID)))))
                  ;; CHAR<->INTEGER
                  ((member special '(char->integer integer->char))
-                  (let ((lazy-charint
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (if (eq? special 'char->integer)
-                                  (x86-xor cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8)
-                                  (x86-or  cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8))
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
-                                                                  (cond ((eq? special 'char->integer) CTX_NUM)
-                                                                        ((eq? special 'integer->char) CTX_CHAR))))))))
-                    (gen-fatal-type-test (if (eq? special 'char->integer)
-                                            CTX_CHAR
-                                            CTX_NUM)
-                                         0
-                                         lazy-charint
-                                         ast)))
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      (if (eq? special 'char->integer)
+                        (x86-xor cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8)
+                        (x86-or  cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8))
+                      (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
+                                                          (if (eq? special 'char->integer)
+                                                             CTX_NUM
+                                                             CTX_CHAR))))))               
                  ;; MAKE-STRING
                  ((eq? special 'make-string)
                   (make-lazy-code
@@ -1636,6 +1628,10 @@
                                                       ;; Initial to slot
                                                       (- (length (ctx-stack ctx)) 2)))
                                         
+                                        ;; If count calls compiler opt
+                                        (if (eq? (car ast) count-calls)
+                                           (gen-inc-slot cgc 'calls))
+                                        
                                         ;; 0 - R11 = still-box address containing call-ctx
                                         (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
                                       
@@ -1648,10 +1644,8 @@
                                                                                 
                                         ;; 3 - Jump to entry point                                        
                                         (x86-jmp cgc (x86-rax))))))
-         ;; Lazy main
-         (lazy-main (gen-fatal-type-test CTX_CLO 0 lazy-call ast))
-         ;; Lazy callee
-         (lazy-operator (gen-ast (car ast) lazy-main)))
+         ;; Lazy operator
+         (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
     ;; Build first lazy code
     ;; This lazy code creates continuation stub and push return address
@@ -1735,12 +1729,12 @@
                            (x86-push cgc (x86-rdx))))
                    (jump-to-version cgc
                                     succ
-                                    (ctx-push (ctx-pop-nb ctx 2) CTX_NUM)))))
-             (lazy-test-right (gen-fatal-type-test CTX_NUM 0 lazy-op ast))
-             (lazy-right      (gen-ast (cadr opnds) lazy-test-right))
-             (lazy-test-left  (gen-fatal-type-test CTX_NUM 0 lazy-right ast))
-             (lazy-left       (gen-ast (car opnds) lazy-test-left)))
-         lazy-left))))
+                                    (ctx-push (ctx-pop-nb ctx 2) CTX_NUM))))))
+         ;; Check operands type
+         (check-types (list CTX_NUM CTX_NUM)
+                      (list (car opnds) (cadr opnds))
+                      lazy-op
+                      ast)))))
 
 ;;
 ;; Make lazy code from N-ARY OPERATOR
@@ -1832,16 +1826,6 @@
                                                                                CTX_BOOL
                                                                                CTX_NUM)))))))
     
-    ;; Build lazy objects chain :
-    ;;   opnd1->test1->...->opndn->testn->succ
-    ;; Opnd is the operands list
-    (define (build-chain opnds succ)
-      (if (null? opnds)
-        succ
-        (let* ((next (build-chain (cdr opnds) succ))
-               (test (gen-fatal-type-test CTX_NUM 0 next ast)))
-          (gen-ast (car opnds) test))))
-    
     (cond ;; No opnd, push 0 and jump to succ
           ((= (length (cdr ast)) 0)
              (cond ((eq? op '+) (gen-ast 0 succ))
@@ -1850,12 +1834,15 @@
                    ((member op '(< > <= >= =)) (gen-ast #t succ))))
           ;; 1 opnd,  push opnd, test type, and jump to succ
           ((= (length (cdr ast)) 1)
-             (cond ((eq? op '+) (build-chain (cdr ast) succ))
+             (cond ((eq? op '+) (check-types (list CTX_NUM) (cdr ast) succ ast))
                    ((eq? op '-) (gen-ast (list '* -1 (cadr ast)) succ))
-                   ((eq? op '*) (build-chain (cdr ast) succ))
+                   ((eq? op '*) (check-types (list CTX_NUM) (cdr ast) succ ast))
                    ((member op '(< > <= >= =)) (gen-ast #t succ))))
           ;; >1 opnd, build chain
-          (else (build-chain (cdr ast) lazy-op)))))
+          (else (check-types (make-list (length (cdr ast)) CTX_NUM)
+                             (cdr ast)
+                             lazy-op
+                             ast)))))
 
 ;;
 ;; Make lazy code from TYPE TEST
@@ -1871,6 +1858,10 @@
                      (ctx-true  (ctx-push (ctx-pop (ctx-change-type ctx 0 type)) CTX_BOOL))
                      (ctx-false (ctx-push (ctx-pop ctx) CTX_BOOL)))
                 
+                ;; If 'all-tests' option enabled, then remove type information
+                (if all-tests
+                   (set! known-type CTX_UNK))
+                
                 (cond ;; known == expected
                       ((eq? type known-type)
                          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
@@ -1884,25 +1875,23 @@
                       ;; known == unknown
                       (else
                         (let* ((stack-idx 0)
-                               (ctx-succ ctx)
                                (laz-succ (make-lazy-code
                                            (lambda (cgc ctx)
                                              (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
                                              (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                             (jump-to-version cgc succ ctx-succ))))
-                               (ctx-fail ctx)
+                                             (jump-to-version cgc succ ctx-true))))
                                (laz-fail (make-lazy-code
                                            (lambda (cgc ctx)
                                              (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
                                              (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                             (jump-to-version cgc succ ctx-fail)))))
+                                             (jump-to-version cgc succ ctx-false)))))
                         
                             (jump-to-version cgc
                                              (gen-dyn-type-test type
                                                                 stack-idx
-                                                                ctx-succ
+                                                                ctx
                                                                 laz-succ
-                                                                ctx-fail
+                                                                ctx
                                                                 laz-fail) ctx)))))))))
     (gen-ast (cadr ast) lazy-test)))
           
@@ -2005,7 +1994,6 @@
                (x86-pop cgc (x86-rbx))
                (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (x86-rbx))
                ctx)
-               ;; TODO replace ctx type when implemented for free vars
         (error "Compiler error : set a non mutable free var"))))
 
 ;; Local var
@@ -2093,10 +2081,16 @@
 
 ;; Gen code to get a global var
 (define (gen-get-globalvar cgc ctx variable dest)
+  
    (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* 8 (cdr variable)) (x86-r10))))
          ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* 8 (cdr variable)) (x86-r10))))
          (else (error "Invalid destination")))
-   CTX_UNK)
+   
+   ;; If this global is a non mutable global, return type else return unknown
+   (let ((r (assoc (car variable) gids)))
+     (if (cdr r)
+        (cdr r)
+        CTX_UNK)))
 
 ;;
 ;; FREE VARS
@@ -2356,29 +2350,6 @@
                (x86-push cgc (x86-rax)))
              ;; Create next pair
              (gen-rest-lst-h cgc ctx(- pos 1) nb (+ sp-offset 8)))))
-
-;;-----------------------------------------------------------------------------
-;; Debug ops
-
-(define (mlc-debug-op ast succ)
-  (cond ((eq? (car ast) 'INC_S1)
-           (make-lazy-code
-             (lambda (cgc ctx)
-                (gen-inc-slota cgc)
-                (x86-push cgc (x86-imm-int ENCODING_VOID))
-                (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))
-        ((eq? (car ast) 'ZERO_S1)
-           (make-lazy-code
-             (lambda (cgc ctx)
-                (gen-set-slota cgc 0)
-                (x86-push cgc (x86-imm-int ENCODING_VOID))
-                (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))
-        ((eq? (car ast) 'PRINT_S1)
-           (make-lazy-code
-             (lambda (cgc ctx)
-                (gen-get-slota cgc (x86-rax))
-                (gen-dump-regs cgc)
-                (jump-to-version cgc succ ctx))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Utils

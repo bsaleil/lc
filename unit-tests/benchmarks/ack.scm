@@ -5,12 +5,11 @@
         ((= n 0) (ack (- m 1) 1))
         (else (ack (- m 1) (ack m (- n 1))))))
 
-;(println (ack 0 0))
-;(println (ack 1 2))
-;(println (ack 3 4))
-;(println (ack 4 0))
-;(println (ack 3 9))
-(ack 3 9)
+(println (ack 0 0))
+(println (ack 1 2))
+(println (ack 3 4))
+(println (ack 4 0))
+(println (ack 3 9))
 
 ;1
 ;4

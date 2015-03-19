@@ -29,9 +29,18 @@
       ((equal? (car expr) 'cond) (expand-cond expr))
       ((equal? (car expr) 'case) (expand-case expr))
       ((equal? (car expr) 'quote) expr)
+      ;; TODO
+      ((equal? (car expr) 'set!) (expand-set! expr))
       (else (if (list? (cdr expr))
                 (map expand expr)
                 (cons (expand (car expr)) (expand (cdr expr))))))) ;; (e1 . e2)
+
+(define (expand-set! expr)
+  (let ((r (assoc (cadr expr) gids)))
+     (if r
+        (set-cdr! r #f)))
+     
+  `(set! ,(cadr expr) ,(expand (caddr expr))))
 
 ;; DEFINE
 (define (expand-define expr)
