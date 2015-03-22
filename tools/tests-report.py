@@ -1,69 +1,70 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 import os
 import subprocess
 
 # Change working directory
-os.chdir(os.path.dirname(os.path.realpath(__file__)))
+os.chdir(os.path.dirname(os.path.realpath(__file__)).replace("/tools",""))
 
-LC = "../lazy-comp"
+#-----------------------------------------------------------------------------
+
+LC    = "./lazy-comp"
 BPATH = "./benchmarks/"
 COUNT = " --count-tests"
 ALL   = " --all-tests"
 
-files = os.listdir("../benchmarks/")
+# Get ordered benchmarks list
+files = os.listdir(BPATH)
 benchmarks = sorted(filter(lambda x: x[-4:] == ".scm", files))
 
-NORMAL_R = {};
-ALLTEST_R = {};
+EXECUTED_RESULT = {}; # Hash table (benchmark,executed tests)
+ALL_RESULT      = {}; # Hash table (benchmark,totel tests)
 
 for benchmark in benchmarks:
+
 	print(benchmark)
 
+	# Count executed tests with optimizations
 	output = subprocess.Popen([LC, BPATH + benchmark + COUNT], stdout=subprocess.PIPE).communicate()[0]
 	nbtests = int(output.split('=')[1]);
-	NORMAL_R[benchmark] = nbtests;
+	EXECUTED_RESULT[benchmark] = nbtests;
 
+	# Count executed tests if none are removed
 	output = subprocess.Popen([LC, BPATH + benchmark + COUNT + ALL], stdout=subprocess.PIPE).communicate()[0]
 	nbtests = int(output.split('=')[1]);
-	ALLTEST_R[benchmark] = nbtests;
+	ALL_RESULT[benchmark] = nbtests;
 
+#-----------------------------------------------------------------------------
 
+# Print header
 hstr = "";
-hstr = "Name"
-hstr += " " * (12 - len("NAME"));
-
-hstr += " " * (18 - len("Total tests"));
-hstr += "Total tests"
-
-hstr += " " * (20 - len("Executed tests"));
-hstr += "Executed tests"
-
-hstr += " " * (20 - len("% Removed"));
-hstr += "% Removed"
-
+hstr += "Name".ljust(15);
+hstr += "Total tests".rjust(15);
+hstr += "Executed tests".rjust(20);
+hstr += "% Removed".rjust(20);
 print(hstr)
-
 print("-" * 70)
 
-PERC = 0.0;
+# % sum of all benchmarks
+sum_percentage = 0.0;
 
+# Print results
 for benchmark in benchmarks:
+
 	bstr = "";
-	bstr += benchmark.ljust(15);
-
-	bstr += str(ALLTEST_R[benchmark]).rjust(15);
-
-	bstr += str(NORMAL_R[benchmark]).rjust(20);
-
-	p = 100 - ((NORMAL_R[benchmark] * 100.0) / ALLTEST_R[benchmark]);
-	PERC += p;
-	bstr += "{0:.2f}".format(p).rjust(20);
+	bstr += benchmark.ljust(15);                 # Benchmark name
+	bstr += str(ALL_RESULT[benchmark]).rjust(15); # Benchmark # total tests
+	bstr += str(EXECUTED_RESULT[benchmark]).rjust(20);  # Benchmark # executed tests
+	percentage = 100 - ((EXECUTED_RESULT[benchmark] * 100.0) / ALL_RESULT[benchmark]);
+	bstr += "{0:.2f}".format(percentage).rjust(20);       # % of executed tests
+	sum_percentage += percentage;
 	
 	print(bstr);
 
-
-ave = PERC / len(benchmarks);
-save = "{0:.2f}".format(ave)
+# Compute and print average
+average = sum_percentage / len(benchmarks);
+save = "{0:.2f}".format(average)
 print("-" * 70)
 print("Average: " + save);
+
+#-----------------------------------------------------------------------------
