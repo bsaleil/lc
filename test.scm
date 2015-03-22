@@ -151,8 +151,6 @@
 
 ;; TODO : PROBLEME DE MUTABLE
 
-
-
 ;;-----
 ;; MARDI : 
 ;;   Nombre de pt entree max pour chaque test
@@ -161,16 +159,8 @@
 
 ;; Nettoyer optimisation variables globales
 
-(define (fibcps n k)
-  (if (< n 2)
-      (k n)
-      (fibcps (- n 1)
-              (lambda (r1)
-                 (fibcps (- n 2)
-                         (lambda (r2)
-                           (k (+ r1 r2))))))))
+(define (foo a b c . d)
+  #t)
+  ;(println (+ a b c)))
 
-(define (fib n)
-  (fibcps n (lambda (r) r)))
-
-(fib 20)
+(foo 10 20 30 40 50 60)

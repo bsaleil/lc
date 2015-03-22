@@ -972,7 +972,6 @@
     ;; Else, update only stack
     (make-ctx (cons ctx-type (ctx-stack ctx)) (ctx-env ctx) (ctx-nb-args ctx))))
 
-
 ;; Apply 'nb' pop to ctx
 (define (ctx-pop-nb ctx nb)
   (if (= nb 0)

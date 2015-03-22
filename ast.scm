@@ -1,4 +1,3 @@
-
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
@@ -298,34 +297,30 @@
  (make-lazy-code
    (lambda (cgc ctx)
      
-     ;; TODO PATCH
-     (if (or (assoc ast (ctx-env ctx))
-             (assoc ast globals))
-         ;; Lookup in local env
-         (let* ((res (assoc ast (ctx-env ctx)))
-                (ctx-type (if res
-                           (if (eq? (identifier-type (cdr res)) 'free)
-                             ;; Free var
-                             (gen-get-freevar  cgc ctx res 'stack #f)
-                             ;; Local var
-                             (gen-get-localvar cgc ctx res 'stack #f))
-                           (let ((res (assoc ast globals)))
-                             (if res
-                                ;; Global var
-                                (gen-get-globalvar cgc ctx res 'stack)
-                                ;; Unknown
-                                (error "Can't find variable: " ast))))))
-         
-           (let* ((nctx (if (eq? ctx-type CTX_MOBJ)
+     (let ((local  (assoc ast (ctx-env ctx)))
+           (global (assoc ast globals)))
+     ;; If local or global (not primitive nor type predicate)
+     (if (or local global)
+         ;; Id lookup
+         (let ((ctx-type (cond (local
+                                  (if (eq? (identifier-type (cdr local)) 'free)
+                                     ;; Free var
+                                     (gen-get-freevar  cgc ctx local 'stack #f)
+                                     ;; Local var
+                                     (gen-get-localvar cgc ctx local 'stack #f)))
+                               (global
+                                  (gen-get-globalvar cgc ctx global 'stack))
+                               (else
+                                  (error "Can't find variable: " ast)))))
+                              
+            (let* ((nctx (if (eq? ctx-type CTX_MOBJ)
                            (ctx-push ctx CTX_UNK ast)
                            (ctx-push ctx ctx-type ast))))
-              
               (jump-to-version cgc succ nctx)))
-         
-         ;; TODO ELSE
+         ;; Else it is a primitive / type predicate
          (let ((r (assoc ast primitives)))
             (if r
-               ;; If primitive, return function calling primitive
+               ;; Create and return function calling primitive
                (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
                  (jump-to-version cgc
                                   (gen-ast `(lambda ,args
@@ -334,12 +329,12 @@
                                   ctx))
                (let ((r (assoc ast type-predicates)))
                  (if r
-                    ;; If type predicate, return function calling primitive
+                    ;; Create and return function calling type predicate
                     (jump-to-version cgc
                                      (gen-ast `(lambda (a) (,ast a)) succ)
                                      ctx)
-                    ;;
-                    (error "Can't find variable: " ast)))))))))
+                    ;; Unknown id
+                    (error "Can't find variable: " ast))))))))))
 
 ;;-----------------------------------------------------------------------------
 ;; INTERNAL
@@ -417,12 +412,11 @@
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
                      (lambda (cgc ctx)
-                       ;; TODO : wrong ?
                        ;; Here the stack is :
                        ;;         RSP
-                       ;;     | ret-val | ret-addr | closure | arg n | ... | arg 1 |
+                       ;;     | ret-val | closure | arg n | ... | arg 1 | ret-addr |
                        ;; Or if rest :
-                       ;;     | ret-val | ret-addr | closure | rest | arg n | ... | arg 1 |
+                       ;;     | ret-val | closure |  rest | arg n | ... | arg 1 | ret-addr |
                        (let ((retval-offset
                                 (if rest-param
                                    (* 8 (+ 2 (length params)))
