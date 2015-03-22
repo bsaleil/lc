@@ -1,0 +1,34 @@
+Name                Table size
+------------------------------
+ack.scm                      2
+array1.scm                   4
+boyer.scm                   15
+browse.scm                  18
+cat.scm                      2
+compiler.scm               230
+conform.scm                 36
+cpstak.scm                   3
+dderiv.scm                  10
+deriv.scm                    5
+destruc.scm                  5
+diviter.scm                  2
+divrec.scm                   2
+earley.scm                  51
+fib.scm                      1
+graphs.scm                  36
+mazefun.scm                 30
+nqueens.scm                 15
+paraffins.scm               15
+perm9.scm                    7
+peval.scm                   25
+primes.scm                   4
+sboyer.scm                  23
+string.scm                   8
+sum.scm                      2
+sumloop.scm                  1
+tak.scm                      5
+takl.scm                     3
+triangl.scm                  6
+wc.scm                       4
+------------------------------
+Average: 19
