@@ -16,6 +16,7 @@
 (define print-ccsize         #f) ;; Print size of global cc table after exec
 (define all-tests            #f) ;; Remove type information (execute all type tests)
 (define count-tests          #f) ;; Count type tests and print number
+(define count-closures       #f) ;; Count created closures and print number
 (define print-versions       #f) ;; Print number min and max of versions of lazy codes
 (define print-versions-full  #f) ;; Print number detailed number of versions
 
@@ -584,10 +585,10 @@
 ;; +----------+----------+----------+----------+
 
 (define block #f)
-(define global-offset 9) ;; [Stack addr], [def-out-port-header|def-out-port-fd], [def-in-port-header|def-in-port-fd] + n empty slot (used for debug)
+(define global-offset 10) ;; [Stack addr], [def-out-port-header|def-out-port-fd], [def-in-port-header|def-in-port-fd] + n empty slot (used for debug)
 (define block-len (* 8 (+ global-offset 10000))) ;; 1 stack addr, 1000 globals
 (define block-addr #f)
-(define debug-slots '((calls . 5) (tests . 6) (extests . 7) (other . 8)))
+(define debug-slots '((calls . 5) (tests . 6) (extests . 7) (closures . 8) (other . 9)))
 
 (define (init-block)
   (set! block (##make-machine-code-block block-len))

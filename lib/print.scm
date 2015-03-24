@@ -113,7 +113,7 @@
              ((eq? v 30) (print "x1e"))
              ((eq? v 31) (print "x1f"))
              ((eq? v 32) (print "space"))
-             (else (print "TODO"))))))
+             (else (print "NYI"))))))
 
 (define (pp-vector-h vector idx length)
   (cond ((= idx (- length 1))

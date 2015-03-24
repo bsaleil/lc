@@ -492,6 +492,10 @@
                  (total-size (+ closure-size global-cc-table-maxsize 1)) ;; CCtable header -> +1
                  (header-word (mem-header closure-size STAG_PROCEDURE)))
             
+            ;; If 'count-closures' option enabled, then inc slot
+            (if count-closures
+               (gen-inc-slot cgc 'closures))
+            
             ;; ALLOC
             (gen-allocation cgc ctx STAG_PROCEDURE total-size)
     

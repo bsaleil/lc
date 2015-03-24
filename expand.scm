@@ -29,7 +29,6 @@
       ((equal? (car expr) 'cond) (expand-cond expr))
       ((equal? (car expr) 'case) (expand-case expr))
       ((equal? (car expr) 'quote) expr)
-      ;; TODO
       ((equal? (car expr) 'set!) (expand-set! expr))
       (else (if (list? (cdr expr))
                 (map expand expr)
@@ -76,7 +75,7 @@
         `(begin ,@(map expand (cdr expr)))))))
 
 ;; LET
-;; TODO : letn and let with internal defs are not handled by compiler (mlc-let)
+;; letn and let with internal defs are not handled by compiler (mlc-let)
 (define (expand-let expr)
   
   ;; NAMED LET

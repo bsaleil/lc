@@ -16,7 +16,7 @@
 (define (string-fill! str char)
   (string-fill!-h str char 0 (string-length str)))
 
-(define (list->string-h l str pos) ;; TODO : char list
+(define (list->string-h l str pos)
   (if (null? l)
      str
      (begin (string-set! str pos (car l))
@@ -46,7 +46,7 @@
 
 (define (substring string start end)
    (if (or (< start 0) (> end (string-length string)) (< end start))
-      "" ;; TODO error
+      (error "Substring")
       (let ((new-str (make-string (- end start))))
         (substring-h new-str string start 0 end))))
 

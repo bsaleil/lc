@@ -8,7 +8,8 @@
 ;;   * Bug gc a la lecture du tag 4 (sur compiler.scm)
 ;;   * Expand multiple corps des lambda et define en begin (fait ?)
 ;;   * MLC-test peut etre modifié pour éviter d'utiliser trop de lazy-objects
-
+;;   * Test des out of bounds (string-ref "kk" 100), ...
+;;   
 ;;   * Constantes en opérandes
 ;;   * Ctx info sur les variables libres? (probleme des mutables)
 
@@ -158,6 +159,8 @@
 ;;   Nombre d'appels pour chaque primitive
 
 ;; Nettoyer optimisation variables globales
+
+(string-ref "jj" 10)
 
 (define (foo)
 	(pp

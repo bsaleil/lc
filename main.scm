@@ -28,6 +28,12 @@
                                        'tests
                                        "#Tests = ")))
               
+              (if count-closures
+                (begin (gen-print-msg cgc "-----------------------------------")
+                       (gen-print-slot cgc
+                                       'closures
+                                       "#Closures = ")))
+              
               (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
               (pop-regs-reverse cgc prog-regs)
               (x86-ret cgc))))
@@ -134,6 +140,9 @@
                           (parse-args-h (cdr args) files))
                        ((equal? arg "--count-tests")
                           (set! count-tests #t)
+                          (parse-args-h (cdr args) files))
+                       ((equal? arg "--count-closures")
+                          (set! count-closures #t)
                           (parse-args-h (cdr args) files))
                        ((equal? arg "--all-tests")
                           (set! all-tests #t)

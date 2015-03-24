@@ -158,11 +158,11 @@
 ;; Pretty print stack top values
 (c-define (dump-stack sp) (long) void "dump_stack" ""
      (let ((offset (length all-regs))
-           (slots-nb 10)) ;; TODO arg ?
+           (slots-nb 10))
        (println "-------------------------")
        (println "DUMP STACK :")
        (println "-------------------------")
-       (println "RSP -> " (get-i64 (+ sp (* offset 8)))) ;; TODO 16 start
+       (println "RSP -> " (get-i64 (+ sp (* offset 8))))
        (println "-------------------------")
        (print-stack-slots sp (+ offset 1) slots-nb)))
 
