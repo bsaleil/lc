@@ -886,6 +886,11 @@
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
+(define (make-lazy-code-entry generator)
+  (let ((lc (make-lazy-code* generator (make-table) '(entry))))
+    (set! all-lazy-code (cons lc all-lazy-code))
+    lc))
+
 (define (make-lazy-code-ret generator)
   (let ((lc (make-lazy-code* generator (make-table) '(ret))))
     (set! all-lazy-code (cons lc all-lazy-code))

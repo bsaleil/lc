@@ -431,7 +431,7 @@
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
-         (lazy-prologue (make-lazy-code
+         (lazy-prologue (make-lazy-code-entry
                            (lambda (cgc ctx)
                              
                               (let* ((actual-p (- (length (ctx-stack ctx)) 2)) ;; 1 for return address / closure

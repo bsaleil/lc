@@ -209,14 +209,24 @@
 
     (if print-versions-full
        (let ((info (get-versions-info-full all-lazy-code)))
-         (println "-----------------------------------")
-         (println "#versions   #stubs")
-         (println "------------------")
-         (for-each (lambda (n) (println
+         (println "------------------------------------")
+         (println "#versions   #stubs     #ret   #entry")
+         (println "------------------------------------")
+         (for-each (lambda (n) (print
+                                 ;; #versions
                                  (make-string (- 9 (string-length (number->string (car n)))) #\space)
                                  (car n)
-                                 (make-string (- 9 (string-length (number->string (cdr n)))) #\space)
-                                 (cdr n)))
+                                 ;; #stubs
+                                 (make-string (- 9 (string-length (number->string (cadr n)))) #\space)
+                                 (cadr n))
+                               ;; # with ret flag
+                               (let ((rf (count (cddr n) (lambda (n) (member 'ret n)))))
+                                (print (make-string (- 9 (string-length (number->string rf))) #\space)
+                                       rf))
+                               ;; # with entry flag
+                               (let ((rf (count (cddr n) (lambda (n) (member 'entry n)))))
+                                (println (make-string (- 9 (string-length (number->string rf))) #\space)
+                                         rf)))
                    (sort info (lambda (n m) (< (car n) (car m)))))))
 
     (if print-ccsize
@@ -255,10 +265,19 @@
        (let* ((lc (car lcs))
               (nb (table-length (lazy-code-versions lc)))
               (r  (table-ref table nb #f)))
-        (table-set! table nb (if r (+ r 1) 1))
+        (if r
+           (table-set! table nb (cons (+ (car r) 1)
+                                      (cons (lazy-code-flags lc) (cdr r))))
+           (table-set! table nb (cons 1
+                                      (list (lazy-code-flags lc)))))
         (get-versions-info-full-h (cdr lcs)))))
+        ;(table-set! table nb (if r (+ r 1) 1))
+        ;(get-versions-info-full-h (cdr lcs)))))
 
   (get-versions-info-full-h lazy-codes)
   (table->list table))
+
+(define (count lst fn)
+  (foldr (lambda (n r) (if (fn n) (+ 1 r) r)) 0 lst))
 
 ;;-----------------------------------------------------------------------------
