@@ -1,8 +1,6 @@
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
-;; TODO : RCX global ? (used by if/else stubs)
-
 ;;-----------------------------------------------------------------------------
 ;; Macros
 
@@ -944,17 +942,13 @@
                         (x86-jle  cgc label-end)
                         
                           (if (= (length (cdr ast)) 1)
-                            (begin ;; Init string slot
-                                   (x86-mov cgc (x86-mem 16 (x86-rax)) (x86-imm-int 0) 64) ;; Write 0 in 8 chars
-                                   ;; Update offset and remaining elements nb
-                                   (x86-add cgc (x86-rax) (x86-imm-int 8))
-                                   ;; Loop
-                                   (x86-sub cgc (x86-rbx) (x86-imm-int 32))) ;; Remove 8 to encoded number (=8*4=32)
-                            (begin ;;  TODO
-                                   (x86-mov cgc (x86-mem 16 (x86-rax)) (x86-dl))
-                                   (x86-add cgc (x86-rax) (x86-imm-int 1))
-                                   (x86-sub cgc (x86-rbx) (x86-imm-int 4))))
-                            
+                            (begin (x86-mov cgc (x86-mem 16 (x86-rax)) (x86-imm-int 0) 64) ;; Write 0 in 8 chars
+                                   (x86-add cgc (x86-rax) (x86-imm-int 8)) ;; Update offset
+                                   (x86-sub cgc (x86-rbx) (x86-imm-int 32))) ;; Remove 8 (=8*4=32) to encoded number (remaining els)
+                            (begin (x86-mov cgc (x86-mem 16 (x86-rax)) (x86-dl)) ;; Write char
+                                   (x86-add cgc (x86-rax) (x86-imm-int 1)) ;; Update offset
+                                   (x86-sub cgc (x86-rbx) (x86-imm-int 4)))) ;; Remove 1 (=1*4=4) to encoded number (remaining els)
+                        ;; Loop
                         (x86-jmp cgc label-loop)
                         
                         ;; END:
@@ -1709,11 +1703,12 @@
                    (x86-pop cgc (x86-rax)) ;; Pop left
                    (x86-sar cgc (x86-rax) (x86-imm-int 2))
                    (x86-sar cgc (x86-rbx) (x86-imm-int 2))
+                   (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
+                   (x86-je  cgc (label-error ERR_DIVIDE_ZERO)) ;; Check '/0'
                    (x86-cqo cgc)
                    (x86-idiv cgc (x86-rbx))
-                   (cond ((eq? op 'quotient) ;; TODO : check '/0'
+                   (cond ((eq? op 'quotient)
                            (x86-shl cgc (x86-rax) (x86-imm-int 2))
-                           ;(x86-jo cgc (list-ref stub-labels 0)) ;; TODO ? jo modulo
                            (x86-push cgc (x86-rax)))
                          ((eq? op 'remainder)
                            (x86-shl cgc (x86-rdx) (x86-imm-int 2))
@@ -2102,11 +2097,12 @@
       (cons (cons (car fvars) (make-identifier 'free
                                                offset
                                                '()
+                                               ;; Flags
                                                (let ((res (assoc (car fvars) saved-env)))
                                                   (if (identifier-mutable? (cdr res))
                                                     '(mutable)
                                                     '()))
-                                               ;; TODO:
+                                               ;; SType TODO
                                                (let* ((res (assoc (car fvars) saved-env)))
                                                  (if (eq? (identifier-type (cdr res)) 'local)
                                                     (let ((idx (- (length saved-stack) 2 (identifier-offset (cdr res)))))
@@ -2348,6 +2344,13 @@
                (x86-push cgc (x86-rax)))
              ;; Create next pair
              (gen-rest-lst-h cgc ctx(- pos 1) nb (+ sp-offset 8)))))
+
+;; Return label of a stub generating error with 'msg'
+(define (label-error msg)
+  (list-ref (add-callback #f
+                          0
+                          (lambda (ret-addr selector) (error msg)))
+            0))
 
 ;;-----------------------------------------------------------------------------
 ;; Utils

@@ -160,15 +160,4 @@
 
 ;; Nettoyer optimisation variables globales
 
-(string-ref "jj" 10)
-
-(define (foo)
-	(pp
-	(let ((x 5))
-		(letrec ((foo (lambda (y) (bar x y)))
-		         (bar (lambda (a b) (+ (* a b) a))))
-		 (foo 1)))
-	)
-)
-
-(foo)
+(println (modulo 9 1))
