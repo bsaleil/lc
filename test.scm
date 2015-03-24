@@ -159,8 +159,13 @@
 
 ;; Nettoyer optimisation variables globales
 
-(define (foo a b c . d)
-  #t)
-  ;(println (+ a b c)))
+(define (foo)
+	(pp
+	(let ((x 5))
+		(letrec ((foo (lambda (y) (bar x y)))
+		         (bar (lambda (a b) (+ (* a b) a))))
+		 (foo 1)))
+	)
+)
 
-(foo 10 20 30 40 50 60)
+(foo)

@@ -1,0 +1,35 @@
+Name                       Min                 Max
+--------------------------------------------------
+ack.scm                      0                   2
+array1.scm                   0                   2
+boyer.scm                    0                   4
+browse.scm                   0                   7
+cat.scm                      0                   1
+compiler.scm                 0                  45
+conform.scm                  0                   6
+cpstak.scm                   0                   1
+dderiv.scm                   0                   3
+deriv.scm                    0                   2
+destruc.scm                  0                   2
+diviter.scm                  0                   2
+divrec.scm                   0                   2
+earley.scm                   0                  12
+fib.scm                      0                   2
+graphs.scm                   0                   6
+mazefun.scm                  0                  16
+nqueens.scm                  0                   6
+paraffins.scm                0                   5
+perm9.scm                    0                   3
+peval.scm                    0                  15
+primes.scm                   0                   2
+sboyer.scm                   0                   4
+string.scm                   0                   2
+sum.scm                      0                   1
+sumloop.scm                  0                   1
+tak.scm                      0                   5
+takl.scm                     0                   2
+triangl.scm                  0                   2
+wc.scm                       0                   3
+--------------------------------------------------
+Average min: 0
+Average max: 5

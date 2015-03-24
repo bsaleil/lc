@@ -1,6 +1,7 @@
 #! gsi-script
 
 (include "~~lib/_x86#.scm")
+(include "./extern/Sort.scm")
 
 (define pp pretty-print)
 
@@ -137,6 +138,12 @@
                        ((equal? arg "--all-tests")
                           (set! all-tests #t)
                           (parse-args-h (cdr args) files))
+                       ((equal? arg "--print-versions")
+                          (set! print-versions #t)
+                          (parse-args-h (cdr args) files))
+                       ((equal? arg "--print-versions-full")
+                          (set! print-versions-full #t)
+                          (parse-args-h (cdr args) files))
                        ;; Other option stops exec
                        (else (print "Unknown option ")
                              (println arg)
@@ -193,8 +200,65 @@
                    (exec lib exp-content))))
           (else (error "NYI")))
     
+    (if print-versions
+       (let ((info (get-versions-info all-lazy-code)))
+         (println "-----------------------------------")
+         (println "Number of versions:")
+         (println "   Min: " (car info))
+         (println "   Max: " (cdr info))))
+
+    (if print-versions-full
+       (let ((info (get-versions-info-full all-lazy-code)))
+         (println "-----------------------------------")
+         (println "#versions   #stubs")
+         (println "------------------")
+         (for-each (lambda (n) (println
+                                 (make-string (- 9 (string-length (number->string (car n)))) #\space)
+                                 (car n)
+                                 (make-string (- 9 (string-length (number->string (cdr n)))) #\space)
+                                 (cdr n)))
+                   (sort info (lambda (n m) (< (car n) (car m)))))))
+
     (if print-ccsize
        (begin (println "-----------------------------------")
               (println "Global cctable size = " (table-length global-cc-table)))))
+
+;; TODO
+(define (get-versions-info lazy-codes)
+
+  (define (get-versions-info-h lcs min max)
+    (if (null? lcs)
+       (cons min max)
+       (let* ((lc (car lcs))
+              (nb (table-length (lazy-code-versions lc))))
+         (cond ((< nb min)
+                   (get-versions-info-h (cdr lcs) nb max))
+               ((> nb max)
+                   (get-versions-info-h (cdr lcs) min nb))
+               (else
+                   (get-versions-info-h (cdr lcs) min max))))))
+
+  (if (null? lazy-codes)
+     (cons 0 0)
+     (let* ((lc (car lazy-codes))
+            (nb (table-length (lazy-code-versions lc))))
+       (get-versions-info-h (cdr lazy-codes) nb nb))))
+
+;; TODO
+(define (get-versions-info-full lazy-codes)
+
+  (define table (make-table))
+
+  (define (get-versions-info-full-h lcs)
+    (if (null? lcs)
+       #t
+       (let* ((lc (car lcs))
+              (nb (table-length (lazy-code-versions lc)))
+              (r  (table-ref table nb #f)))
+        (table-set! table nb (if r (+ r 1) 1))
+        (get-versions-info-full-h (cdr lcs)))))
+
+  (get-versions-info-full-h lazy-codes)
+  (table->list table))
 
 ;;-----------------------------------------------------------------------------

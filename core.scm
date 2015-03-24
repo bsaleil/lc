@@ -16,6 +16,8 @@
 (define print-ccsize         #f) ;; Print size of global cc table after exec
 (define all-tests            #f) ;; Remove type information (execute all type tests)
 (define count-tests          #f) ;; Count type tests and print number
+(define print-versions       #f) ;; Print number min and max of versions of lazy codes
+(define print-versions-full  #f) ;; Print number detailed number of versions
 
 ;;-----------------------------------------------------------------------------
 
@@ -869,6 +871,9 @@
 
 ;;-----------------------------------------------------------------------------
 
+;; TODO
+(define all-lazy-code '())
+
 (define-type lazy-code
   constructor: make-lazy-code*
   generator
@@ -877,10 +882,14 @@
 )
 
 (define (make-lazy-code generator)
-  (make-lazy-code* generator (make-table) '()))
+  (let ((lc (make-lazy-code* generator (make-table) '())))
+    (set! all-lazy-code (cons lc all-lazy-code))
+    lc))
 
 (define (make-lazy-code-ret generator)
-  (make-lazy-code* generator (make-table) '(ret)))
+  (let ((lc (make-lazy-code* generator (make-table) '(ret))))
+    (set! all-lazy-code (cons lc all-lazy-code))
+    lc))  
 
 (define (get-version lazy-code ctx)
   (let ((versions (lazy-code-versions lazy-code)))
@@ -1295,7 +1304,7 @@
                      (gen-error cgc (ERR_TYPE_EXPECTED type)))))
                ;; Current information on type
                (known-type (list-ref (ctx-stack ctx) stack-idx)))
-           
+
            ;; If 'all-tests' option enabled, then remove type information
            (if all-tests
               (set! known-type CTX_UNK))
