@@ -160,4 +160,7 @@
 
 ;; Nettoyer optimisation variables globales
 
-(println (modulo 9 1))
+;; TODO : convention pour les noms de fonctions :
+;;   lazy-fn représente un block
+;;   get-lazy-fn, fonction qui créé un block
+;;   gen-... pour la génération du code machine

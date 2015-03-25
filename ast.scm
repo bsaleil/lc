@@ -734,9 +734,7 @@
          (lazy-special
            (cond ;; EXIT
                  ((eq? special 'exit)
-                    (make-lazy-code
-                      (lambda (cgc ctx)
-                         (gen-error cgc ""))))
+                    (get-lazy-error ""))
                  ;; CONS
                  ((eq? special 'cons) (mlc-pair succ))
                  ;; NOT
@@ -1512,7 +1510,6 @@
 ;;
 ;; Make lazy code from APPLY
 ;;
-;; TODO : factoriser avec mlc-call
 (define (mlc-apply ast succ)
 
   (let* (;; LAZY CALL
@@ -1523,8 +1520,8 @@
             (lambda (cgc ctx)
               
               ;; Remove lst and op from stack
-              (x86-pop cgc (x86-rax)) ;; lst
-              (x86-pop cgc (x86-rbx)) ;; op
+              (x86-pop cgc (x86-rbx)) ;; lst
+              (x86-pop cgc (x86-rax)) ;; op
 
               ;; Read and push all args from lst until we reach '()
               (let ((label-end  (asm-make-label #f (new-sym 'apply-args-end)))
@@ -1533,64 +1530,30 @@
                 (x86-mov cgc (x86-rdi) (x86-imm-int 0))
                 (x86-label cgc label-loop)
                 ;; If current el is null, then jump to end
-                (x86-cmp cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+                (x86-cmp cgc (x86-rbx) (x86-imm-int (obj-encoding '())))
                 (x86-je cgc label-end)
                   ;; Else, push arg and update RDI
-                  (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))           ;; Push car
-                  (x86-mov cgc (x86-rax) (x86-mem (- 16 TAG_MEMOBJ) (x86-rax))) ;; Get cdr for next iteration
+                  (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))           ;; Push car
+                  (x86-mov cgc (x86-rbx) (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx))) ;; Get cdr for next iteration
                   (x86-inc cgc (x86-rdi))  ;; inc args number
                   (x86-jmp cgc label-loop) ;; next iteration
                 ;; All args are pushed
                 (x86-label cgc label-end))
 
               ;; Push closure
-              (x86-push cgc (x86-rbx))
+              (x86-push cgc (x86-rax))
 
-              (let* ((call-ctx (make-ctx fake-stack '() -1))
-                     (cct-offset    (* 8 (+ 1 (get-closure-index call-ctx)))))
-                ;; Put ctx with fake stack in r11 because we don't know the type/number of arguments
-                (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
-
-                ;; 1 - Get cc-table
-                (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))
-
-                ;; 2 - Get entry point in cc-table
-                (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
-                
-                ;; 3 - Jump
-                (x86-jmp cgc (x86-rax))))))
+              ;; Gen call sequence with closure in RAX
+              (gen-call-seqence cgc (make-ctx fake-stack '() -1)))))
         
-         ;; LAZY APPLY
+         ;; Apply
          (lazy-apply
            ;; Push operator and args lst 
            (let ((lazy-right (gen-ast (caddr ast) lazy-call)))
              (gen-ast (cadr ast) lazy-right))))
     
-    ;; Create stub and push ret addr
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (let* (;; Flag in stub : is the continuation already generated ?
-               (gen-flag #f)
-               ;; Label for return address loading
-               (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
-               ;; Continuation stub
-               (stub-labels (add-callback cgc
-                                          0
-                                          (lambda (ret-addr selector)
-                                              (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
-                                                 (set! gen-flag (gen-version-continuation load-ret-label
-                                                                                          (make-lazy-code ;; TODO : move 
-                                                                                            (lambda (cgc ctx)
-                                                                                              (x86-push cgc (x86-rax))
-                                                                                              (jump-to-version cgc succ (ctx-push ctx CTX_UNK))))
-                                                                                          ctx)))
-                                              gen-flag))))
-          ;; Return address (continuation label)
-          (x86-label cgc load-ret-label)
-          (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
-          (x86-push cgc (x86-rax))
-
-          (jump-to-version cgc lazy-apply (ctx-push ctx CTX_RETAD)))))))
+    ;; Gen pre call
+    (gen-lazy-pre-call succ lazy-apply '())))
 
 ;;
 ;; Make lazy code from CALL EXPR
@@ -1601,15 +1564,14 @@
          ;; Call arguments
          (args (cdr ast))
          ;; Lazy fail
-         (lazy-fail (make-lazy-code (lambda (cgc ctx) (gen-error cgc (ERR_TYPE_EXPECTED CTX_CLO)))))
+         (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
                                         ;; Call ctx in rdx                             
                                         (let* ((call-stack    (if tail
                                                                 (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
                                                                 (list-head (ctx-stack ctx) (+ (length args) 2))))
-                                               (call-ctx      (make-ctx call-stack '() -1))
-                                               (cct-offset    (* 8 (+ 1 (get-closure-index call-ctx)))))                                        
+                                               (call-ctx      (make-ctx call-stack '() -1)))                                    
                                         
                                         (if tail 
                                           (tail-shift cgc
@@ -1624,18 +1586,10 @@
                                         (if (eq? (car ast) count-calls)
                                            (gen-inc-slot cgc 'calls))
                                         
-                                        ;; 0 - R11 = still-box address containing call-ctx
-                                        (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
-                                      
-                                        ;; 1 - Get cc-table
-                                        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))                ;; get closure
-                                        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; get cc-table
-                                        
-                                        ;; 2 - Get entry point in cc-table
-                                        (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
-                                                                                
-                                        ;; 3 - Jump to entry point                                        
-                                        (x86-jmp cgc (x86-rax))))))
+                                        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+
+                                        ;; Gen call sequence with closure in RAX
+                                        (gen-call-seqence cgc call-ctx)))))
          ;; Lazy operator
          (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
@@ -1647,36 +1601,53 @@
           (gen-ast-l args lazy-operator)
           ;; Else, compile call
           lazy-operator)
-        (make-lazy-code
-           (lambda (cgc ctx)
-              (let* (;; Flag in stub : is the continuation already generated ?
-                     (gen-flag #f)
-                     ;; Label for return address loading
-                     (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
-                     ;; Continuation stub
-                     (stub-labels (add-callback cgc
-                                                0
-                                                (lambda (ret-addr selector)
-                                                    (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag = continuation addr
-                                                       (set! gen-flag (gen-version-continuation load-ret-label
-                                                                                                (make-lazy-code ;; TODO : move 
-                                                                                                  (lambda (cgc ctx)
-                                                                                                    (x86-push cgc (x86-rax))
-                                                                                                    (jump-to-version cgc succ (ctx-push ctx CTX_UNK))))
-                                                                                                ctx)))
-                                                     gen-flag))))
-                 ;; Return address (continuation label)
-                 (x86-label cgc load-ret-label)
-                 (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
-                 (x86-push cgc (x86-rax))
-                  
-                 (let ((succ (if (> (length args) 0)
-                                ;; If args, then compile args
-                                (gen-ast-l args lazy-operator)
-                                ;; Else, compile call
-                                lazy-operator)))
-                            
-                    (jump-to-version cgc succ (ctx-push ctx CTX_RETAD)))))))))
+        ;; Gen pre-call
+        (gen-lazy-pre-call succ lazy-operator args))))
+
+;; Return a lazy code object to use as a 'pre-call':
+;; Build continuation block and push return address
+(define (gen-lazy-pre-call lazy-succ lazy-call args)
+  ;; Create stub and push ret addr
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* (;; Flag in stub : is the continuation already generated ?
+             (gen-flag #f)
+             ;; Label for return address loading
+             (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
+             ;; Lazy continuation, push returned value
+             (lazy-continuation
+                (make-lazy-code
+                   (lambda (cgc ctx)
+                      (x86-push cgc (x86-rax))
+                      (jump-to-version cgc lazy-succ (ctx-push ctx CTX_UNK)))))
+             ;; Continuation stub
+             (stub-labels (add-callback cgc
+                                        0
+                                        (lambda (ret-addr selector)
+                                            (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag to continuation addr
+                                               (set! gen-flag (gen-version-continuation load-ret-label
+                                                                                        lazy-continuation
+                                                                                        ctx)))
+                                            gen-flag))))
+        ;; Return address (continuation label)
+        (x86-label cgc load-ret-label)
+        (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
+        (x86-push cgc (x86-rax))
+        (jump-to-version cgc
+                         (gen-ast-l args lazy-call)
+                         (ctx-push ctx CTX_RETAD))))))
+
+;; Gen call sequence (call instructions) with call closure in RAX
+(define (gen-call-seqence cgc call-ctx)
+  (let ((cct-offset (* 8 (+ 1 (get-closure-index call-ctx)))))
+    ;; 1 - Put ctx with fake stack in r11 because we don't know the type/number of arguments
+    (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
+    ;; 2- Get cc-table
+    (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+    ;; 3 - Get entry point in cc-table
+    (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
+    ;; 4 - Jump
+    (x86-jmp cgc (x86-rax))))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
@@ -1688,9 +1659,7 @@
   (let ((opnds (cdr ast)))
     (if (not (= (length opnds) 2))
       ;; != 2 operands, error
-      (make-lazy-code
-        (lambda (cgc succ)
-          (gen-error cgc ERR_WRONG_NUM_ARGS)))
+      (get-lazy-error ERR_WRONG_NUM_ARGS)
       ;; == 2 operands
       (let* (;; Overflow stub
              (overflow-labels (add-callback #f 0 (lambda (ret-addr selector)
@@ -1704,7 +1673,7 @@
                    (x86-sar cgc (x86-rax) (x86-imm-int 2))
                    (x86-sar cgc (x86-rbx) (x86-imm-int 2))
                    (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
-                   (x86-je  cgc (label-error ERR_DIVIDE_ZERO)) ;; Check '/0'
+                   (x86-je  cgc (get-label-error ERR_DIVIDE_ZERO)) ;; Check '/0'
                    (x86-cqo cgc)
                    (x86-idiv cgc (x86-rbx))
                    (cond ((eq? op 'quotient)
@@ -1822,7 +1791,7 @@
     (cond ;; No opnd, push 0 and jump to succ
           ((= (length (cdr ast)) 0)
              (cond ((eq? op '+) (gen-ast 0 succ))
-                   ((eq? op '-) (make-lazy-code (lambda (cgc ctx) (gen-error cgc ERR_WRONG_NUM_ARGS))))
+                   ((eq? op '-) (get-lazy-error ERR_WRONG_NUM_ARGS))
                    ((eq? op '*) (gen-ast 1 succ))
                    ((member op '(< > <= >= =)) (gen-ast #t succ))))
           ;; 1 opnd,  push opnd, test type, and jump to succ
@@ -2346,11 +2315,17 @@
              (gen-rest-lst-h cgc ctx(- pos 1) nb (+ sp-offset 8)))))
 
 ;; Return label of a stub generating error with 'msg'
-(define (label-error msg)
+(define (get-label-error msg)
   (list-ref (add-callback #f
                           0
                           (lambda (ret-addr selector) (error msg)))
             0))
+
+;; Return lazy code object which generates an error with 'msg'
+(define (get-lazy-error msg)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (gen-error cgc msg))))
 
 ;;-----------------------------------------------------------------------------
 ;; Utils
