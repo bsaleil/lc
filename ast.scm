@@ -198,7 +198,7 @@
         (x86-pop cgc (x86-rax)) ;; el
         (x86-pop cgc (x86-rbx)) ;; vector
         (x86-mov cgc (x86-mem (- (+ 16 (* idx 8)) TAG_MEMOBJ) (x86-rbx)) (x86-rax))
-        (x86-push cgc (x86-rbx)) ;; TODO + Remove if element is a literal ?
+        (x86-push cgc (x86-rbx))
         (if (= idx (- (vector-length ast) 1))
            (jump-to-version cgc
                             succ
@@ -655,7 +655,7 @@
        (lambda (cgc ctx)
           (let* ((stack (ctx-stack (ctx-push-nb ctx CTX_BOOL (length ids))))
                  (start (- (length stack) (length ids) 1))
-                 (env (build-env ids ids start (ctx-env ctx))) ;; TODO: All ids are considered as mutable
+                 (env (build-env ids ids start (ctx-env ctx)))
                  (nctx (make-ctx stack env (ctx-nb-args ctx))))
              
              ;; Create values on stack (initial value is #f)
@@ -2071,12 +2071,14 @@
                                                   (if (identifier-mutable? (cdr res))
                                                     '(mutable)
                                                     '()))
-                                               ;; SType TODO
+                                               ;; SType
                                                (let* ((res (assoc (car fvars) saved-env)))
                                                  (if (eq? (identifier-type (cdr res)) 'local)
+                                                    ;; From local var
                                                     (let ((idx (- (length saved-stack) 2 (identifier-offset (cdr res)))))
                                                       (list-ref saved-stack idx))
-                                                      (identifier-stype (cdr res))))))
+                                                    ;; From free var
+                                                    (identifier-stype (cdr res))))))
             
             (build-fenv saved-stack saved-env mvars (cdr fvars) (+ offset 1)))))
 
@@ -2093,7 +2095,6 @@
                ;; Local var
                (gen-get-localvar cgc ctx res 'gen-reg))
             (error "Can't find variable: " var))
-         ;; TODO : free vars ctx information
          (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
          (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))))
 

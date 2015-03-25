@@ -215,6 +215,7 @@
     (println err)))
 
 ;;-----------------------------------------------------------------------------
+;; Measurement
 
 (define (gen-print-slot cgc slot msg)
   (x86-push cgc (x86-rax))
@@ -873,7 +874,7 @@
 
 ;;-----------------------------------------------------------------------------
 
-;; TODO
+;; List of all lazy code objects (for debug/measure purposes)
 (define all-lazy-code '())
 
 (define-type lazy-code
@@ -1501,7 +1502,7 @@
                    (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
                    (x86-and cgc (x86-rax) (x86-imm-int 3))
                    (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-                   (x86-jne cgc label-jump) ;; TODO
+                   (x86-jne cgc label-jump)
                    (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
                    (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
                    ;; STAG_XXX << 3
