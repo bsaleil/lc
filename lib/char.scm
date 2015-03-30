@@ -1,7 +1,3 @@
-
-(define (char=? c1 c2)
-   (= (char->integer c1) (char->integer c2)))
-
 (define (char<? c1 c2)
    (< (char->integer c1) (char->integer c2)))
 

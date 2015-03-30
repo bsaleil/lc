@@ -1,0 +1,23 @@
+
+-------------------------
+
+Compiler.scm :
+
+59375704 allocated bytes
+   27383 closures
+    2000 byte/closure (250 * 8)
+
+ 27383 * 2000 = 54766000 = 92.2 % of memory for cc-tables
+
+-------------------------
+
+Boyer.scm :
+
+243652712 allocated bytes
+   115848 closures
+     2000 byte/closure (250 * 8)
+
+
+115848 * 2000 = 231696000 = 95.1 % of memory for cc-tables
+
+-------------------------

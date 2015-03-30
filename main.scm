@@ -186,9 +186,9 @@
                                   ((boolean? (caddr g)) CTX_BOOL)
                                   ((eq? (caaddr g) 'lambda) CTX_CLO)
                                   ((pair? (caddr g)) CTX_UNK)
-                                  (else (error "NYI s"))))
+                                  (else (error "NYI"))))
                         ((pair? (cadr g)) CTX_CLO)
-                        (else (error "NYI ns"))))
+                        (else (error "NYI"))))
                   
                 ;; TODO
                 (define (get-gids lib base)

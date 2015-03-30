@@ -56,6 +56,8 @@
    (car                 1  1  ,(prim-types 1 CTX_PAI))
    (cdr                 1  1  ,(prim-types 1 CTX_PAI))
    (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL))
+   (eqv?                2  2  ,(prim-types 2 CTX_ALL CTX_ALL))
+   (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR))
    (null?               1  1  ,(prim-types 1 CTX_ALL))
    (integer?            1  1  ,(prim-types 1 CTX_ALL))
    (not                 1  1  ,(prim-types 1 CTX_ALL))
@@ -734,6 +736,8 @@
   ;; Manage fake implementation. NOTE: remove when all implemented
   (cond ((eq? (car ast) 'integer?)
             (gen-ast (cons 'number? (cdr ast)) succ))
+        ((member (car ast) '(eqv? char=?))
+            (gen-ast (cons 'eq? (cdr ast)) succ))
         (else
           (let* ((special (car ast))
                  (lazy-special
@@ -1558,7 +1562,7 @@
              (gen-ast (cadr ast) lazy-right))))
     
     ;; Gen pre call
-    (gen-lazy-pre-call succ lazy-apply '())))
+    (gen-lazy-pre-call (car ast) succ lazy-apply '())))
 
 ;;
 ;; Make lazy code from CALL EXPR
@@ -1599,7 +1603,6 @@
          (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
     ;; Build first lazy code
-    ;; This lazy code creates continuation stub and push return address
     (if tail
         (if (> (length args) 0)
           ;; If args, then compile args
@@ -1607,11 +1610,11 @@
           ;; Else, compile call
           lazy-operator)
         ;; Gen pre-call
-        (gen-lazy-pre-call succ lazy-operator args))))
+        (gen-lazy-pre-call (car ast) succ lazy-operator args))))
 
 ;; Return a lazy code object to use as a 'pre-call':
 ;; Build continuation block and push return address
-(define (gen-lazy-pre-call lazy-succ lazy-call args)
+(define (gen-lazy-pre-call op lazy-succ lazy-call args)
   ;; Create stub and push ret addr
   (make-lazy-code
     (lambda (cgc ctx)
@@ -1623,8 +1626,19 @@
              (lazy-continuation
                 (make-lazy-code
                    (lambda (cgc ctx)
+                      
+                     (let ((TYPE  
+                              (let ((r (assoc op gids))
+                                    (t (assoc op gret)))
+                                (if (and (not all-tests)
+                                         r
+                                         t
+                                         (not (assoc op (ctx-env ctx))))
+                                  (cdr t)
+                                  CTX_UNK))))
+                      
                       (x86-push cgc (x86-rax))
-                      (jump-to-version cgc lazy-succ (ctx-push ctx CTX_UNK)))))
+                      (jump-to-version cgc lazy-succ (ctx-push ctx TYPE))))))
              ;; Continuation stub
              (stub-labels (add-callback cgc
                                         0

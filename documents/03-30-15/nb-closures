@@ -1,0 +1,32 @@
+Name               NB closures
+--------------------------------------------------
+ack.scm                    108
+array1.scm                 112
+boyer.scm               115848
+browse.scm               20421
+cat.scm                    109
+compiler.scm             27383
+conform.scm             202053
+cpstak.scm               47816
+dderiv.scm                 130
+deriv.scm                  111
+destruc.scm                969
+diviter.scm                109
+divrec.scm                 109
+earley.scm               87081
+fib.scm                    108
+graphs.scm              104182
+mazefun.scm               3348
+nqueens.scm               4224
+paraffins.scm             1229
+perm9.scm                  114
+peval.scm                21679
+primes.scm                 136
+sboyer.scm                 146
+string.scm                 110
+sum.scm                    109
+sumloop.scm                110
+tak.scm                    108
+takl.scm                   110
+triangl.scm                109
+wc.scm                     109
