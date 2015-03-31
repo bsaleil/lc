@@ -22,12 +22,6 @@
                                                       (symbol->string count-calls)
                                                       "' = "))))
               
-              
-                (begin 
-                       (gen-print-slot cgc
-                                       'other
-                                       ""))
-              
               (if count-tests
                 (begin (gen-print-msg cgc "-----------------------------------")
                        (gen-print-slot cgc

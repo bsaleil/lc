@@ -1627,16 +1627,6 @@
                 (make-lazy-code
                    (lambda (cgc ctx)
                       
-                      (let ((r (assoc op gids))
-                            (t (assoc op gret)))
-                        (if (and (not all-tests)
-                                 r
-                                 t
-                                 (not (assoc op (ctx-env ctx))))
-                          (gen-inc-slot cgc 'other)))
-                      ;(gen-inc-slot cgc 'other)
-                      
-                      
                      (let ((TYPE  
                               (let ((r (assoc op gids))
                                     (t (assoc op gret)))
@@ -1647,8 +1637,6 @@
                                   (cdr t)
                                   CTX_UNK))))
                        
-                      
-                      
                       (x86-push cgc (x86-rax))
                       (jump-to-version cgc lazy-succ (ctx-push ctx TYPE))))))
              ;; Continuation stub
