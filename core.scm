@@ -1003,11 +1003,20 @@
 ;; Ctx management
 ;; TODO : fonction pour supprimer des ids de l'environnement pour eviter des list-tails, et mettre dans let, begin et do
 
+(define nbctx 0)
+
 (define-type ctx
+  constructor: make-ctx*
+  id      ;; TODO
   stack   ;; compile time stack, containing types
   env     ;; compile time environment
   nb-args ;; nb of arguments of current frame
 )
+
+(define (make-ctx stack env nb-args)
+  (let ((id nbctx))
+    (set! nbctx (+ nbctx 1))
+    (make-ctx* id stack env nb-args)))
 
 ;; Apply 'nb' push to ctx
 (define (ctx-push-nb ctx ctx-type nb)
