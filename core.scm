@@ -1003,8 +1003,6 @@
 ;; Ctx management
 ;; TODO : fonction pour supprimer des ids de l'environnement pour eviter des list-tails, et mettre dans let, begin et do
 
-(define id-nctx 0)
-
 (define-type ctx
   stack   ;; compile time stack, containing types
   env     ;; compile time environment
@@ -1645,18 +1643,3 @@
   (if (null? lst)
       end
       (func (car lst) (foldr func end (cdr lst)))))
-
-
-
-;;; TODO PH
-(define nb-ctx-stack 0)
-(define table-stack-id (make-table))
-
-(define (get-stack-id ctx)
-  (let ((id (table-ref table-stack-id (ctx-stack ctx) #f)))
-    (if id
-       id
-       (let ((id nb-ctx-stack))
-         (set! nb-ctx-stack (+ nb-ctx-stack 1))
-         (table-set! table-stack-id (ctx-stack ctx) id)
-         id))))
