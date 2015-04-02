@@ -1553,7 +1553,7 @@
               (x86-push cgc (x86-rax))
 
               ;; Gen call sequence with closure in RAX
-              (gen-call-seqence cgc (make-ctx fake-stack '() -1)))))
+              (gen-call-sequence cgc (make-ctx fake-stack '() -1)))))
         
          ;; Apply
          (lazy-apply
@@ -1598,7 +1598,7 @@
                                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
 
                                         ;; Gen call sequence with closure in RAX
-                                        (gen-call-seqence cgc call-ctx)))))
+                                        (gen-call-sequence cgc call-ctx)))))
          ;; Lazy operator
          (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
@@ -1657,7 +1657,7 @@
                          (ctx-push ctx CTX_RETAD))))))
 
 ;; Gen call sequence (call instructions) with call closure in RAX
-(define (gen-call-seqence cgc call-ctx)
+(define (gen-call-sequence cgc call-ctx)
   (let ((cct-offset (* 8 (+ 1 (get-closure-index call-ctx)))))
     ;; 1 - Put ctx with fake stack in r11 because we don't know the type/number of arguments
     (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
