@@ -1582,6 +1582,27 @@
                                                                 (list-head (ctx-stack ctx) (+ (length args) 2))))
                                                (call-ctx      (make-ctx call-stack '() -1)))                                    
                                         
+                                        ;; TT
+                                        (define (get-nb-known lst)
+                                          (if (null? lst)
+                                             0
+                                             (let ((f (car lst)))
+                                               (if (equal? f CTX_UNK)
+                                                  (get-nb-known (cdr lst))
+                                                  (+ 1 (get-nb-known (cdr lst)))))))
+
+                                        (let* ((n (get-nb-known call-stack))
+                                               (f (exact->inexact (/ n (length call-stack)))))
+                                          ;(println "Known " n)
+                                          ;(println "Unknown " (- (length call-stack) n))
+                                          ;(println f))
+                                          (if (< f 0.7)
+                                            (set! call-ctx (make-ctx (make-list (length call-stack) CTX_UNK) '() -1))))
+
+                                        (if (> (length call-stack) 7)
+                                           (set! call-ctx  (make-ctx (make-list (length call-stack) CTX_UNK) '() -1)))
+                                        ;; TT
+
                                         (if tail 
                                           (tail-shift cgc
                                                       ;; Nb slots to shift

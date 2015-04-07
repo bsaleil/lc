@@ -1,0 +1,739 @@
+##################################################
+Lost type information if known < 0.2
+##################################################
+
+Name                Table size
+------------------------------
+ack.scm                      2
+array1.scm                   4
+boyer.scm                   15
+browse.scm                  18
+cat.scm                      2
+compiler.scm               233
+conform.scm                 36
+cpstak.scm                   3
+dderiv.scm                  10
+deriv.scm                    5
+destruc.scm                  5
+diviter.scm                  2
+divrec.scm                   2
+earley.scm                  51
+fib.scm                      1
+graphs.scm                  36
+mazefun.scm                 31
+nqueens.scm                 15
+paraffins.scm               15
+perm9.scm                    5
+peval.scm                   25
+primes.scm                   4
+sboyer.scm                  23
+string.scm                   9
+sum.scm                      2
+sumloop.scm                  1
+tak.scm                      5
+takl.scm                     3
+triangl.scm                  6
+wc.scm                       3
+------------------------------
+Average: 19
+
+Name               Total tests      Executed tests           % Removed
+----------------------------------------------------------------------
+ack.scm               78150588             5580143               92.86
+array1.scm           280001804            20000401               92.86
+boyer.scm             18582560            17014904                8.44
+browse.scm             1381052              847633               38.62
+cat.scm                 548467              274233               50.00
+compiler.scm           1962417              644259               67.17
+conform.scm            7861678             3213700               59.12
+cpstak.scm              333947               63609               80.95
+dderiv.scm                 205                 130               36.59
+deriv.scm                   99                  48               51.52
+destruc.scm            1562554              296873               81.00
+diviter.scm               1204                 300               75.08
+divrec.scm                1304                 300               76.99
+earley.scm             1572320             1119995               28.77
+fib.scm              179164215            29860702               83.33
+graphs.scm             1254762              417781               66.70
+mazefun.scm             536466              137122               74.44
+nqueens.scm             300248              162995               45.71
+paraffins.scm          2288833              581866               74.58
+perm9.scm             24297292             6644176               72.65
+peval.scm              1450705              918167               36.71
+primes.scm                3839                1744               54.57
+sboyer.scm          2469371794          1982220594               19.73
+string.scm           702433074            26213771               96.27
+sum.scm                  70011               10002               85.71
+sumloop.scm          600000003           100000000               83.33
+tak.scm                 286239               51540               81.99
+takl.scm               1403463              866606               38.25
+triangl.scm           92481242            34362559               62.84
+wc.scm                  603770              301884               50.00
+----------------------------------------------------------------------
+Average: 62.23
+
+##################################################
+Lost type information if known < 0.3
+##################################################
+
+Name                Table size
+------------------------------
+ack.scm                      2
+array1.scm                   4
+boyer.scm                   15
+browse.scm                  18
+cat.scm                      2
+compiler.scm               236
+conform.scm                 37
+cpstak.scm                   3
+dderiv.scm                  10
+deriv.scm                    5
+destruc.scm                  5
+diviter.scm                  2
+divrec.scm                   2
+earley.scm                  51
+fib.scm                      1
+graphs.scm                  36
+mazefun.scm                 31
+nqueens.scm                 15
+paraffins.scm               15
+perm9.scm                    5
+peval.scm                   25
+primes.scm                   4
+sboyer.scm                  23
+string.scm                   9
+sum.scm                      2
+sumloop.scm                  1
+tak.scm                      5
+takl.scm                     3
+triangl.scm                  6
+wc.scm                       3
+------------------------------
+Average: 19
+
+Name               Total tests      Executed tests           % Removed
+----------------------------------------------------------------------
+ack.scm               78150588             5580143               92.86
+array1.scm           280001804            20000401               92.86
+boyer.scm             18582560            17014904                8.44
+browse.scm             1381052              847633               38.62
+cat.scm                 548467              274233               50.00
+compiler.scm           1962417              644259               67.17
+conform.scm            7861678             3213700               59.12
+cpstak.scm              333947               63609               80.95
+dderiv.scm                 205                 130               36.59
+deriv.scm                   99                  48               51.52
+destruc.scm            1562554              296873               81.00
+diviter.scm               1204                 300               75.08
+divrec.scm                1304                 300               76.99
+earley.scm             1572320             1119995               28.77
+fib.scm              179164215            29860702               83.33
+graphs.scm             1254762              417781               66.70
+mazefun.scm             536466              137122               74.44
+nqueens.scm             300248              162995               45.71
+paraffins.scm          2288833              581866               74.58
+perm9.scm             24297292             6644176               72.65
+peval.scm              1450705              918167               36.71
+primes.scm                3839                1744               54.57
+sboyer.scm          2469371794          1982220594               19.73
+string.scm           702433074            26213771               96.27
+sum.scm                  70011               10002               85.71
+sumloop.scm          600000003           100000000               83.33
+tak.scm                 286239               51540               81.99
+takl.scm               1403463              866606               38.25
+triangl.scm           92481242            34362559               62.84
+wc.scm                  603770              301884               50.00
+----------------------------------------------------------------------
+Average: 62.23
+
+##################################################
+Lost type information if known < 0.4
+##################################################
+
+Name                Table size
+------------------------------
+ack.scm                      2
+array1.scm                   4
+boyer.scm                   15
+browse.scm                  18
+cat.scm                      2
+compiler.scm               229
+conform.scm                 37
+cpstak.scm                   3
+dderiv.scm                  10
+deriv.scm                    5
+destruc.scm                  5
+diviter.scm                  2
+divrec.scm                   2
+earley.scm                  51
+fib.scm                      1
+graphs.scm                  36
+mazefun.scm                 31
+nqueens.scm                 15
+paraffins.scm               15
+perm9.scm                    5
+peval.scm                   25
+primes.scm                   4
+sboyer.scm                  23
+string.scm                   9
+sum.scm                      2
+sumloop.scm                  1
+tak.scm                      5
+takl.scm                     3
+triangl.scm                  6
+wc.scm                       3
+------------------------------
+Average: 18
+
+Name               Total tests      Executed tests           % Removed
+----------------------------------------------------------------------
+ack.scm               78150588             5580143               92.86
+array1.scm           280001804            20000401               92.86
+boyer.scm             18582560            17014904                8.44
+browse.scm             1381052              847633               38.62
+cat.scm                 548467              274233               50.00
+compiler.scm           1962417              644265               67.17
+conform.scm            7861678             3213700               59.12
+cpstak.scm              333947               63609               80.95
+dderiv.scm                 205                 130               36.59
+deriv.scm                   99                  48               51.52
+destruc.scm            1562554              296873               81.00
+diviter.scm               1204                 300               75.08
+divrec.scm                1304                 300               76.99
+earley.scm             1572320             1119995               28.77
+fib.scm              179164215            29860702               83.33
+graphs.scm             1254762              417781               66.70
+mazefun.scm             536466              137122               74.44
+nqueens.scm             300248              162995               45.71
+paraffins.scm          2288833              581866               74.58
+perm9.scm             24297292             6644176               72.65
+peval.scm              1450705              918167               36.71
+primes.scm                3839                1744               54.57
+sboyer.scm          2469371794          1982220594               19.73
+string.scm           702433074            26213771               96.27
+sum.scm                  70011               10002               85.71
+sumloop.scm          600000003           100000000               83.33
+tak.scm                 286239               51540               81.99
+takl.scm               1403463              866606               38.25
+triangl.scm           92481242            34362559               62.84
+wc.scm                  603770              301884               50.00
+----------------------------------------------------------------------
+Average: 62.23
+
+##################################################
+Lost type information if known < 0.5
+##################################################
+
+Name                Table size
+------------------------------
+ack.scm                      2
+array1.scm                   4
+boyer.scm                   15
+browse.scm                  18
+cat.scm                      2
+compiler.scm               216
+conform.scm                 37
+cpstak.scm                   3
+dderiv.scm                  10
+deriv.scm                    5
+destruc.scm                  5
+diviter.scm                  2
+divrec.scm                   2
+earley.scm                  45
+fib.scm                      1
+graphs.scm                  36
+mazefun.scm                 31
+nqueens.scm                 15
+paraffins.scm               15
+perm9.scm                    5
+peval.scm                   25
+primes.scm                   4
+sboyer.scm                  23
+string.scm                   9
+sum.scm                      2
+sumloop.scm                  1
+tak.scm                      5
+takl.scm                     3
+triangl.scm                  6
+wc.scm                       3
+------------------------------
+Average: 18
+
+Name               Total tests      Executed tests           % Removed
+----------------------------------------------------------------------
+ack.scm               78150588             5580143               92.86
+array1.scm           280001804            20000401               92.86
+boyer.scm             18582560            17014904                8.44
+browse.scm             1381052              847633               38.62
+cat.scm                 548467              274233               50.00
+compiler.scm           1962417              644265               67.17
+conform.scm            7861678             3213700               59.12
+cpstak.scm              333947               63609               80.95
+dderiv.scm                 205                 130               36.59
+deriv.scm                   99                  48               51.52
+destruc.scm            1562554              296873               81.00
+diviter.scm               1204                 300               75.08
+divrec.scm                1304                 300               76.99
+earley.scm             1572320             1156757               26.43
+fib.scm              179164215            29860702               83.33
+graphs.scm             1254762              417781               66.70
+mazefun.scm             536466              137122               74.44
+nqueens.scm             300248              162995               45.71
+paraffins.scm          2288833              581866               74.58
+perm9.scm             24297292             6644176               72.65
+peval.scm              1450705              918167               36.71
+primes.scm                3839                1744               54.57
+sboyer.scm          2469371794          1982220594               19.73
+string.scm           702433074            26213771               96.27
+sum.scm                  70011               10002               85.71
+sumloop.scm          600000003           100000000               83.33
+tak.scm                 286239               51540               81.99
+takl.scm               1403463              866606               38.25
+triangl.scm           92481242            34362559               62.84
+wc.scm                  603770              301884               50.00
+----------------------------------------------------------------------
+Average: 62.15
+
+##################################################
+Lost type information if known < 0.6
+##################################################
+
+Name                Table size
+------------------------------
+ack.scm                      2
+array1.scm                   4
+boyer.scm                   15
+browse.scm                  18
+cat.scm                      2
+compiler.scm               186
+conform.scm                 36
+cpstak.scm                   3
+dderiv.scm                  10
+deriv.scm                    5
+destruc.scm                  5
+diviter.scm                  2
+divrec.scm                   2
+earley.scm                  38
+fib.scm                      1
+graphs.scm                  36
+mazefun.scm                 27
+nqueens.scm                 15
+paraffins.scm               15
+perm9.scm                    5
+peval.scm                   25
+primes.scm                   4
+sboyer.scm                  23
+string.scm                   9
+sum.scm                      2
+sumloop.scm                  1
+tak.scm                      5
+takl.scm                     3
+triangl.scm                  6
+wc.scm                       3
+------------------------------
+Average: 16
+
+Name               Total tests      Executed tests           % Removed
+----------------------------------------------------------------------
+ack.scm               78150588             5580143               92.86
+array1.scm           280001804            20000401               92.86
+boyer.scm             18582560            17014904                8.44
+browse.scm             1381052              847633               38.62
+cat.scm                 548467              274233               50.00
+compiler.scm           1962417              644534               67.16
+conform.scm            7861678             3215704               59.10
+cpstak.scm              333947               63609               80.95
+dderiv.scm                 205                 130               36.59
+deriv.scm                   99                  48               51.52
+destruc.scm            1562554              296873               81.00
+diviter.scm               1204                 300               75.08
+divrec.scm                1304                 300               76.99
+earley.scm             1572320             1197250               23.85
+fib.scm              179164215            29860702               83.33
+graphs.scm             1254762              417781               66.70
+mazefun.scm             536466              137192               74.43
+nqueens.scm             300248              162995               45.71
+paraffins.scm          2288833              581866               74.58
+perm9.scm             24297292             6644176               72.65
+peval.scm              1450705              918167               36.71
+primes.scm                3839                1744               54.57
+sboyer.scm          2469371794          1982220594               19.73
+string.scm           702433074            26213771               96.27
+sum.scm                  70011               10002               85.71
+sumloop.scm          600000003           100000000               83.33
+tak.scm                 286239               51540               81.99
+takl.scm               1403463              866606               38.25
+triangl.scm           92481242            34362559               62.84
+wc.scm                  603770              301884               50.00
+----------------------------------------------------------------------
+Average: 62.06
+
+##################################################
+Lost type information if known < 0.7
+##################################################
+
+Name                Table size
+------------------------------
+ack.scm                      2
+array1.scm                   4
+boyer.scm                   15
+browse.scm                  15
+cat.scm                      2
+compiler.scm               137
+conform.scm                 34
+cpstak.scm                   3
+dderiv.scm                  10
+deriv.scm                    5
+destruc.scm                  5
+diviter.scm                  2
+divrec.scm                   2
+earley.scm                  32
+fib.scm                      1
+graphs.scm                  36
+mazefun.scm                 19
+nqueens.scm                 15
+paraffins.scm               15
+perm9.scm                    5
+peval.scm                   23
+primes.scm                   4
+sboyer.scm                  23
+string.scm                   9
+sum.scm                      2
+sumloop.scm                  1
+tak.scm                      4
+takl.scm                     3
+triangl.scm                  6
+wc.scm                       3
+------------------------------
+Average: 14
+
+Name               Total tests      Executed tests           % Removed
+----------------------------------------------------------------------
+ack.scm               78150588             5580143               92.86
+array1.scm           280001804            20000401               92.86
+boyer.scm             18582560            17014904                8.44
+browse.scm             1381052              870133               36.99
+cat.scm                 548467              274233               50.00
+compiler.scm           1962417              646162               67.07
+conform.scm            7861678             3215704               59.10
+cpstak.scm              333947               63609               80.95
+dderiv.scm                 205                 130               36.59
+deriv.scm                   99                  48               51.52
+destruc.scm            1562554              296873               81.00
+diviter.scm               1204                 300               75.08
+divrec.scm                1304                 300               76.99
+earley.scm             1572320             1212413               22.89
+fib.scm              179164215            29860702               83.33
+graphs.scm             1254762              468115               62.69
+mazefun.scm             536466              147211               72.56
+nqueens.scm             300248              174699               41.82
+paraffins.scm          2288833              581866               74.58
+perm9.scm             24297292             7369934               69.67
+peval.scm              1450705              918394               36.69
+primes.scm                3839                1744               54.57
+sboyer.scm          2469371794          1982220594               19.73
+string.scm           702433074            26213771               96.27
+sum.scm                  70011               10002               85.71
+sumloop.scm          600000003           100000000               83.33
+tak.scm                 286239               54037               81.12
+takl.scm               1403463              866606               38.25
+triangl.scm           92481242            34362559               62.84
+wc.scm                  603770              301884               50.00
+----------------------------------------------------------------------
+Average: 61.52
+
+##################################################
+Lost type information if known < 0.8
+##################################################
+
+Name                Table size
+------------------------------
+ack.scm                      2
+array1.scm                   4
+boyer.scm                   10
+browse.scm                  12
+cat.scm                      2
+compiler.scm               105
+conform.scm                 26
+cpstak.scm                   3
+dderiv.scm                   7
+deriv.scm                    5
+destruc.scm                  4
+diviter.scm                  2
+divrec.scm                   2
+earley.scm                  24
+fib.scm                      1
+graphs.scm                  35
+mazefun.scm                 16
+nqueens.scm                 13
+paraffins.scm               13
+perm9.scm                    5
+peval.scm                   14
+primes.scm                   4
+sboyer.scm                  18
+string.scm                   9
+sum.scm                      2
+sumloop.scm                  1
+tak.scm                      4
+takl.scm                     3
+triangl.scm                  6
+wc.scm                       3
+------------------------------
+Average: 11
+
+Name               Total tests      Executed tests           % Removed
+----------------------------------------------------------------------
+ack.scm               78150588            27904726               64.29
+array1.scm           280001804            20000600               92.86
+boyer.scm             18582560            17236222                7.25
+browse.scm             1381052              872633               36.81
+cat.scm                 548467              274233               50.00
+compiler.scm           1962417              679117               65.39
+conform.scm            7861678             3222012               59.02
+cpstak.scm              333947               63609               80.95
+dderiv.scm                 205                 142               30.73
+deriv.scm                   99                  60               39.39
+destruc.scm            1562554              297733               80.95
+diviter.scm               1204                 300               75.08
+divrec.scm                1304                 300               76.99
+earley.scm             1572320             1213313               22.83
+fib.scm              179164215            29860702               83.33
+graphs.scm             1254762              556955               55.61
+mazefun.scm             536466              199910               62.74
+nqueens.scm             300248              174699               41.82
+paraffins.scm          2288833              581866               74.58
+perm9.scm             24297292             9705613               60.05
+peval.scm              1450705              974189               32.85
+primes.scm                3839                1744               54.57
+sboyer.scm          2469371794          1982224158               19.73
+string.scm           702433074            26213771               96.27
+sum.scm                  70011               10002               85.71
+sumloop.scm          600000003           100000000               83.33
+tak.scm                 286239               54037               81.12
+takl.scm               1403463              866606               38.25
+triangl.scm           92481242            34362559               62.84
+wc.scm                  603770              301884               50.00
+----------------------------------------------------------------------
+Average: 58.85
+
+##################################################
+Lost type information if known < 0.9
+##################################################
+
+Name                Table size
+------------------------------
+ack.scm                      2
+array1.scm                   4
+boyer.scm                    6
+browse.scm                   8
+cat.scm                      2
+compiler.scm                64
+conform.scm                 19
+cpstak.scm                   3
+dderiv.scm                   6
+deriv.scm                    4
+destruc.scm                  4
+diviter.scm                  2
+divrec.scm                   2
+earley.scm                  20
+fib.scm                      1
+graphs.scm                  18
+mazefun.scm                 10
+nqueens.scm                  7
+paraffins.scm               12
+perm9.scm                    4
+peval.scm                   13
+primes.scm                   4
+sboyer.scm                  12
+string.scm                   7
+sum.scm                      2
+sumloop.scm                  1
+tak.scm                      2
+takl.scm                     3
+triangl.scm                  6
+wc.scm                       3
+------------------------------
+Average: 8
+
+Name               Total tests      Executed tests           % Removed
+----------------------------------------------------------------------
+ack.scm               78150588            27904726               64.29
+array1.scm           280001804            20000600               92.86
+boyer.scm             18582560            17236222                7.25
+browse.scm             1381052              899633               34.86
+cat.scm                 548467              274233               50.00
+compiler.scm           1962417              724857               63.06
+conform.scm            7861678             3235764               58.84
+cpstak.scm              333947               63609               80.95
+dderiv.scm                 205                 142               30.73
+deriv.scm                   99                  60               39.39
+destruc.scm            1562554              297733               80.95
+diviter.scm               1204                 300               75.08
+divrec.scm                1304                 300               76.99
+earley.scm             1572320             1213378               22.83
+fib.scm              179164215            29860702               83.33
+graphs.scm             1254762              637615               49.18
+mazefun.scm             536466              200042               62.71
+nqueens.scm             300248              185699               38.15
+paraffins.scm          2288833              782308               65.82
+perm9.scm             24297292            11315534               53.43
+peval.scm              1450705              974189               32.85
+primes.scm                3839                1744               54.57
+sboyer.scm          2469371794          1982224334               19.73
+string.scm           702433074            78634371               88.81
+sum.scm                  70011               10002               85.71
+sumloop.scm          600000003           100000000               83.33
+tak.scm                 286239               91836               67.92
+takl.scm               1403463              866606               38.25
+triangl.scm           92481242            34362831               62.84
+wc.scm                  603770              301884               50.00
+----------------------------------------------------------------------
+Average: 57.16
+
+##################################################
+Lost type information if known < 1.0
+##################################################
+
+Name                Table size
+------------------------------
+ack.scm                      2
+array1.scm                   4
+boyer.scm                    6
+browse.scm                   8
+cat.scm                      2
+compiler.scm                64
+conform.scm                 19
+cpstak.scm                   3
+dderiv.scm                   6
+deriv.scm                    4
+destruc.scm                  4
+diviter.scm                  2
+divrec.scm                   2
+earley.scm                  20
+fib.scm                      1
+graphs.scm                  18
+mazefun.scm                 10
+nqueens.scm                  7
+paraffins.scm               12
+perm9.scm                    4
+peval.scm                   13
+primes.scm                   4
+sboyer.scm                  12
+string.scm                   7
+sum.scm                      2
+sumloop.scm                  1
+tak.scm                      2
+takl.scm                     3
+triangl.scm                  6
+wc.scm                       3
+------------------------------
+Average: 8
+
+Name               Total tests      Executed tests           % Removed
+----------------------------------------------------------------------
+ack.scm               78150588            27904726               64.29
+array1.scm           280001804            20000600               92.86
+boyer.scm             18582560            17236222                7.25
+browse.scm             1381052              899633               34.86
+cat.scm                 548467              274233               50.00
+compiler.scm           1962417              724857               63.06
+conform.scm            7861678             3235764               58.84
+cpstak.scm              333947               63609               80.95
+dderiv.scm                 205                 142               30.73
+deriv.scm                   99                  60               39.39
+destruc.scm            1562554              297733               80.95
+diviter.scm               1204                 300               75.08
+divrec.scm                1304                 300               76.99
+earley.scm             1572320             1213378               22.83
+fib.scm              179164215            29860702               83.33
+graphs.scm             1254762              637615               49.18
+mazefun.scm             536466              200042               62.71
+nqueens.scm             300248              185699               38.15
+paraffins.scm          2288833              782308               65.82
+perm9.scm             24297292            11315534               53.43
+peval.scm              1450705              974189               32.85
+primes.scm                3839                1744               54.57
+sboyer.scm          2469371794          1982224334               19.73
+string.scm           702433074            78634371               88.81
+sum.scm                  70011               10002               85.71
+sumloop.scm          600000003           100000000               83.33
+tak.scm                 286239               91836               67.92
+takl.scm               1403463              866606               38.25
+triangl.scm           92481242            34362831               62.84
+wc.scm                  603770              301884               50.00
+----------------------------------------------------------------------
+Average: 57.16
+
+##################################################
+Lost type information if known < 1.1
+##################################################
+
+Name                Table size
+------------------------------
+ack.scm                      1
+array1.scm                   2
+boyer.scm                    4
+browse.scm                   5
+cat.scm                      2
+compiler.scm                24
+conform.scm                  9
+cpstak.scm                   3
+dderiv.scm                   3
+deriv.scm                    3
+destruc.scm                  2
+diviter.scm                  1
+divrec.scm                   1
+earley.scm                  10
+fib.scm                      1
+graphs.scm                   6
+mazefun.scm                  4
+nqueens.scm                  3
+paraffins.scm                5
+perm9.scm                    3
+peval.scm                    6
+primes.scm                   2
+sboyer.scm                   5
+string.scm                   5
+sum.scm                      2
+sumloop.scm                  1
+tak.scm                      1
+takl.scm                     3
+triangl.scm                  4
+wc.scm                       3
+------------------------------
+Average: 4
+
+Name               Total tests      Executed tests           % Removed
+----------------------------------------------------------------------
+ack.scm               78150588            27912966               64.28
+array1.scm           280001804            40000802               85.71
+boyer.scm             18582560            17236225                7.25
+browse.scm             1381052              947905               31.36
+cat.scm                 548467              274233               50.00
+compiler.scm           1962417              802070               59.13
+conform.scm            7861678             3535515               55.03
+cpstak.scm              333947              270338               19.05
+dderiv.scm                 205                 145               29.27
+deriv.scm                   99                  63               36.36
+destruc.scm            1562554              348829               77.68
+diviter.scm               1204                 301               75.00
+divrec.scm                1304                 301               76.92
+earley.scm             1572320             1249673               20.52
+fib.scm              179164215            89582107               50.00
+graphs.scm             1254762              853429               31.98
+mazefun.scm             536466              203644               62.04
+nqueens.scm             300248              189828               36.78
+paraffins.scm          2288833              933397               59.22
+perm9.scm             24297292            13446783               44.66
+peval.scm              1450705              984730               32.12
+primes.scm                3839                2043               46.78
+sboyer.scm          2469371794          1982224917               19.73
+string.scm           702433074            78638131               88.80
+sum.scm                  70011               50007               28.57
+sumloop.scm          600000003           200000001               66.67
+tak.scm                 286239              159022               44.44
+takl.scm               1403463              866681               38.25
+triangl.scm           92481242            48992069               47.02
+wc.scm                  603770              301884               50.00
+----------------------------------------------------------------------
+Average: 47.82
