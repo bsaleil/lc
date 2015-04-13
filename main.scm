@@ -13,27 +13,6 @@
           (make-lazy-code
             (lambda (cgc ctx)
               (x86-pop cgc (x86-rax))
-          
-              (if count-calls
-                (begin (gen-print-msg cgc "-----------------------------------")
-                       (gen-print-slot cgc
-                                       'calls
-                                       (string-append "Calls '"
-                                                      (symbol->string count-calls)
-                                                      "' = "))))
-              
-              (if count-tests
-                (begin (gen-print-msg cgc "-----------------------------------")
-                       (gen-print-slot cgc
-                                       'tests
-                                       "#Tests = ")))
-              
-              (if count-closures
-                (begin (gen-print-msg cgc "-----------------------------------")
-                       (gen-print-slot cgc
-                                       'closures
-                                       "#Closures = ")))
-              
               (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
               (pop-regs-reverse cgc prog-regs)
               (x86-ret cgc))))
@@ -104,63 +83,6 @@
   (##machine-code-block-exec mcb))
 
 ;;-----------------------------------------------------------------------------
-;; Command line args parser
-
-;; Set options to #t and return list of files to execute
-(define (parse-args args)
-  (parse-args-h args '()))
-
-(define (parse-args-h args files)
-  (if (null? args)
-      files
-      (let ((arg (car args)))
-        (if (eq? (string-ref arg 0) #\-)
-          ;; Arg is an option
-          (begin (cond ;; '-v-jit' to enable JIT verbose debugging
-                       ((equal? arg "-v-jit")
-                          (set! verbose-jit #t)
-                          (parse-args-h (cdr args) files))
-                       ;; '-v-gc' to enable GC verbose debugging
-                       ((equal? arg "-v-gc")
-                          (set! verbose-gc  #t)
-                          (parse-args-h (cdr args) files))
-                       ;; '-v' to enable both JIT and GC verbose debugging
-                       ((equal? arg "-v")
-                          (set! verbose-jit #t)
-                          (set! verbose-gc  #t)
-                          (parse-args-h (cdr args) files))
-                       ((equal? arg "--count-calls")
-                          (let ((call-name (cadr args)))
-                            (if (char=? (string-ref call-name 0) #\-)
-                               (error "Invalid argument --count-calls " call-name))
-                            (set! count-calls (string->symbol call-name))
-                            (parse-args-h (cddr args) files)))
-                       ((equal? arg "--print-ccsize")
-                          (set! print-ccsize #t)
-                          (parse-args-h (cdr args) files))
-                       ((equal? arg "--count-tests")
-                          (set! count-tests #t)
-                          (parse-args-h (cdr args) files))
-                       ((equal? arg "--count-closures")
-                          (set! count-closures #t)
-                          (parse-args-h (cdr args) files))
-                       ((equal? arg "--all-tests")
-                          (set! all-tests #t)
-                          (parse-args-h (cdr args) files))
-                       ((equal? arg "--print-versions")
-                          (set! print-versions #t)
-                          (parse-args-h (cdr args) files))
-                       ((equal? arg "--print-versions-full")
-                          (set! print-versions-full #t)
-                          (parse-args-h (cdr args) files))
-                       ;; Other option stops exec
-                       (else (print "Unknown option ")
-                             (println arg)
-                             (exit 1))))
-          ;; Arg is a file to execute
-          (parse-args-h (cdr args) (cons arg files))))))
-  
-;;-----------------------------------------------------------------------------
 ;; Main
 (define (main . args)
     
@@ -168,7 +90,7 @@
   ;(define lib '())
   (define lib (expand-tl (read-all (open-input-file "./lib.scm"))))
   ;; Get options and files from cl args
-  (define files (parse-args args))
+  (define files (parse-cl-args args))
   
     (cond ;; If no files specified then start REPL
           ((null? files)
@@ -209,38 +131,8 @@
                    (exec lib exp-content))))
           (else (error "NYI")))
     
-    (if print-versions
-       (let ((info (get-versions-info all-lazy-code)))
-         (println "-----------------------------------")
-         (println "Number of versions:")
-         (println "   Min: " (car info))
-         (println "   Max: " (cdr info))))
-
-    (if print-versions-full
-       (let ((info (get-versions-info-full all-lazy-code)))
-         (println "------------------------------------")
-         (println "#versions   #stubs     #ret   #entry")
-         (println "------------------------------------")
-         (for-each (lambda (n) (print
-                                 ;; #versions
-                                 (make-string (- 9 (string-length (number->string (car n)))) #\space)
-                                 (car n)
-                                 ;; #stubs
-                                 (make-string (- 9 (string-length (number->string (cadr n)))) #\space)
-                                 (cadr n))
-                               ;; # with ret flag
-                               (let ((rf (count (cddr n) (lambda (n) (member 'ret n)))))
-                                (print (make-string (- 9 (string-length (number->string rf))) #\space)
-                                       rf))
-                               ;; # with entry flag
-                               (let ((rf (count (cddr n) (lambda (n) (member 'entry n)))))
-                                (println (make-string (- 9 (string-length (number->string rf))) #\space)
-                                         rf)))
-                   (sort info (lambda (n m) (< (car n) (car m)))))))
-
-    (if print-ccsize
-       (begin (println "-----------------------------------")
-              (println "Global cctable size = " (table-length global-cc-table)))))
+    (rt-print-opts)
+    (print-opts))
 
 ;; TODO
 (define (get-versions-info lazy-codes)
@@ -289,4 +181,83 @@
 (define (count lst fn)
   (foldr (lambda (n r) (if (fn n) (+ 1 r) r)) 0 lst))
 
+(define-macro (case-equal key clause . clauses)
+    (cond ((and (null? clauses)
+                (eq? (car clause) 'else))
+             `(begin ,@(cdr clause)))
+          ((null? clauses)
+             `(if (member ,key (quote ,(car clause)))
+                 (begin ,@(cdr clause))))
+          (else
+             `(if (member ,key (quote ,(car clause)))
+                 (begin ,@(cdr clause))
+                 (case-equal ,key ,(car clauses) ,@(cdr clauses))))))
+
 ;;-----------------------------------------------------------------------------
+;; Command line arguments
+
+;; Parser
+(define (parse-cl-args args)
+  
+  (define (parse-cl-args-h args files)
+    (cond ;; No args, return list of files
+          ((null? args)
+            files)
+          ;; File (does not begin with #\-)
+          ((not (eq? (string-ref (car args) 0) #\-))
+            (parse-cl-args-h (cdr args) (cons (car args) files)))
+          ;; Else it's an option
+          (else
+            (let ((first (car args)))
+              (case-equal first
+                (("--verbose-jit") (set! opt-verbose-jit #t))
+                (("--verbose-gc")  (set! opt-verbose-gc  #t))
+                (("--verbose")     (set! opt-verbose-jit #t)
+                                   (set! opt-verbose-gc  #t))
+                (("--all-tests")   (set! opt-all-tests #t))
+                (("--stats")       (set! opt-stats #t))
+                (("--count-calls") (set! opt-count-calls (string->symbol (cadr args)))
+                                   (set! args (cdr args))) ;; Remove one more arg
+                (else (error "Unknown option" first)))
+              (parse-cl-args-h (cdr args) files)))))
+  
+  (parse-cl-args-h args '()))
+    
+(define (rt-print-opts)
+  (if opt-count-calls
+    (println "Calls '" opt-count-calls "': " (get-slot 'calls)))
+  (if opt-stats
+    (begin (println "Closures: " (get-slot 'closures))
+           (println "Executed tests: " (get-slot 'tests)))))
+
+(define (print-opts)
+  (if opt-stats
+     (print-stats)))
+
+(define (print-stats)
+  ;; Print stats report
+  (let ((code-bytes (- code-alloc mcb-addr))
+        (stub-bytes (- (+ mcb-addr mcb-len) stub-alloc)))
+    ;; Code size
+    (println "Code size (bytes): " code-bytes)
+    ;; Stub size
+    (println "Stub size (bytes): " stub-bytes)
+    ;; Code + Stub size
+    (println "Total size (bytes): " (+ code-bytes stub-bytes))
+    ;; Global cc-table size
+    (println "Global table size: " (table-length global-cc-table))
+    ;; Min/Max versions number of stubs
+    (let ((versions-info (get-versions-info all-lazy-code)))
+      (println "Min versions number: " (car versions-info))
+      (println "Max versions number: " (cdr versions-info)))
+    ;; Number of stubs, number of return stubs, and number of entry stubs for each number of versions
+    (println "-------------------------")
+    (println "#versions;#stubs;#ret;#entry")
+    (let ((versions-info-full (get-versions-info-full all-lazy-code)))
+      (for-each (lambda (n)
+                  (println (car n) ";"
+                           (cadr n) ";"
+                           (count (cddr n) (lambda (n) (member 'ret n))) ";"
+                           (count (cddr n) (lambda (n) (member 'entry n)))))
+                (sort versions-info-full (lambda (n m) (< (car n) (car m)))))
+      (println "-------------------------"))))

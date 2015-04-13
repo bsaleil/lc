@@ -178,6 +178,9 @@
 ;;-----------------------------------------------------------------------------
 ;; SLOT DEBUG
 
+(define (get-slot slot)
+  (get-i64 (+ block-addr (* 8 (cdr (assoc slot debug-slots))))))
+
 (define (gen-set-slot cgc slot imm)
   (let ((res (assoc slot debug-slots)))
     (if (not res) (error "Compiler error"))

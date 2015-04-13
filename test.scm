@@ -50,6 +50,9 @@
 ;; 5 - GC : maj apres déplacement des fermetures, CC table
 ;-------------------------------
 
+;; TODO : faire une fonction log-jit comme log-gc (voir mem.scm)
+;; TODO : sortir toutes les fonctions utils dans un utils.scm
+
 ; (apply (lambda () (println "Test1")) '())
 
 ; (apply (lambda (x)

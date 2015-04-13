@@ -493,8 +493,8 @@
                  (total-size (+ closure-size global-cc-table-maxsize 1)) ;; CCtable header -> +1
                  (header-word (mem-header closure-size STAG_PROCEDURE)))
             
-            ;; If 'count-closures' option enabled, then inc slot
-            (if count-closures
+            ;; If 'stats' option, then inc closures slot
+            (if opt-stats
                (gen-inc-slot cgc 'closures))
             
             ;; ALLOC
@@ -1240,7 +1240,7 @@
                                     (jump-addr
                                       (asm-label-pos label-jump)))
 
-                                (if verbose-jit
+                                (if opt-verbose-jit
                                     (begin
                                       (println ">>> selector= " selector)
                                       (println ">>> prev-action= " prev-action)))
@@ -1263,7 +1263,7 @@
 
                                               (begin
 
-                                                (if verbose-jit (println ">>> swapping-branches"))
+                                                (if opt-verbose-jit (println ">>> swapping-branches"))
 
                                                 (set! prev-action 'swap)
 
@@ -1468,7 +1468,7 @@
                             (let ((stub-addr (- ret-addr 5 2))
                                   (jump-addr (asm-label-pos label-jump)))
                             
-                              (if verbose-jit
+                              (if opt-verbose-jit
                                   (begin
                                     (println ">>> selector= " selector)
                                     (println ">>> prev-action= " prev-action)))
@@ -1483,7 +1483,7 @@
                                           
                                             (if (= (+ jump-addr 6 5) code-alloc)
 
-                                              (begin (if verbose-jit (println ">>> swapping-branches"))
+                                              (begin (if opt-verbose-jit (println ">>> swapping-branches"))
                                                      (set! prev-action 'swap)
                                                      ;; invert jump direction
                                                      (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
@@ -1613,7 +1613,7 @@
                                                       (- (length (ctx-stack ctx)) 2)))
                                         
                                         ;; If count calls compiler opt
-                                        (if (eq? (car ast) count-calls)
+                                        (if (eq? (car ast) opt-count-calls)
                                            (gen-inc-slot cgc 'calls))
 
                                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
@@ -1651,7 +1651,7 @@
                      (let ((TYPE  
                               (let ((r (assoc op gids))
                                     (t (assoc op gret)))
-                                (if (and (not all-tests)
+                                (if (and (not opt-all-tests)
                                          r
                                          t
                                          (not (assoc op (ctx-env ctx))))
@@ -1861,7 +1861,7 @@
                      (ctx-false (ctx-push (ctx-pop ctx) CTX_BOOL)))
                 
                 ;; If 'all-tests' option enabled, then remove type information
-                (if all-tests
+                (if opt-all-tests
                    (set! known-type CTX_UNK))
                 
                 (cond ;; known == expected

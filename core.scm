@@ -10,15 +10,12 @@
 ;;-----------------------------------------------------------------------------
 
 ;; Compiler options
-(define verbose-jit          #f) ;; JIT Verbose debugging
-(define verbose-gc           #f) ;; GC  Verbose debugging
-(define count-calls          #f) ;; Count call for a given identifier
-(define print-ccsize         #f) ;; Print size of global cc table after exec
-(define all-tests            #f) ;; Remove type information (execute all type tests)
-(define count-tests          #f) ;; Count type tests and print number
-(define count-closures       #f) ;; Count created closures and print number
-(define print-versions       #f) ;; Print number min and max of versions of lazy codes
-(define print-versions-full  #f) ;; Print number detailed number of versions
+(define opt-stats #f)
+
+(define opt-verbose-jit          #f) ;; JIT Verbose debugging
+(define opt-verbose-gc           #f) ;; GC  Verbose debugging
+(define opt-count-calls          #f) ;; Count call for a given identifier
+(define opt-all-tests            #f) ;; Remove type information (execute all type tests)
 
 ;;-----------------------------------------------------------------------------
 
@@ -669,7 +666,7 @@
       (gen cgc))
     
     (let ((code (asm-assemble-to-u8vector cgc)))
-      (if verbose-jit
+      (if opt-verbose-jit
           (begin
             (println "------------------------------------------------------------------------")
             (asm-display-listing cgc (current-output-port) #t)))
@@ -739,7 +736,7 @@
            (lambda (cgc)
              (call-handler cgc label-handler obj)))))
     (subvector-move! (list->vector args) 0 len obj 0)
-    (if verbose-jit
+    (if opt-verbose-jit
         (pp (list 'obj= obj)))
     stub-labels))
 
@@ -1211,7 +1208,7 @@
 ;; Then patch closure slot to jump directly to generated function
 (define (gen-version-fn closure lazy-code ctx)
   
-  (if verbose-jit
+  (if opt-verbose-jit
       (begin
         (print "GEN VERSION FN")
         (print " >>> ")
@@ -1246,7 +1243,7 @@
 
 (define (gen-version jump-addr lazy-code ctx)
 
-  (if verbose-jit
+  (if opt-verbose-jit
       (begin
         (print "GEN VERSION")
         (print " >>> ")
@@ -1273,7 +1270,7 @@
                  ;; (fall-through optimization)
                  ;; the jump is the last instruction previously generated, so
                  ;; just overwrite the jump
-                 (if verbose-jit (println ">>> fall-through-optimization"))
+                 (if opt-verbose-jit (println ">>> fall-through-optimization"))
                  (set! code-alloc jump-addr)) 
 
                 (else
@@ -1290,7 +1287,7 @@
 
 ;; Patch load at a call site to load continuation addr instead of continuation stub addr
 (define (patch-continuation load-addr continuation-label)
-  (if verbose-jit
+  (if opt-verbose-jit
       (begin
         (println ">>> patching mov at "
                  (number->string load-addr 16)
@@ -1304,7 +1301,7 @@
 ;; Patch jump at jump-addr: change jump destination to dest-addr
 (define (patch-jump jump-addr dest-addr)
 
-  (if verbose-jit
+  (if opt-verbose-jit
     (println ">>> patching jump at "
              (number->string jump-addr 16)
              " -> "
@@ -1323,7 +1320,7 @@
          (index (get-closure-index ctx))
          (offset (+ 8 (* index 8)))) ;; +8 because of header
     
-    (if verbose-jit
+    (if opt-verbose-jit
         (println ">>> patching closure " (number->string closure 16) " at "
                  (number->string (+ closure offset) 16)
                  " : slot contains now label "
@@ -1363,7 +1360,7 @@
                (known-type (list-ref (ctx-stack ctx) stack-idx)))
 
            ;; If 'all-tests' option enabled, then remove type information
-           (if all-tests
+           (if opt-all-tests
               (set! known-type CTX_UNK))
            
            (cond ;; Known type is the expected type
@@ -1384,7 +1381,7 @@
                                       (let ((stub-addr (- ret-addr 5 2))
                                             (jump-addr (asm-label-pos label-jump)))
                                       
-                                        (if verbose-jit
+                                        (if opt-verbose-jit
                                             (begin
                                               (println ">>> selector= " selector)
                                               (println ">>> prev-action= " prev-action)))
@@ -1399,7 +1396,7 @@
                                                     
                                                       (if (= (+ jump-addr 6 5) code-alloc)
 
-                                                        (begin (if verbose-jit (println ">>> swapping-branches"))
+                                                        (begin (if opt-verbose-jit (println ">>> swapping-branches"))
                                                                (set! prev-action 'swap)
                                                                ;; invert jump direction
                                                                (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
@@ -1423,11 +1420,11 @@
                                                       (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx))))))))))
 
                      
-                   (if verbose-jit
+                   (if opt-verbose-jit
                        (println ">>> Gen dynamic type test at index " stack-idx))
                    
-                   ;; If 'count-tests' option enabled, then inc slot
-                   (if count-tests
+                   ;; If 'opt-stats' option, then inc tests slot
+                   (if opt-stats
                       (gen-inc-slot cgc 'tests))
                    
                    (cond ;; Number type test
@@ -1488,7 +1485,7 @@
                             (let ((stub-addr (- ret-addr 5 2))
                                   (jump-addr (asm-label-pos label-jump)))
                             
-                              (if verbose-jit
+                              (if opt-verbose-jit
                                   (begin
                                     (println ">>> selector= " selector)
                                     (println ">>> prev-action= " prev-action)))
@@ -1503,7 +1500,7 @@
                                           
                                             (if (= (+ jump-addr 6 5) code-alloc)
 
-                                              (begin (if verbose-jit (println ">>> swapping-branches"))
+                                              (begin (if opt-verbose-jit (println ">>> swapping-branches"))
                                                      (set! prev-action 'swap)
                                                      ;; invert jump direction
                                                      (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
@@ -1526,12 +1523,12 @@
                                             (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-success)
                                             (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-fail))))))))))
 
-         (if verbose-jit
+         (if opt-verbose-jit
              (println ">>> Gen dynamic type test at index " stack-idx))
          
-         ;; If 'count-tests' option enabled, then inc slot
-         (if count-tests
-             (gen-inc-slot cgc 'tests))
+         ;; If 'opt-stats' option, then inc tests slot
+         (if opt-stats
+          (gen-inc-slot cgc 'tests))
          
          (cond ;; Number type test
                ((eq? type CTX_NUM)

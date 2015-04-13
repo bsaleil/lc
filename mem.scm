@@ -8,7 +8,7 @@
 
 ;; Print msg if gc log is enabled
 (define-macro (log-gc msg)
-  `(if verbose-gc
+  `(if opt-verbose-gc
        (println ,msg)))
 
 ;; Out of memory error
