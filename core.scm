@@ -11,7 +11,6 @@
 
 ;; Compiler options
 (define opt-stats #f)
-
 (define opt-verbose-jit          #f) ;; JIT Verbose debugging
 (define opt-verbose-gc           #f) ;; GC  Verbose debugging
 (define opt-count-calls          #f) ;; Count call for a given identifier
