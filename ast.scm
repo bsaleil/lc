@@ -2083,14 +2083,14 @@
 
 ;; Gen code to get a global var
 (define (gen-get-globalvar cgc ctx variable dest)
-  
+   
    (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* 8 (cdr variable)) (x86-r10))))
          ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* 8 (cdr variable)) (x86-r10))))
          (else (error "Invalid destination")))
    
    ;; If this global is a non mutable global, return type else return unknown
    (let ((r (assoc (car variable) gids)))
-     (if (cdr r)
+     (if (and r (cdr r))
         (cdr r)
         CTX_UNK)))
 

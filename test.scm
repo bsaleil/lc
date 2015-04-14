@@ -174,4 +174,6 @@
 ;; redéfinie. ex (define length ...) dans le programme.
 ;; Il faut donc passer à faux ces redéfinitions dans gids
 
+
+
 (pp (+ 1 (length '(1 2 3))))

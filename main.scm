@@ -47,7 +47,7 @@
            (lazy-read-eval (make-lazy-code
               (lambda (cgc ctx)
                  (print "> ")
-                 (let ((r (expand-tl (read))))
+                 (let ((r (car (expand-tl (list (read))))))
                     (cond ((equal? r '(unquote LC))
                               (let ((r (read)))
                                 (eval r)
