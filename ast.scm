@@ -396,7 +396,7 @@
 ;;
 
 ;; Store the cc table associated to each lambda (ast -> cctable)
-;; cc table is a still vector
+;; cctable is a still vector
 (define cctables (make-table test: eq?))
 
 (define (mlc-lambda ast succ lib-define)
