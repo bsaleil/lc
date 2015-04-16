@@ -176,4 +176,32 @@
 
 
 
-(pp (+ 1 (length '(1 2 3))))
+
+;(pp (+ 1 (length '(1 2 3))))
+
+; (define (lam-gen z)
+;   (lambda (a) (not a)))
+
+; (lam-gen 1)
+; (lam-gen #t)
+;(lam-gen 2)
+;(lam-gen #f)
+
+; (println 10)
+
+; (define (lam a)
+; 	(lambda ()
+; 		(+ a 10)))
+
+; ((lam 1))
+; ((lam 10))
+
+; (define (ppp)
+;   (print "#t"))
+
+;(ppp)
+;(char=? #\A #\B))
+
+
+
+(print #t)

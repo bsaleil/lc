@@ -1206,7 +1206,7 @@
 ;; First generate function lazy-code
 ;; Then patch closure slot to jump directly to generated function
 (define (gen-version-fn closure lazy-code ctx)
-  
+
   (if opt-verbose-jit
       (begin
         (print "GEN VERSION FN")

@@ -394,6 +394,7 @@
 ;;
 ;; Make lazy code from LAMBDA
 ;;
+(define LAMBDAS (make-table test: eq?)) ;; TODO
 (define (mlc-lambda ast succ lib-define)
   
   (let* (;; Lambda free vars
@@ -435,6 +436,34 @@
          (lazy-prologue (make-lazy-code-entry
                            (lambda (cgc ctx)
                              
+                              ;; PATCH: LOSE TYPE INFORMATION OF FREE VARS
+                              ;; To keep the same table for all instances of lambda, we must lose this information.
+                              ;; EX:
+                              ;; (define (lam a)
+                              ;;    (lambda ()
+                              ;;       (+ a 10)))
+                              ;; ((lam 1))
+                              ;; ((lam #t))
+                              (define (remove-free-inf env)
+                                (if (null? env)
+                                   '()
+                                   (let ((id (car (car env)))
+                                         (first (cdr (car env))))
+                                     (if (eq? (identifier-type first) 'free)
+                                       (cons (cons id 
+                                                   (make-identifier 'free
+                                                              (identifier-offset first)
+                                                              (identifier-pos first)
+                                                              (identifier-flags first)
+                                                              CTX_UNK))
+                                             (remove-free-inf (cdr env)))
+                                       (cons (cons id first) (remove-free-inf (cdr env)))))))
+                              
+                              (set! ctx (make-ctx (ctx-stack ctx)
+                                                  (remove-free-inf (ctx-env ctx))
+                                                  (ctx-nb-args ctx)))
+                              ;; END PATCH: LOSE TYPE INFORMATION OF FREE VARS
+
                               (let* ((actual-p (- (length (ctx-stack ctx)) 2)) ;; 1 for return address / closure
                                      (formal-p (ctx-nb-args ctx)))
 
@@ -483,49 +512,56 @@
                                                       (nctx (make-ctx (ctx-stack sctx) env (length params))))
                                                  (gen-version-fn closure lazy-prologue nctx)))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
-          
-          ;; COMPUTE FREE VARS
+
+          ;; Get free vars from ast
           (set! fvars (free-vars (caddr ast) all-params ctx))
-          ;; COMPUTE MUTABLE VARS
+          ;; Get mutable vars from ast
           (set! mvars (mutable-vars (caddr ast) all-params))
-          
-          (let* ((closure-size (+ 2 (length fvars)))
-                 (total-size (+ closure-size global-cc-table-maxsize 1)) ;; CCtable header -> +1
-                 (header-word (mem-header closure-size STAG_PROCEDURE)))
-            
-            ;; If 'stats' option, then inc closures slot
-            (if opt-stats
-               (gen-inc-slot cgc 'closures))
-            
-            ;; ALLOC
+
+          ;; If 'stats' option, then inc closures slot
+          (if opt-stats
+            (gen-inc-slot cgc 'closures))
+
+          (let* ((total-size  (+ 2 (length fvars)))
+                 (header-word (mem-header total-size STAG_PROCEDURE))
+                 (cctable (or (table-ref LAMBDAS ast #f)
+                              (let ((t (make-cc global-cc-table-maxsize stub-addr)))
+                                 (table-set! LAMBDAS ast t)
+                                 t)))
+                 (cctable-loc (- (obj-encoding cctable) 1)))
+
+            ;; Alloc closure
             (gen-allocation cgc ctx STAG_PROCEDURE total-size)
-    
-            ;; 1 - WRITE OBJECT HEADER
+
+            ;; 1 - Write closure header
             (x86-mov cgc (x86-rax) (x86-imm-int header-word))
             (x86-mov cgc (x86-mem (* -8 total-size) alloc-ptr) (x86-rax))
 
-            ;; 2 - WRITE CC TABLE LOCATION
-            (x86-lea cgc (x86-rax) (x86-mem (- (* -8 global-cc-table-maxsize) 8) alloc-ptr)) ;; CCtable header -> -8
+            ;; 2 - Write cctable-ptr
+            (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
             (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax))
 
-            ;; 3 - WRITE FREE VARS
+            ;; 3 - Write free vars
             (gen-free-vars cgc fvars ctx (+ 16 (* -8 total-size)))
 
-            ;; 4 - WRITE CC TABLE
-            (let ((cc-header (mem-header (+ 1 global-cc-table-maxsize) STAG_CCTABLE)))
-              (x86-mov cgc (x86-rax) (x86-imm-int cc-header))
-              (x86-mov cgc (x86-mem (+ (* 8 closure-size) (* -8 total-size)) alloc-ptr) (x86-rax)))
-            (gen-cc-table cgc stub-addr (+ 8 (* 8 closure-size) (* -8 total-size)))
-            
-            ;; TAG AND PUSH CLOSURE
+            ;; Tag and push closure
             (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 total-size)) alloc-ptr))
             (x86-push cgc (x86-rax)))
-            
+
           ;; Jump to next
           (jump-to-version cgc
                            succ
                            (ctx-push ctx
                                      CTX_CLO)))))))
+
+;; Create a new cc table with 'init' as stub value
+(define (make-cc len init)
+  (let ((v (alloc-still-vector len)))
+    (let loop ((i 0))
+      (if (< i (vector-length v))
+        (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding v) 1)) init)
+               (loop (+ i 1)))
+        v))))
 
 ;;
 ;; Make lazy code from BEGIN
@@ -1151,12 +1187,11 @@
                                        (x86-and cgc (x86-rax) (x86-imm-int 255)) ;; Clear bits before al
                                        (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode char
                                        (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
-                                       (x86-push cgc (x86-rax)) ;; Push char
+                                       (x86-push cgc (x86-rax)) ;; Push chars
                                        (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2)
                                                                            (if (eq? special 'string-ref)
                                                                               CTX_CHAR
-                                                                              CTX_UNK)))))))))                        
-                                
+                                                                              CTX_UNK))))))))) ;; TODO test is useless ?                 
                          
                          ;; VECTOR-SET! & STRING-SET!
                          ((member special '(vector-set! string-set!))
@@ -1581,27 +1616,27 @@
                                                                 (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
                                                                 (list-head (ctx-stack ctx) (+ (length args) 2))))
                                                (call-ctx      (make-ctx call-stack '() -1)))                                    
-                                        
-                                        ;; TT
-                                        (define (get-nb-known lst)
-                                          (if (null? lst)
-                                             0
-                                             (let ((f (car lst)))
-                                               (if (equal? f CTX_UNK)
-                                                  (get-nb-known (cdr lst))
-                                                  (+ 1 (get-nb-known (cdr lst)))))))
 
-                                        (let* ((n (get-nb-known call-stack))
-                                               (f (exact->inexact (/ n (length call-stack)))))
-                                          ;(println "Known " n)
-                                          ;(println "Unknown " (- (length call-stack) n))
-                                          ;(println f))
-                                          (if (< f 0.7)
-                                            (set! call-ctx (make-ctx (make-list (length call-stack) CTX_UNK) '() -1))))
+                                        ; ;; TT
+                                        ; (define (get-nb-known lst)
+                                        ;   (if (null? lst)
+                                        ;      0
+                                        ;      (let ((f (car lst)))
+                                        ;        (if (equal? f CTX_UNK)
+                                        ;           (get-nb-known (cdr lst))
+                                        ;           (+ 1 (get-nb-known (cdr lst)))))))
 
-                                        (if (> (length call-stack) 7)
-                                           (set! call-ctx  (make-ctx (make-list (length call-stack) CTX_UNK) '() -1)))
-                                        ;; TT
+                                        ; (let* ((n (get-nb-known call-stack))
+                                        ;        (f (exact->inexact (/ n (length call-stack)))))
+                                        ;   ;(println "Known " n)
+                                        ;   ;(println "Unknown " (- (length call-stack) n))
+                                        ;   ;(println f))
+                                        ;   (if (< f 0.7)
+                                        ;     (set! call-ctx (make-ctx (make-list (length call-stack) CTX_UNK) '() -1))))
+
+                                        ; (if (> (length call-stack) 7)
+                                        ;    (set! call-ctx  (make-ctx (make-list (length call-stack) CTX_UNK) '() -1)))
+                                        ; ;; TT
 
                                         (if tail 
                                           (tail-shift cgc
@@ -1679,6 +1714,7 @@
 
 ;; Gen call sequence (call instructions) with call closure in RAX
 (define (gen-call-sequence cgc call-ctx)
+
   (let ((cct-offset (* 8 (+ 1 (get-closure-index call-ctx)))))
     ;; 1 - Put ctx with fake stack in r11 because we don't know the type/number of arguments
     (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))

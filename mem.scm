@@ -341,24 +341,17 @@
           ccdr)))
 
 ;; Scan procedure
-;; Copy cc-table to to-space
-;; Scan all fields of closure
+;; Scan all free vars
 ;; Return new scan/copy-ptr position
 (define (scan-procedure scan copy head stag length)
-  (let* ((cc-table-loc (get-i64 (+ 8 scan)))
-         (cc-head (get-i64 cc-table-loc)))
-    ;; BH tests is useless because cc-table is not yet copied (1 cc-table <-> 1 closure)
-    ;; Patch closure (cc-table location)
-    (put-i64 (+ 8 scan) copy)
-    ;; Copy cc-table
-    (let ((c (copy-bytes cc-table-loc copy (arithmetic-shift cc-head -8))))
-      (let ((cc (scan-freevars (+ scan 16) (- length 2) c)))
-        (cons ;; New scan position
-              (+ scan (* 8 length))
-              ;; New copy position
-              cc)))))
+  ;; Scan free vars
+  (let ((c (scan-freevars (+ scan 16) (- length 2) copy)))
+    (cons ;; New scan position
+          (+ scan (* 8 length))
+          ;; New copy position
+          c)))
 
-;; Scaan free vars of procedure object
+;; Scan free vars of procedure object
 (define (scan-freevars pos nb-free copy)
   (if (= nb-free 0)
       copy
@@ -525,7 +518,7 @@
 ;                         ;; CCtable is special (not tagged)
 ;                         ;; Free vars are not checked
 ;                         (check-intospace   (+ scan 8))
-;                         (check-validheader (+ scan 8))
+;                         ;(check-validheader (+ scan 8))
 ;                         (check-heap (+ scan (* 8 l)) copy))
 ;                     ;; MOBJECT
 ;                     ((= s STAG_MOBJECT)
