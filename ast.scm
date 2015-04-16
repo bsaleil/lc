@@ -394,7 +394,11 @@
 ;;
 ;; Make lazy code from LAMBDA
 ;;
-(define LAMBDAS (make-table test: eq?)) ;; TODO
+
+;; Store the cc table associated to each lambda (ast -> cctable)
+;; cc table is a still vector
+(define cctables (make-table test: eq?))
+
 (define (mlc-lambda ast succ lib-define)
   
   (let* (;; Lambda free vars
@@ -524,9 +528,9 @@
 
           (let* ((total-size  (+ 2 (length fvars)))
                  (header-word (mem-header total-size STAG_PROCEDURE))
-                 (cctable (or (table-ref LAMBDAS ast #f)
+                 (cctable (or (table-ref cctables ast #f)
                               (let ((t (make-cc global-cc-table-maxsize stub-addr)))
-                                 (table-set! LAMBDAS ast t)
+                                 (table-set! cctables ast t)
                                  t)))
                  (cctable-loc (- (obj-encoding cctable) 1)))
 
@@ -1187,7 +1191,7 @@
                                        (x86-and cgc (x86-rax) (x86-imm-int 255)) ;; Clear bits before al
                                        (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode char
                                        (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
-                                       (x86-push cgc (x86-rax)) ;; Push chars
+                                       (x86-push cgc (x86-rax)) ;; Push char
                                        (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2)
                                                                            (if (eq? special 'string-ref)
                                                                               CTX_CHAR
@@ -1616,27 +1620,6 @@
                                                                 (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
                                                                 (list-head (ctx-stack ctx) (+ (length args) 2))))
                                                (call-ctx      (make-ctx call-stack '() -1)))                                    
-
-                                        ; ;; TT
-                                        ; (define (get-nb-known lst)
-                                        ;   (if (null? lst)
-                                        ;      0
-                                        ;      (let ((f (car lst)))
-                                        ;        (if (equal? f CTX_UNK)
-                                        ;           (get-nb-known (cdr lst))
-                                        ;           (+ 1 (get-nb-known (cdr lst)))))))
-
-                                        ; (let* ((n (get-nb-known call-stack))
-                                        ;        (f (exact->inexact (/ n (length call-stack)))))
-                                        ;   ;(println "Known " n)
-                                        ;   ;(println "Unknown " (- (length call-stack) n))
-                                        ;   ;(println f))
-                                        ;   (if (< f 0.7)
-                                        ;     (set! call-ctx (make-ctx (make-list (length call-stack) CTX_UNK) '() -1))))
-
-                                        ; (if (> (length call-stack) 7)
-                                        ;    (set! call-ctx  (make-ctx (make-list (length call-stack) CTX_UNK) '() -1)))
-                                        ; ;; TT
 
                                         (if tail 
                                           (tail-shift cgc
