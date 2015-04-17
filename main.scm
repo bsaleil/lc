@@ -178,9 +178,6 @@
   (get-versions-info-full-h lazy-codes)
   (table->list table))
 
-(define (count lst fn)
-  (foldr (lambda (n r) (if (fn n) (+ 1 r) r)) 0 lst))
-
 (define-macro (case-equal key clause . clauses)
     (cond ((and (null? clauses)
                 (eq? (car clause) 'else))

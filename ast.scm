@@ -4,6 +4,12 @@
 ;;-----------------------------------------------------------------------------
 ;; Macros
 
+(define-macro (assert c err)
+   `(if (not ,c)
+      (begin (pp ast)
+             (println "!!! ERROR : " ,err)
+             (exit 1))))
+
 ;; Generate primitive types lists from types pattern (used in 'primitives' set)
 (define-macro (prim-types . args)
   (define (list-head l n)
@@ -15,12 +21,6 @@
      `(list (list ,(car args) ,@(cdr args)))
      `(cons (list ,(car args) ,@(list-head (cdr args) (car args)))
             (prim-types ,@(list-tail args (+ (car args) 1))))))
-
-(define-macro (assert c err)
-   `(if (not ,c)
-      (begin (pp ast)
-             (println "!!! ERROR : " ,err)
-             (exit 1))))
 
 ;;-----------------------------------------------------------------------------
 ;; Primitives
@@ -2264,32 +2264,6 @@
 (define (closure-pos ctx)
   (- (length (ctx-stack ctx)) 2 (ctx-nb-args ctx))) ;; 2= 1length + 1retAddr
 
-;; Set subtraction with lists
-;; return lsta - lstb
-;; res is accu
-(define (set-sub lsta lstb res)
-  (if (null? lsta)
-    res
-    (if (member (car lsta) lstb)
-      (set-sub (cdr lsta) lstb res)
-      (set-sub (cdr lsta) lstb (cons (car lsta) res)))))
-
-;; Set union with lists
-;; return lsta U lstb
-(define (set-union lsta lstb)
-  (if (null? lsta)
-    lstb
-    (if (member (car lsta) lstb)
-      (set-union (cdr lsta) lstb)
-      (set-union (cdr lsta) (cons (car lsta) lstb)))))
-
-;; Flatten list x
-(define (flatten x)
-   (cond ((null? x) '())
-         ((not (pair? x)) (list x))
-         (else (append (flatten (car x))
-                       (flatten (cdr x))))))
-
 ;; Get formal params from list of params
 ;; Ex: (formal-params '(a b c)  ) -> '(a b c)
 ;;     (formal-params '(a b . c)) -> '(a b)
@@ -2386,33 +2360,3 @@
   (make-lazy-code
     (lambda (cgc ctx)
       (gen-error cgc msg))))
-
-;;-----------------------------------------------------------------------------
-;; Utils
-
-;; Is the v a literal ?
-(define (literal? v)
-   (or (char? v) (number? v) (symbol? v) (vector? v) (string? v) (boolean? v) (null? v)))
-
-;; Call n times the function fn with given args
-(define (call-n n fn . args)
-  (if (> n 0)
-    (begin (apply fn args)
-           (apply call-n (append (list (- n 1) fn ) args)))))
-
-;; Build a new list of length n and apply proc to each element
-(define (build-list n proc)
-  (define (build-list-h p proc)
-    (if (= p 0)
-      '()
-      (cons (proc (- n p)) (build-list-h (- p 1) proc))))
-  (build-list-h n proc))
-
-;; Count assoc of el in lst
-(define (assocount el lst)
-  (if (null? lst)
-    0
-    (let ((c (car lst)))
-      (if (equal? (car c) el)
-        (+ 1 (assocount el (cdr lst)))
-        (assocount el (cdr lst))))))
