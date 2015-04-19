@@ -7,3 +7,4 @@ out2
 in
 lib.scm
 unit-tests/benchmarks/foo
+__pycache__/
