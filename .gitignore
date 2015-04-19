@@ -1,4 +1,5 @@
 *.o1
+/tools/graphs.pdf
 lazy-comp
 *~
 out

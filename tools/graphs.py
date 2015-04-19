@@ -7,10 +7,13 @@ import subprocess
 from pylab import *
 from matplotlib.backends.backend_pdf import PdfPages
 
-PDF_OUTPUT = '/home/bapt/Bureau/multipage.pdf'
-BENCHMARKS_PATH = '/home/bapt/Bureau/lazy-comp/benchmarks/*.scm'
-LC_PATH = '/home/bapt/Bureau/lazy-comp/'
+SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__)) + '/'
+LC_PATH = SCRIPT_PATH + '../'
 LC_EXEC = 'lazy-comp'
+
+PDF_OUTPUT = SCRIPT_PATH + 'graphs.pdf'
+BENCHMARKS_PATH = LC_PATH + 'benchmarks/*.scm'
+
 os.chdir(LC_PATH) ## TODO pour test
 
 files = glob.glob(BENCHMARKS_PATH)
@@ -21,7 +24,7 @@ files = glob.glob(BENCHMARKS_PATH)
 def main():
 	# 1 - run benchmarks and parse compiler output
 	keys,data = runparse()
-	# 2 - Draw all graphs
+	# # 2 - Draw all graphs
 	drawGraphs(keys,data)
 
 #---------------------------------------------------------------------------
