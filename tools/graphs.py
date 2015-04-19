@@ -1,5 +1,12 @@
 #!/usr/bin/env python
 
+# Execute compiler with stats option for all benchmarks
+# Parse output
+# Draw graph for each information
+
+#./graphs.py --exec="Normale;" --exec="Tous les tests;--all-tests"
+
+
 import glob
 import os
 import stats
@@ -7,30 +14,64 @@ import subprocess
 from pylab import *
 from matplotlib.backends.backend_pdf import PdfPages
 
+# Current script path
 SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__)) + '/'
+# Compiler path
 LC_PATH = SCRIPT_PATH + '../'
+# Compiler exec name
 LC_EXEC = 'lazy-comp'
-
+LC_OPTS = ''
+# PDF output file
 PDF_OUTPUT = SCRIPT_PATH + 'graphs.pdf'
+# Benchmarks path
 BENCHMARKS_PATH = LC_PATH + 'benchmarks/*.scm'
+# Bar colors
+BAR_COLORS=["#444444","#666666","#888888","#AAAAAA"]
+# Set current working directory to compiler path
+os.chdir(LC_PATH)
 
-os.chdir(LC_PATH) ## TODO pour test
+# Options
+DRAW_ALL = '--drawall' # Draw all graphs
 
-files = glob.glob(BENCHMARKS_PATH)
+# Get all benchmarks path
+files = sorted(glob.glob(BENCHMARKS_PATH)) ## TODO trié par nom 
+args  = sys.argv
+
+execs = {};
+for arg in args:
+	if arg.startswith('--exec='):
+		pair = arg[7:].split(';')
+		name = pair[0]
+		lcargs = pair[1].split()
+		execs[name] = lcargs;
+# execs['normal'] = '';
+# execs['popopo'] = '--all-tests';
+# execs['popopos'] = '--all-tests';
+# execs['popopso'] = '';
 
 #---------------------------------------------------------------------------
 # Main
 
 def main():
 	# 1 - run benchmarks and parse compiler output
-	keys,data = runparse()
-	# # 2 - Draw all graphs
-	drawGraphs(keys,data)
+	datas = {}
+	keys = []
+	for ex in execs:
+		ks,data = runparse(execs[ex]) # TODO : donner arguments
+		if keys == []:
+			keys = ks
+		else:
+			if len(ks) != len(keys):
+				raise Exception("Error")
+		datas[ex] = data
+
+	# 2 - Draw all graphs
+	drawGraphs(keys,datas)
 
 #---------------------------------------------------------------------------
 # Run all benchmarks and parse outputs
 
-def runparse():
+def runparse(opts):
 	data = {}
 
 	# Get keys
@@ -42,7 +83,9 @@ def runparse():
 		file_name  = os.path.basename(file)
 		print(file_name + '...')
 
-		output = subprocess.check_output([LC_PATH + LC_EXEC, file, '--stats']).decode("utf-8")
+		options = [LC_PATH + LC_EXEC, file, '--stats']
+		options.extend(opts) # TODO : renommer 'options'
+		output = subprocess.check_output(options).decode("utf-8")
 
 		bench_data = stats.parseOutput(output)
 		
@@ -60,12 +103,29 @@ def runparse():
 # Draw graphs
 
 def drawGraphs(keys,data):
+	
+	# Let user choose the graph to draw (-1 or empty for all graphs)
+	if not DRAW_ALL in args:
+		sortedKeys = sorted(keys)
+		print('Keys:')
+		print('-1: ALL')
+		for i in range(0,len(sortedKeys)):
+			print(' ' + str(i) + ': ' + sortedKeys[i])
+		inp = input('Key to draw (all) > ')
+		if not inp == '':
+			choice = stats.num(inp)
+			if choice >= 0:
+				keys = [sortedKeys[choice]]
+
+	firstExec = list(data.keys())[0]
+	firstBenchmark = os.path.basename(files[0])
 	# Gen pdf output file
 	pdf = PdfPages(PDF_OUTPUT)
+
 	# For each key
 	for key in keys:
 		# CSV, NYI
-		if type(data[os.path.basename(files[0])][key]) == list:
+		if type(data[firstExec][firstBenchmark][key]) == list:
 			None # NYI
 		# Key/Value, draw graph
 		else:
@@ -83,29 +143,40 @@ def drawKeyValueGraph(pdf,key,data):
 	plt.title(key)
 
 	# Number of benchmarks
-	n = len(data)
+	firstExec = list(data.keys())[0]
+	n = len(data[firstExec])
 	X = np.arange(n) # X set is [0, 1, ..., n-1]
 
-	# Get Y values from data
-	Y2 = []
-	for f in files:
-		Y2.extend([data[os.path.basename(f)][key]]);
-	Y1 = np.array(Y2); # Y1 is a numpy array representation of Y1
+	Ys = {}
+	# pour chaque executions
+	for d in data:
+		Y = []
+		# pour chaque benchmark
+		for f in files:
+			Y.extend([data[d][os.path.basename(f)][key]]);
+		# Transforme en tableau numpy
+		Y = np.array(Y);
+		Ys[d] = Y;
+	
+	width = 1 / (len(Ys)+1)
 
-	# Draw bars
-	bar(X, +Y1, facecolor='#9999ff', edgecolor='white')
+	i = 0
+	for mode in Ys: # todo : renommer mode
+		Y = Ys[mode]
+		bar(X+(i*width), +Y, width, facecolor=BAR_COLORS[i], edgecolor='white') # TODO : changer couleur
+		i += 1
 
 	# Hide X values
 	axes = gca()
 	axes.get_xaxis().set_visible(False)
 
-	# Set Y limit
-	l = len(str(max(Y2))) # number of digit of max value
-	ylim(0,max(Y2)+pow(10,l-1)) # Y is from 0 to (max + 10^i-1)
+	# # Set Y limit
+	# l = len(str(max(Y2))) # number of digit of max value
+	# ylim(0,max(Y2)+pow(10,l-1)) # Y is from 0 to (max + 10^i-1)
 
-	# Draw values for each bar
-	for x,y in zip(X,Y1):
-	    text(x+0.4, y+0.05, '%.2f' % y, ha='center', va= 'bottom')
+	# # Draw values for each bar
+	# for x,y in zip(X,Y1):
+	#     text(x+0.4, y+0.05, '%.2f' % y, ha='center', va= 'bottom')
 
 	# Draw benchmark name
 	for i in range(0,len(files)):
