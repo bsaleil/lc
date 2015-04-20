@@ -1,8 +1,10 @@
 #!/usr/bin/env python
-
+from copy import deepcopy
 # Execute compiler with stats option for all benchmarks
 # Parse output
 # Draw graphs
+
+from matplotlib.font_manager import FontProperties
 
 help = """
 graphs.py - Generate graphs from compiler output
@@ -72,6 +74,9 @@ def num(s):
         return int(s)
     except ValueError:
         return float(s)
+
+def WARNING(s):
+	print('WARNING: ' + s)
 
 #-------------------------------------------------------------------------------------
 # Main
@@ -241,6 +246,8 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	fig = plt.figure(key)
 	plt.title(key)
 
+	exec_ref = ''
+
 	# Number of benchmarks
 	firstExec = list(benchs_data.keys())[0]
 	n = len(benchs_data[firstExec])
@@ -259,11 +266,47 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	
 	width = 1 / (len(Ys)+1)
 
+	#----------
+	# TODO: move to external fn
+	# Use a reference execution. All values for this exec are 100%
+	# Values for others executions are computed from this reference exec
+	exec_ref = 'All tests' # Reference execution (100%)
+	Y2 = deepcopy(Ys)      # Deep copy of Y values
+	# Set all references to 100
+	for v in range(0,len(Y2['All tests'])):
+		Y2['All tests'][v] = '100'
+	# For each exec which is not ref exec
+	candraw = True # TODO : rename
+	for ex in Y2:
+		if ex != 'All tests':
+			for i in range(0,len(Y2[ex])):
+				ref = Ys['All tests'][i]
+				cur = Ys[ex][i]
+				# We can't compute %, warning and stop
+				if ref == 0:
+					WARNING("Can't draw '" + key + "' using a reference execution.")
+					return
+				# Compute % and set
+				else:
+					Y2[ex][i] = (cur*100)/ref
+	# Y2 are the new values to draw
+	Ys = Y2
+	#----------
+
+	fileList = files
+	Yvals = Ys
+	
+	# Sort Y values by a given execution
+	# TODO: get the execution by command line option
+	fileList,Yvals = sortByExecution(Yvals,'Without interprocedural')
+
 	i = 0
-	for mode in Ys: # todo : renommer mode
-		Y = Ys[mode]
-		bar(X+(i*width), +Y, width, facecolor=BAR_COLORS[i], edgecolor='white') # TODO : changer couleur
-		i += 1
+	for mode in Yvals: # todo : renommer mode
+		if mode != exec_ref:
+			Y = Yvals[mode]
+			color = BAR_COLORS[i];
+			bar(X+(i*width), +Y, width, facecolor=color, edgecolor='white', label=mode) # TODO : changer couleur
+			i += 1
 
 	# Hide X values
 	axes = gca()
@@ -272,17 +315,59 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	# # Set Y limit
 	# l = len(str(max(Y2))) # number of digit of max value
 	# ylim(0,max(Y2)+pow(10,l-1)) # Y is from 0 to (max + 10^i-1)
-
 	# # Draw values for each bar
 	# for x,y in zip(X,Y1):
 	#     text(x+0.4, y+0.05, '%.2f' % y, ha='center', va= 'bottom')
 
 	# Draw benchmark name
-	for i in range(0,len(files)):
-		text(X[i]+0.5, -0.0, os.path.basename(files[i])[:-4], rotation=25, ha='right', va='top')
+	for i in range(0,len(fileList)):
+		text(X[i]+0.5, -0.0, os.path.basename(fileList[i])[:-4], rotation=25, ha='right', va='top', size='xx-small')
+
+	# Legend:
+	# Shrink by 10% on the bottom
+	box = axes.get_position()
+	axes.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9])
+	# Put a legend below axis
+	legend(loc='upper center', bbox_to_anchor=(0.5, -0.05))
 
 	# Save to pdf
 	pdf.savefig(fig)
+
+#-------------------------------------------------------------------------------------
+# Manage Y values
+
+# Sort Y values by values from a specific execution
+def sortByExecution(Ys,execref):
+
+	# Pseudo-decorate: Change data layout to allow the useof sort()
+	decorated = []
+	for fileIndex in range(0,len(files)):
+		r = [] # List of results for current file
+		for execution in Ys:
+			r.extend([execution,Ys[execution][fileIndex]])
+		r.append(files[fileIndex])
+		decorated.append(r)
+
+	# Sort
+	i = decorated[0].index(execref)
+	decorated = sorted(decorated,key=lambda el: el[i+1])
+	# Pseudo-undecorate: Restore previous layout with sorted data
+	undecorated = {}
+	ordered_files = []
+	i = 0;
+	while not decorated[0][i] in files:
+		execution = decorated[0][i]
+		vals = []
+		# For each data associated to file
+		for el in decorated:
+			vals.append(el[i+1])
+			filepath = el[len(el)-1]
+			if not filepath in ordered_files:
+				ordered_files.append(filepath)
+		undecorated[execution] = np.asarray(vals);
+		i+=2
+
+	return(ordered_files,undecorated)
 
 #-------------------------------------------------------------------------------------
 
