@@ -10,11 +10,12 @@
 ;;-----------------------------------------------------------------------------
 
 ;; Compiler options
-(define opt-stats #f)
+(define opt-stats                #f) ;; Print stats report
 (define opt-verbose-jit          #f) ;; JIT Verbose debugging
 (define opt-verbose-gc           #f) ;; GC  Verbose debugging
 (define opt-count-calls          #f) ;; Count call for a given identifier
 (define opt-all-tests            #f) ;; Remove type information (execute all type tests)
+(define opt-interprocedural      #t) ;; Propagate context information to callss
 
 ;;-----------------------------------------------------------------------------
 

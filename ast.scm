@@ -1616,10 +1616,13 @@
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
                                         ;; Call ctx in rdx                             
-                                        (let* ((call-stack    (if tail
-                                                                (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
-                                                                (list-head (ctx-stack ctx) (+ (length args) 2))))
-                                               (call-ctx      (make-ctx call-stack '() -1)))                                    
+                                        (let* ((call-stack (if tail
+                                                              (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
+                                                              (list-head (ctx-stack ctx) (+ (length args) 2))))
+                                               (call-ctx
+                                                 (if opt-interprocedural
+                                                    (make-ctx call-stack '() -1)
+                                                    (make-ctx (make-list (length call-stack) CTX_UNK) '() -1))))                                 
 
                                         (if tail 
                                           (tail-shift cgc

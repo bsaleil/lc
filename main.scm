@@ -212,6 +212,8 @@
                 (("--verbose")     (set! opt-verbose-jit #t)
                                    (set! opt-verbose-gc  #t))
                 (("--all-tests")   (set! opt-all-tests #t))
+                (("--disable-interprocedural")
+                                   (set! opt-interprocedural #f))
                 (("--stats")       (set! opt-stats #t))
                 (("--count-calls") (set! opt-count-calls (string->symbol (cadr args)))
                                    (set! args (cdr args))) ;; Remove one more arg
