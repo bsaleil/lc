@@ -1,10 +1,8 @@
 #!/usr/bin/env python
-from copy import deepcopy
+
 # Execute compiler with stats option for all benchmarks
 # Parse output
 # Draw graphs
-
-from matplotlib.font_manager import FontProperties
 
 help = """
 graphs.py - Generate graphs from compiler output
@@ -37,6 +35,7 @@ import glob
 import os
 import subprocess
 from pylab import *
+from copy import deepcopy
 from matplotlib.backends.backend_pdf import PdfPages
 
 # Constants
