@@ -2,76 +2,117 @@
 
 # Execute compiler with stats option for all benchmarks
 # Parse output
-# Draw graph for each information
+# Draw graphs
 
-#./graphs.py --exec="Normale;" --exec="Tous les tests;--all-tests"
+help = """
+graphs.py - Generate graphs from compiler output
 
+Use:
+	graphs.py [OPTION...]
 
+Options:
+	-h,--help
+		Print this help.
+	--drawall
+		Draw all graphs. By default the script let the user choose the information to draw.
+	--stdexec
+		Use standard execution. Same as --exec="Standard;"?
+	--exec="DESCRIPTION;COMPILER_OPTION1 COMPILER_OPTION2 ..."
+		Add execution with given compiler options. All given executions are drawn
+
+Example:
+	
+	graphs.py --exec="Standard exec;" --exec="With all tests;--all-tests" --drawall
+		Draw all graphs for both executions (Standard, and with all-tests option).
+
+	graphs.py --stdexec
+		Let the user interactively choose the information to draw from only standard execution.
+"""
+
+import sys
+import io
 import glob
 import os
-import stats
 import subprocess
 from pylab import *
 from matplotlib.backends.backend_pdf import PdfPages
 
-# Current script path
-SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__)) + '/'
-# Compiler path
-LC_PATH = SCRIPT_PATH + '../'
-# Compiler exec name
-LC_EXEC = 'lazy-comp'
-LC_OPTS = ''
-# PDF output file
-PDF_OUTPUT = SCRIPT_PATH + 'graphs.pdf'
-# Benchmarks path
-BENCHMARKS_PATH = LC_PATH + 'benchmarks/*.scm'
-# Bar colors
-BAR_COLORS=["#444444","#666666","#888888","#AAAAAA"]
-# Set current working directory to compiler path
-os.chdir(LC_PATH)
+# Constants
+SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__)) + '/' # Current script path
+LC_PATH     = SCRIPT_PATH + '../'                               # Compiler path
+LC_EXEC     = 'lazy-comp'                                       # Compiler exec name
+PDF_OUTPUT  = SCRIPT_PATH + 'graphs.pdf'                        # PDF output file
+BENCH_PATH  = LC_PATH + 'benchmarks/*.scm'                      # Benchmarks path
+BAR_COLORS  = ["#444444","#666666","#888888","#AAAAAA"]         # Bar colors
+
+# Parser constants, must match compiler --stats output
+CSV_INDICATOR  = '--' 
+STAT_SEPARATOR = ':'
+CSV_SEPARATOR  = ';'
 
 # Options
 DRAW_ALL = '--drawall' # Draw all graphs
+STD_EXEC = '--stdexec' # Add standard execution to executions list
 
-# Get all benchmarks path
-files = sorted(glob.glob(BENCHMARKS_PATH)) ## TODO trié par nom 
-args  = sys.argv
+# Globals
+execs     = {}
+printhelp = False
 
-execs = {};
-for arg in args:
-	if arg.startswith('--exec='):
-		pair = arg[7:].split(';')
-		name = pair[0]
-		lcargs = pair[1].split()
-		execs[name] = lcargs;
-# execs['normal'] = '';
-# execs['popopo'] = '--all-tests';
-# execs['popopos'] = '--all-tests';
-# execs['popopso'] = '';
+# Set current working directory to compiler path
+os.chdir(LC_PATH)
 
-#---------------------------------------------------------------------------
+# Get all benchmarks full path sorted by name
+files = sorted(glob.glob(BENCH_PATH))
+
+#-------------------------------------------------------------------------------------
+# Utils
+
+def num(s):
+    try:
+        return int(s)
+    except ValueError:
+        return float(s)
+
+#-------------------------------------------------------------------------------------
 # Main
 
-def main():
-	# 1 - run benchmarks and parse compiler output
-	datas = {}
-	keys = []
-	for ex in execs:
-		ks,data = runparse(execs[ex]) # TODO : donner arguments
-		if keys == []:
-			keys = ks
-		else:
-			if len(ks) != len(keys):
-				raise Exception("Error")
-		datas[ex] = data
+def setargs():
+	global printhelp
+	if '-h' in sys.argv or '--help' in sys.argv:
+		printhelp = True
+	if STD_EXEC in sys.argv:
+		execs['Standard'] = ''
 
-	# 2 - Draw all graphs
-	drawGraphs(keys,datas)
+	for arg in sys.argv:
+		if arg.startswith('--exec='):
+			pair = arg[7:].split(';')
+			name = pair[0]
+			lcargs = pair[1].split()
+			execs[name] = lcargs
 
-#---------------------------------------------------------------------------
-# Run all benchmarks and parse outputs
+def go():
+	if printhelp:
+		print(help)
+	else:
+		# 1 - run benchmarks and parse compiler output
+		benchs_data = {}
+		keys = []
+		for ex in execs:
+			ks,data = runparse(execs[ex]) # TODO : donner arguments
+			if keys == []:
+				keys = ks
+			else:
+				if len(ks) != len(keys):
+					raise Exception("Error")
+			benchs_data[ex] = data
 
+		# 2 - Draw all graphs
+		drawGraphs(keys,benchs_data)
+		print('Done!')	
+
+# Run compiler with 'opts', parse output and return keys and data
 def runparse(opts):
+	print("Running with options: '" + ' '.join(opts) + "'")
 	data = {}
 
 	# Get keys
@@ -87,7 +128,7 @@ def runparse(opts):
 		options.extend(opts) # TODO : renommer 'options'
 		output = subprocess.check_output(options).decode("utf-8")
 
-		bench_data = stats.parseOutput(output)
+		bench_data = parseOutput(output)
 		
 		data[file_name] = bench_data
 
@@ -96,16 +137,74 @@ def runparse(opts):
 			for key in bench_data:
 				keys.append(key)
 
-	print("Run/Parse done !")
 	return keys,data
 
-#---------------------------------------------------------------------------
-# Draw graphs
+#-------------------------------------------------------------------------------------
+# Parser: Read stats output from compiler and return python table representation
 
-def drawGraphs(keys,data):
-	
+# Read 'KEY:VALUE' stat
+def readStat(stream,data,line):
+	stat = line.split(STAT_SEPARATOR)
+	key = stat[0].strip()
+	val = num(stat[1].strip())
+	# Store key/value in global data
+	data[key] = val
+	line = stream.readline()
+	return line
+
+# Read CSV stat
+def readCSV(stream,data):
+	csv = []
+	# Consume CSV indicator line
+	line = stream.readline()
+	# Read table title
+	title = line.strip()
+	line = stream.readline()
+	# Read table header
+	header = line.split(CSV_SEPARATOR)
+	for el in header:
+		csv.append([el.strip()])
+	# Read CSV data
+	line = stream.readline()
+	while not line.startswith(CSV_INDICATOR):
+		linecsv = line.split(CSV_SEPARATOR)
+		for i in range(0,len(linecsv)):
+			csv[i].extend([num(linecsv[i].strip())]) ## THIS IS NOT EFFICIENT (for large CSV outputs)
+		line = stream.readline()
+	# Store key/value (title/csv) in global data
+	data[title] = csv
+	# Consume CSV indicator line
+	line = stream.readline()
+	return line
+
+# Return python table from compiler 'output'
+def parseOutput(output):
+	# Data for this benchmark
+	data = {}
+	# Stream
+	stream = io.StringIO(output)
+	# Parse
+	line = stream.readline()
+	while line:
+		# CSV table
+		if line.startswith(CSV_INDICATOR):
+			line = readCSV(stream,data)
+		# Key/Value line
+		else:
+			line = readStat(stream,data,line)
+	return data
+
+#-------------------------------------------------------------------------------------
+# Draw
+
+# Draw all graphs associated to keys using benchs_data
+# benchs_data contains all information for all benchmarks for all executions
+# ex. benchs_data['Standard']['array1.scm']['Closures'] to get the number of
+#     closures created for benchmark array1.scm using standard exec
+def drawGraphs(keys,benchs_data):
+
 	# Let user choose the graph to draw (-1 or empty for all graphs)
-	if not DRAW_ALL in args:
+	if not DRAW_ALL in sys.argv:
 		sortedKeys = sorted(keys)
 		print('Keys:')
 		print('-1: ALL')
@@ -113,50 +212,50 @@ def drawGraphs(keys,data):
 			print(' ' + str(i) + ': ' + sortedKeys[i])
 		inp = input('Key to draw (all) > ')
 		if not inp == '':
-			choice = stats.num(inp)
+			choice = num(inp)
 			if choice >= 0:
 				keys = [sortedKeys[choice]]
 
-	firstExec = list(data.keys())[0]
+	firstExec = list(benchs_data.keys())[0]
 	firstBenchmark = os.path.basename(files[0])
+
 	# Gen pdf output file
 	pdf = PdfPages(PDF_OUTPUT)
 
 	# For each key
 	for key in keys:
 		# CSV, NYI
-		if type(data[firstExec][firstBenchmark][key]) == list:
+		if type(benchs_data[firstExec][firstBenchmark][key]) == list:
 			None # NYI
 		# Key/Value, draw graph
 		else:
 			print("Drawing '" + key + "'...")
-			drawKeyValueGraph(pdf,key,data)
+			drawKeyValueGraph(pdf,key,benchs_data)
 
-	print("Drawing done !")
 	pdf.close()
 
 # Draw graph for given key
-# Y: values of this key
+# Y: values for this key
 # X: benchmarks
-def drawKeyValueGraph(pdf,key,data):
+def drawKeyValueGraph(pdf,key,benchs_data):
 	fig = plt.figure(key)
 	plt.title(key)
 
 	# Number of benchmarks
-	firstExec = list(data.keys())[0]
-	n = len(data[firstExec])
+	firstExec = list(benchs_data.keys())[0]
+	n = len(benchs_data[firstExec])
 	X = np.arange(n) # X set is [0, 1, ..., n-1]
 
 	Ys = {}
 	# pour chaque executions
-	for d in data:
+	for d in benchs_data:
 		Y = []
 		# pour chaque benchmark
 		for f in files:
-			Y.extend([data[d][os.path.basename(f)][key]]);
+			Y.extend([benchs_data[d][os.path.basename(f)][key]])
 		# Transforme en tableau numpy
-		Y = np.array(Y);
-		Ys[d] = Y;
+		Y = np.array(Y)
+		Ys[d] = Y
 	
 	width = 1 / (len(Ys)+1)
 
@@ -185,6 +284,7 @@ def drawKeyValueGraph(pdf,key,data):
 	# Save to pdf
 	pdf.savefig(fig)
 
-#---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------------
 
-main()
+setargs()
+go()
