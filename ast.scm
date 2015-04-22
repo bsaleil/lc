@@ -526,7 +526,7 @@
           (if opt-stats
             (gen-inc-slot cgc 'closures))
 
-          (let* ((total-size  (+ 2 (length fvars)))
+          (let* ((total-size  (+ 3 (length fvars))) ;; Header,CCTable,GenericPtr
                  (header-word (mem-header total-size STAG_PROCEDURE))
                  (cctable (or (table-ref cctables ast #f)
                               (let ((t (make-cc global-cc-table-maxsize stub-addr)))
@@ -545,8 +545,12 @@
             (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
             (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax))
 
+            ;; 3- TODO
+            (x86-mov cgc (x86-rax) (x86-imm-int 0))
+            (x86-mov cgc (x86-mem (+ 16 (* -8 total-size)) alloc-ptr) (x86-rax))
+            
             ;; 3 - Write free vars
-            (gen-free-vars cgc fvars ctx (+ 16 (* -8 total-size)))
+            (gen-free-vars cgc fvars ctx (+ 24 (* -8 total-size)))
 
             ;; Tag and push closure
             (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 total-size)) alloc-ptr))
@@ -2057,7 +2061,7 @@
 ;; Free variable
 (define (gen-get-freevar cgc ctx variable dest #!optional (raw_value? #t))
 
-   (let* ((offset (+ (- 16 TAG_MEMOBJ) (* 8 (identifier-offset (cdr variable)))))
+   (let* ((offset (+ (- 24 TAG_MEMOBJ) (* 8 (identifier-offset (cdr variable)))))
           (clo-offset (* 8 (closure-pos ctx)))
           (mutable (identifier-mutable? (cdr variable))))
 
