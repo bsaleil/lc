@@ -178,9 +178,6 @@
   (get-versions-info-full-h lazy-codes)
   (table->list table))
 
-(define (count lst fn)
-  (foldr (lambda (n r) (if (fn n) (+ 1 r) r)) 0 lst))
-
 (define-macro (case-equal key clause . clauses)
     (cond ((and (null? clauses)
                 (eq? (car clause) 'else))
@@ -215,6 +212,8 @@
                 (("--verbose")     (set! opt-verbose-jit #t)
                                    (set! opt-verbose-gc  #t))
                 (("--all-tests")   (set! opt-all-tests #t))
+                (("--disable-interprocedural")
+                                   (set! opt-interprocedural #f))
                 (("--stats")       (set! opt-stats #t))
                 (("--count-calls") (set! opt-count-calls (string->symbol (cadr args)))
                                    (set! args (cdr args))) ;; Remove one more arg
@@ -252,6 +251,7 @@
       (println "Max versions number: " (cdr versions-info)))
     ;; Number of stubs, number of return stubs, and number of entry stubs for each number of versions
     (println "-------------------------")
+    (println "Number of stubs by number of versions")
     (println "#versions;#stubs;#ret;#entry")
     (let ((versions-info-full (get-versions-info-full all-lazy-code)))
       (for-each (lambda (n)

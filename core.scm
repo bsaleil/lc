@@ -10,11 +10,12 @@
 ;;-----------------------------------------------------------------------------
 
 ;; Compiler options
-(define opt-stats #f)
+(define opt-stats                #f) ;; Print stats report
 (define opt-verbose-jit          #f) ;; JIT Verbose debugging
 (define opt-verbose-gc           #f) ;; GC  Verbose debugging
 (define opt-count-calls          #f) ;; Count call for a given identifier
 (define opt-all-tests            #f) ;; Remove type information (execute all type tests)
+(define opt-interprocedural      #t) ;; Propagate context information to callss
 
 ;;-----------------------------------------------------------------------------
 
@@ -145,56 +146,6 @@
 (define ENCODING_VOID -18) ;; encoded VOID
 (define ENCODING_EOF  -14) ;; encoded EOF
 (define NENCODING_EOF  -4) ;; non encoded EOF
-
-;;-----------------------------------------------------------------------------
-
-(define (alloc-still-vector len)
-  ((c-lambda (int)
-             scheme-object
-             "___result = ___EXT(___make_vector) (___PSTATE, ___arg1, ___FAL);")
-   len))
-
-(define (release-still-vector vect)
-  ((c-lambda (scheme-object)
-             void
-             "___EXT(___release_scmobj) (___arg1);")
-   vect))
-
-(define (get-i64 addr)
-  ((c-lambda (int64) long "___result = *___CAST(___S64*,___arg1);")
-   addr))
-
-(define (put-i64 addr val)
-  ((c-lambda (int64 int64) void "*___CAST(___S64*,___arg1) = ___arg2;")
-   addr
-   val))
-
-(define (get-i32 addr)
-  ((c-lambda (int64) long "___result = *___CAST(___S32*,___arg1);")
-   addr))
-
-(define (put-i32 addr val)
-  ((c-lambda (int64 int32) void "*___CAST(___S32*,___arg1) = ___arg2;")
-   addr
-   val))
-
-(define (get-u8 addr)
-  ((c-lambda (int64) long "___result = *___CAST(___U8*,___arg1);")
-   addr))
-
-(define (put-u8 addr val)
-  ((c-lambda (int64 unsigned-int8) void "*___CAST(___U8*,___arg1) = ___arg2;")
-   addr
-   val))
-
-(define (get-scmobj addr)
-  ((c-lambda (int64) scheme-object "___result = *___CAST(___SCMOBJ*,___arg1);")
-   addr))
-
-(define (put-scmobj addr val)
-  ((c-lambda (int64 scheme-object) void "*___CAST(___SCMOBJ*,___arg1) = ___arg2;")
-   addr
-   val))
 
 ;;-----------------------------------------------------------------------------
 
@@ -746,13 +697,6 @@
 (define (stub-reclaim stub-addr)
   (put-i64 stub-addr stub-freelist)
   (set! stub-freelist stub-addr))
-
-(define (obj-encoding obj)
-  (let ((n (##object->encoding obj)))
-    (if (>= n (expt 2 63)) (- n (expt 2 64)) n)))
-
-(define (encoding-obj encoding)
-  (##encoding->object encoding))
 
 ;;-----------------------------------------------------------------------------
 
@@ -1336,12 +1280,6 @@
 (define (jump-size jump-addr)
   (if (= (get-u8 jump-addr) #x0f) 6 5))
 
-;; Return n firsts elements of lst
-(define (list-head lst n)
-  (cond ((= n 0) '())
-        ((null? lst) (error "Not enough els"))
-        (else (cons (car lst) (list-head (cdr lst) (- n 1))))))
-
 ;; Gen FATAL dynamic type test
 ;; FATAL means that if type test fails, then it stops execution
 ;; Check type 'type' for stack slot at 'stack-idx' and jump to 'succ' if succeess
@@ -1610,32 +1548,3 @@
         (vector-set! v 0 ctx)
         (table-set! ctx-boxes ctx (obj-encoding v))
         (obj-encoding v)))))
-
-;;-----------------------------------------------------------------------------
-;; Utils
-
-;; Build list of length n with optional init value
-(define (make-list n #!optional (init #f))
-  (if (= 0 n)
-    '()
-    (cons init (make-list (- n 1) init))))
-
-;; Returns a newly allocated string which is a copy of str with all chars upcase
-;; Accepts symbols
-(define (string-upcase str)
-  (define (string-upcase-h str pos newstr)
-    (if (= pos (string-length str))
-      newstr
-      (begin (string-set! newstr pos (char-upcase (string-ref str pos)))
-             (string-upcase-h str (+ pos 1) newstr))))
-  (if (symbol? str)
-    (let ((s (symbol->string str)))
-      (string-upcase-h s 0 (make-string (string-length s))))
-    (string-upcase-h str 0 (make-string (string-length str)))))
-
-
-;; Foldr
-(define (foldr func end lst)
-  (if (null? lst)
-      end
-      (func (car lst) (foldr func end (cdr lst)))))
