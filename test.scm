@@ -202,6 +202,7 @@
 ;(ppp)
 ;(char=? #\A #\B))
 
-
+;; TODO : prendre en compte le slot pour le generic addr dans le GC
+;; Partager la table de méthodes, mais aussi le stub de lambda ?
 
 (print #t)

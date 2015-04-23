@@ -508,14 +508,18 @@
         
         (let* (;; Lambda stub
                (stub-labels (add-fn-callback cgc
-                                             0
+                                             1
                                              (lambda (sp sctx ret-addr selector closure)
                                                
+                                               (if (= selector 1)
+                                                  (error "NYI"))
+
                                                ;; Extends env with params and free vars
                                                (let* ((env (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0)))
                                                       (nctx (make-ctx (ctx-stack sctx) env (length params))))
                                                  (gen-version-fn closure lazy-prologue nctx)))))
-               (stub-addr (vector-ref (list-ref stub-labels 0) 1)))
+               (stub-addr (vector-ref (list-ref stub-labels 0) 1))
+               (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
 
           ;; Get free vars from ast
           (set! fvars (free-vars (caddr ast) all-params ctx))
@@ -545,11 +549,11 @@
             (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
             (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax))
 
-            ;; 3- TODO
-            (x86-mov cgc (x86-rax) (x86-imm-int 0))
+            ;; 3- Write generic entry point
+            (x86-mov cgc (x86-rax) (x86-imm-int generic-addr))
             (x86-mov cgc (x86-mem (+ 16 (* -8 total-size)) alloc-ptr) (x86-rax))
             
-            ;; 3 - Write free vars
+            ;; 4 - Write free vars
             (gen-free-vars cgc fvars ctx (+ 24 (* -8 total-size)))
 
             ;; Tag and push closure
@@ -1712,6 +1716,7 @@
     (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
     ;; 3 - Get entry point in cc-table
     (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
+    ;(x86-mov cgc (x86-rax) (x86-mem (- 16 TAG_MEMOBJ) (x86-rax)))
     ;; 4 - Jump
     (x86-jmp cgc (x86-rax))))
 

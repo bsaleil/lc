@@ -16,7 +16,7 @@
 (define opt-count-calls          #f) ;; Count call for a given identifier
 (define opt-all-tests            #f) ;; Remove type information (execute all type tests)
 (define opt-interprocedural      #t) ;; Propagate context information to callss
-(define opt-maxversions          #f) ;; 
+(define opt-maxversions          0) ;; 
 
 ;;-----------------------------------------------------------------------------
 
@@ -333,18 +333,23 @@
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
          
+         (selector
+          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
+
          ;; R11 is the still-box containing call-ctx
          (still-encoding
           (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8))))
          
          ;; Get ctx from still-box address
          (ctx
-           (let ((rctx (still-ref->ctx still-encoding)))
-             (if (equal? (ctx-stack rctx) fake-stack)
-               ;; If ctx contains fake stack, it's a call from apply, then read nb-args and create new ctx
-               (let ((nb-args (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8)))))
-                 (make-ctx (cons CTX_CLO (append (make-list nb-args CTX_UNK) (list CTX_RETAD))) (ctx-env rctx) (ctx-nb-args rctx)))
-               rctx)))
+           (if (= selector 1)
+             #f
+             (let ((rctx (still-ref->ctx still-encoding)))
+               (if (equal? (ctx-stack rctx) fake-stack)
+                 ;; If ctx contains fake stack, it's a call from apply, then read nb-args and create new ctx
+                 (let ((nb-args (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8)))))
+                   (make-ctx (cons CTX_CLO (append (make-list nb-args CTX_UNK) (list CTX_RETAD))) (ctx-env rctx) (ctx-nb-args rctx)))
+                 rctx))))
          
          (closure
           (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
@@ -353,7 +358,7 @@
           (vector-ref (get-scmobj ret-addr) 0))
                  
          (new-ret-addr
-          (callback-fn sp ctx ret-addr 0 closure)))
+          (callback-fn sp ctx ret-addr selector closure)))
                 
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8))
@@ -1148,7 +1153,7 @@
   (create-stub label-do-callback-handler max-selector callback-fn))
 
 ;; Add function callback
-(define (add-fn-callback cgc max-selector callback-fn) ;; NOTE : is all selector mechanism useful here ?
+(define (add-fn-callback cgc max-selector callback-fn)
   (create-stub label-do-callback-fn-handler max-selector callback-fn))
 
 ;; Generate a continuation
