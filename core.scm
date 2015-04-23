@@ -17,7 +17,8 @@
 (define opt-all-tests            #f) ;; Remove type information (execute all type tests)
 (define opt-interprocedural      #t) ;; Propagate context information to calls
 ;; TODO : passer en option en cl
-(define opt-maxversions          #f) ;; 
+(define opt-maxversions          0) ;;
+(define opt-entry-points         #t) ;; TODO
 
 ;;-----------------------------------------------------------------------------
 
