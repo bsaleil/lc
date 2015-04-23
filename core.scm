@@ -16,6 +16,7 @@
 (define opt-count-calls          #f) ;; Count call for a given identifier
 (define opt-all-tests            #f) ;; Remove type information (execute all type tests)
 (define opt-interprocedural      #t) ;; Propagate context information to callss
+(define opt-maxversions          #f) ;; 
 
 ;;-----------------------------------------------------------------------------
 
@@ -873,6 +874,9 @@
   flags
 )
 
+(define (lazy-code-nb-versions lazy-code)
+  (table-length (lazy-code-versions lazy-code)))
+
 (define (make-lazy-code generator)
   (let ((lc (make-lazy-code* generator (make-table) '())))
     (set! all-lazy-code (cons lc all-lazy-code))
@@ -948,6 +952,24 @@
   env     ;; compile time environment
   nb-args ;; nb of arguments of current frame
 )
+
+(define (ctx-clear-types ctx)
+  (make-ctx ;; Remove stack type information
+            (make-list (length (ctx-stack ctx)) CTX_UNK)
+            ;; Remove env type information
+            (foldr (lambda (id others)
+                     (cons (if (eq? (identifier-type (cdr id)) 'free)
+                             (cons (car id)
+                                   (make-identifier (identifier-type (cdr id))
+                                                    (identifier-offset (cdr id))
+                                                    (identifier-pos (cdr id))
+                                                    (identifier-flags (cdr id))
+                                                    CTX_UNK))
+                             id)
+                           others))
+                   '()
+                   (ctx-env ctx))
+            (ctx-nb-args ctx)))
 
 ;; Apply 'nb' push to ctx
 (define (ctx-push-nb ctx ctx-type nb)
@@ -1170,7 +1192,6 @@
 
         ;; That version is not yet generated, so generate it and then patch call
         (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
-
             
           ;; Gen version
           (code-add
@@ -1184,7 +1205,7 @@
           ;; Patch closure
           (patch-closure closure ctx fn-label)))))
 
-(define (gen-version jump-addr lazy-code ctx)
+(define (gen-version jump-addr lazy-code ctx #!optional (cleared-ctx #f))
 
   (if opt-verbose-jit
       (begin
@@ -1207,26 +1228,33 @@
 
           dest-addr)
 
-        (begin
+        ;; If MAX_VERSION enabled and nb max reached, remove type information to generate
+        ;; a generic version
+        (if (and opt-maxversions
+                 (not cleared-ctx)
+                 (>= (lazy-code-nb-versions lazy-code) opt-maxversions))
+          ;; Gen version with cleared ctx (maybe this version already exists)
+          (gen-version jump-addr lazy-code (ctx-clear-types ctx) #t)
 
-          (cond ((= (+ jump-addr (jump-size jump-addr)) code-alloc)
-                 ;; (fall-through optimization)
-                 ;; the jump is the last instruction previously generated, so
-                 ;; just overwrite the jump
-                 (if opt-verbose-jit (println ">>> fall-through-optimization"))
-                 (set! code-alloc jump-addr)) 
+          (begin
+            (cond ((= (+ jump-addr (jump-size jump-addr)) code-alloc)
+                   ;; (fall-through optimization)
+                   ;; the jump is the last instruction previously generated, so
+                   ;; just overwrite the jump
+                   (if opt-verbose-jit (println ">>> fall-through-optimization"))
+                   (set! code-alloc jump-addr)) 
 
-                (else
-                 (patch-jump jump-addr code-alloc)))
+                  (else
+                   (patch-jump jump-addr code-alloc)))
 
-          ;; generate that version inline
-          (let ((label-version (asm-make-label #f (new-sym 'version))))
-            (put-version lazy-code ctx label-version)
-            (code-add
-             (lambda (cgc)
-               (x86-label cgc label-version)
-               ((lazy-code-generator lazy-code) cgc ctx)))
-            (asm-label-pos label-version))))))
+            ;; generate that version inline
+            (let ((label-version (asm-make-label #f (new-sym 'version))))
+              (put-version lazy-code ctx label-version)
+              (code-add
+               (lambda (cgc)
+                 (x86-label cgc label-version)
+                 ((lazy-code-generator lazy-code) cgc ctx)))
+              (asm-label-pos label-version)))))))
 
 ;; Patch load at a call site to load continuation addr instead of continuation stub addr
 (define (patch-continuation load-addr continuation-label)
