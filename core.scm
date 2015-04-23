@@ -15,8 +15,9 @@
 (define opt-verbose-gc           #f) ;; GC  Verbose debugging
 (define opt-count-calls          #f) ;; Count call for a given identifier
 (define opt-all-tests            #f) ;; Remove type information (execute all type tests)
-(define opt-interprocedural      #t) ;; Propagate context information to callss
-(define opt-maxversions          0) ;; 
+(define opt-interprocedural      #t) ;; Propagate context information to calls
+;; TODO : passer en option en cl
+(define opt-maxversions          #f) ;; 
 
 ;;-----------------------------------------------------------------------------
 
@@ -1176,7 +1177,7 @@
 ;; Generate a function
 ;; First generate function lazy-code
 ;; Then patch closure slot to jump directly to generated function
-(define (gen-version-fn closure lazy-code ctx)
+(define (gen-version-fn closure lazy-code ctx generic)
 
   (if opt-verbose-jit
       (begin
@@ -1193,7 +1194,9 @@
 
         ;; That version has already been generated, so just patch closure
         (let ((dest-addr (asm-label-pos label-dest)))
-         (patch-closure closure ctx label-dest))
+         (if generic
+           (patch-generic closure label-dest)
+           (patch-closure closure ctx label-dest)))
 
         ;; That version is not yet generated, so generate it and then patch call
         (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
@@ -1208,7 +1211,10 @@
           ;; Put version matching this ctx
           (put-version lazy-code ctx fn-label)
           ;; Patch closure
-          (patch-closure closure ctx fn-label)))))
+          ;; TODO
+          (if generic
+            (patch-generic closure fn-label)
+            (patch-closure closure ctx fn-label))))))
 
 (define (gen-version jump-addr lazy-code ctx #!optional (cleared-ctx #f))
 
@@ -1287,6 +1293,21 @@
       (let ((size (jump-size jump-addr)))
         (put-i32 (- (+ jump-addr size) 4)
                  (- dest-addr (+ jump-addr size))))))
+
+;; Patch generic slot in closure
+(define (patch-generic closure label)
+
+  (let ((label-addr (asm-label-pos  label))
+        (label-name (asm-label-name label)))
+
+  (if opt-verbose-jit
+      (println ">>> patching generic slot of closure " (number->string closure 16)
+               ": now contains label "
+               label-name
+               " (" (number->string label-addr 16) ")"))
+
+  (put-i64 (- (+ closure 16) TAG_MEMOBJ) label-addr)
+  label-addr))
 
 ;; Patch closure
 (define (patch-closure closure ctx label)

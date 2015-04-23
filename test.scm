@@ -205,4 +205,9 @@
 ;; TODO : prendre en compte le slot pour le generic addr dans le GC
 ;; Partager la table de méthodes, mais aussi le stub de lambda ?
 
-(print #t)
+(define (foo a b . l)
+	(pp a)
+	(pp b)
+	(pp l))
+
+(foo 1 2 3 4 5)
