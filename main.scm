@@ -130,11 +130,6 @@
                    ;(pp file-content)))
                    (exec lib exp-content))))
           (else (error "NYI")))
-    
-    ; (map (lambda (n)
-    ;        (if (> (table-length (lazy-code-versions n)) 1)
-    ;          (pp n)))
-    ;      all-lazy-code)
 
     (rt-print-opts)
     (print-opts))
