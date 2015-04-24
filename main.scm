@@ -14,7 +14,7 @@
             (lambda (cgc ctx)
               (x86-pop cgc (x86-rax))
               (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
-              (pop-regs-reverse cgc prog-regs)
+              (pop-regs-reverse cgc all-regs)
               (x86-ret cgc))))
       (gen-ast (car exprs)
                (lazy-exprs (cdr exprs) succ))))
@@ -33,7 +33,7 @@
                         (lambda (cgc ctx)
                            (x86-pop cgc (x86-rax))
                            (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
-                           (pop-regs-reverse cgc prog-regs)
+                           (pop-regs-reverse cgc all-regs)
                            (x86-ret cgc))))
            ;; Lazy lib
            (lazy-lib (lazy-exprs lib lazy-read-eval))
@@ -131,6 +131,11 @@
                    (exec lib exp-content))))
           (else (error "NYI")))
     
+    ; (map (lambda (n)
+    ;        (if (> (table-length (lazy-code-versions n)) 1)
+    ;          (pp n)))
+    ;      all-lazy-code)
+
     (rt-print-opts)
     (print-opts))
 

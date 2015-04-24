@@ -17,7 +17,7 @@
 (define opt-all-tests            #f) ;; Remove type information (execute all type tests)
 (define opt-interprocedural      #t) ;; Propagate context information to calls
 ;; TODO : passer en option en cl
-(define opt-maxversions          0) ;;
+(define opt-max-versions         #f) ;;
 (define opt-entry-points         #t) ;; TODO
 
 ;;-----------------------------------------------------------------------------
@@ -199,7 +199,7 @@
       (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
       (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
       (x86-mov cgc (x86-rax) (x86-imm-int -1))
-      (pop-regs-reverse cgc prog-regs)
+      (pop-regs-reverse cgc all-regs)
       (x86-ret cgc)
       (x86-ret cgc)))
 )
@@ -334,22 +334,22 @@
 (c-define (do-callback-fn sp) (long) void "do_callback_fn" ""
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
-         
-         (selector
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
 
          ;; R11 is the still-box containing call-ctx
          (still-encoding
           (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8))))
          
+         (selector
+          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
+
          ;; Get ctx from still-box address
          (ctx
-           (if (= selector 1)
+           (if (= selector 1) ;; If called from generic ptr
              #f
              (let ((rctx (still-ref->ctx still-encoding)))
                (if (equal? (ctx-stack rctx) fake-stack)
                  ;; If ctx contains fake stack, it's a call from apply, then read nb-args and create new ctx
-                 (let ((nb-args (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8)))))
+                 (let ((nb-args (quotient (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8))) 4)))
                    (make-ctx (cons CTX_CLO (append (make-list nb-args CTX_UNK) (list CTX_RETAD))) (ctx-env rctx) (ctx-nb-args rctx)))
                  rctx))))
          
@@ -360,7 +360,7 @@
           (vector-ref (get-scmobj ret-addr) 0))
                  
          (new-ret-addr
-          (callback-fn sp ctx ret-addr selector closure)))
+          (callback-fn sp ctx ret-addr 0 closure)))
                 
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8))
@@ -745,7 +745,7 @@
     
     (x86-label cgc label-rtlib-skip)
     
-    (push-regs cgc prog-regs)
+    (push-regs cgc all-regs)
     
     ;; Init debug slots
     (for-each (lambda (s)
@@ -823,15 +823,6 @@
         (x86-r13)
         (x86-r14)
         (x86-r15)))
-
-(define prog-regs ;; Registers at entry and exit points of program
-  (list (x86-rcx)
-        (x86-rbx)
-        (x86-rdx)
-        alloc-ptr
-        (x86-r10) ;; Globals
-        (x86-r15)
-        ))
 
 (define nb-c-caller-save-regs
   (length c-caller-save-regs))
@@ -969,10 +960,15 @@
                              (cons (car id)
                                    (make-identifier (identifier-type (cdr id))
                                                     (identifier-offset (cdr id))
-                                                    (identifier-pos (cdr id))
+                                                    '() ;; TODO
                                                     (identifier-flags (cdr id))
                                                     CTX_UNK))
-                             id)
+                             (cons (car id)
+                                   (make-identifier (identifier-type (cdr id))
+                                                    (identifier-offset (cdr id))
+                                                    '() ;; TODO
+                                                    (identifier-flags (cdr id))
+                                                    CTX_UNK)))
                            others))
                    '()
                    (ctx-env ctx))
@@ -1136,7 +1132,8 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define (jump-to-version cgc lazy-code ctx)
+;; TODO : factoriser avec gen-version ?
+(define (jump-to-version cgc lazy-code ctx #!optional (cleared-ctx #f))
 
   (let ((label-dest (get-version lazy-code ctx)))
     (if label-dest
@@ -1144,11 +1141,19 @@
         ;; that version has already been generated, so just jump to it
         (x86-jmp cgc label-dest)
 
-        ;; generate that version inline
-        (let ((label-version (asm-make-label cgc (new-sym 'version))))
-          (put-version lazy-code ctx label-version)
-          (x86-label cgc label-version)
-          ((lazy-code-generator lazy-code) cgc ctx)))))
+        ;; If MAX_VERSION enabled and nb max reached, remove type information to generate
+        ;; a generic version
+        (if (and opt-max-versions
+                 (not cleared-ctx)
+                 (>= (lazy-code-nb-versions lazy-code) opt-max-versions))
+          ;; Gen version with cleared ctx (maybe this version already exists)
+          (jump-to-version cgc lazy-code (ctx-clear-types ctx) #t)
+
+          ;; generate that version inline
+          (let ((label-version (asm-make-label cgc (new-sym 'version))))
+            (put-version lazy-code ctx label-version)
+            (x86-label cgc label-version)
+            ((lazy-code-generator lazy-code) cgc ctx))))))
 
 ;; Add callback
 (define (add-callback cgc max-selector callback-fn)
@@ -1178,7 +1183,7 @@
 ;; Generate a function
 ;; First generate function lazy-code
 ;; Then patch closure slot to jump directly to generated function
-(define (gen-version-fn closure lazy-code ctx generic)
+(define (gen-version-fn closure lazy-code ctx generic #!optional)
 
   (if opt-verbose-jit
       (begin
@@ -1201,7 +1206,7 @@
 
         ;; That version is not yet generated, so generate it and then patch call
         (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
-            
+          
           ;; Gen version
           (code-add
              (lambda (cgc)
@@ -1216,6 +1221,45 @@
           (if generic
             (patch-generic closure fn-label)
             (patch-closure closure ctx fn-label))))))
+
+;; TODO TODO
+;; Generate a function
+;; First generate function lazy-code
+;; Then patch closure slot to jump directly to generated function
+(define (gen-version-fn-trigg closure lazy-fallback call-ctx gen-ctx)
+
+  (if opt-verbose-jit
+      (begin
+        (print "GEN VERSION FN")
+        (print " >>> ")
+        (pp gen-ctx))) ;; TODO 
+
+  ;; the jump instruction (call) at address "call-addr" must be redirected to
+  ;; jump to the machine code corresponding to the version of
+  ;; "lazy-code" for the context "ctx"
+
+  (let ((label-dest (get-version lazy-fallback gen-ctx)))
+    (if label-dest
+
+        ;; That version has already been generated, so just patch closure
+        (let ((dest-addr (asm-label-pos label-dest)))
+          (patch-closure closure call-ctx label-dest))
+
+        ;; That version is not yet generated, so generate it and then patch call
+        (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
+          
+          ;; Gen version
+          (code-add
+             (lambda (cgc)
+                (asm-align cgc 4 0 #x90)
+                (x86-label cgc fn-label)
+                ((lazy-code-generator lazy-fallback) cgc gen-ctx)))
+          
+          ;; Put version matching this ctx
+          (put-version lazy-fallback gen-ctx fn-label)
+          ;; Patch closure
+          ;; TODO
+          (patch-closure closure call-ctx fn-label)))))
 
 (define (gen-version jump-addr lazy-code ctx #!optional (cleared-ctx #f))
 
@@ -1242,9 +1286,9 @@
 
         ;; If MAX_VERSION enabled and nb max reached, remove type information to generate
         ;; a generic version
-        (if (and opt-maxversions
+        (if (and opt-max-versions
                  (not cleared-ctx)
-                 (>= (lazy-code-nb-versions lazy-code) opt-maxversions))
+                 (>= (lazy-code-nb-versions lazy-code) opt-max-versions))
           ;; Gen version with cleared ctx (maybe this version already exists)
           (gen-version jump-addr lazy-code (ctx-clear-types ctx) #t)
 

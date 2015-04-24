@@ -501,101 +501,88 @@
                                      (let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
                                             (mctx (gen-mutable cgc nctx mvars)))
                                        (jump-to-version cgc lazy-body mctx))))))))
+         ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
          (lazy-generic-prologue
             (make-lazy-code-entry
                (lambda (cgc ctx)
-                ;; TODO
-                  
-                  (define formal-p (length params))
 
-                  (if (not rest-param)
-                    ;; SI PAS DE PARAM REST
-                    (let ((err-labels (add-callback #f 0 (lambda (ret-addr selector)
-                                                (error ERR_WRONG_NUM_ARGS)))))
-                      ;; On teste simplement le nombre d'arguments
-                      (x86-cmp cgc (x86-r11) (x86-imm-int (* formal-p 4)))
-                      (x86-jne cgc (list-ref err-labels 0))
-                      (let ((mctx (gen-mutable cgc ctx mvars)))
-                        (jump-to-version cgc lazy-body mctx)))
-                    ;; Sinon, il faut gérer le parametre rest
-                    (let ((label-end  (asm-make-label #f (new-sym 'rest-param-end)))
-                          (label-end-end (asm-make-label #f (new-sym 'rest-param-end-end)))
-                          (label-loop (asm-make-label #f (new-sym 'rest-param-loop)))
-                          (label-eq   (asm-make-label #f (new-sym 'rest-param-eq)))
-                          (err-labels (add-callback #f 0 (lambda (ret-addr selector)
-                                                (error ERR_WRONG_NUM_ARGS)))))
+                  (let ((formal-p (length params))
+                        (err-labels (add-callback #f 0 (lambda (ret-addr selector)
+                                                          (error ERR_WRONG_NUM_ARGS)))))
 
-                       ;; On teste en premier le nombre d'arguments
-                       (x86-cmp cgc (x86-r11) (x86-imm-int (* formal-p 4)))
-                       (x86-jl cgc (list-ref err-labels 0))
-                       (x86-je cgc label-eq)
+                    (if (not rest-param)
+                      ;; If there is no rest param
+                      ;; Then we only have to check the number of argumentssss
+                      (begin
+                        (x86-cmp cgc (x86-rdi) (x86-imm-int (* formal-p 4)))
+                        (x86-jne cgc (list-ref err-labels 0)))
+                      ;; If there is a rest param
+                      ;; Then we have to handle 3 cases: actual>formal, actual=formal, actual<formal
+                      (let ((label-loop-end  (asm-make-label #f (new-sym 'rest-param-loop-end)))
+                            (label-end       (asm-make-label #f (new-sym 'rest-param-end)))
+                            (label-loop      (asm-make-label #f (new-sym 'rest-param-loop)))
+                            (label-eq        (asm-make-label #f (new-sym 'rest-param-eq)))
+                            (header-word     (mem-header 3 STAG_PAIR)))
 
-                       ;; INIT
-                       (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                       (x86-mov cgc (x86-rbx) (x86-imm-int 8)) ;; From offset = 8 (dernier arg)
-                       (x86-mov cgc (x86-rdx) (x86-r11)) ;; Sauve le nb d'args
-
-                       ;; LOOP
-                       (x86-label cgc label-loop)
-                       (x86-cmp cgc (x86-r11) (x86-imm-int (* formal-p 4))) ;; CMP NB-ARGS-LEFT NB-FORMALS
-                       (x86-je cgc label-end)
-
-                          ;; Alloc paire p
-                          (x86-push cgc (x86-rax)) ;; TODO
-                          (gen-allocation cgc ctx STAG_PAIR 3)
-                          (x86-pop cgc (x86-rax))
-                          ;; p.cdr = rax
-                          (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
-                          ;; p.car = stack[offset]
-                          (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp) (x86-rbx)))
-                          (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
-                          ;; p.header = h
-                          (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 3 STAG_PAIR)))
-                          (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))
-                          ;; rax = p (tagged)
-                          (x86-lea cgc (x86-rax) (x86-mem (+ 1 -24) alloc-ptr))
-                          ;; offset += 8
-                          (x86-add cgc (x86-rbx) (x86-imm-int 8))
-                          ;; r11 -= 4
-                          (x86-sub cgc (x86-r11) (x86-imm-int 4))
-                          ;; Jmp loop
-                          (x86-jmp cgc label-loop)
-
-                       ;; END
-                       (x86-label cgc label-end)
-                       ;; ici rdx contient le nb d'args
-                       ;; Deplace RAX (donc rest list) au bon endroit sur la pile
-                       (x86-mov cgc (x86-mem (* -8 formal-p) (x86-rsp) (x86-rdx) 1) (x86-rax))
-                       ;; Deplace la fermeture au nouveau sommet de pile
-                       (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                       (x86-mov cgc (x86-mem (* -8 (+ formal-p 1)) (x86-rsp) (x86-rdx) 1) (x86-rax))
-                       ;; MAJ de rsp
-                       (x86-lea cgc (x86-rsp) (x86-mem (* -8 (+ formal-p 1)) (x86-rsp) (x86-rdx) 1))
-                       (x86-jmp cgc label-end-end)
-
-
-                       ;; EXECUTE SI FORMAM = ACTUAL MAIS QUE REST EST DECLARE
-                       (x86-label cgc label-eq)
-                       ;; 1 - push closure pour la mettre un slot plus haut
-                       (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                       (x86-push cgc (x86-rax))
-                       ;; 2 - mov empty list (rest)
-                       (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                       (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
-                       (x86-jmp cgc label-end-end)
-
-
-                       (x86-label cgc label-end-end)
-
-
-                       (let* ((nctx (make-ctx (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1))))
+                         ;; If there is a rest param then we need to change the context to inlude it
+                         (set! ctx (make-ctx (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1))))
                                              (ctx-env ctx)
                                              (+ (ctx-nb-args ctx) 1)))
-                              (mctx (gen-mutable cgc nctx mvars)))
 
-                         (jump-to-version cgc lazy-body mctx))))))))
+                         ;; Compare actual and formal
+                         (x86-cmp cgc (x86-rdi) (x86-imm-int (* formal-p 4)))
+                         (x86-jl cgc (list-ref err-labels 0)) ;; actual<formal, ERROR
+                         (x86-je cgc label-eq)                ;; actual=formal, jump to label-eq
+                                                              ;; actual>formal, continue
 
-                  ;(error "GENERIC PROLOGUE TRIGGERED")))))
+                         ;; CASE 1 - Actual > Formal
+
+                         ;; Loop-init
+                         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+                         (x86-mov cgc (x86-rbx) (x86-imm-int 8)) ;; rbx = arg-offset (first arg to copy is at [rsp+8])
+                         (x86-mov cgc (x86-rdx) (x86-rdi))       ;; Save args number in rdx
+
+                         ;; Loop-cond (if there is at least 1 arg to copy)
+                         (x86-label cgc label-loop)
+                         (x86-cmp cgc (x86-rdi) (x86-imm-int (* formal-p 4)))
+                         (x86-je cgc label-loop-end)
+
+                            ;; Loop-body
+                            (x86-push cgc (x86-rax)) ;; TODO
+                            (gen-allocation cgc ctx STAG_PAIR 3)                    ;; alloc pair p
+                            (x86-pop cgc (x86-rax))                                 ;;
+                            (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))          ;; p.cdr = rax (last pair)
+                            (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp) (x86-rbx))) ;; p.car = stack[arg-offset]
+                            (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))         ;;
+                            (x86-mov cgc (x86-rax) (x86-imm-int header-word))       ;; p.header = header-word
+                            (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))         ;;
+                            (x86-lea cgc (x86-rax) (x86-mem (+ 1 -24) alloc-ptr))   ;; rax = p (tagged)
+                            (x86-add cgc (x86-rbx) (x86-imm-int 8))                 ;; offset += 8 (to next arg)
+                            (x86-sub cgc (x86-rdi) (x86-imm-int 4))                 ;; rdi    -= 4 (update nb args to copy)
+                            (x86-jmp cgc label-loop)                                ;; goto loop
+
+                         ;; Loop-end
+                         (x86-label cgc label-loop-end)
+                         (x86-mov cgc (x86-mem (* -8 formal-p) (x86-rsp) (x86-rdx) 1) (x86-rax)) ;; Mov rest list to stack
+                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Update closure position
+                         (x86-mov cgc (x86-mem (* -8 (+ formal-p 1)) (x86-rsp) (x86-rdx) 1) (x86-rax))
+                         (x86-lea cgc (x86-rsp) (x86-mem (* -8 (+ formal-p 1)) (x86-rsp) (x86-rdx) 1)) ;; Update rsp
+                         (x86-jmp cgc label-end) ;; goto end
+
+                         ;; CASE 2 - Actual == Formal
+
+                         (x86-label cgc label-eq)
+                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Update closure position
+                         (x86-push cgc (x86-rax))
+                         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '()))) ;; Insert rest list (null) in stack
+                         (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
+
+                         ;; END
+                         (x86-label cgc label-end)))
+
+                    ;; Gen mutable vars and jump to function body
+                    (jump-to-version cgc lazy-body (gen-mutable cgc ctx mvars)))))))
+
     ;; Lazy closure generation
     (make-lazy-code
       (lambda (cgc ctx)
@@ -604,18 +591,41 @@
                (stub-labels (add-fn-callback cgc
                                              1
                                              (lambda (sp sctx ret-addr selector closure)
-                                               ;; TODO
-                                               (if (= selector 1)
-                                                  ;; TODO 
-                                                  (let* ((env (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0)))
-                                                         (nctx (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD))
-                                                                         env
-                                                                         (length params))))
-                                                    (gen-version-fn closure lazy-generic-prologue nctx #t))
-                                                  ;; Extends env with params and free vars
-                                                  (let* ((env (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0)))
-                                                         (nctx (make-ctx (ctx-stack sctx) env (length params))))
-                                                    (gen-version-fn closure lazy-prologue nctx #f))))))
+                                              
+                                              
+                                              (cond ;; CASE 1 - Use multiple entry points AND use max-versions limit AND this limit is reached
+                                                    ((and opt-entry-points
+                                                          opt-max-versions
+                                                          (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
+
+                                                       ;; Then, generate a generic version and patch cc-table entry corresponding to call-ctx with the generic version
+                                                       (let* ((env     (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0)))
+                                                              (nb-args (length params))
+                                                              ;; Call ctx used to patch cc-table
+                                                              (call-ctx (make-ctx (ctx-stack sctx) env nb-args))
+                                                              ;; Generic ctx used to generate version
+                                                              (gen-ctx  (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD)) env nb-args)))
+                                                          (gen-version-fn-trigg closure lazy-generic-prologue call-ctx gen-ctx)))
+
+                                                    ;; CASE 2 - Don't use multiple entry points
+                                                    ((not opt-entry-points)
+                                                        ;; Then, generate a generic version and patch generic ptr in closure 
+                                                        (gen-version-fn closure
+                                                                        lazy-generic-prologue
+                                                                        (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD))
+                                                                                  (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
+                                                                                  (length params))
+                                                                        #t))
+                                                    
+                                                    ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
+                                                    (else
+                                                       ;; Then, generate a specified version and patch cc-table in closure
+                                                       (gen-version-fn closure
+                                                                       lazy-prologue
+                                                                       (make-ctx (ctx-stack sctx)
+                                                                                 (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
+                                                                                 (length params))
+                                                                       #f))))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
                (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
 
@@ -1694,10 +1704,9 @@
                 ;; All args are pushed
                 (x86-label cgc label-end))
 
-              ;; TODO : 
-              (x86-mov cgc (x86-r11) (x86-rdi))
-              (x86-shl cgc (x86-r11) (x86-imm-int 2))
-
+              ;; TODO :
+              (x86-shl cgc (x86-rdi) (x86-imm-int 2))
+              
               ;; Push closure
               (x86-push cgc (x86-rax))
 
@@ -1811,18 +1820,30 @@
 
 ;; Gen call sequence (call instructions) with call closure in RAX
 (define (gen-call-sequence cgc call-ctx nb-args)
-  ;(pp call-ctx)
+
   (let ((cct-offset (* 8 (+ 1 (get-closure-index call-ctx)))))
-    ; ;; 1 - Put ctx with fake stack in r11 because we don't know the type/number of arguments
-    ; (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
-    ; ;; 2- Get cc-table
-    ; (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-    ; ;; 3 - Get entry point in cc-table
-    ; (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
-    (if nb-args
-      (x86-mov cgc (x86-r11) (x86-imm-int (* 4 nb-args))))
-    (x86-mov cgc (x86-rax) (x86-mem (- 16 TAG_MEMOBJ) (x86-rax)))
-    ;; 4 - Jump
+    (if opt-entry-points
+
+      ;; If we use multiple entry points then:
+      (begin ;; 1 - Put ctx in r11
+             (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
+             ;; 2- Get cc-table
+             (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+             ;; 3 - If opt-max-versions is not #f, a generic version could be called. So we need to give nb-args
+             ;; NOTE: only if nb-args is not #f to handle 'apply' (apply always writes nb-args in rdi, don't overwrite it!)
+             (if (and opt-max-versions nb-args)
+               (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
+             ;; 4 - Get entry point in cc-table
+             (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax))))
+
+      (begin ;; 1 - If nb-args given, put encoded nb in rdi
+             ;; NOTE: only if nb-args is not #f to handle 'apply' (apply always writes nb-args in rdi, don't overwrite it!)
+             (if nb-args
+               (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
+             ;; 2 - Get generic entry point
+             (x86-mov cgc (x86-rax) (x86-mem (- 16 TAG_MEMOBJ) (x86-rax)))))
+
+    ;; Jump to entry point
     (x86-jmp cgc (x86-rax))))
 
 ;;-----------------------------------------------------------------------------
