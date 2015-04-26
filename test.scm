@@ -206,19 +206,25 @@
 ;; Partager la table de méthodes, mais aussi le stub de lambda ?
 
 
-(define (fact n)
-   (if (or (= n 0) (= n 1))
-       1
-       (* n (fact (- n 1)))))
+; (define (fact n)
+;    (if (or (= n 0) (= n 1))
+;        1
+;        (* n (fact (- n 1)))))
 
-(println (fact 10))
+; (println (fact 10))
 
-(define (fibo n)
-   (if (or (= n 0) (= n 1))
-      n
-      (+ (fibo (- n 1)) (fibo (- n 2)))))
+; (define (fibo n)
+;    (if (or (= n 0) (= n 1))
+;       n
+;       (+ (fibo (- n 1)) (fibo (- n 2)))))
 
-(println (fibo 31))
+; (println (fibo 31))
+
+(define (foo a)
+	(lambda () (+ a 10)))
+
+((foo 1))
+((foo 100))
 
 ; (define (foo a b . l)
 ; 	(pp a)

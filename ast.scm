@@ -397,7 +397,8 @@
 
 ;; Store the cc table associated to each lambda (ast -> cctable)
 ;; cctable is a still vector
-(define cctables (make-table test: eq?))
+(define cctables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))     ;; eq? on ast
+                                                      (equal? (cdr a) (cdr b)))))) ;; equal? on ctx information
 
 (define (mlc-lambda ast succ lib-define)
   
@@ -440,34 +441,6 @@
          (lazy-prologue (make-lazy-code-entry
                            (lambda (cgc ctx)
                              
-                              ;; PATCH: LOSE TYPE INFORMATION OF FREE VARS
-                              ;; To keep the same table for all instances of lambda, we must lose this information.
-                              ;; EX:
-                              ;; (define (lam a)
-                              ;;    (lambda ()
-                              ;;       (+ a 10)))
-                              ;; ((lam 1))
-                              ;; ((lam #t))
-                              (define (remove-free-inf env)
-                                (if (null? env)
-                                   '()
-                                   (let ((id (car (car env)))
-                                         (first (cdr (car env))))
-                                     (if (eq? (identifier-type first) 'free)
-                                       (cons (cons id 
-                                                   (make-identifier 'free
-                                                              (identifier-offset first)
-                                                              (identifier-pos first)
-                                                              (identifier-flags first)
-                                                              CTX_UNK))
-                                             (remove-free-inf (cdr env)))
-                                       (cons (cons id first) (remove-free-inf (cdr env)))))))
-                              
-                              (set! ctx (make-ctx (ctx-stack ctx)
-                                                  (remove-free-inf (ctx-env ctx))
-                                                  (ctx-nb-args ctx)))
-                              ;; END PATCH: LOSE TYPE INFORMATION OF FREE VARS
-
                               (let* ((actual-p (- (length (ctx-stack ctx)) 2)) ;; 1 for return address / closure
                                      (formal-p (ctx-nb-args ctx)))
 
@@ -636,11 +609,42 @@
 
           (let* ((total-size  (+ 3 (length fvars))) ;; Header,CCTable,GenericPtr
                  (header-word (mem-header total-size STAG_PROCEDURE))
-                 (cctable (or (table-ref cctables ast #f)
+                 (cctable-key  (cons ast
+                                    (foldr (lambda (n r)
+                                              (if (member (car n) fvars) ;; If this id is a free var of future lambda
+                                                 (cons (cons (car n)
+                                                             (if (eq? (identifier-type (cdr n)) 'local)
+                                                               ;; If local, get type from stack
+                                                               (list-ref (ctx-stack ctx) (- (length (ctx-stack ctx)) (identifier-offset (cdr n)) 2))
+                                                               ;; If free, get type from env
+                                                               (identifier-stype (cdr n))))
+                                                       r)
+                                                 r))
+                                           '()
+                                           (ctx-env ctx))))
+                 (cctable (or (table-ref cctables cctable-key #f)
                               (let ((t (make-cc global-cc-table-maxsize stub-addr)))
-                                 (table-set! cctables ast t)
+                                 (table-set! cctables cctable-key t)
                                  t)))
                  (cctable-loc (- (obj-encoding cctable) 1)))
+
+            ; ;; TODO: spécialisation des fermetures
+            ; (let ((HASH-CTX
+            ;          (foldr (lambda (n r)
+            ;                     (if (member (car n) fvars) ;; If this id is a free var of future lambda
+            ;                        (cons (cons (car n)
+            ;                                    (if (eq? (identifier-type (cdr n)) 'local)
+            ;                                      ;; If local, get type from stack
+            ;                                      (list-ref (ctx-stack ctx) (- (length (ctx-stack ctx)) (identifier-offset (cdr n)) 2))
+            ;                                      ;; If free, get type from env
+            ;                                      (identifier-stype (cdr n))))
+            ;                              r)
+            ;                        r))
+            ;                  '()
+            ;                  (ctx-env ctx))))
+            ;   (pp ctx)
+            ;   (pp HASH-CTX))
+            ; ;; TODO END
 
             ;; Alloc closure
             (gen-allocation cgc ctx STAG_PROCEDURE total-size)
