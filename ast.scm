@@ -609,8 +609,14 @@
 
           (let* ((total-size  (+ 3 (length fvars))) ;; Header,CCTable,GenericPtr
                  (header-word (mem-header total-size STAG_PROCEDURE))
+                 ;; This is the key used in hash table to find the cc-table for this closure.
+                 ;; The key is (ast . free-vars-inf) with ast the s-expression of the lambda
+                 ;; and free-vars-inf the type information of free vars ex. ((a . number) (b . char))
+                 ;; The hash function uses eq? on ast, and equal? on free-vars-inf.
+                 ;; This allows us to use different cctable if types of free vars are not the same.
+                 ;; (to properly handle type checks)
                  (cctable-key  (cons ast
-                                    (foldr (lambda (n r)
+                                     (foldr (lambda (n r)
                                               (if (member (car n) fvars) ;; If this id is a free var of future lambda
                                                  (cons (cons (car n)
                                                              (if (eq? (identifier-type (cdr n)) 'local)
@@ -627,24 +633,6 @@
                                  (table-set! cctables cctable-key t)
                                  t)))
                  (cctable-loc (- (obj-encoding cctable) 1)))
-
-            ; ;; TODO: spécialisation des fermetures
-            ; (let ((HASH-CTX
-            ;          (foldr (lambda (n r)
-            ;                     (if (member (car n) fvars) ;; If this id is a free var of future lambda
-            ;                        (cons (cons (car n)
-            ;                                    (if (eq? (identifier-type (cdr n)) 'local)
-            ;                                      ;; If local, get type from stack
-            ;                                      (list-ref (ctx-stack ctx) (- (length (ctx-stack ctx)) (identifier-offset (cdr n)) 2))
-            ;                                      ;; If free, get type from env
-            ;                                      (identifier-stype (cdr n))))
-            ;                              r)
-            ;                        r))
-            ;                  '()
-            ;                  (ctx-env ctx))))
-            ;   (pp ctx)
-            ;   (pp HASH-CTX))
-            ; ;; TODO END
 
             ;; Alloc closure
             (gen-allocation cgc ctx STAG_PROCEDURE total-size)
