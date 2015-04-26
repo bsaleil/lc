@@ -605,27 +605,23 @@
                                                               (call-ctx (make-ctx (ctx-stack sctx) env nb-args))
                                                               ;; Generic ctx used to generate version
                                                               (gen-ctx  (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD)) env nb-args)))
-                                                          (gen-version-fn-trigg closure lazy-generic-prologue call-ctx gen-ctx)))
+                                                          (gen-version-fn closure lazy-generic-prologue gen-ctx call-ctx #f)))
 
                                                     ;; CASE 2 - Don't use multiple entry points
                                                     ((not opt-entry-points)
                                                         ;; Then, generate a generic version and patch generic ptr in closure 
-                                                        (gen-version-fn closure
-                                                                        lazy-generic-prologue
-                                                                        (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD))
-                                                                                  (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
-                                                                                  (length params))
-                                                                        #t))
+                                                        (let ((ctx (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD))
+                                                                             (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
+                                                                             (length params))))
+                                                          (gen-version-fn closure lazy-generic-prologue ctx ctx #t)))
                                                     
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
                                                        ;; Then, generate a specified version and patch cc-table in closure
-                                                       (gen-version-fn closure
-                                                                       lazy-prologue
-                                                                       (make-ctx (ctx-stack sctx)
-                                                                                 (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
-                                                                                 (length params))
-                                                                       #f))))))
+                                                       (let ((ctx (make-ctx (ctx-stack sctx)
+                                                                            (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
+                                                                            (length params))))
+                                                         (gen-version-fn closure lazy-prologue ctx ctx #f)))))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
                (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
 
@@ -1308,10 +1304,7 @@
                                        (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode char
                                        (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
                                        (x86-push cgc (x86-rax)) ;; Push char
-                                       (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2)
-                                                                           (if (eq? special 'string-ref)
-                                                                              CTX_CHAR
-                                                                              CTX_UNK))))))))) ;; TODO test is useless ?                 
+                                       (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_CHAR))))))))            
                          
                          ;; VECTOR-SET! & STRING-SET!
                          ((member special '(vector-set! string-set!))
@@ -1704,7 +1697,7 @@
                 ;; All args are pushed
                 (x86-label cgc label-end))
 
-              ;; TODO :
+              ;; Encode nb args
               (x86-shl cgc (x86-rdi) (x86-imm-int 2))
               
               ;; Push closure
@@ -1738,10 +1731,7 @@
                                         (let* ((call-stack (if tail
                                                               (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
                                                               (list-head (ctx-stack ctx) (+ (length args) 2))))
-                                               (call-ctx
-                                                 (if opt-interprocedural
-                                                    (make-ctx call-stack '() -1)
-                                                    (make-ctx (make-list (length call-stack) CTX_UNK) '() -1))))                                 
+                                               (call-ctx (make-ctx call-stack '() -1)))
 
                                         (if tail 
                                           (tail-shift cgc
@@ -1759,7 +1749,6 @@
                                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
 
                                         ;; Gen call sequence with closure in RAX
-                                        ;; TODO last arg
                                         (gen-call-sequence cgc call-ctx (length (cdr ast)))))))
          ;; Lazy operator
          (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))

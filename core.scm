@@ -15,10 +15,8 @@
 (define opt-verbose-gc           #f) ;; GC  Verbose debugging
 (define opt-count-calls          #f) ;; Count call for a given identifier
 (define opt-all-tests            #f) ;; Remove type information (execute all type tests)
-(define opt-interprocedural      #t) ;; Propagate context information to calls
-;; TODO : passer en option en cl
-(define opt-max-versions         #f) ;;
-(define opt-entry-points         #t) ;; TODO
+(define opt-max-versions         #f) ;; Limit of number of versions (#f=no limit, 0=only generic, ...)
+(define opt-entry-points         #t) ;; Use multiple entry points (#t to use cc-tables, #f to use generic entry point
 
 ;;-----------------------------------------------------------------------------
 
@@ -1132,29 +1130,6 @@
 
 ;;-----------------------------------------------------------------------------
 
-;; TODO : factoriser avec gen-version ?
-(define (jump-to-version cgc lazy-code ctx #!optional (cleared-ctx #f))
-
-  (let ((label-dest (get-version lazy-code ctx)))
-    (if label-dest
-
-        ;; that version has already been generated, so just jump to it
-        (x86-jmp cgc label-dest)
-
-        ;; If MAX_VERSION enabled and nb max reached, remove type information to generate
-        ;; a generic version
-        (if (and opt-max-versions
-                 (not cleared-ctx)
-                 (>= (lazy-code-nb-versions lazy-code) opt-max-versions))
-          ;; Gen version with cleared ctx (maybe this version already exists)
-          (jump-to-version cgc lazy-code (ctx-clear-types ctx) #t)
-
-          ;; generate that version inline
-          (let ((label-version (asm-make-label cgc (new-sym 'version))))
-            (put-version lazy-code ctx label-version)
-            (x86-label cgc label-version)
-            ((lazy-code-generator lazy-code) cgc ctx))))))
-
 ;; Add callback
 (define (add-callback cgc max-selector callback-fn)
   (create-stub label-do-callback-handler max-selector callback-fn))
@@ -1163,9 +1138,33 @@
 (define (add-fn-callback cgc max-selector callback-fn)
   (create-stub label-do-callback-fn-handler max-selector callback-fn))
 
+;;-----------------------------------------------------------------------------
+;; Lazy-code generation
+
+(define (jump-to-version cgc lazy-code ctx #!optional (cleared-ctx #f))
+
+  (let ((label-dest (get-version lazy-code ctx)))
+    (if label-dest
+
+        ;; That version has already been generated, so just jump to it
+        (x86-jmp cgc label-dest)
+
+        ;; That version is not yet generated, so generate it
+        (if (and opt-max-versions
+                 (not cleared-ctx)
+                 (>= (lazy-code-nb-versions lazy-code) opt-max-versions))
+          ;; Maxversions is not #f and limit is reached, then remove
+          ;; type information to generate a generic version
+          ;; Recursive call (maybe this version already exists)
+          (jump-to-version cgc lazy-code (ctx-clear-types ctx) #t)
+
+          ;; Generate that version inline
+          (let ((label-version (asm-make-label cgc (new-sym 'version))))
+            (put-version lazy-code ctx label-version)
+            (x86-label cgc label-version)
+            ((lazy-code-generator lazy-code) cgc ctx))))))
+
 ;; Generate a continuation
-;; First generate continuation lazy-code
-;; Then patch mov before call to mov continuation address instead of stub address
 (define (gen-version-continuation load-ret-label lazy-code ctx)
   
   (let ((continuation-label (asm-make-label #f (new-sym 'continuation_)))
@@ -1180,86 +1179,34 @@
     
     (patch-continuation load-addr continuation-label)))
 
-;; Generate a function
-;; First generate function lazy-code
-;; Then patch closure slot to jump directly to generated function
-(define (gen-version-fn closure lazy-code ctx generic #!optional)
+;; Generate an entry point
+(define (gen-version-fn closure lazy-code gen-ctx call-ctx generic)
 
   (if opt-verbose-jit
       (begin
         (print "GEN VERSION FN")
         (print " >>> ")
-        (pp ctx)))
+        (pp gen-ctx)
+        (pp call-ctx)))
 
-  ;; the jump instruction (call) at address "call-addr" must be redirected to
-  ;; jump to the machine code corresponding to the version of
-  ;; "lazy-code" for the context "ctx"
+  (let ((label-dest (get-version lazy-code gen-ctx)))
 
-  (let ((label-dest (get-version lazy-code ctx)))
-    (if label-dest
-
-        ;; That version has already been generated, so just patch closure
-        (let ((dest-addr (asm-label-pos label-dest)))
-         (if generic
-           (patch-generic closure label-dest)
-           (patch-closure closure ctx label-dest)))
-
-        ;; That version is not yet generated, so generate it and then patch call
-        (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
-          
-          ;; Gen version
+    (if (not label-dest)
+       ;; That version is not yet generated, so generate it
+       (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
           (code-add
              (lambda (cgc)
                 (asm-align cgc 4 0 #x90)
                 (x86-label cgc fn-label)
-                ((lazy-code-generator lazy-code) cgc ctx)))
-          
-          ;; Put version matching this ctx
-          (put-version lazy-code ctx fn-label)
-          ;; Patch closure
-          ;; TODO
-          (if generic
-            (patch-generic closure fn-label)
-            (patch-closure closure ctx fn-label))))))
+                ((lazy-code-generator lazy-code) cgc gen-ctx)))
+          (put-version lazy-code gen-ctx fn-label)
+          (set! label-dest fn-label)))
 
-;; TODO TODO
-;; Generate a function
-;; First generate function lazy-code
-;; Then patch closure slot to jump directly to generated function
-(define (gen-version-fn-trigg closure lazy-fallback call-ctx gen-ctx)
-
-  (if opt-verbose-jit
-      (begin
-        (print "GEN VERSION FN")
-        (print " >>> ")
-        (pp gen-ctx))) ;; TODO 
-
-  ;; the jump instruction (call) at address "call-addr" must be redirected to
-  ;; jump to the machine code corresponding to the version of
-  ;; "lazy-code" for the context "ctx"
-
-  (let ((label-dest (get-version lazy-fallback gen-ctx)))
-    (if label-dest
-
-        ;; That version has already been generated, so just patch closure
-        (let ((dest-addr (asm-label-pos label-dest)))
-          (patch-closure closure call-ctx label-dest))
-
-        ;; That version is not yet generated, so generate it and then patch call
-        (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
-          
-          ;; Gen version
-          (code-add
-             (lambda (cgc)
-                (asm-align cgc 4 0 #x90)
-                (x86-label cgc fn-label)
-                ((lazy-code-generator lazy-fallback) cgc gen-ctx)))
-          
-          ;; Put version matching this ctx
-          (put-version lazy-fallback gen-ctx fn-label)
-          ;; Patch closure
-          ;; TODO
-          (patch-closure closure call-ctx fn-label)))))
+    ;; If generic is #t, patch generic slot in closure.
+    ;; Else patch cc-table slot for this ctx
+    (if generic
+      (patch-generic closure label-dest)
+      (patch-closure closure call-ctx label-dest))))
 
 (define (gen-version jump-addr lazy-code ctx #!optional (cleared-ctx #f))
 
@@ -1269,48 +1216,45 @@
         (print " >>> ")
         (pp ctx)))
 
-  ;; the jump instruction at address "jump-addr" must be redirected to
-  ;; jump to the machine code corresponding to the version of
-  ;; "lazy-code" for the context "ctx"
-
   (let ((label-dest (get-version lazy-code ctx)))
     (if label-dest
 
+        ;; That version has already been generated, so just patch jump
         (let ((dest-addr (asm-label-pos label-dest)))
-
-          ;; that version has already been generated, so just patch jump
-
           (patch-jump jump-addr dest-addr)
-
           dest-addr)
 
-        ;; If MAX_VERSION enabled and nb max reached, remove type information to generate
-        ;; a generic version
+        ;; That version is not yet generated, so generate it
         (if (and opt-max-versions
                  (not cleared-ctx)
                  (>= (lazy-code-nb-versions lazy-code) opt-max-versions))
-          ;; Gen version with cleared ctx (maybe this version already exists)
+          ;; Maxversions is not #f and limit is reached, then remove
+          ;; type information to generate a generic version
+          ;; Recursive call (maybe this version already exists)
           (gen-version jump-addr lazy-code (ctx-clear-types ctx) #t)
 
+          ;; Generate that version inline
           (begin
             (cond ((= (+ jump-addr (jump-size jump-addr)) code-alloc)
                    ;; (fall-through optimization)
                    ;; the jump is the last instruction previously generated, so
                    ;; just overwrite the jump
                    (if opt-verbose-jit (println ">>> fall-through-optimization"))
-                   (set! code-alloc jump-addr)) 
-
+                   (set! code-alloc jump-addr))
                   (else
+                   ;; Else we need to patch the jump
                    (patch-jump jump-addr code-alloc)))
-
-            ;; generate that version inline
+            ;; Generate
             (let ((label-version (asm-make-label #f (new-sym 'version))))
               (put-version lazy-code ctx label-version)
               (code-add
                (lambda (cgc)
+                 (asm-align cgc 4 0 #x90)
                  (x86-label cgc label-version)
                  ((lazy-code-generator lazy-code) cgc ctx)))
               (asm-label-pos label-version)))))))
+
+;;-----------------------------------------------------------------------------
 
 ;; Patch load at a call site to load continuation addr instead of continuation stub addr
 (define (patch-continuation load-addr continuation-label)
@@ -1502,9 +1446,6 @@
 ;; TODO Factoriser avec gen-fatal-...
 
 ;; TODO
-;; Create lazy code for type test of stack slot (stack-idx)
-;; jump to lazy-success if test succeeds
-;; jump to lazy-fail if test fails
 ;; Create lazy code for type test of stack slot (stack-idx)
 ;; jump to lazy-success if test succeeds
 ;; jump to lazy-fail if test fails
