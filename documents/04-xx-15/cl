@@ -1,0 +1,11 @@
+Nb tests without multiple entry points:
+
+./graphs.py --exec="maxvers=1;--max-versions 1 --disable-entry-points" --exec="maxvers=5;--max-versions 5 --disable-entry-points" --exec="maxvers=inf; --disable-entry-points" --exec="maxvers=0;--max-versions 0  --disable-entry-points" --exec="maxvers=3;--max-versions 3 --disable-entry-points"
+
+Nb tests with multiple entry points:
+
+./graphs.py --exec="maxvers=0;--max-versions 0 --disable-entry-points" --exec="maxvers=5;--max-versions 5 --disable-entry-points" --exec="maxvers=5+inter;--max-versions 5" --exec="maxvers=2+inter;--max-versions 2" --exec="maxvers=2;--max-versions 2 --disable-entry-points"
+
+Code size:
+
+./graphs.py --exec="maxvers=0;--max-versions 0 --disable-entry-points" --exec="maxvers=2;--max-versions 2 --disable-entry-points" --exec="maxvers=5;--max-versions 5 --disable-entry-points" --exec="maxvers=2+inter;--max-versions 2" --exec="maxvers=5+inter;--max-versions 5"

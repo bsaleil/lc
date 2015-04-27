@@ -253,7 +253,7 @@
       (println "Max versions number: " (cdr versions-info)))
     ;; Number of stubs, number of return stubs, and number of entry stubs for each number of versions
     (println "-------------------------")
-    (println "Number of stubs by number of versions")
+    (println "Number of stubs for each number of version")
     (println "#versions;#stubs;#ret;#entry")
     (let ((versions-info-full (get-versions-info-full all-lazy-code)))
       (for-each (lambda (n)

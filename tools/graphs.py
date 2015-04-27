@@ -44,7 +44,7 @@ LC_PATH     = SCRIPT_PATH + '../'                               # Compiler path
 LC_EXEC     = 'lazy-comp'                                       # Compiler exec name
 PDF_OUTPUT  = SCRIPT_PATH + 'graphs.pdf'                        # PDF output file
 BENCH_PATH  = LC_PATH + 'benchmarks/*.scm'                      # Benchmarks path
-BAR_COLORS  = ["#444444","#666666","#888888","#AAAAAA"]         # Bar colors
+BAR_COLORS  = ["#444444","#666666","#888888","#AAAAAA","#CCCCCC","#EEEEEEn"]         # Bar colors
 
 # Parser constants, must match compiler --stats output
 CSV_INDICATOR  = '--' 
@@ -230,13 +230,81 @@ def drawGraphs(keys,benchs_data):
 	for key in keys:
 		# CSV, NYI
 		if type(benchs_data[firstExec][firstBenchmark][key]) == list:
-			None # NYI
+			drawCSV(pdf,key,benchs_data)
 		# Key/Value, draw graph
 		else:
 			print("Drawing '" + key + "'...")
 			drawKeyValueGraph(pdf,key,benchs_data)
 
 	pdf.close()
+
+## This is a specific implementation for #stubs/#versions
+## TODO: Do something generic !
+def drawCSV(pdf,key,benchs_data):
+	fig = plt.figure(key)
+	title = key
+	res = {}
+
+	for execution in benchs_data:
+		for bench in benchs_data[execution]:
+			for data in benchs_data[execution][bench][key]:
+			   if data[0] == '#stubs':
+			     for i in range(0,len(data)-1):
+			     	index = i+1
+			     	numvers = i
+			     	if (numvers >= 5):
+			     		numvers = -1
+			     	if (numvers in res):
+			     		res[numvers] += data[index]
+			     	else:
+			     		res[numvers] = data[index]
+
+	xvals = []
+	yvals = []
+	labels = []
+
+	keys = sorted(res.keys())
+
+	for key in keys:
+		if key != 0 and key != -1:
+			xvals.append(key)
+			yvals.append(res[key])
+			labels.append(key)
+
+	xvals.append(len(xvals)+1)
+	yvals.append(res[-1])
+	labels.append('>=5')
+
+	sum = 0
+	for val in yvals:
+		sum += val
+	for i in range(0,len(yvals)):
+		p = (yvals[i] * 100) / sum
+		yvals[i] = p
+
+	plt.title(title + ' (total=' + str(sum) + ')')
+
+	X = np.array(xvals)
+	Y = np.array(yvals)
+
+	bar(X, +Y, 1, facecolor=BAR_COLORS[0], edgecolor='white', label=key, zorder=10)
+
+	axes = gca()
+	axes.get_xaxis().set_visible(False)
+
+	# Draw grid
+	axes = gca()
+	axes.grid(True, zorder=1, color="#707070")
+	axes.set_axisbelow(True) # Keep grid under the axes
+
+	for i in range(0,len(labels)):
+		text(X[i]+0.5, -0.0, labels[i], ha='right', va='top')
+
+	# print(xvals)
+	# print(yvals)
+	# print(labels)
+	# print(res)
+	pdf.savefig(fig)
 
 # Draw graph for given key
 # Y: values for this key
@@ -265,50 +333,57 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	
 	width = 1 / (len(Ys)+1)
 
-	#----------
-	# TODO: move to external fn
-	# Use a reference execution. All values for this exec are 100%
-	# Values for others executions are computed from this reference exec
-	exec_ref = 'All tests' # Reference execution (100%)
-	Y2 = deepcopy(Ys)      # Deep copy of Y values
-	# Set all references to 100
-	for v in range(0,len(Y2['All tests'])):
-		Y2['All tests'][v] = '100'
-	# For each exec which is not ref exec
-	candraw = True # TODO : rename
-	for ex in Y2:
-		if ex != 'All tests':
-			for i in range(0,len(Y2[ex])):
-				ref = Ys['All tests'][i]
-				cur = Ys[ex][i]
-				# We can't compute %, warning and stop
-				if ref == 0:
-					WARNING("Can't draw '" + key + "' using a reference execution.")
-					return
-				# Compute % and set
-				else:
-					Y2[ex][i] = (cur*100)/ref
-	# Y2 are the new values to draw
-	Ys = Y2
-	#----------
+	# #----------
+	# # TODO: move to external fn
+	# # Use a reference execution. All values for this exec are 100%
+	# # Values for others executions are computed from this reference exec
+	# exec_ref = 'maxvers=0' # Reference execution (100%)
+	# Y2 = deepcopy(Ys)      # Deep copy of Y values
+	# # Set all references to 100
+	# for v in range(0,len(Y2[exec_ref])):
+	# 	Y2[exec_ref][v] = '100'
+	# # For each exec which is not ref exec
+	# candraw = True # TODO : rename
+	# for ex in Y2:
+	# 	if ex != exec_ref:
+	# 		for i in range(0,len(Y2[ex])):
+	# 			ref = Ys[exec_ref][i]
+	# 			cur = Ys[ex][i]
+	# 			# We can't compute %, warning and stop
+	# 			if ref == 0:
+	# 				WARNING("Can't draw '" + key + "' using a reference execution.")
+	# 				return
+	# 			# Compute % and set
+	# 			else:
+	# 				Y2[ex][i] = (cur*100)/ref
+	# # Y2 are the new values to draw
+	# Ys = Y2
+	# #----------
 
 	fileList = files
 	Yvals = Ys
 	
 	# Sort Y values by a given execution
 	# TODO: get the execution by command line option
-	fileList,Yvals = sortByExecution(Yvals,'Without interprocedural')
+	fileList,Yvals = sortByExecution(Yvals,'maxvers=5+inter')
+
+	# Draw grid
+	axes = gca()
+	axes.grid(True, zorder=1, color="#707070")
+	axes.set_axisbelow(True) # Keep grid under the axes
+
+	
+	keys = sorted(Yvals.keys())
 
 	i = 0
-	for mode in Yvals: # todo : renommer mode
-		if mode != exec_ref:
-			Y = Yvals[mode]
+	for key in keys: # todo : renommer key en exec? 
+		if key != exec_ref:
+			Y = Yvals[key]
 			color = BAR_COLORS[i];
-			bar(X+(i*width), +Y, width, facecolor=color, edgecolor='white', label=mode) # TODO : changer couleur
+			bar(X+(i*width), +Y, width, facecolor=color, edgecolor='white', label=key, zorder=10)
 			i += 1
 
 	# Hide X values
-	axes = gca()
 	axes.get_xaxis().set_visible(False)
 
 	# # Set Y limit
@@ -327,7 +402,7 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	box = axes.get_position()
 	axes.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9])
 	# Put a legend below axis
-	legend(loc='upper center', bbox_to_anchor=(0.5, -0.05))
+	legend(loc='upper center', bbox_to_anchor=(0., 0., 1., -0.15), prop={'size':10}, ncol=len(keys), mode='expand', borderaxespad=0.)
 
 	# Save to pdf
 	pdf.savefig(fig)
