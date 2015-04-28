@@ -365,7 +365,7 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	
 	# Sort Y values by a given execution
 	# TODO: get the execution by command line option
-	fileList,Yvals = sortByExecution(Yvals,'maxvers=5+inter')
+	#fileList,Yvals = sortByExecution(Yvals,'maxvers=5+inter')
 
 	# Draw grid
 	axes = gca()

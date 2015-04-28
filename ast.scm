@@ -565,7 +565,6 @@
                                              1
                                              (lambda (sp sctx ret-addr selector closure)
                                               
-                                              
                                               (cond ;; CASE 1 - Use multiple entry points AND use max-versions limit AND this limit is reached
                                                     ((and (= selector 0)
                                                           opt-max-versions
@@ -1696,7 +1695,8 @@
               (x86-push cgc (x86-rax))
 
               ;; Gen call sequence with closure in RAX
-              (gen-call-sequence cgc (make-ctx fake-stack '() -1) #f))))
+              ;; TODO: use generic
+              (gen-call-sequence cgc (make-ctx fake-stack '() -1) #f opt-entry-points))))
         
          ;; Apply
          (lazy-apply
@@ -1741,7 +1741,12 @@
                                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
 
                                         ;; Gen call sequence with closure in RAX
-                                        (gen-call-sequence cgc call-ctx (length (cdr ast)))))))
+                                        (let ((nb-unk (count call-stack (lambda (n) (eq? n CTX_UNK)))))
+                                          
+                                          (if (and opt-entry-points
+                                                   (not (= nb-unk (length args))))
+                                            (gen-call-sequence cgc call-ctx (length (cdr ast)) #t)
+                                            (gen-call-sequence cgc call-ctx (length (cdr ast)) #f)))))))
          ;; Lazy operator
          (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
@@ -1800,22 +1805,21 @@
                          (ctx-push ctx CTX_RETAD))))))
 
 ;; Gen call sequence (call instructions) with call closure in RAX
-(define (gen-call-sequence cgc call-ctx nb-args)
+(define (gen-call-sequence cgc call-ctx nb-args use-mep) ;; Use multiple entry points?
 
-  (let ((cct-offset (* 8 (+ 1 (get-closure-index call-ctx)))))
-    (if opt-entry-points
-
+    (if use-mep
       ;; If we use multiple entry points then:
-      (begin ;; 1 - Put ctx in r11
-             (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
-             ;; 2- Get cc-table
-             (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-             ;; 3 - If opt-max-versions is not #f, a generic version could be called. So we need to give nb-args
-             ;; NOTE: only if nb-args is not #f to handle 'apply' (apply always writes nb-args in rdi, don't overwrite it!)
-             (if (and opt-max-versions nb-args)
-               (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
-             ;; 4 - Get entry point in cc-table
-             (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax))))
+      (let ((cct-offset (* 8 (+ 1 (get-closure-index call-ctx)))))
+        ;; 1 - Put ctx in r11
+        (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
+        ;; 2- Get cc-table
+        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+        ;; 3 - If opt-max-versions is not #f, a generic version could be called. So we need to give nb-args
+        ;; NOTE: only if nb-args is not #f to handle 'apply' (apply always writes nb-args in rdi, don't overwrite it!)
+        (if (and opt-max-versions nb-args)
+          (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
+        ;; 4 - Get entry point in cc-table
+        (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax))))
 
       (begin ;; 1 - If nb-args given, put encoded nb in rdi
              ;; NOTE: only if nb-args is not #f to handle 'apply' (apply always writes nb-args in rdi, don't overwrite it!)
@@ -1825,7 +1829,7 @@
              (x86-mov cgc (x86-rax) (x86-mem (- 16 TAG_MEMOBJ) (x86-rax)))))
 
     ;; Jump to entry point
-    (x86-jmp cgc (x86-rax))))
+    (x86-jmp cgc (x86-rax)))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
