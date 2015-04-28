@@ -1695,8 +1695,7 @@
               (x86-push cgc (x86-rax))
 
               ;; Gen call sequence with closure in RAX
-              ;; TODO: use generic
-              (gen-call-sequence cgc (make-ctx fake-stack '() -1) #f opt-entry-points))))
+              (gen-call-sequence cgc (make-ctx fake-stack '() -1) #f #f))))
         
          ;; Apply
          (lazy-apply
