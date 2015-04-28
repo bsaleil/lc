@@ -211,7 +211,6 @@
     (println err)))
 
 ;;-----------------------------------------------------------------------------
-;; Measurement
 
 (define (gen-print-slot cgc slot msg)
   (x86-push cgc (x86-rax))
@@ -358,7 +357,7 @@
           (vector-ref (get-scmobj ret-addr) 0))
                  
          (new-ret-addr
-          (callback-fn sp ctx ret-addr 0 closure)))
+          (callback-fn sp ctx ret-addr selector closure)))
                 
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8))

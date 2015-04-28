@@ -567,7 +567,7 @@
                                               
                                               
                                               (cond ;; CASE 1 - Use multiple entry points AND use max-versions limit AND this limit is reached
-                                                    ((and opt-entry-points
+                                                    ((and (= selector 0)
                                                           opt-max-versions
                                                           (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
 
@@ -581,7 +581,7 @@
                                                           (gen-version-fn closure lazy-generic-prologue gen-ctx call-ctx #f)))
 
                                                     ;; CASE 2 - Don't use multiple entry points
-                                                    ((not opt-entry-points)
+                                                    ((= selector 1)
                                                         ;; Then, generate a generic version and patch generic ptr in closure 
                                                         (let ((ctx (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD))
                                                                              (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
