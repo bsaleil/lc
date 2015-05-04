@@ -33,7 +33,8 @@
   (string?      ,CTX_STR)
   (char?        ,CTX_CHAR)
   (vector?      ,CTX_VECT)
-  (number?      ,CTX_NUM)
+  (fixnum?      ,CTX_NUM)
+  (flonum?      ,CTX_FLO)
   (procedure?   ,CTX_CLO)
   (pair?        ,CTX_PAI)
 ))
@@ -41,7 +42,8 @@
 (define (type-from-predicate p)
   (cond ((eq? p 'pair?)        CTX_PAI)
         ((eq? p 'procedure?)   CTX_CLO)
-        ((eq? p 'number?)      CTX_NUM)
+        ((eq? p 'flonum?)      CTX_FLO)
+        ((eq? p 'fixnum?)      CTX_NUM)
         ((eq? p 'vector?)      CTX_VECT)
         ((eq? p 'char?)        CTX_CHAR)
         ((eq? p 'string?)      CTX_STR)
@@ -59,7 +61,6 @@
    (eqv?                2  2  ,(prim-types 2 CTX_ALL CTX_ALL))
    (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR))
    (null?               1  1  ,(prim-types 1 CTX_ALL))
-   (integer?            1  1  ,(prim-types 1 CTX_ALL))
    (not                 1  1  ,(prim-types 1 CTX_ALL))
    (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL))
    (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL))
@@ -118,6 +119,8 @@
         ((string? ast)  (mlc-string ast succ))
         ;; Symbol
         ((symbol? ast)  (mlc-identifier ast succ))
+        ;; Flonum
+        ((flonum? ast)  (mlc-flonum ast succ))
         ;; Literal
         ((literal? ast) (mlc-literal ast succ))
         ;; Pair
@@ -125,6 +128,8 @@
          (let ((op (car ast)))
            (cond ;; Special
                  ((member op '(breakpoint)) (mlc-special ast succ))
+                 ;; TODO special function
+                 ((eq? op '$$print-flonum) (mlc-printflonum ast succ))
                  ;; Special without call
                  ((assoc op primitives) (mlc-primitive ast succ))
                  ;; Quote
@@ -177,6 +182,28 @@
                                        ((char? ast)    CTX_CHAR)
                                        ((null? ast)    CTX_NULL)
                                        (else (error "NYI"))))))))
+
+;;
+;; Make lazy code from flonum literal
+;;
+(define (mlc-flonum ast succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let ((header-word (mem-header 2 STAG_FLONUM)))
+
+        (gen-allocation cgc ctx STAG_FLONUM 2)
+
+        ;; Write header
+        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+        (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
+        ;; Write number
+        (x86-mov cgc (x86-rax) (x86-imm-int (ieee754 ast 'double)))
+        (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
+        ;; Push string
+        (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
+        (x86-push cgc (x86-rax))
+        (jump-to-version cgc succ (ctx-push ctx CTX_FLO))))))
+
 ;;
 ;; Make lazy code from symbol literal
 ;;
@@ -853,6 +880,20 @@
 ;; SPECIAL & PRIMITIVES
 
 ;;
+;; Make lazy code from special id $$print-flonum
+;;
+(define (mlc-printflonum ast succ)
+  (let ((spec
+          (make-lazy-code
+            (lambda (cgc ctx)
+              (x86-pop cgc (x86-rax))
+              ;; NOTE: This uses Gambit function to print a flonum (because LC uses the same encoding)
+              (gen-print-msg cgc (x86-rax) #f #f)
+              (x86-push cgc (x86-imm-int ENCODING_VOID))
+              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
+    (gen-ast (cadr ast) spec)))
+
+;;
 ;; Make lazy code from SPECIAL FORM
 ;;
 (define (mlc-special ast succ)
@@ -877,9 +918,7 @@
   (assert-p-nbargs ast)
 
   ;; Manage fake implementation. NOTE: remove when all implemented
-  (cond ((eq? (car ast) 'integer?)
-            (gen-ast (cons 'number? (cdr ast)) succ))
-        ((member (car ast) '(eqv? char=?))
+  (cond ((member (car ast) '(eqv? char=?))
             (gen-ast (cons 'eq? (cdr ast)) succ))
         (else
           (let* ((special (car ast))

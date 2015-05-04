@@ -10,10 +10,12 @@
         (print-pos-nz n)))
 
 (define (print-nb n)
-    (if (< n 0)
-        (begin (print "-")
-               (print-pos (* -1 n)))
-        (print-pos n)))
+    (if (flonum? n)
+       ($$print-flonum n) ;; TODO use special function ro print flonum
+       (if (< n 0)
+          (begin (print "-")
+                 (print-pos (* -1 n)))
+          (print-pos n))))
 
 (define (print-char n)
   (write-char n (current-output-port)))

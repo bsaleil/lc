@@ -204,7 +204,8 @@
 
 ;; TODO : prendre en compte le slot pour le generic addr dans le GC
 ;; Partager la table de méthodes, mais aussi le stub de lambda ?
-
+;; TODO : ajouter les flonums au GC et autres points (number? real? flonum?)
+;; TODO : on peut passer pas mal de fonctions dans lib/num.scm en primitive pour etre inlinees
 
 ; (define (fact n)
 ;    (if (or (= n 0) (= n 1))
@@ -220,11 +221,13 @@
 
 ; (println (fibo 31))
 
-(define (foo a)
-	(lambda () (+ a 10)))
+;(println (number? 10))
 
-((foo 1))
-((foo 100))
+
+
+(println 2.2)
+
+
 
 ; (define (foo a b . l)
 ; 	(pp a)

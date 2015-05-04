@@ -58,6 +58,7 @@
 (define STAG_SYMBOL     8)
 (define STAG_IPORT     17)
 (define STAG_OPORT     18)
+(define STAG_FLONUM    30)
 
 ;; Context types
 (define CTX_UNK   'unknown)
@@ -76,6 +77,7 @@
 (define CTX_IPORT 'inport)
 (define CTX_OPORT 'outport)
 (define CTX_MOBJ  'mobject)
+(define CTX_FLO   'float)
 
 ;; TODO : merge with 'globals'
 (define gret `(
@@ -218,12 +220,17 @@
   (gen-print-reg cgc msg (x86-rax))
   (x86-pop cgc (x86-rax)))
 
-(define (gen-print-msg cgc msg)
+(define (gen-print-msg cgc msg newline? #!optional (literal? #t))
   
   (x86-push cgc (x86-rax))
   (x86-push cgc (x86-rcx))
+  (x86-push cgc (x86-rdi))
   
-  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding msg)))
+  (if literal?
+     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding msg)))
+     (x86-mov cgc (x86-rax) msg))
+
+  (x86-mov cgc (x86-rdi) (x86-imm-int (if newline? (obj-encoding 1) (obj-encoding 0))))
   
   (push-pop-regs
        cgc
@@ -237,6 +244,7 @@
          (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
          ))
   
+  (x86-pop cgc (x86-rdi))
   (x86-pop cgc (x86-rcx))
   (x86-pop cgc (x86-rax)))
 
@@ -274,10 +282,11 @@
 
 ;; TODO
 (c-define (print-msg sp) (long) void "print_msg" ""
-  (let* ((msg-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
-         (msg     (encoding-obj msg-enc)))
-    
-    (println msg)))
+  (let* ((msg-enc  (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
+         (newline? (encoding-obj (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8)))))
+         (msg      (encoding-obj msg-enc)))
+
+    (and (print msg) (= newline? 1) (newline))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -1419,7 +1428,7 @@
                              ;(x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                              ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
                          ;; Procedure type test
-                         ((member type (list CTX_CLO CTX_PAI CTX_STR CTX_VECT CTX_SYM CTX_IPORT CTX_OPORT))
+                         ((member type (list CTX_FLO CTX_CLO CTX_PAI CTX_STR CTX_VECT CTX_SYM CTX_IPORT CTX_OPORT))
                            
                              (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                              (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
@@ -1429,7 +1438,8 @@
                              (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
                              (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
                              ;; STAG_XXX << 3
-                             (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_CLO)   STAG_PROCEDURE)
+                             (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_FLO)   STAG_FLONUM)
+                                                                            ((eq? type CTX_CLO)   STAG_PROCEDURE)
                                                                             ((eq? type CTX_STR)   STAG_STRING)
                                                                             ((eq? type CTX_SYM)   STAG_SYMBOL)
                                                                             ((eq? type CTX_VECT)  STAG_VECTOR)
@@ -1519,7 +1529,7 @@
                    ;(x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                    ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
                ;; Procedure type test
-               ((member type (list CTX_CLO CTX_PAI CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))      
+               ((member type (list CTX_FLO CTX_CLO CTX_PAI CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))      
                    (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
                    (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
                    (x86-and cgc (x86-rax) (x86-imm-int 3))
@@ -1528,7 +1538,8 @@
                    (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
                    (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
                    ;; STAG_XXX << 3
-                   (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_CLO)  STAG_PROCEDURE)
+                   (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_FLO)  STAG_FLONUM)
+                                                                  ((eq? type CTX_CLO)  STAG_PROCEDURE)
                                                                   ((eq? type CTX_SYM)  STAG_SYMBOL)
                                                                   ((eq? type CTX_STR)  STAG_STRING)
                                                                   ((eq? type CTX_IPORT) STAG_IPORT)
