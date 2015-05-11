@@ -54,6 +54,11 @@ CSV_SEPARATOR  = ';'
 # Options
 DRAW_ALL = '--drawall' # Draw all graphs
 STD_EXEC = '--stdexec' # Add standard execution to executions list
+REF_EXEC = '--refexec' # Set reference execution for scale
+SORT_EXEC = '--sortexec' # Sort
+
+OPT_REF = False
+OPT_SORT = False
 
 # Globals
 execs     = {}
@@ -82,10 +87,16 @@ def WARNING(s):
 
 def setargs():
 	global printhelp
+	global OPT_REF
+	global OPT_SORT
 	if '-h' in sys.argv or '--help' in sys.argv:
 		printhelp = True
 	if STD_EXEC in sys.argv:
 		execs['Standard'] = ''
+	if REF_EXEC in sys.argv:
+		OPT_REF = sys.argv[sys.argv.index(REF_EXEC)+1]
+	if SORT_EXEC in sys.argv:
+		OPT_SORT = sys.argv[sys.argv.index(SORT_EXEC)+1]
 
 	for arg in sys.argv:
 		if arg.startswith('--exec='):
@@ -333,39 +344,41 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	
 	width = 1 / (len(Ys)+1)
 
-	# #----------
-	# # TODO: move to external fn
-	# # Use a reference execution. All values for this exec are 100%
-	# # Values for others executions are computed from this reference exec
-	# exec_ref = 'maxvers=0' # Reference execution (100%)
-	# Y2 = deepcopy(Ys)      # Deep copy of Y values
-	# # Set all references to 100
-	# for v in range(0,len(Y2[exec_ref])):
-	# 	Y2[exec_ref][v] = '100'
-	# # For each exec which is not ref exec
-	# candraw = True # TODO : rename
-	# for ex in Y2:
-	# 	if ex != exec_ref:
-	# 		for i in range(0,len(Y2[ex])):
-	# 			ref = Ys[exec_ref][i]
-	# 			cur = Ys[ex][i]
-	# 			# We can't compute %, warning and stop
-	# 			if ref == 0:
-	# 				WARNING("Can't draw '" + key + "' using a reference execution.")
-	# 				return
-	# 			# Compute % and set
-	# 			else:
-	# 				Y2[ex][i] = (cur*100)/ref
-	# # Y2 are the new values to draw
-	# Ys = Y2
-	# #----------
+	#----------
+	# TODO: move to external fn
+	# Use a reference execution. All values for this exec are 100%
+	# Values for others executions are computed from this reference exec
+	if OPT_REF:
+		exec_ref = OPT_REF # Reference execution (100%)
+		Y2 = deepcopy(Ys)      # Deep copy of Y values
+		# Set all references to 100
+		for v in range(0,len(Y2[exec_ref])):
+			Y2[exec_ref][v] = '100'
+		# For each exec which is not ref exec
+		candraw = True # TODO : rename
+		for ex in Y2:
+			if ex != exec_ref:
+				for i in range(0,len(Y2[ex])):
+					ref = Ys[exec_ref][i]
+					cur = Ys[ex][i]
+					# We can't compute %, warning and stop
+					if ref == 0:
+						WARNING("Can't draw '" + key + "' using a reference execution.")
+						return
+					# Compute % and set
+					else:
+						Y2[ex][i] = (cur*100)/ref
+		# Y2 are the new values to draw
+		Ys = Y2
+	#----------
 
 	fileList = files
 	Yvals = Ys
 	
 	# Sort Y values by a given execution
 	# TODO: get the execution by command line option
-	#fileList,Yvals = sortByExecution(Yvals,'maxvers=5+inter')
+	if OPT_SORT:
+		fileList,Yvals = sortByExecution(Yvals,OPT_SORT)
 
 	# Draw grid
 	axes = gca()
