@@ -1060,7 +1060,7 @@
   (let ((pos (- (length (ctx-stack ctx)) stack-idx 2)))
     ;; Update stack types for each pos in 'pos' set
     (define (update-stack curr stack pos)
-      (if (= curr 0)
+      (if (= curr -1)
          stack
          (if (member curr pos)
             (cons type        (update-stack (- curr 1) (cdr stack) pos))
