@@ -248,7 +248,8 @@
     ;; Global cc-table size
     (println "Global table size: " (table-length global-cc-table))
     ;; CC table space
-    (println "External table space: " (exact->inexact (/ (* (table-length global-cc-table) 8 (table-length cctables)) 1000000)))
+    (print "External table space: ")
+    (pp-flonum (/ (* (table-length global-cc-table) 8 (table-length cctables)) 1000000) 5)
     ;; Min/Max versions number of stubs
     (let ((versions-info (get-versions-info all-lazy-code)))
       (println "Min versions number: " (car versions-info))

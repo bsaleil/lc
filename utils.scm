@@ -109,6 +109,20 @@
 (define (encoding-obj encoding)
   (##encoding->object encoding))
 
+(define (pp-flonum n #!optional (nfrac 2))
+  (define (print-int-part n)
+      (print (##flonum->fixnum (truncate n))))
+  (define (print-frac n nfrac)
+    (if (not (= nfrac 0))
+      (let ((mt (exact->inexact (* n 10))))
+        (print-int-part mt)
+        (print-frac (- mt (truncate mt)) (- nfrac 1)))))
+  (let ((n (exact->inexact n)))
+    (print-int-part n)
+    (print ".")
+    (print-frac (- n (truncate n)) nfrac)
+    (newline)))
+
 (define (alloc-still-vector len)
   ((c-lambda (int)
              scheme-object
