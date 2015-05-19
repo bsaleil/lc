@@ -323,7 +323,7 @@ def drawCSV(pdf,key,benchs_data):
 # X: benchmarks
 def drawKeyValueGraph(pdf,key,benchs_data):
 	fig = plt.figure(key,figsize=(20,7))
-	#plt.title(key)
+	plt.title(key)
 
 	exec_ref = ''
 
@@ -406,8 +406,7 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	# # Draw values for each bar
 	# for x,y in zip(X,Y1):
 	#     text(x+0.4, y+0.05, '%.2f' % y, ha='center', va= 'bottom')
-
-	ylim(0,100);
+	#ylim(0,100);
 
 	# Draw benchmark name
 	for i in range(0,len(fileList)):
