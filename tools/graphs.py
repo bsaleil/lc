@@ -45,6 +45,7 @@ LC_EXEC     = 'lazy-comp'                                       # Compiler exec 
 PDF_OUTPUT  = SCRIPT_PATH + 'graphs.pdf'                        # PDF output file
 BENCH_PATH  = LC_PATH + 'benchmarks/*.scm'                      # Benchmarks path
 BAR_COLORS  = ["#444444","#666666","#888888","#AAAAAA","#CCCCCC","#EEEEEEn"]         # Bar colors
+#BAR_COLORS = ["#222222", "#666666", "#AAAAAA", "#EEEEEE"] # Paper sw15
 
 # Parser constants, must match compiler --stats output
 CSV_INDICATOR  = '--' 
@@ -309,7 +310,7 @@ def drawCSV(pdf,key,benchs_data):
 	axes.set_axisbelow(True) # Keep grid under the axes
 
 	for i in range(0,len(labels)):
-		text(X[i]+0.5, -0.0, labels[i], ha='right', va='top')
+		text(X[i]+0.25, -0.0, labels[i], ha='right', va='top')
 
 	# print(xvals)
 	# print(yvals)
@@ -321,8 +322,8 @@ def drawCSV(pdf,key,benchs_data):
 # Y: values for this key
 # X: benchmarks
 def drawKeyValueGraph(pdf,key,benchs_data):
-	fig = plt.figure(key)
-	plt.title(key)
+	fig = plt.figure(key,figsize=(20,7))
+	#plt.title(key)
 
 	exec_ref = ''
 
@@ -400,22 +401,25 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	axes.get_xaxis().set_visible(False)
 
 	# # Set Y limit
-	# l = len(str(max(Y2))) # number of digit of max value
-	# ylim(0,max(Y2)+pow(10,l-1)) # Y is from 0 to (max + 10^i-1)
+	#l = len(str(max(Y2))) # number of digit of max value
+	#ylim(0,max(Y2)+pow(10,l-1)) # Y is from 0 to (max + 10^i-1)
 	# # Draw values for each bar
 	# for x,y in zip(X,Y1):
 	#     text(x+0.4, y+0.05, '%.2f' % y, ha='center', va= 'bottom')
 
+	ylim(0,100);
+
 	# Draw benchmark name
 	for i in range(0,len(fileList)):
-		text(X[i]+0.5, -0.0, os.path.basename(fileList[i])[:-4], rotation=25, ha='right', va='top', size='xx-small')
+		text(X[i]+0.25, -1, os.path.basename(fileList[i])[:-4], rotation=90, ha='center', va='top', size='large')
+
 
 	# Legend:
 	# Shrink by 10% on the bottom
 	box = axes.get_position()
-	axes.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9])
+	axes.set_position([box.x0, box.y0 + box.height * 0.15, box.width, box.height * 0.85])
 	# Put a legend below axis
-	legend(loc='upper center', bbox_to_anchor=(0., 0., 1., -0.15), prop={'size':10}, ncol=len(keys), mode='expand', borderaxespad=0.)
+	legend(loc='upper center', bbox_to_anchor=(0., 0., 1., -0.21), prop={'size':12}, ncol=len(keys), mode='expand', borderaxespad=0.)
 
 	# Save to pdf
 	pdf.savefig(fig)
