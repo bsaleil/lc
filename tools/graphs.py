@@ -44,8 +44,8 @@ LC_PATH     = SCRIPT_PATH + '../'                               # Compiler path
 LC_EXEC     = 'lazy-comp'                                       # Compiler exec name
 PDF_OUTPUT  = SCRIPT_PATH + 'graphs.pdf'                        # PDF output file
 BENCH_PATH  = LC_PATH + 'benchmarks/*.scm'                      # Benchmarks path
-BAR_COLORS  = ["#444444","#666666","#888888","#AAAAAA","#CCCCCC","#EEEEEEn"]         # Bar colors
-#BAR_COLORS = ["#222222", "#666666", "#AAAAAA", "#EEEEEE"] # Paper sw15
+#BAR_COLORS  = ["#444444","#666666","#888888","#AAAAAA","#CCCCCC","#EEEEEEn"]         # Bar colors
+BAR_COLORS = ["#222222", "#666666", "#AAAAAA", "#EEEEEE"] # Paper sw15
 
 # Parser constants, must match compiler --stats output
 CSV_INDICATOR  = '--' 
@@ -63,6 +63,7 @@ OPT_SORT = False
 
 # Globals
 execs     = {}
+lexecs    = []
 printhelp = False
 
 # Set current working directory to compiler path
@@ -105,6 +106,7 @@ def setargs():
 			name = pair[0]
 			lcargs = pair[1].split()
 			execs[name] = lcargs
+			lexecs.append(name)
 
 def go():
 	if printhelp:
@@ -322,8 +324,8 @@ def drawCSV(pdf,key,benchs_data):
 # Y: values for this key
 # X: benchmarks
 def drawKeyValueGraph(pdf,key,benchs_data):
-	fig = plt.figure(key,figsize=(20,7))
-	plt.title(key)
+	fig = plt.figure(key,figsize=(22,7))
+	#plt.title(key)
 
 	exec_ref = ''
 
@@ -386,19 +388,24 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	axes.grid(True, zorder=1, color="#707070")
 	axes.set_axisbelow(True) # Keep grid under the axes
 
-	
-	keys = sorted(Yvals.keys())
+	#keys = Yvals.keys()
 
 	i = 0
-	for key in keys: # todo : renommer key en exec? 
+
+	# TODO: add to --help: the script draws the exec bar in order
+	for key in lexecs:
 		if key != exec_ref:
 			Y = Yvals[key]
-			color = BAR_COLORS[i];
+			color = BAR_COLORS[i]
 			bar(X+(i*width), +Y, width, facecolor=color, edgecolor='white', label=key, zorder=10)
 			i += 1
 
 	# Hide X values
 	axes.get_xaxis().set_visible(False)
+
+	plt.tick_params(axis='both', which='minor', labelsize=19)
+
+	plt.yticks(fontsize=19)
 
 	# # Set Y limit
 	#l = len(str(max(Y2))) # number of digit of max value
@@ -406,19 +413,19 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	# # Draw values for each bar
 	# for x,y in zip(X,Y1):
 	#     text(x+0.4, y+0.05, '%.2f' % y, ha='center', va= 'bottom')
-	#ylim(0,100);
+	ylim(0,100);
 
 	# Draw benchmark name
 	for i in range(0,len(fileList)):
-		text(X[i]+0.25, -1, os.path.basename(fileList[i])[:-4], rotation=90, ha='center', va='top', size='large')
+		text(X[i]+0.28, -3, os.path.basename(fileList[i])[:-4], rotation=90, ha='center', va='top', size=19)
 
 
 	# Legend:
 	# Shrink by 10% on the bottom
 	box = axes.get_position()
-	axes.set_position([box.x0, box.y0 + box.height * 0.15, box.width, box.height * 0.85])
+	axes.set_position([box.x0, box.y0 + box.height * 0.25, box.width, box.height * 0.75])
 	# Put a legend below axis
-	legend(loc='upper center', bbox_to_anchor=(0., 0., 1., -0.21), prop={'size':12}, ncol=len(keys), mode='expand', borderaxespad=0.)
+	legend(loc='upper center', bbox_to_anchor=(0., 0., 1., -0.33), prop={'size':19}, ncol=len(lexecs)-1, mode='expand', borderaxespad=0.)
 
 	# Save to pdf
 	pdf.savefig(fig)
