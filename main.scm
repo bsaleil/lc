@@ -247,6 +247,8 @@
     (println "Total size (bytes): " (+ code-bytes stub-bytes))
     ;; Global cc-table size
     (println "Global table size: " (table-length global-cc-table))
+    ;; Number of cc tables
+    (println "Number of cctables: " (table-length cctables))
     ;; CC table space (kb)
     (print "External table space: ")
     (pp-flonum (/ (* (table-length global-cc-table) 8 (table-length cctables)) 1000) 5)
