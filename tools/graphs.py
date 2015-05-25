@@ -379,7 +379,6 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	Yvals = Ys
 	
 	# Sort Y values by a given execution
-	# TODO: get the execution by command line option
 	if OPT_SORT:
 		fileList,Yvals = sortByExecution(Yvals,OPT_SORT)
 
@@ -387,8 +386,6 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	axes = gca()
 	axes.grid(True, zorder=1, color="#707070")
 	axes.set_axisbelow(True) # Keep grid under the axes
-
-	#keys = Yvals.keys()
 
 	i = 0
 
