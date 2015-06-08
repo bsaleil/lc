@@ -143,6 +143,18 @@
           "invalid operands")
   (x86-sse-op cgc "divsd" dst src #xf2 #x5e))
 
+;; TODO: movq
+
+(define (x86-cvtsi2sd cgc dst src)
+  (assert (or (and (x86-reg-xmm? dst)
+                   (x86-reg? src)
+                   (not (x86-xmm? src))
+                   (or (= (x86-reg-width src) 32) (= (x86-reg-width src) 64)))
+              (and (x86-reg-xmm? dst)
+                   (x86-mem? src)))
+          "invalid operands")
+  (x86-sse-op cgc "cvtsi2sd" dst src #xf2 #x2a))
+
 (define (x86-sse-op cgc mnemonic dst src opcode1 opcode2)
   
   (asm-8 cgc opcode1) ;; opcode

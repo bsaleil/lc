@@ -224,7 +224,7 @@
 ;(println (number? 10))
 
 
-
+(* 10 3 4)
 ;(println 2.2)
 
 
