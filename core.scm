@@ -1458,7 +1458,10 @@
 ;; Create lazy code for type test of stack slot (stack-idx)
 ;; jump to lazy-success if test succeeds
 ;; jump to lazy-fail if test fails
-(define (gen-dyn-type-test type stack-idx ctx-success lazy-success ctx-fail lazy-fail)
+(define (gen-dyn-type-test ctx type stack-idx lazy-success lazy-fail)
+
+  (let ((ctx-success (ctx-change-type ctx stack-idx type))
+        (ctx-fail ctx))
 
     (make-lazy-code
        (lambda (cgc ctx)
@@ -1550,7 +1553,7 @@
                (else (error "Unknown type" type)))
          (x86-label cgc label-jump)
          (x86-je cgc (list-ref stub-labels 0))
-         (x86-jmp cgc (list-ref stub-labels 1))))))
+         (x86-jmp cgc (list-ref stub-labels 1)))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Global cc table

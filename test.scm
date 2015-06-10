@@ -224,9 +224,19 @@
 ;(println (number? 10))
 
 
-(* 10 3 4)
+;(* 10 3 4)
 ;(println 2.2)
 
+
+
+(define (foo)
+	10)
+
+(define (run)
+	(let ((a (foo)))
+		(number? a)))
+
+(run)
 
 
 ; (define (foo a b . l)
