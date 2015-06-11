@@ -1463,54 +1463,67 @@
     (make-lazy-code
        (lambda (cgc ctx)
 
+         ;; TODO: dans mlc-test enlever cette logique car géré ici
+         ;; TODO: plus nettoyer tout ca, et le fusionner avec gen-fatal-type-test
+
          (let* ((ctx-success (ctx-change-type ctx stack-idx type))
                 (ctx-fail ctx)
-                (label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
-                (stub-labels
-                      (add-callback cgc 1
-                        (let ((prev-action #f))
+                (known-type (list-ref (ctx-stack ctx) stack-idx)))
 
-                          (lambda (ret-addr selector)
-                            (let ((stub-addr (- ret-addr 5 2))
-                                  (jump-addr (asm-label-pos label-jump)))
-                            
-                              (if opt-verbose-jit
-                                  (begin
-                                    (println ">>> selector= " selector)
-                                    (println ">>> prev-action= " prev-action)))
-                            
-                              (if (not prev-action)
-                                  
-                                  (begin (set! prev-action 'no-swap)
-                                         (if (= selector 1)
-                                          
-                                            ;; overwrite unconditional jump
-                                            (gen-version (+ jump-addr 6) lazy-fail ctx-fail)
-                                          
-                                            (if (= (+ jump-addr 6 5) code-alloc)
+           (cond ;; known == expected
+                 ((eq? known-type type)
+                    (jump-to-version cgc lazy-success ctx-success))
+                 ;; known != expected && known != unknown
+                 ((not (eq? known-type CTX_UNK))
+                    (jump-to-version cgc lazy-fail ctx-fail))
+                 ;; known == unknown
+                 (else
+                   (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
+                          (stub-labels
+                                (add-callback cgc 1
+                                  (let ((prev-action #f))
 
-                                              (begin (if opt-verbose-jit (println ">>> swapping-branches"))
-                                                     (set! prev-action 'swap)
-                                                     ;; invert jump direction
-                                                     (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
-                                                     ;; make conditional jump to stub
-                                                     (patch-jump jump-addr stub-addr)
-                                                     ;; overwrite unconditional jump
-                                                     (gen-version
-                                                     (+ jump-addr 6)
-                                                     lazy-success
-                                                     ctx-success))
+                                    (lambda (ret-addr selector)
+                                      (let ((stub-addr (- ret-addr 5 2))
+                                            (jump-addr (asm-label-pos label-jump)))
+                                      
+                                        (if opt-verbose-jit
+                                            (begin
+                                              (println ">>> selector= " selector)
+                                              (println ">>> prev-action= " prev-action)))
+                                      
+                                        (if (not prev-action)
+                                            
+                                            (begin (set! prev-action 'no-swap)
+                                                   (if (= selector 1)
+                                                    
+                                                      ;; overwrite unconditional jump
+                                                      (gen-version (+ jump-addr 6) lazy-fail ctx-fail)
+                                                    
+                                                      (if (= (+ jump-addr 6 5) code-alloc)
 
-                                              ;; make conditional jump to new version
-                                              (gen-version jump-addr lazy-success ctx-success))))
+                                                        (begin (if opt-verbose-jit (println ">>> swapping-branches"))
+                                                               (set! prev-action 'swap)
+                                                               ;; invert jump direction
+                                                               (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
+                                                               ;; make conditional jump to stub
+                                                               (patch-jump jump-addr stub-addr)
+                                                               ;; overwrite unconditional jump
+                                                               (gen-version
+                                                               (+ jump-addr 6)
+                                                               lazy-success
+                                                               ctx-success))
 
-                                  (begin ;; one branch has already been patched
-                                         ;; reclaim the stub
-                                         (release-still-vector (get-scmobj ret-addr))
-                                         (stub-reclaim stub-addr)
-                                         (if (= selector 0)
-                                            (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-success)
-                                            (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-fail))))))))))
+                                                        ;; make conditional jump to new version
+                                                        (gen-version jump-addr lazy-success ctx-success))))
+
+                                            (begin ;; one branch has already been patched
+                                                   ;; reclaim the stub
+                                                   (release-still-vector (get-scmobj ret-addr))
+                                                   (stub-reclaim stub-addr)
+                                                   (if (= selector 0)
+                                                      (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-success)
+                                                      (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-fail))))))))))
 
          (if opt-verbose-jit
              (println ">>> Gen dynamic type test at index " stack-idx))
@@ -1553,7 +1566,7 @@
                (else (error "Unknown type" type)))
          (x86-label cgc label-jump)
          (x86-je cgc (list-ref stub-labels 0))
-         (x86-jmp cgc (list-ref stub-labels 1))))))
+         (x86-jmp cgc (list-ref stub-labels 1)))))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Global cc table
