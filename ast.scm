@@ -1924,7 +1924,7 @@
 ;; Make lazy code from N-ARY OPERATOR
 ;;
 
-; (define (build-nbin-chain succ)
+; (define (build-binop succ)
 
 ;   (make-lazy-code
 ;     (lambda (cgc ctx)
@@ -1944,26 +1944,21 @@
 ;              ; (lazy-yint   (gen-dyn y INT   lazy-op   lazy-yfloat))
 ;              ; (lazy-xfloat (gen-dyn x FLOAT lazy-yint lazy-error))
 ;              ; (lazy-xint   (gen-dyn x INT   lazy-yint lazy-xfloat)))
-      
-
-;         ()
 
 ; (define (mlc-op-n ast succ op)
-   
-;    (define (make-chain opnds)
-;       (if (null? opnds)
-;          (make-lazy-code (lambda (cgc ctx)
-;                             (x86-pop cgc (x86-rax))
-;                             (gen-print-reg cgc "VAL:" (x86-rax))
-;                             (gen-error cgc "NYI final")))
-;          (let ((lazy-op
-;                   (make-lazy-code
-;                      (lambda (cgc ctx)
-;                         (x86-pop cgc (x86-rax)) ;; POP opnd
-;                         (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)) ;; +
-;                         (jump-to-version cgc (make-chain (cdr opnds)) (ctx-push (ctx-pop-nb ctx 2) CTX_NUM))))))
-;            (gen-ast (car opnds) lazy-op))))
 
+;    (define (build-chain opnds)
+;       (if (null? opnds)
+;         ;; No more opnd
+;         succ
+;         ;; at least 1 opnd left
+;         (let* ((lazy-bin-op (build-binop (build-chain (cdr opnds))))
+;                (lazy-opnd (gen-ast (car opnds) lazy-bin-op)))
+;           lazy-opnd)))
+
+;    (if (null? (cdr ast))
+;      (error "NO OPND TODO")
+;      (gen-ast (cadr ast) (build-chain (cdr ast)))))
 
 
 (define (mlc-op-n ast succ op)
@@ -2114,8 +2109,7 @@
                                              (jump-to-version cgc succ ctx-false)))))
                         
                             (jump-to-version cgc
-                                             (gen-dyn-type-test ctx
-                                                                type
+                                             (gen-dyn-type-test type
                                                                 stack-idx
                                                                 laz-succ
                                                                 laz-fail) ctx)))))))))
