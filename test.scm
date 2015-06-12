@@ -3,7 +3,6 @@
 ;;   * Enlever les deux TODO dans ast.scm au moment de la création des deux nouveaux contextes
 ;;   * MLC qui génere une erreur pour remplacer les (make-lazy-code) avec juste une erreur
 ;;   * Factoriser lazy-ret de apply et call
-;;   * Factoriser gen-fatal et den-dyn
 ;;   * Si redéfinition de globale, écraser l'ancienne ? (peut briser opti appels lib)
 ;;   * Bug gc a la lecture du tag 4 (sur compiler.scm)
 ;;   * Expand multiple corps des lambda et define en begin (fait ?)
@@ -223,6 +222,10 @@
 
 ;(println (number? 10))
 
+
+(define (foo) #f)
+
+(modulo (foo) 100)
 
 ;(define (foo) 11)
 ;(define (bar) 100)

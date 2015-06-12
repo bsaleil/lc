@@ -1382,7 +1382,7 @@
         (if (eq? (car types) '*)
            (gen-ast (car args) next-arg)
            (gen-ast (car args)
-                    (gen-fatal-type-test (car types) 0 next-arg ast))))))
+                    (gen-fatal-type-test (car types) 0 next-arg))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Conditionals
@@ -1990,6 +1990,7 @@
 
          (lazy-error (make-lazy-code (lambda (cgc ctx) (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM)))))
 
+         ;; TODO : use gen-fatal
          (lazy-yfloat (gen-dyn-type-test CTX_FLO 0 lazy-op lazy-error))
          (lazy-yint   (gen-dyn-type-test CTX_NUM 0 lazy-op lazy-yfloat))
          (lazy-xfloat (gen-dyn-type-test CTX_FLO 1 lazy-yint lazy-error))
