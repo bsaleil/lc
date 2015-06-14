@@ -222,10 +222,7 @@
 
 ;(println (number? 10))
 
-
-(define (foo) #f)
-
-(modulo (foo) 100)
+(pp (* 11.3 2.45 4.5567))
 
 ;(define (foo) 11)
 ;(define (bar) 100)

@@ -193,8 +193,6 @@
 
         (gen-allocation cgc ctx STAG_FLONUM 2)
 
-        (x86-movss cgc (x86-xmm1) (x86-xmm2))
-
         ;; Write header
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
         (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
@@ -1924,7 +1922,25 @@
 ;; Make lazy code from N-ARY OPERATOR
 ;;
 
-(define (gen-binop cgc op)
+(define (gen-binop-ff cgc op)
+
+  (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd))))))
+    (x86-pop cgc (x86-rbx)) ;; right in rbx
+    (x86-pop cgc (x86-rax)) ;; left in rax
+    (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+    (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx))))
+
+  (gen-allocation cgc #f STAG_FLONUM 2)
+  ;; Write header
+  (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 2 STAG_FLONUM)))
+  (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
+  ;; Write number
+  (x86-movsd cgc (x86-mem -8 alloc-ptr) (x86-xmm0))
+  ;; Push string
+  (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
+  (x86-push cgc (x86-rax)))
+
+(define (gen-binop-ii cgc op)
   (cond ;; +
         ((eq? op '+)
            (x86-pop cgc (x86-rax))
@@ -1969,7 +1985,7 @@
 
                   (cond ;; int + int
                         ((and (eq? ltype CTX_NUM) (eq? rtype CTX_NUM))
-                           (gen-binop cgc op)
+                           (gen-binop-ii cgc op)
                            (if (member op '(< > <= >= =))
                             (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_BOOL))
                             (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_NUM))))
@@ -1979,8 +1995,10 @@
                            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_FLO)))
                         ;; float + float
                         ((and (eq? ltype CTX_FLO) (eq? rtype CTX_FLO))
-                           (gen-error cgc "GEN FF OP")
-                           (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_FLO)))
+                           (gen-binop-ff cgc op)
+                           (if (member op '(< > <= >= =))
+                            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_BOOL))
+                            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_FLO))))
                         ;; float + int
                         ((and (eq? ltype CTX_FLO) (eq? rtype CTX_NUM))
                            (gen-error cgc "GEN FI OP")
