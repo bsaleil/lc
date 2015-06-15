@@ -1921,244 +1921,166 @@
 ;;
 ;; Make lazy code from N-ARY OPERATOR
 ;;
-
-(define (gen-binop-ff cgc op)
-
-  (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd))))))
-    (x86-pop cgc (x86-rbx)) ;; right in rbx
-    (x86-pop cgc (x86-rax)) ;; left in rax
-    (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-    (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx))))
-
-  (gen-allocation cgc #f STAG_FLONUM 2)
-  ;; Write header
-  (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 2 STAG_FLONUM)))
-  (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
-  ;; Write number
-  (x86-movsd cgc (x86-mem -8 alloc-ptr) (x86-xmm0))
-  ;; Push string
-  (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
-  (x86-push cgc (x86-rax)))
-
-(define (gen-binop-ii cgc op)
-  (cond ;; +
-        ((eq? op '+)
-           (x86-pop cgc (x86-rax))
-           (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-        ;; -
-        ((eq? op '-)
-           (x86-pop cgc (x86-rax))
-           (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-        ;; *
-        ((eq? op '*)
-           (x86-pop cgc (x86-rax))
-           (x86-sar cgc (x86-rax) (x86-imm-int 2))
-           (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-           (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-        ;; comparison
-        ((member op '(< > <= >= =))
-           (let ((label-end (asm-make-label #f (new-sym 'label-end))))
-             (x86-pop cgc (x86-rbx))
-             (x86-pop cgc (x86-rax))
-             (x86-cmp cgc (x86-rax) (x86-rbx))
-             (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-             (cond ((eq? op '<) (x86-jl cgc label-end))
-                   ((eq? op '>) (x86-jg cgc label-end))
-                   ((eq? op '<=) (x86-jle cgc label-end))
-                   ((eq? op '>=) (x86-jge cgc label-end))
-                   ((eq? op '=) (x86-je cgc label-end)))
-             (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-             (x86-label cgc label-end)
-             (x86-push cgc (x86-rax))))
-        ;; Others
-        (else (error "NYI" op))))
-
-(define (build-binop succ op)
-
-  (let* ((lazy-op
-            (make-lazy-code
-              (lambda (cgc ctx)
-                (let ((rtype (car  (ctx-stack ctx)))
-                      (ltype (cadr (ctx-stack ctx))))
-
-                ;; TODO OVERFLOWS
-
-                  (cond ;; int + int
-                        ((and (eq? ltype CTX_NUM) (eq? rtype CTX_NUM))
-                           (gen-binop-ii cgc op)
-                           (if (member op '(< > <= >= =))
-                            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_BOOL))
-                            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_NUM))))
-                        ;; int + float
-                        ((and (eq? ltype CTX_NUM) (eq? rtype CTX_FLO))
-                           (gen-error cgc "GEN IF OP")
-                           (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_FLO)))
-                        ;; float + float
-                        ((and (eq? ltype CTX_FLO) (eq? rtype CTX_FLO))
-                           (gen-binop-ff cgc op)
-                           (if (member op '(< > <= >= =))
-                            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_BOOL))
-                            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_FLO))))
-                        ;; float + int
-                        ((and (eq? ltype CTX_FLO) (eq? rtype CTX_NUM))
-                           (gen-error cgc "GEN FI OP")
-                           (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_FLO)))
-                        ;; 
-                        (else (error "Unexpected behavior")))))))
-
-         (lazy-error (make-lazy-code (lambda (cgc ctx) (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM)))))
-
-         ;; TODO : use gen-fatal
-         (lazy-yfloat (gen-dyn-type-test CTX_FLO 0 lazy-op lazy-error))
-         (lazy-yint   (gen-dyn-type-test CTX_NUM 0 lazy-op lazy-yfloat))
-         (lazy-xfloat (gen-dyn-type-test CTX_FLO 1 lazy-yint lazy-error))
-         (lazy-xint   (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat)))
-
-    lazy-xint))
-
-;; TODO: Nettoyaer les nouvelles fonctions de mlc-op-n
-;; + TODO: Séparer les mlc-* pour +-*, et <>...
-;; + TODO: afficher la bonne erreur de type au lazy-error ci-dessus
-;; + Implanter les opérateurs avec FI IF et FF
-;; + Vérifier partout les types (CTX_NUM vs CTX_FLO), ...
-
+;; TODO: vérifier cas sans opérandes, avec une seule opérande, etc...
+;; TODO: vérifier les types (CTX_NUM et CTX_FLO)
+;; TODO: tester les nombre de tests de types pour chaque combinaison
 (define (mlc-op-n ast succ op)
+  (if (member op '(< > <= >= =))
+    (mlc-op-n-cmp ast succ op)
+    (mlc-op-n-num ast succ op)))
 
+;;
+;; Make lazy code from N-ARY COMPARISON OPERATOR
+;;
+(define (mlc-op-n-cmp ast succ op)
+   
+   ;; Create final lazy object. This object clean stack and push 'res'
+   (define (get-lazy-final res)
+      (make-lazy-code
+         (lambda (cgc ctx)
+            (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (length ast) 1))))
+            (x86-push cgc (x86-imm-int (obj-encoding res)))
+            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx (- (length ast) 1))
+                                                CTX_BOOL)))))
+
+   ;; Gen false stub from jump-label & ctx ad return stub label
+   (define (get-stub-label label-jump ctx)
+      (list-ref (add-callback #f 0 (lambda (ret-addr selector)
+                                   (gen-version (asm-label-pos label-jump)
+                                                (get-lazy-final #f)
+                                                ctx)))
+                0))
+
+   ;; Build lazy code objects chain
+   (define (build-chain lidx ridx)
+      (if (or (< lidx 0) (< ridx 0))
+        ;; All operands compared
+        (get-lazy-final #t)
+        ;; There is at least 1 comparison to perform
+        (dispatch-comparison (build-chain (- lidx 1) (- ridx 1)) lidx ridx)))
+       
+   ;; Check type of operands and generate appropriate code
+   (define (dispatch-comparison succ lidx ridx)
+      (let* (;; Operator lazy code object
+             (lazy-op
+                (make-lazy-code
+                   (lambda (cgc ctx)
+                      (let ((rtype (car  (ctx-stack ctx)))
+                            (ltype (cadr (ctx-stack ctx))))
+
+                        (cond ((and (eq? ltype CTX_NUM) (eq? rtype CTX_NUM)) ;; int int
+                                 (gen-comparison-ii cgc ctx succ lidx ridx))
+                              ((and (eq? ltype CTX_NUM) (eq? rtype CTX_FLO)) ;; int float
+                                 (error "NYI"))
+                              ((and (eq? ltype CTX_FLO) (eq? rtype CTX_FLO)) ;; float float
+                                 (error "NYI"))
+                              ((and (eq? ltype CTX_FLO) (eq? rtype CTX_NUM)) ;; float int
+                                 (error "NYI"))
+                              (else (error "Unexpected behavior")))))))
+             ;; Type checkers
+             (lazy-yfloat (gen-fatal-type-test CTX_FLO 0 lazy-op))              ;; y is flo ? perform op : ERROR
+             (lazy-yint   (gen-dyn-type-test CTX_NUM 0 lazy-op lazy-yfloat))    ;; y is int ? perform op : check y is flo
+             (lazy-xfloat (gen-fatal-type-test CTX_FLO 1 lazy-yint))            ;; x is flo ? check y is int : ERROR
+             (lazy-xint   (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat))) ;; x is int ? check y is int : check x is flo
+        ;; The first lco checks if x is an integer
+        lazy-xint))
+
+   ;; Gen code to compare int and int
+   (define (gen-comparison-ii cgc ctx succ lidx ridx)
+      (let ((label-jump (asm-make-label #f (new-sym 'label-jump)))
+            (x86-op (cdr (assoc op `((< . ,x86-jge) (> . ,x86-jle) (<= . ,x86-jg) (>= . ,x86-jl) (= . ,x86-jne))))))
+         (x86-mov cgc (x86-rax) (x86-mem (* 8 lidx) (x86-rsp)))
+         (x86-cmp cgc (x86-rax) (x86-mem (* 8 ridx) (x86-rsp)))
+         (x86-label cgc label-jump)
+         (x86-op cgc (get-stub-label label-jump ctx))
+         (jump-to-version cgc succ ctx)))
+
+   ;; Push operands and start comparisons
+   (gen-ast-l (cdr ast)
+              (build-chain (- (length ast) 2)
+                           (- (length ast) 3))))
+
+;;
+;; Make lazy code from N-ARY ARITHMETIC OPERATOR
+;;
+(define (mlc-op-n-num ast succ op)
+
+   ;; Build lazy code objects chain
    (define (build-chain opnds)
       (if (null? opnds)
         ;; No more opnd
         succ
         ;; at least 1 opnd left
-        (let* ((lazy-bin-op (build-binop (build-chain (cdr opnds)) op))
+        (let* ((lazy-bin-op (dispatch-operation (build-chain (cdr opnds))))
                (lazy-opnd (gen-ast (car opnds) lazy-bin-op)))
           lazy-opnd)))
 
-   ;; TODO: use a decent implementation of <
-   (cond ((member op '(< > <= >= =))
-            (cond ;; (<) or (< x) is #t
-                  ((<= (length ast) 2) (gen-ast #t succ))
-                  ;; (< x y)
-                  ((= (length ast) 3)
-                    (gen-ast-l (cdr ast)
-                               (build-binop succ op)))
-                  ;; (< x y ...)
-                  (else
-                    (gen-ast `(if ,(list op (cadr ast) (caddr ast))
-                                 ,(cons op (cdddr ast))
-                                 #f)
-                             succ))))
-         ((and (= (length ast) 2) (eq? (car ast) '-))
-            (gen-ast (list '* -1 (cadr ast)) succ))
-         (else
-            (if (null? (cdr ast))
-               (error "NO OPND TODO")
-               (gen-ast (cadr ast) (build-chain (cddr ast)))))))
+   ;; Check type of operands and generate appropriate code
+   ;; TODO: merge with dispatch-comparison ?
+   (define (dispatch-operation succ)
 
+     (let* (;; Operator lazy code object
+            (lazy-op
+               (make-lazy-code
+                  (lambda (cgc ctx)
+                     (let ((rtype (car  (ctx-stack ctx)))
+                           (ltype (cadr (ctx-stack ctx))))
 
-; (define (mlc-op-n ast succ op)
-;   ;; TODO : Inlined primitive: check if redefined
-  
-;   (let* (;; Operands number
-;          (nb-opnd (length (cdr ast)))
-;          ;; Overflow stub
-;          (overflow-labels (add-callback #f 0 (lambda (ret-addr selector)
-;                                             (error ERR_ARR_OVERFLOW))))
-;          ;; Lazy operation
-;          (lazy-op
-;            (make-lazy-code
-;              (lambda (cgc ctx)
-              
-;                ;; NOTE: Optimization: if only 2 opnds we can write :
-;                ;;       pop rax
-;                ;;       sub [rsp+0], rax
-;                ;; -> less instructions, and no rsp update
-;                ;; Compute substraction with operands from stack
-;                (define (compute- offset nb total)
-;                  (if (= nb 0)
-;                      (x86-mov cgc (x86-mem (* 8 (- total 1)) (x86-rsp)) (x86-rax))
-;                      (begin (x86-sub cgc (x86-rax) (x86-mem offset (x86-rsp)))
-;                             (x86-jo cgc (list-ref overflow-labels 0))
-;                             (compute- (- offset 8) (- nb 1) total))))
-              
-;                ;; Compute addition with operands from stack
-;                (define (compute+ offset nb)
-;                  (if (= nb 0)
-;                    (begin (x86-add cgc (x86-mem offset (x86-rsp)) (x86-rax))
-;                           (x86-jo cgc (list-ref overflow-labels 0)))
-;                    (begin (x86-add cgc (x86-rax) (x86-mem offset (x86-rsp)))
-;                           (x86-jo cgc (list-ref overflow-labels 0))
-;                           (compute+ (+ offset 8) (- nb 1)))))
-               
-;                ;; Compute multiplication with operands from stack
-;                (define (compute* offset nb)
-;                  (if (= nb 0)
-;                    (begin (x86-sar cgc (x86-rax) (x86-imm-int 2))
-;                           (x86-imul cgc (x86-rax) (x86-mem offset (x86-rsp)))
-;                           (x86-jo cgc (list-ref overflow-labels 0))
-;                           (x86-mov cgc (x86-mem offset (x86-rsp)) (x86-rax)))                          
-;                    (begin (x86-sar cgc (x86-rax) (x86-imm-int 2))
-;                           (x86-imul cgc (x86-rax) (x86-mem offset (x86-rsp)))
-;                           (x86-jo cgc (list-ref overflow-labels 0))
-;                           (compute* (+ offset 8) (- nb 1)))))
-               
-;                ;; Compute less with operands from stack
-;                (define (compute< x86op offset nb total label-end)
-;                  (if (= nb 0)
-;                     (begin (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-;                            (x86-label cgc label-end)
-;                            (x86-mov cgc (x86-mem (* 8 total) (x86-rsp)) (x86-rax)))
-;                     (begin (x86-cmp cgc (x86-rax) (x86-mem offset (x86-rsp)))
-;                            (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-;                            (x86op cgc label-end)
-;                            (if (> nb 1)
-;                             (x86-mov cgc (x86-rax) (x86-mem offset (x86-rsp))))
-;                            (compute< x86op (+ offset 8) (- nb 1) total label-end))))
-               
-;                (cond ((eq? op '+)
-;                          (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; RAX = firsts
-;                          (compute+ 8 (- nb-opnd 2)))
-;                      ((eq? op '-)
-;                          (x86-mov cgc (x86-rax) (x86-mem (* 8 (- nb-opnd 1)) (x86-rsp))) ;; RAX = first opnd
-;                          (compute- (* 8 (- nb-opnd 2)) (- nb-opnd 1) nb-opnd))
-;                      ((eq? op '*)
-;                          (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-;                          (compute* 8 (- nb-opnd 2)))
-;                      ((member op '(< > <= >= =))
-;                          (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; RAX = last opnd
-;                          (compute< (cond ((eq? op '<) x86-jle) ;; n-th opnd must be > than (n-1)-th opnd then if false jle to end
-;                                          ((eq? op '>) x86-jge)
-;                                          ((eq? op '<=) x86-jl)
-;                                          ((eq? op '>=) x86-jg)
-;                                          ((eq? op '=) x86-jne))
-;                                    8
-;                                    (- nb-opnd 1)
-;                                    (- nb-opnd 1)
-;                                    (asm-make-label #f (new-sym 'label-<-end)))))
-               
-;                ;; Update RSP
-;                (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- nb-opnd 1))))
-;                ;; Jump to succ
-;                (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx nb-opnd) (if (member op '(< > <= >= =))
-;                                                                                CTX_BOOL
-;                                                                                CTX_NUM)))))))
-    
-;     (cond ;; No opnd, push 0 and jump to succ
-;           ((= (length (cdr ast)) 0)
-;              (cond ((eq? op '+) (gen-ast 0 succ))
-;                    ((eq? op '-) (get-lazy-error ERR_WRONG_NUM_ARGS))
-;                    ((eq? op '*) (gen-ast 1 succ))
-;                    ((member op '(< > <= >= =)) (gen-ast #t succ))))
-;           ;; 1 opnd,  push opnd, test type, and jump to succ
-;           ((= (length (cdr ast)) 1)
-;              (cond ((eq? op '+) (check-types (list CTX_NUM) (cdr ast) succ ast))
-;                    ((eq? op '-) (gen-ast (list '* -1 (cadr ast)) succ))
-;                    ((eq? op '*) (check-types (list CTX_NUM) (cdr ast) succ ast))
-;                    ((member op '(< > <= >= =)) (gen-ast #t succ))))
-;           ;; >1 opnd, build chain
-;           (else (check-types (make-list (length (cdr ast)) CTX_NUM)
-;                              (cdr ast)
-;                              lazy-op
-;                              ast)))))
+                      ;; TODO OVERFLOWS
+
+                      (cond ((and (eq? ltype CTX_NUM) (eq? rtype CTX_NUM)) ;; int int
+                               (gen-operation-ii cgc ctx succ))
+                            ((and (eq? ltype CTX_NUM) (eq? rtype CTX_FLO)) ;; int float
+                               (error "NYI"))
+                            ((and (eq? ltype CTX_FLO) (eq? rtype CTX_FLO)) ;; float float
+                               (gen-operation-ff cgc ctx succ))
+                            ((and (eq? ltype CTX_FLO) (eq? rtype CTX_NUM)) ;; float int
+                               (error "NYI"))
+                            (else (error "Unexpected behavior")))))))
+
+            ;; Type checkers
+            (lazy-yfloat (gen-fatal-type-test CTX_FLO 0 lazy-op))              ;; y is flo ? perform op : ERROR
+            (lazy-yint   (gen-dyn-type-test CTX_NUM 0 lazy-op lazy-yfloat))    ;; y is int ? perform op : check y is flo
+            (lazy-xfloat (gen-fatal-type-test CTX_FLO 1 lazy-yint))            ;; x is flo ? check y is int : ERROR
+            (lazy-xint   (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat))) ;; x is int ? check y is int : check x is flo
+        ;; The first lco checks if x is an integer
+        lazy-xint))
+
+   ;; Gen code for operation with int and int
+   (define (gen-operation-ii cgc ctx succ)
+      (x86-pop cgc (x86-rax))
+      (cond ((eq? op '+) (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+            ((eq? op '-) (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+            ((eq? op '*) (x86-sar cgc (x86-rax) (x86-imm-int 2))
+                         (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                         (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+            (else (error "NYI" op)))
+      (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_NUM)))
+
+   ;; Gen code for operation with float and float
+   (define (gen-operation-ff cgc ctx succ)
+      (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd))))))
+         (x86-pop cgc (x86-rbx)) ;; right in rbx
+         (x86-pop cgc (x86-rax)) ;; left in rax
+         (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+         (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx))))
+      ;; Alloc result flonum
+      (gen-allocation cgc #f STAG_FLONUM 2)
+      ;; Write header
+      (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 2 STAG_FLONUM)))
+      (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
+      ;; Write number
+      (x86-movsd cgc (x86-mem -8 alloc-ptr) (x86-xmm0))
+      ;; Push string
+      (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
+      (x86-push cgc (x86-rax))
+      (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_FLO)))
+
+   (if (and (= (length ast) 2) (eq? (car ast) '-))
+      (gen-ast (list '* -1 (cadr ast)) succ)
+      (if (null? (cdr ast))
+         (error "NYI")
+         (gen-ast (cadr ast) (build-chain (cddr ast))))))
 
 ;;
 ;; Make lazy code from TYPE TEST

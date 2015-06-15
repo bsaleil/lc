@@ -1339,7 +1339,9 @@
   (let ((lazy-error
            (make-lazy-code
               (lambda (cgc ctx)
-                 (gen-error cgc (ERR_TYPE_EXPECTED type))))))
+                 (if (or (eq? type CTX_FLO) (eq? type CTX_NUM))
+                   (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM))
+                   (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
     (gen-dyn-type-test type stack-idx succ lazy-error)))
 
 ;; TODO

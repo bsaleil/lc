@@ -222,8 +222,9 @@
 
 ;(println (number? 10))
 
-(pp (* 11.3 2.45 4.5567))
+(define (foo) 100)
 
+(pp (- 1))
 ;(define (foo) 11)
 ;(define (bar) 100)
 
