@@ -173,8 +173,7 @@
 ;; redéfinie. ex (define length ...) dans le programme.
 ;; Il faut donc passer à faux ces redéfinitions dans gids
 
-
-
+;; TODO: unit tests fp operations
 
 ;(pp (+ 1 (length '(1 2 3))))
 
@@ -222,9 +221,25 @@
 
 ;(println (number? 10))
 
-(define (foo) 100)
-
+(pp (+))
+;(pp (-))
+(pp (*))
+(pp (+ 1))
+(pp (+ -1))
 (pp (- 1))
+(pp (- -1))
+(pp (* 1))
+(pp (* -1))
+(pp (+ 1.3))
+(pp (+ -1.3))
+(pp (- 1.3))
+(pp (- -1.3))
+(pp (* 1.3))
+(pp (* -1.3))
+
+
+
+
 ;(define (foo) 11)
 ;(define (bar) 100)
 

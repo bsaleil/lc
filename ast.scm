@@ -190,18 +190,24 @@
   (make-lazy-code
     (lambda (cgc ctx)
       (let ((header-word (mem-header 2 STAG_FLONUM)))
-
         (gen-allocation cgc ctx STAG_FLONUM 2)
 
         ;; Write header
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
         (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
         ;; Write number
-        (x86-mov cgc (x86-rax) (x86-imm-int (ieee754 ast 'double)))
+        (if (< ast 0)
+          (let* ((ieee-rep (ieee754 (abs ast) 'double))            ;; get ieee representation of (abs ast)
+                 (64-mod   (bitwise-not (- ieee-rep 1)))           ;; pepare for two complement
+                 (64-modl  (bitwise-and (- (expt 2 63) 1) 64-mod)) ;; get only 63 lower bits
+                 (value    (* -1 64-modl)))                             ;; value is a 2 compl representation corresponding to the negative ieee representation of ast
+            (x86-mov cgc (x86-rax) (x86-imm-int value))) 
+          (x86-mov cgc (x86-rax) (x86-imm-int (ieee754 ast 'double))))
         (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
-        ;; Push string
+        ;; Push flonum
         (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
         (x86-push cgc (x86-rax))
+
         (jump-to-version cgc succ (ctx-push ctx CTX_FLO))))))
 
 ;;
@@ -2031,11 +2037,11 @@
                       (cond ((and (eq? ltype CTX_NUM) (eq? rtype CTX_NUM)) ;; int int
                                (gen-operation-ii cgc ctx succ))
                             ((and (eq? ltype CTX_NUM) (eq? rtype CTX_FLO)) ;; int float
-                               (error "NYI"))
+                               (gen-operation-ff cgc ctx succ #t #f))
                             ((and (eq? ltype CTX_FLO) (eq? rtype CTX_FLO)) ;; float float
-                               (gen-operation-ff cgc ctx succ))
+                               (gen-operation-ff cgc ctx succ #f #f))
                             ((and (eq? ltype CTX_FLO) (eq? rtype CTX_NUM)) ;; float int
-                               (error "NYI"))
+                               (gen-operation-ff cgc ctx succ #f #t))
                             (else (error "Unexpected behavior")))))))
 
             ;; Type checkers
@@ -2058,12 +2064,23 @@
       (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_NUM)))
 
    ;; Gen code for operation with float and float
-   (define (gen-operation-ff cgc ctx succ)
+   (define (gen-operation-ff cgc ctx succ leftint? rightint?)
       (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd))))))
          (x86-pop cgc (x86-rbx)) ;; right in rbx
          (x86-pop cgc (x86-rax)) ;; left in rax
-         (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-         (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx))))
+         (if leftint?
+            ;; Left is integer, the compiler converts it to double precision FP
+            (begin (x86-sar cgc (x86-rax) (x86-imm-int 2))  ;; untag integer
+                   (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
+            ;; Left is double precision FP
+            (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+         (if rightint?
+            ;; Right is integer, the compiler converts it to double precision FP
+            (begin (x86-sar cgc (x86-rbx) (x86-imm-int 2))
+                   (x86-cvtsi2sd cgc (x86-xmm1) (x86-rbx))
+                   (x86-op cgc (x86-xmm0) (x86-xmm1)))
+            ;; Right is double precision FP
+            (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))))
       ;; Alloc result flonum
       (gen-allocation cgc #f STAG_FLONUM 2)
       ;; Write header
@@ -2076,11 +2093,18 @@
       (x86-push cgc (x86-rax))
       (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_FLO)))
 
-   (if (and (= (length ast) 2) (eq? (car ast) '-))
-      (gen-ast (list '* -1 (cadr ast)) succ)
-      (if (null? (cdr ast))
-         (error "NYI")
-         (gen-ast (cadr ast) (build-chain (cddr ast))))))
+   (cond ((= (length ast) 1)
+             (cond ((eq? op '+) (gen-ast 0 succ))
+                   ((eq? op '-) (get-lazy-error ERR_WRONG_NUM_ARGS))
+                   ((eq? op '*) (gen-ast 1 succ))
+                   ((member op '(< > <= >= =)) (gen-ast #t succ))
+                   (else (error "Unknown operator " op))))
+         ((and (= (length ast) 2) (eq? op '-))
+             (gen-ast (list '* -1 (cadr ast)) succ))
+         ((and (= (length ast) 2) (member op '(< > <= >= =)))
+             (gen-ast #t succ))
+         (else
+             (gen-ast (cadr ast) (build-chain (cddr ast))))))
 
 ;;
 ;; Make lazy code from TYPE TEST
