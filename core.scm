@@ -752,8 +752,6 @@
     (x86-label cgc label-rtlib-skip)
     
     (push-regs cgc all-regs)
-
-    (x86-mov cgc (x86-rax) (x86-imm-int (* -1 (ieee754 3.2 'double))))
     
     ;; Init debug slots
     (for-each (lambda (s)
