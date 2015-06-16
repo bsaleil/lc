@@ -200,7 +200,7 @@
           (let* ((ieee-rep (ieee754 (abs ast) 'double))            ;; get ieee representation of (abs ast)
                  (64-mod   (bitwise-not (- ieee-rep 1)))           ;; pepare for two complement
                  (64-modl  (bitwise-and (- (expt 2 63) 1) 64-mod)) ;; get only 63 lower bits
-                 (value    (* -1 64-modl)))                             ;; value is a 2 compl representation corresponding to the negative ieee representation of ast
+                 (value    (* -1 64-modl)))                        ;; value is a 2 compl representation corresponding to the negative ieee representation of ast
             (x86-mov cgc (x86-rax) (x86-imm-int value))) 
           (x86-mov cgc (x86-rax) (x86-imm-int (ieee754 ast 'double))))
         (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
