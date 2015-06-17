@@ -121,6 +121,7 @@
         ((eq? stag STAG_OPORT)     (println "OUTPUT_PORT"))
         ((eq? stag STAG_SYMBOL)    (println "SYMBOL"))
         ((eq? stag STAG_CCTABLE)   (println "CCTABLE"))
+        ((eq? stag STAG_FLONUM)    (println "FLONUM"))
         (else
           (print "Unknown stag ")
           (println (number->string stag)))))
@@ -282,7 +283,7 @@
                       (let ((sc (scan-vector scan copy h s l)))
                         (scan-references (car sc) (cdr sc))))
                     ;; CC-table & String & Symbol
-                    ((or (= s STAG_CCTABLE) (= s STAG_STRING) (= s STAG_SYMBOL) (= s STAG_IPORT) (= s STAG_OPORT))
+                    ((or (= s STAG_CCTABLE) (= s STAG_STRING) (= s STAG_SYMBOL) (= s STAG_IPORT) (= s STAG_OPORT) (= s STAG_FLONUM))
                       ;; Nothing to do
                       (scan-references (+ scan (* 8 l)) copy))
                     ;; MObject
@@ -294,8 +295,8 @@
                       (let ((sc (scan-pair scan copy h s l)))
                         (scan-references (car sc) (cdr sc))))
                     ;; Unknown stag
-                    ((= s 4)
-                      (scan-references (+ scan (* 1 l)) copy))
+                    ;((= s 4)
+                    ;  (scan-references (+ scan (* 1 l)) copy))
                     (else (pp-stag s)
                           (pp header)
                           (error "Unknown stag while scanning references")))))))

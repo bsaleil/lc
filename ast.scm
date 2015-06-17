@@ -1971,17 +1971,17 @@
              (lazy-op
                 (make-lazy-code
                    (lambda (cgc ctx)
-                      (let ((rtype (car  (ctx-stack ctx)))
-                            (ltype (cadr (ctx-stack ctx))))
+                      (let ((rtype (list-ref (ctx-stack ctx) ridx))
+                            (ltype (list-ref (ctx-stack ctx) lidx)))
 
                         (cond ((and (eq? ltype CTX_NUM) (eq? rtype CTX_NUM)) ;; int int
                                  (gen-comparison-ii cgc ctx succ lidx ridx))
                               ((and (eq? ltype CTX_NUM) (eq? rtype CTX_FLO)) ;; int float
-                                 (error "NYI"))
+                                 (gen-comparison-ff cgc ctx succ lidx ridx #t #f))
                               ((and (eq? ltype CTX_FLO) (eq? rtype CTX_FLO)) ;; float float
-                                 (error "NYI"))
+                                 (gen-comparison-ff cgc ctx succ lidx ridx #f #f))
                               ((and (eq? ltype CTX_FLO) (eq? rtype CTX_NUM)) ;; float int
-                                 (error "NYI"))
+                                 (gen-comparison-ff cgc ctx succ lidx ridx #f #t))
                               (else (error "Unexpected behavior")))))))
              ;; Type checkers
              (lazy-yfloat (gen-fatal-type-test CTX_FLO 0 lazy-op))              ;; y is flo ? perform op : ERROR
@@ -1997,6 +1997,30 @@
             (x86-op (cdr (assoc op `((< . ,x86-jge) (> . ,x86-jle) (<= . ,x86-jg) (>= . ,x86-jl) (= . ,x86-jne))))))
          (x86-mov cgc (x86-rax) (x86-mem (* 8 lidx) (x86-rsp)))
          (x86-cmp cgc (x86-rax) (x86-mem (* 8 ridx) (x86-rsp)))
+         (x86-label cgc label-jump)
+         (x86-op cgc (get-stub-label label-jump ctx))
+         (jump-to-version cgc succ ctx)))
+
+   ;; Gen code to compare float and float
+   (define (gen-comparison-ff cgc ctx succ lidx ridx leftint? rightint?)
+      (let ((label-jump (asm-make-label #f (new-sym 'label-jump)))
+            ;; DO NOT USE jg* and jl* WITH FP VALUES !
+            (x86-op (cdr (assoc op `((< . ,x86-jae) (> . ,x86-jbe) (<= . ,x86-ja) (>= . ,x86-jb) (= . ,x86-jne))))))
+         (x86-mov cgc (x86-rax) (x86-mem (* 8 lidx) (x86-rsp)))
+         (x86-mov cgc (x86-rbx) (x86-mem (* 8 ridx) (x86-rsp)))
+         (if leftint?
+            ;; Left is integer, the compiler converts it to double precision FP
+            (begin (x86-sar cgc (x86-rax) (x86-imm-int 2))  ;; untag integer
+                   (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
+            ;; Left is double precision FP
+            (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+         (if rightint?
+            ;; Right is integer, the compiler converts it to double precision FP
+            (begin (x86-sar cgc (x86-rbx) (x86-imm-int 2))
+                   (x86-cvtsi2sd cgc (x86-xmm1) (x86-rbx))
+                   (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
+            ;; Right is double precision FP
+            (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx))))
          (x86-label cgc label-jump)
          (x86-op cgc (get-stub-label label-jump ctx))
          (jump-to-version cgc succ ctx)))
