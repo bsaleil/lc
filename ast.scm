@@ -833,8 +833,27 @@
              
              ;; Create values on stack (initial value is #f)
              (call-n (length ids) x86-push cgc (x86-imm-int (obj-encoding #f)))
-             (let ((mctx (gen-mutable cgc nctx ids)))
-              (jump-to-version cgc lazy-values mctx)))))))
+
+             ;; All ids are considered mutable except those that are both
+             ;; non-mutable AND lambda expr. This allows the compiler to keep
+             ;; the type of non mutable lambdas which represents a large part
+             ;; of letrec uses.
+             (let* ((mvars (mutable-vars ast ids))
+                    (stack-types
+                      (foldr (lambda (el r)
+                               (if (and (pair? (cadr el))
+                                        (eq? (caadr el) 'lambda)
+                                        (not (member (car el) mvars)))
+                                 (cons CTX_CLO r)    ;; Non mutable and lambda, kee the type
+                                 (cons CTX_MOBJ r)))
+                             '()
+                             (cadr ast)))
+                    (mctx (gen-mutable cgc nctx ids))
+                    (zctx (make-ctx (append (reverse stack-types) (list-tail (ctx-stack mctx) (length stack-types)))
+                                    (ctx-env mctx)
+                                    (ctx-nb-args mctx))))
+
+              (jump-to-version cgc lazy-values zctx)))))))
 
 ;; Mov values to their locations (letrec bind)
 (define (gen-letrec-binds cgc ctx all-ids)
