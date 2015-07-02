@@ -21,7 +21,7 @@ Options:
 		Add execution with given compiler options. All given executions are drawn
 
 Example:
-	
+
 	graphs.py --exec="Standard exec;" --exec="With all tests;--all-tests" --drawall
 		Draw all graphs for both executions (Standard, and with all-tests option).
 
@@ -48,7 +48,7 @@ BENCH_PATH  = LC_PATH + 'benchmarks/*.scm'                      # Benchmarks pat
 BAR_COLORS = ["#222222", "#666666", "#AAAAAA", "#EEEEEE"] # Paper sw15
 
 # Parser constants, must match compiler --stats output
-CSV_INDICATOR  = '--' 
+CSV_INDICATOR  = '--'
 STAT_SEPARATOR = ':'
 CSV_SEPARATOR  = ';'
 
@@ -126,7 +126,7 @@ def go():
 
 		# 2 - Draw all graphs
 		drawGraphs(keys,benchs_data)
-		print('Done!')	
+		print('Done!')
 
 # Run compiler with 'opts', parse output and return keys and data
 def runparse(opts):
@@ -147,7 +147,7 @@ def runparse(opts):
 		output = subprocess.check_output(options).decode("utf-8")
 
 		bench_data = parseOutput(output)
-		
+
 		data[file_name] = bench_data
 
 		# Get keys on first result
@@ -344,7 +344,7 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 		# Transforme en tableau numpy
 		Y = np.array(Y)
 		Ys[d] = Y
-	
+
 	width = 1 / (len(Ys)+1)
 
 	#----------
@@ -352,6 +352,11 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	# Use a reference execution. All values for this exec are 100%
 	# Values for others executions are computed from this reference exec
 	if OPT_REF:
+		# Add % symbol to y values
+		to_percent = lambda y, pos : str(int(y)) + '%'
+		formatter = FuncFormatter(to_percent)
+		plt.gca().yaxis.set_major_formatter(formatter)
+
 		exec_ref = OPT_REF # Reference execution (100%)
 		Y2 = deepcopy(Ys)      # Deep copy of Y values
 		# Set all references to 100
@@ -377,7 +382,7 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 
 	fileList = files
 	Yvals = Ys
-	
+
 	# Sort Y values by a given execution
 	if OPT_SORT:
 		fileList,Yvals = sortByExecution(Yvals,OPT_SORT)
