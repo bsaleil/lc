@@ -13,6 +13,18 @@
           (make-lazy-code
             (lambda (cgc ctx)
               (x86-pop cgc (x86-rax))
+
+              ;; Set time slot with total time if opt-time is #t
+              (if opt-time
+                 (begin
+                    (x86-mov   cgc (x86-rbx) (x86-imm-int (+ block-addr (* 9 8)))) ;; Get slot addr in rbx
+                    (x86-mov cgc (x86-rcx) (x86-mem 0 (x86-rbx))) ;; rcx = before
+                    (x86-rdtsc cgc)
+                    (x86-shl   cgc (x86-rdx) (x86-imm-int 32))
+                    (x86-or    cgc (x86-rax) (x86-rdx))               ;; rax = after
+                    (x86-sub cgc (x86-rax) (x86-rcx))
+                    (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-rax))))
+
               (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
               (pop-regs-reverse cgc all-regs)
               (x86-ret cgc))))
@@ -68,30 +80,33 @@
 ;; Bash mode
 
 (define (exec lib prog)
-  
+
   (init)
-  
+
   (let* ((lazy-prog (lazy-exprs prog #f))
          (lazy-lib  (lazy-exprs lib  lazy-prog)))
-    
+
      (gen-version code-alloc
                   lazy-lib
                   (make-ctx '() '() -1)))
-  
-  ;(time (##machine-code-block-exec mcb))
-  ;(time (##machine-code-block-exec mcb)))
-  (##machine-code-block-exec mcb))
+
+  ;(##machine-code-block-exec mcb)
+  ;(if opt-time
+  ;   (print-time))
+  (##machine-code-block-exec mcb)
+  (if opt-time
+      (print-time)))
 
 ;;-----------------------------------------------------------------------------
 ;; Main
 (define (main . args)
-    
+
   ;; Get library
   ;(define lib '())
   (define lib (expand-tl (read-all (open-input-file "./lib.scm"))))
   ;; Get options and files from cl args
   (define files (parse-cl-args args))
-  
+
     (cond ;; If no files specified then start REPL
           ((null? files)
             (repl lib))
@@ -111,7 +126,7 @@
                                   (else (error "NYI"))))
                         ((pair? (cadr g)) CTX_CLO)
                         (else (error "NYI"))))
-                  
+
                 ;; TODO
                 (define (get-gids lib base)
                   (if (null? lib)
@@ -122,10 +137,10 @@
                              (cons (cons (caadr el) (get-global-type el)) (get-gids (cdr lib) base))
                              (cons (cons (cadr el)  (get-global-type el)) (get-gids (cdr lib) base)))
                           (get-gids (cdr lib) base)))))
-                
+
                 (set! gids (get-gids lib '()))
                 (set! gids (get-gids content gids))
-                
+
                 (let ((exp-content (expand-tl content)))
                    ;(pp file-content)))
                    (exec lib exp-content))))
@@ -195,7 +210,7 @@
 
 ;; Parser
 (define (parse-cl-args args)
-  
+
   (define (parse-cl-args-h args files)
     (cond ;; No args, return list of files
           ((null? args)
@@ -216,14 +231,18 @@
                                    (set! opt-entry-points #f))
                 (("--max-versions")(set! opt-max-versions (string->number (cadr args)))
                                    (set! args (cdr args)))
-                (("--stats")       (set! opt-stats #t))
+                (("--stats")       (assert (not opt-time) "--stats option can't be used with --time")
+                                   (set! opt-stats #t))
+                (("--time")        (assert (not opt-stats)       "--time option can't be used with --stats")
+                                   (assert (not opt-count-calls) "--time option can't be used with --count-calls")
+                                   (set! opt-time #t))
                 (("--count-calls") (set! opt-count-calls (string->symbol (cadr args)))
                                    (set! args (cdr args))) ;; Remove one more arg
                 (else (error "Unknown option" first)))
               (parse-cl-args-h (cdr args) files)))))
-  
+
   (parse-cl-args-h args '()))
-    
+
 (define (rt-print-opts)
   (if opt-count-calls
     (println "Calls '" opt-count-calls "': " (get-slot 'calls)))
@@ -234,6 +253,12 @@
 (define (print-opts)
   (if opt-stats
      (print-stats)))
+
+(define (print-time)
+    (let* ((cycles (get-i64 (+ block-addr (* 8 9))))
+           (secs     (exact->inexact (/ cycles 2600000000))))
+      (println "Time(cycles): " cycles)
+      (println "Time(seconds,2.6GHz): " secs)))
 
 (define (print-stats)
   ;; Print stats report
