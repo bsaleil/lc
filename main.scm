@@ -90,9 +90,9 @@
                   lazy-lib
                   (make-ctx '() '() -1)))
 
-  ;(##machine-code-block-exec mcb)
-  ;(if opt-time
-  ;   (print-time))
+  (##machine-code-block-exec mcb)
+  (if opt-time
+     (print-time))
   (##machine-code-block-exec mcb)
   (if opt-time
       (print-time)))
