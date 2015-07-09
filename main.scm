@@ -92,10 +92,10 @@
 
   (##machine-code-block-exec mcb)
   (if opt-time
-     (print-time))
-  (##machine-code-block-exec mcb)
-  (if opt-time
-      (print-time)))
+     (print-time)))
+  ;(##machine-code-block-exec mcb)
+  ;(if opt-time
+    ;  (print-time)))
 
 ;;-----------------------------------------------------------------------------
 ;; Main
