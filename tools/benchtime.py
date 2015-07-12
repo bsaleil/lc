@@ -100,12 +100,13 @@ def getExecTime(bench,opts):
 #----------------------------------------------------------------------------------------------------
 # Draw graph with exec times in cycles
 
-def drawGraph(times):
+def drawGraph(times,sortedKeys):
 
 	# Open pdf output file
 	pdf = PdfPages(PDF_OUTPUT)
 
 	fig = plt.figure("TIMES",figsize=(22,7))
+	plt.title('Exec ' + str(DRAW_EXEC))
 
 	xvalsA = [] # Left bar
 	xvalsB = [] # Right bar
@@ -113,7 +114,7 @@ def drawGraph(times):
 	yvalsB = [] # Times with versioning and multiple entry points
 	keys   = [] # Benchmark names
 
-	names = times.keys()
+	names = sortedKeys;
 	i = 0;
 	for name in names:
 	    keys.append(name);
@@ -123,14 +124,19 @@ def drawGraph(times):
 	    yvalsA.append(times[name][1]);
 	    yvalsB.append(times[name][2]);
 
-	plt.bar(xvalsA, yvalsA, 1, facecolor="#444444", edgecolor='none')
-	plt.bar(xvalsB, yvalsB, 1, facecolor="#BBBBBB", edgecolor='none')
+	plt.bar(xvalsA, yvalsA, 1, facecolor="#666666", edgecolor='none',label='Versioning')
+	plt.bar(xvalsB, yvalsB, 1, facecolor="#BBBBBB", edgecolor='none',label='Interprocedural versioning')
 
 	axes = plt.gca()
 	axes.get_xaxis().set_visible(False)
 
 	for i in range(0,len(keys)):
 	    plt.text(xvalsA[i]+1,-0.01,keys[i],ha='center',va='top',rotation=90,size=18)
+
+	# Draw legend
+	box = axes.get_position()
+	axes.set_position([box.x0, box.y0 + box.height * 0.25, box.width, box.height * 0.75])
+	plt.legend(loc='upper center', bbox_to_anchor=(0., 0., 1., -0.33), prop={'size':19}, ncol=2, mode='expand', borderaxespad=0.)
 
 	#plt.ylim(0,2);
 	#plt.show()
@@ -168,6 +174,11 @@ def getAllTimes():
 #----------------------------------------------------------------------------------------------------
 # Main
 
+def sort_key(el):
+	return times[el][DRAW_EXEC];
+
 times = getAllTimes();
-drawGraph(times);
+sortedKeys = sorted(times, key = sort_key);
+drawGraph(times,sortedKeys);
+
 print('DONE!')
