@@ -68,16 +68,16 @@
 ;; Bash mode
 
 (define (exec lib prog)
-  
+
   (init)
-  
+
   (let* ((lazy-prog (lazy-exprs prog #f))
          (lazy-lib  (lazy-exprs lib  lazy-prog)))
-    
+
      (gen-version code-alloc
                   lazy-lib
                   (make-ctx '() '() -1)))
-  
+
   ;(time (##machine-code-block-exec mcb))
   ;(time (##machine-code-block-exec mcb)))
   (##machine-code-block-exec mcb))
@@ -85,13 +85,13 @@
 ;;-----------------------------------------------------------------------------
 ;; Main
 (define (main . args)
-    
+
   ;; Get library
   ;(define lib '())
   (define lib (expand-tl (read-all (open-input-file "./lib.scm"))))
   ;; Get options and files from cl args
   (define files (parse-cl-args args))
-  
+
     (cond ;; If no files specified then start REPL
           ((null? files)
             (repl lib))
@@ -111,7 +111,7 @@
                                   (else (error "NYI"))))
                         ((pair? (cadr g)) CTX_CLO)
                         (else (error "NYI"))))
-                  
+
                 ;; TODO
                 (define (get-gids lib base)
                   (if (null? lib)
@@ -122,10 +122,10 @@
                              (cons (cons (caadr el) (get-global-type el)) (get-gids (cdr lib) base))
                              (cons (cons (cadr el)  (get-global-type el)) (get-gids (cdr lib) base)))
                           (get-gids (cdr lib) base)))))
-                
+
                 (set! gids (get-gids lib '()))
                 (set! gids (get-gids content gids))
-                
+
                 (let ((exp-content (expand-tl content)))
                    ;(pp file-content)))
                    (exec lib exp-content))))
@@ -195,7 +195,7 @@
 
 ;; Parser
 (define (parse-cl-args args)
-  
+
   (define (parse-cl-args-h args files)
     (cond ;; No args, return list of files
           ((null? args)
@@ -221,9 +221,9 @@
                                    (set! args (cdr args))) ;; Remove one more arg
                 (else (error "Unknown option" first)))
               (parse-cl-args-h (cdr args) files)))))
-  
+
   (parse-cl-args-h args '()))
-    
+
 (define (rt-print-opts)
   (if opt-count-calls
     (println "Calls '" opt-count-calls "': " (get-slot 'calls)))
