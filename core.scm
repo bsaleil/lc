@@ -557,12 +557,9 @@
 ;; Machine code block management
 
 ;; HEAP
-;(define heap-len 400000000)
-(define heap-len  500000000)
-(define heap-addr  #f)
 (define from-space #f)
 (define to-space   #f)
-(define space-len (quotient heap-len 2))
+(define space-len 100000000) ;; 10mo
 (define alloc-ptr (x86-r12))
 
 ;; CODE
@@ -578,16 +575,17 @@
 ;; +--------------------+--------------------+
 
 (define mcb #f)
-(define mcb-len (+ heap-len code-len))
+(define mcb-len code-len) ;; TODO useless
 (define mcb-addr #f)
 
 (define (init-mcb)
   (set! mcb (##make-machine-code-block mcb-len))
   (set! mcb-addr (##foreign-address mcb))
   (set! code-addr mcb-addr)
-  (set! heap-addr (+ mcb-addr code-len))
-  (set! from-space heap-addr)
-  (set! to-space (+ from-space space-len)))
+  (let ((tspace (##make-machine-code-block space-len))
+        (fspace (##make-machine-code-block space-len)))
+    (set! to-space   (##foreign-address tspace))
+    (set! from-space (##foreign-address fspace))))
 
 ;; BLOCK :
 ;; 0          8                       (nb-globals * 8 + 8)
@@ -598,10 +596,10 @@
 ;; +----------+----------+----------+----------+
 
 (define block #f)
-(define global-offset 10) ;; [Stack addr], [def-out-port-header|def-out-port-fd], [def-in-port-header|def-in-port-fd] + n empty slot (used for debug)
+(define global-offset 15) ;; [Stack addr], [def-out-port-header|def-out-port-fd], [def-in-port-header|def-in-port-fd], [heaplimit] + n empty slot (used for debug)
 (define block-len (* 8 (+ global-offset 10000))) ;; 1 stack addr, 1000 globals
 (define block-addr #f)
-(define debug-slots '((calls . 5) (tests . 6) (extests . 7) (closures . 8) (time . 9) (other . 10)))
+(define debug-slots '((calls . 6) (tests . 7) (extests . 8) (closures . 9) (time . 10) (other . 11)))
 
 (define (init-block)
   (set! block (##make-machine-code-block block-len))
@@ -773,7 +771,7 @@
     (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rsp))
 
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-    (x86-mov cgc alloc-ptr  (x86-imm-int heap-addr))       ;; Heap addr in alloc-ptr
+    (x86-mov cgc alloc-ptr  (x86-imm-int from-space))       ;; Heap addr in alloc-ptr
     (x86-mov cgc (x86-r10) (x86-imm-int (+ block-addr (* 8 global-offset)))) ;; Globals addr in r10
 
     ))
@@ -1341,14 +1339,22 @@
 (define (jump-size jump-addr)
   (if (= (get-u8 jump-addr) #x0f) 6 5))
 
-;; Gen FATAL dynamic type test
-;; FATAL means that if type test fails, then it stops execution
+;; TODO: use gen-fatal instead of gen-dyn in ast.scm when needed
+;; Gen fatal dynamic type test
+;; fatal means that if type test fails, it stops execution
 ;; Check type 'type' for stack slot at 'stack-idx' and jump to 'succ' if succeess
-(define (gen-fatal-type-test type stack-idx succ ast)
+(define (gen-fatal-type-test type stack-idx succ)
+  (let ((lazy-error
+           (make-lazy-code
+              (lambda (cgc ctx)
+                 (if (or (eq? type CTX_FLO) (eq? type CTX_NUM))
+                   (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM))
+                   (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
+    (gen-dyn-type-test type stack-idx succ lazy-error)))
 
-    (make-lazy-code
-       (lambda (cgc ctx)
-
+;; TODO
+;; Create lazy code for type test of stack slot (stack-idx)
+         
          (let (;; Lazy type error
                (lazy-fail
                  (make-lazy-code
@@ -1356,21 +1362,21 @@
                      (gen-error cgc (ERR_TYPE_EXPECTED type)))))
                ;; Current information on type
                (known-type (list-ref (ctx-stack ctx) stack-idx)))
+         ;; TODO: plus nettoyer tout ca
 
-           ;; If 'all-tests' option enabled, then remove type information
-           (if opt-all-tests
-              (set! known-type CTX_UNK))
+         (let* ((ctx-success (ctx-change-type ctx stack-idx type))
+                (ctx-fail ctx)
+                (known-type (list-ref (ctx-stack ctx) stack-idx)))
 
-           (cond ;; Known type is the expected type
-                 ((eq? known-type type)          (jump-to-version cgc succ ctx))
-                 ;; Known type is not the expected type and not unknown then type error
-                 ((not (eq? known-type CTX_UNK)) (jump-to-version cgc lazy-fail ctx))
-                 ;; Known type is unknown
+           (cond ;; known == expected
+                 ((eq? known-type type)
+                    (jump-to-version cgc lazy-success ctx-success))
+                 ;; known != expected && known != unknown
+                 ((not (eq? known-type CTX_UNK))
+                    (jump-to-version cgc lazy-fail ctx-fail))
+                 ;; known == unknown
                  (else
-                   (let* ((nctx (ctx-change-type ctx stack-idx type))
-                          (ctx-succ (make-ctx (ctx-stack nctx) (ctx-env nctx) (ctx-nb-args nctx)))
-
-                          (label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
+                   (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
                           (stub-labels
                                 (add-callback cgc 1
                                   (let ((prev-action #f))
@@ -1390,7 +1396,7 @@
                                                    (if (= selector 1)
 
                                                       ;; overwrite unconditional jump
-                                                      (gen-version (+ jump-addr 6) lazy-fail ctx)
+                                                      (gen-version (+ jump-addr 6) lazy-fail ctx-fail)
 
                                                       (if (= (+ jump-addr 6 5) code-alloc)
 
@@ -1403,11 +1409,11 @@
                                                                ;; overwrite unconditional jump
                                                                (gen-version
                                                                (+ jump-addr 6)
-                                                               succ
-                                                               ctx-succ))
+                                                               lazy-success
+                                                               ctx-success))
 
                                                         ;; make conditional jump to new version
-                                                        (gen-version jump-addr succ ctx-succ))))
+                                                        (gen-version jump-addr lazy-success ctx-success))))
 
                                             (begin ;; one branch has already been patched
                                                    ;; reclaim the stub

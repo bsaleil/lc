@@ -3,7 +3,6 @@
 ;;   * Enlever les deux TODO dans ast.scm au moment de la création des deux nouveaux contextes
 ;;   * MLC qui génere une erreur pour remplacer les (make-lazy-code) avec juste une erreur
 ;;   * Factoriser lazy-ret de apply et call
-;;   * Factoriser gen-fatal et den-dyn
 ;;   * Si redéfinition de globale, écraser l'ancienne ? (peut briser opti appels lib)
 ;;   * Bug gc a la lecture du tag 4 (sur compiler.scm)
 ;;   * Expand multiple corps des lambda et define en begin (fait ?)
@@ -174,8 +173,7 @@
 ;; redéfinie. ex (define length ...) dans le programme.
 ;; Il faut donc passer à faux ces redéfinitions dans gids
 
-
-
+;; TODO: unit tests fp operations (se baser sur le test comparison.scm)
 
 ;(pp (+ 1 (length '(1 2 3))))
 
@@ -223,11 +221,12 @@
 
 ;(println (number? 10))
 
+(pp (> 1.1 10.4))
 
+;(define (foo) 11)
+;(define (bar) 100)
 
 ;(println 2.2)
-
-
 
 ; (define (foo a b . l)
 ; 	(pp a)

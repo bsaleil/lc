@@ -143,9 +143,43 @@
           "invalid operands")
   (x86-sse-op cgc "divsd" dst src #xf2 #x5e))
 
+;; From intel manual: The COMISD instruction differs from the UCOMISD instruction in that
+;; it signals a SIMD floating-point invalid operation exception (#I) when a source operand
+;; is either a QNaN or SNaN.
+(define (x86-comisd cgc dst src)
+  (assert (or (and (x86-reg-xmm? dst) (x86-reg-xmm? src))
+              (and (x86-reg-xmm? dst) (x86-mem? src)))
+          "invalid operands")
+  (x86-sse-op cgc "comisd" dst src #x66 #x2f))
+
+(define (x86-comiss cgc dst src)
+  (assert (or (and (x86-reg-xmm? dst) (x86-reg-xmm? src))
+              (and (x86-reg-xmm? dst) (x86-mem? src)))
+          "invalid operands")
+  (x86-sse-op cgc "comiss" dst src #f #x2f))
+
+(define (x86-movd/movq cgc dst src)
+  (assert (or (and (x86-reg-xmm? dst) (or (x86-reg? src) (x86-mem? src)))
+              (and (x86-reg-xmm? src) (or (x86-reg? dst) (x86-mem? dst))))
+          "invalid operands")
+  (if (x86-reg-xmm? src)
+    (x86-sse-op cgc "test1" src dst #x66 #x7e)
+    (x86-sse-op cgc "test2" dst src #x66 #x6e)))
+
+(define (x86-cvtsi2sd cgc dst src)
+  (assert (or (and (x86-reg-xmm? dst)
+                   (x86-reg? src)
+                   (not (x86-xmm? src))
+                   (or (= (x86-reg-width src) 32) (= (x86-reg-width src) 64)))
+              (and (x86-reg-xmm? dst)
+                   (x86-mem? src)))
+          "invalid operands")
+  (x86-sse-op cgc "cvtsi2sd" dst src #xf2 #x2a))
+
 (define (x86-sse-op cgc mnemonic dst src opcode1 opcode2)
   
-  (asm-8 cgc opcode1) ;; opcode
+  (if opcode1
+    (asm-8 cgc opcode1)) ;; opcode
 
   (if (x86-reg? dst)
       

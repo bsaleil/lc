@@ -44,43 +44,47 @@
 
 ;; Allocate length(imm) bytes in heap
 ;; DESTROY RAX !!
+;; DESTROY R15 !!
 (define (gen-alloc-imm cgc stag length)
-  (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok))))
-    ;; Remaining space in RAX
-    (x86-mov cgc (x86-rax) (x86-imm-int (+ from-space space-len)))
-    (x86-sub cgc (x86-rax) alloc-ptr)
-    
-      (x86-cmp cgc (x86-rax) (x86-imm-int (* length 8)))
-   	  (x86-jge  cgc label-alloc-ok)
-      ;; Allocation size in rax used by GC
-      (x86-mov cgc (x86-rax) (x86-imm-int (* length 8)))
-      (gen-gc-call cgc)
-      
-    (x86-label cgc label-alloc-ok)
-    ;; Update alloc-ptr
-    (x86-add cgc alloc-ptr (x86-imm-int (* length 8)))))
+
+    (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok))))
+
+        (x86-lea cgc (x86-rax) (x86-mem (* length 8) alloc-ptr)) ;; RAX = alloc-ptr + N
+        (x86-mov cgc (x86-r15) (x86-imm-int block-addr)) ;; R15 = block-addr TODO: use reg ?
+        (x86-cmp cgc (x86-rax) (x86-mem (* 5 8) (x86-r15))) ;; TODO: remove cst slots
+        (x86-jl cgc label-alloc-ok)
+
+            (x86-mov cgc (x86-rax) (x86-imm-int (* length 8)))
+            (gen-gc-call cgc)
+
+        (x86-label cgc label-alloc-ok)
+        (x86-add cgc alloc-ptr (x86-imm-int (* length 8)))))
 
 ;; Allocate RAX(reg) + length(imm) bytes in heap
 ;; DESTROY RAX !!
 ;; DESTROY R15 !!
+;; TODO: MERGE gen-alloc-imm and gen-alloc-regimm
 (define (gen-alloc-regimm cgc stag length)
-  (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok))))
-    
-    ;; Remaining space in RAX
-    (x86-mov cgc (x86-r15) (x86-imm-int (+ from-space space-len)))
-    (x86-sub cgc (x86-r15) alloc-ptr)
-    
-    (x86-shl cgc (x86-rax) (x86-imm-int 1))
-    (if (> length 0)
-      (x86-add cgc (x86-rax) (x86-imm-int (* 8 length))))
-    
-    (x86-cmp cgc (x86-r15) (x86-rax))
-    (x86-jge cgc label-alloc-ok)
-    ;; Allocation size is in RAX (used by GC)
-    (gen-gc-call cgc)
-      
-    (x86-label cgc label-alloc-ok)
-    (x86-add cgc alloc-ptr (x86-rax))))
+
+    (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok))))
+
+        (x86-shl cgc (x86-rax) (x86-imm-int 1))
+        (x86-add cgc (x86-rax) (x86-imm-int (* 8 length)))
+        (x86-push cgc (x86-rax)) ;; PUSH total alloc
+
+        (x86-lea cgc (x86-rax) (x86-mem (x86-rax) alloc-ptr)) ;; RAX = alloc + N
+        (x86-mov cgc (x86-r15) (x86-imm-int block-addr))
+        (x86-mov cgc (x86-r15) (x86-mem (* 5 8) (x86-r15))) ;; R15 = limit
+
+        (x86-cmp cgc (x86-rax) (x86-r15))
+        (x86-jl cgc label-alloc-ok)
+
+            (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+            (gen-gc-call cgc)
+
+        (x86-label cgc label-alloc-ok)
+        (x86-pop cgc (x86-rax))
+        (x86-add cgc alloc-ptr (x86-rax))))
 
 ;; Generate an heap object header
 ;; NOTE : 'life' is fixed as 6 for now.
@@ -121,6 +125,7 @@
         ((eq? stag STAG_OPORT)     (println "OUTPUT_PORT"))
         ((eq? stag STAG_SYMBOL)    (println "SYMBOL"))
         ((eq? stag STAG_CCTABLE)   (println "CCTABLE"))
+        ((eq? stag STAG_FLONUM)    (println "FLONUM"))
         (else
           (print "Unknown stag ")
           (println (number->string stag)))))
@@ -176,16 +181,16 @@
 ;; If it's not a root do nothing
 ;; Return new position of copy-ptr
 (define (copy-root slot-addr current-copy-ptr)
-    
+
    (let* ((value (get-i64 slot-addr))
           (tag (get-tag value)))
-     
+
      (if (= tag TAG_MEMOBJ)
          (let* (;; Object address in heap
                 (obj-addr (- value tag))
                 ;; Object header
                 (header-qword (get-i64 obj-addr)))
-           
+
            (cond ;; If it is a special object (in block) do nothing
                  ((is-special-object obj-addr) #t)
                  ;; Header is BH
@@ -204,7 +209,7 @@
                           (length (caddr header))
                           ;;
                           (c (copy-bytes obj-addr current-copy-ptr length)))
-                      
+
                        ;; Write BH
                        (put-i64 obj-addr BROKEN-HEART)
                        ;; Write new position (tagged)
@@ -223,14 +228,14 @@
 ;; send:   Last stack address to scan
 ;; current-copy-ptr: current position of copy-ptr in to-space
 (define (copy-stack-roots sbegin send current-copy-ptr)
-  
+
   (if (< sbegin send)
       ;; All roots are copied then return new position of copy-ptr
       current-copy-ptr
       ;; Else get first stack value and copy
       (let (;; Copy slot if it's a heap obj
             (c (copy-root sbegin current-copy-ptr)))
-          ;; Continue with next globals    
+          ;; Continue with next globals
           (copy-stack-roots (- sbegin 8) send c))))
 
 ;;---------------
@@ -249,8 +254,8 @@
              (global-addr (+ (* 8 global-offset) (* 8 (cdr global)) block-addr))
              ;; Copy global if it's a heap obj
              (c (copy-root global-addr current-copy-ptr)))
-        
-          ;; Continue with next globals    
+
+          ;; Continue with next globals
           (copy-global-roots (cdr globals) c))))
 
 ;;---------------
@@ -272,7 +277,7 @@
                    (h (car header))
                    (s (cadr header))
                    (l (caddr header)))
-              
+
               (cond ;; Procedure
                     ((= s STAG_PROCEDURE)
                       (let ((sc (scan-procedure scan copy h s l)))
@@ -282,7 +287,7 @@
                       (let ((sc (scan-vector scan copy h s l)))
                         (scan-references (car sc) (cdr sc))))
                     ;; CC-table & String & Symbol
-                    ((or (= s STAG_CCTABLE) (= s STAG_STRING) (= s STAG_SYMBOL) (= s STAG_IPORT) (= s STAG_OPORT))
+                    ((or (= s STAG_CCTABLE) (= s STAG_STRING) (= s STAG_SYMBOL) (= s STAG_IPORT) (= s STAG_OPORT) (= s STAG_FLONUM))
                       ;; Nothing to do
                       (scan-references (+ scan (* 8 l)) copy))
                     ;; MObject
@@ -294,8 +299,8 @@
                       (let ((sc (scan-pair scan copy h s l)))
                         (scan-references (car sc) (cdr sc))))
                     ;; Unknown stag
-                    ((= s 4)
-                      (scan-references (+ scan (* 1 l)) copy))
+                    ;((= s 4)
+                    ;  (scan-references (+ scan (* 1 l)) copy))
                     (else (pp-stag s)
                           (pp header)
                           (error "Unknown stag while scanning references")))))))
@@ -307,7 +312,7 @@
 (define (scan-field addr copy)
   (let* ((qword (get-i64 addr))   ;; Get field value
          (tag   (get-tag qword))) ;; Get field tag
-    
+
     (cond ;; Number & Special
           ;; Nothing to do
           ((or (= tag TAG_NUMBER)
@@ -345,7 +350,7 @@
 ;; Return new scan/copy-ptr position
 (define (scan-procedure scan copy head stag length)
   ;; Scan free vars
-  (let ((c (scan-freevars (+ scan 16) (- length 2) copy)))
+  (let ((c (scan-freevars (+ scan 24) (- length 3) copy)))
     (cons ;; New scan position
           (+ scan (* 8 length))
           ;; New copy position
@@ -384,21 +389,21 @@
 ;; copy stack roots, copy global roots, scan objects, update pointers
 ;; Returns the new position of alloc-ptr
 
-(define (run-gc sp alloc-size)        
-  
+(define (run-gc sp alloc-size)
+
   (define scan-ptr to-space)
   (define copy-ptr to-space)
   (define stack-begin (- (get-i64 block-addr) 8))
   (define stack-end   (+ sp (* 8 (length c-caller-save-regs))))
 
   (log-gc "GC BEGIN")
-  
+
   ;; 1 - Copy roots from stack
   (log-gc "--------------")
   (log-gc "-- STACK ROOTS")
   (log-gc "--------------")
   (set! copy-ptr (copy-stack-roots stack-begin stack-end copy-ptr))
-  
+
   ;; 2 - Copy roots from globals
   (log-gc "---------------")
   (log-gc "-- GLOBAL ROOTS")
@@ -409,18 +414,21 @@
   (log-gc "-- REFERENCES ")
   (log-gc "--------------")
   (set! copy-ptr (scan-references scan-ptr copy-ptr))
-  
+
   ;; Check if there is enough memory for alloc request
   (if (>= (+ copy-ptr alloc-size) (+ to-space space-len))
     (out-of-memory))
-    
+
   ;; Update from/to-spaces positions
   (let ((tmp from-space))
     (set! from-space to-space)
     (set! to-space tmp))
-  
+
+  ;; Update heaplimit
+  (put-i64 (+ (* 8 5) block-addr) (+ from-space space-len))
+
   (log-gc "GC END")
-  
+
   ;; Return new position of alloc-ptr
   copy-ptr)
 
@@ -503,7 +511,7 @@
 ;                    (h (car   obj-header))
 ;                    (s (cadr  obj-header))
 ;                    (l (caddr obj-header)))
-              
+
 ;               ;; stag
 ;               (cond ;; CCTABLE & STRING
 ;                     ((or (= s STAG_CCTABLE)
@@ -532,6 +540,6 @@
 ;                     ((= s STAG_PAIR)
 ;                         (check-field (+ scan  8))
 ;                         (check-field (+ scan 16))
-;                         (check-heap (+ scan 24) copy))                            
+;                         (check-heap (+ scan 24) copy))
 ;                     (else (pp-stag s)
 ;                           (error "NYI")))))))
