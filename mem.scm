@@ -44,43 +44,47 @@
 
 ;; Allocate length(imm) bytes in heap
 ;; DESTROY RAX !!
+;; DESTROY R15 !!
 (define (gen-alloc-imm cgc stag length)
 
-  (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok))))
+    (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok))))
 
-    (x86-lea cgc (x86-rax) (x86-mem (* length 8) alloc-ptr)) ;; RAX = alloc-ptr + N
-    (x86-mov cgc (x86-r15) (x86-imm-int block-addr)) ;; R15 = block-addr TODO: use reg ?
-    (x86-cmp cgc (x86-rax) (x86-mem (* 5 8) (x86-r15))) ;; TODO: remove cst slots
-    (x86-jl cgc label-alloc-ok)
+        (x86-lea cgc (x86-rax) (x86-mem (* length 8) alloc-ptr)) ;; RAX = alloc-ptr + N
+        (x86-mov cgc (x86-r15) (x86-imm-int block-addr)) ;; R15 = block-addr TODO: use reg ?
+        (x86-cmp cgc (x86-rax) (x86-mem (* 5 8) (x86-r15))) ;; TODO: remove cst slots
+        (x86-jl cgc label-alloc-ok)
 
-        (x86-mov cgc (x86-rax) (x86-imm-int (* length 8)))
-        (gen-gc-call cgc)
+            (x86-mov cgc (x86-rax) (x86-imm-int (* length 8)))
+            (gen-gc-call cgc)
 
-    (x86-label cgc label-alloc-ok)
-    (x86-add cgc alloc-ptr (x86-imm-int (* length 8)))))
+        (x86-label cgc label-alloc-ok)
+        (x86-add cgc alloc-ptr (x86-imm-int (* length 8)))))
 
 ;; Allocate RAX(reg) + length(imm) bytes in heap
 ;; DESTROY RAX !!
 ;; DESTROY R15 !!
+;; TODO: MERGE gen-alloc-imm and gen-alloc-regimm
 (define (gen-alloc-regimm cgc stag length)
-(error "NYI")
-  (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok))))
 
-    ;; Remaining space in RAX
-    (x86-mov cgc (x86-r15) (x86-imm-int (+ from-space space-len)))
-    (x86-sub cgc (x86-r15) alloc-ptr)
+    (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok))))
 
-    (x86-shl cgc (x86-rax) (x86-imm-int 1))
-    (if (> length 0)
-      (x86-add cgc (x86-rax) (x86-imm-int (* 8 length))))
+        (x86-shl cgc (x86-rax) (x86-imm-int 1))
+        (x86-add cgc (x86-rax) (x86-imm-int (* 8 length)))
+        (x86-push cgc (x86-rax)) ;; PUSH total alloc
 
-    (x86-cmp cgc (x86-r15) (x86-rax))
-    (x86-jge cgc label-alloc-ok)
-    ;; Allocation size is in RAX (used by GC)
-    (gen-gc-call cgc)
+        (x86-lea cgc (x86-rax) (x86-mem (x86-rax) alloc-ptr)) ;; RAX = alloc + N
+        (x86-mov cgc (x86-r15) (x86-imm-int block-addr))
+        (x86-mov cgc (x86-r15) (x86-mem (* 5 8) (x86-r15))) ;; R15 = limit
 
-    (x86-label cgc label-alloc-ok)
-    (x86-add cgc alloc-ptr (x86-rax))))
+        (x86-cmp cgc (x86-rax) (x86-r15))
+        (x86-jl cgc label-alloc-ok)
+
+            (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+            (gen-gc-call cgc)
+
+        (x86-label cgc label-alloc-ok)
+        (x86-pop cgc (x86-rax))
+        (x86-add cgc alloc-ptr (x86-rax))))
 
 ;; Generate an heap object header
 ;; NOTE : 'life' is fixed as 6 for now.

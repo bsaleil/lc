@@ -558,7 +558,7 @@
 ;; HEAP
 (define from-space #f)
 (define to-space   #f)
-(define space-len 16000)
+(define space-len 100000000) ;; 10mo
 (define alloc-ptr (x86-r12))
 
 ;; CODE
