@@ -221,15 +221,21 @@
 
 ;(println (number? 10))
 
-;;; SUMFP -- Compute sum of integers from 0 to 10000 using floating point
+;; CAS:
+   ;; On a deux lambdas qui suivent la meme table (donc spécialisées avec les meme types unknown)
+   ;; La découverte du type de la variable libre est valide pour l'une mais pas pour l'autre
+
+;; Spécialiser les lambda en fonction du type des locales ?
+
+
 
 (define (foo n)
 
-   (let ((fun (lambda () (+ n 1))))
-      (+ n 1)
-      (fun)))
+    (let ((fun (lambda () (+ n 10))))
+        (+ n 1)
+        (fun)))
 
-(foo ((lambda () 10)))
+(foo 1)
 
 ;(define (foo) 11)
 ;(define (bar) 100)

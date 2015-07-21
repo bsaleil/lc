@@ -770,6 +770,11 @@
     (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
     (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rsp))
 
+    ;; Put heaplimit in heaplimit slot
+    ;; TODO: remoce cst slots
+    (x86-mov cgc (x86-rcx) (x86-imm-int (+ from-space space-len)))
+    (x86-mov cgc (x86-mem (* 8 5) (x86-rax)) (x86-rcx))
+
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
     (x86-mov cgc alloc-ptr  (x86-imm-int from-space))       ;; Heap addr in alloc-ptr
     (x86-mov cgc (x86-r10) (x86-imm-int (+ block-addr (* 8 global-offset)))) ;; Globals addr in r10
