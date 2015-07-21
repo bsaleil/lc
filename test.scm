@@ -8,7 +8,7 @@
 ;;   * Expand multiple corps des lambda et define en begin (fait ?)
 ;;   * MLC-test peut etre modifié pour éviter d'utiliser trop de lazy-objects
 ;;   * Test des out of bounds (string-ref "kk" 100), ...
-;;   
+;;
 ;;   * Constantes en opérandes
 ;;   * Ctx info sur les variables libres? (probleme des mutables)
 
@@ -126,7 +126,7 @@
 ;   (let ((r (+ addr 1))) ;; Encoded
 ;     (set! addr (+ addr 256))
 ;     r))
-  
+
 
 ; (define (get-symbol-qword sym)
 ;   (let ((r (table-ref interned-symbols sym #f)))
@@ -155,7 +155,7 @@
 ;; TODO : PROBLEME DE MUTABLE
 
 ;;-----
-;; MARDI : 
+;; MARDI :
 ;;   Nombre de pt entree max pour chaque test
 ;;   Performances contre gsc avec options pour chaque test
 ;;   Nombre d'appels pour chaque primitive
@@ -167,9 +167,9 @@
 ;;   get-lazy-fn, fonction qui créé un block
 ;;   gen-... pour la génération du code machine
 
-;; TODO : ATTENTION, pour l'instant l'optimisation du type de retour fait que par ex si 
+;; TODO : ATTENTION, pour l'instant l'optimisation du type de retour fait que par ex si
 ;; la fonction 'length' est appellée, la valeur de retour est un nombre. MAIS, l'opti
-;; est bien désactivée si la globale est modifiée (set! length ...) mais pas si elle est 
+;; est bien désactivée si la globale est modifiée (set! length ...) mais pas si elle est
 ;; redéfinie. ex (define length ...) dans le programme.
 ;; Il faut donc passer à faux ces redéfinitions dans gids
 
@@ -221,7 +221,15 @@
 
 ;(println (number? 10))
 
-(pp (> 1.1 10.4))
+;;; SUMFP -- Compute sum of integers from 0 to 10000 using floating point
+
+(define (foo n)
+
+   (let ((fun (lambda () (+ n 1))))
+      (+ n 1)
+      (fun)))
+
+(foo ((lambda () 10)))
 
 ;(define (foo) 11)
 ;(define (bar) 100)

@@ -1339,234 +1339,133 @@
 (define (jump-size jump-addr)
   (if (= (get-u8 jump-addr) #x0f) 6 5))
 
+
 ;; TODO: use gen-fatal instead of gen-dyn in ast.scm when needed
 ;; Gen fatal dynamic type test
 ;; fatal means that if type test fails, it stops execution
 ;; Check type 'type' for stack slot at 'stack-idx' and jump to 'succ' if succeess
 (define (gen-fatal-type-test type stack-idx succ)
-  (let ((lazy-error
-           (make-lazy-code
-              (lambda (cgc ctx)
-                 (if (or (eq? type CTX_FLO) (eq? type CTX_NUM))
-                   (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM))
-                   (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
-    (gen-dyn-type-test type stack-idx succ lazy-error)))
-
-;; TODO
-;; Create lazy code for type test of stack slot (stack-idx)
-         
-         (let (;; Lazy type error
-               (lazy-fail
-                 (make-lazy-code
-                   (lambda (cgc ctx)
-                     (gen-error cgc (ERR_TYPE_EXPECTED type)))))
-               ;; Current information on type
-               (known-type (list-ref (ctx-stack ctx) stack-idx)))
-         ;; TODO: plus nettoyer tout ca
-
-         (let* ((ctx-success (ctx-change-type ctx stack-idx type))
-                (ctx-fail ctx)
-                (known-type (list-ref (ctx-stack ctx) stack-idx)))
-
-           (cond ;; known == expected
-                 ((eq? known-type type)
-                    (jump-to-version cgc lazy-success ctx-success))
-                 ;; known != expected && known != unknown
-                 ((not (eq? known-type CTX_UNK))
-                    (jump-to-version cgc lazy-fail ctx-fail))
-                 ;; known == unknown
-                 (else
-                   (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
-                          (stub-labels
-                                (add-callback cgc 1
-                                  (let ((prev-action #f))
-
-                                    (lambda (ret-addr selector)
-                                      (let ((stub-addr (- ret-addr 5 2))
-                                            (jump-addr (asm-label-pos label-jump)))
-
-                                        (if opt-verbose-jit
-                                            (begin
-                                              (println ">>> selector= " selector)
-                                              (println ">>> prev-action= " prev-action)))
-
-                                        (if (not prev-action)
-
-                                            (begin (set! prev-action 'no-swap)
-                                                   (if (= selector 1)
-
-                                                      ;; overwrite unconditional jump
-                                                      (gen-version (+ jump-addr 6) lazy-fail ctx-fail)
-
-                                                      (if (= (+ jump-addr 6 5) code-alloc)
-
-                                                        (begin (if opt-verbose-jit (println ">>> swapping-branches"))
-                                                               (set! prev-action 'swap)
-                                                               ;; invert jump direction
-                                                               (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
-                                                               ;; make conditional jump to stub
-                                                               (patch-jump jump-addr stub-addr)
-                                                               ;; overwrite unconditional jump
-                                                               (gen-version
-                                                               (+ jump-addr 6)
-                                                               lazy-success
-                                                               ctx-success))
-
-                                                        ;; make conditional jump to new version
-                                                        (gen-version jump-addr lazy-success ctx-success))))
-
-                                            (begin ;; one branch has already been patched
-                                                   ;; reclaim the stub
-                                                   (release-still-vector (get-scmobj ret-addr))
-                                                   (stub-reclaim stub-addr)
-                                                   (if (= selector 0)
-                                                      (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) succ ctx-succ)
-                                                      (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx))))))))))
-
-
-                   (if opt-verbose-jit
-                       (println ">>> Gen dynamic type test at index " stack-idx))
-
-                   ;; If 'opt-stats' option, then inc tests slot
-                   (if opt-stats
-                      (gen-inc-slot cgc 'tests))
-
-                   (cond ;; Number type test
-                         ((eq? type CTX_NUM)
-                             (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
-                             (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
-                             ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_NUMBER)))
-                         ;; Char type test
-                         ((eq? type CTX_CHAR)
-                             (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
-                             (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
-                             (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
-                             ;(x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
-                             ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
-                         ;; Procedure type test
-                         ((member type (list CTX_FLO CTX_CLO CTX_PAI CTX_STR CTX_VECT CTX_SYM CTX_IPORT CTX_OPORT))
-
-                             (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
-                             (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
-                             (x86-and cgc (x86-rax) (x86-imm-int 3))
-                             (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-                             (x86-jne cgc (list-ref stub-labels 1)) ;; it is not a memory allocated object then error
-                             (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
-                             (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
-                             ;; STAG_XXX << 3
-                             (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_FLO)   STAG_FLONUM)
-                                                                            ((eq? type CTX_CLO)   STAG_PROCEDURE)
-                                                                            ((eq? type CTX_STR)   STAG_STRING)
-                                                                            ((eq? type CTX_SYM)   STAG_SYMBOL)
-                                                                            ((eq? type CTX_VECT)  STAG_VECTOR)
-                                                                            ((eq? type CTX_IPORT) STAG_IPORT)
-                                                                            ((eq? type CTX_OPORT) STAG_OPORT)
-                                                                            ((eq? type CTX_PAI)   STAG_PAIR))))))
-                         ;; Other
-                         (else (error "Unknown type " type)))
-                   (x86-label cgc label-jump)
-                   (x86-je cgc (list-ref stub-labels 0))
-                   (x86-jmp cgc (list-ref stub-labels 1)))))))))
-
-;; TODO Factoriser avec gen-fatal-...
+(let ((lazy-error
+         (make-lazy-code
+            (lambda (cgc ctx)
+               (if (or (eq? type CTX_FLO) (eq? type CTX_NUM))
+                 (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM))
+                 (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
+  (gen-dyn-type-test type stack-idx succ lazy-error)))
 
 ;; TODO
 ;; Create lazy code for type test of stack slot (stack-idx)
 ;; jump to lazy-success if test succeeds
 ;; jump to lazy-fail if test fails
-(define (gen-dyn-type-test type stack-idx ctx-success lazy-success ctx-fail lazy-fail)
+(define (gen-dyn-type-test type stack-idx lazy-success lazy-fail)
 
-    (make-lazy-code
-       (lambda (cgc ctx)
-         (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
-                (stub-labels
-                      (add-callback cgc 1
-                        (let ((prev-action #f))
+  (make-lazy-code
+     (lambda (cgc ctx)
 
-                          (lambda (ret-addr selector)
-                            (let ((stub-addr (- ret-addr 5 2))
-                                  (jump-addr (asm-label-pos label-jump)))
+       ;; TODO: dans mlc-test enlever cette logique car géré ici
+       ;; TODO: plus nettoyer tout ca
 
-                              (if opt-verbose-jit
-                                  (begin
-                                    (println ">>> selector= " selector)
-                                    (println ">>> prev-action= " prev-action)))
+       (let* ((ctx-success (ctx-change-type ctx stack-idx type))
+              (ctx-fail ctx)
+              (known-type (list-ref (ctx-stack ctx) stack-idx)))
 
-                              (if (not prev-action)
+         (cond ;; known == expected
+               ((eq? known-type type)
+                  (jump-to-version cgc lazy-success ctx-success))
+               ;; known != expected && known != unknown
+               ((not (eq? known-type CTX_UNK))
+                  (jump-to-version cgc lazy-fail ctx-fail))
+               ;; known == unknown
+               (else
+                 (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
+                        (stub-labels
+                              (add-callback cgc 1
+                                (let ((prev-action #f))
 
-                                  (begin (set! prev-action 'no-swap)
-                                         (if (= selector 1)
+                                  (lambda (ret-addr selector)
+                                    (let ((stub-addr (- ret-addr 5 2))
+                                          (jump-addr (asm-label-pos label-jump)))
 
-                                            ;; overwrite unconditional jump
-                                            (gen-version (+ jump-addr 6) lazy-fail ctx-fail)
+                                      (if opt-verbose-jit
+                                          (begin
+                                            (println ">>> selector= " selector)
+                                            (println ">>> prev-action= " prev-action)))
 
-                                            (if (= (+ jump-addr 6 5) code-alloc)
+                                      (if (not prev-action)
 
-                                              (begin (if opt-verbose-jit (println ">>> swapping-branches"))
-                                                     (set! prev-action 'swap)
-                                                     ;; invert jump direction
-                                                     (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
-                                                     ;; make conditional jump to stub
-                                                     (patch-jump jump-addr stub-addr)
-                                                     ;; overwrite unconditional jump
-                                                     (gen-version
-                                                     (+ jump-addr 6)
-                                                     lazy-success
-                                                     ctx-success))
+                                          (begin (set! prev-action 'no-swap)
+                                                 (if (= selector 1)
 
-                                              ;; make conditional jump to new version
-                                              (gen-version jump-addr lazy-success ctx-success))))
+                                                    ;; overwrite unconditional jump
+                                                    (gen-version (+ jump-addr 6) lazy-fail ctx-fail)
 
-                                  (begin ;; one branch has already been patched
-                                         ;; reclaim the stub
-                                         (release-still-vector (get-scmobj ret-addr))
-                                         (stub-reclaim stub-addr)
-                                         (if (= selector 0)
-                                            (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-success)
-                                            (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-fail))))))))))
+                                                    (if (= (+ jump-addr 6 5) code-alloc)
 
-         (if opt-verbose-jit
-             (println ">>> Gen dynamic type test at index " stack-idx))
+                                                      (begin (if opt-verbose-jit (println ">>> swapping-branches"))
+                                                             (set! prev-action 'swap)
+                                                             ;; invert jump direction
+                                                             (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
+                                                             ;; make conditional jump to stub
+                                                             (patch-jump jump-addr stub-addr)
+                                                             ;; overwrite unconditional jump
+                                                             (gen-version
+                                                             (+ jump-addr 6)
+                                                             lazy-success
+                                                             ctx-success))
 
-         ;; If 'opt-stats' option, then inc tests slot
-         (if opt-stats
-          (gen-inc-slot cgc 'tests))
+                                                      ;; make conditional jump to new version
+                                                      (gen-version jump-addr lazy-success ctx-success))))
 
-         (cond ;; Number type test
-               ((eq? type CTX_NUM)
-                   (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
-                   (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
-                   ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_NUMBER)))
-               ;; Char type test
-               ((eq? type CTX_CHAR)
-                   (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
-                   (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
-                   (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
-                   ;(x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
-                   ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
-               ;; Procedure type test
-               ((member type (list CTX_FLO CTX_CLO CTX_PAI CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))
-                   (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
-                   (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
-                   (x86-and cgc (x86-rax) (x86-imm-int 3))
-                   (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-                   (x86-jne cgc label-jump)
-                   (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
-                   (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
-                   ;; STAG_XXX << 3
-                   (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_FLO)  STAG_FLONUM)
-                                                                  ((eq? type CTX_CLO)  STAG_PROCEDURE)
-                                                                  ((eq? type CTX_SYM)  STAG_SYMBOL)
-                                                                  ((eq? type CTX_STR)  STAG_STRING)
-                                                                  ((eq? type CTX_IPORT) STAG_IPORT)
-                                                                  ((eq? type CTX_OPORT) STAG_OPORT)
-                                                                  ((eq? type CTX_VECT) STAG_VECTOR)
-                                                                  ((eq? type CTX_PAI)  STAG_PAIR))))))
-               ;; Other
-               (else (error "Unknown type" type)))
-         (x86-label cgc label-jump)
-         (x86-je cgc (list-ref stub-labels 0))
-         (x86-jmp cgc (list-ref stub-labels 1))))))
+                                          (begin ;; one branch has already been patched
+                                                 ;; reclaim the stub
+                                                 (release-still-vector (get-scmobj ret-addr))
+                                                 (stub-reclaim stub-addr)
+                                                 (if (= selector 0)
+                                                    (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-success)
+                                                    (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-fail))))))))))
+
+       (if opt-verbose-jit
+           (println ">>> Gen dynamic type test at index " stack-idx))
+
+       ;; If 'opt-stats' option, then inc tests slot
+       (if opt-stats
+        (gen-inc-slot cgc 'tests))
+
+       (cond ;; Number type test
+             ((eq? type CTX_NUM)
+                 (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
+                 (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
+                 ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_NUMBER)))
+             ;; Char type test
+             ((eq? type CTX_CHAR)
+                 (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
+                 (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
+                 (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
+                 ;(x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
+                 ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
+             ;; Procedure type test
+             ((member type (list CTX_FLO CTX_CLO CTX_PAI CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))
+                 (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
+                 (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
+                 (x86-and cgc (x86-rax) (x86-imm-int 3))
+                 (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                 (x86-jne cgc label-jump)
+                 (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
+                 (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
+                 ;; STAG_XXX << 3
+                 (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_FLO)  STAG_FLONUM)
+                                                                ((eq? type CTX_CLO)  STAG_PROCEDURE)
+                                                                ((eq? type CTX_SYM)  STAG_SYMBOL)
+                                                                ((eq? type CTX_STR)  STAG_STRING)
+                                                                ((eq? type CTX_IPORT) STAG_IPORT)
+                                                                ((eq? type CTX_OPORT) STAG_OPORT)
+                                                                ((eq? type CTX_VECT) STAG_VECTOR)
+                                                                ((eq? type CTX_PAI)  STAG_PAIR))))))
+             ;; Other
+             (else (error "Unknown type" type)))
+       (x86-label cgc label-jump)
+       (x86-je cgc (list-ref stub-labels 0))
+       (x86-jmp cgc (list-ref stub-labels 1)))))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Global cc table
