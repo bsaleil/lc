@@ -227,15 +227,18 @@
 
 ;; Spécialiser les lambda en fonction du type des locales ?
 
+(define (newline)
+    10)
 
+(newline)
 
-(define (foo n)
-
-    (let ((fun (lambda () (+ n 10))))
-        (+ n 1)
-        (fun)))
-
-(foo 1)
+; (define (foo n)
+;
+;     (let ((fun (lambda () (+ n 10))))
+;         (+ n 1)
+;         (fun)))
+;
+; (foo 1)
 
 ;(define (foo) 11)
 ;(define (bar) 100)

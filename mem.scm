@@ -350,7 +350,7 @@
 ;; Return new scan/copy-ptr position
 (define (scan-procedure scan copy head stag length)
   ;; Scan free vars
-  (let ((c (scan-freevars (+ scan 24) (- length 3) copy)))
+  (let ((c (scan-freevars (+ scan 16) (- length 2) copy)))
     (cons ;; New scan position
           (+ scan (* 8 length))
           ;; New copy position

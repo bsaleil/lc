@@ -639,7 +639,7 @@
           (if opt-stats
             (gen-inc-slot cgc 'closures))
 
-          (let* ((total-size  (+ 3 (length fvars))) ;; Header,CCTable,GenericPtr
+          (let* ((total-size  (+ 2 (length fvars))) ;; Header,CCTable
                  (header-word (mem-header total-size STAG_PROCEDURE))
                  ;; This is the key used in hash table to find the cc-table for this closure.
                  ;; The key is (ast . free-vars-inf) with ast the s-expression of the lambda
@@ -661,7 +661,7 @@
                                            '()
                                            (ctx-env ctx))))
                  (cctable (or (table-ref cctables cctable-key #f)
-                              (let ((t (make-cc global-cc-table-maxsize stub-addr)))
+                              (let ((t (make-cc (+ 1 global-cc-table-maxsize) stub-addr generic-addr))) ;; +1 (generic ep)
                                  (table-set! cctables cctable-key t)
                                  t)))
                  (cctable-loc (- (obj-encoding cctable) 1)))
@@ -677,12 +677,8 @@
             (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
             (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax))
 
-            ;; 3- Write generic entry point
-            (x86-mov cgc (x86-rax) (x86-imm-int generic-addr))
-            (x86-mov cgc (x86-mem (+ 16 (* -8 total-size)) alloc-ptr) (x86-rax))
-
-            ;; 4 - Write free vars
-            (gen-free-vars cgc fvars ctx (+ 24 (* -8 total-size)))
+            ;; 3 - Write free vars
+            (gen-free-vars cgc fvars ctx (+ 16 (* -8 total-size)))
 
             ;; Tag and push closure
             (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 total-size)) alloc-ptr))
@@ -695,9 +691,10 @@
                                      CTX_CLO)))))))
 
 ;; Create a new cc table with 'init' as stub value
-(define (make-cc len init)
+(define (make-cc len init generic)
   (let ((v (alloc-still-vector len)))
-    (let loop ((i 0))
+    (put-i64 (+ 8 (- (obj-encoding v) 1)) generic) ;; Write generic after header
+    (let loop ((i 1))
       (if (< i (vector-length v))
         (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding v) 1)) init)
                (loop (+ i 1)))
@@ -1872,7 +1869,7 @@
 
     (if use-mep
       ;; If we use multiple entry points then:
-      (let ((cct-offset (* 8 (+ 1 (get-closure-index call-ctx)))))
+      (let ((cct-offset (* 8 (+ 2 (get-closure-index call-ctx))))) ;; +2 (header & generic)
         ;; 1 - Put ctx in r11
         (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
         ;; 2- Get cc-table
@@ -1889,7 +1886,8 @@
              (if nb-args
                (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
              ;; 2 - Get generic entry point
-             (x86-mov cgc (x86-rax) (x86-mem (- 16 TAG_MEMOBJ) (x86-rax)))))
+             (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+             (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax)))))
 
     ;; Jump to entry point
     (x86-jmp cgc (x86-rax)))
@@ -2271,17 +2269,6 @@
 ;; +---------+---------+---------+---------+---------+
 ;;  index  0  index  1  index  2     ...    index  n
 
-;; Gen a new cc-table at 'alloc-ptr' and write 'stub-addr' in each slot
-(define (gen-cc-table cgc stub-addr offset)
-  (x86-mov cgc (x86-rax) (x86-imm-int stub-addr))
-  (gen-cc-table-h cgc offset global-cc-table-maxsize))
-
-;; Gen-cc-table helper
-(define (gen-cc-table-h cgc offset nb-slots)
-  (if (> nb-slots 0)
-      (begin (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
-             (gen-cc-table-h cgc (+ offset 8) (- nb-slots 1)))))
-
 ;;
 ;; VARIABLE SET
 ;;
@@ -2340,7 +2327,7 @@
 ;; Free variable
 (define (gen-get-freevar cgc ctx variable dest #!optional (raw_value? #t))
 
-   (let* ((offset (+ (- 24 TAG_MEMOBJ) (* 8 (identifier-offset (cdr variable)))))
+   (let* ((offset (+ (- 16 TAG_MEMOBJ) (* 8 (identifier-offset (cdr variable)))))
           (clo-offset (* 8 (closure-pos ctx)))
           (mutable (identifier-mutable? (cdr variable))))
 

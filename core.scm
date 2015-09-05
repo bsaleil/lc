@@ -1316,7 +1316,9 @@
                label-name
                " (" (number->string label-addr 16) ")"))
 
-  (put-i64 (- (+ closure 16) TAG_MEMOBJ) label-addr)
+  (let ((table-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ))))
+    (put-i64 (+ table-addr 8) label-addr))
+  
   label-addr))
 
 ;; Patch closure
@@ -1325,7 +1327,7 @@
   (let* ((label-addr (asm-label-pos  label))
          (label-name (asm-label-name label))
          (index (get-closure-index ctx))
-         (offset (+ 8 (* index 8)))) ;; +8 because of header
+         (offset (+ 16 (* index 8)))) ;; +16 (header & generic)
 
     (if opt-verbose-jit
         (println ">>> patching closure " (number->string closure 16) " at "
