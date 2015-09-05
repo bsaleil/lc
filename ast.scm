@@ -2624,9 +2624,3 @@
                           0
                           (lambda (ret-addr selector) (error msg)))
             0))
-
-;; Return lazy code object which generates an error with 'msg'
-(define (get-lazy-error msg)
-  (make-lazy-code
-    (lambda (cgc ctx)
-      (gen-error cgc msg))))

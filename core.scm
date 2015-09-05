@@ -151,6 +151,51 @@
 (define ENCODING_EOF  -14) ;; encoded EOF
 (define NENCODING_EOF  -4) ;; non encoded EOF
 
+;;--------------------------------------------------------------------------------
+
+;; Return lazy code object which generates an error with 'msg'
+(define (get-lazy-error msg)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (gen-error cgc msg))))
+
+
+;; Gen code for error
+;; stop-exec? to #f to continue after error
+(define (gen-error cgc err #!optional (stop-exec? #t))
+
+  ;; Put error msg in RAX
+  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding err)))
+
+  ;; If no msg print nothing
+  (if (not (string=? err ""))
+    ;; Call exec-error
+    (push-pop-regs cgc
+                   c-caller-save-regs ;; preserve regs for C call
+                   (lambda (cgc)
+                     (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
+                     (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+                     (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+                     (x86-push cgc (x86-rdi))
+                     (x86-call cgc label-exec-error) ;; call C function
+                     (x86-pop  cgc (x86-rsp))))) ;; restore unaligned stack-pointer
+
+  (if stop-exec?
+    (begin
+      (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
+      (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
+      (x86-mov cgc (x86-rax) (x86-imm-int -1))
+      (pop-regs-reverse cgc all-regs)
+      (x86-ret cgc))))
+
+;; The procedure exec-error is callable from generated machine code.
+;; This function print the error message in rax
+(c-define (exec-error sp) (long) void "exec_error" ""
+  (let* ((err-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
+        (err (encoding-obj err-enc)))
+    (print "!!! ERROR : ")
+    (println err)))
+
 ;;-----------------------------------------------------------------------------
 
 (c-define (gc sp) (long) long "gc" ""
@@ -170,47 +215,6 @@
        (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
        (x86-mov cgc alloc-ptr (x86-rax)) ;; TODO : Update alloc-ptr
        )))
-
-;;-----------------------------------------------------------------------------
-
-;; Gen code for error
-;; stop-exec? to #f to continue after error
-(define (gen-error cgc err #!optional (stop-exec? #t))
-
-  ;; Put error msg in RAX
-  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding err)))
-
-  ;; If no msg print nothing
-  (if (not (string=? err ""))
-    ;; Call exec-error
-    (push-pop-regs
-       cgc
-       c-caller-save-regs ;; preserve regs for C call
-       (lambda (cgc)
-         (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-         (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-         (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-         (x86-push cgc (x86-rdi))
-         (x86-call cgc label-exec-error) ;; call C function
-         (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-         )))
-
-  (if stop-exec?
-    (begin
-      (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-      (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
-      (x86-mov cgc (x86-rax) (x86-imm-int -1))
-      (pop-regs-reverse cgc all-regs)
-      (x86-ret cgc)))
-)
-
-;; The procedure exec-error is callable from generated machine code.
-;; This function print the error message in rax
-(c-define (exec-error sp) (long) void "exec_error" ""
-  (let* ((err-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
-        (err (encoding-obj err-enc)))
-    (print "!!! ERROR : ")
-    (println err)))
 
 ;;-----------------------------------------------------------------------------
 
