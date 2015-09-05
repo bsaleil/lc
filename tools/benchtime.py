@@ -23,7 +23,7 @@ Options:
 	--draw-exec
 		Set the execution to draw. (Default is 2)
                 1 is the execution including compilation and execution time
-                2 is the execution including inly execution time
+                2 is the execution including only execution time
 
 Example:
 
