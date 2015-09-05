@@ -201,7 +201,6 @@
       (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
       (x86-mov cgc (x86-rax) (x86-imm-int -1))
       (pop-regs-reverse cgc all-regs)
-      (x86-ret cgc)
       (x86-ret cgc)))
 )
 
@@ -1318,7 +1317,7 @@
 
   (let ((table-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ))))
     (put-i64 (+ table-addr 8) label-addr))
-  
+
   label-addr))
 
 ;; Patch closure
