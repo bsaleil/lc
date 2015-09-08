@@ -935,33 +935,31 @@
 (define (identifier-mutable? id)
   (member 'mutable (identifier-flags id)))
 
-;; Add pos to identifier object 'id'
-(define (identifier-addpos id pos)
-  ;; Add only if not member
-  (if (member pos (identifier-pos id))
-     id
-     (make-identifier (identifier-type id)
-                      (identifier-offset id)
-                      (cons pos (identifier-pos id))
-                      (identifier-flags id)
-                      (identifier-stype id))))
+;; Add pos to identifier object
+(define (identifier-add-pos identifier pos)
+  (if (member pos (identifier-pos identifier))
+    identifier
+    (make-identifier (identifier-type identifier)
+                     (identifier-offset identifier)
+                     (cons pos (identifier-pos identifier))
+                     (identifier-flags identifier)
+                     (identifier-stype identifier))))
 
-;; Remove pos from identifier object 'id'
-(define (identifier-rmpos id pos)
-  ;; Get new pos set
-  (let ((npos (foldr (lambda (x y)
-                       (if (= x pos)
-                          y
-                          (cons x y)))
-                     '()
-                     (identifier-pos id))))
+;; Remove pos from identifier object
+(define (identifier-remove-pos identifier pos)
+  (make-identifier (identifier-type    identifier)
+                   (identifier-offset  identifier)
+                   (set-sub (identifier-pos identifier) (list pos) '())
+                   (identifier-flags   identifier)
+                   (identifier-stype   identifier)))
 
-    ;; Return new identifier
-    (make-identifier (identifier-type id)
-                     (identifier-offset id)
-                     npos
-                     (identifier-flags id)
-                     (identifier-stype id))))
+;; Reset pos of given identifier
+(define (identifier-reset-pos identifier)
+  (make-identifier (identifier-type identifier)
+                   (identifier-offset identifier)
+                   '()
+                   (identifier-flags identifier)
+                   (identifier-stype identifier)))
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx management
@@ -973,28 +971,29 @@
   nb-args ;; nb of arguments of current frame
 )
 
-(define (ctx-clear-types ctx)
-  (make-ctx ;; Remove stack type information
-            (make-list (length (ctx-stack ctx)) CTX_UNK)
-            ;; Remove env type information
-            (foldr (lambda (id others)
-                     (cons (if (eq? (identifier-type (cdr id)) 'free)
-                             (cons (car id)
-                                   (make-identifier (identifier-type (cdr id))
-                                                    (identifier-offset (cdr id))
-                                                    '() ;; TODO
-                                                    (identifier-flags (cdr id))
-                                                    CTX_UNK))
-                             (cons (car id)
-                                   (make-identifier (identifier-type (cdr id))
-                                                    (identifier-offset (cdr id))
-                                                    '() ;; TODO
-                                                    (identifier-flags (cdr id))
-                                                    CTX_UNK)))
-                           others))
-                   '()
-                   (ctx-env ctx))
+(define (ctx-get-top-pos ctx)
+  (- (length (ctx-stack ctx)) 2))
+
+;; Remove pos from ctx identifiers
+(define (ctx-remove-pos ctx pos)
+  (make-ctx (ctx-stack ctx)
+            (env-remove-pos (ctx-env ctx) pos)
             (ctx-nb-args ctx)))
+
+;; Reset pos in identifier object associated to id 'sym'
+(define (ctx-reset-pos ctx sym)
+  (make-ctx (ctx-stack ctx)
+            (env-reset-pos (ctx-env ctx) sym)
+            (ctx-nb-args ctx)))
+
+;; Move nb slot from l-from to l-to (ascending)
+(define (ctx-mov-nb ctx nb l-from l-to)
+  (if (= nb 0)
+     ctx
+     (ctx-mov-nb (ctx-move ctx l-from l-to)
+                 (- nb 1)
+                 (+ l-from 1)
+                 (+ l-to 1))))
 
 ;; Apply 'nb' push to ctx
 (define (ctx-push-nb ctx ctx-type nb)
@@ -1003,6 +1002,67 @@
     (ctx-push-nb (ctx-push ctx ctx-type)
                  ctx-type
                  (- nb 1))))
+
+;; Apply 'nb' pop to ctx
+(define (ctx-pop-nb ctx nb)
+  (if (= nb 0)
+    ctx
+    (ctx-pop-nb (ctx-pop ctx)
+                (- nb 1))))
+
+;; Pop ctx
+(define (ctx-pop ctx)
+  (let* ((pos  (ctx-get-top-pos ctx))    ;; Get pos
+         (nctx (ctx-remove-pos ctx pos)) ;; Remove pos from identifiers
+         (stack (cdr (ctx-stack nctx)))) ;; Remove first from stack
+         ;; Return nex ctx
+    (make-ctx stack (ctx-env nctx) (ctx-nb-args nctx))))
+
+;; Remove all ctx information.
+;; Return the 'generic' version of this context
+(define (ctx-clear ctx)
+  (make-ctx ;; Remove stack information
+            (make-list (length (ctx-stack ctx)) CTX_UNK)
+            ;; Remove env information
+            (foldr (lambda (id others)
+                     (cons (cons (car id)
+                                 (make-identifier (identifier-type (cdr id))
+                                                  (identifier-offset (cdr id))
+                                                  '()
+                                                  (identifier-flags (cdr id))
+                                                  CTX_UNK)))
+                           others)
+                   '()
+                   (ctx-env ctx))
+            (ctx-nb-args ctx)))
+
+;;---
+
+;; Remove pos from env
+(define (env-remove-pos env pos)
+  (if (null? env)
+    '()
+    (let* ((idpair     (car env))
+           (idsym      (car idpair))
+           (identifier (cdr idpair)))
+      (if (member pos (identifier-pos identifier))
+        (cons (cons idsym (identifier-remove-pos identifier pos))
+              (env-remove-pos (cdr env) pos))
+        (cons idpair (env-remove-pos (cdr env) pos))))))
+
+;; Reset pos of given idsym
+(define (env-reset-pos env sym)
+  (if (null? env)
+    '()
+    (let* ((idpair     (car env))
+           (idsym      (car idpair))
+           (identifier (cdr idpair)))
+      (if (eq? idsym sym)
+         (cons (cons idsym (identifier-reset-pos identifier))
+               (cdr env))
+         (cons idpair (env-reset-pos (cdr env) sym))))))
+
+;;---
 
 ;; Push value to ctx
 ;; (Add type to stack and update identifier pos if sym (identifier symbol) given)
@@ -1013,7 +1073,7 @@
        '()
        (let ((id (car env)))
          (if (eq? (car id) sym)
-            (let ((identifier (identifier-addpos (cdr id) (- (length (ctx-stack ctx)) 1))))
+            (let ((identifier (identifier-add-pos (cdr id) (- (length (ctx-stack ctx)) 1))))
               (cons (cons sym identifier)
                     (push-pos (cdr env) sym)))
             (cons id (push-pos (cdr env) sym))))))
@@ -1024,51 +1084,6 @@
       (make-ctx stack env (ctx-nb-args ctx)))
     ;; Else, update only stack
     (make-ctx (cons ctx-type (ctx-stack ctx)) (ctx-env ctx) (ctx-nb-args ctx))))
-
-;; Apply 'nb' pop to ctx
-(define (ctx-pop-nb ctx nb)
-  (if (= nb 0)
-     ctx
-     (ctx-pop-nb (ctx-pop ctx)
-                 (- nb 1))))
-
-;; Pop value from ctx
-;; (Remove type from stack and update identifier pos)
-(define (ctx-pop ctx)
-  (let ((pos (- (length (ctx-stack ctx)) 2))) ;; Get pos from idx
-    ;; Remove pos in identifiers
-    (define (rm-pos env)
-      (if (null? env)
-        '()
-        (let ((id (car env)))
-          (cons (cons (car id)
-                      (identifier-rmpos (cdr id) pos))
-                (rm-pos (cdr env))))))
-  (let ((env (rm-pos (ctx-env ctx)))
-        (stack (cdr (ctx-stack ctx))))
-    (make-ctx stack env (ctx-nb-args ctx)))))
-
-;; Reset pos in identifier object associated to id 'sym'
-(define (ctx-reset-pos ctx sym)
-  (define (ctx-reset-pos-h env sym)
-    (if (null? env)
-       '()
-       (let ((l (car env)))
-         (if (eq? (car l) sym)
-            (cons (cons sym
-                        (make-identifier (identifier-type    (cdr l))
-                                         (identifier-offset  (cdr l))
-                                         ;; Set pos to a set of length 1 chich contains only offset
-                                         (list (identifier-offset  (cdr l)))
-                                         (identifier-flags   (cdr l))
-                                         (identifier-stype   (cdr l))))
-                  (cdr env))
-            (cons (car env)
-                  (ctx-reset-pos-h (cdr env) sym))))))
-
-  (make-ctx (ctx-stack ctx)
-            (ctx-reset-pos-h (ctx-env ctx) sym)
-            (ctx-nb-args ctx)))
 
 ;; Change type of identifier located at 'stack-idx' (stack-idx must be converted to slot pos)
 (define (ctx-change-type ctx stack-idx type)
@@ -1100,14 +1115,7 @@
                 (ctx-env ctx)
                 (ctx-nb-args ctx)))))
 
-;; Move nb slot from l-from to l-to (ascending)
-(define (ctx-mov-nb ctx nb l-from l-to)
-  (if (= nb 0)
-     ctx
-     (ctx-mov-nb (ctx-move ctx l-from l-to)
-                 (- nb 1)
-                 (+ l-from 1)
-                 (+ l-to 1))))
+
 
 ;; Move slot from stack index 'l-from' to stack-index 'l-to'
 ;; Optionnally update env.
@@ -1124,12 +1132,12 @@
           (cond ;; a - if id contains 'from', add 'to'
                 ((and (member pos-from (identifier-pos (cdr id)))
                       (not (member pos-to (identifier-pos (cdr id)))))
-                    (cons (cons (car id) (identifier-addpos (cdr id) pos-to))
+                    (cons (cons (car id) (identifier-add-pos (cdr id) pos-to))
                           (update-env (cdr env))))
                 ;; b - if id contains 'to', remove 'from'
                 ((and (member pos-to (identifier-pos (cdr id)))
                       (not (member pos-from (identifier-pos (cdr id)))))
-                    (cons (cons (car id) (identifier-rmpos (cdr id) pos-to))
+                    (cons (cons (car id) (identifier-remove-pos (cdr id) pos-to))
                           (update-env (cdr env))))
                 (else
                     (cons id (update-env (cdr env))))))))
@@ -1180,7 +1188,7 @@
           ;; Maxversions is not #f and limit is reached, then remove
           ;; type information to generate a generic version
           ;; Recursive call (maybe this version already exists)
-          (jump-to-version cgc lazy-code (ctx-clear-types ctx) #t)
+          (jump-to-version cgc lazy-code (ctx-clear ctx) #t)
 
           ;; Generate that version inline
           (let ((label-version (asm-make-label cgc (new-sym 'version))))
@@ -1255,7 +1263,7 @@
           ;; Maxversions is not #f and limit is reached, then remove
           ;; type information to generate a generic version
           ;; Recursive call (maybe this version already exists)
-          (gen-version jump-addr lazy-code (ctx-clear-types ctx) #t)
+          (gen-version jump-addr lazy-code (ctx-clear ctx) #t)
 
           ;; Generate that version inline
           (begin
