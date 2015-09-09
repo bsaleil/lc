@@ -964,8 +964,6 @@
 ;;-----------------------------------------------------------------------------
 ;; Ctx
 ;; TODO : fonction pour supprimer des ids de l'environnement pour eviter des list-tails, et mettre dans let, begin et do
-;; TODO: relire/corriger les commentaires
-;; TODO: voir le nb de tests exécutés avant/apres
 
 (define-type ctx
   stack   ;; compile time stack, containing types
@@ -1067,7 +1065,7 @@
             (ctx-nb-args ctx)))
 
 ;; Change type at 'idx' to 'type'
-;; Change tyes at all others positions of the id(s) at this slot.
+;; Change types at all other positions of the id(s) at this slot.
 (define (ctx-change-type ctx idx type)
 
   (define (change-for-identifiers env pos ctx)
@@ -1088,15 +1086,14 @@
 
 ;; Move type from index 'from' to index 'to'
 (define (ctx-stack-move stack idx-from idx-to)
-   (if (eq? (list-ref stack idx-to) CTX_MOBJ) ;; TODO (not update-env?) && (eq? ...)
+   (if (eq? (list-ref stack idx-to) CTX_MOBJ)
        stack
        (append (list-head stack idx-to)
                (cons (list-ref stack idx-from)
                      (list-tail stack (+ idx-to 1))))))
 
-;; Move slot from stack index 'l-from' to stack-index 'l-to'
-;; Optionnally update env.
-;; If update-env? is #f, checks if to type is mobj
+;; Move slot from stack index 'from' to stack index 'to'
+;; Optionnally update env
 (define (ctx-move ctx idx-from idx-to #!optional (update-env? #t))
    (let ((pos-from (ctx-idx-to-pos ctx idx-from))
          (pos-to   (ctx-idx-to-pos ctx idx-to)))
@@ -1108,7 +1105,7 @@
 
        (make-ctx stack env (ctx-nb-args ctx)))))
 
-;;---
+;;-------------------------
 
 ;; Remove pos from env
 (define (env-remove-pos env pos)
@@ -1155,7 +1152,7 @@
         (else
           (cons idpair (env-move (cdr env) pos-from pos-to)))))))
 
-;; Push identfieir on top of the stack (update identifiers positions)
+;; Push identifier on top of the stack (update identifiers positions)
 (define (env-push-id env ctx idsym-push)
   (if (null? env)
     '()
