@@ -174,6 +174,7 @@
           (begin (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding ast)))
                  (x86-push cgc (x86-rax)))
           (x86-push cgc (x86-imm-int (obj-encoding ast))))
+      ;(if (char? ast) (pp ctx))
       (jump-to-version cgc
                        succ
                        (ctx-push ctx

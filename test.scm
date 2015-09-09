@@ -227,10 +227,38 @@
 
 ;; Spécialiser les lambda en fonction du type des locales ?
 
-(define (newline)
-    10)
 
-(newline)
+; UNK INT INT INT CHAR STRING INT UNK UNK RET
+;
+; a:1,2,9
+;
+; change-type 9 -> INT
+;
+; 1-retrouver identifier depuis pos -> a
+; 2-A chaque pos: mettre le type
+
+
+(define (fact n)
+   (if (or (= n 0) (= n 1))
+       1
+       (* n (fact (- n 1)))))
+
+(fact 2)
+
+
+
+
+
+
+; (define (foo a b c)
+;     (let ((d 40)
+;           (e 50)
+;           (f 60))
+;       a
+;       c
+;       #\C ))
+;
+; (foo 10 20 30)
 
 ; (define (foo n)
 ;
