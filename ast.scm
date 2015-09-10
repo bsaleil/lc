@@ -178,10 +178,10 @@
       (jump-to-version cgc
                        succ
                        (ctx-push ctx
-                                 (cond ((number? ast)  (CTX_CST CTX_NUM ast))
-                                       ((boolean? ast) (CTX_CST CTX_BOOL ast))
-                                       ((char? ast)    (CTX_CST CTX_CHAR ast))
-                                       ((null? ast)    CTX_NULL ast)
+                                 (cond ((number? ast)  CTX_NUM)
+                                       ((boolean? ast) CTX_BOOL)
+                                       ((char? ast)    CTX_CHAR)
+                                       ((null? ast)    CTX_NULL)
                                        (else (error "NYI"))))))))
 
 ;;
@@ -1992,13 +1992,13 @@
                       (let ((rtype (list-ref (ctx-stack ctx) ridx))
                             (ltype (list-ref (ctx-stack ctx) lidx)))
 
-                        (cond ((and (is-CTX_NUM? ltype) (is-CTX_NUM? rtype)) ;; int int
+                        (cond ((and (eq? ltype CTX_NUM) (eq? rtype CTX_NUM)) ;; int int
                                  (gen-comparison-ii cgc ctx succ lidx ridx))
-                              ((and (is-CTX_NUM? ltype) (is-CTX_FLO? rtype)) ;; int float
+                              ((and (eq? ltype CTX_NUM) (eq? rtype CTX_FLO)) ;; int float
                                  (gen-comparison-ff cgc ctx succ lidx ridx #t #f))
-                              ((and (is-CTX_FLO? ltype) (is-CTX_FLO? rtype)) ;; float float
+                              ((and (eq? ltype CTX_FLO) (eq? rtype CTX_FLO)) ;; float float
                                  (gen-comparison-ff cgc ctx succ lidx ridx #f #f))
-                              ((and (is-CTX_FLO? ltype) (is-CTX_NUM? rtype)) ;; float int
+                              ((and (eq? ltype CTX_FLO) (eq? rtype CTX_NUM)) ;; float int
                                  (gen-comparison-ff cgc ctx succ lidx ridx #f #t))
                               (else (error "Unexpected behavior")))))))
              ;; Type checkers
@@ -2076,13 +2076,13 @@
 
                       ;; TODO OVERFLOWS
 
-                      (cond ((and (is-CTX_NUM? ltype) (is-CTX_NUM? rtype)) ;; int int
+                      (cond ((and (eq? ltype CTX_NUM) (eq? rtype CTX_NUM)) ;; int int
                                (gen-operation-ii cgc ctx succ))
-                            ((and (is-CTX_NUM? ltype) (is-CTX_FLO? rtype)) ;; int float
+                            ((and (eq? ltype CTX_NUM) (eq? rtype CTX_FLO)) ;; int float
                                (gen-operation-ff cgc ctx succ #t #f))
-                            ((and (is-CTX_FLO? ltype) (is-CTX_FLO? rtype)) ;; float float
+                            ((and (eq? ltype CTX_FLO) (eq? rtype CTX_FLO)) ;; float float
                                (gen-operation-ff cgc ctx succ #f #f))
-                            ((and (is-CTX_FLO? ltype) (is-CTX_NUM? rtype)) ;; float int
+                            ((and (eq? ltype CTX_FLO) (eq? rtype CTX_NUM)) ;; float int
                                (gen-operation-ff cgc ctx succ #f #t))
                             (else (error "Unexpected behavior")))))))
 
@@ -2168,8 +2168,7 @@
                    (set! known-type CTX_UNK))
 
                 (cond ;; known == expected
-                      ((or (eq? type known-type)
-                           (and (pair? known-type) (eq? (cadr known-type) type))) ;; CST
+                      ((eq? type known-type)
                          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
                          (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
                          (jump-to-version cgc succ ctx-true))
