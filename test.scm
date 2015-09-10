@@ -238,12 +238,12 @@
 ; 2-A chaque pos: mettre le type
 
 
-(define (fact n)
-   (if (or (= n 0) (= n 1))
-       1
-       (* n (fact (- n 1)))))
+(define (foo a)
+    (let ((f (lambda () 10)))
+       (f)))
 
-(fact 2)
+(foo 10)
+(foo #f)
 
 
 

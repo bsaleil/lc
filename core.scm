@@ -80,6 +80,9 @@
 (define CTX_MOBJ  'mobject)
 (define CTX_FLO   'float)
 
+(define (CTX_CLOi cctable)
+    (cons CTX_CLO cctable))
+
 ;; TODO : merge with 'globals'
 (define gret `(
    (length . ,CTX_NUM)
@@ -1058,8 +1061,8 @@
                                                   (identifier-offset (cdr id))
                                                   '()
                                                   (identifier-flags (cdr id))
-                                                  CTX_UNK)))
-                           others)
+                                                  CTX_UNK))
+                           others))
                    '()
                    (ctx-env ctx))
             (ctx-nb-args ctx)))
@@ -1144,7 +1147,7 @@
               (not (member pos-to (identifier-pos identifier))))
            (cons (cons idsym (identifier-add-pos identifier pos-to))
                  (env-move (cdr env) pos-from pos-to)))
-        ;; b TODO gey comment from old version
+        ;; b TODO get comment from old version
         ((and (member pos-to (identifier-pos identifier))
               (not (member pos-from (identifier-pos identifier))))
            (cons (cons idsym (identifier-remove-pos identifier pos-to))
@@ -1341,7 +1344,7 @@
 
   (let* ((label-addr (asm-label-pos  label))
          (label-name (asm-label-name label))
-         (index (get-closure-index ctx))
+         (index (or (get-closure-index ctx) -1)) ;; -1 TODO to patch generic
          (offset (+ 16 (* index 8)))) ;; +16 (header & generic)
 
     (if opt-verbose-jit
@@ -1392,7 +1395,8 @@
               (known-type (list-ref (ctx-stack ctx) stack-idx)))
 
          (cond ;; known == expected
-               ((eq? known-type type)
+               ((or (eq? known-type type)
+                    (and (pair? known-type) (eq? (car known-type) type)))
                   (jump-to-version cgc lazy-success ctx-success))
                ;; known != expected && known != unknown
                ((not (eq? known-type CTX_UNK))
@@ -1493,7 +1497,7 @@
 ;; Global cc table
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 250)
+(define global-cc-table-maxsize 500)
 ;; Current shape of the global cc table
 (define global-cc-table (make-table))
 
@@ -1504,13 +1508,14 @@
 ;; the same for all versions of a lazy-object.
 (define (get-closure-index ctx)
   (if (= (table-length global-cc-table) global-cc-table-maxsize)
-     (error "CC-TABLE OVERFLOW"))
-  (let ((res (table-ref global-cc-table (ctx-stack ctx) #f)))
-    (if res
-      res
-      (let ((value (table-length global-cc-table)))
-        (table-set! global-cc-table (ctx-stack ctx) value)
-        value))))
+    #f
+   ;(error "CC-TABLE OVERFLOW"))
+      (let ((res (table-ref global-cc-table (ctx-stack ctx) #f)))
+        (if res
+          res
+          (let ((value (table-length global-cc-table)))
+            (table-set! global-cc-table (ctx-stack ctx) value)
+            value)))))
 
 ;; Associates a ctx to the address of a still-vector of length 1 containing only this ctx.
 ;; This table keep a reference to all ctx of call-sites because these ctx must

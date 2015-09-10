@@ -683,13 +683,14 @@
 
             ;; Tag and push closure
             (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 total-size)) alloc-ptr))
-            (x86-push cgc (x86-rax)))
+            (x86-push cgc (x86-rax))
 
-          ;; Jump to next
-          (jump-to-version cgc
-                           succ
-                           (ctx-push ctx
-                                     CTX_CLO)))))))
+            ;; Jump to next
+            (jump-to-version cgc
+                             succ
+                             (ctx-push ctx
+                                       (CTX_CLOi cctable-loc)))))))))
+                                       ;CTX_CLO)))))))
 
 ;; Create a new cc table with 'init' as stub value
 (define (make-cc len init generic)
@@ -848,7 +849,7 @@
                                (if (and (pair? (cadr el))
                                         (eq? (caadr el) 'lambda)
                                         (not (member (car el) mvars)))
-                                 (cons CTX_CLO r)    ;; Non mutable and lambda, kee the type
+                                 (cons CTX_CLO r)    ;; Non mutable and lambda, keep the type
                                  (cons CTX_MOBJ r)))
                              '()
                              (cadr ast)))
@@ -1865,30 +1866,49 @@
                          (gen-ast-l args lazy-call)
                          (ctx-push ctx CTX_RETAD))))))
 
+(define (gen-todo-generic cgc nb-args)
+    (begin ;; 1 - If nb-args given, put encoded nb in rdi
+           ;; NOTE: only if nb-args is not #f to handle 'apply' (apply always writes nb-args in rdi, don't overwrite it!)
+           (if nb-args
+             (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
+           ;; 2 - Get generic entry point
+           (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+           (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax)))))
+
 ;; Gen call sequence (call instructions) with call closure in RAX
 (define (gen-call-sequence cgc call-ctx nb-args use-mep) ;; Use multiple entry points?
 
+;; TODO: reecrire avec fonction du dessus
+;; TODO: option compilateur: erreur sur l'overflow (desactiver fixed generic fallback)
+;; TODO: option compilateur: propager l'identite des fonctions
+;; TODO: option compilateur: help
+
+;; TODO: option compilateur taille du tas
+;; TODO: option compilateur taille max table
+                                       
     (if use-mep
       ;; If we use multiple entry points then:
-      (let ((cct-offset (* 8 (+ 2 (get-closure-index call-ctx))))) ;; +2 (header & generic)
-        ;; 1 - Put ctx in r11
-        (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
-        ;; 2- Get cc-table
-        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-        ;; 3 - If opt-max-versions is not #f, a generic version could be called. So we need to give nb-args
-        ;; NOTE: only if nb-args is not #f to handle 'apply' (apply always writes nb-args in rdi, don't overwrite it!)
-        (if (and opt-max-versions nb-args)
-          (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
-        ;; 4 - Get entry point in cc-table
-        (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax))))
+      (let* ((idx (get-closure-index call-ctx))
+             (cct-offset
+                 (if idx
+                   (* 8 (+ 2 idx))
+                   #f))) ;; +2 (header & generic)
 
-      (begin ;; 1 - If nb-args given, put encoded nb in rdi
-             ;; NOTE: only if nb-args is not #f to handle 'apply' (apply always writes nb-args in rdi, don't overwrite it!)
-             (if nb-args
-               (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
-             ;; 2 - Get generic entry point
-             (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-             (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax)))))
+        (if cct-offset
+            (begin
+                ;; 1 - Put ctx in r11
+                (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
+                ;; 2- Get cc-table
+                (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+                ;; 3 - If opt-max-versions is not #f, a generic version could be called. So we need to give nb-args
+                ;; NOTE: only if nb-args is not #f to handle 'apply' (apply always writes nb-args in rdi, don't overwrite it!)
+                (if (and opt-max-versions nb-args)
+                  (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
+                ;; 4 - Get entry point in cc-table
+                (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax))))
+            (gen-todo-generic cgc nb-args)))
+
+      (gen-todo-generic cgc nb-args))
 
     ;; Jump to entry point
     (x86-jmp cgc (x86-rax)))
@@ -2168,7 +2188,8 @@
                    (set! known-type CTX_UNK))
 
                 (cond ;; known == expected
-                      ((eq? type known-type)
+                      ((or (eq? type known-type)
+                           (and (pair? known-type) (eq? (car known-type) type)))
                          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
                          (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
                          (jump-to-version cgc succ ctx-true))
