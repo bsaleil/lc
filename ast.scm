@@ -1885,7 +1885,7 @@
 
 ;; TODO: option compilateur taille du tas
 ;; TODO: option compilateur taille max table
-                                       
+;;TODO: revoir code det-closure-index
     (if use-mep
       ;; If we use multiple entry points then:
       (let* ((idx (get-closure-index call-ctx))
