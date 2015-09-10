@@ -79,6 +79,15 @@
 (define CTX_OPORT 'outport)
 (define CTX_MOBJ  'mobject)
 (define CTX_FLO   'float)
+(define (CTX_CST ctx-type cst) `(CST ,ctx-type ,cst))
+
+(define (is-CTX_NUM? type)
+    (or (eq? type CTX_NUM)
+        (and (pair? type) (eq? (cadr type) CTX_NUM))))
+
+(define (is-CTX_FLO? type)
+    (or (eq? type CTX_FLO)
+        (and (pair? type) (eq? (cadr type) CTX_FLO))))
 
 ;; TODO : merge with 'globals'
 (define gret `(
@@ -562,7 +571,7 @@
 ;; HEAP
 (define from-space #f)
 (define to-space   #f)
-(define space-len 100000000) ;; 10mo
+(define space-len 200000000) ;; 200mb
 (define alloc-ptr (x86-r12))
 
 ;; CODE
@@ -1392,7 +1401,8 @@
               (known-type (list-ref (ctx-stack ctx) stack-idx)))
 
          (cond ;; known == expected
-               ((eq? known-type type)
+               ((or (eq? known-type type)
+                (and (pair? known-type) (eq? (cadr known-type) type)))
                   (jump-to-version cgc lazy-success ctx-success))
                ;; known != expected && known != unknown
                ((not (eq? known-type CTX_UNK))
@@ -1493,7 +1503,7 @@
 ;; Global cc table
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 250)
+(define global-cc-table-maxsize 350)
 ;; Current shape of the global cc table
 (define global-cc-table (make-table))
 
