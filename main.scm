@@ -25,6 +25,20 @@
     "Disable the use of multiple entry points use only one generic entry point"
     ,(lambda (args) (set! opt-entry-points #f) args))
 
+  (--help
+    "Print help"
+    ,(lambda (args)
+      (newline)
+      (println "SYNOPSIS")
+      (println "     ./lazy-comp [files] [options]")
+      (newline)
+      (println "OPTIONS")
+      (for-each (lambda (option) (println "     " (car option))
+                                 (println "          " (cadr option)))
+                compiler-options)
+      (newline)
+      (exit 0)))
+
   (--max-versions
     "Set a limit on the number of versions of lazy code objects"
     ,(lambda (args) (set! opt-max-versions (string->number (cadr args)))
