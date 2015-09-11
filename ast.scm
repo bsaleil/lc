@@ -688,9 +688,7 @@
             ;; Jump to next
             (jump-to-version cgc
                              succ
-                             (ctx-push ctx
-                                       (CTX_CLOi cctable-loc)))))))))
-                                       ;CTX_CLO)))))))
+                             (ctx-push ctx (CTX_CLOi cctable-loc)))))))))
 
 ;; Create a new cc table with 'init' as stub value
 (define (make-cc len init generic)
@@ -1878,13 +1876,6 @@
 
 ;; Gen call sequence (call instructions) with call closure in RAX
 (define (gen-call-sequence cgc call-ctx nb-args use-mep) ;; Use multiple entry points?
-
-;; TODO: option compilateur: erreur sur l'overflow (desactiver fixed generic fallback)
-;; TODO: option compilateur: propager l'identite des fonctions
-
-;; TODO: option compilateur taille du tas
-;; TODO: option compilateur taille max table
-;; TODO: revoir code det-closure-index
 
     (if use-mep
       ;; If we use multiple entry points then:

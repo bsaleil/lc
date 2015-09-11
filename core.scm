@@ -18,6 +18,8 @@
 (define opt-all-tests            #f) ;; Remove type information (execute all type tests)
 (define opt-max-versions         #f) ;; Limit of number of versions (#f=no limit, 0=only generic, ...)
 (define opt-entry-points         #t) ;; Use multiple entry points (#t to use cc-tables, #f to use generic entry point
+(define opt-overflow-fallback    #t) ;; Automatic fallback to generic entry point if cctable overflows
+(define opt-propagate-functionid #t) ;; Propagate function identitie
 
 ;;-----------------------------------------------------------------------------
 
@@ -81,7 +83,9 @@
 (define CTX_FLO   'float)
 
 (define (CTX_CLOi cctable)
-    (cons CTX_CLO cctable))
+  (if opt-propagate-functionid
+      (cons CTX_CLO cctable)
+      CTX_CLO))
 
 ;; TODO : merge with 'globals'
 (define gret `(
@@ -565,7 +569,7 @@
 ;; HEAP
 (define from-space #f)
 (define to-space   #f)
-(define space-len 100000000) ;; 10mo
+(define space-len 100000000) ;; 100mo
 (define alloc-ptr (x86-r12))
 
 ;; CODE
@@ -1507,15 +1511,20 @@
 ;; Store and compare ctx-stack in enough because environment is
 ;; the same for all versions of a lazy-object.
 (define (get-closure-index ctx)
-  (if (= (table-length global-cc-table) global-cc-table-maxsize)
-    #f
-   ;(error "CC-TABLE OVERFLOW"))
-      (let ((res (table-ref global-cc-table (ctx-stack ctx) #f)))
-        (if res
-          res
-          (let ((value (table-length global-cc-table)))
-            (table-set! global-cc-table (ctx-stack ctx) value)
-            value)))))
+  (let ((res (table-ref global-cc-table (ctx-stack ctx) #f)))
+    (if res
+      ;; Ctx exists in global table
+      res
+      ;; Ctx does not exists yet
+      (if (= (table-length global-cc-table) global-cc-table-maxsize)
+        ;; Global table is full
+        (if opt-overflow-fallback
+          #f
+          (error "Global entry points table overflow!"))
+        ;; Global table is not full
+        (let ((value (table-length global-cc-table)))
+          (table-set! global-cc-table (ctx-stack ctx) value)
+          value)))))
 
 ;; Associates a ctx to the address of a still-vector of length 1 containing only this ctx.
 ;; This table keep a reference to all ctx of call-sites because these ctx must

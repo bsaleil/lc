@@ -5,6 +5,9 @@
 
 (define pp pretty-print)
 
+(define-macro (string-bold str)
+    `(string-append "\033[1m" ,str "\033[0m"))
+
 ;;--------------------------------------------------------------------------------
 ;; Compiler options
 
@@ -15,26 +18,46 @@
     "DEPRECATED"
     ,(lambda (args) (set! opt-all-tests #t) args))
 
+  (--cctable-maxsize
+    "Set the maximum size of the global entry points table"
+    ,(lambda (args) (set! global-cc-table-maxsize (string->number (cadr args))) (cdr args))) ;; TODO: use a variable opt-cctable-maxsize
+
   (--count-calls
     "DEPRECATED"
     ,(lambda (args) (set! opt-count-calls (string->symbol (cadr args)))
                     (set! args (cdr args)) ;; Remove one more arg
                     args))
 
+  (--disable-ccoverflow-fallback
+    "Disable automatic fallback to generic entry point when cctable overflows, throw an error instead"
+    ,(lambda (args) (set! opt-overflow-fallback #f) args))
+
   (--disable-entry-points
     "Disable the use of multiple entry points use only one generic entry point"
     ,(lambda (args) (set! opt-entry-points #f) args))
+
+  (--disable-functionid-propagation
+    "Disable the propagation of function identities"
+    ,(lambda (args) (set! opt-propagate-functionid #f) args))
+
+  (--heap-max
+    "Set maximum heap size in kilobytes"
+    ,(lambda (args) (set! space-len (* 1000 (string->number (cadr args)))) (cdr args))) ;; TODO: use a variable opt-space-len
 
   (--help
     "Print help"
     ,(lambda (args)
       (newline)
-      (println "SYNOPSIS")
-      (println "     ./lazy-comp [files] [options]")
+      (println (string-bold "NAME"))
+      (println "       lazy-comp - Scheme JIT compiler")
       (newline)
-      (println "OPTIONS")
-      (for-each (lambda (option) (println "     " (car option))
-                                 (println "          " (cadr option)))
+      (println (string-bold "SYNOPSIS"))
+      (println "       ./lazy-comp [files] [options]")
+      (newline)
+      (println (string-bold "OPTIONS"))
+      (for-each (lambda (option) (println "       " (car option))
+                                 (println "       " "       " (cadr option))
+                                 (newline))
                 compiler-options)
       (newline)
       (exit 0)))
@@ -46,7 +69,7 @@
                     args))
 
   (--stats
-    "Print stats blablabla"
+    "Print stats about execution"
     ,(lambda (args) (assert (not opt-time) "--stats option can't be used with --time")
                     (set! opt-stats #t)
                     args))
