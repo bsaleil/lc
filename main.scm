@@ -5,6 +5,75 @@
 
 (define pp pretty-print)
 
+;;--------------------------------------------------------------------------------
+;; Compiler options
+
+;; Contains all compiler options
+;; An option contains (option-text help-text option-lambda)
+(define compiler-options `(
+  (--all-tests
+    "DEPRECATED"
+    ,(lambda (args) (set! opt-all-tests #t) args))
+
+  (--count-calls
+    "DEPRECATED"
+    ,(lambda (args) (set! opt-count-calls (string->symbol (cadr args)))
+                    (set! args (cdr args)) ;; Remove one more arg
+                    args))
+
+  (--disable-entry-points
+    "Disable the use of multiple entry points use only one generic entry point"
+    ,(lambda (args) (set! opt-entry-points #f) args))
+
+  (--max-versions
+    "Set a limit on the number of versions of lazy code objects"
+    ,(lambda (args) (set! opt-max-versions (string->number (cadr args)))
+                    (set! args (cdr args))
+                    args))
+
+  (--stats
+    "Print stats blablabla"
+    ,(lambda (args) (assert (not opt-time) "--stats option can't be used with --time")
+                    (set! opt-stats #t)
+                    args))
+
+  (--time
+    "Print exec time information"
+    ,(lambda (args) (assert (not opt-stats) "--time option can't be used with --stats")
+                    (assert (not opt-count-calls) "--time option can't be used with --count-calls")
+                    (set! opt-time #t)
+                    args))
+
+  (--verbose
+    "Full verbose"
+    ,(lambda (args) (set! opt-verbose-jit #t)
+                    (set! opt-verbose-gc  #t)
+                    args))
+
+  (--verbose-jit
+    "Set jit as verbose"
+    ,(lambda (args) (set! opt-verbose-jit #t) args))
+
+  (--verbose-gc
+    "Set gc as verbose"
+    ,(lambda (args) (set! opt-verbose-gc #t) args))
+))
+
+(define (parse-args args)
+    (cond ;;
+          ((null? args) '())
+          ;;
+          ((not (eq? (string-ref (car args) 0) #\-))
+            (cons (car args) (parse-args (cdr args))))
+          ;;
+          (else
+            (let ((opt (assq (string->symbol (car args)) compiler-options)))
+              (if opt
+                (let ((fn (caddr opt)))
+                 (set! args (fn args)))
+                (error "Unknown argument " (car args))))
+            (parse-args (cdr args)))))
+
 ;;-----------------------------------------------------------------------------
 
 (define (lazy-exprs exprs succ)
@@ -104,8 +173,8 @@
   ;; Get library
   ;(define lib '())
   (define lib (expand-tl (read-all (open-input-file "./lib.scm"))))
-  ;; Get options and files from cl args
-  (define files (parse-cl-args args))
+  ;; Set options and get files from cl args
+  (define files (parse-args args))
 
     (cond ;; If no files specified then start REPL
           ((null? files)
@@ -193,55 +262,7 @@
   (get-versions-info-full-h lazy-codes)
   (table->list table))
 
-(define-macro (case-equal key clause . clauses)
-    (cond ((and (null? clauses)
-                (eq? (car clause) 'else))
-             `(begin ,@(cdr clause)))
-          ((null? clauses)
-             `(if (member ,key (quote ,(car clause)))
-                 (begin ,@(cdr clause))))
-          (else
-             `(if (member ,key (quote ,(car clause)))
-                 (begin ,@(cdr clause))
-                 (case-equal ,key ,(car clauses) ,@(cdr clauses))))))
-
 ;;-----------------------------------------------------------------------------
-;; Command line arguments
-
-;; Parser
-(define (parse-cl-args args)
-
-  (define (parse-cl-args-h args files)
-    (cond ;; No args, return list of files
-          ((null? args)
-            files)
-          ;; File (does not begin with #\-)
-          ((not (eq? (string-ref (car args) 0) #\-))
-            (parse-cl-args-h (cdr args) (cons (car args) files)))
-          ;; Else it's an option
-          (else
-            (let ((first (car args)))
-              (case-equal first
-                (("--verbose-jit") (set! opt-verbose-jit #t))
-                (("--verbose-gc")  (set! opt-verbose-gc  #t))
-                (("--verbose")     (set! opt-verbose-jit #t)
-                                   (set! opt-verbose-gc  #t))
-                (("--all-tests")   (set! opt-all-tests #t))
-                (("--disable-entry-points")
-                                   (set! opt-entry-points #f))
-                (("--max-versions")(set! opt-max-versions (string->number (cadr args)))
-                                   (set! args (cdr args)))
-                (("--stats")       (assert (not opt-time) "--stats option can't be used with --time")
-                                   (set! opt-stats #t))
-                (("--time")        (assert (not opt-stats)       "--time option can't be used with --stats")
-                                   (assert (not opt-count-calls) "--time option can't be used with --count-calls")
-                                   (set! opt-time #t))
-                (("--count-calls") (set! opt-count-calls (string->symbol (cadr args)))
-                                   (set! args (cdr args))) ;; Remove one more arg
-                (else (error "Unknown option" first)))
-              (parse-cl-args-h (cdr args) files)))))
-
-  (parse-cl-args-h args '()))
 
 (define (rt-print-opts)
   (if opt-count-calls

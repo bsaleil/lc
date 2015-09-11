@@ -7,8 +7,6 @@
 
 (include "x86-debug.scm")
 
-;;-----------------------------------------------------------------------------
-
 ;; Compiler options
 (define opt-stats                #f) ;; Print stats report
 (define opt-time                 #f) ;; Print exec time in processor cycles
