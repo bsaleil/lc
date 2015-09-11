@@ -1881,7 +1881,6 @@
 
 ;; TODO: option compilateur: erreur sur l'overflow (desactiver fixed generic fallback)
 ;; TODO: option compilateur: propager l'identite des fonctions
-;; TODO: option compilateur: help
 
 ;; TODO: option compilateur taille du tas
 ;; TODO: option compilateur taille max table
