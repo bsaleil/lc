@@ -12,23 +12,23 @@
 ;; OPEN
 
 (define (gen-syscall-open cgc direction)
-  
+
   (define flags (if (eq? direction 'in)
                   0    ;;  0 is O_RDONLY
                   577)) ;; 65 is O_WRONLY | O_CREAT | O_TRUNC
-  
+
   (define permissions 420) ;; S_IRUSR |  S_IWUSR | S_IRGRP | S_IROTH
-  
+
   (define err (if (eq? direction 'in)
                 ERR_OPEN_INPUT_FILE
                 ERR_OPEN_OUTPUT_FILE))
-  
+
   ;; Save destroyed regs
-  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel 
-  (x86-push cgc (x86-r11)) ;; Destroyed by kernel 
+  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel
+  (x86-push cgc (x86-r11)) ;; Destroyed by kernel
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
-  
+
   ;; c-string argument (rdi)
   (x86-mov cgc (x86-rdi) (x86-mem 32 (x86-rsp))) ;; Str in rdi
   (x86-mov cgc (x86-rbx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rdi)))  ;; Str length in rbx
@@ -65,23 +65,23 @@
 ;; CLOSE
 
 (define (gen-syscall-close cgc)
-  
+
   (x86-pop cgc (x86-rax)) ;; Port in rax
-  
+
   ;; Save destroyed regs
-  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel 
-  (x86-push cgc (x86-r11)) ;; Destroyed by kernel 
+  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel
+  (x86-push cgc (x86-r11)) ;; Destroyed by kernel
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
-  
+
   ;; File descriptor argument (rdi)
   (x86-mov cgc (x86-rdi) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
   ;; syscall number (rax)
   (x86-mov cgc (x86-rax) (x86-imm-int (cdr (assoc 'close LINUX_SYSCALL))))
-  
+
   ;; perform syscall
   (x86-syscall cgc)
-  
+
   ;; No effect if the file has already been closed
 
   ;; Restore destroyed regs
@@ -97,7 +97,7 @@
 
   ;; Save destroyed regs
   (x86-push cgc (x86-rcx)) ;; Destroyed by kernel
-  (x86-push cgc (x86-r11)) ;; Destroyed by kernel 
+  (x86-push cgc (x86-r11)) ;; Destroyed by kernel
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
 
@@ -147,7 +147,7 @@
 
   ;; Save destroyed regs
   (x86-push cgc (x86-rcx)) ;; Destroyed by kernel
-  (x86-push cgc (x86-r11)) ;; Destroyed by kernel 
+  (x86-push cgc (x86-r11)) ;; Destroyed by kernel
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
 
@@ -178,7 +178,7 @@
       ;; Else syscall failed
       (gen-error cgc ERR_WRITE_CHAR)
     (x86-label cgc label-syscall-ok))
-  
+
   ;; Restore destroyed regs
   (x86-pop cgc (x86-rsi))
   (x86-pop cgc (x86-rdi))
