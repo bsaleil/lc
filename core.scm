@@ -1395,13 +1395,14 @@
        ;; TODO: plus nettoyer tout ca
 
        (let* ((ctx-success (ctx-change-type ctx stack-idx type))
+              (ctx-success-known ctx);; Is know type is tested type, do not change ctx
               (ctx-fail ctx)
               (known-type (list-ref (ctx-stack ctx) stack-idx)))
 
          (cond ;; known == expected
                ((or (eq? known-type type)
                     (and (pair? known-type) (eq? (car known-type) type)))
-                  (jump-to-version cgc lazy-success ctx-success))
+                  (jump-to-version cgc lazy-success ctx-success-known))
                ;; known != expected && known != unknown
                ((not (eq? known-type CTX_UNK))
                   (jump-to-version cgc lazy-fail ctx-fail))

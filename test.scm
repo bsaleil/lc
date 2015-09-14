@@ -238,12 +238,13 @@
 ; 2-A chaque pos: mettre le type
 
 
-(define (foo a)
-    (let ((f (lambda () 10)))
-       (f)))
+(define (bar fn)
+    ;(+ (fn) 99))
+    (if (procedure? fn)
+      (fn)))
 
-(foo 10)
-(foo #f)
+(bar (lambda () 100))
+
 
 
 

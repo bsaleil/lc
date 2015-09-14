@@ -434,6 +434,23 @@
 (define cctables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))     ;; eq? on ast
                                                       (equal? (cdr a) (cdr b)))))) ;; equal? on ctx information
 
+;; Return cctable from cctable-key.
+;; Return the existing table is already created or crate one, add entry, and return it
+(define (get-cctable ast cctable-key stub-addr generic-addr)
+  (let ((cctable (table-ref cctables cctable-key #f)))
+    (if cctable
+      cctable
+      (let ((t (make-cc (+ 1 global-cc-table-maxsize) stub-addr generic-addr)))
+        (table-set! cctables cctable-key t)
+        (set! cctables-loc-code (cons (cons (- (obj-encoding t) 1)
+                                            ast)
+                                      cctables-loc-code))
+        t))))
+
+;; TODO: change to table, merge with cctables ? (change cctable-key to something better)
+;; Store pairs associating cctable address to the code of the corresponding function
+(define cctables-loc-code '())
+
 (define (mlc-lambda ast succ lib-define)
 
   (let* (;; Lambda free vars
@@ -661,10 +678,7 @@
                                                  r))
                                            '()
                                            (ctx-env ctx))))
-                 (cctable (or (table-ref cctables cctable-key #f)
-                              (let ((t (make-cc (+ 1 global-cc-table-maxsize) stub-addr generic-addr))) ;; +1 (generic ep)
-                                 (table-set! cctables cctable-key t)
-                                 t)))
+                 (cctable (get-cctable ast cctable-key stub-addr generic-addr))
                  (cctable-loc (- (obj-encoding cctable) 1)))
 
             ;; Alloc closure
@@ -1779,6 +1793,7 @@
          (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
+
                                         ;; Call ctx in rdx
                                         (let* ((call-stack (if tail
                                                               (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
@@ -1810,13 +1825,13 @@
          ;; Lazy operator
          (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
-    ;; Build first lazy code
+
     (if tail
         (if (> (length args) 0)
-          ;; If args, then compile args
-          (gen-ast-l args lazy-operator)
-          ;; Else, compile call
-          lazy-operator)
+            ;; If args, then compile args
+            (gen-ast-l args lazy-operator)
+            ;; Else, compile call
+            lazy-operator)
         ;; Gen pre-call
         (gen-lazy-pre-call (car ast) succ lazy-operator args))))
 
@@ -2171,6 +2186,7 @@
               (let* ((type (type-from-predicate (car ast)))
                      (known-type (car (ctx-stack ctx)))
                      (ctx-true  (ctx-push (ctx-pop (ctx-change-type ctx 0 type)) CTX_BOOL))
+                     (ctx-true-known (ctx-push (ctx-pop ctx) CTX_BOOL)) ;; Is know type is tested type, simply push BOOL
                      (ctx-false (ctx-push (ctx-pop ctx) CTX_BOOL)))
 
                 ;; If 'all-tests' option enabled, then remove type information ;; TODO rm
@@ -2182,7 +2198,7 @@
                            (and (pair? known-type) (eq? (car known-type) type)))
                          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
                          (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                         (jump-to-version cgc succ ctx-true))
+                         (jump-to-version cgc succ ctx-true-known))
                       ;; known != expected && known != unknown
                       ((not (eq? known-type CTX_UNK))
                          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
