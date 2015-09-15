@@ -248,7 +248,7 @@
                 (set! gids (get-gids content gids))
 
                 (let ((exp-content (expand-tl content)))
-                   ;(pp file-content)))
+                   ;(pp exp-content))))
                    (exec lib exp-content))))
           (else (error "NYI")))
 

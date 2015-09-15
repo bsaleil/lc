@@ -174,7 +174,6 @@
           (begin (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding ast)))
                  (x86-push cgc (x86-rax)))
           (x86-push cgc (x86-imm-int (obj-encoding ast))))
-      ;(if (char? ast) (pp ctx))
       (jump-to-version cgc
                        succ
                        (ctx-push ctx
@@ -788,7 +787,12 @@
                    (lazy-bodies (gen-ast-l bodies lazy-let-out)))
 
             ;; Delegate with bodies as successor
-            (cond ((eq? op 'let)    (mlc-let ast lazy-bodies))
+            (cond ((or (eq? op 'let)
+                       (and (eq? op 'letrec)
+                            ;; BAD HACK !
+                            ;; If the bindings do not not contains the symcol 'lambda, use a let
+                            (not (contains (map cadr (cadr ast)) 'lambda))))
+                     (mlc-let ast lazy-bodies))
                   ((eq? op 'letrec) (mlc-letrec ast lazy-bodies))
                   ((eq? op 'let*)   (mlc-let* ast lazy-bodies))
                   (else (error "Unknown ast"))))))))

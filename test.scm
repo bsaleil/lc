@@ -238,13 +238,17 @@
 ; 2-A chaque pos: mettre le type
 
 
-(define (bar fn)
-    ;(+ (fn) 99))
-    (if (procedure? fn)
-      (fn)))
 
-(bar (lambda () 100))
+(define (foo)
 
+    (letrec ((result (make-vector 100)))
+        (letrec ((_loop1 (lambda (i)
+                            (vector-set! result 0 100)
+                            (if (> i 0)
+                              (_loop1 (- i 1))))))
+            (_loop1 1000))))
+
+(foo)
 
 
 
