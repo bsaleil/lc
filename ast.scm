@@ -1420,7 +1420,7 @@
         (if (eq? (car types) '*)
            (gen-ast (car args) next-arg)
            (gen-ast (car args)
-                    (gen-fatal-type-test (car types) 0 next-arg))))))
+                    (gen-fatal-type-test (car types) 0 next-arg ast))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Conditionals
@@ -1789,55 +1789,105 @@
 ;; Make lazy code from CALL EXPR
 ;;
 (define (mlc-call ast succ)
-  (let* (;; Tail call if successor's flags set contains 'ret flag
-         (tail (member 'ret (lazy-code-flags succ)))
-         ;; Call arguments
-         (args (cdr ast))
-         ;; Lazy fail
-         (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
-         ;; Lazy call
-         (lazy-call (make-lazy-code (lambda (cgc ctx)
 
-                                        ;; Call ctx in rdx
-                                        (let* ((call-stack (if tail
-                                                              (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
-                                                              (list-head (ctx-stack ctx) (+ (length args) 2))))
-                                               (call-ctx (make-ctx call-stack '() -1)))
+ ;; BEGIN TODO
+  (define (re-call ast)
 
-                                        (if tail
-                                          (tail-shift cgc
-                                                      ;; Nb slots to shift
-                                                      (+ (length args) 1) ;; +1 closure
-                                                      ;; Initial from slot
-                                                      (length args)
-                                                      ;; Initial to slot
-                                                      (- (length (ctx-stack ctx)) 2)))
+    (define (get-args-types args positions curr callexpr)
+        (if (null? args)
+          (if (null? positions) ;; no lambda in args
+            ast
+            (cons 'let
+                  (cons positions (list (cons (car ast) ;; operator
+                                              (reverse callexpr)))))) ;; new args
+          (let ((arg (car args))
+                (ssym (gensym)))
+             (if (and (pair? arg) (eq? (car arg) 'lambda))
+                (get-args-types (cdr args)
+                                positions
+                                (+ curr 1)
+                                (cons arg callexpr))
+                (get-args-types (cdr args)
+                                (cons (list ssym
+                                            (list-ref (cdr ast) curr))
+                                      positions)
+                                (+ curr 1)
+                                (cons ssym callexpr))))))
 
-                                        ;; If count calls compiler opt
-                                        (if (eq? (car ast) opt-count-calls)
-                                           (gen-inc-slot cgc 'calls))
+;; Si la boucle contient aucune lambdas ou que des symboles et lambda, on change pas
+;; sinon on change
 
-                                        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+    (let* ((symlam (foldr (lambda (el r)
+                            (cond ((symbol? el) (cons (+ 1 (car r)) (cdr r)))
+                                  ((and (pair? el) (eq? (car el) 'lambda)) (cons (car r) (+ 1 (cdr r))))
+                                  (else r)))
+                         '(0 . 0)
+                          (cdr ast)))
+           (nsym (car symlam))
+           (nlam (cdr symlam)))
 
-                                        ;; Gen call sequence with closure in RAX
-                                        (let ((nb-unk (count call-stack (lambda (n) (eq? n CTX_UNK)))))
+        (if (or (= (+ nsym nlam) (length (cdr ast))) ;; only lambdas and symbols
+                (= nlam 0))
+              #f
+              (get-args-types (cdr ast) '() 0 '()))))
 
-                                          (if (and opt-entry-points
-                                                   (not (= nb-unk (length args))))
-                                            (gen-call-sequence cgc call-ctx (length (cdr ast)) #t)
-                                            (gen-call-sequence cgc call-ctx (length (cdr ast)) #f)))))))
-         ;; Lazy operator
-         (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
+  (let ((transformed (re-call ast)))
+
+     (if transformed
+          (gen-ast transformed succ)
+
+    ;; END TODO
 
 
-    (if tail
-        (if (> (length args) 0)
-            ;; If args, then compile args
-            (gen-ast-l args lazy-operator)
-            ;; Else, compile call
-            lazy-operator)
-        ;; Gen pre-call
-        (gen-lazy-pre-call (car ast) succ lazy-operator args))))
+          (let* (;; Tail call if successor's flags set contains 'ret flag
+                 (tail (member 'ret (lazy-code-flags succ)))
+                 ;; Call arguments
+                 (args (cdr ast))
+                 ;; Lazy fail
+                 (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
+                 ;; Lazy call
+                 (lazy-call (make-lazy-code (lambda (cgc ctx)
+
+                                                ;; Call ctx in rdx
+                                                (let* ((call-stack (if tail
+                                                                      (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
+                                                                      (list-head (ctx-stack ctx) (+ (length args) 2))))
+                                                       (call-ctx (make-ctx call-stack '() -1)))
+
+                                                (if tail
+                                                  (tail-shift cgc
+                                                              ;; Nb slots to shift
+                                                              (+ (length args) 1) ;; +1 closure
+                                                              ;; Initial from slot
+                                                              (length args)
+                                                              ;; Initial to slot
+                                                              (- (length (ctx-stack ctx)) 2)))
+
+                                                ;; If count calls compiler opt
+                                                (if (eq? (car ast) opt-count-calls)
+                                                   (gen-inc-slot cgc 'calls))
+
+                                                (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+
+                                                ;; Gen call sequence with closure in RAX
+                                                (let ((nb-unk (count call-stack (lambda (n) (eq? n CTX_UNK)))))
+
+                                                  (if (and opt-entry-points
+                                                           (not (= nb-unk (length args))))
+                                                    (gen-call-sequence cgc call-ctx (length (cdr ast)) #t)
+                                                    (gen-call-sequence cgc call-ctx (length (cdr ast)) #f)))))))
+                 ;; Lazy operator
+                 (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
+
+
+            (if tail
+                (if (> (length args) 0)
+                    ;; If args, then compile args
+                    (gen-ast-l args lazy-operator)
+                    ;; Else, compile call
+                    lazy-operator)
+                ;; Gen pre-call
+                (gen-lazy-pre-call (car ast) succ lazy-operator args))))))
 
 ;; Return a lazy code object to use as a 'pre-call':
 ;; Build continuation block and push return address
@@ -2031,10 +2081,10 @@
                                  (gen-comparison-ff cgc ctx succ lidx ridx #f #t))
                               (else (error "Unexpected behavior")))))))
              ;; Type checkers
-             (lazy-yfloat (gen-fatal-type-test CTX_FLO 0 lazy-op))              ;; y is flo ? perform op : ERROR
-             (lazy-yint   (gen-dyn-type-test CTX_NUM 0 lazy-op lazy-yfloat))    ;; y is int ? perform op : check y is flo
-             (lazy-xfloat (gen-fatal-type-test CTX_FLO 1 lazy-yint))            ;; x is flo ? check y is int : ERROR
-             (lazy-xint   (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat))) ;; x is int ? check y is int : check x is flo
+             (lazy-yfloat (gen-fatal-type-test CTX_FLO 0 lazy-op ast))              ;; y is flo ? perform op : ERROR
+             (lazy-yint   (gen-dyn-type-test CTX_NUM 0 lazy-op lazy-yfloat ast))    ;; y is int ? perform op : check y is flo
+             (lazy-xfloat (gen-fatal-type-test CTX_FLO 1 lazy-yint ast))            ;; x is flo ? check y is int : ERROR
+             (lazy-xint   (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat ast))) ;; x is int ? check y is int : check x is flo
         ;; The first lco checks if x is an integer
         lazy-xint))
 
@@ -2116,10 +2166,10 @@
                             (else (error "Unexpected behavior")))))))
 
             ;; Type checkers
-            (lazy-yfloat (gen-fatal-type-test CTX_FLO 0 lazy-op))              ;; y is flo ? perform op : ERROR
-            (lazy-yint   (gen-dyn-type-test CTX_NUM 0 lazy-op lazy-yfloat))    ;; y is int ? perform op : check y is flo
-            (lazy-xfloat (gen-fatal-type-test CTX_FLO 1 lazy-yint))            ;; x is flo ? check y is int : ERROR
-            (lazy-xint   (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat))) ;; x is int ? check y is int : check x is flo
+            (lazy-yfloat (gen-fatal-type-test CTX_FLO 0 lazy-op ast))              ;; y is flo ? perform op : ERROR
+            (lazy-yint   (gen-dyn-type-test CTX_NUM 0 lazy-op lazy-yfloat ast))    ;; y is int ? perform op : check y is flo
+            (lazy-xfloat (gen-fatal-type-test CTX_FLO 1 lazy-yint ast))            ;; x is flo ? check y is int : ERROR
+            (lazy-xint   (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat ast))) ;; x is int ? check y is int : check x is flo
         ;; The first lco checks if x is an integer
         lazy-xint))
 

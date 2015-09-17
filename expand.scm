@@ -5,6 +5,8 @@
 (define ILL-CASE   "Ill-formed 'case'")
 (define EMPTY-BODY "Body must contain at least one expression")
 
+(define list-accessors '(caar cadr cadar caddar cdar cddr caddr cdddr cadddr))
+
 ;; Expand function called from top-level (allows define)
 (define (expand-tl exprs)
   (if (null? exprs)
@@ -30,21 +32,36 @@
       ((equal? (car expr) 'case) (expand-case expr))
       ((equal? (car expr) 'quote) expr)
       ((equal? (car expr) 'set!) (expand-set! expr))
+      ((member (car expr) list-accessors) (expand-accessor expr))
       (else (if (list? (cdr expr))
                 (map expand expr)
                 (cons (expand (car expr)) (expand (cdr expr))))))) ;; (e1 . e2)
+
+(define (expand-accessor expr)
+    (let ((op   (car expr))
+          (opnd (expand (cdr expr))))
+      (case (car expr)
+         ((caar)  `(car (car ,@opnd)))
+         ((cadr)  `(car (cdr ,@opnd)))
+         ((cadar) `(car (cdr (car ,@opnd))))
+         ((caddar) `(car (cdr (cdr (car ,@opnd)))))
+         ((cdar)  `(cdr (car ,@opnd)))
+         ((cddr)  `(cdr (cdr ,@opnd)))
+         ((caddr) `(car (cdr (cdr ,@opnd))))
+         ((cdddr) `(cdr (cdr (cdr ,@opnd))))
+         ((cadddr) `(car (cdr (cdr (cdr ,@opnd))))))))
 
 (define (expand-set! expr)
   (let ((r (assoc (cadr expr) gids)))
      (if r
         (set-cdr! r #f)))
-     
+
   `(set! ,(cadr expr) ,(expand (caddr expr))))
 
 ;; DEFINE
 (define (expand-define expr)
   (if (pair? (cadr expr)) ;; (define (fn arg1 ... argN) ...)
-    `(define ,(caadr expr) ,(expand `(lambda ,(cdadr expr) ,@(cddr expr))))         
+    `(define ,(caadr expr) ,(expand `(lambda ,(cdadr expr) ,@(cddr expr))))
     `(define ,(cadr expr) ,(expand (caddr expr)))))
 
 ;; IF
@@ -58,7 +75,7 @@
 ;; BEGIN
 ;; TODO : begin is a special form
 ;; compiler is able to build a lazy object chain from begin
-;; WITHOUT internal defs. For now, begin with internal defs are 
+;; WITHOUT internal defs. For now, begin with internal defs are
 ;; transformed into lambda.
 (define (expand-begin expr)
   (if (eq? (length expr) 2)
@@ -68,7 +85,7 @@
     (let* ((r (get-internal-defs (cdr expr)))
            (defs (car r))
            (body (cdr r)))
-      
+
       (if (not (null? defs))
         ;; Internal def
         (expand (build-internal-defs defs body))
@@ -77,14 +94,14 @@
 ;; LET
 ;; letn and let with internal defs are not handled by compiler (mlc-let)
 (define (expand-let expr)
-  
+
   ;; NAMED LET
   (define (expand-letn expr)
      (let ((id (cadr expr))
            (bindings (caddr expr))
            (body (cdddr expr)))
        (expand `((letrec ((,id (lambda ,(map car bindings) ,@body))) ,id) ,@(map cadr bindings)))))
-  
+
   (if (symbol? (cadr expr))
     ;; Named let
     (expand-letn expr)
@@ -96,9 +113,9 @@
   (let ((ids    (map car (cadr expr)))
         (values (map cadr (cadr expr)))
         (bodies (cddr expr)))
-    
+
       (let ((r (get-internal-defs bodies)))
-        
+
         (if (null? (car r)) ;; no def
           `(,(car expr) ,(map (lambda (i v)
                       (list i (expand v))) ids values)
@@ -118,7 +135,7 @@
 
 ;; DO
 (define (expand-do expr)
-  
+
    (let ((SYM (gensym))
          (ids (cadr expr))
          (stop (caddr expr))
@@ -140,13 +157,13 @@
           (if (and (list? (caddr expr))
                    (eq? (car (caddr expr)) 'define))
               (error EMPTY-BODY)
-              `(lambda ,(cadr expr) ,(expand (caddr expr)))))   
+              `(lambda ,(cadr expr) ,(expand (caddr expr)))))
          ;; > 1 body
          (else
            (let* ((r (get-internal-defs (cddr expr)))
                   (defs (car r))
                   (body (cdr r)))
-             
+
              (if (not (null? defs))
                 `(lambda ,(cadr expr) ,(expand (build-internal-defs defs body)))
                 `(lambda ,(cadr expr) ,(expand `(begin ,@body))))))))
@@ -174,7 +191,7 @@
         ((eq? (length expr) 1) (error "Ill-formed special form: cond"))
         ;; (cond (e1 e2))
         ((eq? (length expr) 2)
-            (if (eq? (caadr expr) 'else) 
+            (if (eq? (caadr expr) 'else)
                 ;; (cond (else ...))
                 (expand `(begin ,@(cdr (cadr expr))))
                 ;; (cond (e1 e2))
@@ -184,7 +201,7 @@
                                   (expand `(cond ,@(cddr expr)))))))
 
 ;; COND clause
-;; expand cond clause with 'el' in else part 
+;; expand cond clause with 'el' in else part
 (define (expand-cond-clause expr el)
   (cond ((null? (cdr (cadr expr)))
             ;; (cond (e1))
@@ -193,7 +210,7 @@
                  (if ,sym
                     ,sym
                     ,el))))
-            
+
         ((eq? (cadr (cadr expr)) '=>)
             ;; (cond (e1 => e2))
             (let ((sym (gensym)))

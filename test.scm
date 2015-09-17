@@ -237,50 +237,29 @@
 ; 1-retrouver identifier depuis pos -> a
 ; 2-A chaque pos: mettre le type
 
+;; On découvre le type de l dans (cddr l)
+;; Mais on a créé la fermeture avec l:unknown, donc on doit retester le type avec (car l)
+
+;; Allocation sinking:
+;; A la création de la fermeture:
+;;   - Si aucune variable libre: on propage simplement l'identité, on alloue pas de fermeture
+;;   - Si au moins une variable libre mutable: on créé normalement la fermeture
+;;   - Si variables libres et aucunes mutables, on alloue en mémoire header, espace cctable, copie des variables libres, mais on n'utilise pas de cc table
+;;      -> Tout ca est stocké en mémoire avec un nouveau type closure "non initialisée" T
+;;
+;;   Cas d'allocation de la fermeture:
+;;    - 1: lors d'un appel, un argument est de type T, ou on a que l'identité, on doit initialiser la fermeture
+;;    - 2: une variable de type T (ou une id de fonction) devient variable libre
+;;    - 3: On perd l'information sur le type d'une variable de type T, ou un id de fonction.
 
 
-(define (foo)
+;; Solution pourrie:
+;;   On garde l'information: une variable v est utilisée comme variable libre dans la fonction numéro #fn
+;;   Lorsqu'on découvre le type de v, on sait qu'elle est utilisée pour #fn.
+;;   Alors on récupère la table de #fn pour laquelle f est du type découvert (sinon on la créé)
+;;   On patche la fermeture si elle est présente sur la pile avec l'adresse de la nouvelle table
 
-    (letrec ((result (make-vector 100)))
-        (letrec ((_loop1 (lambda (i)
-                            (vector-set! result 0 100)
-                            (if (> i 0)
-                              (_loop1 (- i 1))))))
-            (_loop1 1000))))
-
-(foo)
-
-
-
-
-
-
-; (define (foo a b c)
-;     (let ((d 40)
-;           (e 50)
-;           (f 60))
-;       a
-;       c
-;       #\C ))
-;
-; (foo 10 20 30)
-
-; (define (foo n)
-;
-;     (let ((fun (lambda () (+ n 10))))
-;         (+ n 1)
-;         (fun)))
-;
-; (foo 1)
-
-;(define (foo) 11)
-;(define (bar) 100)
-
-;(println 2.2)
-
-; (define (foo a b . l)
-; 	(pp a)
-; 	(pp b)
-; 	(pp l))
-
-; (foo 1 2 3 4 5)
+;; Meilleur solution:
+;; Allocation sinking, la fermeture n'est pas allouée
+;; On va découvrir le type de la variable, la fermeture est allouée que si elle sort du scope
+;; Dans l'exemple de recursive-div2-cps, la fermeture sera créée apr!s avoir évalué (cddr l) donc on connaitra le type de l

@@ -1373,20 +1373,20 @@
 ;; Gen fatal dynamic type test
 ;; fatal means that if type test fails, it stops execution
 ;; Check type 'type' for stack slot at 'stack-idx' and jump to 'succ' if succeess
-(define (gen-fatal-type-test type stack-idx succ)
+(define (gen-fatal-type-test type stack-idx succ #!optional ast)
 (let ((lazy-error
          (make-lazy-code
             (lambda (cgc ctx)
                (if (or (eq? type CTX_FLO) (eq? type CTX_NUM))
                  (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM))
                  (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
-  (gen-dyn-type-test type stack-idx succ lazy-error)))
+  (gen-dyn-type-test type stack-idx succ lazy-error ast)))
 
 ;; TODO
 ;; Create lazy code for type test of stack slot (stack-idx)
 ;; jump to lazy-success if test succeeds
 ;; jump to lazy-fail if test fails
-(define (gen-dyn-type-test type stack-idx lazy-success lazy-fail)
+(define (gen-dyn-type-test type stack-idx lazy-success lazy-fail #!optional ast)
 
   (make-lazy-code
      (lambda (cgc ctx)
