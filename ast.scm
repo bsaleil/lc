@@ -2549,7 +2549,7 @@
 
 ;; Return all mutable vars used by the list of ast
 (define (mutable-vars-l lst params)
-  (if (null? lst)
+  (if (or (null? lst) (not (pair? lst)))
     '()
     (set-union (mutable-vars (car lst) params) (mutable-vars-l (cdr lst) params))))
 
