@@ -1237,8 +1237,8 @@
                                     (x86-mov cgc (x86-rax) (x86-imm-int 0))
                                     (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp))))
 
-                                  (let ((label-loop (asm-make-label cgc (new-sym 'fill-vector-loop)))
-                                        (label-end  (asm-make-label cgc (new-sym 'fill-vector-end))))
+                                  (let ((label-loop (asm-make-label #f (new-sym 'fill-vector-loop)))
+                                        (label-end  (asm-make-label #f (new-sym 'fill-vector-end))))
 
                                   ;; LOOP:
                                   ;;    if (rbx == 0) jump END
