@@ -1,4 +1,6 @@
-(pp (+ 1 10))
+
+
+(= 1 10 100.0)
 
 ;; 1 - TODO CODE
 ;;   * PB quoted vector avec liste

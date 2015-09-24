@@ -2024,8 +2024,6 @@
 ;;
 ;; Make lazy code from N-ARY OPERATOR
 ;;
-;; TODO: vérifier cas sans opérandes, avec une seule opérande, etc...
-;; TODO: vérifier les types (CTX_NUM et CTX_FLO)
 ;; TODO: tester les nombre de tests de types pour chaque combinaison
 (define (mlc-op-n ast succ op)
   (if (member op '(< > <= >= =))
@@ -2046,7 +2044,7 @@
             (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx (- (length ast) 1))
                                                 CTX_BOOL)))))
 
-   ;; Gen false stub from jump-label & ctx ad return stub label
+   ;; Gen false stub from jump-label & ctx and return stub label
    (define (get-stub-label label-jump ctx)
       (list-ref (add-callback #f 0 (lambda (ret-addr selector)
                                    (gen-version (asm-label-pos label-jump)
@@ -2054,52 +2052,51 @@
                                                 ctx)))
                 0))
 
-   ;; Build lazy code objects chain
+   ;; Build chain for all operands
    (define (build-chain lidx ridx)
       (if (or (< lidx 0) (< ridx 0))
         ;; All operands compared
         (get-lazy-final #t)
         ;; There is at least 1 comparison to perform
-        (dispatch-comparison (build-chain (- lidx 1) (- ridx 1)) lidx ridx)))
+        (build-bincomp (build-chain (- lidx 1) (- ridx 1)) lidx ridx)))
 
-   ;; Check type of operands and generate appropriate code
-   (define (dispatch-comparison succ lidx ridx)
-      (let* (;; Operator lazy code object
-             (lazy-op
-                (make-lazy-code
-                   (lambda (cgc ctx)
-                      (let ((rtype (list-ref (ctx-stack ctx) ridx))
-                            (ltype (list-ref (ctx-stack ctx) lidx)))
+   ;; Gen lazy code objects chain for binary comparison (x op y)
+   ;; Build a lco for each node of the type checks tree (with int and float)
+   (define (build-bincomp succ lidx ridx)
+     (let* (;; Operations lco
+           (lazy-ii (get-comp-ii succ lidx ridx))       ;; lco for int int operation
+           (lazy-if (get-comp-ff succ lidx ridx #t #f)) ;; lco for int float operation
+           (lazy-fi (get-comp-ff succ lidx ridx #f #t)) ;; lco for float int operation
+           (lazy-ff (get-comp-ff succ lidx ridx #f #f)) ;; lco for float float operation
+           ;; Right branch
+           (lazy-yfloat2 (gen-fatal-type-test CTX_FLO ridx lazy-ff ast))
+           (lazy-yint2   (gen-dyn-type-test CTX_NUM ridx lazy-fi lazy-yfloat2 ast))
+           (lazy-xfloat  (gen-fatal-type-test CTX_FLO lidx lazy-yint2 ast))
+           ;; Left branch
+           (lazy-yfloat  (gen-fatal-type-test CTX_FLO ridx lazy-if ast))
+           (lazy-yint    (gen-dyn-type-test CTX_NUM ridx lazy-ii lazy-yfloat ast))
+           ;; Root node
+           (lazy-xint    (gen-dyn-type-test CTX_NUM lidx lazy-yint lazy-xfloat ast)))
+      lazy-xint))
 
-                        (cond ((and (eq? ltype CTX_NUM) (eq? rtype CTX_NUM)) ;; int int
-                                 (gen-comparison-ii cgc ctx succ lidx ridx))
-                              ((and (eq? ltype CTX_NUM) (eq? rtype CTX_FLO)) ;; int float
-                                 (gen-comparison-ff cgc ctx succ lidx ridx #t #f))
-                              ((and (eq? ltype CTX_FLO) (eq? rtype CTX_FLO)) ;; float float
-                                 (gen-comparison-ff cgc ctx succ lidx ridx #f #f))
-                              ((and (eq? ltype CTX_FLO) (eq? rtype CTX_NUM)) ;; float int
-                                 (gen-comparison-ff cgc ctx succ lidx ridx #f #t))
-                              (else (error "Unexpected behavior")))))))
-             ;; Type checkers
-             (lazy-yfloat (gen-fatal-type-test CTX_FLO 0 lazy-op ast))              ;; y is flo ? perform op : ERROR
-             (lazy-yint   (gen-dyn-type-test CTX_NUM 0 lazy-op lazy-yfloat ast))    ;; y is int ? perform op : check y is flo
-             (lazy-xfloat (gen-fatal-type-test CTX_FLO 1 lazy-yint ast))            ;; x is flo ? check y is int : ERROR
-             (lazy-xint   (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat ast))) ;; x is int ? check y is int : check x is flo
-        ;; The first lco checks if x is an integer
-        lazy-xint))
-
-   ;; Gen code to compare int and int
-   (define (gen-comparison-ii cgc ctx succ lidx ridx)
+    ;; Get lazy code object for comparison with int and int
+   (define (get-comp-ii succ lidx ridx)
+    (make-lazy-code
+      (lambda (cgc ctx)
       (let ((label-jump (asm-make-label #f (new-sym 'label-jump)))
             (x86-op (cdr (assoc op `((< . ,x86-jge) (> . ,x86-jle) (<= . ,x86-jg) (>= . ,x86-jl) (= . ,x86-jne))))))
          (x86-mov cgc (x86-rax) (x86-mem (* 8 lidx) (x86-rsp)))
          (x86-cmp cgc (x86-rax) (x86-mem (* 8 ridx) (x86-rsp)))
          (x86-label cgc label-jump)
          (x86-op cgc (get-stub-label label-jump ctx))
-         (jump-to-version cgc succ ctx)))
+         (jump-to-version cgc succ ctx)))))
 
-   ;; Gen code to compare float and float
-   (define (gen-comparison-ff cgc ctx succ lidx ridx leftint? rightint?)
+   ;; Get lazy code object for comparison with float and float, float and int, and int and float
+   ;; leftint?  to #t if left operand is an integer
+   ;; rightint? to #t if right operand is an integer
+   (define (get-comp-ff succ lidx ridx leftint? rightint?)
+    (make-lazy-code
+      (lambda (cgc ctx)
       (let ((label-jump (asm-make-label #f (new-sym 'label-jump)))
             ;; DO NOT USE jg* and jl* WITH FP VALUES !
             (x86-op (cdr (assoc op `((< . ,x86-jae) (> . ,x86-jbe) (<= . ,x86-ja) (>= . ,x86-jb) (= . ,x86-jne))))))
@@ -2120,7 +2117,7 @@
             (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx))))
          (x86-label cgc label-jump)
          (x86-op cgc (get-stub-label label-jump ctx))
-         (jump-to-version cgc succ ctx)))
+         (jump-to-version cgc succ ctx)))))
 
    ;; Push operands and start comparisons
    (gen-ast-l (cdr ast)
