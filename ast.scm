@@ -2131,61 +2131,53 @@
 ;; Make lazy code from N-ARY ARITHMETIC OPERATOR
 ;;
 (define (mlc-op-n-num ast succ op)
+  
+  ;; Build chain for all operands
+  (define (build-chain opnds)
+    (if (null? opnds)
+      succ
+      (let* ((lazy-bin-op (build-binop (build-chain (cdr opnds))))
+             (lazy-opnd (gen-ast (car opnds) lazy-bin-op)))
+        lazy-opnd)))
 
-   ;; Build lazy code objects chain
-   (define (build-chain opnds)
-      (if (null? opnds)
-        ;; No more opnd
-        succ
-        ;; at least 1 opnd left
-        (let* ((lazy-bin-op (dispatch-operation (build-chain (cdr opnds))))
-               (lazy-opnd (gen-ast (car opnds) lazy-bin-op)))
-          lazy-opnd)))
+  ;; Gen lazy code objects chain for binary operation (x op y)
+  ;; Build a lco for each node of the type checks tree (with int and float)
+  (define (build-binop succ)
+    (let* (;; Operations lco
+           (lazy-ii (get-op-ii succ))       ;; lco for int int operation
+           (lazy-if (get-op-ff succ #t #f)) ;; lco for int float operation
+           (lazy-fi (get-op-ff succ #f #t)) ;; lco for float int operation
+           (lazy-ff (get-op-ff succ #f #f)) ;; lco for float float operation
+           ;; Right branch
+           (lazy-yfloat2 (gen-fatal-type-test CTX_FLO 0 lazy-ff ast))
+           (lazy-yint2   (gen-dyn-type-test CTX_NUM 0 lazy-fi lazy-yfloat2 ast))
+           (lazy-xfloat  (gen-fatal-type-test CTX_FLO 1 lazy-yint2 ast))
+           ;; Left branch
+           (lazy-yfloat  (gen-fatal-type-test CTX_FLO 0 lazy-if ast))
+           (lazy-yint    (gen-dyn-type-test CTX_NUM 0 lazy-ii lazy-yfloat ast))
+           ;; Root node
+           (lazy-xint    (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat ast)))
+      lazy-xint))
 
-   ;; Check type of operands and generate appropriate code
-   ;; TODO: merge with dispatch-comparison ?
-   (define (dispatch-operation succ)
+  ;; Get lazy code object for operation with int and int
+  (define (get-op-ii succ)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (x86-pop cgc (x86-rax))
+        (cond ((eq? op '+) (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+              ((eq? op '-) (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+              ((eq? op '*) (x86-sar cgc (x86-rax) (x86-imm-int 2))
+                           (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                           (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+              (else (error "NYI" op)))
+        (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_NUM)))))
 
-     (let* (;; Operator lazy code object
-            (lazy-op
-               (make-lazy-code
-                  (lambda (cgc ctx)
-                     (let ((rtype (car  (ctx-stack ctx)))
-                           (ltype (cadr (ctx-stack ctx))))
-
-                      ;; TODO OVERFLOWS
-
-                      (cond ((and (eq? ltype CTX_NUM) (eq? rtype CTX_NUM)) ;; int int
-                               (gen-operation-ii cgc ctx succ))
-                            ((and (eq? ltype CTX_NUM) (eq? rtype CTX_FLO)) ;; int float
-                               (gen-operation-ff cgc ctx succ #t #f))
-                            ((and (eq? ltype CTX_FLO) (eq? rtype CTX_FLO)) ;; float float
-                               (gen-operation-ff cgc ctx succ #f #f))
-                            ((and (eq? ltype CTX_FLO) (eq? rtype CTX_NUM)) ;; float int
-                               (gen-operation-ff cgc ctx succ #f #t))
-                            (else (error "Unexpected behavior")))))))
-
-            ;; Type checkers
-            (lazy-yfloat (gen-fatal-type-test CTX_FLO 0 lazy-op ast))              ;; y is flo ? perform op : ERROR
-            (lazy-yint   (gen-dyn-type-test CTX_NUM 0 lazy-op lazy-yfloat ast))    ;; y is int ? perform op : check y is flo
-            (lazy-xfloat (gen-fatal-type-test CTX_FLO 1 lazy-yint ast))            ;; x is flo ? check y is int : ERROR
-            (lazy-xint   (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat ast))) ;; x is int ? check y is int : check x is flo
-        ;; The first lco checks if x is an integer
-        lazy-xint))
-
-   ;; Gen code for operation with int and int
-   (define (gen-operation-ii cgc ctx succ)
-      (x86-pop cgc (x86-rax))
-      (cond ((eq? op '+) (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-            ((eq? op '-) (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-            ((eq? op '*) (x86-sar cgc (x86-rax) (x86-imm-int 2))
-                         (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                         (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-            (else (error "NYI" op)))
-      (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_NUM)))
-
-   ;; Gen code for operation with float and float
-   (define (gen-operation-ff cgc ctx succ leftint? rightint?)
+  ;; Get lazy code object for operation with float and float, float and int, and int and float
+  ;; leftint?  to #t if left operand is an integer
+  ;; rightint? to #t if right operand is an integer
+  (define (get-op-ff succ leftint? rightint?)
+    (make-lazy-code
+      (lambda (cgc ctx)
       ;; Alloc result flonum
       (gen-allocation cgc #f STAG_FLONUM 2)
 
@@ -2213,20 +2205,19 @@
       ;; Push string
       (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
       (x86-push cgc (x86-rax))
-      (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_FLO)))
+      (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_FLO)))))
 
-   (cond ((= (length ast) 1)
-             (cond ((eq? op '+) (gen-ast 0 succ))
-                   ((eq? op '-) (get-lazy-error ERR_WRONG_NUM_ARGS))
-                   ((eq? op '*) (gen-ast 1 succ))
-                   ((member op '(< > <= >= =)) (gen-ast #t succ))
-                   (else (error "Unknown operator " op))))
-         ((and (= (length ast) 2) (eq? op '-))
-             (gen-ast (list '* -1 (cadr ast)) succ))
-         ((and (= (length ast) 2) (member op '(< > <= >= =)))
-             (gen-ast #t succ))
-         (else
-             (gen-ast (cadr ast) (build-chain (cddr ast))))))
+  (cond ((= (length ast) 1)
+           (cond ((eq? op '+) (gen-ast 0 succ))
+                 ((eq? op '-) (get-lazy-error ERR_WRONG_NUM_ARGS))
+                 ((eq? op '*) (gen-ast 1 succ))
+                 (else (error "Unknown operator " op))))
+        ((and (= (length ast) 2) (eq? op '-))
+           (gen-ast (list '* -1 (cadr ast)) succ))
+        ((and (= (length ast) 2) (member op '(< > <= >= =)))
+           (gen-ast #t succ))
+        (else
+           (gen-ast (cadr ast) (build-chain (cddr ast))))))
 
 ;;
 ;; Make lazy code from TYPE TEST

@@ -1,3 +1,5 @@
+(pp (+ 1 10))
+
 ;; 1 - TODO CODE
 ;;   * PB quoted vector avec liste
 ;;   * Enlever les deux TODO dans ast.scm au moment de la création des deux nouveaux contextes
