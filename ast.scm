@@ -1783,7 +1783,7 @@
                       ;; This works because lazy-build-continuation and its successor lazy-call do not use ctx.
                       (jump-to-version cgc lazy-build-continuation (make-ctx fake-stack '() -1)))))
                   ;; Push args list of apply
-                  (lazy-args-list (check-types (list CTX_PAI) (cddr ast) lazy-move-args ast))
+                  (lazy-args-list (gen-ast (caddr ast) lazy-move-args)) ;; TODO: check that caddr is a pair ?
                   ;; Push function of apply
                   (lazy-fun (check-types (list CTX_CLO) (list (cadr ast)) lazy-args-list ast)))
 
