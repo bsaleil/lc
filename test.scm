@@ -1,3 +1,9 @@
+
+
+(println 1)
+(pp '(1 2 3))
+(apply (lambda (a b c) (pp (+ a b c))) '(10 2 3))
+
 ;; 1 - TODO CODE
 ;;   * PB quoted vector avec liste
 ;;   * Enlever les deux TODO dans ast.scm au moment de la création des deux nouveaux contextes

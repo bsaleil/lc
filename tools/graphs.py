@@ -397,7 +397,9 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	# TODO: add to --help: the script draws the exec bar in order
 	for key in lexecs:
 		if key != exec_ref:
+			print(key,end=": ");
 			Y = Yvals[key]
+			print(sum(Y) / float(len(Y)))
 			color = BAR_COLORS[i]
 			bar(X+(i*width), +Y, width, facecolor=color, edgecolor='white', label=key, zorder=10)
 			i += 1

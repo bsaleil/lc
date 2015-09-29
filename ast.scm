@@ -1739,51 +1739,56 @@
 ;;
 (define (mlc-apply ast succ)
 
-  (let* (;; LAZY CALL
-         (lazy-call
+  (let (;; Get closure and gen call sequence
+        (lazy-call
           (make-lazy-code
-            ;; Remove apply op and lst, push args from lst,
-            ;; push closure, and call
             (lambda (cgc ctx)
+              ;; GEN CALL SEQ
+              (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+              (gen-call-sequence cgc (make-ctx fake-stack '() -1) #f #f)))))
 
-              ;; Remove lst and op from stack
-              (x86-pop cgc (x86-rbx)) ;; lst
-              (x86-pop cgc (x86-rax)) ;; op
+    ;; First object of the chain, reserve a slot for the continuation
+    (make-lazy-code
+      (lambda (cgc ctx)
+         (let* (;; Lazy code object to build continuation and move it to stack slot
+                (lazy-build-continuation (get-lazy-continuation-builder (cadr ast) succ lazy-call '() ctx #t))
+                ;; Remove apply op and lst, push args from lst and push closure
+                (lazy-move-args
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      ;; Remove lst and op from stack
+                      (x86-pop cgc (x86-rbx)) ;; lst
+                      (x86-pop cgc (x86-rax)) ;; op
+                      ;; Read and push all args from lst until we reach '()
+                      (let ((label-end  (asm-make-label #f (new-sym 'apply-args-end)))
+                            (label-loop (asm-make-label #f (new-sym 'apply-args-loop))))
+                        ;; RDI contains the number of arguments
+                        (x86-mov cgc (x86-rdi) (x86-imm-int 0))
+                        (x86-label cgc label-loop)
+                        ;; If current el is null, then jump to end
+                        (x86-cmp cgc (x86-rbx) (x86-imm-int (obj-encoding '())))
+                        (x86-je cgc label-end)
+                          ;; Else, push arg and update RDI
+                          (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))           ;; Push car
+                          (x86-mov cgc (x86-rbx) (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx))) ;; Get cdr for next iteration
+                          (x86-inc cgc (x86-rdi))  ;; inc args number
+                          (x86-jmp cgc label-loop) ;; next iteration
+                        ;; All args are pushed
+                        (x86-label cgc label-end))
+                      ;; Encode nb args
+                      (x86-shl cgc (x86-rdi) (x86-imm-int 2))
+                      ;; Push closure
+                      (x86-push cgc (x86-rax))
+                      ;; Jump to lazy-build-continuation with a fake ctx.
+                      ;; This works because lazy-build-continuation and its successor lazy-call do not use ctx.
+                      (jump-to-version cgc lazy-build-continuation (make-ctx fake-stack '() -1)))))
+                  ;; Push args list of apply
+                  (lazy-args-list (check-types (list CTX_PAI) (cddr ast) lazy-move-args ast))
+                  ;; Push function of apply
+                  (lazy-fun (check-types (list CTX_CLO) (list (cadr ast)) lazy-args-list ast)))
 
-              ;; Read and push all args from lst until we reach '()
-              (let ((label-end  (asm-make-label #f (new-sym 'apply-args-end)))
-                    (label-loop (asm-make-label #f (new-sym 'apply-args-loop))))
-                ;; RDI contains the number of arguments
-                (x86-mov cgc (x86-rdi) (x86-imm-int 0))
-                (x86-label cgc label-loop)
-                ;; If current el is null, then jump to end
-                (x86-cmp cgc (x86-rbx) (x86-imm-int (obj-encoding '())))
-                (x86-je cgc label-end)
-                  ;; Else, push arg and update RDI
-                  (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))           ;; Push car
-                  (x86-mov cgc (x86-rbx) (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx))) ;; Get cdr for next iteration
-                  (x86-inc cgc (x86-rdi))  ;; inc args number
-                  (x86-jmp cgc label-loop) ;; next iteration
-                ;; All args are pushed
-                (x86-label cgc label-end))
-
-              ;; Encode nb args
-              (x86-shl cgc (x86-rdi) (x86-imm-int 2))
-
-              ;; Push closure
-              (x86-push cgc (x86-rax))
-
-              ;; Gen call sequence with closure in RAX
-              (gen-call-sequence cgc (make-ctx fake-stack '() -1) #f #f))))
-
-         ;; Apply
-         (lazy-apply
-           ;; Push operator and args lst
-           (let ((lazy-right (gen-ast (caddr ast) lazy-call)))
-             (gen-ast (cadr ast) lazy-right))))
-
-    ;; Gen pre call
-    (gen-lazy-pre-call (car ast) succ lazy-apply '())))
+              (x86-push cgc (x86-imm-int (obj-encoding #f))) ;; Reserve stack slot
+              (jump-to-version cgc lazy-fun (ctx-push ctx CTX_RETAD)))))))
 
 ;;
 ;; Make lazy code from CALL EXPR
@@ -1876,22 +1881,30 @@
                                                            (not (= nb-unk (length args))))
                                                     (gen-call-sequence cgc call-ctx (length (cdr ast)) #t)
                                                     (gen-call-sequence cgc call-ctx (length (cdr ast)) #f)))))))
-                 ;; Lazy operator
-                 (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
-
+                 ;; Lazy code object to build the continuation
+                 (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
             (if tail
                 (if (> (length args) 0)
                     ;; If args, then compile args
-                    (gen-ast-l args lazy-operator)
+                    (gen-ast-l args lazy-tail-operator)
                     ;; Else, compile call
-                    lazy-operator)
-                ;; Gen pre-call
-                (gen-lazy-pre-call (car ast) succ lazy-operator args))))))
+                    lazy-tail-operator)
+                ;; First object of the chain
+                (make-lazy-code
+                  (lambda (cgc ctx)
+                    (let* (;; Lazy code object to build continuation and move it to stack slot
+                           (lazy-build-continuation (get-lazy-continuation-builder (car ast) succ lazy-call args ctx #f))
+                           ;; Lazy code object to push operator of the call
+                           (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-build-continuation ast)))
 
-;; Return a lazy code object to use as a 'pre-call':
-;; Build continuation block and push return address
-(define (gen-lazy-pre-call op lazy-succ lazy-call args)
+                      (x86-push cgc (x86-imm-int (obj-encoding #f))) ;; Reserve a slot for continuation
+                      (jump-to-version cgc
+                                       (gen-ast-l args lazy-operator) ;; Compile args and jump to operator
+                                       (ctx-push ctx CTX_RETAD))))))))))
+
+;; Build continuation stub and load stub address to the continuation slot
+(define (get-lazy-continuation-builder op lazy-succ lazy-call args continuation-ctx from-apply?)
   ;; Create stub and push ret addr
   (make-lazy-code
     (lambda (cgc ctx)
@@ -1923,15 +1936,18 @@
                                             (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag to continuation addr
                                                (set! gen-flag (gen-version-continuation load-ret-label
                                                                                         lazy-continuation
-                                                                                        ctx)))
+                                                                                        continuation-ctx))) ;; Remove operator, args, and continuation from stack
                                             gen-flag))))
         ;; Return address (continuation label)
         (x86-label cgc load-ret-label)
         (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
-        (x86-push cgc (x86-rax))
-        (jump-to-version cgc
-                         (gen-ast-l args lazy-call)
-                         (ctx-push ctx CTX_RETAD))))))
+
+        (if from-apply?
+          (begin (x86-shl cgc (x86-rdi) (x86-imm-int 1)) ;; Rdi contains encoded number of args. Shiftl 1 to left to get nbargs*8
+                 (x86-mov cgc (x86-mem 8 (x86-rsp) (x86-rdi)) (x86-rax)) ;; Mov to continuation stack slot [rsp+rdi+8] (rsp + nbArgs*8 + 8)
+                 (x86-shr cgc (x86-rdi) (x86-imm-int 1))) ;; Restore encoded number of args
+          (x86-mov cgc (x86-mem (* 8 (+ 1 (length args))) (x86-rsp)) (x86-rax))) ;; Move continuation value to the continuation stack slot
+        (jump-to-version cgc lazy-call ctx)))))
 
 ;; Gen generic call sequence (call instructions) with call closure in RAX
 (define (gen-generic-call-sequence cgc nb-args)
@@ -2128,7 +2144,7 @@
 ;; Make lazy code from N-ARY ARITHMETIC OPERATOR
 ;;
 (define (mlc-op-n-num ast succ op)
-  
+
   ;; Build chain for all operands
   (define (build-chain opnds)
     (if (null? opnds)
