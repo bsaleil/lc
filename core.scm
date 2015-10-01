@@ -19,7 +19,7 @@
 (define opt-max-versions         #f) ;; Limit of number of versions (#f=no limit, 0=only generic, ...)
 (define opt-entry-points         #t) ;; Use multiple entry points (#t to use cc-tables, #f to use generic entry point
 (define opt-overflow-fallback    #t) ;; Automatic fallback to generic entry point if cctable overflows
-(define opt-propagate-functionid #t) ;; Propagate function identitie
+(define opt-propagate-functionid #f) ;; Propagate function identitie
 
 ;;-----------------------------------------------------------------------------
 

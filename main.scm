@@ -36,9 +36,9 @@
     "Disable the use of multiple entry points use only one generic entry point"
     ,(lambda (args) (set! opt-entry-points #f) args))
 
-  (--disable-functionid-propagation
+  (--enable-functionid-propagation
     "Disable the propagation of function identities"
-    ,(lambda (args) (set! opt-propagate-functionid #f) args))
+    ,(lambda (args) (set! opt-propagate-functionid #t) args))
 
   (--heap-max
     "Set maximum heap size in kilobytes"
