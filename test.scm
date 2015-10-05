@@ -1,18 +1,3 @@
-
-(pp (null? 1))
-(pp (null? '()))
-
-(define (mymeth . v)
- (pp v))
-
-(mymeth)
-
-;(define (main fn)
-;    (+ 1 (fn)))
-;
-;(main (lambda () 1))
-;(main (lambda () #f))
-
 ;; 1 - TODO CODE
 ;;   * PB quoted vector avec liste
 ;;   * Enlever les deux TODO dans ast.scm au moment de la création des deux nouveaux contextes

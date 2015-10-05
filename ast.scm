@@ -1009,32 +1009,13 @@
                                             (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
                                             (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
                                             (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))
-                                         ((not (eq? type CTX_UNK))
+                                         ((eq? type CTX_UNK)
+                                            (jump-to-version cgc lazy-null? ctx))
+                                         (else
                                             (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
                                             (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))
-                                         (#t (jump-to-version cgc lazy-null? ctx))))))))
-                                        ;((eq? type CTX_NULL)
-                                        ;    (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-imm-int (obj-encoding #t)) 64)
-                                        ;    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))
-                                        ; ((eq? type CTX_UNK)
-                                        ;    (jump-to-version cgc lazy-null? ctx))
-                                        ; (else
-                                        ;    (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-imm-int (obj-encoding #f)) 64)
-                                        ;    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))))))
+                                            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))))))
 
-                        ;  (make-lazy-code
-                        ;    (lambda (cgc ctx)
-                        ;      (let ((label-done
-                        ;              (asm-make-label cgc (new-sym 'done))))
-                        ;        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                        ;        (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                        ;        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                        ;        (x86-je  cgc label-done)
-                        ;        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                        ;        (x86-label cgc label-done)
-                        ;        (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                        ;        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL))))))
                          ;; EQ?
                          ((eq? special 'eq?)
                           (make-lazy-code
