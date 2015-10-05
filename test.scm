@@ -1,8 +1,17 @@
 
+(pp (null? 1))
+(pp (null? '()))
 
-(println 1)
-(pp '(1 2 3))
-(apply (lambda (a b c) (pp (+ a b c))) '(10 2 3))
+(define (mymeth . v)
+ (pp v))
+
+(mymeth)
+
+;(define (main fn)
+;    (+ 1 (fn)))
+;
+;(main (lambda () 1))
+;(main (lambda () #f))
 
 ;; 1 - TODO CODE
 ;;   * PB quoted vector avec liste
