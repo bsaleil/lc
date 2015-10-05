@@ -2588,7 +2588,7 @@
   (tail-shift-h cgc nb init-from init-to (- init-to init-from)))
 
 (define (tail-shift-h cgc curr from to rsp-offset)
-  (if (< curr 0)
+  (if (= curr 0)
       ;; All shifted, update RSP
       (x86-add cgc (x86-rsp) (x86-imm-int (* 8 rsp-offset)))
       ;; Shift next
