@@ -1957,14 +1957,12 @@
 
 (define (get-lazy-continuation-builder op lazy-succ lazy-call args continuation-ctx from-apply? ast)
 
-  (if from-apply?
-    (error "NYI CR apply"))
-
   (if opt-return-points
     (get-lazy-continuation-builder-cr  op lazy-succ lazy-call args continuation-ctx from-apply? ast)
     (get-lazy-continuation-builder-nor op lazy-succ lazy-call args continuation-ctx from-apply?)))
 
 (define (get-lazy-continuation-builder-cr op lazy-succ lazy-call args continuation-ctx from-apply? ast)
+
   ;; Create stub and push ret addr
   (make-lazy-code
      (lambda (cgc ctx)
@@ -1991,7 +1989,12 @@
               (crtable-loc (- (obj-encoding crtable) 1)))
 
          (x86-mov cgc (x86-rax) (x86-imm-int crtable-loc))
-         (x86-mov cgc (x86-mem (* 8 (+ 1 (length args))) (x86-rsp)) (x86-rax))
+
+         (if from-apply?
+           (begin (x86-shl cgc (x86-rdi) (x86-imm-int 1)) ;; Rdi contains encoded number of args. Shiftl 1 to left to get nbargs*8
+                  (x86-mov cgc (x86-mem 8 (x86-rsp) (x86-rdi)) (x86-rax)) ;; Mov to continuation stack slot [rsp+rdi+8] (rsp + nbArgs*8 + 8)
+                  (x86-shr cgc (x86-rdi) (x86-imm-int 1))) ;; Restore encoded number of args
+           (x86-mov cgc (x86-mem (* 8 (+ 1 (length args))) (x86-rsp)) (x86-rax))) ;; Move continuation value to the continuation stack slot
          (jump-to-version cgc lazy-call ctx)))))
 
 ;; Build continuation stub and load stub address to the continuation slot
