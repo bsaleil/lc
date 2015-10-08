@@ -36,6 +36,10 @@
     "Disable the use of multiple entry points use only one generic entry point"
     ,(lambda (args) (set! opt-entry-points #f) args))
 
+  (--disable-return-points
+      "Disable the use of multiple return points use only one generic return point"
+      ,(lambda (args) (set! opt-return-points #f) args))
+
   (--enable-functionid-propagation
     "Disable the propagation of function identities"
     ,(lambda (args) (set! opt-propagate-functionid #t) args))

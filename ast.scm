@@ -433,8 +433,13 @@
 (define cctables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))     ;; eq? on ast
                                                       (equal? (cdr a) (cdr b)))))) ;; equal? on ctx information
 
-;; Return cctable from cctable-key.
-;; Return the existing table is already created or crate one, add entry, and return it
+;; Store the cr table associated to each leambda (ast -> crtable)
+;; crtable is a still vector
+(define crtables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))
+                                                      (equal? (cdr a) (cdr b))))))
+
+;; Return cctable from cctable-key
+;; Return the existing table if already created or create one, add entry, and return it
 (define (get-cctable ast cctable-key stub-addr generic-addr)
   (let ((cctable (table-ref cctables cctable-key #f)))
     (if cctable
@@ -445,6 +450,16 @@
                                             ast)
                                       cctables-loc-code))
         t))))
+
+;; Return crtable from crtable-key
+;; Return the existing table if already created or create one, add entry, and return it
+(define (get-crtable ast crtable-key stub-addr)
+  (let ((crtable (table-ref crtables crtable-key #f)))
+    (if crtable
+        crtable
+        (let ((t (make-cr global-cr-table-maxsize stub-addr)))
+          (table-set! crtables crtable-key t)
+          t))))
 
 ;; TODO: change to table, merge with cctables ? (change cctable-key to something better)
 ;; Store pairs associating cctable address to the code of the corresponding function
@@ -469,22 +484,30 @@
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
                      (lambda (cgc ctx)
-                       ;; Here the stack is :
+                       ;; Stack:
                        ;;         RSP
-                       ;;     | ret-val | closure | arg n | ... | arg 1 | ret-addr |
+                       ;;     | ret-val | closure | arg n |  ...  | arg 1 | ret-addr |
                        ;; Or if rest :
-                       ;;     | ret-val | closure |  rest | arg n | ... | arg 1 | ret-addr |
+                       ;;     | ret-val | closure |  rest | arg n |  ...  | arg 1 | ret-addr |
                        (let ((retval-offset
                                 (if rest-param
                                    (* 8 (+ 2 (length params)))
                                    (* 8 (+ 1 (length params))))))
-
                          ;; Pop return value
                          (x86-pop  cgc (x86-rax))
                          ;; Update SP to ret addr
                          (x86-add  cgc (x86-rsp) (x86-imm-int retval-offset))
-                         ;; Jump to continuation
-                         (x86-ret cgc)))))
+
+                         (if opt-return-points
+                             ;; Get return point from cr table and jump to it
+                             (let* ((ret-type (car (ctx-stack ctx)))
+                                    (cridx (type-to-cridx ret-type)))
+                               (x86-pop cgc (x86-rdx))
+                               (x86-mov cgc (x86-rbx) (x86-mem cridx (x86-rdx)))
+                               (x86-mov cgc (x86-r11) (x86-imm-int cridx)) ;; TODO: use rcx (selector)
+                               (x86-jmp cgc (x86-rbx)))
+                             ;; Jump to continuation
+                             (x86-ret cgc))))))
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
@@ -709,6 +732,15 @@
   (let ((v (alloc-still-vector len)))
     (put-i64 (+ 8 (- (obj-encoding v) 1)) generic) ;; Write generic after header
     (let loop ((i 1))
+      (if (< i (vector-length v))
+        (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding v) 1)) init)
+               (loop (+ i 1)))
+        v))))
+
+;; Create a new cr table with 'init' as stub value
+(define (make-cr len init)
+  (let ((v (alloc-still-vector len)))
+    (let loop ((i 0))
       (if (< i (vector-length v))
         (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding v) 1)) init)
                (loop (+ i 1)))
@@ -1771,7 +1803,7 @@
     (make-lazy-code
       (lambda (cgc ctx)
          (let* (;; Lazy code object to build continuation and move it to stack slot
-                (lazy-build-continuation (get-lazy-continuation-builder (cadr ast) succ lazy-call '() ctx #t))
+                (lazy-build-continuation (get-lazy-continuation-builder (cadr ast) succ lazy-call '() ctx #t ast))
                 ;; Remove apply op and lst, push args from lst and push closure
                 (lazy-move-args
                   (make-lazy-code
@@ -1914,7 +1946,7 @@
                 (make-lazy-code
                   (lambda (cgc ctx)
                     (let* (;; Lazy code object to build continuation and move it to stack slot
-                           (lazy-build-continuation (get-lazy-continuation-builder (car ast) succ lazy-call args ctx #f))
+                           (lazy-build-continuation (get-lazy-continuation-builder (car ast) succ lazy-call args ctx #f ast))
                            ;; Lazy code object to push operator of the call
                            (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-build-continuation ast)))
 
@@ -1923,8 +1955,47 @@
                                        (gen-ast-l args lazy-operator) ;; Compile args and jump to operator
                                        (ctx-push ctx CTX_RETAD))))))))))
 
+(define (get-lazy-continuation-builder op lazy-succ lazy-call args continuation-ctx from-apply? ast)
+
+  (if from-apply?
+    (error "NYI CR apply"))
+
+  (if opt-return-points
+    (get-lazy-continuation-builder-cr  op lazy-succ lazy-call args continuation-ctx from-apply? ast)
+    (get-lazy-continuation-builder-nor op lazy-succ lazy-call args continuation-ctx from-apply?)))
+
+(define (get-lazy-continuation-builder-cr op lazy-succ lazy-call args continuation-ctx from-apply? ast)
+  ;; Create stub and push ret addr
+  (make-lazy-code
+     (lambda (cgc ctx)
+       (let* (;; Lazy-continuation, push returned value
+              (lazy-continuation
+                (make-lazy-code
+                  (lambda (cgc ctx)
+                    (x86-push cgc (x86-rax))
+                    (jump-to-version cgc lazy-succ ctx))))
+              ;; Continuation stub
+              (stub-labels (add-cont-callback cgc
+                                              0
+                                              (lambda (ret-addr selector type table)
+
+                                                (let ((continuation-ctx (ctx-push continuation-ctx type)))
+                                                  (gen-version-continuation-cr lazy-continuation
+                                                                               continuation-ctx
+                                                                               type
+                                                                               table)))))
+              ;; CRtable
+              (crtable-key (cons ast ctx)) ;; TODO: only stack ?
+              (stub-addr (vector-ref (list-ref stub-labels 0) 1))
+              (crtable (get-crtable ast crtable-key stub-addr))
+              (crtable-loc (- (obj-encoding crtable) 1)))
+
+         (x86-mov cgc (x86-rax) (x86-imm-int crtable-loc))
+         (x86-mov cgc (x86-mem (* 8 (+ 1 (length args))) (x86-rsp)) (x86-rax))
+         (jump-to-version cgc lazy-call ctx)))))
+
 ;; Build continuation stub and load stub address to the continuation slot
-(define (get-lazy-continuation-builder op lazy-succ lazy-call args continuation-ctx from-apply?)
+(define (get-lazy-continuation-builder-nor op lazy-succ lazy-call args continuation-ctx from-apply?)
   ;; Create stub and push ret addr
   (make-lazy-code
     (lambda (cgc ctx)
