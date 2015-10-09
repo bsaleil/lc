@@ -23,35 +23,32 @@
             (prim-types ,@(list-tail args (+ (car args) 1))))))
 
 ;;-----------------------------------------------------------------------------
-;; Primitives
+;; Type predicates
 
-;; Primitives for type tests
 (define type-predicates `(
-  (output-port? ,CTX_OPORT)
-  (input-port?  ,CTX_IPORT)
-  (symbol?      ,CTX_SYM)
-  (string?      ,CTX_STR)
-  (char?        ,CTX_CHAR)
-  (vector?      ,CTX_VECT)
-  (fixnum?      ,CTX_NUM)
-  (flonum?      ,CTX_FLO)
-  (procedure?   ,CTX_CLO)
-  (pair?        ,CTX_PAI)
+  (output-port? . ,CTX_OPORT)
+  (input-port?  . ,CTX_IPORT)
+  (symbol?      . ,CTX_SYM)
+  (string?      . ,CTX_STR)
+  (char?        . ,CTX_CHAR)
+  (vector?      . ,CTX_VECT)
+  (fixnum?      . ,CTX_NUM)
+  (flonum?      . ,CTX_FLO)
+  (procedure?   . ,CTX_CLO)
+  (pair?        . ,CTX_PAI)
 ))
 
-(define (type-from-predicate p)
-  (cond ((eq? p 'pair?)        CTX_PAI)
-        ((eq? p 'procedure?)   CTX_CLO)
-        ((eq? p 'flonum?)      CTX_FLO)
-        ((eq? p 'fixnum?)      CTX_NUM)
-        ((eq? p 'vector?)      CTX_VECT)
-        ((eq? p 'char?)        CTX_CHAR)
-        ((eq? p 'string?)      CTX_STR)
-        ((eq? p 'symbol?)      CTX_SYM)
-        ((eq? p 'input-port?)  CTX_IPORT)
-        ((eq? p 'output-port?) CTX_OPORT)
-        (else
-          (error "NYI"))))
+(define (type-predicate? sym)
+  (assq sym type-predicates))
+
+(define (predicate-to-ctxtype predicate)
+  (let ((r (assq predicate type-predicates)))
+    (if r
+      (cdr r)
+      (error "Internal error"))))
+
+;;-----------------------------------------------------------------------------
+;; Primitives
 
 ;; Primitives: name, nb args min, nb args max
 (define primitives `(
@@ -148,7 +145,7 @@
                  ((member op '(+ - * < > <= >= =))         (mlc-op-n ast succ op))
                  ((member op '(quotient modulo remainder)) (mlc-op-bin ast succ op))
                  ;; Tests
-                 ((assoc op type-predicates) (mlc-test ast succ))
+                 ((type-predicate? op) (mlc-test ast succ))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -361,14 +358,12 @@
                                               (,ast ,@args))
                                            succ)
                                   ctx))
-               (let ((r (assoc ast type-predicates)))
-                 (if r
-                    ;; Create and return function calling type predicate
-                    (jump-to-version cgc
-                                     (gen-ast `(lambda (a) (,ast a)) succ)
-                                     ctx)
-                    ;; Unknown id
-                    (error "Can't find variable: " ast))))))))))
+               ;; Type predicate
+               (if (type-predicate? ast)
+                 (jump-to-version cgc
+                                  (gen-ast `(lambda (a) (,ast a)) succ)
+                                  ctx)
+                 (error "Can't find variable: " ast)))))))))
 
 ;;-----------------------------------------------------------------------------
 ;; INTERNAL
@@ -2331,7 +2326,7 @@
 ;;
 (define (mlc-test ast succ)
 
-  (let ((type (type-from-predicate (car ast)))
+  (let ((type (predicate-to-ctxtype (car ast)))
         (stack-idx 0)
         (lazy-success
           (make-lazy-code
