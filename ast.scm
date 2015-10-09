@@ -86,8 +86,6 @@
    (current-input-port  0  0  ,(prim-types 0 ))
 ))
 
-;;-----------------------------------------------------------------------------
-
 (define (assert-p-nbargs ast)
   (assert (and (>= (length (cdr ast))
                    (cadr (assoc (car ast) primitives)))
@@ -95,20 +93,12 @@
                    (caddr (assoc (car ast) primitives))))
           ERR_WRONG_NUM_ARGS))
 
-(define (assert-t-nbargs ast)
-  (assert (= (length (cdr ast))
-             1)
-          ERR_WRONG_NUM_ARGS))
-
 ;;-----------------------------------------------------------------------------
 ;; AST DISPATCH
 
 ;; Gen lazy code from a list of exprs
 (define (gen-ast-l lst succ)
-  (if (null? lst)
-     succ
-     (gen-ast (car lst)
-              (gen-ast-l (cdr lst) succ))))
+  (foldr (lambda (el r) (gen-ast el r)) succ lst))
 
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
@@ -118,7 +108,7 @@
         ((symbol? ast)  (mlc-identifier ast succ))
         ;; Flonum
         ((flonum? ast)  (mlc-flonum ast succ))
-        ;; Literal
+        ;; Other literal
         ((literal? ast) (mlc-literal ast succ))
         ;; Pair
         ((pair? ast)
@@ -127,7 +117,7 @@
                  ((member op '(breakpoint)) (mlc-special ast succ))
                  ;; TODO special function
                  ((eq? op '$$print-flonum) (mlc-printflonum ast succ))
-                 ;; Special without call
+                 ;; Inlined primitive
                  ((assoc op primitives) (mlc-primitive ast succ))
                  ;; Quote
                  ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
@@ -142,9 +132,9 @@
                  ;; Binding
                  ((member op '(let let* letrec)) (mlc-binding ast succ op))
                  ;; Operator num
-                 ((member op '(+ - * < > <= >= =))         (mlc-op-n ast succ op))
-                 ((member op '(quotient modulo remainder)) (mlc-op-bin ast succ op))
-                 ;; Tests
+                 ((member op '(+ - * < > <= >= =))         (mlc-op-n ast succ op))   ;; nary operator
+                 ((member op '(quotient modulo remainder)) (mlc-op-bin ast succ op)) ;; binary operator
+                 ;; Type predicate
                  ((type-predicate? op) (mlc-test ast succ))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
@@ -160,25 +150,6 @@
 
 ;;-----------------------------------------------------------------------------
 ;; LITERALS
-
-;;
-;; Make lazy code from num/bool/char/null literal
-;;
-(define (mlc-literal ast succ)
-  (make-lazy-code
-    (lambda (cgc ctx)
-      (if (and (number? ast) (>= ast 536870912)) ;; 2^(32-1-2) (32bits-sign-tags)
-          (begin (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding ast)))
-                 (x86-push cgc (x86-rax)))
-          (x86-push cgc (x86-imm-int (obj-encoding ast))))
-      (jump-to-version cgc
-                       succ
-                       (ctx-push ctx
-                                 (cond ((number? ast)  CTX_NUM)
-                                       ((boolean? ast) CTX_BOOL)
-                                       ((char? ast)    CTX_CHAR)
-                                       ((null? ast)    CTX_NULL)
-                                       (else (error "NYI"))))))))
 
 ;;
 ;; Make lazy code from flonum literal
@@ -365,8 +336,27 @@
                                   ctx)
                  (error "Can't find variable: " ast)))))))))
 
+;;
+;; Make lazy code from num/bool/char/null literal
+;;
+(define (mlc-literal ast succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (if (and (number? ast) (>= ast 536870912)) ;; 2^(32-1-2) (32bits-sign-tags)
+          (begin (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding ast)))
+                 (x86-push cgc (x86-rax)))
+          (x86-push cgc (x86-imm-int (obj-encoding ast))))
+      (jump-to-version cgc
+                       succ
+                       (ctx-push ctx
+                                 (cond ((number? ast)  CTX_NUM)
+                                       ((boolean? ast) CTX_BOOL)
+                                       ((char? ast)    CTX_CHAR)
+                                       ((null? ast)    CTX_NULL)
+                                       (else (error "Internal error"))))))))
+
 ;;-----------------------------------------------------------------------------
-;; INTERNAL
+;; INTERNAL FORMS
 
 ;;
 ;; Make lazy code from SET!
@@ -377,20 +367,20 @@
          (lazy-set
             (make-lazy-code
                (lambda (cgc ctx)
-                  (let ((glookup-res (assoc id globals)))
-                    (let ((nctx
-                       (if glookup-res
-                          ;; Global var
-                          (gen-set-globalvar cgc ctx glookup-res)
-                             (let ((res (assoc id (ctx-env ctx))))
-                                (if res
-                                   (if (eq? (identifier-type (cdr res)) 'free)
-                                      (gen-set-freevar  cgc ctx res)  ;; Free var
-                                      (gen-set-localvar cgc ctx res)) ;; Local var
-                                   (error "Can't find variable: " id))))))
+                  (let* ((glookup-res (assoc id globals))
+                         (nctx
+                           (if glookup-res
+                              ;; Global var
+                              (gen-set-globalvar cgc ctx glookup-res)
+                                 (let ((res (assoc id (ctx-env ctx))))
+                                    (if res
+                                       (if (eq? (identifier-type (cdr res)) 'free)
+                                          (gen-set-freevar  cgc ctx res)  ;; Free var
+                                          (gen-set-localvar cgc ctx res)) ;; Local var
+                                       (error "Can't find variable: " id))))))
 
                       (x86-push cgc (x86-imm-int ENCODING_VOID))
-                      (jump-to-version cgc succ (ctx-push (ctx-pop nctx) CTX_VOID))))))))
+                      (jump-to-version cgc succ (ctx-push (ctx-pop nctx) CTX_VOID)))))))
 
      (gen-ast (caddr ast) lazy-set)))
 
