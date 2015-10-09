@@ -1503,7 +1503,6 @@
   (make-lazy-code
      (lambda (cgc ctx)
 
-       ;; TODO: dans mlc-test enlever cette logique car géré ici
        ;; TODO: plus nettoyer tout ca
 
        (let* ((ctx-success (ctx-change-type ctx stack-idx type))

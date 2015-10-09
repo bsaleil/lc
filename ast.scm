@@ -2331,51 +2331,23 @@
 ;;
 (define (mlc-test ast succ)
 
-  (let ((lazy-test
+  (let ((type (type-from-predicate (car ast)))
+        (stack-idx 0)
+        (lazy-success
           (make-lazy-code
             (lambda (cgc ctx)
+                (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+                (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))
+        (lazy-fail
+          (make-lazy-code
+            (lambda (cgc ctx)
+              (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+              (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL))))))
 
-              (let* ((type (type-from-predicate (car ast)))
-                     (known-type (car (ctx-stack ctx)))
-                     (ctx-true  (ctx-push (ctx-pop (ctx-change-type ctx 0 type)) CTX_BOOL))
-                     (ctx-true-known (ctx-push (ctx-pop ctx) CTX_BOOL)) ;; Is know type is tested type, simply push BOOL
-                     (ctx-false (ctx-push (ctx-pop ctx) CTX_BOOL)))
-
-                ;; If 'all-tests' option enabled, then remove type information ;; TODO rm
-                (if opt-all-tests
-                   (set! known-type CTX_UNK))
-
-                (cond ;; known == expected
-                      ((or (eq? type known-type)
-                           (and (pair? known-type) (eq? (car known-type) type)))
-                         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                         (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                         (jump-to-version cgc succ ctx-true-known))
-                      ;; known != expected && known != unknown
-                      ((not (eq? known-type CTX_UNK))
-                         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                         (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                         (jump-to-version cgc succ ctx-false))
-                      ;; known == unknown
-                      (else
-                        (let* ((stack-idx 0)
-                               (laz-succ (make-lazy-code
-                                           (lambda (cgc ctx)
-                                             (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                             (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                             (jump-to-version cgc succ ctx-true))))
-                               (laz-fail (make-lazy-code
-                                           (lambda (cgc ctx)
-                                             (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                             (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                             (jump-to-version cgc succ ctx-false)))))
-
-                            (jump-to-version cgc
-                                             (gen-dyn-type-test type
-                                                                stack-idx
-                                                                laz-succ
-                                                                laz-fail) ctx)))))))))
-    (gen-ast (cadr ast) lazy-test)))
+    (gen-ast (cadr ast)
+             (gen-dyn-type-test type stack-idx lazy-success lazy-fail ast))))
 
 ;;
 ;; Make lazy code to create pair
