@@ -498,87 +498,7 @@
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
          (lazy-prologue (get-lazy-prologue lazy-body rest-param mvars))
          ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
-         (lazy-generic-prologue
-            (make-lazy-code-entry
-               (lambda (cgc ctx)
-
-                  (let ((formal-p (length params))
-                        (err-labels (add-callback #f 0 (lambda (ret-addr selector)
-                                                          (error ERR_WRONG_NUM_ARGS)))))
-
-                    (if (not rest-param)
-                      ;; If there is no rest param
-                      ;; Then we only have to check the number of argumentssss
-                      (begin
-                        (x86-cmp cgc (x86-rdi) (x86-imm-int (* formal-p 4)))
-                        (x86-jne cgc (list-ref err-labels 0)))
-                      ;; If there is a rest param
-                      ;; Then we have to handle 3 cases: actual>formal, actual=formal, actual<formal
-                      (let ((label-loop-end  (asm-make-label #f (new-sym 'rest-param-loop-end)))
-                            (label-end       (asm-make-label #f (new-sym 'rest-param-end)))
-                            (label-loop      (asm-make-label #f (new-sym 'rest-param-loop)))
-                            (label-eq        (asm-make-label #f (new-sym 'rest-param-eq)))
-                            (header-word     (mem-header 3 STAG_PAIR)))
-
-                         ;; If there is a rest param then we need to change the context to include it
-                         ;; CTX_UNK because it could be NULL
-                         (set! ctx (make-ctx (cons CTX_CLO (cons CTX_UNK (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1))))
-                                             (ctx-env ctx)
-                                             (+ (ctx-nb-args ctx) 1)))
-
-                         ;; Compare actual and formal
-                         (x86-cmp cgc (x86-rdi) (x86-imm-int (* formal-p 4)))
-                         (x86-jl cgc (list-ref err-labels 0)) ;; actual<formal, ERROR
-                         (x86-je cgc label-eq)                ;; actual=formal, jump to label-eq
-                                                              ;; actual>formal, continue
-
-                         ;; CASE 1 - Actual > Formal
-
-                         ;; Loop-init
-                         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                         (x86-mov cgc (x86-rbx) (x86-imm-int 8)) ;; rbx = arg-offset (first arg to copy is at [rsp+8])
-                         (x86-mov cgc (x86-rdx) (x86-rdi))       ;; Save args number in rdx
-
-                         ;; Loop-cond (if there is at least 1 arg to copy)
-                         (x86-label cgc label-loop)
-                         (x86-cmp cgc (x86-rdi) (x86-imm-int (* formal-p 4)))
-                         (x86-je cgc label-loop-end)
-
-                            ;; Loop-body
-                            (x86-push cgc (x86-rax)) ;; TODO
-                            (gen-allocation cgc ctx STAG_PAIR 3)                    ;; alloc pair p
-                            (x86-pop cgc (x86-rax))                                 ;;
-                            (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))          ;; p.cdr = rax (last pair)
-                            (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp) (x86-rbx))) ;; p.car = stack[arg-offset]
-                            (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))         ;;
-                            (x86-mov cgc (x86-rax) (x86-imm-int header-word))       ;; p.header = header-word
-                            (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))         ;;
-                            (x86-lea cgc (x86-rax) (x86-mem (+ 1 -24) alloc-ptr))   ;; rax = p (tagged)
-                            (x86-add cgc (x86-rbx) (x86-imm-int 8))                 ;; offset += 8 (to next arg)
-                            (x86-sub cgc (x86-rdi) (x86-imm-int 4))                 ;; rdi    -= 4 (update nb args to copy)
-                            (x86-jmp cgc label-loop)                                ;; goto loop
-
-                         ;; Loop-end
-                         (x86-label cgc label-loop-end)
-                         (x86-mov cgc (x86-mem (* -8 formal-p) (x86-rsp) (x86-rdx) 1) (x86-rax)) ;; Mov rest list to stack
-                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Update closure position
-                         (x86-mov cgc (x86-mem (* -8 (+ formal-p 1)) (x86-rsp) (x86-rdx) 1) (x86-rax))
-                         (x86-lea cgc (x86-rsp) (x86-mem (* -8 (+ formal-p 1)) (x86-rsp) (x86-rdx) 1)) ;; Update rsp
-                         (x86-jmp cgc label-end) ;; goto end
-
-                         ;; CASE 2 - Actual == Formal
-
-                         (x86-label cgc label-eq)
-                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Update closure position
-                         (x86-push cgc (x86-rax))
-                         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '()))) ;; Insert rest list (null) in stack
-                         (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
-
-                         ;; END
-                         (x86-label cgc label-end)))
-
-                    ;; Gen mutable vars and jump to function body
-                    (jump-to-version cgc lazy-body (gen-mutable cgc ctx mvars)))))))
+         (lazy-generic-prologue (get-lazy-generic-prologue lazy-body rest-param mvars params)))
 
     ;; Lazy closure generation
     (make-lazy-code
@@ -630,25 +550,7 @@
 
           (let* ((total-size  (+ 2 (length fvars))) ;; Header,CCTable
                  (header-word (mem-header total-size STAG_PROCEDURE))
-                 ;; This is the key used in hash table to find the cc-table for this closure.
-                 ;; The key is (ast . free-vars-inf) with ast the s-expression of the lambda
-                 ;; and free-vars-inf the type information of free vars ex. ((a . number) (b . char))
-                 ;; The hash function uses eq? on ast, and equal? on free-vars-inf.
-                 ;; This allows us to use different cctable if types of free vars are not the same.
-                 ;; (to properly handle type checks)
-                 (cctable-key  (cons ast
-                                     (foldr (lambda (n r)
-                                              (if (member (car n) fvars) ;; If this id is a free var of future lambda
-                                                 (cons (cons (car n)
-                                                             (if (eq? (identifier-type (cdr n)) 'local)
-                                                               ;; If local, get type from stack
-                                                               (list-ref (ctx-stack ctx) (- (length (ctx-stack ctx)) (identifier-offset (cdr n)) 2))
-                                                               ;; If free, get type from env
-                                                               (identifier-stype (cdr n))))
-                                                       r)
-                                                 r))
-                                           '()
-                                           (ctx-env ctx))))
+                 (cctable-key (get-cctable-key ast ctx fvars))
                  (cctable (get-cctable ast cctable-key stub-addr generic-addr))
                  (cctable-loc (- (obj-encoding cctable) 1)))
 
@@ -674,6 +576,110 @@
             (jump-to-version cgc
                              succ
                              (ctx-push ctx (CTX_CLOi cctable-loc)))))))))
+
+;; This is the key used in hash table to find the cc-table for this closure.
+;; The key is (ast . free-vars-inf) with ast the s-expression of the lambda
+;; and free-vars-inf the type information of free vars ex. ((a . number) (b . char))
+;; The hash function uses eq? on ast, and equal? on free-vars-inf.
+;; This allows us to use different cctable if types of free vars are not the same.
+;; (to properly handle type checks)
+(define (get-cctable-key ast ctx fvars)
+  (cons ast
+        (foldr (lambda (n r)
+                 (if (member (car n) fvars) ;; If this id is a free var of future lambda
+                     (cons (cons (car n)
+                                 (if (eq? (identifier-type (cdr n)) 'local)
+                                     ;; If local, get type from stack
+                                     (list-ref (ctx-stack ctx) (- (length (ctx-stack ctx)) (identifier-offset (cdr n)) 2))
+                                     ;; If free, get type from env
+                                     (identifier-stype (cdr n))))
+                           r)
+                     r))
+               '()
+               (ctx-env ctx))))
+
+;; Create and return a generic lazy prologue
+(define (get-lazy-generic-prologue succ rest-param mvars params)
+    (make-lazy-code-entry
+       (lambda (cgc ctx)
+
+          (let ((formal-p (length params))
+                (err-labels (add-callback #f 0 (lambda (ret-addr selector)
+                                                  (error ERR_WRONG_NUM_ARGS)))))
+
+            (if (not rest-param)
+              ;; If there is no rest param
+              ;; Then we only have to check the number of argumentssss
+              (begin
+                (x86-cmp cgc (x86-rdi) (x86-imm-int (* formal-p 4)))
+                (x86-jne cgc (list-ref err-labels 0)))
+              ;; If there is a rest param
+              ;; Then we have to handle 3 cases: actual>formal, actual=formal, actual<formal
+              (let ((label-loop-end  (asm-make-label #f (new-sym 'rest-param-loop-end)))
+                    (label-end       (asm-make-label #f (new-sym 'rest-param-end)))
+                    (label-loop      (asm-make-label #f (new-sym 'rest-param-loop)))
+                    (label-eq        (asm-make-label #f (new-sym 'rest-param-eq)))
+                    (header-word     (mem-header 3 STAG_PAIR)))
+
+                 ;; If there is a rest param then we need to change the context to include it
+                 ;; CTX_UNK because it could be NULL
+                 (set! ctx (make-ctx (cons CTX_CLO (cons CTX_UNK (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1))))
+                                     (ctx-env ctx)
+                                     (+ (ctx-nb-args ctx) 1)))
+
+                 ;; Compare actual and formal
+                 (x86-cmp cgc (x86-rdi) (x86-imm-int (* formal-p 4)))
+                 (x86-jl cgc (list-ref err-labels 0)) ;; actual<formal, ERROR
+                 (x86-je cgc label-eq)                ;; actual=formal, jump to label-eq
+                                                      ;; actual>formal, continue
+
+                 ;; CASE 1 - Actual > Formal
+
+                 ;; Loop-init
+                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+                 (x86-mov cgc (x86-rbx) (x86-imm-int 8)) ;; rbx = arg-offset (first arg to copy is at [rsp+8])
+                 (x86-mov cgc (x86-rdx) (x86-rdi))       ;; Save args number in rdx
+
+                 ;; Loop-cond (if there is at least 1 arg to copy)
+                 (x86-label cgc label-loop)
+                 (x86-cmp cgc (x86-rdi) (x86-imm-int (* formal-p 4)))
+                 (x86-je cgc label-loop-end)
+
+                    ;; Loop-body
+                    (x86-push cgc (x86-rax)) ;; TODO
+                    (gen-allocation cgc ctx STAG_PAIR 3)                    ;; alloc pair p
+                    (x86-pop cgc (x86-rax))                                 ;;
+                    (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))          ;; p.cdr = rax (last pair)
+                    (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp) (x86-rbx))) ;; p.car = stack[arg-offset]
+                    (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))         ;;
+                    (x86-mov cgc (x86-rax) (x86-imm-int header-word))       ;; p.header = header-word
+                    (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))         ;;
+                    (x86-lea cgc (x86-rax) (x86-mem (+ 1 -24) alloc-ptr))   ;; rax = p (tagged)
+                    (x86-add cgc (x86-rbx) (x86-imm-int 8))                 ;; offset += 8 (to next arg)
+                    (x86-sub cgc (x86-rdi) (x86-imm-int 4))                 ;; rdi    -= 4 (update nb args to copy)
+                    (x86-jmp cgc label-loop)                                ;; goto loop
+
+                 ;; Loop-end
+                 (x86-label cgc label-loop-end)
+                 (x86-mov cgc (x86-mem (* -8 formal-p) (x86-rsp) (x86-rdx) 1) (x86-rax)) ;; Mov rest list to stack
+                 (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Update closure position
+                 (x86-mov cgc (x86-mem (* -8 (+ formal-p 1)) (x86-rsp) (x86-rdx) 1) (x86-rax))
+                 (x86-lea cgc (x86-rsp) (x86-mem (* -8 (+ formal-p 1)) (x86-rsp) (x86-rdx) 1)) ;; Update rsp
+                 (x86-jmp cgc label-end) ;; goto end
+
+                 ;; CASE 2 - Actual == Formal
+
+                 (x86-label cgc label-eq)
+                 (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Update closure position
+                 (x86-push cgc (x86-rax))
+                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '()))) ;; Insert rest list (null) in stack
+                 (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
+
+                 ;; END
+                 (x86-label cgc label-end)))
+
+            ;; Gen mutable vars and jump to function body
+            (jump-to-version cgc succ (gen-mutable cgc ctx mvars))))))
 
 ;; Create and return a lazy prologue
 (define (get-lazy-prologue succ rest-param mvars)
@@ -710,8 +716,6 @@
             (let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
                    (mctx (gen-mutable cgc nctx mvars)))
               (jump-to-version cgc succ mctx))))))))
-
-
 
 ;; Create a new cc table with 'init' as stub value
 (define (make-cc len init generic)
