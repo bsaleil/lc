@@ -200,9 +200,24 @@
                   lazy-lib
                   (make-ctx '() '() -1)))
 
-  (##machine-code-block-exec mcb)
   (if opt-time
-     (print-time)))
+      (begin (##machine-code-block-exec mcb)
+             (let ((before #f)
+                   (after  #f))
+                (set! before (real-time))
+                (##machine-code-block-exec mcb)
+                (##machine-code-block-exec mcb)
+                (##machine-code-block-exec mcb)
+                (##machine-code-block-exec mcb)
+                (##machine-code-block-exec mcb)
+                (##machine-code-block-exec mcb)
+                (##machine-code-block-exec mcb)
+                (##machine-code-block-exec mcb)
+                (##machine-code-block-exec mcb)
+                (##machine-code-block-exec mcb)
+                (set! after (real-time))
+                (println "Time: " (* (/ (- after before) 10) 1000))))
+      (##machine-code-block-exec mcb)))
 
 ;;-----------------------------------------------------------------------------
 ;; Main
@@ -312,12 +327,6 @@
 (define (print-opts)
   (if opt-stats
      (print-stats)))
-
-(define (print-time)
-    (let* ((cycles (get-i64 (+ block-addr (* 8 9))))
-           (secs     (exact->inexact (/ cycles 2600000000))))
-      (println "Time(cycles): " cycles)
-      (println "Time(seconds,2.6GHz): " secs)))
 
 (define (print-stats)
   ;; Print stats report
