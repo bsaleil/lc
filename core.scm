@@ -17,11 +17,10 @@
 (define opt-count-calls          #f) ;; Count call for a given identifier
 (define opt-all-tests            #f) ;; Remove type information (execute all type tests)
 (define opt-max-versions         #f) ;; Limit of number of versions (#f=no limit, 0=only generic, ...)
-(define opt-entry-points         #t) ;; Use multiple entry points (#t to use cc-tables, #f to use generic entry point
+(define opt-entry-points         #t) ;; Use multiple entry points (#t to use cc-tables, #f to use flat closures)
+(define opt-return-points        #t) ;; Use multiple return points (#t to use cr-tables, #f to use a generic return point)
 (define opt-overflow-fallback    #t) ;; Automatic fallback to generic entry point if cctable overflows
 (define opt-propagate-functionid #f) ;; Propagate function identitie
-
-(define opt-return-points        #t) ;; TODO
 
 ;; TODO Move
 (define (type-to-cridx type)
@@ -127,55 +126,6 @@
   (if opt-propagate-functionid
       (cons CTX_CLO cctable)
       CTX_CLO))
-
-;;; TODO : merge with 'globals'
-(define gret '())
-;(define gret `(
-;   (length . ,CTX_NUM)
-;   (exact? . ,CTX_BOOL)
-;   (list?  . ,CTX_BOOL)
-;   (port?  . ,CTX_BOOL)
-;   (boolean? . ,CTX_BOOL)
-;   (max    . ,CTX_NUM)
-;   (min    . ,CTX_NUM)
-;   (equal? . ,CTX_BOOL)
-;   (list->vector . ,CTX_VECT)
-;   (list->string . ,CTX_STR)
-;   (number->string . ,CTX_STR)
-;   (string->number . ,CTX_NUM)
-;   (string-append . ,CTX_STR)
-;   (string-copy . ,CTX_STR)
-;   (string=? . ,CTX_BOOL)
-;   (string<? . ,CTX_BOOL)
-;   (string . ,CTX_STR)
-;   (substring . ,CTX_STR)
-;   (vector . ,CTX_VECT)
-;   (char<? . ,CTX_BOOL)
-;   (char>? . ,CTX_BOOL)
-;   (char<=? . ,CTX_BOOL)
-;   (char>=? . ,CTX_BOOL)
-;   (char-alphabetic? . ,CTX_BOOL)
-;   (char-numeric? . ,CTX_BOOL)
-;   (char-whitespace? . ,CTX_BOOL)
-;   (char-upper-case? . ,CTX_BOOL)
-;   (char-lower-case? . ,CTX_BOOL)
-;   (char-upcase . ,CTX_CHAR)
-;   (char-downcase . ,CTX_CHAR)
-;   (char-ci=? . ,CTX_BOOL)
-;   (char-ci<? . ,CTX_BOOL)
-;   (char-ci>? . ,CTX_BOOL)
-;   (char-ci<=? . ,CTX_BOOL)
-;   (char-ci>=? . ,CTX_BOOL)
-;   (exact? . ,CTX_BOOL)
-;   (abs . ,CTX_NUM)
-;   (/ . CTX_NUM)
-;   (zero? . CTX_BOOL)
-;   (positive? . CTX_BOOL)
-;   (negative? . CTX_BOOL)
-;   (even? . CTX_BOOL)
-;   (odd? . CTX_BOOL)
-;   (expt . CTX_NUM)
-;))
 
 ;; Exec errors
 (define ERR_MSG             "EXEC ERROR")

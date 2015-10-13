@@ -2001,19 +2001,8 @@
              (lazy-continuation
                 (make-lazy-code
                    (lambda (cgc ctx)
-
-                     (let ((TYPE
-                              (let ((r (assoc op gids))
-                                    (t (assoc op gret)))
-                                (if (and (not opt-all-tests)
-                                         r
-                                         t
-                                         (not (assoc op (ctx-env ctx))))
-                                  (cdr t)
-                                  CTX_UNK))))
-
                       (x86-push cgc (x86-rax))
-                      (jump-to-version cgc lazy-succ (ctx-push ctx TYPE))))))
+                      (jump-to-version cgc lazy-succ (ctx-push ctx CTX_UNK)))))
              ;; Continuation stub
              (stub-labels (add-callback cgc
                                         0
