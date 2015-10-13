@@ -561,9 +561,12 @@
             (x86-mov cgc (x86-rax) (x86-imm-int header-word))
             (x86-mov cgc (x86-mem (* -8 total-size) alloc-ptr) (x86-rax))
 
-            ;; 2 - Write cctable-ptr
-            (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
-            (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax))
+            ;; 2 - Write cctable-ptr or entry point
+            (if opt-entry-points
+                (begin (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
+                       (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax)))
+                (begin (x86-mov cgc (x86-rax) (x86-imm-int generic-addr))
+                       (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax))))
 
             ;; 3 - Write free vars
             (gen-free-vars cgc fvars ctx (+ 16 (* -8 total-size)))
@@ -1787,7 +1790,7 @@
             (lambda (cgc ctx)
               ;; GEN CALL SEQ
               (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-              (gen-call-sequence cgc (make-ctx fake-stack '() -1) #f #f)))))
+              (gen-call-sequence cgc (make-ctx fake-stack '() -1) #f)))))
 
     ;; First object of the chain, reserve a slot for the continuation
     (make-lazy-code
@@ -1918,11 +1921,9 @@
 
                                                 ;; Gen call sequence with closure in RAX
                                                 (let ((nb-unk (count call-stack (lambda (n) (eq? n CTX_UNK)))))
-
-                                                  (if (and opt-entry-points
-                                                           (not (= nb-unk (length args))))
-                                                    (gen-call-sequence cgc call-ctx (length (cdr ast)) #t)
-                                                    (gen-call-sequence cgc call-ctx (length (cdr ast)) #f)))))))
+                                                  ;(if (and opt-entry-points
+                                                  ;         (not (= nb-unk (length args))))
+                                                  (gen-call-sequence cgc call-ctx (length (cdr ast))))))))
                  ;; Lazy code object to build the continuation
                  (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
@@ -2044,9 +2045,9 @@
   (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax))))
 
 ;; Gen call sequence (call instructions) with call closure in RAX
-(define (gen-call-sequence cgc call-ctx nb-args use-mep) ;; Use multiple entry points?
+(define (gen-call-sequence cgc call-ctx nb-args) ;; Use multiple entry points?
 
-    (if use-mep
+    (if opt-entry-points
       ;; If we use multiple entry points then:
       (let* ((idx (get-closure-index call-ctx)))
         (if idx ;; This condition is not on the previous 'if' because we don't want to create a table entry if we don't use multiple entry points
@@ -2066,8 +2067,11 @@
           ;; Table is full, gen generic call
           (gen-generic-call-sequence cgc nb-args)))
 
-      ;; use-mep is #f, gen generic call
-      (gen-generic-call-sequence cgc nb-args))
+      ;; Do not use multiple entry points
+      (if (not nb-args)
+          (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+          (begin (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args)))
+                 (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))))
 
     ;; Jump to entry point
     (x86-jmp cgc (x86-rax)))

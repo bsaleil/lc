@@ -1,6 +1,5 @@
 
-(apply (lambda (a b) (println (+ a b))) '(10 40))
-
+(apply (lambda (a b c) (pp (+ a b c))) '(1 20 300))
 
 ;(define (pp-pair-h n)
 ;  (cond ((and (list? n) (= (length n) 1)) (pp-h (car n)))

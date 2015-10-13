@@ -1450,8 +1450,10 @@
                label-name
                " (" (number->string label-addr 16) ")"))
 
-  (let ((table-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ))))
-    (put-i64 (+ table-addr 8) label-addr))
+  (if opt-entry-points
+      (let ((table-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ))))
+        (put-i64 (+ table-addr 8) label-addr))
+      (put-i64 (- (+ closure 8) TAG_MEMOBJ) label-addr))
 
   label-addr))
 
