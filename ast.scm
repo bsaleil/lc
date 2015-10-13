@@ -454,8 +454,10 @@
 
   (let* (;; Lambda free vars
          (fvars #f)
+         ;; Flatten list of param (include rest param)
+         (all-params (flatten (cadr ast)))
          ;; Lambda mutable vars
-         (mvars #f)
+         (mvars (mutable-vars (caddr ast) all-params))
          ;; Rest param ?
          (rest-param (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
                          (and (pair? (cadr ast)) (not (list? (cadr ast)))))) ;; (foo a..z . rest)
@@ -464,8 +466,6 @@
            (if rest-param
               (formal-params (cadr ast))
               (cadr ast)))
-         ;; Flatten list of param (include rest param)
-         (all-params (flatten (cadr ast)))
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
                      (lambda (cgc ctx)
@@ -496,42 +496,7 @@
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
-         (lazy-prologue (make-lazy-code-entry
-                           (lambda (cgc ctx)
-
-                              (let* ((actual-p (- (length (ctx-stack ctx)) 2)) ;; 1 for return address / closure
-                                     (formal-p (ctx-nb-args ctx)))
-
-                                (if (or (and (not rest-param) (not (= actual-p formal-p)))
-                                        (and rest-param (< actual-p formal-p)))
-                                   ;; Wrong number of arguments
-                                   (begin
-                                     (pp ast)
-                                     (gen-error cgc ERR_WRONG_NUM_ARGS))
-                                   ;; Right number of arguments
-                                   (let ((nstack  (ctx-stack ctx))    ;; New stack  (change if rest-param)
-                                         (nnbargs (ctx-nb-args ctx))) ;; New nbargs (change if rest-param)
-                                     (if rest-param
-                                         (cond ((= actual-p formal-p)
-                                                  ;; Shift closure
-                                                  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                                                  (x86-push cgc (x86-rax))
-                                                  ;; Mov '() in rest param slot
-                                                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                                                  (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
-                                                  ;; Update ctx information
-                                                  (set! nstack (cons CTX_CLO (cons CTX_NULL (cdr (ctx-stack ctx)))))
-                                                  (set! nnbargs (+ (ctx-nb-args ctx) 1)))
-                                                    ;(set! ctx cctx)))
-                                               ((> actual-p formal-p)
-                                                  ;; Build rest argument
-                                                  (gen-rest-lst cgc ctx (- actual-p formal-p))
-                                                  ;; Update ctx information
-                                                  (set! nstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1)))))
-                                                  (set! nnbargs (+ (ctx-nb-args ctx) 1)))))
-                                     (let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
-                                            (mctx (gen-mutable cgc nctx mvars)))
-                                       (jump-to-version cgc lazy-body mctx))))))))
+         (lazy-prologue (get-lazy-prologue lazy-body rest-param mvars))
          ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
          (lazy-generic-prologue
             (make-lazy-code-entry
@@ -658,8 +623,6 @@
 
           ;; Get free vars from ast
           (set! fvars (free-vars (caddr ast) all-params ctx))
-          ;; Get mutable vars from ast
-          (set! mvars (mutable-vars (caddr ast) all-params))
 
           ;; If 'stats' option, then inc closures slot
           (if opt-stats
@@ -711,6 +674,44 @@
             (jump-to-version cgc
                              succ
                              (ctx-push ctx (CTX_CLOi cctable-loc)))))))))
+
+;; Create and return a lazy prologue
+(define (get-lazy-prologue succ rest-param mvars)
+  (make-lazy-code-entry
+    (lambda (cgc ctx)
+
+       (let* ((actual-p (- (length (ctx-stack ctx)) 2))
+              (formal-p (ctx-nb-args ctx)))
+
+         ;; Wrong number of arguments, ERROR
+         (if (or (and (not rest-param) (not (= actual-p formal-p)))
+                 (and rest-param (< actual-p formal-p)))
+           (gen-error cgc ERR_WRONG_NUM_ARGS)
+         ;; Right number of arguments
+          (let ((nstack  (ctx-stack ctx))    ;; New stack  (change if rest-param)
+                (nnbargs (ctx-nb-args ctx))) ;; New nbargs (change if rest-param)
+            (if rest-param
+                (cond ((= actual-p formal-p)
+                         ;; Shift closure
+                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                         (x86-push cgc (x86-rax))
+                         ;; Mov '() in rest param slot
+                         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+                         (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
+                         ;; Update ctx information
+                         (set! nstack (cons CTX_CLO (cons CTX_NULL (cdr (ctx-stack ctx)))))
+                         (set! nnbargs (+ (ctx-nb-args ctx) 1)))
+                      ((> actual-p formal-p)
+                         ;; Build rest argument
+                         (gen-rest-lst cgc ctx (- actual-p formal-p))
+                         ;; Update ctx information
+                         (set! nstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1)))))
+                         (set! nnbargs (+ (ctx-nb-args ctx) 1)))))
+            (let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
+                   (mctx (gen-mutable cgc nctx mvars)))
+              (jump-to-version cgc succ mctx))))))))
+
+
 
 ;; Create a new cc table with 'init' as stub value
 (define (make-cc len init generic)
