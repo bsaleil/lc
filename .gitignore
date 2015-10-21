@@ -10,3 +10,4 @@ lib.scm
 unit-tests/benchmarks/foo
 __pycache__/
 CPS/
+script.sh
