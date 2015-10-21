@@ -418,10 +418,25 @@
 (define cctables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))     ;; eq? on ast
                                                       (equal? (cdr a) (cdr b)))))) ;; equal? on ctx information
 
-;; Store the cr table associated to each leambda (ast -> crtable)
+;; Store the cr table associated to each lambda (ast -> crtable)
 ;; crtable is a still vector
 (define crtables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))
                                                       (equal? (cdr a) (cdr b))))))
+
+;; TODO
+;; TODO
+(define entry-points-locs (make-table test: eq?))
+
+(define (get-entry-points-loc ast stub-addr)
+  (let ((r (table-ref entry-points-locs ast #f)))
+    (if r
+        r
+        (let ((v (alloc-still-vector 1)))
+          (vector-set! v 0 (quotient stub-addr 4)) ;; quotient 4 because vector-set write the encoded value (bug when using put-i64?)
+          (table-set! entry-points-locs ast v)
+          v))))
+;; TODO
+;; TODO
 
 ;; Return cctable from cctable-key
 ;; Return the existing table if already created or create one, add entry, and return it
@@ -521,7 +536,7 @@
                                                               (call-ctx (make-ctx (ctx-stack sctx) env nb-args))
                                                               ;; Generic ctx used to generate version
                                                               (gen-ctx  (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD)) env nb-args)))
-                                                          (gen-version-fn closure lazy-generic-prologue gen-ctx call-ctx #f)))
+                                                          (gen-version-fn ast closure lazy-generic-prologue gen-ctx call-ctx #f)))
 
                                                     ;; CASE 2 - Don't use multiple entry points
                                                     ((= selector 1)
@@ -529,7 +544,7 @@
                                                         (let ((ctx (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD))
                                                                              (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
                                                                              (length params))))
-                                                          (gen-version-fn closure lazy-generic-prologue ctx ctx #t)))
+                                                          (gen-version-fn ast closure lazy-generic-prologue ctx ctx #t)))
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
@@ -537,7 +552,7 @@
                                                        (let ((ctx (make-ctx (ctx-stack sctx)
                                                                             (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
                                                                             (length params))))
-                                                         (gen-version-fn closure lazy-prologue ctx ctx #f)))))))
+                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
                (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
 
@@ -565,8 +580,9 @@
             (if opt-entry-points
                 (begin (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
                        (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax)))
-                (begin (x86-mov cgc (x86-rax) (x86-imm-int generic-addr))
-                       (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax))))
+                (let ((eploc (get-entry-points-loc ast stub-addr))) ;; TODOOO
+                  (x86-mov cgc (x86-rax) (x86-mem (+ 8 (- (obj-encoding eploc) 1))))
+                  (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax))))
 
             ;; 3 - Write free vars
             (gen-free-vars cgc fvars ctx (+ 16 (* -8 total-size)))
@@ -1790,7 +1806,7 @@
             (lambda (cgc ctx)
               ;; GEN CALL SEQ
               (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-              (gen-call-sequence cgc (make-ctx fake-stack '() -1) #f)))))
+              (gen-call-sequence cgc #f #f)))))
 
     ;; First object of the chain, reserve a slot for the continuation
     (make-lazy-code
@@ -1824,9 +1840,9 @@
                       (x86-shl cgc (x86-rdi) (x86-imm-int 2))
                       ;; Push closure
                       (x86-push cgc (x86-rax))
-                      ;; Jump to lazy-build-continuation with a fake ctx.
+                      ;; Jump to lazy-build-continuation without ctx
                       ;; This works because lazy-build-continuation and its successor lazy-call do not use ctx.
-                      (jump-to-version cgc lazy-build-continuation (make-ctx fake-stack '() -1)))))
+                      (jump-to-version cgc lazy-build-continuation #f))))
                   ;; Push args list of apply
                   (lazy-args-list (gen-ast (caddr ast) lazy-move-args)) ;; TODO: check that caddr is a pair ?
                   ;; Push function of apply
@@ -2037,24 +2053,30 @@
 (define (gen-call-sequence cgc call-ctx nb-args) ;; Use multiple entry points?
 
     (if opt-entry-points
-      ;; If we use multiple entry points then:
-      (let* ((idx (get-closure-index call-ctx)))
-        (if idx ;; This condition is not on the previous 'if' because we don't want to create a table entry if we don't use multiple entry points
 
-          (let ((cct-offset (* 8 (+ 2 idx))))
-          ;; 1 - Put ctx in r11
-          (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
-          ;; 2- Get cc-table
-          (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-          ;; 3 - If opt-max-versions is not #f, a generic version could be called. So we need to give nb-args
-          ;; NOTE: only if nb-args is not #f to handle 'apply' (apply always writes nb-args in rdi, don't overwrite it!)
-          (if (and opt-max-versions nb-args)
-              (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
-          ;; 4 - Get entry point in cc-table
-          (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax))))
+      (if (not nb-args)
 
-          ;; Table is full, gen generic call
-          (gen-generic-call-sequence cgc nb-args)))
+          ;; It is a call from apply, then use generic entry point
+          (gen-generic-call-sequence cgc #f)
+
+          ;; If we use multiple entry points then:
+          (let* ((idx (get-closure-index call-ctx)))
+            (if idx ;; This condition is not on the previous 'if' because we don't want to create a table entry if we don't use multiple entry points
+
+              (let ((cct-offset (* 8 (+ 2 idx))))
+                  ;; 1 - Put ctx in r11
+                  (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
+                  ;; 2- Get cc-table
+                  (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+                  ;; 3 - If opt-max-versions is not #f, a generic version could be called. So we need to give nb-args
+                  ;; NOTE: only if nb-args is not #f to handle 'apply' (apply always writes nb-args in rdi, don't overwrite it!)
+                  (if (and opt-max-versions nb-args)
+                      (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
+                  ;; 4 - Get entry point in cc-table
+                  (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax))))
+
+              ;; Table is full, gen generic call
+              (gen-generic-call-sequence cgc nb-args))))
 
       ;; Do not use multiple entry points
       (if (not nb-args)

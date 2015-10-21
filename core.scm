@@ -65,6 +65,7 @@
 (define mem-header #f)
 (define run-gc #f) ;; Forward declaration (see mem.scm)
 (define ctx-change-type #f)
+(define get-entry-points-loc #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -73,8 +74,6 @@
 ;; ex. '((foo 1) (bar 2) (fun 3))
 (define globals '())
 (define gids '()) ;; TODO : merge with 'globals'
-
-(define fake-stack (list 'FAKE))
 
 (define label-print-msg        #f)
 (define label-print-msg-val    #f)
@@ -355,12 +354,7 @@
          (ctx
            (if (= selector 1) ;; If called from generic ptr
              #f
-             (let ((rctx (still-ref->ctx still-encoding)))
-               (if (equal? (ctx-stack rctx) fake-stack)
-                 ;; If ctx contains fake stack, it's a call from apply, then read nb-args and create new ctx
-                 (let ((nb-args (quotient (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8))) 4)))
-                   (make-ctx (cons CTX_CLO (append (make-list nb-args CTX_UNK) (list CTX_RETAD))) (ctx-env rctx) (ctx-nb-args rctx)))
-                 rctx))))
+             (still-ref->ctx still-encoding)))
 
          (closure
           (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
@@ -1279,7 +1273,7 @@
     (patch-continuation-cr label-dest type table)))
 
 ;; Generate an entry point
-(define (gen-version-fn closure lazy-code gen-ctx call-ctx generic)
+(define (gen-version-fn ast closure lazy-code gen-ctx call-ctx generic)
 
   (if opt-verbose-jit
       (begin
@@ -1304,7 +1298,7 @@
     ;; If generic is #t, patch generic slot in closure.
     ;; Else patch cc-table slot for this ctx
     (if generic
-      (patch-generic closure label-dest)
+      (patch-generic ast closure label-dest)
       (patch-closure closure call-ctx label-dest))))
 
 (define (gen-version jump-addr lazy-code ctx #!optional (cleared-ctx #f))
@@ -1389,7 +1383,7 @@
                  (- dest-addr (+ jump-addr size))))))
 
 ;; Patch generic slot in closure
-(define (patch-generic closure label)
+(define (patch-generic ast closure label)
 
   (let ((label-addr (asm-label-pos  label))
         (label-name (asm-label-name label)))
@@ -1403,7 +1397,10 @@
   (if opt-entry-points
       (let ((table-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ))))
         (put-i64 (+ table-addr 8) label-addr))
-      (put-i64 (- (+ closure 8) TAG_MEMOBJ) label-addr))
+      (let ((eploc (get-entry-points-loc ast #f)))
+        (put-i64 (- (+ closure 8) TAG_MEMOBJ) label-addr)       ;; Patch closure
+        (put-i64 (+ 8 (- (obj-encoding eploc) 1)) label-addr))) ;; Patch still vector containing code addr
+
 
   label-addr))
 

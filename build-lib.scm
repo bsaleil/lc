@@ -19,16 +19,15 @@
                 (get-lib (cdr files)))))
 
 (define (write-lib exprs)
-  
+
   (define (write-lib-h exprs f)
     (if (not (null? exprs))
       (begin (pretty-print (car exprs) f)
              (write-lib-h (cdr exprs) f))))
-  
+
   (let ((f (open-output-file "./lib.scm")))
     (write-lib-h exprs f)
     (force-output f)))
-    
+
 (let ((lib (get-lib LIB_FILES)))
   (write-lib lib))
-  ;(pp lib))

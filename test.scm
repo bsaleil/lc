@@ -1,5 +1,14 @@
 
-(apply (lambda (a b c) (pp (+ a b c))) '(1 20 300))
+(define (make-list n)
+  (if (= 0 n)
+    '()
+    (cons #f (make-list (- n 1)))))
+
+(define (mytest . nodes)
+  (pp nodes))
+
+(apply mytest '(1 2))
+;(apply mytest (make-list 10))
 
 ;(define (pp-pair-h n)
 ;  (cond ((and (list? n) (= (length n) 1)) (pp-h (car n)))
