@@ -598,23 +598,11 @@
 ;; CODE
 (define code-len 12000000)
 (define code-addr #f)
-
-;; MCB :
-;; 0                 code-len              mcb-len
-;; +--------------------+--------------------+
-;; |    Code            |    Heap            |
-;; |                    |                    |
-;; |                    |                    |
-;; +--------------------+--------------------+
-
 (define mcb #f)
-(define mcb-len code-len) ;; TODO useless
-(define mcb-addr #f)
 
 (define (init-mcb)
-  (set! mcb (##make-machine-code-block mcb-len))
-  (set! mcb-addr (##foreign-address mcb))
-  (set! code-addr mcb-addr)
+  (set! mcb (##make-machine-code-block code-len))
+  (set! code-addr (##foreign-address mcb))
   (let ((tspace (##make-machine-code-block space-len))
         (fspace (##make-machine-code-block space-len)))
     (set! to-space   (##foreign-address tspace))
@@ -666,7 +654,7 @@
           (begin
             (println "------------------------------------------------------------------------")
             (asm-display-listing cgc (current-output-port) #t)))
-      (write-mcb code (- addr mcb-addr))
+      (write-mcb code (- addr code-addr))
       (u8vector-length code))))
 
 ;;-----------------------------------------------------------------------------
@@ -681,7 +669,7 @@
   (init-block)
   (init-mcb)
   (set! code-alloc code-addr)
-  (set! stub-alloc (+ mcb-addr mcb-len))
+  (set! stub-alloc (+ code-addr code-len))
   (set! stub-freelist 0))
 
 (define (code-add gen)

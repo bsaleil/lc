@@ -330,8 +330,8 @@
 
 (define (print-stats)
   ;; Print stats report
-  (let ((code-bytes (- code-alloc mcb-addr))
-        (stub-bytes (- (+ mcb-addr mcb-len) stub-alloc)))
+  (let ((code-bytes (- code-alloc code-addr))
+        (stub-bytes (- (+ code-addr code-len) stub-alloc)))
     ;; Code size
     (println "Code size (bytes): " code-bytes)
     ;; Stub size

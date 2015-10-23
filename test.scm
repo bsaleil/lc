@@ -1,24 +1,3 @@
-
-(define (make-list n)
-  (if (= 0 n)
-    '()
-    (cons #f (make-list (- n 1)))))
-
-(define (mytest . nodes)
-  (pp nodes))
-
-(apply mytest '(1 2))
-;(apply mytest (make-list 10))
-
-;(define (pp-pair-h n)
-;  (cond ((and (list? n) (= (length n) 1)) (pp-h (car n)))
-;        ((not (pair? (cdr n)))
-;         (begin (pp-h (car n)) (print " . ") (pp-h (cdr n))))
-;        (else (begin (pp-h (car n)) (print " ") (pp-pair-h (cdr n))))))
-;
-;(define (pp-pair n) (print "kK") (print "LL"))
-;(pp-pair (cons 1 '()))
-
 ;; 1 - TODO CODE
 ;;   * PB quoted vector avec liste
 ;;   * Enlever les deux TODO dans ast.scm au moment de la création des deux nouveaux contextes

@@ -1937,7 +1937,7 @@
 
                                                 ;; Gen call sequence with closure in RAX
                                                 (let ((nb-unk (count call-stack (lambda (n) (eq? n CTX_UNK)))))
-                                                  ;(if (and opt-entry-points
+                                                  ;(if (and opt-entry-points ;; TODO
                                                   ;         (not (= nb-unk (length args))))
                                                   (gen-call-sequence cgc call-ctx (length (cdr ast))))))))
                  ;; Lazy code object to build the continuation
