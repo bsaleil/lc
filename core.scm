@@ -1161,12 +1161,12 @@
            (idsym  (car idpair))
            (identifier (cdr idpair)))
       (cond
-        ;; a TODO get comment from old version
+        ;; If id contains 'from', add 'to'
         ((and (member pos-from (identifier-pos identifier))
               (not (member pos-to (identifier-pos identifier))))
            (cons (cons idsym (identifier-add-pos identifier pos-to))
                  (env-move (cdr env) pos-from pos-to)))
-        ;; b TODO get comment from old version
+        ;; If id contains 'to', remove it
         ((and (member pos-to (identifier-pos identifier))
               (not (member pos-from (identifier-pos identifier))))
            (cons (cons idsym (identifier-remove-pos identifier pos-to))
