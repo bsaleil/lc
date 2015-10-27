@@ -999,6 +999,7 @@
   (assert-p-nbargs ast)
 
   ;; Manage fake implementation. NOTE: remove when all implemented
+  ;; TODO: implement 'char=?'
   (cond ((eq? (car ast) 'char=?)
             (gen-ast (cons 'eq? (cdr ast)) succ))
         (else
