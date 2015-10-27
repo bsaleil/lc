@@ -1,3 +1,8 @@
+(define (eqv? x y)
+  (if (number? x)
+    (and (number? y) (= x y))
+    (eq? x y)))
+
 (define (equal? x y)
   (cond ((pair? x) (and (pair? y)
                         (equal? (car x) (car y))

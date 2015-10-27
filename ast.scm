@@ -5,10 +5,10 @@
 ;; Macros
 
 (define-macro (assert c err)
-   `(if (not ,c)
-      (begin (pp ast)
-             (println "!!! ERROR : " ,err)
-             (exit 1))))
+  `(if (not ,c)
+       (begin (pp ast)
+	      (println "!!! ERROR : " ,err)
+	      (exit 1))))
 
 ;; Generate primitive types lists from types pattern (used in 'primitives' set)
 (define-macro (prim-types . args)
@@ -55,7 +55,6 @@
    (car                 1  1  ,(prim-types 1 CTX_PAI))
    (cdr                 1  1  ,(prim-types 1 CTX_PAI))
    (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL))
-   (eqv?                2  2  ,(prim-types 2 CTX_ALL CTX_ALL))
    (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR))
    (null?               1  1  ,(prim-types 1 CTX_ALL))
    (not                 1  1  ,(prim-types 1 CTX_ALL))
@@ -1000,7 +999,7 @@
   (assert-p-nbargs ast)
 
   ;; Manage fake implementation. NOTE: remove when all implemented
-  (cond ((member (car ast) '(eqv? char=?))
+  (cond ((eq? (car ast) 'char=?)
             (gen-ast (cons 'eq? (cdr ast)) succ))
         (else
           (let* ((special (car ast))
@@ -1842,7 +1841,7 @@
                       (x86-push cgc (x86-rax))
                       ;; Jump to lazy-build-continuation without ctx
                       ;; This works because lazy-build-continuation and its successor lazy-call do not use ctx.
-                      (jump-to-version cgc lazy-build-continuation #f))))
+                      (jump-to-version cgc lazy-build-continuation (make-ctx '() '() -1)))))
                   ;; Push args list of apply
                   (lazy-args-list (gen-ast (caddr ast) lazy-move-args)) ;; TODO: check that caddr is a pair ?
                   ;; Push function of apply

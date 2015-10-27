@@ -1418,7 +1418,6 @@
   (if (= (get-u8 jump-addr) #x0f) 6 5))
 
 
-;; TODO: use gen-fatal instead of gen-dyn in ast.scm when needed
 ;; Gen fatal dynamic type test
 ;; fatal means that if type test fails, it stops execution
 ;; Check type 'type' for stack slot at 'stack-idx' and jump to 'succ' if succeess
@@ -1431,7 +1430,6 @@
                  (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
   (gen-dyn-type-test type stack-idx succ lazy-error ast)))
 
-;; TODO
 ;; Create lazy code for type test of stack slot (stack-idx)
 ;; jump to lazy-success if test succeeds
 ;; jump to lazy-fail if test fails
