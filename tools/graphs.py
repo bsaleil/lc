@@ -44,8 +44,9 @@ LC_PATH     = SCRIPT_PATH + '../'                               # Compiler path
 LC_EXEC     = 'lazy-comp'                                       # Compiler exec name
 PDF_OUTPUT  = SCRIPT_PATH + 'graphs.pdf'                        # PDF output file
 BENCH_PATH  = LC_PATH + 'benchmarks/*.scm'                      # Benchmarks path
-#BAR_COLORS  = ["#444444","#666666","#888888","#AAAAAA","#CCCCCC","#EEEEEEn"]         # Bar colors
-BAR_COLORS = ["#222222", "#666666", "#AAAAAA", "#EEEEEE"] # Paper sw15
+BAR_COLORS  = ["#222222","#555555","#888888","#AAAAAA","#DDDDDD"]         # Bar colors
+BAR_COLORS  = ["#CCCCCC","#999999","#666666","#333333","#000000"]         # Bar colors
+#BAR_COLORS = ["#222222", "#666666", "#AAAAAA", "#EEEEEE"] # Paper sw15
 
 # Parser constants, must match compiler --stats output
 CSV_INDICATOR  = '--'
@@ -427,9 +428,9 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	# Legend:
 	# Shrink by 10% on the bottom
 	box = axes.get_position()
-	axes.set_position([box.x0, box.y0 + box.height * 0.25, box.width, box.height * 0.75])
+	axes.set_position([box.x0, box.y0 + box.height * 0.34, box.width, box.height * 0.66])
 	# Put a legend below axis
-	legend(loc='upper center', bbox_to_anchor=(0., 0., 1., -0.33), prop={'size':19}, ncol=len(lexecs)-1, mode='expand', borderaxespad=0.)
+	legend(loc='upper center', bbox_to_anchor=(0., 0., 1., -0.33), prop={'size':19}, ncol=int(len(lexecs)/3), mode='expand', borderaxespad=0.)
 
 	# Save to pdf
 	pdf.savefig(fig)

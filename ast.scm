@@ -510,7 +510,7 @@
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
-         (lazy-prologue (get-lazy-prologue lazy-body rest-param mvars))
+         (lazy-prologue (get-lazy-prologue ast lazy-body rest-param mvars))
          ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
          (lazy-generic-prologue (get-lazy-generic-prologue lazy-body rest-param mvars params)))
 
@@ -700,7 +700,7 @@
             (jump-to-version cgc succ (gen-mutable cgc ctx mvars))))))
 
 ;; Create and return a lazy prologue
-(define (get-lazy-prologue succ rest-param mvars)
+(define (get-lazy-prologue ast succ rest-param mvars)
   (make-lazy-code-entry
     (lambda (cgc ctx)
 

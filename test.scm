@@ -1,3 +1,8 @@
+;; 0 - TODO UTILISATIONS
+;;   * (length l)   -> si on sait que l est une liste, on peut simplement PUSH 0
+;;   * (equal? a b) -> si on a une info de type sur a et b, on peut spécialiser par eq? voir meme push direct si a et b sont null par ex
+;;   * append avec une des listes NULL -> simplement ignorer la liste
+
 ;; 1 - TODO CODE
 ;;   * PB quoted vector avec liste
 ;;   * Enlever les deux TODO dans ast.scm au moment de la création des deux nouveaux contextes

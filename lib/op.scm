@@ -10,3 +10,11 @@
         ((string? x) (and (string? y)
                           (string=? x y)))
         (else (eqv? x y))))
+
+(define FLOAT- (lambda (a b) (- a b)))
+(define FLOAT+ (lambda (a b) (+ a b)))
+(define FLOAT* (lambda (a b) (* a b)))
+(define FLOAT/ (lambda (a b) (/ a b)))
+(define FLOAT> (lambda (a b) (> a b)))
+(define FLOAT< (lambda (a b) (< a b)))
+(define FLOAT>= (lambda (a b) (>= a b)))
