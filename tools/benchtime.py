@@ -35,6 +35,15 @@ os.chdir(LC_PATH)
 # Get all benchmarks full path sorted by name
 files = sorted(glob.glob(BENCH_PATH))
 
+# Used as matplotlib formatter
+def to_percent(y, position):
+    s = str(int(y))
+    # The percent symbol needs escaping in latex
+    if matplotlib.rcParams['text.usetex'] is True:
+        return s + r'$\%$'
+    else:
+        return s + '%'
+
 # -------------------------
 # Exec benchmarks
 # and get times
@@ -165,15 +174,7 @@ text(i+2-((1-bar_width)/2), -10,TIMEP[-1][0], rotation=90, ha='center', va='top'
 
 legend(bbox_to_anchor=(0., 0., 1., -0.55), prop={'size':FONT_SIZE}, ncol=4, mode="expand", borderaxespad=0.)
 
-
-def to_percent(y, position):
-    s = str(int(y))
-    # The percent symbol needs escaping in latex
-    if matplotlib.rcParams['text.usetex'] is True:
-        return s + r'$\%$'
-    else:
-        return s + '%'
-
+# Add '%' symbol to ylabels
 formatter = FuncFormatter(to_percent)
 plt.gca().yaxis.set_major_formatter(formatter)
 
@@ -181,10 +182,6 @@ plt.gca().yaxis.set_major_formatter(formatter)
 pdf = PdfPages(PDF_OUTPUT)
 pdf.savefig(fig)
 pdf.close()
-#plt.show()
-#plt.savefig('tex_demo')
-#plt.savefig('tex_demo')
-#plt.show()
 
 print('Saved to ' + PDF_OUTPUT)
 print('Done!')
