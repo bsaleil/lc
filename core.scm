@@ -592,7 +592,7 @@
 ;; HEAP
 (define from-space #f)
 (define to-space   #f)
-(define space-len 1000000000) ;; 100mo
+(define space-len 2000000000) ;; Set to 2go (2000000000) to exec all benchmarks without GC
 (define alloc-ptr (x86-r12))
 
 ;; CODE
