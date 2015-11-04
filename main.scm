@@ -191,6 +191,12 @@
 
 (define (exec lib prog)
 
+    (define (one-exec)
+      (set! from-space init-from-space)
+      (set! to-space   init-to-space)
+      (##machine-code-block-exec mcb)
+      (pp "ok"))
+
   (init)
 
   (let* ((lazy-prog (lazy-exprs prog #f))
@@ -205,16 +211,12 @@
              (let ((before #f)
                    (after  #f))
                 (set! before (real-time))
-                (##machine-code-block-exec mcb)
-                (##machine-code-block-exec mcb)
-                (##machine-code-block-exec mcb)
-                (##machine-code-block-exec mcb)
-                (##machine-code-block-exec mcb)
-                (##machine-code-block-exec mcb)
-                (##machine-code-block-exec mcb)
-                (##machine-code-block-exec mcb)
-                (##machine-code-block-exec mcb)
-                (##machine-code-block-exec mcb)
+                ;; 10 execs
+                (one-exec) (one-exec)
+                (one-exec) (one-exec)
+                (one-exec) (one-exec)
+                (one-exec) (one-exec)
+                (one-exec) (one-exec)
                 (set! after (real-time))
                 (println "Time: " (* (/ (- after before) 10) 1000))))
       (##machine-code-block-exec mcb)))

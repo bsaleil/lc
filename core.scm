@@ -592,8 +592,13 @@
 ;; HEAP
 (define from-space #f)
 (define to-space   #f)
-(define space-len 2000000000) ;; Set to 2go (2000000000) to exec all benchmarks without GC
+;; Set to 2gb (2000000000) to exec all benchmarks without GC (except lattice.scm)
+;; Set to 7gb (7000000000) to exec all benchmarks without GC
+(define space-len 7000000000)
 (define alloc-ptr (x86-r12))
+
+(define init-to-space #f)
+(define init-from-space #f)
 
 ;; CODE
 (define code-len 12000000)
@@ -605,8 +610,10 @@
   (set! code-addr (##foreign-address mcb))
   (let ((tspace (##make-machine-code-block space-len))
         (fspace (##make-machine-code-block space-len)))
-    (set! to-space   (##foreign-address tspace))
-    (set! from-space (##foreign-address fspace))))
+    (set! init-from-space (##foreign-address fspace))
+    (set! init-to-space   (##foreign-address tspace)))
+  (set! from-space init-from-space)
+  (set! to-space init-to-space))
 
 ;; BLOCK :
 ;; 0          8                       (nb-globals * 8 + 8)
