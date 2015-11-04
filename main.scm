@@ -194,8 +194,7 @@
     (define (one-exec)
       (set! from-space init-from-space)
       (set! to-space   init-to-space)
-      (##machine-code-block-exec mcb)
-      (pp "ok"))
+      (##machine-code-block-exec mcb))
 
   (init)
 

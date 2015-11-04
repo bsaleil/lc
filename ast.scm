@@ -339,20 +339,26 @@
 ;; Make lazy code from num/bool/char/null literal
 ;;
 (define (mlc-literal ast succ)
-  (make-lazy-code
-    (lambda (cgc ctx)
-      (if (and (number? ast) (>= ast 536870912)) ;; 2^(32-1-2) (32bits-sign-tags)
+  (if (and (number? ast)
+           (or (>= ast (expt 2 61))
+               (<  ast (* -1  (expt 2 60)))))
+    (mlc-flonum ast succ)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (if (and (number? ast)
+                 (or (>= ast (expt 2 29))   ;; 2^(32-1-2) (32bits-sign-tags)
+                     (<  ast (expt 2 28))))
           (begin (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding ast)))
                  (x86-push cgc (x86-rax)))
           (x86-push cgc (x86-imm-int (obj-encoding ast))))
-      (jump-to-version cgc
-                       succ
-                       (ctx-push ctx
-                                 (cond ((number? ast)  CTX_NUM)
-                                       ((boolean? ast) CTX_BOOL)
-                                       ((char? ast)    CTX_CHAR)
-                                       ((null? ast)    CTX_NULL)
-                                       (else (error "Internal error"))))))))
+        (jump-to-version cgc
+                         succ
+                         (ctx-push ctx
+                                   (cond ((number? ast)  CTX_NUM)
+                                         ((boolean? ast) CTX_BOOL)
+                                         ((char? ast)    CTX_CHAR)
+                                         ((null? ast)    CTX_NULL)
+                                         (else (error "Internal error")))))))))
 
 ;;-----------------------------------------------------------------------------
 ;; INTERNAL FORMS
@@ -2273,7 +2279,8 @@
 
   ;; Get lazy code object for operation with int and int
   (define (get-op-ii succ)
-    (let ((label-overflow (get-lazy-error cgc ERR_ARR_OVERFLOW)))
+    (let ((labels-overflow (add-callback #f 0 (lambda (ret-addr selector)
+                                                (error ERR_ARR_OVERFLOW)))))
         (make-lazy-code
           (lambda (cgc ctx)
             (x86-pop cgc (x86-rax))
@@ -2283,8 +2290,8 @@
                                (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
                                (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
                   (else (error "NYI" op)))
-            (x86-jo cgc label-overflow) ;; NYI overflow
-            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_NUM)))))
+            (x86-jo cgc (list-ref labels-overflow 0)) ;; NYI overflow
+            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_NUM))))))
 
   ;; Get lazy code object for operation with float and float, float and int, and int and float
   ;; leftint?  to #t if left operand is an integer

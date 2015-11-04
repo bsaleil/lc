@@ -52,11 +52,13 @@ def to_percent(y, position):
 # Execute ITERS times the file with given options
 # Remove first, min and max times and return the sum
 def getTime(file,options):
-    opts = [LC_PATH + LC_EXEC, file, '--time']
+    opts = [LC_PATH + LC_EXEC, file, '--time --verbose-gc']
     opts.extend(options)
     times = []
     for i in range(0,ITERS):
         output = subprocess.check_output(opts).decode("utf-8")
+        if "GC" in output: # If gc is triggered, stop the script
+            raise Exception('GC is used with benchmark ' + file)
         times.append( float(output.split(':')[1].strip()))
     # Remove first,min,max
     times.remove(times[0])
