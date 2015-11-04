@@ -2273,16 +2273,18 @@
 
   ;; Get lazy code object for operation with int and int
   (define (get-op-ii succ)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (x86-pop cgc (x86-rax))
-        (cond ((eq? op '+) (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-              ((eq? op '-) (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-              ((eq? op '*) (x86-sar cgc (x86-rax) (x86-imm-int 2))
-                           (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                           (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-              (else (error "NYI" op)))
-        (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_NUM)))))
+    (let ((label-overflow (get-lazy-error cgc ERR_ARR_OVERFLOW)))
+        (make-lazy-code
+          (lambda (cgc ctx)
+            (x86-pop cgc (x86-rax))
+            (cond ((eq? op '+) (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+                  ((eq? op '-) (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+                  ((eq? op '*) (x86-sar cgc (x86-rax) (x86-imm-int 2))
+                               (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                               (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+                  (else (error "NYI" op)))
+            (x86-jo cgc label-overflow) ;; NYI overflow
+            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_NUM)))))
 
   ;; Get lazy code object for operation with float and float, float and int, and int and float
   ;; leftint?  to #t if left operand is an integer
