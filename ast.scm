@@ -518,7 +518,7 @@
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
          (lazy-prologue (get-lazy-prologue ast lazy-body rest-param mvars))
          ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
-         (lazy-generic-prologue (get-lazy-generic-prologue lazy-body rest-param mvars params)))
+         (lazy-generic-prologue (get-lazy-generic-prologue ast lazy-body rest-param mvars params)))
 
     ;; Lazy closure generation
     (make-lazy-code
@@ -623,7 +623,7 @@
                (ctx-env ctx))))
 
 ;; Create and return a generic lazy prologue
-(define (get-lazy-generic-prologue succ rest-param mvars params)
+(define (get-lazy-generic-prologue ast succ rest-param mvars params)
     (make-lazy-code-entry
        (lambda (cgc ctx)
 
