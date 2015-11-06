@@ -55,6 +55,15 @@
         ((null? lst) (error "Error in list-head"))
         (else (cons (car lst) (list-head (cdr lst) (- n 1))))))
 
+;; Does l recursively contains el?
+(define (contains l el)
+  (if (pair? l)
+     (or (contains (car l) el)
+         (contains (cdr l) el))
+     (if (eq? l el)
+        #t
+        #f)))
+
 ;;-----------------------------------------------------------------------------
 ;; Strings
 

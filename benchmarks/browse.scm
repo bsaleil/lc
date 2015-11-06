@@ -183,6 +183,6 @@
 
 ;-----
 
-(browse '((*a ?b *b ?b a *a a *b *a)
+(apply browse (list '((*a ?b *b ?b a *a a *b *a)
           (*a *b *b *a (*a) (*b))
-          (? ? * (b a) * ? ?)))
+          (? ? * (b a) * ? ?))))

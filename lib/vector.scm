@@ -9,3 +9,7 @@
     #f
     (begin (vector-set! v pos val)
            (vector-fill!-h v (+ pos 1) val len))))
+
+(define (FLOATvector-const . l) (apply vector l))
+(define FLOATvector-length vector-length)
+(define FLOATvector-ref    vector-ref)

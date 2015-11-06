@@ -1,184 +1,199 @@
-#!/usr/bin/env python
+#!/usr/bin/python3
 
+import sys
 import os
 import glob
 import subprocess
 from pylab import *
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib import rc
+from matplotlib.ticker import FuncFormatter
 
-#### TODO: ajouter edgecolor 'none' dans graphs.py (plus beau)
-#### TODO: sort execs
+plt.rc('text', usetex=True)
+plt.rc('font', family='serif')
 
-help = """
-benchtime.py - Generate graph with benchmarks execution times
-
-Use:
-	benchtime.py [OPTION...]
-
-Options:
-	-h,--help
-		Print this help.
-	--num-exec
-		Set the number of executions for each benchmark. (Default is 5)
-	--draw-exec
-		Set the execution to draw. (Default is 2)
-                1 is the execution including compilation and execution time
-                2 is the execution including only execution time
-
-Example:
-
-	benchtime.py
-		Draw graph using default parameters
-
-	benchtime.py --num-exec 10 --draw-exec 1
-		Draw graph for first execution using 10 executions for each benchmark
-"""
-
-#----------------------------------------------------------------------------------------------------
+# -------------------------
+# Constants
+# -------------------------
 
 SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__)) + '/' # Current script path
 LC_PATH     = SCRIPT_PATH + '../'                               # Compiler path
 LC_EXEC     = 'lazy-comp'                                       # Compiler exec name
+PDF_OUTPUT  = SCRIPT_PATH + 'times.pdf'                         # PDF output file
 BENCH_PATH  = LC_PATH + 'benchmarks/*.scm'                      # Benchmarks path
-PDF_OUTPUT  = SCRIPT_PATH + 'time.pdf'                        # PDF output file
+BAR_COLORS  = ["#000000", "#333333", "#666666", "#AAAAAA", "#DDDDDD"]      # Bar colors
+ITERS       = 10                                                # Number of iterations >=4 (we remove first, min and max)
+FONT_SIZE   = 9                                                 # Font size used to generate pdf using latex (must match the paper font size)
 
-#----------------------------------------------------------------------------------------------------
-# Script params
+# -------------------------
+# Config
+# -------------------------
 
-EXEC_NUMBER = 5 # Number of executions for each benchmark
-DRAW_EXEC   = 2 # Execution to draw. 1 is execution including compilation tim and 2 is execution including only execution time
-
-if '-h' in sys.argv or '--help' in sys.argv:
-    print(help);
-    sys.exit();
-if '--num-exec' in sys.argv:
-    nu = int(sys.argv[sys.argv.index('--num-exec')+1])
-    EXEC_NUMBER = nu;
-
-if '--draw-exec' in sys.argv:
-    ex = int(sys.argv[sys.argv.index('--draw-exec')+1]);
-    if (ex != 1) and (ex != 2):
-        print(help);
-        sys.exit();
-    DRAW_EXEC = ex;
-
-print("\nRun script with:")
-print("   Number of executions: " + str(EXEC_NUMBER))
-print("   Execution to draw:    " + str(DRAW_EXEC))
-
-#----------------------------------------------------------------------------------------------------
-
-# Set current working directory to compiler path
+# Change to lc directory
 os.chdir(LC_PATH)
+
 # Get all benchmarks full path sorted by name
 files = sorted(glob.glob(BENCH_PATH))
 
-#----------------------------------------------------------------------------------------------------
-# Exectue EXEC_NUMBER times the benchmark 'bench' with options 'opts'
-# Remove min, max and return average of remaining times
+# Used as matplotlib formatter
+def to_percent(y, position):
+    s = str(int(y))
+    # The percent symbol needs escaping in latex
+    if matplotlib.rcParams['text.usetex'] is True:
+        return s + r'$\%$'
+    else:
+        return s + '%'
 
-def getExecTime(bench,opts):
+# -------------------------
+# Exec benchmarks
+# and get times
+# -------------------------
 
-    options = [LC_PATH + LC_EXEC, bench]
-    options.extend(opts);
+# Execute ITERS times the file with given options
+# Remove first, min and max times and return the sum
+def getTime(file,options):
+    opts = [LC_PATH + LC_EXEC, file, '--time --verbose-gc']
+    opts.extend(options)
+    times = []
+    for i in range(0,ITERS):
+        output = subprocess.check_output(opts).decode("utf-8")
+        if "GC" in output: # If gc is triggered, stop the script
+            raise Exception('GC is used with benchmark ' + file)
+        times.append( float(output.split(':')[1].strip()))
+    # Remove first,min,max
+    times.remove(times[0])
+    times.remove(min(times))
+    times.remove(max(times))
+    return sum(times)
 
-    currTimes = [];
-    for i in range(0,EXEC_NUMBER):
-        print(' ' + str(i+1), end='')
-        sys.stdout.flush()
-        output = subprocess.check_output(options).decode("utf-8") # Exec LC
-        times = output.split('\n');
-        cyclesSndExec = int(times[(DRAW_EXEC - 1)*2].split(':')[1]); # Get cycles number of DRAW_EXECth execution
-        currTimes.append(cyclesSndExec);
+TIME = []
 
-    print('')
-    currTimes.remove(max(currTimes))
-    currTimes.remove(min(currTimes))
+idx = 0
+for file in files:
+    idx+=1
+    print('(' + str(idx) + '/' + str(len(files)) + ') ' + file);
 
-    return sum(currTimes) / float(EXEC_NUMBER-2);
+    # Exec without versioning
+    print('\t* No versioning...')
+    time_nv = getTime(file,['--disable-entry-points', '--disable-return-points','--max-versions 0']);
 
-#----------------------------------------------------------------------------------------------------
-# Draw graph with exec times in cycles
+    # Exec with versioning only
+    print('\t* Versioning only...')
+    time_v = getTime(file,['--disable-entry-points', '--disable-return-points']);
 
-def drawGraph(times,sortedKeys):
+    # Exec with versioning and entry points
+    print('\t* Versioning + entry points...')
+    time_ve = getTime(file,['--disable-return-points']);
 
-	# Open pdf output file
-	pdf = PdfPages(PDF_OUTPUT)
+    # Exec with versioning and return points
+    print('\t* Versioning + return points...')
+    time_vr = getTime(file,['--disable-entry-points']);
 
-	fig = plt.figure("TIMES",figsize=(22,7))
-	plt.title('Exec ' + str(DRAW_EXEC))
+    # Exec with versioning and entry and return points
+    print('\t* Versioning + entry points + return points...')
+    time_ver = getTime(file,[]);
 
-	xvalsA = [] # Left bar
-	xvalsB = [] # Right bar
-	yvalsA = [] # Times with versioning only
-	yvalsB = [] # Times with versioning and multiple entry points
-	keys   = [] # Benchmark names
+    # Exec with versioning and entry and return points and max=5
+    print('\t* Versioning + entry points + return points + max=5...')
+    time_vermax = getTime(file,[]);
 
-	names = sortedKeys;
-	i = 0;
-	for name in names:
-	    keys.append(name);
-	    xvalsA.append(i);
-	    xvalsB.append(i+1);
-	    i+=3;
-	    yvalsA.append(times[name][1]);
-	    yvalsB.append(times[name][2]);
+    TIME.append([file,time_nv,time_v,time_ve,time_vr,time_ver,time_vermax])
 
-	plt.bar(xvalsA, yvalsA, 1, facecolor="#666666", edgecolor='none',label='Versioning')
-	plt.bar(xvalsB, yvalsB, 1, facecolor="#BBBBBB", edgecolor='none',label='Interprocedural versioning')
+# -------------------------
+# Draw graph
+# -------------------------
 
-	axes = plt.gca()
-	axes.get_xaxis().set_visible(False)
+# Draw bars on graph with times of times_p at index time_idx (which is one of ve, vr, ver)
+# This bar will use the given color and label
+def drawBar(times_p,time_idx,color_idx,label):
+    Y = list(map(lambda x: x[time_idx], times_p))
+    bar(X, Y, bar_width, facecolor=BAR_COLORS[color_idx], edgecolor='white', label=label)
 
-	for i in range(0,len(keys)):
-	    plt.text(xvalsA[i]+1,-0.01,keys[i],ha='center',va='top',rotation=90,size=18)
+print('Draw graph...')
 
-	# Draw legend
-	box = axes.get_position()
-	axes.set_position([box.x0, box.y0 + box.height * 0.25, box.width, box.height * 0.75])
-	plt.legend(loc='upper center', bbox_to_anchor=(0., 0., 1., -0.33), prop={'size':19}, ncol=2, mode='expand', borderaxespad=0.)
+# Graph config
+nb_items = len(files) + 1                     # Number of times to draw (+1 for arithmetic mean)
+bar_width = 0.8                               # Define widht of a single bar
+matplotlib.rcParams.update({'font.size': FONT_SIZE}) # Set font size of all elements of the graph
+fig = plt.figure('',figsize=(8,3.4))          # Create new figure
+#plt.title('Execution time')                  # Set title
+gca().get_xaxis().set_visible(False)          # Hide x values
 
-	#plt.ylim(0,2);
-	#plt.show()
-	pdf.savefig(fig);
-	pdf.close();
+ylim(0,120)                                   # Set y scale from 0 to 120
+xlim(0, nb_items*5)                           # Set x scale from 0 to nb_items*5
+fig.subplots_adjust(bottom=0.4)               # Give more space at bottom for benchmark names
+plot([0,nb_items*5],[100,100], color="#CCCCCC", linewidth=1,zorder=-10) # Draw y=100 line
 
-#----------------------------------------------------------------------------------------------------
-# Return times for all benchmarks
+# Convert times to % times
+TIMEP = []
+for t in TIME:
+    file = t[0]
+    time_nv = t[1]
+    time_v = t[2]
+    time_ve = t[3]
+    time_vr = t[4]
+    time_ver = t[5]
+    time_vermax = t[6]
+    # Compute % values relative to time with versioning only
+    timep_nv     = 100
+    timep_v      = (100*time_v)   / time_nv
+    timep_ve     = (100*time_ve)  / time_nv
+    timep_vr     = (100*time_vr)  / time_nv
+    timep_ver    = (100*time_ver) / time_nv
+    timep_vermax = (100*time_vermax) / time_nv
 
-def getAllTimes():
+    TIMEP.append([file,timep_nv,timep_v,timep_ve,timep_vr,timep_ver,timep_vermax])
 
-    benchTimes = {}
+# Sort by timep_ver
+TIMEP.sort(key=lambda x: x[5])
 
-    i = 0;
-    for file in files:
+# Add arithmetic mean values
+name = 'arith. mean'
+time_nv      = 100
+timep_v      = sum(list(map(lambda x: x[2], TIMEP)))/len(files)
+timep_ve     = sum(list(map(lambda x: x[3], TIMEP)))/len(files)
+timep_vr     = sum(list(map(lambda x: x[4], TIMEP)))/len(files)
+timep_ver    = sum(list(map(lambda x: x[5], TIMEP)))/len(files)
+timep_vermax = sum(list(map(lambda x: x[6], TIMEP)))/len(files)
+TIMEP.append([name,time_nv,timep_v,timep_ve,timep_vr,timep_ver,timep_vermax])
 
-        i+=1
-        print('\n(' + str(i) + '/' + str(len(files)) + ')', end='')
+# DRAW V
+X = np.arange(0,nb_items*5,5) # [0,5,10,..]
+drawBar(TIMEP,2,0,'Vers.')
 
-        print("-- Exec " + file.split('/')[-1] + "...")
-        # Time without optimisations
-        print("   No Optimization:", end='')
-        timeNoOpt = getExecTime(file,['--max-versions 0','--disable-entry-points','--time']);
-        # Time using only versioning
-        print("   Versioning     :", end='')
-        timeVers  = getExecTime(file,['--disable-entry-points','--time'])
-        # Time using versioning and multiple entry points
-        print("   Versioning & EP:", end='')
-        timeVersEP = getExecTime(file,['--time'])
+# DRAW VE
+X = np.arange(1,nb_items*5,5)   # [1,6,11,..]
+drawBar(TIMEP,3,1,'Vers. + Entry')
 
-        benchTimes[file.split('/')[-1][:-4]] = [1.0,timeVers/timeNoOpt,timeVersEP/timeNoOpt];
+# DRAW VR
+X = np.arange(2,nb_items*5,5) # [2,7,12,..]
+drawBar(TIMEP,4,2,'Vers. + Return')
 
-    return benchTimes;
+# DRAW VER
+X = np.arange(3,nb_items*5,5) # [3,6,10,..]
+drawBar(TIMEP,5,3,'Vers. + Entry + Return')
 
-#----------------------------------------------------------------------------------------------------
-# Main
+# DRAW VERMAX
+X = np.arange(4,nb_items*5,5) # [3,6,10,..]
+drawBar(TIMEP,6,4,'Vers. + Entry + Return + Max=5')
 
-def sort_key(el):
-	return times[el][DRAW_EXEC];
+# DRAW BENCHMARK NAMES
+i = 0
+for time in TIMEP[:-1]:
+    text(i+2-((1-bar_width)/2), -10, os.path.basename(time[0])[:-4], rotation=90, ha='center', va='top')
+    i+=5
+text(i+2-((1-bar_width)/2), -10,TIMEP[-1][0], rotation=90, ha='center', va='top') # arithmetic mean time (last one)
 
-times = getAllTimes();
-sortedKeys = sorted(times, key = sort_key);
-drawGraph(times,sortedKeys);
+legend(bbox_to_anchor=(0., 0., 1., -0.55), prop={'size':FONT_SIZE}, ncol=3, mode="expand", borderaxespad=0.)
 
-print('DONE!')
+# Add '%' symbol to ylabels
+formatter = FuncFormatter(to_percent)
+plt.gca().yaxis.set_major_formatter(formatter)
+
+## SAVE/SHOW GRAPH
+pdf = PdfPages(PDF_OUTPUT)
+pdf.savefig(fig)
+pdf.close()
+
+print('Saved to ' + PDF_OUTPUT)
+print('Done!')

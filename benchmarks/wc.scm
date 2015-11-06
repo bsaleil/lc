@@ -34,5 +34,5 @@
   (let ((result (wcport inport)))
     (close-input-port inport)
     result))
- 
-(go)
+
+(apply go '())

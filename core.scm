@@ -7,9 +7,9 @@
 
 (include "x86-debug.scm")
 
-;;-----------------------------------------------------------------------------
-
+;;--------------------------------------------------------------------------------
 ;; Compiler options
+
 (define opt-stats                #f) ;; Print stats report
 (define opt-time                 #f) ;; Print exec time in processor cycles
 (define opt-verbose-jit          #f) ;; JIT Verbose debugging
@@ -17,13 +17,55 @@
 (define opt-count-calls          #f) ;; Count call for a given identifier
 (define opt-all-tests            #f) ;; Remove type information (execute all type tests)
 (define opt-max-versions         #f) ;; Limit of number of versions (#f=no limit, 0=only generic, ...)
-(define opt-entry-points         #t) ;; Use multiple entry points (#t to use cc-tables, #f to use generic entry point
+(define opt-entry-points         #t) ;; Use multiple entry points (#t to use cc-tables, #f to use flat closures)
+(define opt-return-points        #t) ;; Use multiple return points (#t to use cr-tables, #f to use a generic return point)
+(define opt-overflow-fallback    #t) ;; Automatic fallback to generic entry point if cctable overflows
+(define opt-propagate-functionid #f) ;; Propagate function identitie
+
+;; TODO Move
+(define (type-to-cridx type)
+  (cond ((eq? type CTX_NUM)    8) ;; Start from 8 because of header
+        ((eq? type CTX_CHAR)  16)
+        ((eq? type CTX_BOOL)  24)
+        ((eq? type CTX_CLO)   32)
+        ((eq? type CTX_PAI)   40)
+        ((eq? type CTX_VOID)  48)
+        ((eq? type CTX_NULL)  56)
+        ((eq? type CTX_VECT)  64)
+        ((eq? type CTX_STR)   72)
+        ((eq? type CTX_SYM)   80)
+        ((eq? type CTX_IPORT) 88)
+        ((eq? type CTX_OPORT) 96)
+        ((eq? type CTX_FLO)   104)
+        ((eq? type CTX_UNK)   112)
+        ((eq? type CTX_MOBJ)  120)
+        (else (pp type) (error "Internal error"))))
+
+;; TODO Move
+(define (cridx-to-type cridx)
+  (cond ((= cridx  8)  CTX_NUM)
+        ((= cridx 16)  CTX_CHAR)
+        ((= cridx 24)  CTX_BOOL)
+        ((= cridx 32)  CTX_CLO)
+        ((= cridx 40)  CTX_PAI)
+        ((= cridx 48)  CTX_VOID)
+        ((= cridx 56)  CTX_NULL)
+        ((= cridx 64)  CTX_VECT)
+        ((= cridx 72)  CTX_STR)
+        ((= cridx 80)  CTX_SYM)
+        ((= cridx 88)  CTX_IPORT)
+        ((= cridx 96)  CTX_OPORT)
+        ((= cridx 104) CTX_FLO)
+        ((= cridx 112) CTX_UNK)
+        ((= cridx 120) CTX_MOBJ)
+        (else (pp cridx) (error "Internal error"))))
 
 ;;-----------------------------------------------------------------------------
 
 (define mem-header #f)
 (define run-gc #f) ;; Forward declaration (see mem.scm)
 (define ctx-change-type #f)
+(define get-entry-points-loc #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -33,14 +75,13 @@
 (define globals '())
 (define gids '()) ;; TODO : merge with 'globals'
 
-(define fake-stack (list 'FAKE))
-
-(define label-print-msg      #f)
-(define label-print-msg-val  #f)
-(define label-exec-error     #f)
-(define label-gc             #f)
-(define label-do-callback    #f)
-(define label-do-callback-fn #f)
+(define label-print-msg        #f)
+(define label-print-msg-val    #f)
+(define label-exec-error       #f)
+(define label-gc               #f)
+(define label-do-callback      #f)
+(define label-do-callback-fn   #f)
+(define label-do-callback-cont #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -80,53 +121,10 @@
 (define CTX_MOBJ  'mobject)
 (define CTX_FLO   'float)
 
-;; TODO : merge with 'globals'
-(define gret `(
-   (length . ,CTX_NUM)
-   (exact? . ,CTX_BOOL)
-   (list?  . ,CTX_BOOL)
-   (port?  . ,CTX_BOOL)
-   (boolean? . ,CTX_BOOL)
-   (max    . ,CTX_NUM)
-   (min    . ,CTX_NUM)
-   (equal? . ,CTX_BOOL)
-   (list->vector . ,CTX_VECT)
-   (list->string . ,CTX_STR)
-   (number->string . ,CTX_STR)
-   (string->number . ,CTX_NUM)
-   (string-append . ,CTX_STR)
-   (string-copy . ,CTX_STR)
-   (string=? . ,CTX_BOOL)
-   (string<? . ,CTX_BOOL)
-   (string . ,CTX_STR)
-   (substring . ,CTX_STR)
-   (vector . ,CTX_VECT)
-   (char<? . ,CTX_BOOL)
-   (char>? . ,CTX_BOOL)
-   (char<=? . ,CTX_BOOL)
-   (char>=? . ,CTX_BOOL)
-   (char-alphabetic? . ,CTX_BOOL)
-   (char-numeric? . ,CTX_BOOL)
-   (char-whitespace? . ,CTX_BOOL)
-   (char-upper-case? . ,CTX_BOOL)
-   (char-lower-case? . ,CTX_BOOL)
-   (char-upcase . ,CTX_CHAR)
-   (char-downcase . ,CTX_CHAR)
-   (char-ci=? . ,CTX_BOOL)
-   (char-ci<? . ,CTX_BOOL)
-   (char-ci>? . ,CTX_BOOL)
-   (char-ci<=? . ,CTX_BOOL)
-   (char-ci>=? . ,CTX_BOOL)
-   (exact? . ,CTX_BOOL)
-   (abs . ,CTX_NUM)
-   (/ . CTX_NUM)
-   (zero? . CTX_BOOL)
-   (positive? . CTX_BOOL)
-   (negative? . CTX_BOOL)
-   (even? . CTX_BOOL)
-   (odd? . CTX_BOOL)
-   (expt . CTX_NUM)
-))
+(define (CTX_CLOi cctable)
+  (if opt-propagate-functionid
+      (cons CTX_CLO cctable)
+      CTX_CLO))
 
 ;; Exec errors
 (define ERR_MSG             "EXEC ERROR")
@@ -356,12 +354,7 @@
          (ctx
            (if (= selector 1) ;; If called from generic ptr
              #f
-             (let ((rctx (still-ref->ctx still-encoding)))
-               (if (equal? (ctx-stack rctx) fake-stack)
-                 ;; If ctx contains fake stack, it's a call from apply, then read nb-args and create new ctx
-                 (let ((nb-args (quotient (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8))) 4)))
-                   (make-ctx (cons CTX_CLO (append (make-list nb-args CTX_UNK) (list CTX_RETAD))) (ctx-env rctx) (ctx-nb-args rctx)))
-                 rctx))))
+             (still-ref->ctx still-encoding)))
 
          (closure
           (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
@@ -379,6 +372,34 @@
     ;; reset selector
     (put-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))
              0)))
+
+;; The procedures do-callback* are callable from generated machine code.
+;; RCX holds selector (CL)
+(c-define (do-callback-cont sp) (long) void "do_callback_cont" ""
+  (let* ((ret-addr
+          (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
+
+         (callback-fn
+          (vector-ref (get-scmobj ret-addr) 0))
+
+         (selector
+          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
+
+         (type-idx
+          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8))))
+
+         (table
+          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdx-pos) 1) 8))))
+
+         (type (cridx-to-type type-idx))
+
+         (new-ret-addr
+           (callback-fn ret-addr selector type table)))
+    ;; replace return address
+    (put-i64 (+ sp (* nb-c-caller-save-regs 8)) new-ret-addr)
+
+    ;; reset selector
+    (put-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8)) 0)))
 
 ;;-----------------------------------------------------------------------------
 ;; Interned symbols
@@ -519,6 +540,15 @@
                      (pointer void)
                      "___result = ___CAST(void*,do_callback_fn);")))))
 
+  (set! label-do-callback-cont
+        (asm-make-label
+         cgc
+         'do_callback_cont
+         (##foreign-address
+          ((c-lambda ()
+                     (pointer void)
+                     "___result = ___CAST(void*,do_callback_cont);")))))
+
   (set! label-interned-symbol
         (asm-make-label
          cgc
@@ -562,33 +592,28 @@
 ;; HEAP
 (define from-space #f)
 (define to-space   #f)
-(define space-len 100000000) ;; 10mo
+;; Set to 2gb (2000000000) to exec all benchmarks without GC (except lattice.scm)
+;; Set to 7gb (7000000000) to exec all benchmarks without GC
+(define space-len 7000000000)
 (define alloc-ptr (x86-r12))
 
+(define init-to-space #f)
+(define init-from-space #f)
+
 ;; CODE
-(define code-len 1200000000)
+(define code-len 12000000)
 (define code-addr #f)
-
-;; MCB :
-;; 0                 code-len              mcb-len
-;; +--------------------+--------------------+
-;; |    Code            |    Heap            |
-;; |                    |                    |
-;; |                    |                    |
-;; +--------------------+--------------------+
-
 (define mcb #f)
-(define mcb-len code-len) ;; TODO useless
-(define mcb-addr #f)
 
 (define (init-mcb)
-  (set! mcb (##make-machine-code-block mcb-len))
-  (set! mcb-addr (##foreign-address mcb))
-  (set! code-addr mcb-addr)
+  (set! mcb (##make-machine-code-block code-len))
+  (set! code-addr (##foreign-address mcb))
   (let ((tspace (##make-machine-code-block space-len))
         (fspace (##make-machine-code-block space-len)))
-    (set! to-space   (##foreign-address tspace))
-    (set! from-space (##foreign-address fspace))))
+    (set! init-from-space (##foreign-address fspace))
+    (set! init-to-space   (##foreign-address tspace)))
+  (set! from-space init-from-space)
+  (set! to-space init-to-space))
 
 ;; BLOCK :
 ;; 0          8                       (nb-globals * 8 + 8)
@@ -636,7 +661,7 @@
           (begin
             (println "------------------------------------------------------------------------")
             (asm-display-listing cgc (current-output-port) #t)))
-      (write-mcb code (- addr mcb-addr))
+      (write-mcb code (- addr code-addr))
       (u8vector-length code))))
 
 ;;-----------------------------------------------------------------------------
@@ -651,7 +676,7 @@
   (init-block)
   (init-mcb)
   (set! code-alloc code-addr)
-  (set! stub-alloc (+ mcb-addr mcb-len))
+  (set! stub-alloc (+ code-addr code-len))
   (set! stub-freelist 0))
 
 (define (code-add gen)
@@ -718,6 +743,7 @@
 
 (define label-do-callback-handler #f)
 (define label-do-callback-fn-handler #f)
+(define label-do-callback-cont-handler #f)
 
 (define (gen-handler cgc id label)
   (let ((label-handler (asm-make-label cgc id)))
@@ -750,6 +776,9 @@
 
     (set! label-do-callback-fn-handler
           (gen-handler cgc 'do_callback_fn_handler label-do-callback-fn))
+
+    (set! label-do-callback-cont-handler
+          (gen-handler cgc 'do_callback_cont_handler label-do-callback-cont))
 
     (x86-label cgc label-rtlib-skip)
 
@@ -1058,8 +1087,8 @@
                                                   (identifier-offset (cdr id))
                                                   '()
                                                   (identifier-flags (cdr id))
-                                                  CTX_UNK)))
-                           others)
+                                                  CTX_UNK))
+                           others))
                    '()
                    (ctx-env ctx))
             (ctx-nb-args ctx)))
@@ -1139,12 +1168,12 @@
            (idsym  (car idpair))
            (identifier (cdr idpair)))
       (cond
-        ;; a TODO get comment from old version
+        ;; If id contains 'from', add 'to'
         ((and (member pos-from (identifier-pos identifier))
               (not (member pos-to (identifier-pos identifier))))
            (cons (cons idsym (identifier-add-pos identifier pos-to))
                  (env-move (cdr env) pos-from pos-to)))
-        ;; b TODO gey comment from old version
+        ;; If id contains 'to', remove it
         ((and (member pos-to (identifier-pos identifier))
               (not (member pos-from (identifier-pos identifier))))
            (cons (cons idsym (identifier-remove-pos identifier pos-to))
@@ -1174,6 +1203,10 @@
 (define (add-fn-callback cgc max-selector callback-fn)
   (create-stub label-do-callback-fn-handler max-selector callback-fn))
 
+;; Add continuation callback
+(define (add-cont-callback cgc max-selector callback-fn)
+  (create-stub label-do-callback-cont-handler max-selector callback-fn))
+
 ;;-----------------------------------------------------------------------------
 ;; Lazy-code generation
 
@@ -1202,7 +1235,7 @@
 
 ;; Generate a continuation
 (define (gen-version-continuation load-ret-label lazy-code ctx)
-
+  ;; TODO: print msg if opt-verbose-jit (see gen-version-fn)
   (let ((continuation-label (asm-make-label #f (new-sym 'continuation_)))
         (load-addr (asm-label-pos load-ret-label)))
 
@@ -1215,8 +1248,27 @@
 
     (patch-continuation load-addr continuation-label)))
 
+;; Generate continuation using cr table (patch cr entry)
+(define (gen-version-continuation-cr lazy-code ctx type table)
+  ;; TODO: print msg if opt-verbose-jit (see gen-version-fn)
+
+  (let ((label-dest (get-version lazy-code ctx)))
+
+    (if (not label-dest)
+        ;; That version is not yet generated, so generate it
+        (let ((continuation-label (asm-make-label #f (new-sym 'continuation_))))
+          (code-add
+            (lambda (cgc)
+              (asm-align cgc 4 0 #x90)
+              (x86-label cgc continuation-label)
+              ((lazy-code-generator lazy-code) cgc ctx)))
+          (put-version lazy-code ctx continuation-label)
+          (set! label-dest continuation-label)))
+
+    (patch-continuation-cr label-dest type table)))
+
 ;; Generate an entry point
-(define (gen-version-fn closure lazy-code gen-ctx call-ctx generic)
+(define (gen-version-fn ast closure lazy-code gen-ctx call-ctx generic)
 
   (if opt-verbose-jit
       (begin
@@ -1241,7 +1293,7 @@
     ;; If generic is #t, patch generic slot in closure.
     ;; Else patch cc-table slot for this ctx
     (if generic
-      (patch-generic closure label-dest)
+      (patch-generic ast closure label-dest)
       (patch-closure closure call-ctx label-dest))))
 
 (define (gen-version jump-addr lazy-code ctx #!optional (cleared-ctx #f))
@@ -1305,6 +1357,12 @@
   (code-gen 'x86-64 load-addr (lambda (cgc) (x86-mov cgc (x86-rax) (x86-imm-int (asm-label-pos continuation-label)))))
   (asm-label-pos continuation-label))
 
+;; Patch continuation if using cr (write label addr in table instead of compiler stub addr)
+(define (patch-continuation-cr continuation-label type table)
+    ;; TODO: msg if opt-verbose-jit (see patch-continuation)
+    (put-i64 (+ (type-to-cridx type) table) (asm-label-pos continuation-label))
+    (asm-label-pos continuation-label))
+
 ;; Patch jump at jump-addr: change jump destination to dest-addr
 (define (patch-jump jump-addr dest-addr)
 
@@ -1320,7 +1378,7 @@
                  (- dest-addr (+ jump-addr size))))))
 
 ;; Patch generic slot in closure
-(define (patch-generic closure label)
+(define (patch-generic ast closure label)
 
   (let ((label-addr (asm-label-pos  label))
         (label-name (asm-label-name label)))
@@ -1331,8 +1389,13 @@
                label-name
                " (" (number->string label-addr 16) ")"))
 
-  (let ((table-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ))))
-    (put-i64 (+ table-addr 8) label-addr))
+  (if opt-entry-points
+      (let ((table-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ))))
+        (put-i64 (+ table-addr 8) label-addr))
+      (let ((eploc (get-entry-points-loc ast #f)))
+        (put-i64 (- (+ closure 8) TAG_MEMOBJ) label-addr)       ;; Patch closure
+        (put-i64 (+ 8 (- (obj-encoding eploc) 1)) label-addr))) ;; Patch still vector containing code addr
+
 
   label-addr))
 
@@ -1341,7 +1404,7 @@
 
   (let* ((label-addr (asm-label-pos  label))
          (label-name (asm-label-name label))
-         (index (get-closure-index ctx))
+         (index (or (get-closure-index ctx) -1)) ;; -1 TODO to patch generic
          (offset (+ 16 (* index 8)))) ;; +16 (header & generic)
 
     (if opt-verbose-jit
@@ -1362,38 +1425,37 @@
   (if (= (get-u8 jump-addr) #x0f) 6 5))
 
 
-;; TODO: use gen-fatal instead of gen-dyn in ast.scm when needed
 ;; Gen fatal dynamic type test
 ;; fatal means that if type test fails, it stops execution
 ;; Check type 'type' for stack slot at 'stack-idx' and jump to 'succ' if succeess
-(define (gen-fatal-type-test type stack-idx succ)
+(define (gen-fatal-type-test type stack-idx succ #!optional ast)
 (let ((lazy-error
          (make-lazy-code
             (lambda (cgc ctx)
                (if (or (eq? type CTX_FLO) (eq? type CTX_NUM))
                  (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM))
                  (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
-  (gen-dyn-type-test type stack-idx succ lazy-error)))
+  (gen-dyn-type-test type stack-idx succ lazy-error ast)))
 
-;; TODO
 ;; Create lazy code for type test of stack slot (stack-idx)
 ;; jump to lazy-success if test succeeds
 ;; jump to lazy-fail if test fails
-(define (gen-dyn-type-test type stack-idx lazy-success lazy-fail)
+(define (gen-dyn-type-test type stack-idx lazy-success lazy-fail #!optional ast)
 
   (make-lazy-code
      (lambda (cgc ctx)
 
-       ;; TODO: dans mlc-test enlever cette logique car géré ici
        ;; TODO: plus nettoyer tout ca
 
        (let* ((ctx-success (ctx-change-type ctx stack-idx type))
+              (ctx-success-known ctx);; Is know type is tested type, do not change ctx
               (ctx-fail ctx)
               (known-type (list-ref (ctx-stack ctx) stack-idx)))
 
          (cond ;; known == expected
-               ((eq? known-type type)
-                  (jump-to-version cgc lazy-success ctx-success))
+               ((or (eq? known-type type)
+                    (and (pair? known-type) (eq? (car known-type) type)))
+                  (jump-to-version cgc lazy-success ctx-success-known))
                ;; known != expected && known != unknown
                ((not (eq? known-type CTX_UNK))
                   (jump-to-version cgc lazy-fail ctx-fail))
@@ -1493,9 +1555,11 @@
 ;; Global cc table
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 250)
+(define global-cc-table-maxsize 500)
 ;; Current shape of the global cc table
 (define global-cc-table (make-table))
+
+(define global-cr-table-maxsize 16) ;; TODO number of types
 
 ;; Get closure index associated to ctx. If ctx is not in the
 ;; global cc table, then this function adds it and returns
@@ -1503,14 +1567,20 @@
 ;; Store and compare ctx-stack in enough because environment is
 ;; the same for all versions of a lazy-object.
 (define (get-closure-index ctx)
-  (if (= (table-length global-cc-table) global-cc-table-maxsize)
-     (error "CC-TABLE OVERFLOW"))
   (let ((res (table-ref global-cc-table (ctx-stack ctx) #f)))
     (if res
+      ;; Ctx exists in global table
       res
-      (let ((value (table-length global-cc-table)))
-        (table-set! global-cc-table (ctx-stack ctx) value)
-        value))))
+      ;; Ctx does not exists yet
+      (if (= (table-length global-cc-table) global-cc-table-maxsize)
+        ;; Global table is full
+        (if opt-overflow-fallback
+          #f
+          (error "Global entry points table overflow!"))
+        ;; Global table is not full
+        (let ((value (table-length global-cc-table)))
+          (table-set! global-cc-table (ctx-stack ctx) value)
+          value)))))
 
 ;; Associates a ctx to the address of a still-vector of length 1 containing only this ctx.
 ;; This table keep a reference to all ctx of call-sites because these ctx must

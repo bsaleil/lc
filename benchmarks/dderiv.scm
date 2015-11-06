@@ -72,4 +72,4 @@
         (f a)
         (fatal-error "No derivation method available")))))
 
-(dderiv '(+ (* 3 x x) (* a x x) (* b x) 5))
+(apply dderiv (list '(+ (* 3 x x) (* a x x) (* b x) 5)))

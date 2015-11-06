@@ -43,4 +43,4 @@
 
 ;-----
 
-(destructive 600 50)
+(apply destructive (list 600 50))

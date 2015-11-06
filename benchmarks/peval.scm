@@ -139,7 +139,7 @@
     (cond ((const-expr? exp) ; is assumed that the code has been alphatized)
            (quot (const-value exp)))
           ((symbol? exp)
-           (let ((x (assq exp env))) 
+           (let ((x (assq exp env)))
              (if x (cdr x) exp)))
           ((or (eq? (car exp) 'if) (eq? (car exp) 'begin))
            (cons (car exp) (map bs (cdr exp))))
@@ -627,4 +627,4 @@
 
 ;-----
 
-(test)
+(apply test '())

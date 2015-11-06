@@ -5,6 +5,116 @@
 
 (define pp pretty-print)
 
+(define-macro (string-bold str)
+    `(string-append "\033[1m" ,str "\033[0m"))
+
+;;--------------------------------------------------------------------------------
+;; Compiler options
+
+;; Contains all compiler options
+;; An option contains (option-text help-text option-lambda)
+(define compiler-options `(
+  (--all-tests
+    "DEPRECATED"
+    ,(lambda (args) (set! opt-all-tests #t) args))
+
+  (--cctable-maxsize
+    "Set the maximum size of the global entry points table"
+    ,(lambda (args) (set! global-cc-table-maxsize (string->number (cadr args))) (cdr args))) ;; TODO: use a variable opt-cctable-maxsize
+
+  (--count-calls
+    "DEPRECATED"
+    ,(lambda (args) (set! opt-count-calls (string->symbol (cadr args)))
+                    (set! args (cdr args)) ;; Remove one more arg
+                    args))
+
+  (--disable-ccoverflow-fallback
+    "Disable automatic fallback to generic entry point when cctable overflows, throw an error instead"
+    ,(lambda (args) (set! opt-overflow-fallback #f) args))
+
+  (--disable-entry-points
+    "Disable the use of multiple entry points use only one generic entry point"
+    ,(lambda (args) (set! opt-entry-points #f) args))
+
+  (--disable-return-points
+      "Disable the use of multiple return points use only one generic return point"
+      ,(lambda (args) (set! opt-return-points #f) args))
+
+  (--enable-functionid-propagation
+    "Disable the propagation of function identities"
+    ,(lambda (args) (set! opt-propagate-functionid #t) args))
+
+  (--heap-max
+    "Set maximum heap size in kilobytes"
+    ,(lambda (args) (set! space-len (* 1000 (string->number (cadr args)))) (cdr args))) ;; TODO: use a variable opt-space-len
+
+  (--help
+    "Print help"
+    ,(lambda (args)
+      (newline)
+      (println (string-bold "NAME"))
+      (println "       lazy-comp - Scheme JIT compiler")
+      (newline)
+      (println (string-bold "SYNOPSIS"))
+      (println "       ./lazy-comp [files] [options]")
+      (newline)
+      (println (string-bold "OPTIONS"))
+      (for-each (lambda (option) (println "       " (car option))
+                                 (println "       " "       " (cadr option))
+                                 (newline))
+                compiler-options)
+      (newline)
+      (exit 0)))
+
+  (--max-versions
+    "Set a limit on the number of versions of lazy code objects"
+    ,(lambda (args) (set! opt-max-versions (string->number (cadr args)))
+                    (set! args (cdr args))
+                    args))
+
+  (--stats
+    "Print stats about execution"
+    ,(lambda (args) (assert (not opt-time) "--stats option can't be used with --time")
+                    (set! opt-stats #t)
+                    args))
+
+  (--time
+    "Print exec time information"
+    ,(lambda (args) (assert (not opt-stats) "--time option can't be used with --stats")
+                    (assert (not opt-count-calls) "--time option can't be used with --count-calls")
+                    (set! opt-time #t)
+                    args))
+
+  (--verbose
+    "Full verbose"
+    ,(lambda (args) (set! opt-verbose-jit #t)
+                    (set! opt-verbose-gc  #t)
+                    args))
+
+  (--verbose-jit
+    "Set jit as verbose"
+    ,(lambda (args) (set! opt-verbose-jit #t) args))
+
+  (--verbose-gc
+    "Set gc as verbose"
+    ,(lambda (args) (set! opt-verbose-gc #t) args))
+))
+
+(define (parse-args args)
+    (cond ;;
+          ((null? args) '())
+          ;;
+          ((not (eq? (string-ref (car args) 0) #\-))
+            (cons (car args) (parse-args (cdr args))))
+          ;;
+          (else
+            (let ((opt (assq (string->symbol (car args)) compiler-options)))
+              (if opt
+                (let ((fn (caddr opt)))
+                 (set! args (fn args)))
+                (error "Unknown argument " (car args))))
+            (parse-args (cdr args)))))
+
 ;;-----------------------------------------------------------------------------
 
 (define (lazy-exprs exprs succ)
@@ -81,6 +191,11 @@
 
 (define (exec lib prog)
 
+    (define (one-exec)
+      (set! from-space init-from-space)
+      (set! to-space   init-to-space)
+      (##machine-code-block-exec mcb))
+
   (init)
 
   (let* ((lazy-prog (lazy-exprs prog #f))
@@ -90,12 +205,20 @@
                   lazy-lib
                   (make-ctx '() '() -1)))
 
-  (##machine-code-block-exec mcb)
   (if opt-time
-     (print-time)))
-  ;(##machine-code-block-exec mcb)
-  ;(if opt-time
-    ;  (print-time)))
+      (begin (##machine-code-block-exec mcb)
+             (let ((before #f)
+                   (after  #f))
+                (set! before (real-time))
+                ;; 10 execs
+                (one-exec) (one-exec)
+                (one-exec) (one-exec)
+                (one-exec) (one-exec)
+                (one-exec) (one-exec)
+                (one-exec) (one-exec)
+                (set! after (real-time))
+                (println "Time: " (* (/ (- after before) 10) 1000))))
+      (##machine-code-block-exec mcb)))
 
 ;;-----------------------------------------------------------------------------
 ;; Main
@@ -105,8 +228,8 @@
   ;; Get library
   ;(define lib '())
   (define lib (expand-tl (read-all (open-input-file "./lib.scm"))))
-  ;; Get options and files from cl args
-  (define files (parse-cl-args args))
+  ;; Set options and get files from cl args
+  (define files (parse-args args))
 
     (cond ;; If no files specified then start REPL
           ((null? files)
@@ -143,7 +266,7 @@
                 (set! gids (get-gids content gids))
 
                 (let ((exp-content (expand-tl content)))
-                   ;(pp file-content)))
+                   ;(pp exp-content))))
                    (exec lib exp-content))))
           (else (error "NYI")))
 
@@ -194,55 +317,7 @@
   (get-versions-info-full-h lazy-codes)
   (table->list table))
 
-(define-macro (case-equal key clause . clauses)
-    (cond ((and (null? clauses)
-                (eq? (car clause) 'else))
-             `(begin ,@(cdr clause)))
-          ((null? clauses)
-             `(if (member ,key (quote ,(car clause)))
-                 (begin ,@(cdr clause))))
-          (else
-             `(if (member ,key (quote ,(car clause)))
-                 (begin ,@(cdr clause))
-                 (case-equal ,key ,(car clauses) ,@(cdr clauses))))))
-
 ;;-----------------------------------------------------------------------------
-;; Command line arguments
-
-;; Parser
-(define (parse-cl-args args)
-
-  (define (parse-cl-args-h args files)
-    (cond ;; No args, return list of files
-          ((null? args)
-            files)
-          ;; File (does not begin with #\-)
-          ((not (eq? (string-ref (car args) 0) #\-))
-            (parse-cl-args-h (cdr args) (cons (car args) files)))
-          ;; Else it's an option
-          (else
-            (let ((first (car args)))
-              (case-equal first
-                (("--verbose-jit") (set! opt-verbose-jit #t))
-                (("--verbose-gc")  (set! opt-verbose-gc  #t))
-                (("--verbose")     (set! opt-verbose-jit #t)
-                                   (set! opt-verbose-gc  #t))
-                (("--all-tests")   (set! opt-all-tests #t))
-                (("--disable-entry-points")
-                                   (set! opt-entry-points #f))
-                (("--max-versions")(set! opt-max-versions (string->number (cadr args)))
-                                   (set! args (cdr args)))
-                (("--stats")       (assert (not opt-time) "--stats option can't be used with --time")
-                                   (set! opt-stats #t))
-                (("--time")        (assert (not opt-stats)       "--time option can't be used with --stats")
-                                   (assert (not opt-count-calls) "--time option can't be used with --count-calls")
-                                   (set! opt-time #t))
-                (("--count-calls") (set! opt-count-calls (string->symbol (cadr args)))
-                                   (set! args (cdr args))) ;; Remove one more arg
-                (else (error "Unknown option" first)))
-              (parse-cl-args-h (cdr args) files)))))
-
-  (parse-cl-args-h args '()))
 
 (define (rt-print-opts)
   (if opt-count-calls
@@ -255,16 +330,10 @@
   (if opt-stats
      (print-stats)))
 
-(define (print-time)
-    (let* ((cycles (get-i64 (+ block-addr (* 8 9))))
-           (secs     (exact->inexact (/ cycles 2600000000))))
-      (println "Time(cycles): " cycles)
-      (println "Time(seconds,2.6GHz): " secs)))
-
 (define (print-stats)
   ;; Print stats report
-  (let ((code-bytes (- code-alloc mcb-addr))
-        (stub-bytes (- (+ mcb-addr mcb-len) stub-alloc)))
+  (let ((code-bytes (- code-alloc code-addr))
+        (stub-bytes (- (+ code-addr code-len) stub-alloc)))
     ;; Code size
     (println "Code size (bytes): " code-bytes)
     ;; Stub size

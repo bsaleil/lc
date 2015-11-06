@@ -5,4 +5,4 @@
         ((= n 0) (ack (- m 1) 1))
         (else (ack (- m 1) (ack m (- n 1))))))
 
-(ack 3 9)
+(apply ack (list 3 9))

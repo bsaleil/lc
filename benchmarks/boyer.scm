@@ -547,7 +547,7 @@
 
 ;-----
 
-(test
+(apply test (list
  '((x f (plus (plus a b)
               (plus c (zero))))
    (y f (times (times a b)
@@ -563,4 +563,4 @@
                 (and (implies y z)
                      (and (implies z u)
                           (implies u w))))
-           (implies x w)))
+           (implies x w))))

@@ -31,4 +31,4 @@
         (else
          (fatal-error "No derivation method available"))))
 
-(deriv '(+ (* 3 x x) (* a x x) (* b x) 5))
+(apply deriv (list '(+ (* 3 x x) (* a x x) (* b x) 5)))

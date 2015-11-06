@@ -24,10 +24,10 @@
 ;; Is the object at 'addr' a special object ?
 (define (is-special-object addr)
   (cond ((and (>= addr block-addr)
-              (<= addr (+ block-addr global-offset)))
+              (< addr (+ block-addr (* 8 global-offset))))
           #t)
         ((and (>= addr (##foreign-address sym-space))
-              (<= addr (+ ( ##foreign-address sym-space) sym-space-len)))
+              (< addr (+ ( ##foreign-address sym-space) sym-space-len)))
           #t)
         (else #f)))
 
@@ -72,7 +72,7 @@
         (x86-add cgc (x86-rax) (x86-imm-int (* 8 length)))
         (x86-push cgc (x86-rax)) ;; PUSH total alloc
 
-        (x86-lea cgc (x86-rax) (x86-mem (x86-rax) alloc-ptr)) ;; RAX = alloc + N
+        (x86-lea cgc (x86-rax) (x86-mem 0 (x86-rax) alloc-ptr)) ;; RAX = alloc + N
         (x86-mov cgc (x86-r15) (x86-imm-int block-addr))
         (x86-mov cgc (x86-r15) (x86-mem (* 5 8) (x86-r15))) ;; R15 = limit
 
@@ -183,7 +183,12 @@
 (define (copy-root slot-addr current-copy-ptr)
 
    (let* ((value (get-i64 slot-addr))
-          (tag (get-tag value)))
+          (tag   (get-tag value)))
+
+     (assert (or (= tag TAG_MEMOBJ)
+                 (= tag TAG_NUMBER)
+                 (= tag TAG_SPECIAL))
+             "Internal error")
 
      (if (= tag TAG_MEMOBJ)
          (let* (;; Object address in heap
@@ -191,7 +196,7 @@
                 ;; Object header
                 (header-qword (get-i64 obj-addr)))
 
-           (cond ;; If it is a special object (in block) do nothing
+           (cond ;; If it is a special object do nothing
                  ((is-special-object obj-addr) #t)
                  ;; Header is BH
                  ;; Patch memory slot
