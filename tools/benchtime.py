@@ -21,7 +21,7 @@ LC_PATH     = SCRIPT_PATH + '../'                               # Compiler path
 LC_EXEC     = 'lazy-comp'                                       # Compiler exec name
 PDF_OUTPUT  = SCRIPT_PATH + 'times.pdf'                         # PDF output file
 BENCH_PATH  = LC_PATH + 'benchmarks/*.scm'                      # Benchmarks path
-BAR_COLORS  = ["#000000", "#333333", "#666666", "#AAAAAA", "#DDDDDD"]      # Bar colors
+BAR_COLORS  = ["#DDDDDD", "#AAAAAA", "#666666", "#333333", "#000000"]      # Bar colors
 ITERS       = 10                                                # Number of iterations >=4 (we remove first, min and max)
 FONT_SIZE   = 9                                                 # Font size used to generate pdf using latex (must match the paper font size)
 
