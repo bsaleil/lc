@@ -95,7 +95,7 @@ for file in files:
 
     # Exec with versioning and entry and return points and max=5
     print('\t* Versioning + entry points + return points + max=5...')
-    time_vermax = getTime(file,[]);
+    time_vermax = getTime(file,['--max-versions 5']);
 
     TIME.append([file,time_nv,time_v,time_ve,time_vr,time_ver,time_vermax])
 
