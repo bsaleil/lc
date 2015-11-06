@@ -21,7 +21,7 @@ LC_PATH     = SCRIPT_PATH + '../'                               # Compiler path
 LC_EXEC     = 'lazy-comp'                                       # Compiler exec name
 PDF_OUTPUT  = SCRIPT_PATH + 'times.pdf'                         # PDF output file
 BENCH_PATH  = LC_PATH + 'benchmarks/*.scm'                      # Benchmarks path
-BAR_COLORS  = ["#000000", "#444444", "#888888", "#CCCCCC"]      # Bar colors
+BAR_COLORS  = ["#000000", "#333333", "#666666", "#AAAAAA", "#DDDDDD"]      # Bar colors
 ITERS       = 10                                                # Number of iterations >=4 (we remove first, min and max)
 FONT_SIZE   = 9                                                 # Font size used to generate pdf using latex (must match the paper font size)
 
@@ -85,15 +85,19 @@ for file in files:
     print('\t* Versioning + entry points...')
     time_ve = getTime(file,['--disable-return-points']);
 
-    # Exec with versioning only
+    # Exec with versioning and return points
     print('\t* Versioning + return points...')
     time_vr = getTime(file,['--disable-entry-points']);
 
-    # Exec with versioning only
+    # Exec with versioning and entry and return points
     print('\t* Versioning + entry points + return points...')
     time_ver = getTime(file,[]);
 
-    TIME.append([file,time_nv,time_v,time_ve,time_vr,time_ver])
+    # Exec with versioning and entry and return points and max=5
+    print('\t* Versioning + entry points + return points + max=5...')
+    time_vermax = getTime(file,[]);
+
+    TIME.append([file,time_nv,time_v,time_ve,time_vr,time_ver,time_vermax])
 
 # -------------------------
 # Draw graph
@@ -103,7 +107,7 @@ for file in files:
 # This bar will use the given color and label
 def drawBar(times_p,time_idx,color_idx,label):
     Y = list(map(lambda x: x[time_idx], times_p))
-    bar(X, Y, bar_width, facecolor=BAR_COLORS[color_idx], edgecolor='white', label=label, zorder=10)
+    bar(X, Y, bar_width, facecolor=BAR_COLORS[color_idx], edgecolor='white', label=label)
 
 print('Draw graph...')
 
@@ -111,15 +115,14 @@ print('Draw graph...')
 nb_items = len(files) + 1                     # Number of times to draw (+1 for arithmetic mean)
 bar_width = 0.8                               # Define widht of a single bar
 matplotlib.rcParams.update({'font.size': FONT_SIZE}) # Set font size of all elements of the graph
-#fig = plt.figure('',figsize=(22,9))           # Create new figure
-fig = plt.figure('',figsize=(8,3.4))
-plt.title('Execution time')                   # Set title
+fig = plt.figure('',figsize=(8,3.4))          # Create new figure
+#plt.title('Execution time')                  # Set title
 gca().get_xaxis().set_visible(False)          # Hide x values
 
 ylim(0,120)                                   # Set y scale from 0 to 120
 xlim(0, nb_items*5)                           # Set x scale from 0 to nb_items*5
 fig.subplots_adjust(bottom=0.4)               # Give more space at bottom for benchmark names
-plot([0,nb_items*5],[100,100], color="#CCCCCC", linewidth=1) # Draw y=100 line
+plot([0,nb_items*5],[100,100], color="#CCCCCC", linewidth=1,zorder=-10) # Draw y=100 line
 
 # Convert times to % times
 TIMEP = []
@@ -130,26 +133,29 @@ for t in TIME:
     time_ve = t[3]
     time_vr = t[4]
     time_ver = t[5]
+    time_vermax = t[6]
     # Compute % values relative to time with versioning only
-    timep_nv  = 100
-    timep_v   = (100*time_v)   / time_nv
-    timep_ve  = (100*time_ve)  / time_nv
-    timep_vr  = (100*time_vr)  / time_nv
-    timep_ver = (100*time_ver) / time_nv
+    timep_nv     = 100
+    timep_v      = (100*time_v)   / time_nv
+    timep_ve     = (100*time_ve)  / time_nv
+    timep_vr     = (100*time_vr)  / time_nv
+    timep_ver    = (100*time_ver) / time_nv
+    timep_vermax = (100*time_vermax) / time_nv
 
-    TIMEP.append([file,timep_nv,timep_v,timep_ve,timep_vr,timep_ver])
+    TIMEP.append([file,timep_nv,timep_v,timep_ve,timep_vr,timep_ver,timep_vermax])
 
 # Sort by timep_ver
 TIMEP.sort(key=lambda x: x[5])
 
 # Add arithmetic mean values
 name = 'arith. mean'
-time_nv   = 100
-timep_v   = sum(list(map(lambda x: x[2], TIMEP)))/len(files)
-timep_ve  = sum(list(map(lambda x: x[3], TIMEP)))/len(files)
-timep_vr  = sum(list(map(lambda x: x[4], TIMEP)))/len(files)
-timep_ver = sum(list(map(lambda x: x[5], TIMEP)))/len(files)
-TIMEP.append([name,time_nv,timep_v,timep_ve,timep_vr,timep_ver])
+time_nv      = 100
+timep_v      = sum(list(map(lambda x: x[2], TIMEP)))/len(files)
+timep_ve     = sum(list(map(lambda x: x[3], TIMEP)))/len(files)
+timep_vr     = sum(list(map(lambda x: x[4], TIMEP)))/len(files)
+timep_ver    = sum(list(map(lambda x: x[5], TIMEP)))/len(files)
+timep_vermax = sum(list(map(lambda x: x[6], TIMEP)))/len(files)
+TIMEP.append([name,time_nv,timep_v,timep_ve,timep_vr,timep_ver,timep_vermax])
 
 # DRAW V
 X = np.arange(0,nb_items*5,5) # [0,5,10,..]
@@ -167,6 +173,10 @@ drawBar(TIMEP,4,2,'Vers. + Return')
 X = np.arange(3,nb_items*5,5) # [3,6,10,..]
 drawBar(TIMEP,5,3,'Vers. + Entry + Return')
 
+# DRAW VERMAX
+X = np.arange(4,nb_items*5,5) # [3,6,10,..]
+drawBar(TIMEP,6,4,'Vers. + Entry + Return + Max=5')
+
 # DRAW BENCHMARK NAMES
 i = 0
 for time in TIMEP[:-1]:
@@ -174,7 +184,7 @@ for time in TIMEP[:-1]:
     i+=5
 text(i+2-((1-bar_width)/2), -10,TIMEP[-1][0], rotation=90, ha='center', va='top') # arithmetic mean time (last one)
 
-legend(bbox_to_anchor=(0., 0., 1., -0.55), prop={'size':FONT_SIZE}, ncol=4, mode="expand", borderaxespad=0.)
+legend(bbox_to_anchor=(0., 0., 1., -0.55), prop={'size':FONT_SIZE}, ncol=3, mode="expand", borderaxespad=0.)
 
 # Add '%' symbol to ylabels
 formatter = FuncFormatter(to_percent)

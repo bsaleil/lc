@@ -17,4 +17,4 @@
   (catport inport)
   (close-input-port inport))
 
-(go)
+(apply go '())

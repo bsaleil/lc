@@ -24,4 +24,4 @@
 (define (primes<= n)
   (sieve (interval-list 2 n)))
 
-(primes<= 100)
+(apply primes<= (list 100))

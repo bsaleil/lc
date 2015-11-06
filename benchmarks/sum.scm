@@ -6,4 +6,4 @@
       sum
       (loop (- i 1) (+ i sum)))))
 
-(run 10000)
+(apply run '(10000))

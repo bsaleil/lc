@@ -6,4 +6,4 @@
       sum
       (loop (FLOAT- i 1.) (FLOAT+ i sum)))))
 
-(run 10000.)
+(apply run (list 10000.))

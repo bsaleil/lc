@@ -23,4 +23,4 @@
         (loop (- repeat 1) (my-try n))
         result)))
 
-(go 200000)
+(apply go (list 200000))

@@ -32,21 +32,21 @@
 ; From: luks@sisters.cs.uoregon.edu
 ; To: will
 ; Subject: Pancake flips
-; 
+;
 ; Procedure P_n generates a grey code of all perms of n elements
 ; on top of stack ending with reversal of starting sequence
-; 
+;
 ; F_n is flip of top n elements.
-; 
-; 
+;
+;
 ; procedure P_n
-; 
+;
 ;   if n>1 then
 ;     begin
 ;        repeat   P_{n-1},F_n   n-1 times;
 ;        P_{n-1}
 ;     end
-; 
+;
 
 (define (permutations x)
   (let ((x x)
@@ -92,7 +92,7 @@
   (do ((n n (- n 1))
        (p '() (cons n p)))
       ((zero? n) p)))
-   
+
 ;-----
 
-(permutations (one..n 9))
+(apply permutations (list (one..n 9)))

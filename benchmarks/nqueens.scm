@@ -27,4 +27,4 @@
 
   (my-try (_1-to n) '() '()))
 
-(nqueens 8)
+(apply nqueens (list 8))

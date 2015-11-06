@@ -47,6 +47,7 @@ BENCH_PATH  = LC_PATH + 'benchmarks/*.scm'                      # Benchmarks pat
 BAR_COLORS  = ["#222222","#555555","#888888","#AAAAAA","#DDDDDD"]         # Bar colors
 BAR_COLORS  = ["#CCCCCC","#999999","#666666","#333333","#000000"]         # Bar colors
 #BAR_COLORS = ["#222222", "#666666", "#AAAAAA", "#EEEEEE"] # Paper sw15
+FONT_SIZE   = 9
 
 # Parser constants, must match compiler --stats output
 CSV_INDICATOR  = '--'
@@ -73,6 +74,11 @@ os.chdir(LC_PATH)
 # Get all benchmarks full path sorted by name
 files = sorted(glob.glob(BENCH_PATH))
 
+# Graph config
+plt.rc('text', usetex=True)
+plt.rc('font', family='serif')
+matplotlib.rcParams.update({'font.size': FONT_SIZE})
+
 #-------------------------------------------------------------------------------------
 # Utils
 
@@ -84,6 +90,15 @@ def num(s):
 
 def WARNING(s):
 	print('WARNING: ' + s)
+
+# Used as matplotlib formatter
+def to_percent(y, position):
+    s = str(int(y))
+    # The percent symbol needs escaping in latex
+    if matplotlib.rcParams['text.usetex'] is True:
+        return s + r'$\%$'
+    else:
+        return s + '%'
 
 #-------------------------------------------------------------------------------------
 # Main
@@ -325,7 +340,7 @@ def drawCSV(pdf,key,benchs_data):
 # Y: values for this key
 # X: benchmarks
 def drawKeyValueGraph(pdf,key,benchs_data):
-	fig = plt.figure(key,figsize=(22,7))
+	fig = plt.figure(key,figsize=(8,3.4))
 	#plt.title(key)
 
 	exec_ref = ''
@@ -346,7 +361,8 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 		Y = np.array(Y)
 		Ys[d] = Y
 
-	width = 1 / (len(Ys)+1)
+	#width = 1 / (len(Ys)+1)
+	width = (1 / (len(Ys)+0.1))
 
 	#----------
 	# TODO: move to external fn
@@ -354,7 +370,6 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	# Values for others executions are computed from this reference exec
 	if OPT_REF:
 		# Add % symbol to y values
-		to_percent = lambda y, pos : str(int(y)) + '%'
 		formatter = FuncFormatter(to_percent)
 		plt.gca().yaxis.set_major_formatter(formatter)
 
@@ -402,15 +417,13 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 			Y = Yvals[key]
 			print(sum(Y) / float(len(Y)))
 			color = BAR_COLORS[i]
-			bar(X+(i*width), +Y, width, facecolor=color, edgecolor='white', label=key, zorder=10)
+			bar(X+(i*width)+0.05, +Y, width, facecolor=color, edgecolor='white', label=key)
 			i += 1
 
 	# Hide X values
 	axes.get_xaxis().set_visible(False)
 
-	plt.tick_params(axis='both', which='minor', labelsize=19)
-
-	plt.yticks(fontsize=19)
+	plt.tick_params(axis='both', which='minor')
 
 	# # Set Y limit
 	#l = len(str(max(Y2))) # number of digit of max value
@@ -422,7 +435,7 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 
 	# Draw benchmark name
 	for i in range(0,len(fileList)):
-		text(X[i]+0.28, -3, os.path.basename(fileList[i])[:-4], rotation=90, ha='center', va='top', size=19)
+		text(X[i]+0.40, -3, os.path.basename(fileList[i])[:-4], rotation=90, ha='center', va='top')
 
 
 	# Legend:
@@ -430,7 +443,7 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	box = axes.get_position()
 	axes.set_position([box.x0, box.y0 + box.height * 0.34, box.width, box.height * 0.66])
 	# Put a legend below axis
-	legend(loc='upper center', bbox_to_anchor=(0., 0., 1., -0.33), prop={'size':19}, ncol=int(len(lexecs)/3), mode='expand', borderaxespad=0.)
+	legend(loc='upper center', bbox_to_anchor=(0., 0., 1., -0.35), prop={'size':FONT_SIZE}, ncol=int(len(lexecs)/3), mode='expand', borderaxespad=0.)
 
 	# Save to pdf
 	pdf.savefig(fig)

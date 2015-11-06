@@ -20,4 +20,4 @@
       ((>= i n) sum)
     (set! sum (+ sum 1))))
 
-(do-loop 100000000)
+(apply do-loop (list 100000000))

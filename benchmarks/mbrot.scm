@@ -41,4 +41,4 @@
     (mbrot matrix -1.0 -0.5 0.005 n)
     (vector-ref (vector-ref matrix 0) 0)))
 
-(test 75)
+(apply test (list 75))

@@ -1,6 +1,6 @@
 ;;; CPSTAK -- A continuation-passing version of the TAK benchmark.
 ;;; A good test of first class procedures and tail recursion.
- 
+
 (define (cpstak x y z)
 
   (define (tak x y z k)
@@ -22,4 +22,4 @@
 
   (tak x y z (lambda (a) a)))
 
-(cpstak 18 12 6)
+(apply cpstak (list 18 12 6))

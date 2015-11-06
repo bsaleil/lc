@@ -39,4 +39,4 @@
     (if (pt-in-poly2 xp yp -.5 -2.5) (set! count (+ count 1)))
     count))
 
-(run)
+(apply run '())

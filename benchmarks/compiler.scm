@@ -8444,7 +8444,7 @@
 (define flonum-e-bits 11)
 (define flonum-sign-bit 9223372036854775808)
 (define flonum-+m-min 4503599627370496)
-;(define flonum--m-min -4503599627370496)
+(define flonum--m-min -4503599627370496)
 (define flonum-e-bias 1023)
 (define flonum-e-bias-plus-1 1024)
 (define flonum-e-bias-minus-1 1022)
@@ -11186,11 +11186,9 @@
 
 ;-----
 
-;(define flonum--m-min -4503599627370496)
-
 (define (pp-asm asm)
   (if (not (null? asm))
      (begin (pp (car asm))
             (pp-asm (cdr asm)))))
 
-(ce input-source-code 'm68000 'asm)
+(apply ce (list input-source-code 'm68000 'asm))

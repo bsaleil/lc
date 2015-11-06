@@ -22,4 +22,4 @@
     (set! s "abcdef")
     (trial n)))
 
-(my-try 500000)
+(apply my-try (list 500000))
