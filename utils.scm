@@ -111,6 +111,12 @@
 ;;-----------------------------------------------------------------------------
 ;; Specific to Gambit
 
+(define (make-mcb size)
+  (let ((mcb (##make-machine-code-block size)))
+    (if (not mcb)
+        (error "Internal error: can't allocate block of size" size)
+        mcb)))
+
 (define (obj-encoding obj)
   (let ((n (##object->encoding obj)))
     (if (>= n (expt 2 63)) (- n (expt 2 64)) n)))

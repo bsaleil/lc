@@ -407,7 +407,7 @@
 
 (define label-interned-symbol #f)
 (define sym-space-len 100000)
-(define sym-space (##make-machine-code-block sym-space-len))
+(define sym-space (make-mcb sym-space-len))
 (define sym-alloc (##foreign-address sym-space))
 (define interned-symbols (make-table test: eq?))
 
@@ -606,10 +606,10 @@
 (define mcb #f)
 
 (define (init-mcb)
-  (set! mcb (##make-machine-code-block code-len))
+  (set! mcb (make-mcb code-len))
   (set! code-addr (##foreign-address mcb))
-  (let ((tspace (##make-machine-code-block space-len))
-        (fspace (##make-machine-code-block space-len)))
+  (let ((tspace (make-mcb space-len))
+        (fspace (make-mcb space-len)))
     (set! init-from-space (##foreign-address fspace))
     (set! init-to-space   (##foreign-address tspace)))
   (set! from-space init-from-space)
@@ -630,7 +630,7 @@
 (define debug-slots '((calls . 6) (tests . 7) (extests . 8) (closures . 9) (time . 10) (other . 11)))
 
 (define (init-block)
-  (set! block (##make-machine-code-block block-len))
+  (set! block (make-mcb block-len))
   (set! block-addr (##foreign-address block)))
 
 (define (write-mcb code start)
