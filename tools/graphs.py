@@ -45,7 +45,7 @@ LC_EXEC     = 'lazy-comp'                                       # Compiler exec 
 PDF_OUTPUT  = SCRIPT_PATH + 'graphs.pdf'                        # PDF output file
 BENCH_PATH  = LC_PATH + 'benchmarks/*.scm'                      # Benchmarks path
 BAR_COLORS  = ["#222222","#555555","#888888","#AAAAAA","#DDDDDD"]         # Bar colors
-BAR_COLORS  = ["#CCCCCC","#999999","#666666","#333333","#000000"]         # Bar colors
+BAR_COLORS  = ["#BBBBBB","#999999","#777777","#555555","#333333"]         # Bar colors
 #BAR_COLORS = ["#222222", "#666666", "#AAAAAA", "#EEEEEE"] # Paper sw15
 FONT_SIZE   = 9
 
@@ -362,7 +362,7 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 		Ys[d] = Y
 
 	#width = 1 / (len(Ys)+1)
-	width = (1 / (len(Ys)+0.1))
+	width = (1 / (len(Ys)))
 
 	#----------
 	# TODO: move to external fn
@@ -417,7 +417,7 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 			Y = Yvals[key]
 			print(sum(Y) / float(len(Y)))
 			color = BAR_COLORS[i]
-			bar(X+(i*width)+0.05, +Y, width, facecolor=color, edgecolor='white', label=key)
+			bar(X+(i*width)+0.05, +Y, width, facecolor=color, linewidth=0, label=key)
 			i += 1
 
 	# Hide X values

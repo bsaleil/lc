@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Change relative path to absolute
+args=()
+i=0
+for arg in "$@"
+do
+  if [[ "$arg" == *.scm ]]
+  then
+    args[$i]=$(realpath $arg)
+  else
+    args[$i]=$arg
+  fi
+  i=$((i+1))
+done
+
+# Chdir to script path
+cd "$(dirname "$0")"
+
+# Call gsc
+gsc -i float.o1 utils.o1 core.o1 native.o1 mem.o1 ast.o1 expand.o1 main.o1 ${args[@]}

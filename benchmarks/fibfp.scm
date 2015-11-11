@@ -6,4 +6,4 @@
     (FLOAT+ (fibfp (FLOAT- n 1.))
             (fibfp (FLOAT- n 2.)))))
 
-(apply fibfp (list 35))
+(apply fibfp (list 35.))

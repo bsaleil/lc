@@ -1,7 +1,5 @@
 all: float.o1 utils.o1 main.o1 native.o1 mem.o1 ast.o1 core.o1 expand.o1 lib
-	@echo "#!/bin/bash" > lazy-comp
-	@echo -n "gsc -i float.o1 utils.o1 core.o1 native.o1 mem.o1 ast.o1 expand.o1 main.o1 $$" >> lazy-comp
-	@echo "@" >> lazy-comp
+	cp lazy-comp.template lazy-comp
 	chmod u+x lazy-comp
 
 .PHONY: lib

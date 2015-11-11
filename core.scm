@@ -594,7 +594,7 @@
 (define to-space   #f)
 ;; Set to 2gb (2000000000) to exec all benchmarks without GC (except lattice.scm)
 ;; Set to 7gb (7000000000) to exec all benchmarks without GC
-(define space-len 7000000000)
+(define space-len 2000000000)
 (define alloc-ptr (x86-r12))
 
 (define init-to-space #f)
