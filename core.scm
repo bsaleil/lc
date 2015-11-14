@@ -594,7 +594,7 @@
 (define to-space   #f)
 ;; Set to 2gb (2000000000) to exec all benchmarks without GC (except lattice.scm)
 ;; Set to 7gb (7000000000) to exec all benchmarks without GC
-(define space-len 2000000000)
+(define space-len 2000000)
 (define alloc-ptr (x86-r12))
 
 (define init-to-space #f)
@@ -610,8 +610,8 @@
   (set! code-addr (##foreign-address mcb))
   (let ((tspace (make-mcb space-len))
         (fspace (make-mcb space-len)))
-    (set! init-from-space (##foreign-address fspace))
-    (set! init-to-space   (##foreign-address tspace)))
+    (set! init-from-space (+ (##foreign-address fspace) space-len))
+    (set! init-to-space   (+ (##foreign-address tspace) space-len)))
   (set! from-space init-from-space)
   (set! to-space init-to-space))
 
@@ -803,14 +803,13 @@
     (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rsp))
 
     ;; Put heaplimit in heaplimit slot
-    ;; TODO: remoce cst slots
-    (x86-mov cgc (x86-rcx) (x86-imm-int (+ from-space space-len)))
+    ;; TODO: remove cst slots
+    (x86-mov cgc (x86-rcx) (x86-imm-int (- from-space space-len)))
     (x86-mov cgc (x86-mem (* 8 5) (x86-rax)) (x86-rcx))
 
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-    (x86-mov cgc alloc-ptr  (x86-imm-int from-space))       ;; Heap addr in alloc-ptr
+    (x86-mov cgc alloc-ptr (x86-imm-int from-space))       ;; Heap addr in alloc-ptr
     (x86-mov cgc (x86-r10) (x86-imm-int (+ block-addr (* 8 global-offset)))) ;; Globals addr in r10
-
     ))
 
 (define (init)

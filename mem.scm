@@ -49,16 +49,16 @@
 
     (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok))))
 
-        (x86-lea cgc (x86-rax) (x86-mem (* length 8) alloc-ptr)) ;; RAX = alloc-ptr + N
-        (x86-mov cgc (x86-r15) (x86-imm-int block-addr)) ;; R15 = block-addr TODO: use reg ?
-        (x86-cmp cgc (x86-rax) (x86-mem (* 5 8) (x86-r15))) ;; TODO: remove cst slots
-        (x86-jl cgc label-alloc-ok)
+        (x86-lea cgc (x86-rax) (x86-mem (* length -8) alloc-ptr)) ;; RAX = alloc-ptr - N
+        (x86-mov cgc (x86-r15) (x86-imm-int block-addr)) ;; R15 = block-addr
+        (x86-cmp cgc (x86-rax) (x86-mem (* 5 8) (x86-r15)))
+        (x86-jge cgc label-alloc-ok)
 
             (x86-mov cgc (x86-rax) (x86-imm-int (* length 8)))
             (gen-gc-call cgc)
 
         (x86-label cgc label-alloc-ok)
-        (x86-add cgc alloc-ptr (x86-imm-int (* length 8)))))
+        (x86-sub cgc alloc-ptr (x86-imm-int (* 8 length)))))
 
 ;; Allocate RAX(reg) + length(imm) bytes in heap
 ;; DESTROY RAX !!
@@ -68,23 +68,21 @@
 
     (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok))))
 
+        ;; shift RAX 1 left
         (x86-shl cgc (x86-rax) (x86-imm-int 1))
         (x86-add cgc (x86-rax) (x86-imm-int (* 8 length)))
-        (x86-push cgc (x86-rax)) ;; PUSH total alloc
+        (x86-neg cgc (x86-rax))
+        (x86-add cgc (x86-rax) alloc-ptr) ;; RAX = alloc_ptr-N
+        (x86-mov cgc (x86-r15) (x86-imm-int block-addr)) ;; R15 = block-addr
+        (x86-cmp cgc (x86-rax) (x86-mem (* 5 8) (x86-r15)))
+        (x86-jge cgc label-alloc-ok)
 
-        (x86-lea cgc (x86-rax) (x86-mem 0 (x86-rax) alloc-ptr)) ;; RAX = alloc + N
-        (x86-mov cgc (x86-r15) (x86-imm-int block-addr))
-        (x86-mov cgc (x86-r15) (x86-mem (* 5 8) (x86-r15))) ;; R15 = limit
-
-        (x86-cmp cgc (x86-rax) (x86-r15))
-        (x86-jl cgc label-alloc-ok)
-
-            (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+            (x86-sub cgc (x86-rax) alloc-ptr)
+            (x86-neg cgc (x86-rax))
             (gen-gc-call cgc)
 
         (x86-label cgc label-alloc-ok)
-        (x86-pop cgc (x86-rax))
-        (x86-add cgc alloc-ptr (x86-rax))))
+        (x86-mov cgc alloc-ptr (x86-rax))))
 
 ;; Generate an heap object header
 ;; NOTE : 'life' is fixed as 6 for now.
@@ -152,17 +150,12 @@
           (arithmetic-shift qword -8))))                ;; Get length
 
 ;; Copy 'len' bytes from address 'from' to address 'to'
-(define (copy-bytes from to len)
-  ; (log-gc (string-append "Copy "
-  ;                        (number->string len)
-  ;                        " bytes from "
-  ;                        (number->string from)
-  ;                        " to "
-  ;                        (number->string to)))
-  (let ((copy-ptr (copy-bytes-h from to len)))
-    (if (>= copy-ptr (+ to-space space-len))
-        (out-of-memory)
-        copy-ptr)))
+(define (copy-bytes from copy-ptr len)
+  (set! copy-ptr (- copy-ptr (* 8 len))) ;; Update copy ptr
+  (if (< copy-ptr (- to-space space-len))
+      (out-of-memory))
+  (copy-bytes-h from copy-ptr len)
+  copy-ptr)
 
 (define (copy-bytes-h from to len)
   (if (> len 0)
@@ -170,6 +163,9 @@
              (copy-bytes-h (+ from 8) (+ to 8) (- len 1)))
       to))
 
+
+;;-----------------------------------------------------------------------------
+;; COLLECTOR - Copy phase
 
 ;;-----------------------------------------------------------------------------
 ;; COLLECTOR - Copy phase

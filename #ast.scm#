@@ -1,7 +1,10 @@
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
-(include "codegen.scm") ;; TODO Create module after refactoring
+
+(define aaa 100)
+
+(println aa
 
 ;;-----------------------------------------------------------------------------
 ;; Macros
@@ -163,7 +166,7 @@
 
         ;; Write header
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
         ;; Write number
         (if (< ast 0)
           (let* ((ieee-rep (ieee754 (abs ast) 'double))            ;; get ieee representation of (abs ast)
@@ -172,9 +175,9 @@
                  (value    (* -1 64-modl)))                        ;; value is a 2 compl representation corresponding to the negative ieee representation of ast
             (x86-mov cgc (x86-rax) (x86-imm-int value)))
           (x86-mov cgc (x86-rax) (x86-imm-int (ieee754 ast 'double))))
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
         ;; Push flonum
-        (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+        (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
         (x86-push cgc (x86-rax))
 
         (jump-to-version cgc succ (ctx-push ctx CTX_FLO))))))
@@ -226,12 +229,12 @@
         (gen-allocation cgc ctx STAG_VECTOR (+ (vector-length ast) 2))
         ;; Write header
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-mem (- (* -8 (vector-length ast)) 16) alloc-ptr) (x86-rax))
         ;; Write length
         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (vector-length ast))))
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-mem (- (* -8 (vector-length ast)) 8) alloc-ptr) (x86-rax))
         ;; Push vector
-        (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+        (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 (+ (vector-length ast) 2))) alloc-ptr))
         (x86-push cgc (x86-rax))
         (if (> (vector-length ast) 0)
           (jump-to-version cgc
@@ -255,14 +258,14 @@
 
         ;; Write header
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-mem (- (* -8 size) 16) alloc-ptr) (x86-rax))
         ;; Write length
         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (string-length ast))))
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-mem (- (* -8 size) 8) alloc-ptr) (x86-rax))
         ;; Write chars
-        (write-chars cgc ast 0 16)
+        (write-chars cgc ast 0 (* -8 size))
         ;; Push string
-        (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+        (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 (+ size 2))) alloc-ptr))
         (x86-push cgc (x86-rax))
         (jump-to-version cgc succ (ctx-push ctx CTX_STR))))))
 
@@ -347,11 +350,16 @@
     (mlc-flonum ast succ)
     (make-lazy-code
       (lambda (cgc ctx)
-        (x86-codegen-literal cgc ast)
+        (if (and (number? ast)
+                 (or (>= ast (expt 2 29))   ;; 2^(32-1-2) (32bits-sign-tags)
+                     (<  ast (expt 2 28))))
+          (begin (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding ast)))
+                 (x86-push cgc (x86-rax)))
+          (x86-push cgc (x86-imm-int (obj-encoding ast))))
         (jump-to-version cgc
                          succ
                          (ctx-push ctx
-                                   (cond ((integer? ast) CTX_NUM)
+                                   (cond ((number? ast)  CTX_NUM)
                                          ((boolean? ast) CTX_BOOL)
                                          ((char? ast)    CTX_CHAR)
                                          ((null? ast)    CTX_NULL)
@@ -576,21 +584,21 @@
 
             ;; 1 - Write closure header
             (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-            (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+            (x86-mov cgc (x86-mem (* -8 total-size) alloc-ptr) (x86-rax))
 
             ;; 2 - Write cctable-ptr or entry point
             (if opt-entry-points
                 (begin (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
-                       (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
+                       (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax)))
                 (let ((eploc (get-entry-points-loc ast stub-addr))) ;; TODOOO
                   (x86-mov cgc (x86-rax) (x86-mem (+ 8 (- (obj-encoding eploc) 1))))
-                  (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))))
+                  (x86-mov cgc (x86-mem (+ 8 (* -8 total-size)) alloc-ptr) (x86-rax))))
 
             ;; 3 - Write free vars
-            (gen-free-vars cgc fvars ctx 16)
+            (gen-free-vars cgc fvars ctx (+ 16 (* -8 total-size)))
 
             ;; Tag and push closure
-            (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+            (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ (* 8 total-size)) alloc-ptr))
             (x86-push cgc (x86-rax))
 
             ;; Jump to next
@@ -670,12 +678,12 @@
                     (x86-push cgc (x86-rax)) ;; TODO
                     (gen-allocation cgc ctx STAG_PAIR 3)                    ;; alloc pair p
                     (x86-pop cgc (x86-rax))                                 ;;
-                    (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))          ;; p.cdr = rax (last pair)
+                    (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))          ;; p.cdr = rax (last pair)
                     (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp) (x86-rbx))) ;; p.car = stack[arg-offset]
-                    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))         ;;
+                    (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))         ;;
                     (x86-mov cgc (x86-rax) (x86-imm-int header-word))       ;; p.header = header-word
-                    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))         ;;
-                    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))   ;; rax = p (tagged)
+                    (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))         ;;
+                    (x86-lea cgc (x86-rax) (x86-mem (+ 1 -24) alloc-ptr))   ;; rax = p (tagged)
                     (x86-add cgc (x86-rbx) (x86-imm-int 8))                 ;; offset += 8 (to next arg)
                     (x86-sub cgc (x86-rdi) (x86-imm-int 4))                 ;; rdi    -= 4 (update nb args to copy)
                     (x86-jmp cgc label-loop)                                ;; goto loop
@@ -1133,11 +1141,11 @@
                                  (gen-allocation cgc ctx stag 2)
                                  ;; Mov header
                                  (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-                                 (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+                                 (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
                                  ;; Mov descriptor
-                                 (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rbx))
+                                 (x86-mov cgc (x86-mem  -8 alloc-ptr) (x86-rbx))
                                  ;; Tag & push
-                                 (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+                                 (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
                                  (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
                                  ;; Jump to succ
                                  (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (if (eq? direction 'in) CTX_IPORT CTX_OPORT)))))))
@@ -1209,7 +1217,11 @@
                                 (gen-allocation cgc ctx STAG_STRING 3 #t)
 
                                 ;; Get string position in R15
-                                (x86-mov cgc (x86-r15) alloc-ptr)
+                                (x86-mov cgc (x86-r15) (x86-rsi))
+                                (x86-shl cgc (x86-r15) (x86-imm-int 1))
+                                (x86-neg cgc (x86-r15))
+                                (x86-add cgc (x86-r15) alloc-ptr)
+                                (x86-sub cgc (x86-r15) (x86-imm-int 24))
 
                                 ;; Fill string
                                 (x86-push cgc (x86-rbx))
@@ -1282,7 +1294,11 @@
                                 (gen-allocation cgc ctx STAG_VECTOR 2 #t)
 
                                 ;; Get vector position in R15
+                                (x86-mov cgc (x86-rax) (x86-rbx))
+                                (x86-shl cgc (x86-rax) (x86-imm-int 1))
+                                (x86-add cgc (x86-rax) (x86-imm-int 16))
                                 (x86-mov cgc (x86-r15) alloc-ptr)
+                                (x86-sub cgc (x86-r15) (x86-rax))
 
                                 ;; Fill vector
                                 (x86-push cgc (x86-r15))
@@ -1353,7 +1369,7 @@
                               (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax)))
                               (x86-shr cgc (x86-rax) (x86-imm-int 8))
                               (x86-shl cgc (x86-rax) (x86-imm-int 2))
-                              ;(x86-mov cgc (x86-rbx) (x86-rax))
+                              (x86-mov cgc (x86-rbx) (x86-rax))
                               (gen-allocation cgc
                                               ctx
                                               STAG_STRING
@@ -1361,7 +1377,9 @@
                                               #t)
 
                               ;; Symbol address in rbx
-                              (x86-mov cgc (x86-rbx) alloc-ptr)
+                              (x86-shl cgc (x86-rbx) (x86-imm-int 1))
+                              (x86-neg cgc (x86-rbx))
+                              (x86-add cgc (x86-rbx) alloc-ptr)
 
                               ;; String address in rax
                               (x86-pop cgc (x86-rax))
@@ -2307,11 +2325,11 @@
             (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))))
       ;; Write header
       (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 2 STAG_FLONUM)))
-      (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+      (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
       ;; Write number
-      (x86-movsd cgc (x86-mem 8 alloc-ptr) (x86-xmm0))
-      ;;
-      (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+      (x86-movsd cgc (x86-mem -8 alloc-ptr) (x86-xmm0))
+      ;; Push string
+      (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
       (x86-push cgc (x86-rax))
       (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_FLO)))))
 
@@ -2364,15 +2382,15 @@
 
          ;; Write object header
          (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-         (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+         (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))
          (x86-pop cgc (x86-rbx)) ;; pop CDR
          (x86-pop cgc (x86-rax)) ;; pop CAR
          ;; Write pair
-         (x86-mov cgc (x86-mem 8 alloc-ptr)  (x86-rax))
-         (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
+         (x86-mov cgc (x86-mem -16 alloc-ptr)  (x86-rax))
+         (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rbx))
          ;; Tag,Push closure and update alloc-ptr
          (x86-mov cgc (x86-rax) alloc-ptr)
-         (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+         (x86-add cgc (x86-rax) (x86-imm-int (- TAG_MEMOBJ 24)))
          (x86-push cgc (x86-rax))
          (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI))))))
 
@@ -2713,12 +2731,12 @@
 
         ;; Create var in memory
         (gen-get-localvar cgc ctx res 'gen-reg) ;; There are only localvar here (no free vars)
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
 
         ;; Replace local
-        (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+        (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
         (x86-mov cgc (x86-mem offset (x86-rsp)) (x86-rax))
 
         (let* ((nstack (append (list-head (ctx-stack ctx) l-pos)
@@ -2758,15 +2776,15 @@
              (let ((header (mem-header 3 STAG_PAIR)))
                ;; Write header in pair
                (x86-mov cgc (x86-rax) (x86-imm-int header))
-               (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+               (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))
                ;; Get car from stack (arg slot) and write in pair
                (x86-mov cgc (x86-rax) (x86-mem sp-offset (x86-rsp)))
-               (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+               (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
                ;; Get cdr from stack (top of stack) and write in pair
                (x86-pop cgc (x86-rax))
-               (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))
+               (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
                ;; Tag & push
-               (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+               (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 24) alloc-ptr))
                (x86-push cgc (x86-rax)))
              ;; Create next pair
              (gen-rest-lst-h cgc ctx(- pos 1) nb (+ sp-offset 8)))))
