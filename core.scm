@@ -144,6 +144,8 @@
 (define ERR_LET*             "ILL-FORMED LET*")
 (define ERR_LETREC           "ILL-FORMED LETREC")
 
+(define ERR_HEAP_NOT_8       "INTERNAL ERROR: heap size should be a multiple of 8")
+
 ;;
 (define ENCODING_VOID -18) ;; encoded VOID
 (define ENCODING_EOF  -14) ;; encoded EOF
@@ -594,8 +596,10 @@
 (define to-space   #f)
 ;; Set to 2gb (2000000000) to exec all benchmarks without GC (except lattice.scm)
 ;; Set to 7gb (7000000000) to exec all benchmarks without GC
-(define space-len 2000000)
+(define space-len 4000000000)
 (define alloc-ptr (x86-r12))
+
+(assert (= (modulo space-len 8) 0) ERR_HEAP_NOT_8)
 
 (define init-to-space #f)
 (define init-from-space #f)
@@ -853,7 +857,7 @@
         (x86-r9)  ;; 6th argument
         (x86-r10)
         (x86-r11)
-        (x86-rax) ;; return register
+        (x86-rax) ;; return register ;; TODO
         ))
 
 (define all-regs
