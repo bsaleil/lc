@@ -8,6 +8,7 @@
 (pp (make-vector 10 1))
 (pp 'test)
 (pp (cons 'a 'b))
+(pp 10.20)
 
 ;; 0 - TODO UTILISATIONS
 ;;   * (length l)   -> si on sait que l est une liste, on peut simplement PUSH 0

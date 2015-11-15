@@ -157,27 +157,16 @@
 ;;
 (define (mlc-flonum ast succ)
   (make-lazy-code
-    (lambda (cgc ctx)
-      (let ((header-word (mem-header 2 STAG_FLONUM)))
-        (gen-allocation cgc ctx STAG_FLONUM 2)
-
-        ;; Write header
-        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-        ;; Write number
-        (if (< ast 0)
-          (let* ((ieee-rep (ieee754 (abs ast) 'double))            ;; get ieee representation of (abs ast)
-                 (64-mod   (bitwise-not (- ieee-rep 1)))           ;; pepare for two complement
-                 (64-modl  (bitwise-and (- (expt 2 63) 1) 64-mod)) ;; get only 63 lower bits
-                 (value    (* -1 64-modl)))                        ;; value is a 2 compl representation corresponding to the negative ieee representation of ast
-            (x86-mov cgc (x86-rax) (x86-imm-int value)))
-          (x86-mov cgc (x86-rax) (x86-imm-int (ieee754 ast 'double))))
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-        ;; Push flonum
-        (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-        (x86-push cgc (x86-rax))
-
-        (jump-to-version cgc succ (ctx-push ctx CTX_FLO))))))
+      (lambda (cgc ctx)
+        (let ((immediate
+                (if (< ast 0)
+                    (let* ((ieee-rep (ieee754 (abs ast) 'double))
+                           (64-mod   (bitwise-not (- ieee-rep 1)))
+                           (64-modl  (bitwise-and (- (expt 2 63) 1) 64-mod)))
+                      (* -1 64-modl))
+                    (ieee754 ast 'double))))
+          (x86-codegen-flonum cgc immediate)
+          (jump-to-version cgc succ (ctx-push ctx CTX_FLO))))))
 
 ;;
 ;; Make lazy code from symbol literal
@@ -186,8 +175,7 @@
   (make-lazy-code
     (lambda (cgc ctx)
       (let ((qword (get-symbol-qword ast)))
-        (x86-mov cgc (x86-rax) (x86-imm-int qword))
-        (x86-push cgc (x86-rax))
+        (x86-codegen-symbol cgc ast)
         (jump-to-version cgc succ (ctx-push ctx CTX_SYM))))))
 
 ;;
@@ -247,36 +235,8 @@
 (define (mlc-string ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (let* ((len (string-length ast))
-             (size (arithmetic-shift (bitwise-and (+ len 8) (bitwise-not 7)) -3))
-             (header-word (mem-header (+ size 2) STAG_STRING)))
-
-        (gen-allocation cgc ctx STAG_STRING (+ size 2))
-
-        ;; Write header
-        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-        ;; Write length
-        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (string-length ast))))
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-        ;; Write chars
-        (write-chars cgc ast 0 16)
-        ;; Push string
-        (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-        (x86-push cgc (x86-rax))
-        (jump-to-version cgc succ (ctx-push ctx CTX_STR))))))
-
-;; Write chars of the literal string 'str':
-;; Write str[pos] char to [alloc-ptr+offset], and write next chars
-(define (write-chars cgc str pos offset)
-   (if (< pos (string-length str))
-             (let* ((int (char->integer (string-ref str pos)))
-                    (encoded (if (> int 127)
-                                 (* -1 (- 256 int))
-                                 int)))
-             (x86-mov cgc (x86-al) (x86-imm-int encoded))
-             (x86-mov cgc (x86-mem offset alloc-ptr) (x86-al))
-             (write-chars cgc str (+ pos 1) (+ offset 1)))))
+      (x86-codegen-string cgc ast)
+      (jump-to-version cgc succ (ctx-push ctx CTX_STR)))))
 
 ;;
 ;; Make lazy code from QUOTE
