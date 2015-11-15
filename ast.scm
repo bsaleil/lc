@@ -341,7 +341,7 @@
                                           (gen-set-localvar cgc ctx res)) ;; Local var
                                        (error "Can't find variable: " id))))))
 
-                      (x86-push cgc (x86-imm-int ENCODING_VOID))
+                      (x86-codegen-void cgc)
                       (jump-to-version cgc succ (ctx-push (ctx-pop nctx) CTX_VOID)))))))
 
      (gen-ast (caddr ast) lazy-set)))
@@ -352,24 +352,19 @@
 (define (mlc-define ast succ)
 
   (let* ((identifier (cadr ast))
-         (lazy-bind (make-lazy-code (lambda (cgc ctx)
-                                     (x86-pop cgc (x86-rax))
-                                     (let* ((res (assoc identifier globals)) ;; Lookup in globals
-                                            (pos (cdr res)))                 ;; Get global pos
-
-                                       (x86-mov cgc (x86-mem (* 8 pos) (x86-r10)) (x86-rax)))
-
-                                     (x86-push cgc (x86-imm-int ENCODING_VOID))
-
-                                     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))
+         (lazy-bind (make-lazy-code
+                      (lambda (cgc ctx)
+                        (let* ((res (assoc identifier globals)) ;; Lookup in globals
+                               (pos (cdr res)))                 ;; Get global pos
+                          (x86-codegen-define-bind cgc pos)
+                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
          (lazy-val (gen-ast (caddr ast) lazy-bind)))
 
-    (make-lazy-code (lambda (cgc ctx)
-                      (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
-                      (x86-mov cgc (x86-mem (* 8 (length globals)) (x86-r10)) (x86-rax))
-                      (set! globals (cons (cons identifier (length globals)) globals))
-                      (jump-to-version cgc lazy-val ctx)
-                      ))))
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (x86-codegen-define-id cgc)
+        (set! globals (cons (cons identifier (length globals)) globals))
+        (jump-to-version cgc lazy-val ctx)))))
 
 ;;
 ;; Make lazy code from LAMBDA

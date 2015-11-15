@@ -1,5 +1,25 @@
 
 ;;-----------------------------------------------------------------------------
+;; x86 Codegen utils
+
+(define (x86-codegen-void cgc)
+  (x86-push cgc (x86-imm-int ENCODING_VOID)))
+
+;;-----------------------------------------------------------------------------
+;; Define
+
+(define (x86-codegen-define-id cgc)
+  (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
+  (x86-mov cgc (x86-mem (* 8 (length globals)) (x86-r10)) (x86-rax)))
+
+(define (x86-codegen-define-bind cgc pos)
+  (x86-pop cgc (x86-rax))
+  (x86-mov cgc (x86-mem (* 8 pos) (x86-r10)) (x86-rax))
+  (x86-push cgc (x86-imm-int ENCODING_VOID)))
+
+;;-----------------------------------------------------------------------------
+;; Literal
+
 (define (x86-codegen-literal cgc lit)
   (if (and (number? lit)
            (or (>= lit (expt 2 29))   ;; 2^(32-1-2) (32bits-sign-tags)
@@ -9,6 +29,8 @@
              (x86-push cgc (x86-imm-int (obj-encoding lit)))))
 
 ;;-----------------------------------------------------------------------------
+;; Flonum
+
 (define (x86-codegen-flonum cgc immediate)
   (let ((header-word (mem-header 2 STAG_FLONUM)))
     (gen-allocation cgc #f STAG_FLONUM 2) ;; TODO #f
@@ -23,12 +45,16 @@
     (x86-push cgc (x86-rax))))
 
 ;;-----------------------------------------------------------------------------
+;; Symbol
+
 (define (x86-codegen-symbol cgc sym)
   (let ((qword (get-symbol-qword sym)))
     (x86-mov cgc (x86-rax) (x86-imm-int qword))
     (x86-push cgc (x86-rax))))
 
 ;;-----------------------------------------------------------------------------
+;; String
+
 (define (x86-codegen-string cgc str)
   (let* ((len (string-length str))
          (size (arithmetic-shift (bitwise-and (+ len 8) (bitwise-not 7)) -3))
