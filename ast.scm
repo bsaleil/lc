@@ -1019,41 +1019,20 @@
                          ((eq? special 'eq?)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let ((label-done
-                                      (asm-make-label cgc (new-sym 'done))))
-                                (x86-pop cgc (x86-rax))
-                                (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                (x86-je  cgc label-done)
-                                (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                (x86-label cgc label-done)
-                                (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_BOOL))))))
+                              (x86-codegen-eq? cgc)
+                              (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_BOOL)))))
                          ;; CAR & CDR
                          ((member special '(car cdr))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let ((offset
-                                      (if (eq? special 'car)
-                                          (-  8 TAG_MEMOBJ)
-                                          (- 16 TAG_MEMOBJ))))
-                                (x86-pop cgc (x86-rax))
-                                (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
-                                (x86-push cgc (x86-rax))
-                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK))))))
+                              (x86-codegen-car/cdr cgc special)
+                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK)))))
                          ;; SET-CAR! & SET-CDR!
                          ((member special '(set-car! set-cdr!))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let ((offset
-                                      (if (eq? special 'set-car!)
-                                          (-  8 TAG_MEMOBJ)
-                                          (- 16 TAG_MEMOBJ))))
-                                (x86-pop cgc (x86-rax)) ;; val
-                                (x86-pop cgc (x86-rbx)) ;; pair
-                                (x86-mov cgc (x86-mem offset (x86-rbx)) (x86-rax))
-                                (x86-push cgc (x86-rbx))
-                                (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI))))))
+                              (x86-codegen-scar/scdr cgc special)
+                              (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_VOID)))))
                          ;; CURRENT-INPUT-PORT / CURRENT-OUTPUT-PORT
                          ((member special '(current-input-port current-output-port))
                            (make-lazy-code
@@ -1100,35 +1079,19 @@
                          ((eq? special 'eof-object?)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let ((label-end (asm-make-label #f (new-sym 'label-end))))
-                                (x86-pop cgc (x86-rax))
-                                (x86-cmp cgc (x86-rax) (x86-imm-int ENCODING_EOF))
-                                (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                (x86-jne cgc label-end)
-                                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                (x86-label cgc label-end)
-                                (x86-push cgc (x86-rax))
-                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL))))))
+                              (x86-codegen-eof? cgc)
+                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))
                          ;; READ-CHAR
                          ((eq? special 'read-char)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              ;; Gen 'read' syscall (read 1 byte), encoded value (char or eof) in rax
-                              (gen-syscall-read-char cgc)
-                              ;; Push encoded result
-                              (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                              ;; Jump to succ
+                              (x86-codegen-read-char cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_CHAR)))))
                          ;; WRITE-CHAR
                          ((eq? special 'write-char)
                             (make-lazy-code
                               (lambda (cgc ctx)
-                                ;; Gen 'read' syscall (read 1 byte), encoded value (char or eof) in rax
-                                (gen-syscall-write-char cgc)
-                                (x86-add cgc (x86-rsp) (x86-imm-int 16)) ;; NOTE: clean stack in gen-syscall-write-char?
-                                ;; Push encoded result
-                                (x86-push cgc (x86-imm-int ENCODING_VOID))
-                                ;; Jump to succ
+                                (x86-codegen-write-char cgc)
                                 (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_VOID)))))
                          ;; CHAR<->INTEGER
                          ((member special '(char->integer integer->char))
@@ -1938,7 +1901,7 @@
                                                                                type
                                                                                table)))))
               ;; CRtable
-              (crtable-key (cons ast ctx)) ;; TODO: only stack ?
+              (crtable-key (cons ast ctx))
               (stub-addr (vector-ref (list-ref stub-labels 0) 1))
               (crtable (get-crtable ast crtable-key stub-addr))
               (crtable-loc (- (obj-encoding crtable) 1)))

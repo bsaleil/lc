@@ -86,3 +86,69 @@
         (write-chars cgc str (+ pos 1) (+ offset 1)))))
 
 ;;-----------------------------------------------------------------------------
+;; Primitives
+;;-----------------------------------------------------------------------------
+
+;;-----------------------------------------------------------------------------
+;; eq?
+(define (x86-codegen-eq? cgc)
+  (let ((label-done (asm-make-label cgc (new-sym 'done))))
+    (x86-pop cgc (x86-rax))
+    (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+    (x86-je  cgc label-done)
+    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+    (x86-label cgc label-done)
+    (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
+
+;;-----------------------------------------------------------------------------
+;; car/cdr
+(define (x86-codegen-car/cdr cgc op)
+  (let ((offset
+          (if (eq? op 'car)
+              (-  8 TAG_MEMOBJ)
+              (- 16 TAG_MEMOBJ))))
+    (x86-pop cgc (x86-rax))
+    (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
+    (x86-push cgc (x86-rax))))
+
+;;-----------------------------------------------------------------------------
+;; set-car!/set-cdr!
+(define (x86-codegen-scar/scdr cgc op)
+  (let ((offset
+          (if (eq? op 'set-car!)
+              (-  8 TAG_MEMOBJ)
+              (- 16 TAG_MEMOBJ))))
+    (x86-pop cgc (x86-rax)) ;; val
+    (x86-pop cgc (x86-rbx)) ;; pair
+    (x86-mov cgc (x86-mem offset (x86-rbx)) (x86-rax))
+    (x86-push cgc (x86-imm-int ENCODING_VOID))))
+
+;;-----------------------------------------------------------------------------
+;; eof-object?
+(define (x86-codegen-eof? cgc)
+  (let ((label-end (asm-make-label #f (new-sym 'label-end))))
+    (x86-pop cgc (x86-rax))
+    (x86-cmp cgc (x86-rax) (x86-imm-int ENCODING_EOF))
+    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+    (x86-jne cgc label-end)
+    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+    (x86-label cgc label-end)
+    (x86-push cgc (x86-rax))))
+
+;;-----------------------------------------------------------------------------
+;; read-char
+(define (x86-codegen-read-char cgc)
+  ;; Gen 'read' syscall (read 1 byte), encoded value (char or eof) in rax
+  (gen-syscall-read-char cgc)
+  ;; Push encoded result
+  (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+
+;;-----------------------------------------------------------------------------
+;; write-char
+(define (x86-codegen-write-char cgc)
+  ;; Gen 'read' syscall, encoded value (char or eof) in rax
+  (gen-syscall-write-char cgc)
+  (x86-add cgc (x86-rsp) (x86-imm-int 16)) ;; NOTE: clean stack in gen-syscall-write-char?
+  ;; Push encoded result
+  (x86-push cgc (x86-imm-int ENCODING_VOID)))
