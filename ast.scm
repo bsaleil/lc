@@ -1226,71 +1226,18 @@
                                                                        (ctx-pop-nb ctx 2))
                                                                     CTX_VECT))))))
 
-                         ;; STRING<->SYMBOL
+                         ;; STRING->SYMBOL
                          ((eq? special 'string->symbol)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (gen-interned-symbol cgc)
+                              (x86-codegen-str->sym cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM)))))
-
+                         ;; SYMBOL->STRING
                          ((eq? special 'symbol->string)
                           (make-lazy-code
                             (lambda (cgc ctx)
-
-                              ;; Alloc
-                              (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                              (x86-sub cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-                              (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax)))
-                              (x86-shr cgc (x86-rax) (x86-imm-int 8))
-                              (x86-shl cgc (x86-rax) (x86-imm-int 2))
-                              ;(x86-mov cgc (x86-rbx) (x86-rax))
-                              (gen-allocation cgc
-                                              ctx
-                                              STAG_STRING
-                                              0
-                                              #t)
-
-                              ;; Symbol address in rbx
-                              (x86-mov cgc (x86-rbx) alloc-ptr)
-
-                              ;; String address in rax
-                              (x86-pop cgc (x86-rax))
-                              (x86-sub cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-
-                              ;; Mov length in symbol
-                              (x86-mov cgc (x86-r15) (x86-mem 8 (x86-rax)))
-                              (x86-mov cgc (x86-mem 8 (x86-rbx)) (x86-r15))
-
-                              ;; Mov header in symbol
-                              (x86-mov cgc (x86-r15) (x86-mem 0 (x86-rax)))
-                              (x86-add cgc (x86-r15) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3)))
-                              (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-r15))
-
-                              ;; Encoded length in r15
-                              (x86-shr cgc (x86-r15) (x86-imm-int 8))
-                              (x86-shl cgc (x86-r15) (x86-imm-int 3))
-
-                              ;; If encoded length == 16
-                              ;;    jump label-fin
-                              (let ((label-loop (asm-make-label cgc (new-sym 'label-loop)))
-                                    (label-fin  (asm-make-label cgc (new-sym 'label-fin))))
-
-                                (x86-label cgc label-loop)
-                                (x86-cmp cgc (x86-r15) (x86-imm-int 16))
-                                (x86-jle cgc label-fin)
-
-                                  (x86-mov cgc (x86-rdx) (x86-mem -8 (x86-r15) (x86-rax)))
-                                  (x86-mov cgc (x86-mem -8 (x86-r15) (x86-rbx)) (x86-rdx))
-                                  (x86-sub cgc (x86-r15) (x86-imm-int 8))
-                                  (x86-jmp cgc label-loop)
-
-                                (x86-label cgc label-fin))
-
-                              (x86-add cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
-                              (x86-push cgc (x86-rbx))
-
+                              (x86-codegen-sym->str cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR)))))
-
                          ;; VECTOR-LENGTH & STRING-LENGTH
                          ((member special '(vector-length string-length))
                           (make-lazy-code

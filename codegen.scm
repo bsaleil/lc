@@ -224,6 +224,55 @@
       (x86-or  cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8)))
 
 ;;-----------------------------------------------------------------------------
+;; string->symbol
+(define (x86-codegen-str->sym cgc)
+  (gen-interned-symbol cgc))
+
+;;-----------------------------------------------------------------------------
+;; symbol->string
+(define (x86-codegen-sym->str cgc)
+  ;; Alloc
+  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+  (x86-sub cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax)))
+  (x86-shr cgc (x86-rax) (x86-imm-int 8))
+  (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Length in rax
+  (gen-allocation cgc #f STAG_STRING 0 #t)
+  ;; String address in rbx
+  (x86-mov cgc (x86-rbx) alloc-ptr)
+  ;; Symbol address in rax
+  (x86-pop cgc (x86-rax))
+  (x86-sub cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+  ;; Mov length in string
+  (x86-mov cgc (x86-r15) (x86-mem 8 (x86-rax)))
+  (x86-mov cgc (x86-mem 8 (x86-rbx)) (x86-r15))
+  ;; Mov header in string
+  (x86-mov cgc (x86-r15) (x86-mem 0 (x86-rax)))
+  (x86-add cgc (x86-r15) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3)))
+  (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-r15))
+  ;; Encoded length in r15
+  (x86-shr cgc (x86-r15) (x86-imm-int 8))
+  (x86-shl cgc (x86-r15) (x86-imm-int 3))
+  ;; If encoded length == 16
+  ;;    jump label-fin
+  (let ((label-loop (asm-make-label cgc (new-sym 'label-loop)))
+        (label-fin  (asm-make-label cgc (new-sym 'label-fin))))
+
+    (x86-label cgc label-loop)
+    (x86-cmp cgc (x86-r15) (x86-imm-int 16))
+    (x86-jle cgc label-fin)
+
+      (x86-mov cgc (x86-rdx) (x86-mem -8 (x86-r15) (x86-rax)))
+      (x86-mov cgc (x86-mem -8 (x86-r15) (x86-rbx)) (x86-rdx))
+      (x86-sub cgc (x86-r15) (x86-imm-int 8))
+      (x86-jmp cgc label-loop)
+
+    (x86-label cgc label-fin)
+    (x86-add cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
+    (x86-push cgc (x86-rbx))))
+
+
+;;-----------------------------------------------------------------------------
 ;; vector/string-length
 (define (x86-codegen-vec/str-length cgc)
   (x86-pop cgc (x86-rax)) ;; Pop vector
