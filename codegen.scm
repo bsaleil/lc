@@ -186,3 +186,28 @@
   (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode char
   (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
   (x86-push cgc (x86-rax))) ;; Push char
+
+;;-----------------------------------------------------------------------------
+;; vector-set!
+(define (x86-codegen-vector-set! cgc)
+  (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))  ;; Get index
+  (x86-mov cgc (x86-rbx) (x86-mem 16 (x86-rsp))) ;; Get vector
+  (x86-mov cgc (x86-rdx) (x86-mem 0 (x86-rsp)))  ;; Get new value
+  (x86-shl cgc (x86-rax) (x86-imm-int 1))
+  (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx) (x86-rax)) (x86-rdx))
+  (x86-add cgc (x86-rsp) (x86-imm-int 24))
+  (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
+  (x86-push cgc (x86-rax)))
+
+;;-----------------------------------------------------------------------------
+;; string-set!
+(define (x86-codegen-string-set! cgc)
+  (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))  ;; Get index
+  (x86-mov cgc (x86-rbx) (x86-mem 16 (x86-rsp))) ;; Get string
+  (x86-mov cgc (x86-rdx) (x86-mem 0 (x86-rsp)))  ;; Get new value
+  (x86-shr cgc (x86-rdx) (x86-imm-int 2))
+  (x86-shr cgc (x86-rax) (x86-imm-int 2))
+  (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx) (x86-rax)) (x86-dl))
+  (x86-add cgc (x86-rsp) (x86-imm-int 24))
+  (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
+  (x86-push cgc (x86-rax)))
