@@ -152,3 +152,37 @@
   (x86-add cgc (x86-rsp) (x86-imm-int 16)) ;; NOTE: clean stack in gen-syscall-write-char?
   ;; Push encoded result
   (x86-push cgc (x86-imm-int ENCODING_VOID)))
+
+;;-----------------------------------------------------------------------------
+;; char->integer/integer->char
+(define (x86-codegen-ch<->int cgc op)
+  (if (eq? op 'char->integer)
+      (x86-xor cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8)
+      (x86-or  cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8)))
+
+;;-----------------------------------------------------------------------------
+;; vector/string-length
+(define (x86-codegen-vec/str-length cgc)
+  (x86-pop cgc (x86-rax)) ;; Pop vector
+  (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+
+;;-----------------------------------------------------------------------------
+;; vector-ref
+(define (x86-codegen-vector-ref cgc)
+  (x86-pop cgc (x86-rax)) ;; Pop index
+  (x86-pop cgc (x86-rbx)) ;; Pop vector
+  (x86-shl cgc (x86-rax) (x86-imm-int 1))
+  (x86-add cgc (x86-rbx) (x86-rax))
+  (x86-push cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx))))
+
+;;-----------------------------------------------------------------------------
+;; string-ref
+(define (x86-codegen-string-ref cgc)
+  (x86-pop cgc (x86-rax)) ;; Pop index
+  (x86-pop cgc (x86-rbx)) ;; Pop string
+  (x86-shr cgc (x86-rax) (x86-imm-int 2)) ;; Decode position
+  (x86-mov cgc (x86-al) (x86-mem (- 16 TAG_MEMOBJ) (x86-rax) (x86-rbx))) ;; Get Char
+  (x86-and cgc (x86-rax) (x86-imm-int 255)) ;; Clear bits before al
+  (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode char
+  (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
+  (x86-push cgc (x86-rax))) ;; Push char

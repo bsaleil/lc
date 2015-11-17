@@ -1097,13 +1097,11 @@
                          ((member special '(char->integer integer->char))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (if (eq? special 'char->integer)
-                                (x86-xor cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8)
-                                (x86-or  cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8))
+                              (x86-codegen-ch<->int cgc special)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
                                                                   (if (eq? special 'char->integer)
-                                                                     CTX_NUM
-                                                                     CTX_CHAR))))))
+                                                                      CTX_NUM
+                                                                      CTX_CHAR))))))
                          ;; MAKE-STRING
                          ((eq? special 'make-string)
                           (make-lazy-code
@@ -1323,31 +1321,20 @@
                          ((member special '(vector-length string-length))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-pop cgc (x86-rax)) ;; Pop vector
-                              (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+                              (x86-codegen-vec/str-length cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM)))))
-
-                         ;; VECTOR-REF & STRING-REF
-                         ((member special '(vector-ref string-ref))
+                         ;; VECTOR-REF
+                         ((eq? special 'vector-ref)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let ((vr? (eq? special 'vector-ref)))
-                                (x86-pop cgc (x86-rax)) ;; Pop index
-                                (x86-pop cgc (x86-rbx)) ;; Pop vector
-                                (cond (vr?
-                                        (x86-shl cgc (x86-rax) (x86-imm-int 1))
-                                        (x86-add cgc (x86-rbx) (x86-rax))
-                                        (x86-push cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx)))
-                                        (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_UNK)))
-                                      ((not vr?)
-                                       (x86-shr cgc (x86-rax) (x86-imm-int 2)) ;; Decode position
-                                       (x86-mov cgc (x86-al) (x86-mem (- 16 TAG_MEMOBJ) (x86-rax) (x86-rbx))) ;; Get Char
-                                       (x86-and cgc (x86-rax) (x86-imm-int 255)) ;; Clear bits before al
-                                       (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode char
-                                       (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
-                                       (x86-push cgc (x86-rax)) ;; Push char
-                                       (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_CHAR))))))))
-
+                              (x86-codegen-vector-ref cgc)
+                              (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_UNK)))))
+                         ;; STRING-REF
+                         ((eq? special 'string-ref)
+                          (make-lazy-code
+                            (lambda (cgc ctx)
+                              (x86-codegen-string-ref cgc)
+                              (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_CHAR)))))
                          ;; VECTOR-SET! & STRING-SET!
                          ((member special '(vector-set! string-set!))
                           (make-lazy-code
