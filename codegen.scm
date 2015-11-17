@@ -1,13 +1,11 @@
 
 ;;-----------------------------------------------------------------------------
 ;; x86 Codegen utils
-
 (define (x86-codegen-void cgc)
   (x86-push cgc (x86-imm-int ENCODING_VOID)))
 
 ;;-----------------------------------------------------------------------------
 ;; Define
-
 (define (x86-codegen-define-id cgc)
   (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
   (x86-mov cgc (x86-mem (* 8 (length globals)) (x86-r10)) (x86-rax)))
@@ -19,7 +17,6 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Literal
-
 (define (x86-codegen-literal cgc lit)
   (if (and (number? lit)
            (or (>= lit (expt 2 29))   ;; 2^(32-1-2) (32bits-sign-tags)
@@ -30,7 +27,6 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Flonum
-
 (define (x86-codegen-flonum cgc immediate)
   (let ((header-word (mem-header 2 STAG_FLONUM)))
     (gen-allocation cgc #f STAG_FLONUM 2) ;; TODO #f
@@ -46,7 +42,6 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Symbol
-
 (define (x86-codegen-symbol cgc sym)
   (let ((qword (get-symbol-qword sym)))
     (x86-mov cgc (x86-rax) (x86-imm-int qword))
@@ -54,7 +49,6 @@
 
 ;;-----------------------------------------------------------------------------
 ;; String
-
 (define (x86-codegen-string cgc str)
   (let* ((len (string-length str))
          (size (arithmetic-shift (bitwise-and (+ len 8) (bitwise-not 7)) -3))
@@ -86,8 +80,40 @@
         (write-chars cgc str (+ pos 1) (+ offset 1)))))
 
 ;;-----------------------------------------------------------------------------
+;; Pair
+(define (x86-codegen-pair cgc)
+  (let ((header-word (mem-header 3 STAG_PAIR)))
+    ;; Alloc
+    (gen-allocation cgc #f STAG_PAIR 3)
+    ;; Write object header
+    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+    (x86-pop cgc (x86-rbx)) ;; pop CDR
+    (x86-pop cgc (x86-rax)) ;; pop CAR
+    ;; Write pair
+    (x86-mov cgc (x86-mem 8 alloc-ptr)  (x86-rax))
+    (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
+    ;; Tag,Push closure and update alloc-ptr
+    (x86-mov cgc (x86-rax) alloc-ptr)
+    (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+    (x86-push cgc (x86-rax))))
+
+;;-----------------------------------------------------------------------------
 ;; Primitives
 ;;-----------------------------------------------------------------------------
+
+;;-----------------------------------------------------------------------------
+;; not
+(define (x86-codegen-not cgc)
+  (let ((label-done
+          (asm-make-label cgc (new-sym 'done))))
+    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+    (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+    (x86-je  cgc label-done)
+    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+    (x86-label cgc label-done)
+    (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
 
 ;;-----------------------------------------------------------------------------
 ;; eq?
@@ -123,6 +149,39 @@
     (x86-pop cgc (x86-rbx)) ;; pair
     (x86-mov cgc (x86-mem offset (x86-rbx)) (x86-rax))
     (x86-push cgc (x86-imm-int ENCODING_VOID))))
+
+;;-----------------------------------------------------------------------------
+;; current-input/output-port
+(define (x86-codegen-current-io-port cgc op)
+  (let ((block-offset (if (eq? op 'current-output-port) 8 24)))
+    (x86-mov cgc (x86-rax) (x86-imm-int (+ TAG_MEMOBJ block-offset block-addr)))
+    (x86-push cgc (x86-rax))))
+
+;;-----------------------------------------------------------------------------
+;; close-input/output-port
+(define (x86-codegen-close-io-port cgc)
+  (gen-syscall-close cgc)
+  (x86-push cgc (x86-imm-int ENCODING_VOID)))
+
+;;-----------------------------------------------------------------------------
+;; open-input/output-port
+(define (x86-codegen-open-io-file cgc op)
+  (let* ((direction   (if (eq? op 'open-output-file) 'out 'in))
+         (stag        (if (eq? direction 'in) STAG_IPORT STAG_OPORT))
+         (header-word (mem-header 2 stag)))
+    ;; Gen 'open' syscall, file descriptor in rax
+    (gen-syscall-open cgc direction)
+    (x86-mov cgc (x86-rbx) (x86-rax))
+    ;; Allocate port object
+    (gen-allocation cgc #f stag 2)
+    ;; Mov header
+    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+    ;; Mov descriptor
+    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rbx))
+    ;; Tag & push
+    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+    (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
 
 ;;-----------------------------------------------------------------------------
 ;; eof-object?

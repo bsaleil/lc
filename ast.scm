@@ -972,16 +972,8 @@
                          ((eq? special 'not)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let ((label-done
-                                      (asm-make-label cgc (new-sym 'done))))
-                                (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                (x86-je  cgc label-done)
-                                (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                (x86-label cgc label-done)
-                                (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL))))))
+                              (x86-codegen-not cgc)
+                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))
                          ;; NULL?
                          ((eq? special 'null?)
                            (let ((lazy-null?
@@ -1037,44 +1029,26 @@
                          ((member special '(current-input-port current-output-port))
                            (make-lazy-code
                              (lambda (cgc ctx)
-                               (let ((block-offset (if (eq? special 'current-output-port)
-                                                      8
-                                                      24)))
-                                 (x86-mov cgc (x86-rax) (x86-imm-int (+ TAG_MEMOBJ block-offset block-addr)))
-                                 (x86-push cgc (x86-rax))
-                                 (jump-to-version cgc succ (ctx-push ctx
-                                                                     (if (eq? special 'current-output-port)
-                                                                      CTX_OPORT
-                                                                      CTX_IPORT)))))))
+                               (x86-codegen-current-io-port cgc special)
+                               (jump-to-version cgc succ (ctx-push ctx
+                                                                   (if (eq? special 'current-output-port)
+                                                                       CTX_OPORT
+                                                                       CTX_IPORT))))))
                          ;; CLOSE-INPUT-PORT / CLOSE-OUTPUT-PORT
                          ((member special '(close-output-port close-input-port))
                            (make-lazy-code
                              (lambda (cgc ctx)
-                               (gen-syscall-close cgc)
-                               (x86-push cgc (x86-imm-int ENCODING_VOID))
+                               (x86-codegen-close-io-port cgc)
                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))
                          ;; OPEN-INPUT-FILE / OPEN-OUTPUT-FILE
                          ((member special '(open-output-file open-input-file))
                            (make-lazy-code
                              (lambda (cgc ctx)
-                               (let* ((direction   (if (eq? special 'open-output-file) 'out 'in))
-                                      (stag        (if (eq? direction 'in) STAG_IPORT STAG_OPORT))
-                                      (header-word (mem-header 2 stag)))
-                                 ;; Gen 'open' syscall, file descriptor in rax
-                                 (gen-syscall-open cgc direction)
-                                 (x86-mov cgc (x86-rbx) (x86-rax))
-                                 ;; Allocate port object
-                                 (gen-allocation cgc ctx stag 2)
-                                 ;; Mov header
-                                 (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-                                 (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-                                 ;; Mov descriptor
-                                 (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rbx))
-                                 ;; Tag & push
-                                 (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-                                 (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                 ;; Jump to succ
-                                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (if (eq? direction 'in) CTX_IPORT CTX_OPORT)))))))
+                               (x86-codegen-open-io-file cgc special)
+                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
+                                                                   (if (eq? special 'open-input-file)
+                                                                       CTX_IPORT
+                                                                       CTX_OPORT))))))
                          ;; EOF-OBJECT?
                          ((eq? special 'eof-object?)
                           (make-lazy-code
@@ -2252,24 +2226,8 @@
 (define (mlc-pair succ)
   (make-lazy-code
     (lambda (cgc ctx)
-       (let ((header-word (mem-header 3 STAG_PAIR)))
-
-         ;; Alloc
-         (gen-allocation cgc ctx STAG_PAIR 3)
-
-         ;; Write object header
-         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-         (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-         (x86-pop cgc (x86-rbx)) ;; pop CDR
-         (x86-pop cgc (x86-rax)) ;; pop CAR
-         ;; Write pair
-         (x86-mov cgc (x86-mem 8 alloc-ptr)  (x86-rax))
-         (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
-         ;; Tag,Push closure and update alloc-ptr
-         (x86-mov cgc (x86-rax) alloc-ptr)
-         (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-         (x86-push cgc (x86-rax))
-         (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI))))))
+      (x86-codegen-pair cgc)
+      (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI)))))
 
 ;;-----------------------------------------------------------------------------
 
