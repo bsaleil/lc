@@ -1080,152 +1080,22 @@
                          ((eq? special 'make-string)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let* ((header-word (mem-header 3 STAG_STRING)))
-
-                                ;; Pop encoded length
-                                (if (= (length (cdr ast)) 1)
-                                  (x86-pop cgc (x86-rax))
-                                  (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp))))
-
-                                (x86-mov cgc (x86-rbx) (x86-rax))
-
-                                ;; Nb chars to byte size
-                                (x86-shr cgc (x86-rax) (x86-imm-int 2))
-                                (x86-and cgc (x86-rax) (x86-imm-int (bitwise-not 7)))
-                                (x86-shr cgc (x86-rax) (x86-imm-int 1))
-                                (x86-mov cgc (x86-rsi) (x86-rax))
-
-                                ;; Alloc
-                                (gen-allocation cgc ctx STAG_STRING 3 #t)
-
-                                ;; Get string position in R15
-                                (x86-mov cgc (x86-r15) alloc-ptr)
-
-                                ;; Fill string
-                                (x86-push cgc (x86-rbx))
-
-                                ;;
-                                (x86-mov cgc (x86-rax) (x86-r15))
-
-                                (let ((label-loop (asm-make-label cgc (new-sym 'fill-vector-loop)))
-                                      (label-end  (asm-make-label cgc (new-sym 'fill-vector-end))))
-
-                                (if (= (length (cdr ast)) 2)
-                                  (begin (x86-mov cgc (x86-rdx) (x86-mem 8 (x86-rsp)))
-                                         (x86-sar cgc (x86-rdx) (x86-imm-int 2))))
-
-                                ;; LOOP:
-                                ;;   if (rbx == 0) jump END
-                                (x86-label cgc label-loop)
-                                (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
-                                (x86-jle  cgc label-end)
-
-                                  (if (= (length (cdr ast)) 1)
-                                    (begin (x86-mov cgc (x86-mem 16 (x86-rax)) (x86-imm-int 0) 64) ;; Write 0 in 8 chars
-                                           (x86-add cgc (x86-rax) (x86-imm-int 8)) ;; Update offset
-                                           (x86-sub cgc (x86-rbx) (x86-imm-int 32))) ;; Remove 8 (=8*4=32) to encoded number (remaining els)
-                                    (begin (x86-mov cgc (x86-mem 16 (x86-rax)) (x86-dl)) ;; Write char
-                                           (x86-add cgc (x86-rax) (x86-imm-int 1)) ;; Update offset
-                                           (x86-sub cgc (x86-rbx) (x86-imm-int 4)))) ;; Remove 1 (=1*4=4) to encoded number (remaining els)
-                                ;; Loop
-                                (x86-jmp cgc label-loop)
-
-                                ;; END:
-                                (x86-label cgc label-end)
-                                (x86-pop cgc (x86-rbx)))
-
-                                (if (= (length (cdr ast)) 2)
-                                   (x86-add cgc (x86-rsp) (x86-imm-int 16)))
-
-                                ;; Write encoded length
-                                (x86-mov cgc (x86-mem 8 (x86-r15)) (x86-rbx))
-
-                                ;; Write header
-                                (x86-shl cgc (x86-rsi) (x86-imm-int 6))
-                                (x86-add cgc (x86-rsi) (x86-imm-int header-word))
-                                (x86-mov cgc (x86-mem 0 (x86-r15)) (x86-rsi))
-
-                                ;; Push vector
-                                (x86-add cgc (x86-r15) (x86-imm-int TAG_MEMOBJ))
-                                (x86-push cgc (x86-r15))
-
-                                (jump-to-version cgc succ (ctx-push (if (= (length (cdr ast)) 1)
-                                                                      (ctx-pop ctx)
-                                                                      (ctx-pop-nb ctx 2))
+                              (let ((init-value? (= (length (cdr ast)) 2)))
+                                (x86-codegen-make-string cgc init-value?)
+                                (jump-to-version cgc succ (ctx-push (if init-value?
+                                                                        (ctx-pop-nb ctx 2)
+                                                                        (ctx-pop ctx))
                                                                     CTX_STR))))))
-
                          ;; MAKE-VECTOR
                          ((eq? special 'make-vector)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let* ((header-word (mem-header 2 STAG_VECTOR))
-                                     (header-reg (x86-rbx)))
-
-                                ;; Pop encoded length
-                                (if (= (length (cdr ast)) 1)
-                                  (x86-pop cgc (x86-rax))
-                                  (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp))))
-
-                                (x86-mov cgc (x86-rbx) (x86-rax))
-
-                                ;; Alloc
-                                (gen-allocation cgc ctx STAG_VECTOR 2 #t)
-
-                                ;; Get vector position in R15
-                                (x86-mov cgc (x86-r15) alloc-ptr)
-
-                                ;; Fill vector
-                                (x86-push cgc (x86-r15))
-                                (x86-push cgc (x86-rbx))
-
-                                  ;; Init value in RAX (0)
-                                  (if (= (length (cdr ast)) 1)
-                                    (x86-mov cgc (x86-rax) (x86-imm-int 0))
-                                    (x86-mov cgc (x86-rax) (x86-mem 16 (x86-rsp))))
-
-                                  (let ((label-loop (asm-make-label #f (new-sym 'fill-vector-loop)))
-                                        (label-end  (asm-make-label #f (new-sym 'fill-vector-end))))
-
-                                  ;; LOOP:
-                                  ;;    if (rbx == 0) jump END
-                                  (x86-label cgc label-loop)
-                                  (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
-                                  (x86-je  cgc label-end)
-
-                                    ;; Init vector slot
-                                    (x86-mov cgc (x86-mem 16 (x86-r15)) (x86-rax))
-                                    ;; Update offset and remaining elements nb
-                                    (x86-add cgc (x86-r15) (x86-imm-int 8))
-                                    (x86-sub cgc (x86-rbx) (x86-imm-int 4))
-                                    ;; loop
-                                    (x86-jmp cgc label-loop)
-
-                                ;; END:
-                                (x86-label cgc label-end)
-                                (x86-pop cgc (x86-rbx))
-                                (x86-pop cgc (x86-r15)))
-
-                                (if (= (length (cdr ast)) 2)
-                                   (x86-add cgc (x86-rsp) (x86-imm-int 16)))
-
-                                ;; Write encoded length
-                                (x86-mov cgc (x86-mem 8 (x86-r15)) (x86-rbx))
-
-                                ;; Write header
-                                (x86-shl cgc (x86-rbx) (x86-imm-int 6))
-                                (x86-add cgc (x86-rbx) (x86-imm-int header-word))
-                                (x86-mov cgc (x86-mem 0 (x86-r15)) (x86-rbx))
-
-                                ;; Push vector
-                                (x86-add cgc (x86-r15) (x86-imm-int TAG_MEMOBJ))
-                                (x86-push cgc (x86-r15))
-
-                                ;;
-                                (jump-to-version cgc succ (ctx-push (if (= (length (cdr ast)) 1)
-                                                                       (ctx-pop ctx)
-                                                                       (ctx-pop-nb ctx 2))
+                              (let ((init-value? (= (length (cdr ast)) 2)))
+                                (x86-codegen-make-vector cgc (= (length (cdr ast)) 2))
+                                (jump-to-version cgc succ (ctx-push (if init-value?
+                                                                       (ctx-pop-nb ctx 2)
+                                                                       (ctx-pop ctx))
                                                                     CTX_VECT))))))
-
                          ;; STRING->SYMBOL
                          ((eq? special 'string->symbol)
                           (make-lazy-code
