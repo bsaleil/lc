@@ -724,7 +724,7 @@
              ;; No body and succ is *not* a ret object
              (make-lazy-code
                (lambda (cgc ctx)
-                 (x86-push cgc (x86-imm-int ENCODING_VOID))
+                 (x86-codegen-void cgc)
                  (jump-to-version cgc succ (ctx-push ctx CTX_VOID))))))
         ;; Only one body
         ((= (length (cdr ast)) 1)
@@ -740,15 +740,13 @@
                       (lambda (cgc ctx)
                         (let* ((nctx (ctx-move ctx 0 (- (length (cdr ast)) 1)))
                                (mctx (ctx-pop-nb nctx (- (length (cdr ast)) 1))))
-                          (x86-pop  cgc (x86-rax))
-                          (x86-add  cgc (x86-rsp) (x86-imm-int (* 8 (- (length (cdr ast)) 1))))
-                          (x86-push cgc (x86-rax))
+                          (x86-codegen-begin-out cgc (- (length (cdr ast)) 1))
                           (jump-to-version cgc succ mctx)))))))
              ;; LAZY BODIES
-             (gen-ast-l (cdr ast) lazy-begin-out)))))-
+             (gen-ast-l (cdr ast) lazy-begin-out)))))
 
 ;;-----------------------------------------------------------------------------
-;; Bdingings (let, letrec, let*)
+;; Bindings (let, letrec, let*)
 
 ;; NOTE: Letrec: All ids are considered as mutable. Analysis to detect recursive use of ids?
 
@@ -940,7 +938,7 @@
            (make-lazy-code
              (lambda (cgc ctx)
                (gen-breakpoint cgc)
-               (x86-push cgc (x86-imm-int ENCODING_VOID))
+               (x86-codegen-void cgc)
                (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))))
 
 ;;
