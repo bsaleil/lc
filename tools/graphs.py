@@ -347,22 +347,21 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 
 	# Number of benchmarks
 	firstExec = list(benchs_data.keys())[0]
-	n = len(benchs_data[firstExec])
+	n = len(benchs_data[firstExec]) + 1 # +1 for mean
 	X = np.arange(n) # X set is [0, 1, ..., n-1]
 
 	Ys = {}
-	# pour chaque executions
+	# For each exec
 	for d in benchs_data:
 		Y = []
-		# pour chaque benchmark
+		# For each benchmark
 		for f in files:
 			Y.extend([benchs_data[d][os.path.basename(f)][key]])
 		# Transforme en tableau numpy
 		Y = np.array(Y)
 		Ys[d] = Y
 
-	#width = 1 / (len(Ys)+1)
-	width = (1 / (len(Ys)))
+	width = (1 / (len(X)))
 
 	#----------
 	# TODO: move to external fn
@@ -413,10 +412,10 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	# TODO: add to --help: the script draws the exec bar in order
 	for key in lexecs:
 		if key != exec_ref:
-			print(key,end=": ");
 			Y = Yvals[key]
-			print(sum(Y) / float(len(Y)))
 			color = BAR_COLORS[i]
+			arith_mean = sum(Y) / float(len(Y))
+			Y = np.append(Y,[arith_mean]) # Add mean before drawing bars
 			bar(X+(i*width)+0.05, +Y, width, facecolor=color, linewidth=0, label=key)
 			i += 1
 
@@ -431,12 +430,14 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	# # Draw values for each bar
 	# for x,y in zip(X,Y1):
 	#     text(x+0.4, y+0.05, '%.2f' % y, ha='center', va= 'bottom')
-	ylim(0,100);
+	ylim(0,120)
+	xlim(0,n)
 
 	# Draw benchmark name
+	names = fileList
+	names.append("Arith.\nmean.scm") # Add mean name
 	for i in range(0,len(fileList)):
 		text(X[i]+0.40, -3, os.path.basename(fileList[i])[:-4], rotation=90, ha='center', va='top')
-
 
 	# Legend:
 	# Shrink by 10% on the bottom
