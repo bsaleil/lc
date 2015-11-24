@@ -775,10 +775,7 @@
                                   (mctx (ctx-pop-nb nctx (- (+ (length ids) (length bodies)) 1)))
                                   (env  (list-tail (ctx-env mctx) (length ids)))
                                   (ctx  (make-ctx (ctx-stack mctx) env (ctx-nb-args mctx))))
-
-                            (x86-pop cgc (x86-rax))
-                            (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (+ (length ids) (length bodies) -1))))
-                            (x86-push cgc (x86-rax))
+                            (x86-codegen-binding-clear cgc (+ (length ids) (length bodies) -1))
                             (jump-to-version cgc succ ctx))))))
                    ;; LAZY BODIES
                    (lazy-bodies (gen-ast-l bodies lazy-let-out)))
@@ -884,9 +881,7 @@
       ;; Bind id
       (let* ((nctx (ctx-move ctx from to #f)))
         ;; Get val and mov to location
-        (x86-mov cgc (x86-rax) (x86-mem (* 8 from) (x86-rsp)))
-        (x86-mov cgc (x86-rbx) (x86-mem (* 8 to) (x86-rsp)))
-        (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)) (x86-rax))
+        (x86-codegen-letrec-bind cgc from to)
         (gen-letrec-binds-h cgc nctx (cdr ids) (+ from 1) (+ to 1)))))
 
   ;; Initial call
