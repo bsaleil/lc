@@ -361,7 +361,7 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 		Y = np.array(Y)
 		Ys[d] = Y
 
-	width = (1 / (len(X)))
+	width = (1 / (len(Ys)+1)) # +1 for mean
 
 	#----------
 	# TODO: move to external fn
@@ -435,7 +435,7 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 
 	# Draw benchmark name
 	names = fileList
-	names.append("Arith.\nmean.scm") # Add mean name
+	names.append("ari mean.scm") # Add mean name
 	for i in range(0,len(fileList)):
 		text(X[i]+0.40, -3, os.path.basename(fileList[i])[:-4], rotation=90, ha='center', va='top')
 
