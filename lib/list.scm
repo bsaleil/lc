@@ -4,6 +4,8 @@
       0
       (+ 1 (length (cdr l)))))
 
+(define (list . l) l)
+
 (define (append . lsts)
   (define (append-two lst1 lst2)
     (if (null? lst1)
