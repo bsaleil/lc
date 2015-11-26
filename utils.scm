@@ -64,6 +64,12 @@
         #t
         #f)))
 
+(define (symbol->list s)
+  (string->list (symbol->string s)))
+
+(define (list->symbol s)
+  (string->symbol (list->string s)))
+
 ;;-----------------------------------------------------------------------------
 ;; Strings
 

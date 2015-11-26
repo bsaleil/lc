@@ -106,7 +106,7 @@
   (cond ;; String
         ((string? ast)  (mlc-string ast succ))
         ;; Symbol
-        ((symbol? ast)  (mlc-identifier ast succ))
+        ((symbol? ast) (mlc-identifier ast succ))
         ;; Flonum
         ((flonum? ast)  (mlc-flonum ast succ))
         ;; Other literal
@@ -133,6 +133,10 @@
                  ;; Binding
                  ((member op '(let let* letrec)) (mlc-binding ast succ op))
                  ;; Operator num
+                 ((member op '(FLOAT+ FLOAT- FLOAT* FLOAT< FLOAT> FLOAT<= FLOAT>= FLOAT=))
+                   (let ((generic-op (list->symbol (list-tail (symbol->list op) 5))))
+                     (gen-ast (cons generic-op (cdr ast))
+                              succ)))
                  ((member op '(+ - * < > <= >= =))         (mlc-op-n ast succ op))   ;; nary operator
                  ((member op '(quotient modulo remainder)) (mlc-op-bin ast succ op)) ;; binary operator
                  ;; Type predicate

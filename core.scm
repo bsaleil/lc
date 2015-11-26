@@ -6,6 +6,7 @@
 ;;-----------------------------------------------------------------------------
 
 (include "x86-debug.scm")
+(include "extern/Sort.scm")
 
 ;;--------------------------------------------------------------------------------
 ;; Compiler options
@@ -930,7 +931,7 @@
 (define (lazy-code-nb-versions lazy-code)
   (table-length (lazy-code-versions lazy-code)))
 
-(define (make-lazy-code generator #!optional (ast #f))
+(define (make-lazy-code generator)
   (let ((lc (make-lazy-code* generator (make-table) '())))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
@@ -963,12 +964,16 @@
 
 ;; Identifier in environment associated to an identifier
 (define-type identifier
+  constructor: make-identifier*
   type   ;; 'free or 'local
   offset ;; offset in closure or stack
   pos    ;; set of offset where the identifier is located
   flags  ;; list of flags (possible flags : mutable)
   stype  ;; ctx type if identifier is a free var
 )
+
+(define (make-identifier type offset pos flags stype)
+  (make-identifier* type offset (sort pos <) flags stype))
 
 (define (identifier-mutable? id)
   (member 'mutable (identifier-flags id)))
@@ -1453,7 +1458,6 @@
 
   (make-lazy-code
      (lambda (cgc ctx)
-
        ;; TODO: plus nettoyer tout ca
 
        (let* ((ctx-success (ctx-change-type ctx stack-idx type))
@@ -1523,6 +1527,7 @@
        ;; If 'opt-stats' option, then inc tests slot
        (if opt-stats
         (gen-inc-slot cgc 'tests))
+
 
        (cond ;; Number type test
              ((eq? type CTX_NUM)
