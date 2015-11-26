@@ -133,11 +133,11 @@
                  ;; Binding
                  ((member op '(let let* letrec)) (mlc-binding ast succ op))
                  ;; Operator num
-                 ((member op '(FLOAT+ FLOAT- FLOAT* FLOAT< FLOAT> FLOAT<= FLOAT>= FLOAT=))
+                 ((member op '(FLOAT+ FLOAT- FLOAT* FLOAT/ FLOAT< FLOAT> FLOAT<= FLOAT>= FLOAT=))
                    (let ((generic-op (list->symbol (list-tail (symbol->list op) 5))))
                      (gen-ast (cons generic-op (cdr ast))
                               succ)))
-                 ((member op '(+ - * < > <= >= =))         (mlc-op-n ast succ op))   ;; nary operator
+                 ((member op '(+ - * < > <= >= = /))         (mlc-op-n ast succ op))   ;; nary operator
                  ((member op '(quotient modulo remainder)) (mlc-op-bin ast succ op)) ;; binary operator
                  ;; Type predicate
                  ((type-predicate? op) (mlc-test ast succ))
@@ -1932,7 +1932,10 @@
   ;; Build a lco for each node of the type checks tree (with int and float)
   (define (build-binop succ)
     (let* (;; Operations lco
-           (lazy-ii (get-op-ii succ))       ;; lco for int int operation
+           (lazy-ii
+             (if (eq? op '/)
+                 (get-op-ff succ #t #t)   ;; If it is the / operator, fall back to float
+                 (get-op-ii succ)))       ;; lco for int int operation
            (lazy-if (get-op-ff succ #t #f)) ;; lco for int float operation
            (lazy-fi (get-op-ff succ #f #t)) ;; lco for float int operation
            (lazy-ff (get-op-ff succ #f #f)) ;; lco for float float operation
@@ -1972,7 +1975,7 @@
       ;; Alloc result flonum
       (gen-allocation cgc #f STAG_FLONUM 2)
 
-      (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd))))))
+      (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd) (/ . ,x86-divsd))))))
          (x86-pop cgc (x86-rbx)) ;; right in rbx
          (x86-pop cgc (x86-rax)) ;; left in rax
          (if leftint?
