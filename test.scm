@@ -1,9 +1,5 @@
 
-
-(define (foo a b)
-  10)
-
-(foo (car (cons 1 2)) (car (cons 1 2)))
+(pp (list 1 2 3))
 
 ;; 0 - TODO UTILISATIONS
 ;;   * (length l)   -> si on sait que l est une liste, on peut simplement PUSH 0
