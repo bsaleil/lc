@@ -418,6 +418,16 @@
           (table-set! crtables crtable-key t)
           t))))
 
+;; Return crtable key from ast and ctx
+;; The key contains ast, stack types, and a list of known identifier with types
+(define (get-crtable-key ast ctx)
+  (cons ast
+        (cons (ctx-stack ctx)
+          (map (lambda (el)
+                 (cons (car el)
+                       (identifier-stype (cdr el))))
+               (ctx-env ctx)))))
+
 ;; TODO: change to table, merge with cctables ? (change cctable-key to something better)
 ;; Store pairs associating cctable address to the code of the corresponding function
 (define cctables-loc-code '())
@@ -1609,9 +1619,10 @@
 
                                                 ;; Gen call sequence with closure in RAX
                                                 (let ((nb-unk (count call-stack (lambda (n) (eq? n CTX_UNK)))))
-                                                  ;(if (and opt-entry-points ;; TODO
-                                                  ;         (not (= nb-unk (length args))))
-                                                  (gen-call-sequence cgc call-ctx (length (cdr ast))))))))
+                                                  (if (and opt-entry-points (= nb-unk (length args)))
+                                                      (begin (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding (length args))))
+                                                             (gen-call-sequence cgc #f #f))
+                                                      (gen-call-sequence cgc call-ctx (length (cdr ast)))))))))
                  ;; Lazy code object to build the continuation
                  (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
@@ -1643,7 +1654,7 @@
 (define (get-lazy-continuation-builder-cr op lazy-succ lazy-call args continuation-ctx from-apply? ast)
 
   ;; Create stub and push ret addr
-  (make-lazy-code
+  (make-lazy-code-cont
      (lambda (cgc ctx)
        (let* (;; Lazy-continuation, push returned value
               (lazy-continuation
@@ -1662,7 +1673,7 @@
                                                                                type
                                                                                table)))))
               ;; CRtable
-              (crtable-key (cons ast ctx))
+              (crtable-key (get-crtable-key ast ctx))
               (stub-addr (vector-ref (list-ref stub-labels 0) 1))
               (crtable (get-crtable ast crtable-key stub-addr))
               (crtable-loc (- (obj-encoding crtable) 1)))
@@ -1679,7 +1690,7 @@
 ;; Build continuation stub and load stub address to the continuation slot
 (define (get-lazy-continuation-builder-nor op lazy-succ lazy-call args continuation-ctx from-apply?)
   ;; Create stub and push ret addr
-  (make-lazy-code
+  (make-lazy-code-cont
     (lambda (cgc ctx)
       (let* (;; Flag in stub : is the continuation already generated ?
              (gen-flag #f)

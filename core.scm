@@ -930,8 +930,13 @@
 (define (lazy-code-nb-versions lazy-code)
   (table-length (lazy-code-versions lazy-code)))
 
-(define (make-lazy-code generator)
+(define (make-lazy-code generator #!optional (ast #f))
   (let ((lc (make-lazy-code* generator (make-table) '())))
+    (set! all-lazy-code (cons lc all-lazy-code))
+    lc))
+
+(define (make-lazy-code-cont generator)
+  (let ((lc (make-lazy-code* generator (make-table) '(cont))))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 

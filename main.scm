@@ -359,12 +359,13 @@
     ;; Number of stubs, number of return stubs, and number of entry stubs for each number of versions
     (println "-------------------------")
     (println "Number of stubs for each number of version")
-    (println "#versions;#stubs;#ret;#entry")
+    (println "#versions;#stubs;#ret;#entry;#cont")
     (let ((versions-info-full (get-versions-info-full all-lazy-code)))
       (for-each (lambda (n)
                   (println (car n) ";"
                            (cadr n) ";"
                            (count (cddr n) (lambda (n) (member 'ret n))) ";"
-                           (count (cddr n) (lambda (n) (member 'entry n)))))
+                           (count (cddr n) (lambda (n) (member 'entry n))) ";"
+                           (count (cddr n) (lambda (n) (member 'cont n)))))
                 (sort versions-info-full (lambda (n m) (< (car n) (car m)))))
       (println "-------------------------"))))

@@ -1,9 +1,9 @@
 
 
-(define (foo)
+(define (foo a b)
   10)
 
-(foo)
+(foo (car (cons 1 2)) (car (cons 1 2)))
 
 ;; 0 - TODO UTILISATIONS
 ;;   * (length l)   -> si on sait que l est une liste, on peut simplement PUSH 0

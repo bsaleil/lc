@@ -362,7 +362,7 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 		Ys[d] = Y
 
 	width = (1 / (len(Ys)+1)) # +1 for mean
-
+	
 	#----------
 	# TODO: move to external fn
 	# Use a reference execution. All values for this exec are 100%
