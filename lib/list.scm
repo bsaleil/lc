@@ -4,8 +4,6 @@
       0
       (+ 1 (length (cdr l)))))
 
-(define list (lambda x x))
-
 (define (append . lsts)
   (define (append-two lst1 lst2)
     (if (null? lst1)
