@@ -1538,112 +1538,63 @@
 ;;
 (define (mlc-call ast succ)
 
- ;; BEGIN TODO
-  (define (re-call ast)
+  (let* (;; Tail call if successor's flags set contains 'ret flag
+         (tail (member 'ret (lazy-code-flags succ)))
+         ;; Call arguments
+         (args (cdr ast))
+         ;; Lazy fail
+         (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
+         ;; Lazy call
+         (lazy-call (make-lazy-code (lambda (cgc ctx)
 
-    (define (get-args-types args positions curr callexpr)
-        (if (null? args)
-          (if (null? positions) ;; no lambda in args
-            ast
-            (cons 'let
-                  (cons positions (list (cons (car ast) ;; operator
-                                              (reverse callexpr)))))) ;; new args
-          (let ((arg (car args))
-                (ssym (gensym)))
-             (if (and (pair? arg) (eq? (car arg) 'lambda))
-                (get-args-types (cdr args)
-                                positions
-                                (+ curr 1)
-                                (cons arg callexpr))
-                (get-args-types (cdr args)
-                                (cons (list ssym
-                                            (list-ref (cdr ast) curr))
-                                      positions)
-                                (+ curr 1)
-                                (cons ssym callexpr))))))
+                                        ;; Call ctx in rdx
+                                        (let* ((call-stack (if tail
+                                                              (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
+                                                              (list-head (ctx-stack ctx) (+ (length args) 2))))
+                                               (call-ctx (make-ctx call-stack '() -1)))
 
-;; Si la boucle contient aucune lambdas ou que des symboles et lambda, on change pas
-;; sinon on change
+                                        (if tail
+                                          (tail-shift cgc
+                                                      ;; Nb slots to shift
+                                                      (+ (length args) 1) ;; +1 closure
+                                                      ;; Initial from slot
+                                                      (length args)
+                                                      ;; Initial to slot
+                                                      (- (length (ctx-stack ctx)) 2)))
 
-    (let* ((symlam (foldr (lambda (el r)
-                            (cond ((symbol? el) (cons (+ 1 (car r)) (cdr r)))
-                                  ((and (pair? el) (eq? (car el) 'lambda)) (cons (car r) (+ 1 (cdr r))))
-                                  (else r)))
-                         '(0 . 0)
-                          (cdr ast)))
-           (nsym (car symlam))
-           (nlam (cdr symlam)))
+                                        ;; If count calls compiler opt
+                                        (if (eq? (car ast) opt-count-calls)
+                                           (gen-inc-slot cgc 'calls))
 
-        (if (or (= (+ nsym nlam) (length (cdr ast))) ;; only lambdas and symbols
-                (= nlam 0))
-              #f
-              (get-args-types (cdr ast) '() 0 '()))))
+                                        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
 
-  (let ((transformed (re-call ast)))
+                                        ;; Gen call sequence with closure in RAX
+                                        (let ((nb-unk (count call-stack (lambda (n) (eq? n CTX_UNK)))))
+                                          (if (and opt-entry-points (= nb-unk (length args)))
+                                              (begin (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding (length args))))
+                                                     (gen-call-sequence cgc #f #f))
+                                              (gen-call-sequence cgc call-ctx (length (cdr ast)))))))))
+         ;; Lazy code object to build the continuation
+         (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
-     (if transformed
-          (gen-ast transformed succ)
+    (if tail
+        (if (> (length args) 0)
+            ;; If args, then compile args
+            (gen-ast-l args lazy-tail-operator)
+            ;; Else, compile call
+            lazy-tail-operator)
+        ;; First object of the chain
+        (make-lazy-code
+          (lambda (cgc ctx)
+            (let* (;; Lazy code object to build continuation and move it to stack slot
+                   (lazy-build-continuation (get-lazy-continuation-builder (car ast) succ lazy-call args ctx #f ast))
+                   ;; Lazy code object to push operator of the call
+                   (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-build-continuation ast)))
 
-    ;; END TODO
-
-
-          (let* (;; Tail call if successor's flags set contains 'ret flag
-                 (tail (member 'ret (lazy-code-flags succ)))
-                 ;; Call arguments
-                 (args (cdr ast))
-                 ;; Lazy fail
-                 (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
-                 ;; Lazy call
-                 (lazy-call (make-lazy-code (lambda (cgc ctx)
-
-                                                ;; Call ctx in rdx
-                                                (let* ((call-stack (if tail
-                                                                      (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
-                                                                      (list-head (ctx-stack ctx) (+ (length args) 2))))
-                                                       (call-ctx (make-ctx call-stack '() -1)))
-
-                                                (if tail
-                                                  (tail-shift cgc
-                                                              ;; Nb slots to shift
-                                                              (+ (length args) 1) ;; +1 closure
-                                                              ;; Initial from slot
-                                                              (length args)
-                                                              ;; Initial to slot
-                                                              (- (length (ctx-stack ctx)) 2)))
-
-                                                ;; If count calls compiler opt
-                                                (if (eq? (car ast) opt-count-calls)
-                                                   (gen-inc-slot cgc 'calls))
-
-                                                (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-
-                                                ;; Gen call sequence with closure in RAX
-                                                (let ((nb-unk (count call-stack (lambda (n) (eq? n CTX_UNK)))))
-                                                  (if (and opt-entry-points (= nb-unk (length args)))
-                                                      (begin (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding (length args))))
-                                                             (gen-call-sequence cgc #f #f))
-                                                      (gen-call-sequence cgc call-ctx (length (cdr ast)))))))))
-                 ;; Lazy code object to build the continuation
-                 (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
-
-            (if tail
-                (if (> (length args) 0)
-                    ;; If args, then compile args
-                    (gen-ast-l args lazy-tail-operator)
-                    ;; Else, compile call
-                    lazy-tail-operator)
-                ;; First object of the chain
-                (make-lazy-code
-                  (lambda (cgc ctx)
-                    (let* (;; Lazy code object to build continuation and move it to stack slot
-                           (lazy-build-continuation (get-lazy-continuation-builder (car ast) succ lazy-call args ctx #f ast))
-                           ;; Lazy code object to push operator of the call
-                           (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-build-continuation ast)))
-
-                      (x86-push cgc (x86-imm-int (obj-encoding #f))) ;; Reserve a slot for continuation
-                      (jump-to-version cgc
-                                       (gen-ast-l args lazy-operator) ;; Compile args and jump to operator
-                                       (ctx-push ctx CTX_RETAD))))))))))
+              (x86-push cgc (x86-imm-int (obj-encoding #f))) ;; Reserve a slot for continuation
+              (jump-to-version cgc
+                               (gen-ast-l args lazy-operator) ;; Compile args and jump to operator
+                               (ctx-push ctx CTX_RETAD))))))))
 
 (define (get-lazy-continuation-builder op lazy-succ lazy-call args continuation-ctx from-apply? ast)
 
