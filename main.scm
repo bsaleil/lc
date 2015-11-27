@@ -4,6 +4,7 @@
 (include "./extern/Sort.scm")
 
 (define pp pretty-print)
+(define repl-print-lco #f)
 
 (define-macro (string-bold str)
     `(string-append "\033[1m" ,str "\033[0m"))
@@ -143,10 +144,16 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Interactive mode (REPL)
-
 (define (repl lib)
 
-  (println "REPL")
+  (println "  _     ____       ")
+  (println " | |   / ___|      ")
+  (println " | |  | |          ")
+  (println " | |__| |___       ")
+  (println " |_____\\____| REPL")
+  (println "")
+
+  (set! mode-repl #t)
 
   (init)
 
@@ -157,8 +164,14 @@
                            (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
                            (pop-regs-reverse cgc all-regs)
                            (x86-ret cgc))))
+           ;; Lazy lib end
+           (lazy-lib-end
+               (make-lazy-code
+                   (lambda (cgc ctx)
+                     (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (length lib))))
+                     (jump-to-version cgc lazy-read-eval (ctx-pop-nb ctx (length lib))))))
            ;; Lazy lib
-           (lazy-lib (lazy-exprs lib lazy-read-eval))
+           (lazy-lib (lazy-exprs lib lazy-lib-end))
            ;; Lazy print
            (lazy-print (make-lazy-code
               (lambda (cgc ctx)
@@ -168,16 +181,11 @@
            ;; Lazy read-eval
            (lazy-read-eval (make-lazy-code
               (lambda (cgc ctx)
-                 (print "> ")
-                 (let ((r (car (expand-tl (list (read))))))
-                    (cond ((equal? r '(unquote LC))
-                              (let ((r (read)))
-                                (eval r)
-                                (jump-to-version cgc (gen-ast #f lazy-print) ctx)))
-                          ((equal? r '(unquote q))
-                              (jump-to-version cgc lazy-ret ctx))
-                          (else
-                              (jump-to-version cgc (gen-ast r lazy-print) ctx))))))))
+                (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
+                (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
+                (gen-repl-call cgc)
+                (x86-jmp cgc (x86-rbx))))))
+    (set! repl-print-lco lazy-print)
     ;; Global var for print step
     (set! globals '(($$REPL-RES . 0)))
     ;; Gen
@@ -199,7 +207,12 @@
   (init)
 
   (let* ((lazy-prog (lazy-exprs prog #f))
-         (lazy-lib  (lazy-exprs lib  lazy-prog)))
+         (lazy-lib-end
+           (make-lazy-code
+             (lambda (cgc ctx)
+               (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (length lib))))
+               (jump-to-version cgc lazy-prog (ctx-pop-nb ctx (length lib))))))
+         (lazy-lib  (lazy-exprs lib  lazy-lib-end)))
 
      (gen-version code-alloc
                   lazy-lib

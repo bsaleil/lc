@@ -22,6 +22,7 @@
 (define opt-return-points        #t) ;; Use multiple return points (#t to use cr-tables, #f to use a generic return point)
 (define opt-overflow-fallback    #t) ;; Automatic fallback to generic entry point if cctable overflows
 (define opt-propagate-functionid #f) ;; Propagate function identitie
+(define mode-repl                #f) ;; REPL mode ?
 
 ;; TODO Move
 (define (type-to-cridx type)
@@ -64,9 +65,14 @@
 ;;-----------------------------------------------------------------------------
 
 (define mem-header #f)
-(define run-gc #f) ;; Forward declaration (see mem.scm)
 (define ctx-change-type #f)
 (define get-entry-points-loc #f)
+
+;; Forward declarations
+(define run-gc #f)         ;; mem.scm
+(define expand-tl #f)      ;; expand.scm
+(define gen-ast #f)        ;; ast.scm
+(define repl-print-lco #f) ;; main.scm
 
 ;;-----------------------------------------------------------------------------
 
@@ -83,6 +89,7 @@
 (define label-do-callback      #f)
 (define label-do-callback-fn   #f)
 (define label-do-callback-cont #f)
+(define label-repl #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -181,13 +188,18 @@
                      (x86-call cgc label-exec-error) ;; call C function
                      (x86-pop  cgc (x86-rsp))))) ;; restore unaligned stack-pointer
 
-  (if stop-exec?
-    (begin
-      (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-      (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
-      (x86-mov cgc (x86-rax) (x86-imm-int -1))
-      (pop-regs-reverse cgc all-regs)
-      (x86-ret cgc))))
+  (if mode-repl
+      (begin
+        (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
+        (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
+        (gen-repl-call cgc)
+        (x86-jmp cgc (x86-rbx)))
+      (begin
+        (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
+        (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
+        (x86-mov cgc (x86-rax) (x86-imm-int -1))
+        (pop-regs-reverse cgc all-regs)
+        (x86-ret cgc))))
 
 ;; The procedure exec-error is callable from generated machine code.
 ;; This function print the error message in rax
@@ -216,6 +228,22 @@
        (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
        (x86-mov cgc alloc-ptr (x86-rax)) ;; TODO : Update alloc-ptr
        )))
+
+;;-----------------------------------------------------------------------------
+
+;; TODO: remove rax from c-caller-save-regs, then use gen-handler for this function
+(define (gen-repl-call cgc)
+  (push-pop-regs
+    cgc
+    c-caller-save-regs ;; preserve regs for C call
+    (lambda (cgc)
+      (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
+      (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+      (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+      (x86-push cgc (x86-rdi))
+      (x86-call cgc label-repl) ;; call C function
+      (x86-pop cgc (x86-rsp))
+      (x86-mov cgc (x86-rbx) (x86-rax))))) ;; Move version address to rbx
 
 ;;-----------------------------------------------------------------------------
 
@@ -292,6 +320,18 @@
          (msg      (encoding-obj msg-enc)))
 
     (and (print msg) (= newline? 1) (newline))))
+
+;; Repl function.
+;; Get sexpr from stdin, gen-version for empty context and returns version address
+(c-define (repl sp) (long) long "repl" ""
+  (print "lc> ")
+  (let ((r (read)))
+    (if (or (eq? r 'quit) (eof-object? r))
+        (begin (println "") (exit 0))
+        (let* ((r (car (expand-tl (list r))))
+               (lco (gen-ast r repl-print-lco))
+               (addr (gen-version code-alloc lco (make-ctx '() '() -1))))
+          addr))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -516,6 +556,15 @@
                      (pointer void)
                      "___result = ___CAST(void*,print_msg_val);")))))
 
+  (set! label-repl
+        (asm-make-label
+         cgc
+         'repl
+         (##foreign-address
+           ((c-lambda ()
+                      (pointer void)
+                      "___result = ___CAST(void*,repl);")))))
+
   (set! label-gc
         (asm-make-label
          cgc
@@ -587,6 +636,8 @@
           ((c-lambda ()
                      (pointer void)
                      "___result = ___CAST(void*,break_point);"))))))
+
+
 
 ;;-----------------------------------------------------------------------------
 
