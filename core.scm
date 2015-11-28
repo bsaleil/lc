@@ -41,7 +41,7 @@
         ((eq? type CTX_FLO)   104)
         ((eq? type CTX_UNK)   112)
         ((eq? type CTX_MOBJ)  120)
-        (else (pp type) (error "Internal error"))))
+        (else (pp type) (error ERR_INTERNAL))))
 
 ;; TODO Move
 (define (cridx-to-type cridx)
@@ -60,7 +60,7 @@
         ((= cridx 104) CTX_FLO)
         ((= cridx 112) CTX_UNK)
         ((= cridx 120) CTX_MOBJ)
-        (else (pp cridx) (error "Internal error"))))
+        (else (pp cridx) (error ERR_INTERNAL))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -146,11 +146,17 @@
 (define ERR_READ_CHAR        "CAN'T READ CHAR")
 (define ERR_WRITE_CHAR       "CAN'T WRITE CHAR")
 (define ERR_DIVIDE_ZERO      "DIVIDE BY ZERO")
+(define ERR_INTERNAL         "INTERNAL ERROR")
 
 (define ERR_BEGIN            "ILL-FORMED BEGIN")
 (define ERR_LET              "ILL-FORMED LET")
 (define ERR_LET*             "ILL-FORMED LET*")
 (define ERR_LETREC           "ILL-FORMED LETREC")
+
+(define (ERR_UNKNOWN_VAR var)
+  (if (string? var)
+      (string-append "Can't find variable: " var)
+      (string-append "Can't find variable: " (symbol->string var))))
 
 (define ERR_HEAP_NOT_8       "INTERNAL ERROR: heap size should be a multiple of 8")
 

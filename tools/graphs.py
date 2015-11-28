@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # Execute compiler with stats option for all benchmarks
 # Parse output
@@ -362,7 +362,7 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 		Ys[d] = Y
 
 	width = (1 / (len(Ys)+1)) # +1 for mean
-	
+
 	#----------
 	# TODO: move to external fn
 	# Use a reference execution. All values for this exec are 100%
@@ -415,6 +415,8 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 			Y = Yvals[key]
 			color = BAR_COLORS[i]
 			arith_mean = sum(Y) / float(len(Y))
+			print("MEANS:")
+			print(key + ": " + str(arith_mean))
 			Y = np.append(Y,[arith_mean]) # Add mean before drawing bars
 			bar(X+(i*width)+0.05, +Y, width, facecolor=color, linewidth=0, label=key)
 			i += 1

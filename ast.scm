@@ -47,7 +47,7 @@
   (let ((r (assq predicate type-predicates)))
     (if r
       (cdr r)
-      (error "Internal error"))))
+      (error ERR_INTERNAL))))
 
 ;;-----------------------------------------------------------------------------
 ;; Primitives
@@ -278,7 +278,7 @@
                                (global
                                   (gen-get-globalvar cgc ctx global 'stack))
                                (else
-                                  (error "Can't find variable: " ast)))))
+                                  (gen-error cgc (ERR_UNKNOWN_VAR ast))))))
 
             (let* ((nctx (if (eq? ctx-type CTX_MOBJ)
                            (ctx-push ctx CTX_UNK ast)
@@ -299,7 +299,7 @@
                  (jump-to-version cgc
                                   (gen-ast `(lambda (a) (,ast a)) succ)
                                   ctx)
-                 (error "Can't find variable: " ast)))))))))
+                 (gen-error cgc (ERR_UNKNOWN_VAR ast))))))))))
 
 ;;
 ;; Make lazy code from num/bool/char/null literal
@@ -319,7 +319,7 @@
                                          ((boolean? ast) CTX_BOOL)
                                          ((char? ast)    CTX_CHAR)
                                          ((null? ast)    CTX_NULL)
-                                         (else (error "Internal error")))))))))
+                                         (else (error ERR_INTERNAL)))))))))
 
 ;;-----------------------------------------------------------------------------
 ;; INTERNAL FORMS
@@ -343,10 +343,12 @@
                                        (if (eq? (identifier-type (cdr res)) 'free)
                                           (gen-set-freevar  cgc ctx res)  ;; Free var
                                           (gen-set-localvar cgc ctx res)) ;; Local var
-                                       (error "Can't find variable: " id))))))
-
-                      (x86-codegen-void cgc)
-                      (jump-to-version cgc succ (ctx-push (ctx-pop nctx) CTX_VOID)))))))
+                                      #f)))))
+                      (if (not nctx)
+                          (gen-error cgc (ERR_UNKNOWN_VAR id))
+                          (begin
+                            (x86-codegen-void cgc)
+                            (jump-to-version cgc succ (ctx-push (ctx-pop nctx) CTX_VOID)))))))))
 
      (gen-ast (caddr ast) lazy-set)))
 
