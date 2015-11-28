@@ -1585,7 +1585,6 @@
        (if opt-stats
         (gen-inc-slot cgc 'tests))
 
-
        (cond ;; Number type test
              ((eq? type CTX_NUM)
                  (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
