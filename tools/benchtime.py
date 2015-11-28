@@ -113,16 +113,20 @@ print('Draw graph...')
 
 # Graph config
 nb_items = len(files) + 1                     # Number of times to draw (+1 for arithmetic mean)
-bar_width = 0.8                               # Define widht of a single bar
+bar_width = 1                                 # Define width of a single bar
 matplotlib.rcParams.update({'font.size': FONT_SIZE}) # Set font size of all elements of the graph
 fig = plt.figure('',figsize=(8,3.4))          # Create new figure
 #plt.title('Execution time')                  # Set title
 gca().get_xaxis().set_visible(False)          # Hide x values
 
 ylim(0,120)                                   # Set y scale from 0 to 120
-xlim(0, nb_items*5)                           # Set x scale from 0 to nb_items*5
+xlim(0, nb_items*6)                           # Set x scale from 0 to nb_items*5
 fig.subplots_adjust(bottom=0.4)               # Give more space at bottom for benchmark names
-plot([0,nb_items*5],[100,100], color="#CCCCCC", linewidth=1,zorder=-10) # Draw y=100 line
+
+# Draw grid
+axes = gca()
+axes.grid(True, zorder=1, color="#707070")
+axes.set_axisbelow(True) # Keep grid under the axes
 
 # Convert times to % times
 TIMEP = []
@@ -157,32 +161,39 @@ timep_ver    = sum(list(map(lambda x: x[5], TIMEP)))/len(files)
 timep_vermax = sum(list(map(lambda x: x[6], TIMEP)))/len(files)
 TIMEP.append([name,time_nv,timep_v,timep_ve,timep_vr,timep_ver,timep_vermax])
 
+print("Means:")
+print("Vers. " + str(timep_v))
+print("Vers. Entry  " + str(timep_ve))
+print("Vers. Return " + str(timep_vr))
+print("Vers. Entry + Return " + str(timep_ver))
+print("Vers. Entry + Return + Max=5 " + str(timep_vermax))
+
 # DRAW V
-X = np.arange(0,nb_items*5,5) # [0,5,10,..]
+X = np.arange(0,nb_items*6,6) # [0,5,10,..]
 drawBar(TIMEP,2,0,'Vers.')
 
 # DRAW VE
-X = np.arange(1,nb_items*5,5)   # [1,6,11,..]
+X = np.arange(1,nb_items*6,6)   # [1,6,11,..]
 drawBar(TIMEP,3,1,'Vers. + Entry')
 
 # DRAW VR
-X = np.arange(2,nb_items*5,5) # [2,7,12,..]
+X = np.arange(2,nb_items*6,6) # [2,7,12,..]
 drawBar(TIMEP,4,2,'Vers. + Return')
 
 # DRAW VER
-X = np.arange(3,nb_items*5,5) # [3,6,10,..]
+X = np.arange(3,nb_items*6,6) # [3,6,10,..]
 drawBar(TIMEP,5,3,'Vers. + Entry + Return')
 
 # DRAW VERMAX
-X = np.arange(4,nb_items*5,5) # [3,6,10,..]
+X = np.arange(4,nb_items*6,6) # [3,6,10,..]
 drawBar(TIMEP,6,4,'Vers. + Entry + Return + Max=5')
 
 # DRAW BENCHMARK NAMES
 i = 0
 for time in TIMEP[:-1]:
-    text(i+2-((1-bar_width)/2), -10, os.path.basename(time[0])[:-4], rotation=90, ha='center', va='top')
-    i+=5
-text(i+2-((1-bar_width)/2), -10,TIMEP[-1][0], rotation=90, ha='center', va='top') # arithmetic mean time (last one)
+    text(i+2.5-((1-bar_width)/2), -3, os.path.basename(time[0])[:-4], rotation=90, ha='center', va='top')
+    i+=6
+text(i+2.5-((1-bar_width)/2), -3,TIMEP[-1][0], rotation=90, ha='center', va='top') # arithmetic mean time (last one)
 
 legend(bbox_to_anchor=(0., 0., 1., -0.55), prop={'size':FONT_SIZE}, ncol=3, mode="expand", borderaxespad=0.)
 

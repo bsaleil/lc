@@ -446,7 +446,8 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 	box = axes.get_position()
 	axes.set_position([box.x0, box.y0 + box.height * 0.34, box.width, box.height * 0.66])
 	# Put a legend below axis
-	legend(loc='upper center', bbox_to_anchor=(0., 0., 1., -0.35), prop={'size':FONT_SIZE}, ncol=int(len(lexecs)/3), mode='expand', borderaxespad=0.)
+	ncol = int(len(lexecs)/3);
+	legend(loc='upper center', bbox_to_anchor=(0., 0., 1., -0.35), prop={'size':FONT_SIZE}, ncol=ncol, mode='expand', borderaxespad=0.)
 
 	# Save to pdf
 	pdf.savefig(fig)
