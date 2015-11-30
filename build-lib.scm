@@ -10,7 +10,8 @@
     "./lib/list.scm"
     "./lib/fn.scm"
     "./lib/num.scm"
-    "./lib/fake.scm"))
+    "./lib/fake.scm"
+    "./lib/read.scm"))
 
 (define (get-lib files)
     (if (null? files)
