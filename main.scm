@@ -169,7 +169,7 @@
                (make-lazy-code
                    (lambda (cgc ctx)
                      (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (length lib))))
-                     (jump-to-version cgc lazy-read-eval (ctx-pop-nb ctx (length lib))))))
+                     (jump-to-version cgc lazy-read-eval (ctx-pop ctx (length lib))))))
            ;; Lazy lib
            (lazy-lib (lazy-exprs lib lazy-lib-end))
            ;; Lazy print
@@ -211,7 +211,7 @@
            (make-lazy-code
              (lambda (cgc ctx)
                (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (length lib))))
-               (jump-to-version cgc lazy-prog (ctx-pop-nb ctx (length lib))))))
+               (jump-to-version cgc lazy-prog (ctx-pop ctx (length lib))))))
          (lazy-lib  (lazy-exprs lib  lazy-lib-end)))
 
      (gen-version code-alloc

@@ -1123,37 +1123,44 @@
                  (+ l-from 1)
                  (+ l-to 1))))
 
-;; Apply 'nb' push to ctx
-(define (ctx-push-nb ctx ctx-type nb)
-  (if (= nb 0)
-    ctx
-    (ctx-push-nb (ctx-push ctx ctx-type)
-                 ctx-type
-                 (- nb 1))))
-
-;; Apply 'nb' pop to ctx
-(define (ctx-pop-nb ctx nb)
-  (if (= nb 0)
-    ctx
-    (ctx-pop-nb (ctx-pop ctx)
-                (- nb 1))))
-
 ;; Pop ctx
-(define (ctx-pop ctx)
-  (let* ((pos  (ctx-get-top-pos ctx))    ;; Get pos
-         (nctx (ctx-remove-pos ctx pos)) ;; Remove pos from identifiers
-         (stack (cdr (ctx-stack nctx)))) ;; Remove first from stack
-         ;; Return nex ctx
-    (make-ctx stack (ctx-env nctx) (ctx-nb-args nctx))))
+(define (ctx-pop ctx #!optional (n 1))
+
+  (define (ctx-pop-one ctx)
+    (let* ((pos  (ctx-get-top-pos ctx))    ;; Get pos
+           (nctx (ctx-remove-pos ctx pos)) ;; Remove pos from identifiers
+           (stack (cdr (ctx-stack nctx)))) ;; Remove first from stack
+      ;; Return new ctx
+      (make-ctx stack (ctx-env nctx) (ctx-nb-args nctx))))
+
+  (define (ctx-pop-n ctx n)
+    (if (= n 0)
+       ctx
+       (ctx-pop-n (ctx-pop-one ctx) (- n 1))))
+
+  (ctx-pop-n ctx n))
 
 ;; Push value to ctx
 ;; Update stack and env if sym
-(define (ctx-push ctx ctx-type #!optional (sym #f))
-  (let ((stack (cons ctx-type (ctx-stack ctx)))
-        (env   (if sym
-                 (env-push-id (ctx-env ctx) ctx sym)
-                 (ctx-env ctx))))
-    (make-ctx stack env (ctx-nb-args ctx))))
+(define (ctx-push ctx ctx-type #!optional (n 1) sym)
+
+  (define (ctx-push-one ctx ctx-type sym)
+    (let ((stack (cons ctx-type (ctx-stack ctx)))
+          (env   (if sym
+                     (env-push-id (ctx-env ctx) ctx sym)
+                     (ctx-env ctx))))
+      (make-ctx stack env (ctx-nb-args ctx))))
+
+  (define (ctx-push-n ctx ctx-type n)
+    (if (= n 0)
+        ctx
+        (ctx-push-n (ctx-push-one ctx ctx-type #f) ctx-type (- n 1))))
+
+  (assert (or (= n 1) (not sym)) ERR_INTERNAL)
+
+  (if sym
+      (ctx-push-one ctx ctx-type sym)
+      (ctx-push-n  ctx ctx-type n)))
 
 ;; Remove all ctx information.
 ;; Return the 'generic' version of this context

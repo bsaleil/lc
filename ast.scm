@@ -281,8 +281,8 @@
                                   (gen-error cgc (ERR_UNKNOWN_VAR ast))))))
 
             (let* ((nctx (if (eq? ctx-type CTX_MOBJ)
-                           (ctx-push ctx CTX_UNK ast)
-                           (ctx-push ctx ctx-type ast))))
+                           (ctx-push ctx CTX_UNK 1 ast)
+                           (ctx-push ctx ctx-type 1 ast))))
               (jump-to-version cgc succ nctx)))
          ;; Else it is a primitive / type predicate
          (let ((r (assoc ast primitives)))
@@ -757,7 +757,7 @@
                     (make-lc
                       (lambda (cgc ctx)
                         (let* ((nctx (ctx-move ctx 0 (- (length (cdr ast)) 1)))
-                               (mctx (ctx-pop-nb nctx (- (length (cdr ast)) 1))))
+                               (mctx (ctx-pop nctx (- (length (cdr ast)) 1))))
                           (x86-codegen-begin-out cgc (- (length (cdr ast)) 1))
                           (jump-to-version cgc succ mctx)))))))
              ;; LAZY BODIES
@@ -790,7 +790,7 @@
                        (make-lc ;; If succ is a ret object, then last object of begin is also a ret object
                          (lambda (cgc ctx)
                            (let* ((nctx (ctx-move ctx 0 (- (+ (length ids) (length bodies)) 1)))
-                                  (mctx (ctx-pop-nb nctx (- (+ (length ids) (length bodies)) 1)))
+                                  (mctx (ctx-pop nctx (- (+ (length ids) (length bodies)) 1)))
                                   (env  (list-tail (ctx-env mctx) (length ids)))
                                   (ctx  (make-ctx (ctx-stack mctx) env (ctx-nb-args mctx))))
                             (x86-codegen-binding-clear cgc (+ (length ids) (length bodies) -1))
@@ -859,7 +859,7 @@
     ;;     gen mutable and jump to values
     (make-lazy-code
        (lambda (cgc ctx)
-          (let* ((stack (ctx-stack (ctx-push-nb ctx CTX_BOOL (length ids))))
+          (let* ((stack (ctx-stack (ctx-push ctx CTX_BOOL (length ids))))
                  (start (- (length stack) (length ids) 1))
                  (env (build-env ids ids start (ctx-env ctx)))
                  (nctx (make-ctx stack env (ctx-nb-args ctx))))
@@ -895,7 +895,7 @@
     (if (null? ids)
       ;; No more id, update rsp and return new ctx
       (begin (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (length all-ids))))
-             (ctx-pop-nb ctx (length all-ids)))
+             (ctx-pop ctx (length all-ids)))
       ;; Bind id
       (let* ((nctx (ctx-move ctx from to #f)))
         ;; Get val and mov to location
@@ -983,7 +983,7 @@
                          (x86-label cgc label-list-end)
                          (jump-to-version cgc
                                           succ
-                                          (ctx-push (ctx-pop-nb ctx (length (cdr ast)))
+                                          (ctx-push (ctx-pop ctx (length (cdr ast)))
                                                     (if (null? (cdr ast))
                                                         CTX_NULL
                                                         CTX_PAI))))))))
@@ -1061,7 +1061,7 @@
                           (make-lazy-code
                             (lambda (cgc ctx)
                               (x86-codegen-eq? cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_BOOL)))))
+                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_BOOL)))))
                          ;; CAR & CDR
                          ((member special '(car cdr))
                           (make-lazy-code
@@ -1073,7 +1073,7 @@
                           (make-lazy-code
                             (lambda (cgc ctx)
                               (x86-codegen-scar/scdr cgc special)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_VOID)))))
+                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_VOID)))))
                          ;; CURRENT-INPUT-PORT / CURRENT-OUTPUT-PORT
                          ((member special '(current-input-port current-output-port))
                            (make-lazy-code
@@ -1115,7 +1115,7 @@
                             (make-lazy-code
                               (lambda (cgc ctx)
                                 (x86-codegen-write-char cgc)
-                                (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_VOID)))))
+                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_VOID)))))
                          ;; CHAR<->INTEGER
                          ((member special '(char->integer integer->char))
                           (make-lazy-code
@@ -1132,7 +1132,7 @@
                               (let ((init-value? (= (length (cdr ast)) 2)))
                                 (x86-codegen-make-string cgc init-value?)
                                 (jump-to-version cgc succ (ctx-push (if init-value?
-                                                                        (ctx-pop-nb ctx 2)
+                                                                        (ctx-pop ctx 2)
                                                                         (ctx-pop ctx))
                                                                     CTX_STR))))))
                          ;; MAKE-VECTOR
@@ -1142,7 +1142,7 @@
                               (let ((init-value? (= (length (cdr ast)) 2)))
                                 (x86-codegen-make-vector cgc (= (length (cdr ast)) 2))
                                 (jump-to-version cgc succ (ctx-push (if init-value?
-                                                                       (ctx-pop-nb ctx 2)
+                                                                       (ctx-pop ctx 2)
                                                                        (ctx-pop ctx))
                                                                     CTX_VECT))))))
                          ;; STRING->SYMBOL
@@ -1168,25 +1168,25 @@
                           (make-lazy-code
                             (lambda (cgc ctx)
                               (x86-codegen-vector-ref cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_UNK)))))
+                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_UNK)))))
                          ;; STRING-REF
                          ((eq? special 'string-ref)
                           (make-lazy-code
                             (lambda (cgc ctx)
                               (x86-codegen-string-ref cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_CHAR)))))
+                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_CHAR)))))
                          ;; VECTOR-SET!
                          ((eq? special 'vector-set!)
                           (make-lazy-code
                             (lambda (cgc ctx)
                               (x86-codegen-vector-set! cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 3) CTX_VOID)))))
+                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 3) CTX_VOID)))))
                          ;; VECTOR-SET!
                          ((eq? special 'string-set!)
                           (make-lazy-code
                             (lambda (cgc ctx)
                               (x86-codegen-string-set! cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 3) CTX_VOID)))))
+                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 3) CTX_VOID)))))
                          ;; OTHERS
                          (else (error "NYI")))))
 
@@ -1380,7 +1380,7 @@
              (lambda (cgc ctx)
 
                (let* ((nctx (ctx-move ctx 0 (- (+ (length test-exprs) (length variables)) 1)))
-                      (mctx (ctx-pop-nb nctx (- (+ (length test-exprs) (length variables)) 1)))
+                      (mctx (ctx-pop nctx (- (+ (length test-exprs) (length variables)) 1)))
                       (env (list-tail (ctx-env mctx) (length variables)))
                       (ctx (make-ctx (ctx-stack mctx) env (ctx-nb-args mctx))))
 
@@ -1418,10 +1418,10 @@
                     ;; Keep same env
                     (env (ctx-env ctx))
                     ;; Remove pushed values
-                    (mctx (ctx-pop-nb (make-ctx (ctx-stack lctx)
-                                                env
-                                                (ctx-nb-args lctx))
-                                      (+ (length variables) (length bodies)))))
+                    (mctx (ctx-pop (make-ctx (ctx-stack lctx)
+                                             env
+                                             (ctx-nb-args lctx))
+                                   (+ (length variables) (length bodies)))))
 
                (jump-to-version cgc lazy-test mctx)))))
          ;; LAZY-STEP
@@ -1785,7 +1785,7 @@
                    (x86-codegen-binop cgc op)
                    (jump-to-version cgc
                                     succ
-                                    (ctx-push (ctx-pop-nb ctx 2) CTX_NUM))))))
+                                    (ctx-push (ctx-pop ctx 2) CTX_NUM))))))
          ;; Check operands type
          (check-types (list CTX_NUM CTX_NUM)
                       (list (car opnds) (cadr opnds))
@@ -1812,7 +1812,7 @@
          (lambda (cgc ctx)
             (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (length ast) 1))))
             (x86-push cgc (x86-imm-int (obj-encoding res)))
-            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx (- (length ast) 1))
+            (jump-to-version cgc succ (ctx-push (ctx-pop ctx (- (length ast) 1))
                                                 CTX_BOOL)))))
 
    ;; Gen false stub from jump-label & ctx and return stub label
@@ -1944,7 +1944,7 @@
                                (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
                   (else (error "NYI" op)))
             (x86-jo cgc (list-ref labels-overflow 0)) ;; NYI overflow
-            (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_NUM))))))
+            (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_NUM))))))
 
   ;; Get lazy code object for operation with float and float, float and int, and int and float
   ;; leftint?  to #t if left operand is an integer
@@ -1979,7 +1979,7 @@
       ;;
       (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
       (x86-push cgc (x86-rax))
-      (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_FLO)))))
+      (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_FLO)))))
 
   (cond ((= (length ast) 1)
            (cond ((eq? op '+) (gen-ast 0 succ))
@@ -2024,7 +2024,7 @@
   (make-lazy-code
     (lambda (cgc ctx)
       (x86-codegen-pair cgc)
-      (jump-to-version cgc succ (ctx-push (ctx-pop-nb ctx 2) CTX_PAI)))))
+      (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_PAI)))))
 
 ;;-----------------------------------------------------------------------------
 
