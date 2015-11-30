@@ -1779,34 +1779,10 @@
       ;; != 2 operands, error
       (get-lazy-error ERR_WRONG_NUM_ARGS)
       ;; == 2 operands
-      (let* (;; Overflow stub
-             (overflow-labels (add-callback #f 0 (lambda (ret-addr selector)
-                                                (error ERR_ARR_OVERFLOW))))
-
-             (lazy-op
+      (let* ((lazy-op
                (make-lazy-code
                  (lambda (cgc ctx)
-                   (x86-pop cgc (x86-rbx)) ;; Pop right
-                   (x86-pop cgc (x86-rax)) ;; Pop left
-                   (x86-sar cgc (x86-rax) (x86-imm-int 2))
-                   (x86-sar cgc (x86-rbx) (x86-imm-int 2))
-                   (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
-                   (x86-je  cgc (get-label-error ERR_DIVIDE_ZERO)) ;; Check '/0'
-                   (x86-cqo cgc)
-                   (x86-idiv cgc (x86-rbx))
-                   (cond ((eq? op 'quotient)
-                           (x86-shl cgc (x86-rax) (x86-imm-int 2))
-                           (x86-push cgc (x86-rax)))
-                         ((eq? op 'remainder)
-                           (x86-shl cgc (x86-rdx) (x86-imm-int 2))
-                           (x86-push cgc (x86-rdx)))
-                         ((eq? op 'modulo)
-                           (x86-mov cgc (x86-rax) (x86-rdx)) ;; (a%b) in rax, b in rbx
-                           (x86-add cgc (x86-rax) (x86-rbx)) ;; (a%b + b) in rax
-                           (x86-cqo cgc)
-                           (x86-idiv cgc (x86-rbx))
-                           (x86-shl cgc (x86-rdx) (x86-imm-int 2))
-                           (x86-push cgc (x86-rdx))))
+                   (x86-codegen-binop cgc op)
                    (jump-to-version cgc
                                     succ
                                     (ctx-push (ctx-pop-nb ctx 2) CTX_NUM))))))

@@ -18,6 +18,8 @@
 ;;-----------------------------------------------------------------------------
 ;; Special forms
 ;;-----------------------------------------------------------------------------
+
+;;-----------------------------------------------------------------------------
 ;; Begin
 (define (x86-codegen-begin-out cgc nb-expr)
   (x86-pop  cgc (x86-rax)) ;; Pop result of last expr
@@ -126,6 +128,34 @@
     (x86-mov cgc (x86-rax) alloc-ptr)
     (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
     (x86-push cgc (x86-rax))))
+
+;;-----------------------------------------------------------------------------
+;; Operators
+;;-----------------------------------------------------------------------------
+
+;; Binary operator
+(define (x86-codegen-binop cgc op)
+  (x86-pop cgc (x86-rbx)) ;; Pop right
+  (x86-pop cgc (x86-rax)) ;; Pop left
+  (x86-sar cgc (x86-rax) (x86-imm-int 2))
+  (x86-sar cgc (x86-rbx) (x86-imm-int 2))
+  (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
+  (x86-je  cgc (get-label-error ERR_DIVIDE_ZERO)) ;; Check '/0'
+  (x86-cqo cgc)
+  (x86-idiv cgc (x86-rbx))
+  (cond ((eq? op 'quotient)
+          (x86-shl cgc (x86-rax) (x86-imm-int 2))
+          (x86-push cgc (x86-rax)))
+        ((eq? op 'remainder)
+          (x86-shl cgc (x86-rdx) (x86-imm-int 2))
+          (x86-push cgc (x86-rdx)))
+        ((eq? op 'modulo)
+          (x86-mov cgc (x86-rax) (x86-rdx)) ;; (a%b) in rax, b in rbx
+          (x86-add cgc (x86-rax) (x86-rbx)) ;; (a%b + b) in rax
+          (x86-cqo cgc)
+          (x86-idiv cgc (x86-rbx))
+          (x86-shl cgc (x86-rdx) (x86-imm-int 2))
+          (x86-push cgc (x86-rdx)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Primitives
