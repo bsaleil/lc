@@ -479,8 +479,9 @@
                                (x86-mov cgc (x86-rbx) (x86-mem cridx (x86-rdx)))
                                (x86-mov cgc (x86-r11) (x86-imm-int cridx)) ;; TODO: use rcx (selector)
                                (x86-jmp cgc (x86-rbx)))
-                             ;; Jump to continuation
-                             (x86-ret cgc))))))
+                            (begin ;; Do not use ret
+                                (x86-pop cgc (x86-rdx))
+                                (x86-jmp cgc (x86-rdx))))))))
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
