@@ -6,4 +6,5 @@
     (+ (fib (- n 1))
        (fib (- n 2)))))
 
-(apply fib (list 35))
+;(apply fib (list 35))
+(fib 35)

@@ -90,6 +90,7 @@
 (define label-do-callback-fn   #f)
 (define label-do-callback-cont #f)
 (define label-repl #f)
+(define label-gc-trampoline    #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -655,7 +656,7 @@
 ;; Set to 2gb (2000000000) to exec all benchmarks without GC (except lattice.scm)
 ;; Set to 7gb (7000000000) to exec all benchmarks without GC
 ;(define space-len 4000000000)
-(define space-len 7000000000)
+(define space-len 1000000000)
 (define alloc-ptr (x86-r12))
 
 (assert (= (modulo space-len 8) 0) ERR_HEAP_NOT_8)
@@ -843,6 +844,12 @@
     (set! label-do-callback-cont-handler
           (gen-handler cgc 'do_callback_cont_handler label-do-callback-cont))
 
+    (set! label-gc-trampoline (asm-make-label cgc 'gc_trampoline))
+
+    (x86-label cgc label-gc-trampoline)
+    (gen-gc-call cgc)
+    (x86-ret cgc)
+
     (x86-label cgc label-rtlib-skip)
 
     (push-regs cgc all-regs)
@@ -873,7 +880,9 @@
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
     (x86-mov cgc alloc-ptr (x86-imm-int from-space))       ;; Heap addr in alloc-ptr
     (x86-mov cgc (x86-r10) (x86-imm-int (+ block-addr (* 8 global-offset)))) ;; Globals addr in r10
-    ))
+
+    (let ((label (asm-make-label #f (new-sym 'prog_begin))))
+      (x86-label cgc label))))
 
 (define (init)
 

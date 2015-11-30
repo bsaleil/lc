@@ -1,4 +1,6 @@
 
+(cons 1 2)
+
 ;; 0 - TODO UTILISATIONS
 ;;   * (length l)   -> si on sait que l est une liste, on peut simplement PUSH 0
 ;;   * (equal? a b) -> si on a une info de type sur a et b, on peut spécialiser par eq? voir meme push direct si a et b sont null par ex

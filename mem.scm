@@ -56,7 +56,7 @@
         (x86-jge cgc label-alloc-ok)
 
             (x86-mov cgc (x86-rax) (x86-imm-int (* length 8)))
-            (gen-gc-call cgc) ;; This call updates alloc-ptr
+            (x86-call cgc label-gc-trampoline) ;; This call updates alloc-ptr
             (x86-jmp cgc label-alloc-end)
 
         (x86-label cgc label-alloc-ok)
@@ -83,7 +83,7 @@
 
             (x86-sub cgc (x86-rax) alloc-ptr)
             (x86-neg cgc (x86-rax))
-            (gen-gc-call cgc) ;; This call updates alloc-ptr
+            (x86-call cgc label-gc-trampoline) ;; This call updates alloc-ptr
             (x86-jmp cgc label-alloc-end)
 
         (x86-label cgc label-alloc-ok)
@@ -415,7 +415,7 @@
 
   (define copy-ptr    to-space)
   (define stack-begin (- (get-i64 block-addr) 8))
-  (define stack-end   (+ sp (* 8 (length c-caller-save-regs))))
+  (define stack-end   (+ sp (* 8 (length c-caller-save-regs)) 8)) ;; +8 for return address of gc trampoline
 
   (log-gc "GC BEGIN")
 
@@ -437,7 +437,7 @@
   (log-gc "--------------")
   (set! copy-ptr (scan-references copy-ptr to-space))
 
-  (if (< (- copy-ptr alloc-size) (- from-space space-len))
+  (if (< (- copy-ptr alloc-size) (- to-space space-len))
       (out-of-memory))
 
   ;; Update from/to-spaces positions

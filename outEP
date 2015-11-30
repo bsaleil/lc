@@ -1,0 +1,355 @@
+------------------------------------------------------------------------
+596008				bits 64
+596008 e987000000		jmp	rtlib_skip
+59600d			do_callback_handler:
+59600d 57			push	rdi
+59600e 56			push	rsi
+59600f 52			push	rdx
+596010 51			push	rcx
+596011 4150			push	r8
+596013 4151			push	r9
+596015 4152			push	r10
+596017 4153			push	r11
+596019 50			push	rax
+59601a 4889e7			mov	rdi,rsp
+59601d 4883e4f0			and	rsp,byte -16
+596021 4883ec08			sub	rsp,byte 8
+596025 57			push	rdi
+596026 e8fb786d01		call	do_callback
+59602b 5c			pop	rsp
+59602c 58			pop	rax
+59602d 415b			pop	r11
+59602f 415a			pop	r10
+596031 4159			pop	r9
+596033 4158			pop	r8
+596035 59			pop	rcx
+596036 5a			pop	rdx
+596037 5e			pop	rsi
+596038 5f			pop	rdi
+596039 c3			ret
+59603a			do_callback_fn_handler:
+59603a 57			push	rdi
+59603b 56			push	rsi
+59603c 52			push	rdx
+59603d 51			push	rcx
+59603e 4150			push	r8
+596040 4151			push	r9
+596042 4152			push	r10
+596044 4153			push	r11
+596046 50			push	rax
+596047 4889e7			mov	rdi,rsp
+59604a 4883e4f0			and	rsp,byte -16
+59604e 4883ec08			sub	rsp,byte 8
+596052 57			push	rdi
+596053 e8e6796d01		call	do_callback_fn
+596058 5c			pop	rsp
+596059 58			pop	rax
+59605a 415b			pop	r11
+59605c 415a			pop	r10
+59605e 4159			pop	r9
+596060 4158			pop	r8
+596062 59			pop	rcx
+596063 5a			pop	rdx
+596064 5e			pop	rsi
+596065 5f			pop	rdi
+596066 c3			ret
+596067			do_callback_cont_handler:
+596067 57			push	rdi
+596068 56			push	rsi
+596069 52			push	rdx
+59606a 51			push	rcx
+59606b 4150			push	r8
+59606d 4151			push	r9
+59606f 4152			push	r10
+596071 4153			push	r11
+596073 50			push	rax
+596074 4889e7			mov	rdi,rsp
+596077 4883e4f0			and	rsp,byte -16
+59607b 4883ec08			sub	rsp,byte 8
+59607f 57			push	rdi
+596080 e8d17a6d01		call	do_callback_cont
+596085 5c			pop	rsp
+596086 58			pop	rax
+596087 415b			pop	r11
+596089 415a			pop	r10
+59608b 4159			pop	r9
+59608d 4158			pop	r8
+59608f 59			pop	rcx
+596090 5a			pop	rdx
+596091 5e			pop	rsi
+596092 5f			pop	rdi
+596093 c3			ret
+596094			rtlib_skip:
+596094 54			push	rsp
+596095 50			push	rax
+596096 53			push	rbx
+596097 51			push	rcx
+596098 52			push	rdx
+596099 55			push	rbp
+59609a 56			push	rsi
+59609b 57			push	rdi
+59609c 4150			push	r8
+59609e 4151			push	r9
+5960a0 4152			push	r10
+5960a2 4153			push	r11
+5960a4 4154			push	r12
+5960a6 4155			push	r13
+5960a8 4156			push	r14
+5960aa 4157			push	r15
+5960ac 50			push	rax
+5960ad 53			push	rbx
+5960ae 48b838303cbb567f
+5960b6 0000			mov	rax,140010485198904
+5960b8 48c7c300000000		mov	rbx,dword 0
+5960bf 488918			mov	[rax],rbx
+5960c2 5b			pop	rbx
+5960c3 58			pop	rax
+5960c4 50			push	rax
+5960c5 53			push	rbx
+5960c6 48b840303cbb567f
+5960ce 0000			mov	rax,140010485198912
+5960d0 48c7c300000000		mov	rbx,dword 0
+5960d7 488918			mov	[rax],rbx
+5960da 5b			pop	rbx
+5960db 58			pop	rax
+5960dc 50			push	rax
+5960dd 53			push	rbx
+5960de 48b848303cbb567f
+5960e6 0000			mov	rax,140010485198920
+5960e8 48c7c300000000		mov	rbx,dword 0
+5960ef 488918			mov	[rax],rbx
+5960f2 5b			pop	rbx
+5960f3 58			pop	rax
+5960f4 50			push	rax
+5960f5 53			push	rbx
+5960f6 48b850303cbb567f
+5960fe 0000			mov	rax,140010485198928
+596100 48c7c300000000		mov	rbx,dword 0
+596107 488918			mov	[rax],rbx
+59610a 5b			pop	rbx
+59610b 58			pop	rax
+59610c 50			push	rax
+59610d 53			push	rbx
+59610e 48b858303cbb567f
+596116 0000			mov	rax,140010485198936
+596118 48c7c300000000		mov	rbx,dword 0
+59611f 488918			mov	[rax],rbx
+596122 5b			pop	rbx
+596123 58			pop	rax
+596124 50			push	rax
+596125 53			push	rbx
+596126 48b860303cbb567f
+59612e 0000			mov	rax,140010485198944
+596130 48c7c300000000		mov	rbx,dword 0
+596137 488918			mov	[rax],rbx
+59613a 5b			pop	rbx
+59613b 58			pop	rax
+59613c 48b808303cbb567f
+596144 0000			mov	rax,140010485198856
+596146 488920			mov	[rax],rsp
+596149 48b90840e275537f
+596151 0000			mov	rcx,139996436774920
+596153 48894828			mov	[rax+40],rcx
+596157 48c7c100000000		mov	rcx,dword 0
+59615e 49bc08c61d17557f
+596166 0000			mov	r12,140003436774920
+596168 49ba80303cbb567f
+596170 0000			mov	r10,140010485198976
+596172			prog_begin1:
+------------------------------------------------------------------------
+107af8				bits 64
+107af8			stub_7f56b9107af8_0:
+107af8 e810e548ff		call	do_callback_handler
+107afd 61a01f0200000000
+(obj= #(#<procedure #2>))
+------------------------------------------------------------------------
+107ae8				bits 64
+107ae8			stub_7f56b9107ae8_0:
+107ae8 e820e548ff		call	do_callback_handler
+107aed b1f2220200000000
+(obj= #(#<procedure #2>))
+GEN VERSION >>> #<ctx #3 stack: () env: () nb-args: -1>
+>>> patching jump at 7f56b8596172 -> 7f56b8596172
+------------------------------------------------------------------------
+107ad8				bits 64
+107ad8			stub_7f56b9107ad8_1:
+107ad8 fec1			inc	cl
+107ada			stub_7f56b9107ad8_0:
+107ada e85be548ff		call	do_callback_fn_handler
+107adf 81c0200200000000
+(obj= #(#<procedure #4>))
+------------------------------------------------------------------------
+107ac8				bits 64
+107ac8			stub_7f56b9107ac8_0:
+107ac8 e840e548ff		call	do_callback_handler
+107acd 61c3200200000000
+(obj= #(#<procedure #5>))
+------------------------------------------------------------------------
+596172				bits 64
+596172 9090		version1:
+596174 4883c400			add	rsp,byte 0
+596178			version2:
+596178 48c7c0eeffffff		mov	rax,dword -18
+59617f 498902			mov	[r10],rax
+596182			version3:
+596182 498d4424f0		lea	rax,[r12-16]
+596187 49bf08303cbb567f
+59618f 0000			mov	r15,140010485198856
+596191 493b4728			cmp	rax,[r15+40]
+596195 7d38			jge	short alloc-ok1
+596197 48c7c010000000		mov	rax,dword 16
+59619e 57			push	rdi
+59619f 56			push	rsi
+5961a0 52			push	rdx
+5961a1 51			push	rcx
+5961a2 4150			push	r8
+5961a4 4151			push	r9
+5961a6 4152			push	r10
+5961a8 4153			push	r11
+5961aa 50			push	rax
+5961ab 4889e7			mov	rdi,rsp
+5961ae 4883e4f0			and	rsp,byte -16
+5961b2 4883ec08			sub	rsp,byte 8
+5961b6 57			push	rdi
+5961b7 e874726d01		call	gc
+5961bc 5c			pop	rsp
+5961bd 4989c4			mov	r12,rax
+5961c0 58			pop	rax
+5961c1 415b			pop	r11
+5961c3 415a			pop	r10
+5961c5 4159			pop	r9
+5961c7 4158			pop	r8
+5961c9 59			pop	rcx
+5961ca 5a			pop	rdx
+5961cb 5e			pop	rsi
+5961cc 5f			pop	rdi
+5961cd eb04			jmp	short alloc-end1
+5961cf			alloc-ok1:
+5961cf 4983ec10			sub	r12,byte 16
+5961d3			alloc-end1:
+5961d3 48c7c076020000		mov	rax,dword 630
+5961da 49890424			mov	[r12],rax
+5961de 48c7c040a81f02		mov	rax,dword 35629120
+5961e5 4989442408		mov	[r12+8],rax
+5961ea 498d442401		lea	rax,[r12+1]
+5961ef 50			push	rax
+5961f0			version4:
+5961f0 58			pop	rax
+5961f1 498902			mov	[r10],rax
+5961f4 6aee			push	qword byte -18
+5961f6			version5:
+5961f6 48c7c0409c0000		mov	rax,dword 40000
+5961fd 50			push	rax
+5961fe			version6:
+5961fe 6afe			push	qword byte -2
+596200			version7:
+596200 48c7c028000000		mov	rax,dword 40
+596207 50			push	rax
+596208			version8:
+596208 41ff32			push	qword [r10]
+59620b			version9:
+59620b			version10:
+59620b			load-ret-addr1:
+59620b 48b8c87a10b9567f
+596213 0000			mov	rax,140010448779976
+596215 4889442410		mov	[rsp+16],rax
+59621a			version11:
+59621a 488b0424			mov	rax,[rsp]
+59621e 49c7c3d1c02002		mov	r11,dword 35700945
+596225 488b4007			mov	rax,[rax+7]
+596229 488b4010			mov	rax,[rax+16]
+59622d ffe0			jmp	rax
+GEN VERSION FN >>> #<ctx #6
+                         stack: (procedure number retAddr)
+                         env: ((n . #<identifier #7
+                                       type: local
+                                       offset: 0
+                                       pos: (0)
+                                       flags: ()
+                                       stype: ()>))
+                         nb-args: 1>
+#<ctx #6
+      stack: (procedure number retAddr)
+      env: ((n . #<identifier #7
+                    type: local
+                    offset: 0
+                    pos: (0)
+                    flags: ()
+                    stype: ()>))
+      nb-args: 1>
+------------------------------------------------------------------------
+59622f				bits 64
+59622f 90		fn_entry_1:
+596230			version12:
+596230 ff742408			push	qword [rsp+8]
+596234			version13:
+596234 48c7c090010000		mov	rax,dword 400
+59623b 50			push	rax
+59623c			version14:
+59623c			version15:
+59623c			version16:
+59623c 58			pop	rax
+59623d 48010424			add	[rsp],rax
+596241 0f80a118b700		jo	stub_7f56b9107ae8_0
+596247			version17:
+596247 58			pop	rax
+596248 4883c410			add	rsp,byte 16
+59624c c3			ret
+>>> patching closure 7f55171dc5f9 at 7f55171dc609 : slot contains now label fn_entry_1 (7f56b8596230)
+------------------------------------------------------------------------
+107ab8				bits 64
+107ab8			stub_7f56b9107ab8_1:
+107ab8 fec1			inc	cl
+107aba			stub_7f56b9107ab8_0:
+107aba e84ee548ff		call	do_callback_handler
+107abf c1c1200200000000
+(obj= #(#<procedure #8>))
+>>> Gen dynamic type test at index 0
+------------------------------------------------------------------------
+59624d				bits 64
+59624d 909090		continuation_1:
+596250 50			push	rax
+596251			version18:
+596251			version19:
+596251 48c7c003000000		mov	rax,dword 3
+596258 48230424			and	rax,[rsp]
+59625c			patchable_jump1:
+59625c 0f845818b700		je	stub_7f56b9107ab8_0
+596262 e95118b700		jmp	stub_7f56b9107ab8_1
+>>> patching mov at 7f56b859620b : now load continuation_1 (7f56b8596250)
+------------------------------------------------------------------------
+59620b				bits 64
+59620b 48b8506259b8567f
+596213 0000			mov	rax,140010436780624
+>>> selector= 0
+>>> prev-action= #f
+>>> swapping-branches
+>>> patching jump at 7f56b859625c -> 7f56b9107ab8
+GEN VERSION >>> #<ctx #9 stack: (number number void) env: () nb-args: -1>
+>>> fall-through-optimization
+------------------------------------------------------------------------
+596262				bits 64
+596262 9090		version20:
+596264 58			pop	rax
+596265 48010424			add	[rsp],rax
+596269 0f808918b700		jo	stub_7f56b9107af8_0
+59626f			version21:
+59626f 58			pop	rax
+596270 4883c408			add	rsp,byte 8
+596274 415f			pop	r15
+596276 415e			pop	r14
+596278 415d			pop	r13
+59627a 415c			pop	r12
+59627c 415b			pop	r11
+59627e 415a			pop	r10
+596280 4159			pop	r9
+596282 4158			pop	r8
+596284 5f			pop	rdi
+596285 5e			pop	rsi
+596286 5d			pop	rbp
+596287 5a			pop	rdx
+596288 59			pop	rcx
+596289 5b			pop	rbx
+59628a 58			pop	rax
+59628b 5c			pop	rsp
+59628c c3			ret
