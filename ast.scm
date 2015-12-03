@@ -38,6 +38,7 @@
   (flonum?      . ,CTX_FLO)
   (procedure?   . ,CTX_CLO)
   (pair?        . ,CTX_PAI)
+  (null?        . ,CTX_NULL)
 ))
 
 (define (type-predicate? sym)
@@ -58,7 +59,6 @@
    (cdr                 1  1  ,(prim-types 1 CTX_PAI))
    (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL))
    (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR))
-   (null?               1  1  ,(prim-types 1 CTX_ALL))
    (not                 1  1  ,(prim-types 1 CTX_ALL))
    (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL))
    (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL))
@@ -1023,39 +1023,6 @@
                             (lambda (cgc ctx)
                               (x86-codegen-not cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))
-                         ;; NULL?
-                         ((eq? special 'null?)
-                           (let ((lazy-null?
-                                   (make-lazy-code
-                                     (lambda (cgc ctx)
-
-                                       ;; If 'opt-stats' option, then inc tests slot
-                                       (if opt-stats
-                                         (gen-inc-slot cgc 'tests))
-
-                                       (let ((label-done (asm-make-label cgc (new-sym 'done))))
-                                         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                                         (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                         (x86-je  cgc label-done)
-                                         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                         (x86-label cgc label-done)
-                                         (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))))
-                             (make-lazy-code
-                               (lambda (cgc ctx)
-                                 (let ((type (car (ctx-stack ctx))))
-                                   (cond ((eq? type CTX_NULL)
-                                            (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                                            (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))
-                                         ((eq? type CTX_UNK)
-                                            (jump-to-version cgc lazy-null? ctx))
-                                         (else
-                                            (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                                            (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-                                            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))))))
-
                          ;; EQ?
                          ((eq? special 'eq?)
                           (make-lazy-code

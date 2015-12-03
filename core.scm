@@ -1190,9 +1190,15 @@
       (let* ((idpair     (car env))
              (identifier (cdr idpair)))
         (if (member pos (identifier-pos identifier))
-          (change-for-identifiers (cdr env)
-                                  pos
-                                  (ctx-change-stack-types ctx (identifier-pos identifier) type))
+          ;; TODO: This function returns as soon as it encounters an identifier containing 'pos'
+          ;;       Add the possibility to keep same positions of two identifier if they are non mutable.
+          ;;       ex: (let ((a X)) (let ((b a)) BODY)) if in BODY, the compiler discovers the type of a, change the type of b !
+          ;;       Then, this function must continue to change all identifiers. Only if an identifier associated to the current identifier as not yet been modified.
+          ;;       (if there are to variable 'v in the env, discovering the type of 'v only changes the stack positions of most visible (recent) 'v)
+          (ctx-change-stack-types ctx (identifier-pos identifier) type)
+          ;; (change-for-identifiers (cdr env)
+          ;;                         pos
+          ;;                         (ctx-change-stack-types ctx (identifier-pos identifier) type))
           (change-for-identifiers (cdr env) pos ctx)))))
 
   (let* ((pos (ctx-idx-to-pos ctx idx))
@@ -1532,7 +1538,6 @@
   (make-lazy-code
      (lambda (cgc ctx)
        ;; TODO: plus nettoyer tout ca
-
        (let* ((ctx-success (ctx-change-type ctx stack-idx type))
               (ctx-success-known ctx);; Is know type is tested type, do not change ctx
               (ctx-fail ctx)
@@ -1606,6 +1611,10 @@
                  (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
                  (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
                  ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_NUMBER)))
+             ;; Null type test
+             ((eq? type CTX_NULL)
+                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+                 (x86-cmp cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
              ;; Char type test
              ((eq? type CTX_CHAR)
                  (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))

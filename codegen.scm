@@ -4,6 +4,10 @@
 (define (x86-codegen-void cgc)
   (x86-push cgc (x86-imm-int ENCODING_VOID)))
 
+(define (x86-codegen-set-bool cgc b)
+  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding b)))
+  (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+
 ;;-----------------------------------------------------------------------------
 ;; Define
 (define (x86-codegen-define-id cgc)
@@ -54,7 +58,7 @@
                (<  lit (expt 2 28))))
       (begin (x86-mov  cgc (x86-rax) (x86-imm-int (obj-encoding lit)))
              (x86-push cgc (x86-rax)))
-             (x86-push cgc (x86-imm-int (obj-encoding lit)))))
+      (x86-push cgc (x86-imm-int (obj-encoding lit)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Flonum
