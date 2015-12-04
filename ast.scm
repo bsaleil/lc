@@ -452,7 +452,7 @@
          ;; Params list
          (params
            (if rest-param
-              (nb-formalarams (cadr ast))
+              (formal-params (cadr ast))
               (cadr ast)))
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
@@ -2274,12 +2274,12 @@
   (- (length (ctx-stack ctx)) 2 (ctx-nb-args ctx))) ;; 2= 1length + 1retAddr
 
 ;; Get formal params from list of params
-;; Ex: (nb-formalarams '(a b c)  ) -> '(a b c)
-;;     (nb-formalarams '(a b . c)) -> '(a b)
-(define (nb-formalarams l)
+;; Ex: (formal-params '(a b c)  ) -> '(a b c)
+;;     (promal-params '(a b . c)) -> '(a b)
+(define (formal-params l)
   (if (not (pair? l))
      '()
-     (cons (car l) (nb-formalarams (cdr l)))))
+     (cons (car l) (formal-params (cdr l)))))
 
 ;; Gen mutable variable
 ;; This code is a function prelude. It transforms variable from stack (args) tagged as "mutable"
