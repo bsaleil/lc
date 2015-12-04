@@ -452,7 +452,7 @@
          ;; Params list
          (params
            (if rest-param
-              (formal-params (cadr ast))
+              (nb-formalarams (cadr ast))
               (cadr ast)))
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
@@ -568,7 +568,7 @@
     (make-lazy-code-entry
        (lambda (cgc ctx)
 
-          (let ((formal-p (length params))
+          (let ((nb-formal (length params))
                 (err-labels (add-callback #f 0 (lambda (ret-addr selector)
                                                   (error ERR_WRONG_NUM_ARGS)))))
 
@@ -576,7 +576,7 @@
               ;; If there is no rest param
               ;; Then we only have to check the number of argumentssss
               (begin
-                (x86-cmp cgc (x86-rdi) (x86-imm-int (* formal-p 4)))
+                (x86-cmp cgc (x86-rdi) (x86-imm-int (* nb-formal 4)))
                 (x86-jne cgc (list-ref err-labels 0)))
               ;; If there is a rest param
               ;; Then we have to handle 3 cases: actual>formal, actual=formal, actual<formal
@@ -588,12 +588,12 @@
 
                  ;; If there is a rest param then we need to change the context to include it
                  ;; CTX_UNK because it could be NULL
-                 (set! ctx (make-ctx (cons CTX_CLO (cons CTX_UNK (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1))))
+                 (set! ctx (make-ctx (cons CTX_CLO (cons CTX_UNK (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) nb-formal 1))))
                                      (ctx-env ctx)
                                      (+ (ctx-nb-args ctx) 1)))
 
                  ;; Compare actual and formal
-                 (x86-cmp cgc (x86-rdi) (x86-imm-int (* formal-p 4)))
+                 (x86-cmp cgc (x86-rdi) (x86-imm-int (* nb-formal 4)))
                  (x86-jl cgc (list-ref err-labels 0)) ;; actual<formal, ERROR
                  (x86-je cgc label-eq)                ;; actual=formal, jump to label-eq
                                                       ;; actual>formal, continue
@@ -607,7 +607,7 @@
 
                  ;; Loop-cond (if there is at least 1 arg to copy)
                  (x86-label cgc label-loop)
-                 (x86-cmp cgc (x86-rdi) (x86-imm-int (* formal-p 4)))
+                 (x86-cmp cgc (x86-rdi) (x86-imm-int (* nb-formal 4)))
                  (x86-je cgc label-loop-end)
 
                     ;; Loop-body
@@ -626,10 +626,10 @@
 
                  ;; Loop-end
                  (x86-label cgc label-loop-end)
-                 (x86-mov cgc (x86-mem (* -8 formal-p) (x86-rsp) (x86-rdx) 1) (x86-rax)) ;; Mov rest list to stack
+                 (x86-mov cgc (x86-mem (* -8 nb-formal) (x86-rsp) (x86-rdx) 1) (x86-rax)) ;; Mov rest list to stack
                  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Update closure position
-                 (x86-mov cgc (x86-mem (* -8 (+ formal-p 1)) (x86-rsp) (x86-rdx) 1) (x86-rax))
-                 (x86-lea cgc (x86-rsp) (x86-mem (* -8 (+ formal-p 1)) (x86-rsp) (x86-rdx) 1)) ;; Update rsp
+                 (x86-mov cgc (x86-mem (* -8 (+ nb-formal 1)) (x86-rsp) (x86-rdx) 1) (x86-rax))
+                 (x86-lea cgc (x86-rsp) (x86-mem (* -8 (+ nb-formal 1)) (x86-rsp) (x86-rdx) 1)) ;; Update rsp
                  (x86-jmp cgc label-end) ;; goto end
 
                  ;; CASE 2 - Actual == Formal
@@ -651,18 +651,18 @@
   (make-lazy-code-entry
     (lambda (cgc ctx)
 
-       (let* ((actual-p (- (length (ctx-stack ctx)) 2))
-              (formal-p (ctx-nb-args ctx)))
+       (let* ((nb-actual (- (length (ctx-stack ctx)) 2))
+              (nb-formal (ctx-nb-args ctx)))
 
          ;; Wrong number of arguments, ERROR
-         (if (or (and (not rest-param) (not (= actual-p formal-p)))
-                 (and rest-param (< actual-p formal-p)))
+         (if (or (and (not rest-param) (not (= nb-actual nb-formal)))
+                 (and rest-param (< nb-actual nb-formal)))
            (gen-error cgc ERR_WRONG_NUM_ARGS)
          ;; Right number of arguments
           (let ((nstack  (ctx-stack ctx))    ;; New stack  (change if rest-param)
                 (nnbargs (ctx-nb-args ctx))) ;; New nbargs (change if rest-param)
             (if rest-param
-                (cond ((= actual-p formal-p)
+                (cond ((= nb-actual nb-formal)
                          ;; Shift closure
                          (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
                          (x86-push cgc (x86-rax))
@@ -672,11 +672,11 @@
                          ;; Update ctx information
                          (set! nstack (cons CTX_CLO (cons CTX_NULL (cdr (ctx-stack ctx)))))
                          (set! nnbargs (+ (ctx-nb-args ctx) 1)))
-                      ((> actual-p formal-p)
+                      ((> nb-actual nb-formal)
                          ;; Build rest argument
-                         (gen-rest-lst cgc ctx (- actual-p formal-p))
+                         (gen-rest-lst cgc ctx (- nb-actual nb-formal))
                          ;; Update ctx information
-                         (set! nstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) formal-p 1)))))
+                         (set! nstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) nb-formal 1)))))
                          (set! nnbargs (+ (ctx-nb-args ctx) 1)))))
             (let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
                    (mctx (gen-mutable cgc nctx mvars)))
@@ -2274,12 +2274,12 @@
   (- (length (ctx-stack ctx)) 2 (ctx-nb-args ctx))) ;; 2= 1length + 1retAddr
 
 ;; Get formal params from list of params
-;; Ex: (formal-params '(a b c)  ) -> '(a b c)
-;;     (formal-params '(a b . c)) -> '(a b)
-(define (formal-params l)
+;; Ex: (nb-formalarams '(a b c)  ) -> '(a b c)
+;;     (nb-formalarams '(a b . c)) -> '(a b)
+(define (nb-formalarams l)
   (if (not (pair? l))
      '()
-     (cons (car l) (formal-params (cdr l)))))
+     (cons (car l) (nb-formalarams (cdr l)))))
 
 ;; Gen mutable variable
 ;; This code is a function prelude. It transforms variable from stack (args) tagged as "mutable"
