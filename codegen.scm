@@ -134,6 +134,70 @@
     (x86-push cgc (x86-rax))))
 
 ;;-----------------------------------------------------------------------------
+;; Functions
+;;-----------------------------------------------------------------------------
+
+;; Build closure using a single entry point
+(define (x86-codegen-closure-ep cgc ctx ep-loc fvars)
+  (let* ((closure-size  (+ 2 (length fvars))) ;; header, entry point
+         (header-word (mem-header closure-size STAG_PROCEDURE)))
+    ;; 0 - Alloc closure
+    (gen-allocation cgc #f STAG_PROCEDURE closure-size)
+    ;; 1 - Write closure header
+    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+    ;; 2 - Write entry point
+    (x86-mov cgc (x86-rax) (x86-mem (+ 8 (- (obj-encoding ep-loc) 1))))
+    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+    ;; 3 - Write free vars
+    (gen-free-vars cgc fvars ctx 16)
+    ;; 4 - Tag and push closure
+    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+    (x86-push cgc (x86-rax))))
+
+;; Build closure using a cctable with multiple entry points
+(define (x86-codegen-closure-cc cgc ctx cctable-loc fvars)
+  (let* ((closure-size  (+ 2 (length fvars))) ;; header, cctable
+         (header-word (mem-header closure-size STAG_PROCEDURE)))
+    ;; 0 - Alloc closure
+    (gen-allocation cgc #f STAG_PROCEDURE closure-size)
+    ;; 1 - Write closure header
+    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+    ;; 2 - Write cctable ptr
+    (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
+    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+    ;; 3 - Write free vars
+    (gen-free-vars cgc fvars ctx 16)
+    ;; 4 - Tag and push closure
+    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+    (x86-push cgc (x86-rax))))
+
+;; Generate function return using a return address
+(define (x86-codegen-return-rp cgc retaddr-offset)
+  ;; Pop return value
+  (x86-pop  cgc (x86-rax))
+  ;; Update SP to ret addr
+  (x86-add  cgc (x86-rsp) (x86-imm-int retaddr-offset))
+  ;; Jump to continuation (ret)
+  ;; Do not use ret instruction. This ret is not paired with a call. Using a ret would cause branch misprediction
+  ;; TODO: use call/ret if no entry points and no return points used
+  (x86-pop cgc (x86-rdx))
+  (x86-jmp cgc (x86-rdx)))
+
+;; Generate function return using a crtable
+(define (x86-codegen-return-cr cgc retaddr-offset crtable-offset)
+  ;; Pop return value
+  (x86-pop  cgc (x86-rax))
+  ;; Update SP to ret addr
+  (x86-add  cgc (x86-rsp) (x86-imm-int retaddr-offset))
+  ;; Get return point from cr table and jump to it
+  (x86-pop cgc (x86-rdx))
+  (x86-mov cgc (x86-rbx) (x86-mem crtable-offset (x86-rdx)))
+  (x86-mov cgc (x86-r11) (x86-imm-int crtable-offset))
+  (x86-jmp cgc (x86-rbx)))
+
+;;-----------------------------------------------------------------------------
 ;; Operators
 ;;-----------------------------------------------------------------------------
 

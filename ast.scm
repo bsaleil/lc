@@ -462,27 +462,15 @@
                        ;;     | ret-val | closure | arg n |  ...  | arg 1 | ret-addr |
                        ;; Or if rest :
                        ;;     | ret-val | closure |  rest | arg n |  ...  | arg 1 | ret-addr |
-                       (let ((retval-offset
-                                (if rest-param
+                       (let ((retaddr-offset ;; after pop ret-val
+                               (if rest-param
                                    (* 8 (+ 2 (length params)))
                                    (* 8 (+ 1 (length params))))))
-                         ;; Pop return value
-                         (x86-pop  cgc (x86-rax))
-                         ;; Update SP to ret addr
-                         (x86-add  cgc (x86-rsp) (x86-imm-int retval-offset))
-
                          (if opt-return-points
-                             ;; Get return point from cr table and jump to it
                              (let* ((ret-type (car (ctx-stack ctx)))
-                                    (cridx (type-to-cridx ret-type)))
-                               (x86-pop cgc (x86-rdx))
-                               (x86-mov cgc (x86-rbx) (x86-mem cridx (x86-rdx)))
-                               (x86-mov cgc (x86-r11) (x86-imm-int cridx)) ;; TODO: use rcx (selector)
-                               (x86-jmp cgc (x86-rbx)))
-                            ;; Jump to continuation (ret)
-                            (begin ;; Do not use ret
-                                (x86-pop cgc (x86-rdx))
-                                (x86-jmp cgc (x86-rdx))))))))
+                                    (crtable-offset (type-to-cridx ret-type)))
+                               (x86-codegen-return-cr cgc retaddr-offset crtable-offset))
+                             (x86-codegen-return-rp cgc retaddr-offset))))))
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
@@ -538,38 +526,21 @@
           (if opt-stats
             (gen-inc-slot cgc 'closures))
 
-          (let* ((total-size  (+ 2 (length fvars))) ;; Header,CCTable
-                 (header-word (mem-header total-size STAG_PROCEDURE))
-                 (cctable-key (get-cctable-key ast ctx fvars))
-                 (cctable (get-cctable ast cctable-key stub-addr generic-addr))
-                 (cctable-loc (- (obj-encoding cctable) 1)))
+          ;; Generate closure
+          (if opt-entry-points
+              ;; If opt-entry-points generate a closure using cctable
+              (let* ((cctable-key (get-cctable-key ast ctx fvars))
+                     (cctable     (get-cctable ast cctable-key stub-addr generic-addr))
+                     (cctable-loc (- (obj-encoding cctable) 1)))
+                (x86-codegen-closure-cc cgc ctx cctable-loc fvars))
+              ;; Else, generate a closure using a single entry point
+              (let ((ep-loc (get-entry-points-loc ast stub-addr)))
+                (x86-codegen-closure-ep cgc ctx ep-loc fvars)))
 
-            ;; Alloc closure
-            (gen-allocation cgc ctx STAG_PROCEDURE total-size)
-
-            ;; 1 - Write closure header
-            (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-            (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-
-            ;; 2 - Write cctable-ptr or entry point
-            (if opt-entry-points
-                (begin (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
-                       (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
-                (let ((eploc (get-entry-points-loc ast stub-addr))) ;; TODOOO
-                  (x86-mov cgc (x86-rax) (x86-mem (+ 8 (- (obj-encoding eploc) 1))))
-                  (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))))
-
-            ;; 3 - Write free vars
-            (gen-free-vars cgc fvars ctx 16)
-
-            ;; Tag and push closure
-            (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-            (x86-push cgc (x86-rax))
-
-            ;; Jump to next
-            (jump-to-version cgc
-                             succ
-                             (ctx-push ctx (CTX_CLOi cctable-loc)))))))))
+          ;; Trigger the next object
+          (if opt-propagate-functionid
+              (error "NYI - mlc-lambda: Use (CTX_CLOi with cctable or closure id)")
+              (jump-to-version cgc succ (ctx-push ctx CTX_CLO))))))))
 
 ;; This is the key used in hash table to find the cc-table for this closure.
 ;; The key is (ast . free-vars-inf) with ast the s-expression of the lambda
@@ -1970,14 +1941,12 @@
         (lazy-success
           (make-lazy-code
             (lambda (cgc ctx)
-                (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-                (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+                (x86-codegen-set-bool cgc #t)
                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))
         (lazy-fail
           (make-lazy-code
             (lambda (cgc ctx)
-              (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-              (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))
+              (x86-codegen-set-bool cgc #f)
               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL))))))
 
     (gen-ast (cadr ast)

@@ -655,8 +655,7 @@
 (define to-space   #f)
 ;; Set to 2gb (2000000000) to exec all benchmarks without GC (except lattice.scm)
 ;; Set to 7gb (7000000000) to exec all benchmarks without GC
-;(define space-len 4000000000)
-(define space-len 1000000000)
+(define space-len 7000000000)
 (define alloc-ptr (x86-r12))
 
 (assert (= (modulo space-len 8) 0) ERR_HEAP_NOT_8)
