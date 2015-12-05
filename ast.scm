@@ -565,86 +565,22 @@
 
 ;; Create and return a generic lazy prologue
 (define (get-lazy-generic-prologue ast succ rest-param mvars params)
-    (make-lazy-code-entry
-       (lambda (cgc ctx)
-
-          (let ((nb-formal (length params))
-                (err-labels (add-callback #f 0 (lambda (ret-addr selector)
-                                                  (error ERR_WRONG_NUM_ARGS)))))
-
-            (if (not rest-param)
-              ;; If there is no rest param
-              ;; Then we only have to check the number of argumentssss
-              (begin
-                (x86-cmp cgc (x86-rdi) (x86-imm-int (* nb-formal 4)))
-                (x86-jne cgc (list-ref err-labels 0)))
-              ;; If there is a rest param
-              ;; Then we have to handle 3 cases: actual>formal, actual=formal, actual<formal
-              (let ((label-loop-end  (asm-make-label #f (new-sym 'rest-param-loop-end)))
-                    (label-end       (asm-make-label #f (new-sym 'rest-param-end)))
-                    (label-loop      (asm-make-label #f (new-sym 'rest-param-loop)))
-                    (label-eq        (asm-make-label #f (new-sym 'rest-param-eq)))
-                    (header-word     (mem-header 3 STAG_PAIR)))
-
-                 ;; If there is a rest param then we need to change the context to include it
-                 ;; CTX_UNK because it could be NULL
-                 (set! ctx (make-ctx (cons CTX_CLO (cons CTX_UNK (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) nb-formal 1))))
-                                     (ctx-env ctx)
-                                     (+ (ctx-nb-args ctx) 1)))
-
-                 ;; Compare actual and formal
-                 (x86-cmp cgc (x86-rdi) (x86-imm-int (* nb-formal 4)))
-                 (x86-jl cgc (list-ref err-labels 0)) ;; actual<formal, ERROR
-                 (x86-je cgc label-eq)                ;; actual=formal, jump to label-eq
-                                                      ;; actual>formal, continue
-
-                 ;; CASE 1 - Actual > Formal
-
-                 ;; Loop-init
-                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                 (x86-mov cgc (x86-rbx) (x86-imm-int 8)) ;; rbx = arg-offset (first arg to copy is at [rsp+8])
-                 (x86-mov cgc (x86-rdx) (x86-rdi))       ;; Save args number in rdx
-
-                 ;; Loop-cond (if there is at least 1 arg to copy)
-                 (x86-label cgc label-loop)
-                 (x86-cmp cgc (x86-rdi) (x86-imm-int (* nb-formal 4)))
-                 (x86-je cgc label-loop-end)
-
-                    ;; Loop-body
-                    (x86-push cgc (x86-rax)) ;; TODO
-                    (gen-allocation cgc ctx STAG_PAIR 3)                    ;; alloc pair p
-                    (x86-pop cgc (x86-rax))                                 ;;
-                    (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))          ;; p.cdr = rax (last pair)
-                    (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp) (x86-rbx))) ;; p.car = stack[arg-offset]
-                    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))         ;;
-                    (x86-mov cgc (x86-rax) (x86-imm-int header-word))       ;; p.header = header-word
-                    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))         ;;
-                    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))   ;; rax = p (tagged)
-                    (x86-add cgc (x86-rbx) (x86-imm-int 8))                 ;; offset += 8 (to next arg)
-                    (x86-sub cgc (x86-rdi) (x86-imm-int 4))                 ;; rdi    -= 4 (update nb args to copy)
-                    (x86-jmp cgc label-loop)                                ;; goto loop
-
-                 ;; Loop-end
-                 (x86-label cgc label-loop-end)
-                 (x86-mov cgc (x86-mem (* -8 nb-formal) (x86-rsp) (x86-rdx) 1) (x86-rax)) ;; Mov rest list to stack
-                 (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Update closure position
-                 (x86-mov cgc (x86-mem (* -8 (+ nb-formal 1)) (x86-rsp) (x86-rdx) 1) (x86-rax))
-                 (x86-lea cgc (x86-rsp) (x86-mem (* -8 (+ nb-formal 1)) (x86-rsp) (x86-rdx) 1)) ;; Update rsp
-                 (x86-jmp cgc label-end) ;; goto end
-
-                 ;; CASE 2 - Actual == Formal
-
-                 (x86-label cgc label-eq)
-                 (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Update closure position
-                 (x86-push cgc (x86-rax))
-                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '()))) ;; Insert rest list (null) in stack
-                 (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
-
-                 ;; END
-                 (x86-label cgc label-end)))
-
-            ;; Gen mutable vars and jump to function body
-            (jump-to-version cgc succ (gen-mutable cgc ctx mvars))))))
+  (make-lazy-code-entry
+    (lambda (cgc ctx)
+      (let* ((nb-formal (length params))
+             (err-labels (add-callback #f 0 (lambda (ret-addr selector)
+                                             (error ERR_WRONG_NUM_ARGS))))
+             (err-label (list-ref err-labels 0)))
+        (if rest-param
+            ;; If there is a rest param then we need to change the context to include it
+            ;; CTX_UNK because it could be NULL
+            (set! ctx (make-ctx (cons CTX_CLO (cons CTX_UNK (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) nb-formal 1))))
+                                (ctx-env ctx)
+                                (+ (ctx-nb-args ctx) 1))))
+        ;; Gen prologue code
+        (x86-codegen-prologue-gen cgc rest-param nb-formal err-label)
+        ;; Gen mutable vars and jump to function body
+        (jump-to-version cgc succ (gen-mutable cgc ctx mvars))))))
 
 ;; Create and return a lazy prologue
 (define (get-lazy-prologue ast succ rest-param mvars)
