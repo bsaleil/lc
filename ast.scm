@@ -586,37 +586,32 @@
 (define (get-lazy-prologue ast succ rest-param mvars)
   (make-lazy-code-entry
     (lambda (cgc ctx)
+      (let* ((nb-actual (- (length (ctx-stack ctx)) 2))
+             (nb-formal (ctx-nb-args ctx))
+             (nstack  (ctx-stack ctx))    ;; New stack  (change if rest-param)
+             (nnbargs (ctx-nb-args ctx))) ;; New nbargs (change if rest-param)
 
-       (let* ((nb-actual (- (length (ctx-stack ctx)) 2))
-              (nb-formal (ctx-nb-args ctx)))
+        (cond ;; rest AND actual == formal
+              ((and rest-param (= nb-actual nb-formal))
+                (x86-codegen-prologue-rest= cgc)
+                ;; Update ctx information
+                (set! nstack (cons CTX_CLO (cons CTX_NULL (cdr (ctx-stack ctx)))))
+                (set! nnbargs (+ (ctx-nb-args ctx) 1)))
+              ;; rest AND actual > formal
+              ((and rest-param (> nb-actual nb-formal))
+                (x86-codegen-prologue-rest> cgc (- nb-actual nb-formal))
+                ;; Update ctx information
+                (set! nstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) nb-formal 1)))))
+                (set! nnbargs (+ (ctx-nb-args ctx) 1)))
+              ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
+              ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
+                (gen-error cgc ERR_WRONG_NUM_ARGS))
+              ;; !rest AND actual == formal
+              (else #f)) ;; Nothing to do
 
-         ;; Wrong number of arguments, ERROR
-         (if (or (and (not rest-param) (not (= nb-actual nb-formal)))
-                 (and rest-param (< nb-actual nb-formal)))
-           (gen-error cgc ERR_WRONG_NUM_ARGS)
-         ;; Right number of arguments
-          (let ((nstack  (ctx-stack ctx))    ;; New stack  (change if rest-param)
-                (nnbargs (ctx-nb-args ctx))) ;; New nbargs (change if rest-param)
-            (if rest-param
-                (cond ((= nb-actual nb-formal)
-                         ;; Shift closure
-                         (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                         (x86-push cgc (x86-rax))
-                         ;; Mov '() in rest param slot
-                         (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                         (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
-                         ;; Update ctx information
-                         (set! nstack (cons CTX_CLO (cons CTX_NULL (cdr (ctx-stack ctx)))))
-                         (set! nnbargs (+ (ctx-nb-args ctx) 1)))
-                      ((> nb-actual nb-formal)
-                         ;; Build rest argument
-                         (gen-rest-lst cgc ctx (- nb-actual nb-formal))
-                         ;; Update ctx information
-                         (set! nstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) nb-formal 1)))))
-                         (set! nnbargs (+ (ctx-nb-args ctx) 1)))))
-            (let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
-                   (mctx (gen-mutable cgc nctx mvars)))
-              (jump-to-version cgc succ mctx))))))))
+        (let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
+               (mctx (gen-mutable cgc nctx mvars)))
+          (jump-to-version cgc succ mctx))))))
 
 ;; Create a new cc table with 'init' as stub value
 (define (make-cc len init generic)
@@ -2253,16 +2248,16 @@
 ;; Gen code to create rest list from stack in heap.
 ;; nb-pop: Number of values in rest list
 ;; sp-offset: offset from rsp of the first value in rest list
-(define (gen-rest-lst cgc ctx nb-pop)
+(define (gen-rest-lst cgc nb-pop)
   ;; Push the last cdr
   (x86-push cgc (x86-imm-int (obj-encoding '())))
   ;; Buils rest list
-  (gen-rest-lst-h cgc ctx nb-pop nb-pop 16)) ;; 24: '(), ctx, closure
+  (gen-rest-lst-h cgc nb-pop nb-pop 16)) ;; 24: '(), ctx, closure
 
 ;; Create a pair with top of stack in cdr
 ;; and argument slot (rsp + sp-offset) in car
 ;; then push this pair and create next.
-(define (gen-rest-lst-h cgc ctx pos nb sp-offset)
+(define (gen-rest-lst-h cgc pos nb sp-offset)
   (if (= pos 0)
       ;; All pairs created, then change stack layout
       (begin ;; Mov rest list to stack
@@ -2275,7 +2270,7 @@
              (x86-add cgc (x86-rsp) (x86-imm-int (- (* 8 nb) 8))))
       ;; Create a pair and continue
       (begin ;; Alloc pair
-             (gen-allocation cgc ctx STAG_PAIR 3)
+             (gen-allocation cgc #f STAG_PAIR 3)
 
              (let ((header (mem-header 3 STAG_PAIR)))
                ;; Write header in pair
@@ -2291,7 +2286,7 @@
                (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
                (x86-push cgc (x86-rax)))
              ;; Create next pair
-             (gen-rest-lst-h cgc ctx(- pos 1) nb (+ sp-offset 8)))))
+             (gen-rest-lst-h cgc (- pos 1) nb (+ sp-offset 8)))))
 
 ;; Return label of a stub generating error with 'msg'
 (define (get-label-error msg)
