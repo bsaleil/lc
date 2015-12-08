@@ -1,6 +1,5 @@
 ;; EXPAND
 
-;; ERRORS
 (define ILL-DEFINE "Ill-placed 'define'")
 (define ILL-CASE   "Ill-formed 'case'")
 (define EMPTY-BODY "Body must contain at least one expression")
