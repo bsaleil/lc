@@ -309,6 +309,14 @@
 ;;-----------------------------------------------------------------------------
 
 ;;-----------------------------------------------------------------------------
+;; SPECIAL $$print-flonum: call gambit at the moment. TODO: write print flonum asm code
+(define (x86-codegen-print-flonum cgc)
+  (x86-pop cgc (x86-rax))
+  ;; NOTE: This uses Gambit function to print a flonum (because LC uses the same flonum encoding)
+  (gen-print-msg cgc (x86-rax) #f #f)
+  (x86-push cgc (x86-imm-int ENCODING_VOID)))
+
+;;-----------------------------------------------------------------------------
 ;; not
 (define (x86-codegen-not cgc)
   (let ((label-done

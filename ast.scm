@@ -838,10 +838,7 @@
   (let ((spec
           (make-lazy-code
             (lambda (cgc ctx)
-              (x86-pop cgc (x86-rax))
-              ;; NOTE: This uses Gambit function to print a flonum (because LC uses the same encoding)
-              (gen-print-msg cgc (x86-rax) #f #f)
-              (x86-push cgc (x86-imm-int ENCODING_VOID))
+              (x86-codegen-print-flonum cgc)
               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
     (gen-ast (cadr ast) spec)))
 
