@@ -767,7 +767,7 @@
                  (nctx (make-ctx stack env (ctx-nb-args ctx))))
 
              ;; Create values on stack (initial value is #f)
-             (call-n (length ids) x86-push cgc (x86-imm-int (obj-encoding #f)))
+             (x86-codegen-push-n cgc #f (length ids))
 
              ;; All ids are considered mutable except those that are both
              ;; non-mutable AND lambda expr. This allows the compiler to keep
