@@ -149,10 +149,47 @@
   (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
   (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax)))
 
-;;Generate specialized function prologue with rest param and actual > formal
+;; Generate specialized function prologue with rest param and actual > formal
 (define (x86-codegen-prologue-rest> cgc restlen)
+
+  ;; Create a pair with
+  ;; car: [rsp+sp_offset]
+  ;; cdr: top of stack
+  ;; Then, push this pair and create next until pos == 0
+  (define (gen-rest-lst cgc pos nb sp-offset)
+    (if (= pos 0)
+        ;; All pairs created, then change stack layout
+        (begin ;; Mov rest list to stack
+               (x86-pop cgc (x86-rax))
+               (x86-mov cgc (x86-mem (* nb 8) (x86-rsp)) (x86-rax))
+               ;; Update closure position
+               (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+               (x86-mov cgc (x86-mem (- (* 8 nb) 8) (x86-rsp)) (x86-rax))
+               ;; Update rsp
+               (x86-add cgc (x86-rsp) (x86-imm-int (- (* 8 nb) 8))))
+        ;; Create a pair and continue
+        (begin ;; Alloc pair
+               (gen-allocation cgc #f STAG_PAIR 3)
+               (let ((header (mem-header 3 STAG_PAIR)))
+                 ;; Write header in pair
+                 (x86-mov cgc (x86-rax) (x86-imm-int header))
+                 (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+                 ;; Get car from stack (arg slot) and write in pair
+                 (x86-mov cgc (x86-rax) (x86-mem sp-offset (x86-rsp)))
+                 (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+                 ;; Get cdr from stack (top of stack) and write in pair
+                 (x86-pop cgc (x86-rax))
+                 (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))
+                 ;; Tag & push
+                 (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+                 (x86-push cgc (x86-rax)))
+               ;; Create next pair
+               (gen-rest-lst cgc (- pos 1) nb (+ sp-offset 8)))))
+
   ;; Build rest argument
- (gen-rest-lst cgc restlen))
+  (x86-push cgc (x86-imm-int (obj-encoding '())))
+  ;; Gen code to create rest list from stack
+  (gen-rest-lst cgc restlen restlen 16)) ;; 16 TODO
 
 ;; Generate generic function prologue
 (define (x86-codegen-prologue-gen cgc rest? nb-formal err-label)
@@ -280,7 +317,16 @@
 ;; Operators
 ;;-----------------------------------------------------------------------------
 
-;; Binary operator
+;;-----------------------------------------------------------------------------
+;; N-ary arithmetic operators
+;;TODO
+
+;;-----------------------------------------------------------------------------
+;; N-ary comparison operators
+;;TODO
+
+;;-----------------------------------------------------------------------------
+;; Binary operators
 (define (x86-codegen-binop cgc op)
   (x86-pop cgc (x86-rbx)) ;; Pop right
   (x86-pop cgc (x86-rax)) ;; Pop left

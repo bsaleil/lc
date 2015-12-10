@@ -1661,7 +1661,6 @@
 ;;
 ;; Make lazy code from N-ARY OPERATOR
 ;;
-;; TODO: tester les nombre de tests de types pour chaque combinaison
 (define (mlc-op-n ast succ op)
   (if (member op '(< > <= >= =))
     (mlc-op-n-cmp ast succ op)
@@ -2241,49 +2240,6 @@
                (nctx (make-ctx nstack (ctx-env ctx) (ctx-nb-args ctx))))
           ;; Gen next mutable vars
           (gen-mutable cgc nctx (cdr mutable))))))
-
-;; Gen code to create rest list from stack in heap.
-;; nb-pop: Number of values in rest list
-;; sp-offset: offset from rsp of the first value in rest list
-(define (gen-rest-lst cgc nb-pop)
-  ;; Push the last cdr
-  (x86-push cgc (x86-imm-int (obj-encoding '())))
-  ;; Buils rest list
-  (gen-rest-lst-h cgc nb-pop nb-pop 16)) ;; 24: '(), ctx, closure
-
-;; Create a pair with top of stack in cdr
-;; and argument slot (rsp + sp-offset) in car
-;; then push this pair and create next.
-(define (gen-rest-lst-h cgc pos nb sp-offset)
-  (if (= pos 0)
-      ;; All pairs created, then change stack layout
-      (begin ;; Mov rest list to stack
-             (x86-pop cgc (x86-rax))
-             (x86-mov cgc (x86-mem (* nb 8) (x86-rsp)) (x86-rax))
-             ;; Update closure position
-             (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-             (x86-mov cgc (x86-mem (- (* 8 nb) 8) (x86-rsp)) (x86-rax))
-             ;; Update rsp
-             (x86-add cgc (x86-rsp) (x86-imm-int (- (* 8 nb) 8))))
-      ;; Create a pair and continue
-      (begin ;; Alloc pair
-             (gen-allocation cgc #f STAG_PAIR 3)
-
-             (let ((header (mem-header 3 STAG_PAIR)))
-               ;; Write header in pair
-               (x86-mov cgc (x86-rax) (x86-imm-int header))
-               (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-               ;; Get car from stack (arg slot) and write in pair
-               (x86-mov cgc (x86-rax) (x86-mem sp-offset (x86-rsp)))
-               (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-               ;; Get cdr from stack (top of stack) and write in pair
-               (x86-pop cgc (x86-rax))
-               (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))
-               ;; Tag & push
-               (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-               (x86-push cgc (x86-rax)))
-             ;; Create next pair
-             (gen-rest-lst-h cgc (- pos 1) nb (+ sp-offset 8)))))
 
 ;; Return label of a stub generating error with 'msg'
 (define (get-label-error msg)
