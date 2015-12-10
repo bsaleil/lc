@@ -319,14 +319,97 @@
 
 ;;-----------------------------------------------------------------------------
 ;; N-ary arithmetic operators
-;;TODO
+
+;; Gen code for arithmetic operation on int/int
+(define (x86-codegen-num-ii cgc op)
+  (let ((labels-overflow (add-callback #f 0 (lambda (ret-addr selector)
+                                              (error ERR_ARR_OVERFLOW)))))
+    (x86-pop cgc (x86-rax))
+    (cond ((eq? op '+) (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+          ((eq? op '-) (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+          ((eq? op '*) (x86-sar cgc (x86-rax) (x86-imm-int 2))
+                       (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+                       (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+          (else (error "NYI" op)))
+    (x86-jo cgc (list-ref labels-overflow 0))))
+
+;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
+(define (x86-codegen-num-ff cgc op leftint? rightint?)
+  ;; Alloc result flonum
+  (gen-allocation cgc #f STAG_FLONUM 2)
+
+  (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd) (/ . ,x86-divsd))))))
+
+    (x86-pop cgc (x86-rbx)) ;; right in rbx
+    (x86-pop cgc (x86-rax)) ;; left in rax
+
+    (if leftint?
+        ;; Left is integer, the compiler converts it to double precision FP
+        (begin (x86-sar cgc (x86-rax) (x86-imm-int 2))  ;; untag integer
+               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
+        ;; Left is double precision FP
+        (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+
+    (if rightint?
+        ;; Right is integer, the compiler converts it to double precision FP
+        (begin (x86-sar cgc (x86-rbx) (x86-imm-int 2))
+               (x86-cvtsi2sd cgc (x86-xmm1) (x86-rbx))
+               (x86-op cgc (x86-xmm0) (x86-xmm1)))
+        ;; Right is double precision FP
+        (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))))
+
+  ;; Write header
+  (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 2 STAG_FLONUM)))
+  (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+  ;; Write number
+  (x86-movsd cgc (x86-mem 8 alloc-ptr) (x86-xmm0))
+  ;;
+  (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+  (x86-push cgc (x86-rax)))
 
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
-;;TODO
+
+(define (x86-codegen-cmp-end cgc nb-opnd res)
+  (x86-add cgc (x86-rsp) (x86-imm-int (* 8 nb-opnd)))
+  (x86-push cgc (x86-imm-int (obj-encoding res))))
+
+(define (x86-codegen-cmp-ii cgc ctx op lidx ridx get-stub-label)
+  (let ((label-jump (asm-make-label #f (new-sym 'label-jump)))
+        (x86-op (cdr (assoc op `((< . ,x86-jge) (> . ,x86-jle) (<= . ,x86-jg) (>= . ,x86-jl) (= . ,x86-jne))))))
+
+    (x86-mov cgc (x86-rax) (x86-mem (* 8 lidx) (x86-rsp)))
+    (x86-cmp cgc (x86-rax) (x86-mem (* 8 ridx) (x86-rsp)))
+    (x86-label cgc label-jump)
+    (x86-op cgc (get-stub-label label-jump ctx))))
+
+(define (x86-codegen-cmp-ff cgc ctx op lidx ridx get-stub-label leftint? rightint?)
+  (let ((label-jump (asm-make-label #f (new-sym 'label-jump)))
+        ;; DO NOT USE jg* and jl* WITH FP VALUES !
+        (x86-op (cdr (assoc op `((< . ,x86-jae) (> . ,x86-jbe) (<= . ,x86-ja) (>= . ,x86-jb) (= . ,x86-jne))))))
+
+    (x86-mov cgc (x86-rax) (x86-mem (* 8 lidx) (x86-rsp)))
+    (x86-mov cgc (x86-rbx) (x86-mem (* 8 ridx) (x86-rsp)))
+
+    (if leftint?
+        ;; Left is integer, the compiler converts it to double precision FP
+        (begin (x86-sar cgc (x86-rax) (x86-imm-int 2))  ;; untag integer
+               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
+        ;; Left is double precision FP
+        (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+    (if rightint?
+        ;; Right is integer, the compiler converts it to double precision FP
+        (begin (x86-sar cgc (x86-rbx) (x86-imm-int 2))
+               (x86-cvtsi2sd cgc (x86-xmm1) (x86-rbx))
+               (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
+        ;; Right is double precision FP
+        (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx))))
+    (x86-label cgc label-jump)
+    (x86-op cgc (get-stub-label label-jump ctx))))
 
 ;;-----------------------------------------------------------------------------
 ;; Binary operators
+
 (define (x86-codegen-binop cgc op)
   (x86-pop cgc (x86-rbx)) ;; Pop right
   (x86-pop cgc (x86-rax)) ;; Pop left

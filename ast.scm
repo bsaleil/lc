@@ -1671,35 +1671,34 @@
 ;;
 (define (mlc-op-n-cmp ast succ op)
 
-   ;; Create final lazy object. This object clean stack and push 'res'
-   (define (get-lazy-final res)
-      (make-lazy-code
-         (lambda (cgc ctx)
-            (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (length ast) 1))))
-            (x86-push cgc (x86-imm-int (obj-encoding res)))
-            (jump-to-version cgc succ (ctx-push (ctx-pop ctx (- (length ast) 1))
-                                                CTX_BOOL)))))
+  ;; Create final lazy object. This object clean stack and push 'res'
+  (define (get-lazy-final res)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (x86-codegen-cmp-end cgc (- (length ast) 1) res)
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx (- (length ast) 1))
+                                            CTX_BOOL)))))
 
-   ;; Gen false stub from jump-label & ctx and return stub label
-   (define (get-stub-label label-jump ctx)
-      (list-ref (add-callback #f 0 (lambda (ret-addr selector)
+  ;; Gen false stub from jump-label & ctx and return stub label
+  (define (get-stub-label label-jump ctx)
+    (list-ref (add-callback #f 0 (lambda (ret-addr selector)
                                    (gen-version (asm-label-pos label-jump)
                                                 (get-lazy-final #f)
                                                 ctx)))
-                0))
+              0))
 
-   ;; Build chain for all operands
-   (define (build-chain lidx ridx)
-      (if (or (< lidx 0) (< ridx 0))
+  ;; Build chain for all operands
+  (define (build-chain lidx ridx)
+    (if (or (< lidx 0) (< ridx 0))
         ;; All operands compared
         (get-lazy-final #t)
         ;; There is at least 1 comparison to perform
         (build-bincomp (build-chain (- lidx 1) (- ridx 1)) lidx ridx)))
 
-   ;; Gen lazy code objects chain for binary comparison (x op y)
-   ;; Build a lco for each node of the type checks tree (with int and float)
-   (define (build-bincomp succ lidx ridx)
-     (let* (;; Operations lco
+  ;; Gen lazy code objects chain for binary comparison (x op y)
+  ;; Build a lco for each node of the type checks tree (with int and float)
+  (define (build-bincomp succ lidx ridx)
+    (let* (;; Operations lco
            (lazy-ii (get-comp-ii succ lidx ridx))       ;; lco for int int operation
            (lazy-if (get-comp-ff succ lidx ridx #t #f)) ;; lco for int float operation
            (lazy-fi (get-comp-ff succ lidx ridx #f #t)) ;; lco for float int operation
@@ -1715,50 +1714,26 @@
            (lazy-xint    (gen-dyn-type-test CTX_NUM lidx lazy-yint lazy-xfloat ast)))
       lazy-xint))
 
-    ;; Get lazy code object for comparison with int and int
-   (define (get-comp-ii succ lidx ridx)
+  ;; Get lazy code object for comparison with int and int
+  (define (get-comp-ii succ lidx ridx)
     (make-lazy-code
       (lambda (cgc ctx)
-      (let ((label-jump (asm-make-label #f (new-sym 'label-jump)))
-            (x86-op (cdr (assoc op `((< . ,x86-jge) (> . ,x86-jle) (<= . ,x86-jg) (>= . ,x86-jl) (= . ,x86-jne))))))
-         (x86-mov cgc (x86-rax) (x86-mem (* 8 lidx) (x86-rsp)))
-         (x86-cmp cgc (x86-rax) (x86-mem (* 8 ridx) (x86-rsp)))
-         (x86-label cgc label-jump)
-         (x86-op cgc (get-stub-label label-jump ctx))
-         (jump-to-version cgc succ ctx)))))
+        (x86-codegen-cmp-ii cgc ctx op lidx ridx get-stub-label)
+        (jump-to-version cgc succ ctx))))
 
-   ;; Get lazy code object for comparison with float and float, float and int, and int and float
-   ;; leftint?  to #t if left operand is an integer
-   ;; rightint? to #t if right operand is an integer
-   (define (get-comp-ff succ lidx ridx leftint? rightint?)
+  ;; Get lazy code object for comparison with float and float, float and int, and int and float
+  ;; leftint?  to #t if left operand is an integer
+  ;; rightint? to #t if right operand is an integer
+  (define (get-comp-ff succ lidx ridx leftint? rightint?)
     (make-lazy-code
       (lambda (cgc ctx)
-      (let ((label-jump (asm-make-label #f (new-sym 'label-jump)))
-            ;; DO NOT USE jg* and jl* WITH FP VALUES !
-            (x86-op (cdr (assoc op `((< . ,x86-jae) (> . ,x86-jbe) (<= . ,x86-ja) (>= . ,x86-jb) (= . ,x86-jne))))))
-         (x86-mov cgc (x86-rax) (x86-mem (* 8 lidx) (x86-rsp)))
-         (x86-mov cgc (x86-rbx) (x86-mem (* 8 ridx) (x86-rsp)))
-         (if leftint?
-            ;; Left is integer, the compiler converts it to double precision FP
-            (begin (x86-sar cgc (x86-rax) (x86-imm-int 2))  ;; untag integer
-                   (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
-            ;; Left is double precision FP
-            (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-         (if rightint?
-            ;; Right is integer, the compiler converts it to double precision FP
-            (begin (x86-sar cgc (x86-rbx) (x86-imm-int 2))
-                   (x86-cvtsi2sd cgc (x86-xmm1) (x86-rbx))
-                   (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
-            ;; Right is double precision FP
-            (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx))))
-         (x86-label cgc label-jump)
-         (x86-op cgc (get-stub-label label-jump ctx))
-         (jump-to-version cgc succ ctx)))))
+        (x86-codegen-cmp-ff cgc ctx op lidx ridx get-stub-label leftint? rightint?)
+        (jump-to-version cgc succ ctx))))
 
-   ;; Push operands and start comparisons
-   (gen-ast-l (cdr ast)
-              (build-chain (- (length ast) 2)
-                           (- (length ast) 3))))
+  ;; Push operands and start comparisons
+  (gen-ast-l (cdr ast)
+             (build-chain (- (length ast) 2)
+                          (- (length ast) 3))))
 
 ;;
 ;; Make lazy code from N-ARY ARITHMETIC OPERATOR
@@ -1768,10 +1743,10 @@
   ;; Build chain for all operands
   (define (build-chain opnds)
     (if (null? opnds)
-      succ
-      (let* ((lazy-bin-op (build-binop (build-chain (cdr opnds))))
-             (lazy-opnd (gen-ast (car opnds) lazy-bin-op)))
-        lazy-opnd)))
+        succ
+        (let* ((lazy-bin-op (build-binop (build-chain (cdr opnds))))
+               (lazy-opnd (gen-ast (car opnds) lazy-bin-op)))
+          lazy-opnd)))
 
   ;; Gen lazy code objects chain for binary operation (x op y)
   ;; Build a lco for each node of the type checks tree (with int and float)
@@ -1797,19 +1772,10 @@
 
   ;; Get lazy code object for operation with int and int
   (define (get-op-ii succ)
-    (let ((labels-overflow (add-callback #f 0 (lambda (ret-addr selector)
-                                                (error ERR_ARR_OVERFLOW)))))
-        (make-lazy-code
-          (lambda (cgc ctx)
-            (x86-pop cgc (x86-rax))
-            (cond ((eq? op '+) (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-                  ((eq? op '-) (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-                  ((eq? op '*) (x86-sar cgc (x86-rax) (x86-imm-int 2))
-                               (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                               (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-                  (else (error "NYI" op)))
-            (x86-jo cgc (list-ref labels-overflow 0)) ;; NYI overflow
-            (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_NUM))))))
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (x86-codegen-num-ii cgc op)
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_NUM)))))
 
   ;; Get lazy code object for operation with float and float, float and int, and int and float
   ;; leftint?  to #t if left operand is an integer
@@ -1817,34 +1783,8 @@
   (define (get-op-ff succ leftint? rightint?)
     (make-lazy-code
       (lambda (cgc ctx)
-      ;; Alloc result flonum
-      (gen-allocation cgc #f STAG_FLONUM 2)
-
-      (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd) (/ . ,x86-divsd))))))
-         (x86-pop cgc (x86-rbx)) ;; right in rbx
-         (x86-pop cgc (x86-rax)) ;; left in rax
-         (if leftint?
-            ;; Left is integer, the compiler converts it to double precision FP
-            (begin (x86-sar cgc (x86-rax) (x86-imm-int 2))  ;; untag integer
-                   (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
-            ;; Left is double precision FP
-            (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-         (if rightint?
-            ;; Right is integer, the compiler converts it to double precision FP
-            (begin (x86-sar cgc (x86-rbx) (x86-imm-int 2))
-                   (x86-cvtsi2sd cgc (x86-xmm1) (x86-rbx))
-                   (x86-op cgc (x86-xmm0) (x86-xmm1)))
-            ;; Right is double precision FP
-            (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))))
-      ;; Write header
-      (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 2 STAG_FLONUM)))
-      (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-      ;; Write number
-      (x86-movsd cgc (x86-mem 8 alloc-ptr) (x86-xmm0))
-      ;;
-      (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-      (x86-push cgc (x86-rax))
-      (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_FLO)))))
+        (x86-codegen-num-ff cgc op leftint? rightint?)
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_FLO)))))
 
   (cond ((= (length ast) 1)
            (cond ((eq? op '+) (gen-ast 0 succ))
