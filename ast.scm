@@ -169,7 +169,7 @@
                            (64-modl  (bitwise-and (- (expt 2 63) 1) 64-mod)))
                       (* -1 64-modl))
                     (ieee754 ast 'double))))
-          (x86-codegen-flonum cgc immediate)
+          (codegen-flonum cgc immediate)
           (jump-to-version cgc succ (ctx-push ctx CTX_FLO))))))
 
 ;;
@@ -179,7 +179,7 @@
   (make-lazy-code
     (lambda (cgc ctx)
       (let ((qword (get-symbol-qword ast)))
-        (x86-codegen-symbol cgc ast)
+        (codegen-symbol cgc ast)
         (jump-to-version cgc succ (ctx-push ctx CTX_SYM))))))
 
 ;;
@@ -239,7 +239,7 @@
 (define (mlc-string ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (x86-codegen-string cgc ast)
+      (codegen-string cgc ast)
       (jump-to-version cgc succ (ctx-push ctx CTX_STR)))))
 
 ;;
@@ -311,7 +311,7 @@
     (mlc-flonum ast succ)
     (make-lazy-code
       (lambda (cgc ctx)
-        (x86-codegen-literal cgc ast)
+        (codegen-literal cgc ast)
         (jump-to-version cgc
                          succ
                          (ctx-push ctx
@@ -347,7 +347,7 @@
                       (if (not nctx)
                           (gen-error cgc (ERR_UNKNOWN_VAR id))
                           (begin
-                            (x86-codegen-void cgc)
+                            (codegen-void cgc)
                             (jump-to-version cgc succ (ctx-push (ctx-pop nctx) CTX_VOID)))))))))
 
      (gen-ast (caddr ast) lazy-set)))
@@ -362,13 +362,13 @@
                       (lambda (cgc ctx)
                         (let* ((res (assoc identifier globals)) ;; Lookup in globals
                                (pos (cdr res)))                 ;; Get global pos
-                          (x86-codegen-define-bind cgc pos)
+                          (codegen-define-bind cgc pos)
                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
          (lazy-val (gen-ast (caddr ast) lazy-bind)))
 
     (make-lazy-code
       (lambda (cgc ctx)
-        (x86-codegen-define-id cgc)
+        (codegen-define-id cgc)
         (set! globals (cons (cons identifier (length globals)) globals))
         (jump-to-version cgc lazy-val ctx)))))
 
@@ -469,8 +469,8 @@
                          (if opt-return-points
                              (let* ((ret-type (car (ctx-stack ctx)))
                                     (crtable-offset (type-to-cridx ret-type)))
-                               (x86-codegen-return-cr cgc retaddr-offset crtable-offset))
-                             (x86-codegen-return-rp cgc retaddr-offset))))))
+                               (codegen-return-cr cgc retaddr-offset crtable-offset))
+                             (codegen-return-rp cgc retaddr-offset))))))
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
@@ -532,10 +532,10 @@
               (let* ((cctable-key (get-cctable-key ast ctx fvars))
                      (cctable     (get-cctable ast cctable-key stub-addr generic-addr))
                      (cctable-loc (- (obj-encoding cctable) 1)))
-                (x86-codegen-closure-cc cgc ctx cctable-loc fvars))
+                (codegen-closure-cc cgc ctx cctable-loc fvars))
               ;; Else, generate a closure using a single entry point
               (let ((ep-loc (get-entry-points-loc ast stub-addr)))
-                (x86-codegen-closure-ep cgc ctx ep-loc fvars)))
+                (codegen-closure-ep cgc ctx ep-loc fvars)))
 
           ;; Trigger the next object
           (if opt-propagate-functionid
@@ -578,7 +578,7 @@
                                 (ctx-env ctx)
                                 (+ (ctx-nb-args ctx) 1))))
         ;; Gen prologue code
-        (x86-codegen-prologue-gen cgc rest-param nb-formal err-label)
+        (codegen-prologue-gen cgc rest-param nb-formal err-label)
         ;; Gen mutable vars and jump to function body
         (jump-to-version cgc succ (gen-mutable cgc ctx mvars))))))
 
@@ -593,13 +593,13 @@
 
         (cond ;; rest AND actual == formal
               ((and rest-param (= nb-actual nb-formal))
-                (x86-codegen-prologue-rest= cgc)
+                (codegen-prologue-rest= cgc)
                 ;; Update ctx information
                 (set! nstack (cons CTX_CLO (cons CTX_NULL (cdr (ctx-stack ctx)))))
                 (set! nnbargs (+ (ctx-nb-args ctx) 1)))
               ;; rest AND actual > formal
               ((and rest-param (> nb-actual nb-formal))
-                (x86-codegen-prologue-rest> cgc (- nb-actual nb-formal))
+                (codegen-prologue-rest> cgc (- nb-actual nb-formal))
                 ;; Update ctx information
                 (set! nstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) nb-formal 1)))))
                 (set! nnbargs (+ (ctx-nb-args ctx) 1)))
@@ -644,7 +644,7 @@
              ;; No body and succ is *not* a ret object
              (make-lazy-code
                (lambda (cgc ctx)
-                 (x86-codegen-void cgc)
+                 (codegen-void cgc)
                  (jump-to-version cgc succ (ctx-push ctx CTX_VOID))))))
         ;; Only one body
         ((= (length (cdr ast)) 1)
@@ -660,7 +660,7 @@
                       (lambda (cgc ctx)
                         (let* ((nctx (ctx-move ctx 0 (- (length (cdr ast)) 1)))
                                (mctx (ctx-pop nctx (- (length (cdr ast)) 1))))
-                          (x86-codegen-begin-out cgc (- (length (cdr ast)) 1))
+                          (codegen-begin-out cgc (- (length (cdr ast)) 1))
                           (jump-to-version cgc succ mctx)))))))
              ;; LAZY BODIES
              (gen-ast-l (cdr ast) lazy-begin-out)))))
@@ -695,7 +695,7 @@
                                   (mctx (ctx-pop nctx (- (+ (length ids) (length bodies)) 1)))
                                   (env  (list-tail (ctx-env mctx) (length ids)))
                                   (ctx  (make-ctx (ctx-stack mctx) env (ctx-nb-args mctx))))
-                            (x86-codegen-binding-clear cgc (+ (length ids) (length bodies) -1))
+                            (codegen-binding-clear cgc (+ (length ids) (length bodies) -1))
                             (jump-to-version cgc succ ctx))))))
                    ;; LAZY BODIES
                    (lazy-bodies (gen-ast-l bodies lazy-let-out)))
@@ -767,7 +767,7 @@
                  (nctx (make-ctx stack env (ctx-nb-args ctx))))
 
              ;; Create values on stack (initial value is #f)
-             (x86-codegen-push-n cgc #f (length ids))
+             (codegen-push-n cgc #f (length ids))
 
              ;; All ids are considered mutable except those that are both
              ;; non-mutable AND lambda expr. This allows the compiler to keep
@@ -801,7 +801,7 @@
       ;; Bind id
       (let* ((nctx (ctx-move ctx from to #f)))
         ;; Get val and mov to location
-        (x86-codegen-letrec-bind cgc from to)
+        (codegen-letrec-bind cgc from to)
         (gen-letrec-binds-h cgc nctx (cdr ids) (+ from 1) (+ to 1)))))
 
   ;; Initial call
@@ -838,7 +838,7 @@
   (let ((spec
           (make-lazy-code
             (lambda (cgc ctx)
-              (x86-codegen-print-flonum cgc)
+              (codegen-print-flonum cgc)
               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
     (gen-ast (cadr ast) spec)))
 
@@ -850,7 +850,7 @@
            (make-lazy-code
              (lambda (cgc ctx)
                (gen-breakpoint cgc)
-               (x86-codegen-void cgc)
+               (codegen-void cgc)
                (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))
         ((eq? (car ast) 'list)
            (let ((lazy-list
@@ -920,31 +920,31 @@
                          ((eq? special 'not)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-codegen-not cgc)
+                              (codegen-not cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))
                          ;; EQ?
                          ((eq? special 'eq?)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-codegen-eq? cgc)
+                              (codegen-eq? cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_BOOL)))))
                          ;; CAR & CDR
                          ((member special '(car cdr))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-codegen-car/cdr cgc special)
+                              (codegen-car/cdr cgc special)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK)))))
                          ;; SET-CAR! & SET-CDR!
                          ((member special '(set-car! set-cdr!))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-codegen-scar/scdr cgc special)
+                              (codegen-scar/scdr cgc special)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_VOID)))))
                          ;; CURRENT-INPUT-PORT / CURRENT-OUTPUT-PORT
                          ((member special '(current-input-port current-output-port))
                            (make-lazy-code
                              (lambda (cgc ctx)
-                               (x86-codegen-current-io-port cgc special)
+                               (codegen-current-io-port cgc special)
                                (jump-to-version cgc succ (ctx-push ctx
                                                                    (if (eq? special 'current-output-port)
                                                                        CTX_OPORT
@@ -953,13 +953,13 @@
                          ((member special '(close-output-port close-input-port))
                            (make-lazy-code
                              (lambda (cgc ctx)
-                               (x86-codegen-close-io-port cgc)
+                               (codegen-close-io-port cgc)
                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))
                          ;; OPEN-INPUT-FILE / OPEN-OUTPUT-FILE
                          ((member special '(open-output-file open-input-file))
                            (make-lazy-code
                              (lambda (cgc ctx)
-                               (x86-codegen-open-io-file cgc special)
+                               (codegen-open-io-file cgc special)
                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
                                                                    (if (eq? special 'open-input-file)
                                                                        CTX_IPORT
@@ -968,25 +968,25 @@
                          ((eq? special 'eof-object?)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-codegen-eof? cgc)
+                              (codegen-eof? cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))
                          ;; READ-CHAR
                          ((eq? special 'read-char)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-codegen-read-char cgc)
+                              (codegen-read-char cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_CHAR)))))
                          ;; WRITE-CHAR
                          ((eq? special 'write-char)
                             (make-lazy-code
                               (lambda (cgc ctx)
-                                (x86-codegen-write-char cgc)
+                                (codegen-write-char cgc)
                                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_VOID)))))
                          ;; CHAR<->INTEGER
                          ((member special '(char->integer integer->char))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-codegen-ch<->int cgc special)
+                              (codegen-ch<->int cgc special)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
                                                                   (if (eq? special 'char->integer)
                                                                       CTX_NUM
@@ -996,7 +996,7 @@
                           (make-lazy-code
                             (lambda (cgc ctx)
                               (let ((init-value? (= (length (cdr ast)) 2)))
-                                (x86-codegen-make-string cgc init-value?)
+                                (codegen-make-string cgc init-value?)
                                 (jump-to-version cgc succ (ctx-push (if init-value?
                                                                         (ctx-pop ctx 2)
                                                                         (ctx-pop ctx))
@@ -1006,7 +1006,7 @@
                           (make-lazy-code
                             (lambda (cgc ctx)
                               (let ((init-value? (= (length (cdr ast)) 2)))
-                                (x86-codegen-make-vector cgc (= (length (cdr ast)) 2))
+                                (codegen-make-vector cgc (= (length (cdr ast)) 2))
                                 (jump-to-version cgc succ (ctx-push (if init-value?
                                                                        (ctx-pop ctx 2)
                                                                        (ctx-pop ctx))
@@ -1015,43 +1015,43 @@
                          ((eq? special 'string->symbol)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-codegen-str->sym cgc)
+                              (codegen-str->sym cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM)))))
                          ;; SYMBOL->STRING
                          ((eq? special 'symbol->string)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-codegen-sym->str cgc)
+                              (codegen-sym->str cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR)))))
                          ;; VECTOR-LENGTH & STRING-LENGTH
                          ((member special '(vector-length string-length))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-codegen-vec/str-length cgc)
+                              (codegen-vec/str-length cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM)))))
                          ;; VECTOR-REF
                          ((eq? special 'vector-ref)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-codegen-vector-ref cgc)
+                              (codegen-vector-ref cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_UNK)))))
                          ;; STRING-REF
                          ((eq? special 'string-ref)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-codegen-string-ref cgc)
+                              (codegen-string-ref cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_CHAR)))))
                          ;; VECTOR-SET!
                          ((eq? special 'vector-set!)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-codegen-vector-set! cgc)
+                              (codegen-vector-set! cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx 3) CTX_VOID)))))
                          ;; VECTOR-SET!
                          ((eq? special 'string-set!)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (x86-codegen-string-set! cgc)
+                              (codegen-string-set! cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx 3) CTX_VOID)))))
                          ;; OTHERS
                          (else (error "NYI")))))
@@ -1409,7 +1409,7 @@
                 (lazy-move-args
                   (make-lazy-code
                     (lambda (cgc ctx)
-                      (x86-codegen-pre-apply cgc)
+                      (codegen-pre-apply cgc)
                       ;; Jump to lazy-build-continuation without ctx
                       ;; This works because lazy-build-continuation and its successor lazy-call do not use ctx. ;; TODO (use ctx? instead of empty ctx)
                       (jump-to-version cgc lazy-build-continuation (make-ctx '() '() -1)))))
@@ -1418,7 +1418,7 @@
                   ;; Push function of apply
                   (lazy-fun (check-types (list CTX_CLO) (list (cadr ast)) lazy-args-list ast)))
 
-              (x86-codegen-push-n cgc #f 1) ;; Reserve stack slot
+              (codegen-push-n cgc #f 1) ;; Reserve stack slot
               (jump-to-version cgc lazy-fun (ctx-push ctx CTX_RETAD)))))))
 
 ;;
@@ -1457,7 +1457,7 @@
                                         ;; Gen call sequence with closure in RAX
                                         (let ((nb-unk (count call-stack (lambda (n) (eq? n CTX_UNK)))))
                                           (if (and opt-entry-points (= nb-unk (length args)))
-                                              (begin (x86-codegen-call-set-nbargs cgc (length args))
+                                              (begin (codegen-call-set-nbargs cgc (length args))
                                                      (gen-call-sequence cgc #f #f))
                                               (gen-call-sequence cgc call-ctx (length (cdr ast)))))))))
          ;; Lazy code object to build the continuation
@@ -1477,7 +1477,7 @@
                    ;; Lazy code object to push operator of the call
                    (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-build-continuation ast)))
 
-              (x86-codegen-push-n cgc #f 1) ;; Reserve a slot for continuation
+              (codegen-push-n cgc #f 1) ;; Reserve a slot for continuation
               (jump-to-version cgc
                                (gen-ast-l args lazy-operator) ;; Compile args and jump to operator
                                (ctx-push ctx CTX_RETAD))))))))
@@ -1565,11 +1565,11 @@
     (cond ((and opt-entry-points nb-args)
              (let* ((idx (get-closure-index call-ctx)))
                (if idx
-                   (x86-codegen-call-cc-spe cgc idx (ctx->still-ref call-ctx) nb-args)
-                   (x86-codegen-call-cc-gen cgc))))
+                   (codegen-call-cc-spe cgc idx (ctx->still-ref call-ctx) nb-args)
+                   (codegen-call-cc-gen cgc))))
           ((and opt-entry-points (not nb-args))
-             (x86-codegen-call-cc-gen cgc))
-          (else (x86-codegen-call-ep cgc nb-args))))
+             (codegen-call-cc-gen cgc))
+          (else (codegen-call-ep cgc nb-args))))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
@@ -1586,7 +1586,7 @@
       (let* ((lazy-op
                (make-lazy-code
                  (lambda (cgc ctx)
-                   (x86-codegen-binop cgc op)
+                   (codegen-binop cgc op)
                    (jump-to-version cgc
                                     succ
                                     (ctx-push (ctx-pop ctx 2) CTX_NUM))))))
@@ -1613,7 +1613,7 @@
   (define (get-lazy-final res)
     (make-lazy-code
       (lambda (cgc ctx)
-        (x86-codegen-cmp-end cgc (- (length ast) 1) res)
+        (codegen-cmp-end cgc (- (length ast) 1) res)
         (jump-to-version cgc succ (ctx-push (ctx-pop ctx (- (length ast) 1))
                                             CTX_BOOL)))))
 
@@ -1656,7 +1656,7 @@
   (define (get-comp-ii succ lidx ridx)
     (make-lazy-code
       (lambda (cgc ctx)
-        (x86-codegen-cmp-ii cgc ctx op lidx ridx get-stub-label)
+        (codegen-cmp-ii cgc ctx op lidx ridx get-stub-label)
         (jump-to-version cgc succ ctx))))
 
   ;; Get lazy code object for comparison with float and float, float and int, and int and float
@@ -1665,7 +1665,7 @@
   (define (get-comp-ff succ lidx ridx leftint? rightint?)
     (make-lazy-code
       (lambda (cgc ctx)
-        (x86-codegen-cmp-ff cgc ctx op lidx ridx get-stub-label leftint? rightint?)
+        (codegen-cmp-ff cgc ctx op lidx ridx get-stub-label leftint? rightint?)
         (jump-to-version cgc succ ctx))))
 
   ;; Push operands and start comparisons
@@ -1712,7 +1712,7 @@
   (define (get-op-ii succ)
     (make-lazy-code
       (lambda (cgc ctx)
-        (x86-codegen-num-ii cgc op)
+        (codegen-num-ii cgc op)
         (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_NUM)))))
 
   ;; Get lazy code object for operation with float and float, float and int, and int and float
@@ -1721,7 +1721,7 @@
   (define (get-op-ff succ leftint? rightint?)
     (make-lazy-code
       (lambda (cgc ctx)
-        (x86-codegen-num-ff cgc op leftint? rightint?)
+        (codegen-num-ff cgc op leftint? rightint?)
         (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_FLO)))))
 
   (cond ((= (length ast) 1)
@@ -1746,12 +1746,12 @@
         (lazy-success
           (make-lazy-code
             (lambda (cgc ctx)
-                (x86-codegen-set-bool cgc #t)
+                (codegen-set-bool cgc #t)
                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))
         (lazy-fail
           (make-lazy-code
             (lambda (cgc ctx)
-              (x86-codegen-set-bool cgc #f)
+              (codegen-set-bool cgc #f)
               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL))))))
 
     (gen-ast (cadr ast)
@@ -1764,7 +1764,7 @@
 (define (mlc-pair succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (x86-codegen-pair cgc)
+      (codegen-pair cgc)
       (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_PAI)))))
 
 ;;-----------------------------------------------------------------------------
