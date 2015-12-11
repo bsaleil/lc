@@ -314,6 +314,38 @@
   (x86-jmp cgc (x86-rbx)))
 
 ;;-----------------------------------------------------------------------------
+;; Function calls
+;;-----------------------------------------------------------------------------
+
+;; Generate function call using a single entry point
+(define (x86-codegen-call-ep cgc nb-args)
+  (if nb-args ;; If nb-args is given, move encoded number in rdi. Else, nb-args is already encoded in rdi
+      (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
+  (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+  (x86-jmp cgc (x86-rax)))
+
+;;; Generate function call using a cctable and generic entry point
+(define (x86-codegen-call-cc-gen cgc)
+  (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+  (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax)))
+  (x86-jmp cgc (x86-rax)))
+
+;; Generate function call using a cctable and specialized entry point
+(define (x86-codegen-call-cc-spe cgc idx ctx-imm nb-args)
+  (let ((cct-offset (* 8 (+ 2 idx))))
+    ;; 1 - Put ctx in r11
+    (x86-mov cgc (x86-r11) (x86-imm-int ctx-imm))
+    ;; 2- Get cc-table
+    (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+    ;; 3 - If opt-max-versions is not #f, a generic version could be called. So we need to give nb-args
+    (if opt-max-versions ;; TODO(?)
+        (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
+    ;; 4 - Get entry point in cc-table
+    (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
+    ;; 5 - Jump to entry point
+    (x86-jmp cgc (x86-rax))))
+
+;;-----------------------------------------------------------------------------
 ;; Operators
 ;;-----------------------------------------------------------------------------
 

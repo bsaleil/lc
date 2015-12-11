@@ -1585,53 +1585,17 @@
           (x86-mov cgc (x86-mem (* 8 (+ 1 (length args))) (x86-rsp)) (x86-rax))) ;; Move continuation value to the continuation stack slot
         (jump-to-version cgc lazy-call ctx)))))
 
-;; Gen generic call sequence (call instructions) with call closure in RAX
-(define (gen-generic-call-sequence cgc nb-args)
-  ;; 1 - If nb-args given, put encoded nb in rdi
-  ;; NOTE: only if nb-args is not #f to handle 'apply' (apply always writes nb-args in rdi, don't overwrite it!)
-  (if nb-args
-    (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
-  ;; 2 - Get generic entry point
-  (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-  (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax))))
-
 ;; Gen call sequence (call instructions) with call closure in RAX
 (define (gen-call-sequence cgc call-ctx nb-args) ;; Use multiple entry points?
 
-    (if opt-entry-points
-
-      (if (not nb-args)
-
-          ;; It is a call from apply, then use generic entry point
-          (gen-generic-call-sequence cgc #f)
-
-          ;; If we use multiple entry points then:
-          (let* ((idx (get-closure-index call-ctx)))
-            (if idx ;; This condition is not on the previous 'if' because we don't want to create a table entry if we don't use multiple entry points
-
-              (let ((cct-offset (* 8 (+ 2 idx))))
-                  ;; 1 - Put ctx in r11
-                  (x86-mov cgc (x86-r11) (x86-imm-int (ctx->still-ref call-ctx)))
-                  ;; 2- Get cc-table
-                  (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-                  ;; 3 - If opt-max-versions is not #f, a generic version could be called. So we need to give nb-args
-                  ;; NOTE: only if nb-args is not #f to handle 'apply' (apply always writes nb-args in rdi, don't overwrite it!)
-                  (if (and opt-max-versions nb-args)
-                      (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
-                  ;; 4 - Get entry point in cc-table
-                  (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax))))
-
-              ;; Table is full, gen generic call
-              (gen-generic-call-sequence cgc nb-args))))
-
-      ;; Do not use multiple entry points
-      (if (not nb-args)
-          (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-          (begin (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args)))
-                 (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))))
-
-    ;; Jump to entry point
-    (x86-jmp cgc (x86-rax)))
+    (cond ((and opt-entry-points nb-args)
+             (let* ((idx (get-closure-index call-ctx)))
+               (if idx
+                   (x86-codegen-call-cc-spe cgc idx (ctx->still-ref call-ctx) nb-args)
+                   (x86-codegen-call-cc-gen cgc))))
+          ((and opt-entry-points (not nb-args))
+             (x86-codegen-call-cc-gen cgc))
+          (else (x86-codegen-call-ep cgc nb-args))))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
