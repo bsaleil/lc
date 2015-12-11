@@ -25,6 +25,44 @@
   (x86-push cgc (x86-imm-int ENCODING_VOID)))
 
 ;;-----------------------------------------------------------------------------
+;; Variables
+;;-----------------------------------------------------------------------------
+
+;;-----------------------------------------------------------------------------
+;; get
+
+(define (codegen-get-global cgc dest pos)
+  (if (eq? dest 'stack)
+    (x86-push cgc (x86-mem (* 8 pos) (x86-r10)))
+    (x86-mov cgc (x86-rax) (x86-mem (* 8 pos) (x86-r10)))))
+
+(define (codegen-get-local cgc dest pos raw? mutable?)
+  (if (or raw? (not mutable?))
+      (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* pos 8) (x86-rsp))))
+            ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp)))))
+      (begin
+        (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp)))
+        (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+              ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))))))
+
+(define (codegen-get-free cgc dest pos raw? mutable? closure-pos)
+  (let ((offset (+ (- 16 TAG_MEMOBJ) (* 8 pos))))
+    ;; Get closure in rax
+    (x86-mov cgc (x86-rax) (x86-mem (* 8 closure-pos) (x86-rsp)))
+    (if (or raw? (not mutable?))
+        (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem offset (x86-rax))))
+              ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))))
+        ;; Real value required and variable is mutable
+        (begin (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
+               (cond ((eq? dest 'stack) (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                     ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))))))))
+
+;;-----------------------------------------------------------------------------
+;; set
+
+;; TODO
+
+;;-----------------------------------------------------------------------------
 ;; Special forms
 ;;-----------------------------------------------------------------------------
 

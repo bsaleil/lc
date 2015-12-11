@@ -1869,63 +1869,33 @@
 ;;              #f if the value is copied from memory (id variable is mutable)
 
 ;; Free variable
-(define (gen-get-freevar cgc ctx variable dest #!optional (raw_value? #t))
-
-   (let* ((offset (+ (- 16 TAG_MEMOBJ) (* 8 (identifier-offset (cdr variable)))))
-          (clo-offset (* 8 (closure-pos ctx)))
-          (mutable (identifier-mutable? (cdr variable))))
-
-      ;; Get closure
-      (x86-mov cgc (x86-rax) (x86-mem clo-offset (x86-rsp)))
-
-      (if (or raw_value? (not mutable))
-        ;; Raw value required (direct copy from closure)
-        ;; OR variable is not mutable
-        (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem offset (x86-rax))))
-              ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax))))
-              (else (error "Invalid destination")))
-        ;; Real value required and variable is mutable
-        (begin (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
-               (cond ((eq? dest 'stack) (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                     ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                     (else (error "Invalid destination")))))
-
-      (identifier-stype (cdr variable))))
-      ;CTX_UNK))
+(define (gen-get-freevar cgc ctx variable dest #!optional (raw? #t))
+  (let* ((pos      (identifier-offset   (cdr variable)))
+         (mutable? (identifier-mutable? (cdr variable))))
+    ;; Gen code
+    (codegen-get-free cgc dest pos raw? mutable? (closure-pos ctx))
+    ;; Return variable ctx type
+    (identifier-stype (cdr variable))))
 
 ;; Local variable
-(define (gen-get-localvar cgc ctx variable dest #!optional (raw_value? #t))
-   (let* ((fs (length (ctx-stack ctx)))
-          (pos (- fs 2 (identifier-offset (cdr variable))))
-          (mutable (identifier-mutable? (cdr variable))))
-
-      (if (or raw_value? (not mutable))
-        ;; Raw value required (direct copy from stack)
-        ;; OR variable is not mutable
-        (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* pos 8) (x86-rsp))))
-              ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp))))
-              (else (error "Invalid destination")))
-        ;; Real value required and variable is mutable
-        (begin (x86-mov cgc (x86-rax) (x86-mem (* pos 8) (x86-rsp)))
-               (cond ((eq? dest 'stack)
-                        (begin
-                               (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))))
-                     ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                     (else (error "Invalid destination")))))
-      (list-ref (ctx-stack ctx) pos)))
+(define (gen-get-localvar cgc ctx variable dest #!optional (raw? #t))
+  (let* ((fs (length (ctx-stack ctx)))
+         (pos (- fs 2 (identifier-offset (cdr variable))))
+         (mutable? (identifier-mutable? (cdr variable))))
+    ;; Gen code
+    (codegen-get-local cgc dest pos raw? mutable?)
+    ;; Return variable ctx type
+    (list-ref (ctx-stack ctx) pos)))
 
 ;; Gen code to get a global var
 (define (gen-get-globalvar cgc ctx variable dest)
-
-   (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (* 8 (cdr variable)) (x86-r10))))
-         ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (* 8 (cdr variable)) (x86-r10))))
-         (else (error "Invalid destination")))
-
+   ;; Gen code
+   (codegen-get-global cgc dest (cdr variable))
    ;; If this global is a non mutable global, return type else return unknown
    (let ((r (assoc (car variable) gids)))
      (if (and r (cdr r))
-        (cdr r)
-        CTX_UNK)))
+         (cdr r)
+         CTX_UNK)))
 
 ;;
 ;; FREE VARS
