@@ -1398,9 +1398,7 @@
         (lazy-call
           (make-lazy-code
             (lambda (cgc ctx)
-              ;; GEN CALL SEQ
-              (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-              (gen-call-sequence cgc #f #f)))))
+              (x86-codegen-apply cgc)))))
 
     ;; First object of the chain, reserve a slot for the continuation
     (make-lazy-code
@@ -1411,38 +1409,16 @@
                 (lazy-move-args
                   (make-lazy-code
                     (lambda (cgc ctx)
-                      ;; Remove lst and op from stack
-                      (x86-pop cgc (x86-rbx)) ;; lst
-                      (x86-pop cgc (x86-rax)) ;; op
-                      ;; Read and push all args from lst until we reach '()
-                      (let ((label-end  (asm-make-label #f (new-sym 'apply-args-end)))
-                            (label-loop (asm-make-label #f (new-sym 'apply-args-loop))))
-                        ;; RDI contains the number of arguments
-                        (x86-mov cgc (x86-rdi) (x86-imm-int 0))
-                        (x86-label cgc label-loop)
-                        ;; If current el is null, then jump to end
-                        (x86-cmp cgc (x86-rbx) (x86-imm-int (obj-encoding '())))
-                        (x86-je cgc label-end)
-                          ;; Else, push arg and update RDI
-                          (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))           ;; Push car
-                          (x86-mov cgc (x86-rbx) (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx))) ;; Get cdr for next iteration
-                          (x86-inc cgc (x86-rdi))  ;; inc args number
-                          (x86-jmp cgc label-loop) ;; next iteration
-                        ;; All args are pushed
-                        (x86-label cgc label-end))
-                      ;; Encode nb args
-                      (x86-shl cgc (x86-rdi) (x86-imm-int 2))
-                      ;; Push closure
-                      (x86-push cgc (x86-rax))
+                      (x86-codegen-pre-apply cgc)
                       ;; Jump to lazy-build-continuation without ctx
-                      ;; This works because lazy-build-continuation and its successor lazy-call do not use ctx.
+                      ;; This works because lazy-build-continuation and its successor lazy-call do not use ctx. ;; TODO (use ctx? instead of empty ctx)
                       (jump-to-version cgc lazy-build-continuation (make-ctx '() '() -1)))))
                   ;; Push args list of apply
                   (lazy-args-list (gen-ast (caddr ast) lazy-move-args)) ;; TODO: check that caddr is a pair ?
                   ;; Push function of apply
                   (lazy-fun (check-types (list CTX_CLO) (list (cadr ast)) lazy-args-list ast)))
 
-              (x86-push cgc (x86-imm-int (obj-encoding #f))) ;; Reserve stack slot
+              (x86-codegen-push-n cgc #f 1) ;; Reserve stack slot
               (jump-to-version cgc lazy-fun (ctx-push ctx CTX_RETAD)))))))
 
 ;;

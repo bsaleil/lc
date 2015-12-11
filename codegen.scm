@@ -1,6 +1,8 @@
 
 ;;-----------------------------------------------------------------------------
 ;; x86 Codegen utils
+
+;; TODO: use (x86-codegen-push-n?)
 (define (x86-codegen-void cgc)
   (x86-push cgc (x86-imm-int ENCODING_VOID)))
 
@@ -316,6 +318,43 @@
 ;;-----------------------------------------------------------------------------
 ;; Function calls
 ;;-----------------------------------------------------------------------------
+
+;;-----------------------------------------------------------------------------
+;; Apply
+
+;; Gen code for lco before apply (Prepare arguments from list)
+(define (x86-codegen-pre-apply cgc)
+  ;; Remove lst and op from stack
+  (x86-pop cgc (x86-rbx)) ;; lst
+  (x86-pop cgc (x86-rax)) ;; op
+  ;; Read and push all args from lst until we reach '()
+  (let ((label-end  (asm-make-label #f (new-sym 'apply-args-end)))
+        (label-loop (asm-make-label #f (new-sym 'apply-args-loop))))
+    ;; RDI contains the number of arguments
+    (x86-mov cgc (x86-rdi) (x86-imm-int 0))
+    (x86-label cgc label-loop)
+    ;; If current el is null, then jump to end
+    (x86-cmp cgc (x86-rbx) (x86-imm-int (obj-encoding '())))
+    (x86-je cgc label-end)
+      ;; Else, push arg and update RDI
+      (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))           ;; Push car
+      (x86-mov cgc (x86-rbx) (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx))) ;; Get cdr for next iteration
+      (x86-inc cgc (x86-rdi))  ;; inc args number
+      (x86-jmp cgc label-loop) ;; next iteration
+    ;; All args are pushed
+    (x86-label cgc label-end))
+  ;; Encode nb args
+  (x86-shl cgc (x86-rdi) (x86-imm-int 2))
+  ;; Push closure
+  (x86-push cgc (x86-rax)))
+
+;; Gen code for apply
+(define (x86-codegen-apply cgc)
+  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+  (gen-call-sequence cgc #f #f))
+
+;;-----------------------------------------------------------------------------
+;; Call sequence
 
 ;; Generate function call using a single entry point
 (define (x86-codegen-call-ep cgc nb-args)
