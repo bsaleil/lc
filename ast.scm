@@ -1823,37 +1823,32 @@
 
 ;; Free var
 (define (gen-set-freevar cgc ctx variable)
-   (let ((mutable (identifier-mutable? (cdr variable))))
-      (if mutable
+  (let ((mutable (identifier-mutable? (cdr variable))))
+    (if mutable
         (begin (gen-get-freevar cgc ctx variable 'gen-reg)
-               (x86-pop cgc (x86-rbx))
-               (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (x86-rbx))
-               ctx)
+               (codegen-set-not-global cgc)
+               ctx) ;; TODO: change ctx ?
         (error "Compiler error : set a non mutable free var"))))
 
 ;; Local var
 (define (gen-set-localvar cgc ctx variable)
-
-   (let ((mutable (identifier-mutable? (cdr variable))))
-     (if mutable
+  (let ((mutable (identifier-mutable? (cdr variable))))
+    (if mutable
         (begin (gen-get-localvar cgc ctx variable 'gen-reg)
-               (x86-pop cgc (x86-rbx))
-               (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (x86-rbx))
-
-               ;; Replace ctx type
+               (codegen-set-not-global cgc)
+               ;; Change ctx type
                (let* ((fs (length (ctx-stack ctx)))
                       (idx (- fs 2 (identifier-offset (cdr variable)))))
-
                 ;; move and reset pos
                 (ctx-reset-pos (ctx-move ctx 0 idx #f) (car variable))))
-
         (error "Compiler error : set a non mutable local var"))))
 
 ;; Gen code to set a global var
 (define (gen-set-globalvar cgc ctx variable)
-   (x86-pop cgc (x86-rax))
-   (x86-mov cgc (x86-mem (* 8 (cdr variable)) (x86-r10)) (x86-rax))
-   ctx)
+  ;; Gen code
+  (codegen-set-global cgc (cdr variable))
+  ;; Return unchanged ctx
+  ctx)
 
 ;;
 ;; VARIABLE GET

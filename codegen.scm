@@ -60,7 +60,14 @@
 ;;-----------------------------------------------------------------------------
 ;; set
 
-;; TODO
+(define (codegen-set-global cgc pos)
+  (x86-pop cgc (x86-rax))
+  (x86-mov cgc (x86-mem (* 8 pos) (x86-r10)) (x86-rax)))
+
+;; mutable object (local or free) already is in rax
+(define (codegen-set-not-global cgc)
+  (x86-pop cgc (x86-rbx))
+  (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (x86-rbx)))
 
 ;;-----------------------------------------------------------------------------
 ;; Special forms
