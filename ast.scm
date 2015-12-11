@@ -1398,7 +1398,7 @@
         (lazy-call
           (make-lazy-code
             (lambda (cgc ctx)
-              (x86-codegen-apply cgc)))))
+              (gen-call-sequence cgc #f #f)))))
 
     ;; First object of the chain, reserve a slot for the continuation
     (make-lazy-code
@@ -1454,12 +1454,10 @@
                                         (if (eq? (car ast) opt-count-calls)
                                            (gen-inc-slot cgc 'calls))
 
-                                        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-
                                         ;; Gen call sequence with closure in RAX
                                         (let ((nb-unk (count call-stack (lambda (n) (eq? n CTX_UNK)))))
                                           (if (and opt-entry-points (= nb-unk (length args)))
-                                              (begin (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding (length args))))
+                                              (begin (x86-codegen-call-set-nbargs cgc (length args))
                                                      (gen-call-sequence cgc #f #f))
                                               (gen-call-sequence cgc call-ctx (length (cdr ast)))))))))
          ;; Lazy code object to build the continuation
@@ -1479,7 +1477,7 @@
                    ;; Lazy code object to push operator of the call
                    (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-build-continuation ast)))
 
-              (x86-push cgc (x86-imm-int (obj-encoding #f))) ;; Reserve a slot for continuation
+              (x86-codegen-push-n cgc #f 1) ;; Reserve a slot for continuation
               (jump-to-version cgc
                                (gen-ast-l args lazy-operator) ;; Compile args and jump to operator
                                (ctx-push ctx CTX_RETAD))))))))

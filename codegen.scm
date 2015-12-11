@@ -348,16 +348,16 @@
   ;; Push closure
   (x86-push cgc (x86-rax)))
 
-;; Gen code for apply
-(define (x86-codegen-apply cgc)
-  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-  (gen-call-sequence cgc #f #f))
-
 ;;-----------------------------------------------------------------------------
 ;; Call sequence
 
+;; Set nb args before call
+(define (x86-codegen-call-set-nbargs cgc nb)
+  (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb))))
+
 ;; Generate function call using a single entry point
 (define (x86-codegen-call-ep cgc nb-args)
+  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Get closure
   (if nb-args ;; If nb-args is given, move encoded number in rdi. Else, nb-args is already encoded in rdi
       (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
   (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
@@ -365,12 +365,14 @@
 
 ;;; Generate function call using a cctable and generic entry point
 (define (x86-codegen-call-cc-gen cgc)
+  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Get closure
   (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
   (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax)))
   (x86-jmp cgc (x86-rax)))
 
 ;; Generate function call using a cctable and specialized entry point
 (define (x86-codegen-call-cc-spe cgc idx ctx-imm nb-args)
+  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Get closure
   (let ((cct-offset (* 8 (+ 2 idx))))
     ;; 1 - Put ctx in r11
     (x86-mov cgc (x86-r11) (x86-imm-int ctx-imm))
