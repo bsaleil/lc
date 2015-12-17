@@ -97,9 +97,6 @@
   (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)) (x86-rax)))
 
 ;;-----------------------------------------------------------------------------
-;; Bindings (let, let*, letrec)
-
-;;-----------------------------------------------------------------------------
 ;; Values
 ;;-----------------------------------------------------------------------------
 
@@ -891,3 +888,31 @@
   (x86-add cgc (x86-rsp) (x86-imm-int 24))
   (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
   (x86-push cgc (x86-rax)))
+
+;;-----------------------------------------------------------------------------
+;; list
+(define (codegen-list cgc nb-els)
+  (let ((label-list-loop (asm-make-label #f (new-sym 'list-loop)))
+        (label-list-end  (asm-make-label #f (new-sym 'list-end))))
+    ;; Remainging length in rdi
+    (x86-mov cgc (x86-rdi) (x86-imm-int nb-els))
+    ;; cdr on top of stack
+    (x86-push cgc (x86-imm-int (obj-encoding '())))
+    ;; LOOP
+    (x86-label cgc label-list-loop)
+    (x86-cmp cgc (x86-rdi) (x86-imm-int 0))
+    (x86-je cgc label-list-end)
+
+      (gen-allocation cgc #f STAG_PAIR 3)
+      (x86-pop cgc (x86-rbx)) ;; pop cdr
+      (x86-pop cgc (x86-rdx)) ;; pop car
+      (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rdx))
+      (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
+      (x86-mov cgc (x86-rbx) (x86-imm-int (mem-header 3 STAG_PAIR)))
+      (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rbx))
+      (x86-lea cgc (x86-rbx) (x86-mem TAG_MEMOBJ alloc-ptr))
+      (x86-push cgc (x86-rbx))
+      (x86-sub cgc (x86-rdi) (x86-imm-int 1))
+      (x86-jmp cgc label-list-loop)
+
+    (x86-label cgc label-list-end)))
