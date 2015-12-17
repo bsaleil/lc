@@ -925,3 +925,23 @@
       (x86-jmp cgc label-list-loop)
 
     (x86-label cgc label-list-end)))
+
+;;-----------------------------------------------------------------------------
+;; Others
+;;-----------------------------------------------------------------------------
+
+;;-----------------------------------------------------------------------------
+;; Mutable var (creates mutable object, write variable and header and replace local with mutable object)
+(define (codegen-mutable cgc local-idx)
+  (let ((header-word (mem-header 2 STAG_MOBJECT)))
+    ;; Alloc mutable
+    (gen-allocation cgc #f STAG_MOBJECT 2)
+    ;; Write variable
+    (x86-pop cgc (x86-rax))
+    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+    ;; Write header
+    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+    ;; Replace local
+    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+    (x86-mov cgc (x86-mem (* 8 local-idx) (x86-rsp)) (x86-rax))))

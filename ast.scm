@@ -2039,28 +2039,20 @@
        (let* ((res (assoc (car mutable) (ctx-env ctx)))
               (header-word (mem-header 2 STAG_MOBJECT))
               (fs (length (ctx-stack ctx)))
-              (l-pos (- fs 2 (identifier-offset (cdr res))))
-              (offset (* l-pos 8)))
+              (local-idx (- fs 2 (identifier-offset (cdr res)))))
 
-        ;; Alloc
-        (gen-allocation cgc ctx STAG_MOBJECT 2)
+         ;; Get current variable
+         (gen-get-localvar cgc ctx res 'stack) ;; There are only localvar here (no free vars)
 
-        ;; Create var in memory
-        (gen-get-localvar cgc ctx res 'gen-reg) ;; There are only localvar here (no free vars)
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+         ;; Create mutable object and copy variable
+         (codegen-mutable cgc local-idx)
 
-        ;; Replace local
-        (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-        (x86-mov cgc (x86-mem offset (x86-rsp)) (x86-rax))
-
-        (let* ((nstack (append (list-head (ctx-stack ctx) l-pos)
-                              (cons CTX_MOBJ
-                                    (list-tail (ctx-stack ctx) (+ l-pos 1)))))
-               (nctx (make-ctx nstack (ctx-env ctx) (ctx-nb-args ctx))))
-          ;; Gen next mutable vars
-          (gen-mutable cgc nctx (cdr mutable))))))
+         (let* ((nstack (append (list-head (ctx-stack ctx) local-idx)
+                                (cons CTX_MOBJ
+                                      (list-tail (ctx-stack ctx) (+ local-idx 1)))))
+                (nctx (make-ctx nstack (ctx-env ctx) (ctx-nb-args ctx))))
+           ;; Gen next mutable vars
+           (gen-mutable cgc nctx (cdr mutable))))))
 
 ;; Return label of a stub generating error with 'msg'
 (define (get-label-error msg)
