@@ -85,14 +85,17 @@
    (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT))
    (current-output-port 0  0  ,(prim-types 0 ))
    (current-input-port  0  0  ,(prim-types 0 ))
+   (list                #f) ;; nb-args and types are not fixed
 ))
 
 (define (assert-p-nbargs ast)
-  (assert (and (>= (length (cdr ast))
-                   (cadr (assoc (car ast) primitives)))
-               (<= (length (cdr ast))
-                   (caddr (assoc (car ast) primitives))))
-          ERR_WRONG_NUM_ARGS))
+  (let ((infos (cdr (assoc (car ast) primitives))))
+    (assert (or (not (car infos)) ;; nb args and types are not fixed
+                (and (>= (length (cdr ast))
+                         (cadr (assoc (car ast) primitives)))
+                     (<= (length (cdr ast))
+                         (caddr (assoc (car ast) primitives)))))
+            ERR_WRONG_NUM_ARGS)))
 
 ;;-----------------------------------------------------------------------------
 ;; AST DISPATCH
@@ -115,7 +118,7 @@
         ((pair? ast)
          (let ((op (car ast)))
            (cond ;; Special
-                 ((member op '(breakpoint list)) (mlc-special ast succ))
+                 ((member op '(breakpoint)) (mlc-special ast succ))
                  ;; TODO special function
                  ((eq? op '$$print-flonum) (mlc-printflonum ast succ))
                  ;; Inlined primitive
@@ -851,45 +854,7 @@
              (lambda (cgc ctx)
                (gen-breakpoint cgc)
                (codegen-void cgc)
-               (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))
-        ((eq? (car ast) 'list)
-           (let ((lazy-list
-                   (make-lazy-code
-                     (lambda (cgc ctx)
-                       (let ((label-list-loop (asm-make-label #f (new-sym 'list-loop)))
-                             (label-list-end  (asm-make-label #f (new-sym 'list-end))))
-                         ;; Remainging length in rdi
-                         (x86-mov cgc (x86-rdi) (x86-imm-int (length (cdr ast))))
-                         ;; cdr on top of stack
-                         (x86-push cgc (x86-imm-int (obj-encoding '())))
-                         ;; LOOP
-                         (x86-label cgc label-list-loop)
-                         (x86-cmp cgc (x86-rdi) (x86-imm-int 0))
-                         (x86-je cgc label-list-end)
-
-                            (gen-allocation cgc #f STAG_PAIR 3)
-                            (x86-pop cgc (x86-rbx)) ;; pop cdr
-                            (x86-pop cgc (x86-rdx)) ;; pop car
-                            (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rdx))
-                            (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
-                            (x86-mov cgc (x86-rbx) (x86-imm-int (mem-header 3 STAG_PAIR)))
-                            (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rbx))
-                            (x86-lea cgc (x86-rbx) (x86-mem TAG_MEMOBJ alloc-ptr))
-                            (x86-push cgc (x86-rbx))
-                            (x86-sub cgc (x86-rdi) (x86-imm-int 1))
-                            (x86-jmp cgc label-list-loop)
-
-                         (x86-label cgc label-list-end)
-                         (jump-to-version cgc
-                                          succ
-                                          (ctx-push (ctx-pop ctx (length (cdr ast)))
-                                                    (if (null? (cdr ast))
-                                                        CTX_NULL
-                                                        CTX_PAI))))))))
-              ;; list operands
-              (gen-ast-l (cdr ast) lazy-list)))))
-
-
+               (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))))
 
 ;;
 ;; Make lazy code from SPECIAL FORM (inlined specials)
@@ -1053,13 +1018,49 @@
                             (lambda (cgc ctx)
                               (codegen-string-set! cgc)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx 3) CTX_VOID)))))
+                         ;; LIST
+                         ((eq? special 'list)
+                          (make-lazy-code
+                            (lambda (cgc ctx)
+                              (let ((label-list-loop (asm-make-label #f (new-sym 'list-loop)))
+                                    (label-list-end  (asm-make-label #f (new-sym 'list-end))))
+                                ;; Remainging length in rdi
+                                (x86-mov cgc (x86-rdi) (x86-imm-int (length (cdr ast))))
+                                ;; cdr on top of stack
+                                (x86-push cgc (x86-imm-int (obj-encoding '())))
+                                ;; LOOP
+                                (x86-label cgc label-list-loop)
+                                (x86-cmp cgc (x86-rdi) (x86-imm-int 0))
+                                (x86-je cgc label-list-end)
+
+                                  (gen-allocation cgc #f STAG_PAIR 3)
+                                  (x86-pop cgc (x86-rbx)) ;; pop cdr
+                                  (x86-pop cgc (x86-rdx)) ;; pop car
+                                  (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rdx))
+                                  (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
+                                  (x86-mov cgc (x86-rbx) (x86-imm-int (mem-header 3 STAG_PAIR)))
+                                  (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rbx))
+                                  (x86-lea cgc (x86-rbx) (x86-mem TAG_MEMOBJ alloc-ptr))
+                                  (x86-push cgc (x86-rbx))
+                                  (x86-sub cgc (x86-rdi) (x86-imm-int 1))
+                                  (x86-jmp cgc label-list-loop)
+
+                                (x86-label cgc label-list-end)
+                                (jump-to-version cgc
+                                                 succ
+                                                 (ctx-push (ctx-pop ctx (length (cdr ast)))
+                                                           (if (null? (cdr ast))
+                                                               CTX_NULL
+                                                               CTX_PAI)))))))
                          ;; OTHERS
                          (else (error "NYI")))))
 
             (let* ((primitive (assoc (car ast) primitives))
                    ;; Get list of types required by this primitive
-                   (types (cdr (assoc (length (cdr ast))
-                                      (cadddr primitive)))))
+                   (types (if (cadr primitive)
+                              (cdr (assoc (length (cdr ast))
+                                          (cadddr primitive)))
+                              (build-list (length (cdr ast)) (lambda (el) CTX_ALL)))))
               (assert (= (length types)
                          (length (cdr ast)))
                       "Compiler: primitive error")

@@ -1,3 +1,6 @@
+
+(pp (list 1 #\C #f "test"))
+
 ;; TODO: AVANT ALLOC DE REGISTRE:
 ;;  - Vérifier si --max-versions 3 et --max-versions 0 ne dépassent pas le nb de versions
 ;;    (avec et sans entry/return points)
