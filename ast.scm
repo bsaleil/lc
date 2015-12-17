@@ -1163,11 +1163,10 @@
                                             lazy-code1
                                             ctx1))))))))))
 
-                 (x86-pop cgc (x86-rax))
-                 (x86-cmp cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-                 (x86-label cgc label-jump)
-                 (x86-je  cgc (list-ref stub-labels 0))
-                 (x86-jmp cgc (list-ref stub-labels 1)))))))
+                 (let ((label-false (list-ref stub-labels 0))
+                       (label-true  (list-ref stub-labels 1)))
+                   ;; Gen code
+                   (codegen-if cgc label-jump label-false label-true)))))))
     (gen-ast
       (cadr ast)
       lazy-code-test)))

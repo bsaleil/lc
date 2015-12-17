@@ -74,6 +74,15 @@
 ;;-----------------------------------------------------------------------------
 
 ;;-----------------------------------------------------------------------------
+;; If
+(define (codegen-if cgc label-jump label-false label-true)
+  (x86-pop cgc (x86-rax))
+  (x86-cmp cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+  (x86-label cgc label-jump)
+  (x86-je  cgc label-false)
+  (x86-jmp cgc label-true))
+
+;;-----------------------------------------------------------------------------
 ;; Begin
 (define (codegen-begin-out cgc nb-expr)
   (x86-pop  cgc (x86-rax)) ;; Pop result of last expr
