@@ -471,6 +471,21 @@
     (x86-jmp cgc (x86-rax))))
 
 ;;-----------------------------------------------------------------------------
+;; Call continuation
+
+;; Load continuation using specialized return points
+(define (codegen-load-cont-cr cgc crtable-loc apply? nbargs)
+  ;; CR table location in rax
+  (x86-mov cgc (x86-rax) (x86-imm-int crtable-loc))
+  (if apply?
+      ;; Call from apply
+      (begin (x86-shl cgc (x86-rdi) (x86-imm-int 1)) ;; Rdi contains encoded number of args. Shiftl 1 to left to get nbargs*8
+             (x86-mov cgc (x86-mem 8 (x86-rsp) (x86-rdi)) (x86-rax)) ;; Move to the continuation stack slot [rsp+rdi+8] (rsp + nbArgs*8 + 8)
+             (x86-shr cgc (x86-rdi) (x86-imm-int 1)))
+      ;; Other call
+      (x86-mov cgc (x86-mem (* 8 (+ 1 nbargs)) (x86-rsp)) (x86-rax)))) ;; Move to the continuation stack slot
+
+;;-----------------------------------------------------------------------------
 ;; Operators
 ;;-----------------------------------------------------------------------------
 

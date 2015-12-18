@@ -1427,6 +1427,7 @@
     (get-lazy-continuation-builder-cr  op lazy-succ lazy-call args continuation-ctx from-apply? ast)
     (get-lazy-continuation-builder-nor op lazy-succ lazy-call args continuation-ctx from-apply?)))
 
+;; TODO: rename from-apply? -> apply?
 (define (get-lazy-continuation-builder-cr op lazy-succ lazy-call args continuation-ctx from-apply? ast)
 
   ;; Create stub and push ret addr
@@ -1453,14 +1454,9 @@
               (stub-addr (vector-ref (list-ref stub-labels 0) 1))
               (crtable (get-crtable ast crtable-key stub-addr))
               (crtable-loc (- (obj-encoding crtable) 1)))
-
-         (x86-mov cgc (x86-rax) (x86-imm-int crtable-loc))
-
-         (if from-apply?
-           (begin (x86-shl cgc (x86-rdi) (x86-imm-int 1)) ;; Rdi contains encoded number of args. Shiftl 1 to left to get nbargs*8
-                  (x86-mov cgc (x86-mem 8 (x86-rsp) (x86-rdi)) (x86-rax)) ;; Mov to continuation stack slot [rsp+rdi+8] (rsp + nbArgs*8 + 8)
-                  (x86-shr cgc (x86-rdi) (x86-imm-int 1))) ;; Restore encoded number of args
-           (x86-mov cgc (x86-mem (* 8 (+ 1 (length args))) (x86-rsp)) (x86-rax))) ;; Move continuation value to the continuation stack slot
+         ;; Generate code
+         (codegen-load-cont-cr cgc crtable-loc from-apply? (length args))
+         ;; Jump to call object
          (jump-to-version cgc lazy-call ctx)))))
 
 ;; Build continuation stub and load stub address to the continuation slot
