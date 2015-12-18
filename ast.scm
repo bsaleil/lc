@@ -189,52 +189,13 @@
 ;; Make lazy code from vector literal
 ;;
 (define (mlc-vector ast succ)
-
-  ;; Generate lazy object which pop object from stack
-  ;; and mov it to vector slot and jump to next element
-  (define (lazy-vector-set-gen idx)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (x86-pop cgc (x86-rax)) ;; el
-        (x86-pop cgc (x86-rbx)) ;; vector
-        (x86-mov cgc (x86-mem (- (+ 16 (* idx 8)) TAG_MEMOBJ) (x86-rbx)) (x86-rax))
-        (x86-push cgc (x86-rbx))
-        (if (= idx (- (vector-length ast) 1))
-           (jump-to-version cgc
-                            succ
-                            (ctx-pop ctx))
-           (jump-to-version cgc
-                            (lazy-el-gen (+ idx 1))
-                            (ctx-pop ctx))))))
-
-  ;; Generate lazy-object which gen and push the value
-  ;; at vector[idx].
-  (define (lazy-el-gen idx)
-    (gen-ast (vector-ref ast idx)
-             (lazy-vector-set-gen idx)))
-
-  ;; Main lazy code
-  (make-lazy-code
-    (lambda (cgc ctx)
-      (let ((header-word (mem-header (+ 2 (vector-length ast)) STAG_VECTOR)))
-        ;; Alloc
-        (gen-allocation cgc ctx STAG_VECTOR (+ (vector-length ast) 2))
-        ;; Write header
-        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-        ;; Write length
-        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (vector-length ast))))
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-        ;; Push vector
-        (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-        (x86-push cgc (x86-rax))
-        (if (> (vector-length ast) 0)
-          (jump-to-version cgc
-                           (lazy-el-gen 0)
-                           (ctx-push ctx CTX_VECT))
-          (jump-to-version cgc
-                           succ
-                           (ctx-push ctx CTX_VECT)))))))
+  (let ((lazy-vector
+          (make-lazy-code
+            (lambda (cgc ctx)
+              (codegen-vector cgc ast)
+              (jump-to-version cgc succ (ctx-push (ctx-pop ctx (vector-length ast)) CTX_VECT))))))
+    ;; Push all vector elements in reverse order
+    (gen-ast-l (reverse (vector->list ast)) lazy-vector)))
 
 ;;
 ;; Make lazy code from string literal
