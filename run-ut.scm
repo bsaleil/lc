@@ -4,7 +4,12 @@
 
 ;;; File: "run-unit-tests.scm"
 
+;;; Copyright (c) 2012-2014 by Marc Feeley, All Rights Reserved.
+
 ;;;----------------------------------------------------------------------------
+
+;;; This is a modified version of the run-unit-tests.scm
+;;; file from Gambit Scheme (http://gambitscheme.org/)
 
 (define cleanup? #f)
 
@@ -73,7 +78,7 @@
     (cons status output)))
 
 (define (test-using-mode file mode)
-  
+
   (cond ((equal? mode "gsi")
          (run "gsi" "-:d-,fu,=.." file))
         ((equal? mode "lc")

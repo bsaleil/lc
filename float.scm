@@ -1,3 +1,31 @@
+;;---------------------------------------------------------------------------
+;;
+;;  Copyright (c) 2015, Baptiste Saleil. All rights reserved.
+;;
+;;  Redistribution and use in source and binary forms, with or without
+;;  modification, are permitted provided that the following conditions are
+;;  met:
+;;   1. Redistributions of source code must retain the above copyright
+;;      notice, this list of conditions and the following disclaimer.
+;;   2. Redistributions in binary form must reproduce the above copyright
+;;      notice, this list of conditions and the following disclaimer in the
+;;      documentation and/or other materials provided with the distribution.
+;;   3. The name of the author may not be used to endorse or promote
+;;      products derived from this software without specific prior written
+;;      permission.
+;;
+;;  THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED
+;;  WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+;;  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN
+;;  NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+;;  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+;;  NOT LIMITED TO PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+;;  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+;;  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+;;  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+;;  THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+;;
+;;---------------------------------------------------------------------------
 
 (include "~~lib/_asm#.scm")
 (include "~~lib/_x86#.scm")
@@ -16,25 +44,25 @@
 ;; IEEE754 conversion
 
 ;; Return integer representation of sign of f (0 or 1)
-(define (sign-int f) (if (>= f 0) 0 1)) 
+(define (sign-int f) (if (>= f 0) 0 1))
 
 ;; Return pair (fraction, exponent) of float number f (n is recursion value)
 ;; ex. (frac-expo 0.085 0) -> 1.36, -4 (0.085 / 2^-4 = 1.36)
 (define (frac-expo f n)
-   (if (and (>= f 1) (< f 2)) ;; done 
+   (if (and (>= f 1) (< f 2)) ;; done
       (cons f n)
       (if (< f 1)
-         (frac-expo (* f 2) (- n 1)) 
+         (frac-expo (* f 2) (- n 1))
          (frac-expo (/ f 2) (+ n 1)))))
 
 ;; Return approximate integer representation of fraction f (n, p are recursion values)
 ;; ex. (frac-int 0.36 0 -1) -> 3019899
-;;     (01011100001010001111011 with 0.01011100001010001111011 the approximate binary representation of 0.36)      
+;;     (01011100001010001111011 with 0.01011100001010001111011 the approximate binary representation of 0.36)
 (define (frac-int nbits-fraction f n p)
 
   (cond ;; Last choice (do we take 2^-23 ?)
       ((= p (* -1 nbits-fraction))
-         
+
          ;; We get the closest number of f between n and n+2^-23
          (let ((sa (abs (- f (+ n (expt 2 p)))))
                (sb (abs (- f n))))
@@ -177,18 +205,18 @@
   (x86-sse-op cgc "cvtsi2sd" dst src #xf2 #x2a))
 
 (define (x86-sse-op cgc mnemonic dst src opcode1 opcode2)
-  
+
   (if opcode1
     (asm-8 cgc opcode1)) ;; opcode
 
   (if (x86-reg? dst)
-      
+
     (begin (x86-opnd-prefix-reg-opnd cgc dst src)       ;; prefix
            (asm-8 cgc #x0f)                             ;; opcode 1
            (asm-8 cgc opcode2)                             ;; opcode 2
            (x86-opnd-modrm/sib-reg-opnd cgc dst src)   ;; ModR/M
            (x86-listing cgc mnemonic (x86-reg-width dst) dst src))
-    
+
     (begin (x86-opnd-prefix-reg-opnd cgc src dst)       ;; prefix
            (asm-8 cgc #x0f)                             ;; opcode 1
            (asm-8 cgc (+ opcode2 1))                    ;; opcode 2
