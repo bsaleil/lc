@@ -1,10 +1,13 @@
-all: float.o1 utils.o1 main.o1 native.o1 mem.o1 ast.o1 core.o1 expand.o1 lib
+all: float.o1 utils.o1 main.o1 native.o1 mem.o1 codegen.o1 ast.o1 core.o1 expand.o1 lib
 	cp lazy-comp.template lazy-comp
 	chmod u+x lazy-comp
 
 .PHONY: lib
 lib:
 	gsi ./build-lib
+
+codegen.o1: codegen.scm
+	gsc -o codegen.o1 codegen.scm
 
 float.o1: float.scm
 	gsc -o float.o1 float.scm

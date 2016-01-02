@@ -18,4 +18,4 @@ done
 cd "$(dirname "$0")"
 
 # Call gsc
-gsc -i float.o1 utils.o1 core.o1 native.o1 mem.o1 ast.o1 expand.o1 main.o1 ${args[@]}
+gsc -i float.o1 utils.o1 core.o1 native.o1 mem.o1 codegen.o1 ast.o1 expand.o1 main.o1 ${args[@]}

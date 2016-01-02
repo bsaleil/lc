@@ -27,6 +27,9 @@
 ;;
 ;;---------------------------------------------------------------------------
 
+(include "~~lib/_x86#.scm")
+(include "~~lib/_asm#.scm")
+
 ;;-----------------------------------------------------------------------------
 ;; x86 Codegen utils
 
@@ -403,41 +406,31 @@
         ;; END
         (x86-label cgc label-end))))
 
-;; Build closure using a single entry point
-(define (codegen-closure-ep cgc ctx ep-loc fvars)
-  (let* ((closure-size  (+ 2 (length fvars))) ;; header, entry point
+;; Alloc closure and write header
+(define (codegen-closure-create cgc nb-free)
+  (let* ((closure-size  (+ 2 nb-free)) ;; header, entry point
          (header-word (mem-header closure-size STAG_PROCEDURE)))
-    ;; 0 - Alloc closure
+    ;; 1 - Alloc closure
     (gen-allocation cgc #f STAG_PROCEDURE closure-size)
-    ;; 1 - Write closure header
+    ;; 2 - Write closure header
     (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-    ;; 2 - Write entry point
-    (x86-mov cgc (x86-rax) (x86-mem (+ 8 (- (obj-encoding ep-loc) 1))))
-    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-    ;; 3 - Write free vars
-    (gen-free-vars cgc fvars ctx 16)
-    ;; 4 - Tag and push closure
-    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-    (x86-push cgc (x86-rax))))
+    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))))
 
-;; Build closure using a cctable with multiple entry points
-(define (codegen-closure-cc cgc ctx cctable-loc fvars)
-  (let* ((closure-size  (+ 2 (length fvars))) ;; header, cctable
-         (header-word (mem-header closure-size STAG_PROCEDURE)))
-    ;; 0 - Alloc closure
-    (gen-allocation cgc #f STAG_PROCEDURE closure-size)
-    ;; 1 - Write closure header
-    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-    ;; 2 - Write cctable ptr
-    (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
-    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-    ;; 3 - Write free vars
-    (gen-free-vars cgc fvars ctx 16)
-    ;; 4 - Tag and push closure
-    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-    (x86-push cgc (x86-rax))))
+;; Write entry point in closure (do not use cctable)
+(define (codegen-closure-ep cgc ep-loc)
+  ;; Write entry point in closure
+  (x86-mov cgc (x86-rax) (x86-mem (+ 8 (- (obj-encoding ep-loc) 1))))
+  (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
+
+;; Write cctable ptr in closure (use multiple entry points)
+(define (codegen-closure-cc cgc cctable-loc)
+  (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
+  (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
+
+;; Push closure
+(define (codegen-closure-put cgc)
+  (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+  (x86-push cgc (x86-rax)))
 
 ;; Generate function return using a return address
 (define (codegen-return-rp cgc retaddr-offset)
@@ -659,13 +652,13 @@
 ;;-----------------------------------------------------------------------------
 ;; Binary operators
 
-(define (codegen-binop cgc op)
+(define (codegen-binop cgc op label-div0)
   (x86-pop cgc (x86-rbx)) ;; Pop right
   (x86-pop cgc (x86-rax)) ;; Pop left
   (x86-sar cgc (x86-rax) (x86-imm-int 2))
   (x86-sar cgc (x86-rbx) (x86-imm-int 2))
   (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
-  (x86-je  cgc (get-label-error ERR_DIVIDE_ZERO)) ;; Check '/0'
+  (x86-je  cgc label-div0) ;; Check '/0'
   (x86-cqo cgc)
   (x86-idiv cgc (x86-rbx))
   (cond ((eq? op 'quotient)

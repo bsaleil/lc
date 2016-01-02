@@ -27,10 +27,7 @@
 ;;
 ;;---------------------------------------------------------------------------
 
-(include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
-
-(include "codegen.scm") ;; TODO Create module after refactoring
 
 ;;-----------------------------------------------------------------------------
 ;; Macros
@@ -519,16 +516,25 @@
           (if opt-stats
             (gen-inc-slot cgc 'closures))
 
-          ;; Generate closure
+          ;; Create closure
+          (codegen-closure-create cgc (length fvars))
+
+          ;; Write entry point or cctable location
           (if opt-entry-points
               ;; If opt-entry-points generate a closure using cctable
               (let* ((cctable-key (get-cctable-key ast ctx fvars))
                      (cctable     (get-cctable ast cctable-key stub-addr generic-addr))
                      (cctable-loc (- (obj-encoding cctable) 1)))
-                (codegen-closure-cc cgc ctx cctable-loc fvars))
+                (codegen-closure-cc cgc cctable-loc))
               ;; Else, generate a closure using a single entry point
               (let ((ep-loc (get-entry-points-loc ast stub-addr)))
-                (codegen-closure-ep cgc ctx ep-loc fvars)))
+                (codegen-closure-ep cgc ep-loc)))
+
+          ;; Write free variables
+          (gen-free-vars cgc fvars ctx 16)
+
+          ;; Push closure
+          (codegen-closure-put cgc)
 
           ;; Trigger the next object
           (if opt-propagate-functionid
@@ -1535,7 +1541,8 @@
       (let* ((lazy-op
                (make-lazy-code
                  (lambda (cgc ctx)
-                   (codegen-binop cgc op)
+                   (let ((label-div0 (get-label-error ERR_DIVIDE_ZERO)))
+                     (codegen-binop cgc op label-div0))
                    (jump-to-version cgc
                                     succ
                                     (ctx-push (ctx-pop ctx 2) CTX_NUM))))))
@@ -2025,8 +2032,4 @@
            (gen-mutable cgc nctx (cdr mutable))))))
 
 ;; Return label of a stub generating error with 'msg'
-(define (get-label-error msg)
-  (list-ref (add-callback #f
-                          0
-                          (lambda (ret-addr selector) (error msg)))
-            0))
+(define (get-label-error msg) (list-ref (add-callback #f   0 (lambda (ret-addr selector) (error msg))) 0))
