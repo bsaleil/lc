@@ -388,7 +388,6 @@
           (table-set! entry-points-locs ast v)
           v))))
 ;; TODO
-;; TODO
 
 ;; Return cctable from cctable-key
 ;; Return the existing table if already created or create one, add entry, and return it
