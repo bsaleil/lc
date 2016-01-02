@@ -1217,11 +1217,9 @@
                       (mctx (ctx-pop nctx (- (+ (length test-exprs) (length variables)) 1)))
                       (env (list-tail (ctx-env mctx) (length variables)))
                       (ctx (make-ctx (ctx-stack mctx) env (ctx-nb-args mctx))))
-
-                (x86-pop cgc (x86-rax))
-                (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (+ (length variables) (length test-exprs) -1))))
-                (x86-push cgc (x86-rax))
-
+                ;; Clean stack and push result on top of stack
+                (codegen-do-end cgc (+ (length variables) (length test-exprs) -1))
+                ;; Jump to succ
                 (jump-to-version cgc succ ctx)))))
          ;; LAZY-TEST
          (lazy-test #f) ;; do test
@@ -1234,14 +1232,10 @@
                     (from (- (* 8 (length variables)) 8) (- from 8))
                     (to   (- (* 8 (+ (length variables) (length variables) (length bodies))) 8) (- to 8)))
                    ((null? it) #f)
-                   (x86-mov cgc (x86-rax) (x86-mem from (x86-rsp)))
-                   (if (member (car it) mvars)
-                     (begin (x86-mov cgc (x86-rbx) (x86-mem to (x86-rsp))) ;; mvar box
-                            (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)) (x86-rax)))
-                     (x86-mov cgc (x86-mem to (x86-rsp)) (x86-rax))))
+                   (codegen-do-bind-var cgc (member (car it) mvars) from to))
 
-               ;; Update rsp
-               (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (+ (length variables) (length bodies)))))
+               ;; Clean stack
+               (codegen-clean-stack cgc (+ (length variables) (length bodies)))
 
                ;; Update ctx
                (let* (;; Mov stack types

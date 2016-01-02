@@ -153,6 +153,23 @@
   (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)) (x86-rax)))
 
 ;;-----------------------------------------------------------------------------
+;; Do
+
+;; Endo of do form. Clean stack and put res value on top of stack
+(define (codegen-do-end cgc nb-clean)
+  (x86-pop cgc (x86-rax)) ;; Get result from stack
+  (x86-add cgc (x86-rsp) (x86-imm-int (* 8 nb-clean))) ;; clean stack
+  (x86-push cgc (x86-rax)))
+
+;; Var is in rax
+(define (codegen-do-bind-var cgc mutable? from to)
+  (x86-mov cgc (x86-rax) (x86-mem from (x86-rsp)))
+  (if mutable?
+      (begin (x86-mov cgc (x86-rbx) (x86-mem to (x86-rsp))) ;; get mvar box
+             (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)) (x86-rax)))
+      (x86-mov cgc (x86-mem to (x86-rsp)) (x86-rax))))
+
+;;-----------------------------------------------------------------------------
 ;; Values
 ;;-----------------------------------------------------------------------------
 
@@ -1037,7 +1054,6 @@
 
 ;;-----------------------------------------------------------------------------
 ;; TCO
-
 (define (codegen-tco-move-arg cgc from to)
   (x86-mov cgc (x86-rax) (x86-mem (* from 8) (x86-rsp)))
   (x86-mov cgc (x86-mem (* to 8) (x86-rsp))  (x86-rax)))
