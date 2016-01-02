@@ -41,6 +41,25 @@
 (define (codegen-push-n cgc imm n)
   (call-n n x86-push cgc (x86-imm-int (obj-encoding n))))
 
+(define (codegen-push-tmp cgc)
+  (x86-push cgc (x86-rax)))
+
+(define (codegen-move-tmp cgc offset reg)
+  (x86-mov cgc (x86-mem offset reg) (x86-rax)))
+
+(define (codegen-clean-stack cgc nb)
+  (x86-add cgc (x86-rsp) (x86-imm-int (* 8 nb))))
+
+(define (codegen-dispatch-imm cgc label-dispatch label-true label-false from-stack? cmp-val)
+  (if from-stack?
+    (x86-pop cgc (x86-rax)))
+  (x86-cmp cgc (x86-rax) (x86-imm-int (obj-encoding cmp-val)))
+  (x86-label cgc label-dispatch)
+  (x86-je cgc label-true)
+  (x86-jmp cgc label-false))
+
+
+
 ;;-----------------------------------------------------------------------------
 ;; Define
 (define (codegen-define-id cgc)
@@ -512,6 +531,19 @@
              (x86-shr cgc (x86-rdi) (x86-imm-int 1)))
       ;; Other call
       (x86-mov cgc (x86-mem (* 8 (+ 1 nbargs)) (x86-rsp)) (x86-rax)))) ;; Move to the continuation stack slot
+
+;; TODO
+(define (codegen-load-cont-nor cgc label-load-ret label-cont-stub apply? nbargs)
+  ;; Return address (continuation label)
+  (x86-label cgc label-load-ret)
+  (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref label-cont-stub 1)))
+  (if apply?
+      ;; Call from apply
+      (begin (x86-shl cgc (x86-rdi) (x86-imm-int 1)) ;; Rdi contains encoded number of args. Shiftl 1 to left to get nbargs*8
+             (x86-mov cgc (x86-mem 8 (x86-rsp) (x86-rdi)) (x86-rax)) ;; Mov to continuation stack slot [rsp+rdi+8] (rsp + nbArgs*8 + 8)
+             (x86-shr cgc (x86-rdi) (x86-imm-int 1))) ;; Restore encoded number of args
+      ;; Other call
+      (x86-mov cgc (x86-mem (* 8 (+ 1 nbargs)) (x86-rsp)) (x86-rax)))) ;; Move continuation value to the continuation stack slot
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
@@ -1002,6 +1034,13 @@
 ;;-----------------------------------------------------------------------------
 ;; Others
 ;;-----------------------------------------------------------------------------
+
+;;-----------------------------------------------------------------------------
+;; TCO
+
+(define (codegen-tco-move-arg cgc from to)
+  (x86-mov cgc (x86-rax) (x86-mem (* from 8) (x86-rsp)))
+  (x86-mov cgc (x86-mem (* to 8) (x86-rsp))  (x86-rax)))
 
 ;;-----------------------------------------------------------------------------
 ;; Mutable var (creates mutable object, write variable and header and replace local with mutable object)

@@ -1,6 +1,6 @@
 
 
-(pp '#(1 2 3))
+;(pp '#(1 2 3))
 
 ;; TODO: AVANT ALLOC DE REGISTRE:
 ;;  - Vérifier si --max-versions 3 et --max-versions 0 ne dépassent pas le nb de versions

@@ -789,7 +789,7 @@
   (define (gen-letrec-binds-h cgc ctx ids from to)
     (if (null? ids)
       ;; No more id, update rsp and return new ctx
-      (begin (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (length all-ids))))
+      (begin (codegen-clean-stack cgc (length all-ids))
              (ctx-pop ctx (length all-ids)))
       ;; Bind id
       (let* ((nctx (ctx-move ctx from to #f)))
@@ -1347,12 +1347,7 @@
                                             (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-fail ctx-out)
                                             (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-success ctx-out))))))))))
 
-         (if from-stack?
-          (x86-pop cgc (x86-rax)))
-         (x86-cmp cgc (x86-rax) (x86-imm-int (obj-encoding cmp-val)))
-         (x86-label cgc label-jump)
-         (x86-je cgc (list-ref stub-labels 0))
-         (x86-jmp cgc (list-ref stub-labels 1))))))
+         (codegen-dispatch-imm cgc label-jump (list-ref stub-labels 0) (list-ref stub-labels 1) from-stack? cmp-val)))))
 
 ;;-----------------------------------------------------------------------------
 ;; APPLY & CALL
@@ -1466,7 +1461,7 @@
               (lazy-continuation
                 (make-lazy-code
                   (lambda (cgc ctx)
-                    (x86-push cgc (x86-rax))
+                    (codegen-push-tmp cgc)
                     (jump-to-version cgc lazy-succ ctx))))
               ;; Continuation stub
               (stub-labels (add-cont-callback cgc
@@ -1488,6 +1483,7 @@
          ;; Jump to call object
          (jump-to-version cgc lazy-call ctx)))))
 
+;; TODO: rename from-apply? -> apply?
 ;; Build continuation stub and load stub address to the continuation slot
 (define (get-lazy-continuation-builder-nor op lazy-succ lazy-call args continuation-ctx from-apply?)
   ;; Create stub and push ret addr
@@ -1501,7 +1497,7 @@
              (lazy-continuation
                 (make-lazy-code
                    (lambda (cgc ctx)
-                      (x86-push cgc (x86-rax))
+                      (codegen-push-tmp cgc)
                       (jump-to-version cgc lazy-succ (ctx-push ctx CTX_UNK)))))
              ;; Continuation stub
              (stub-labels (add-callback cgc
@@ -1512,15 +1508,10 @@
                                                                                         lazy-continuation
                                                                                         continuation-ctx))) ;; Remove operator, args, and continuation from stack
                                             gen-flag))))
-        ;; Return address (continuation label)
-        (x86-label cgc load-ret-label)
-        (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref (list-ref stub-labels 0) 1)))
 
-        (if from-apply?
-          (begin (x86-shl cgc (x86-rdi) (x86-imm-int 1)) ;; Rdi contains encoded number of args. Shiftl 1 to left to get nbargs*8
-                 (x86-mov cgc (x86-mem 8 (x86-rsp) (x86-rdi)) (x86-rax)) ;; Mov to continuation stack slot [rsp+rdi+8] (rsp + nbArgs*8 + 8)
-                 (x86-shr cgc (x86-rdi) (x86-imm-int 1))) ;; Restore encoded number of args
-          (x86-mov cgc (x86-mem (* 8 (+ 1 (length args))) (x86-rsp)) (x86-rax))) ;; Move continuation value to the continuation stack slot
+        ;; Generate code
+        (codegen-load-cont-nor cgc load-ret-label (list-ref stub-labels 0) from-apply? (length args))
+        ;; Jump to call object
         (jump-to-version cgc lazy-call ctx)))))
 
 ;; Gen call sequence (call instructions) with call closure in RAX
@@ -1897,7 +1888,7 @@
                ;; Local var
                (gen-get-localvar cgc ctx res 'gen-reg))
             (error "Can't find variable: " var))
-         (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
+         (codegen-move-tmp cgc offset alloc-ptr)
          (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
@@ -1977,10 +1968,9 @@
 (define (tail-shift-h cgc curr from to rsp-offset)
   (if (= curr 0)
       ;; All shifted, update RSP
-      (x86-add cgc (x86-rsp) (x86-imm-int (* 8 rsp-offset)))
+      (codegen-clean-stack cgc rsp-offset)
       ;; Shift next
-      (begin (x86-mov cgc (x86-rax) (x86-mem (* from 8) (x86-rsp)))
-             (x86-mov cgc (x86-mem (* to 8) (x86-rsp))  (x86-rax))
+      (begin (codegen-tco-move-arg cgc from to)
              (tail-shift-h cgc (- curr 1) (- from 1) (- to 1) rsp-offset))))
 
 ;;
