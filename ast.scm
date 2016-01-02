@@ -377,7 +377,6 @@
                                                       (equal? (cdr a) (cdr b))))))
 
 ;; TODO
-;; TODO
 (define entry-points-locs (make-table test: eq?))
 
 (define (get-entry-points-loc ast stub-addr)
