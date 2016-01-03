@@ -202,8 +202,9 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Flonum
-(define (codegen-flonum cgc immediate)
-  (let ((header-word (mem-header 2 STAG_FLONUM)))
+(define (codegen-flonum cgc immediate reg)
+  (let ((header-word (mem-header 2 STAG_FLONUM))
+        (dest (codegen-reg-to-x86reg reg)))
     (gen-allocation cgc #f STAG_FLONUM 2) ;; TODO #f
     ;; Write header
     (x86-mov cgc (x86-rax) (x86-imm-int header-word))
@@ -211,9 +212,8 @@
     ;; Write number
     (x86-mov cgc (x86-rax) (x86-imm-int immediate))
     (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-    ;; Push flonum
-    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-    (x86-push cgc (x86-rax))))
+    ;; Move flonum to dest
+    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
 
 ;;-----------------------------------------------------------------------------
 ;; Symbol

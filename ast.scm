@@ -197,9 +197,10 @@
                            (64-mod   (bitwise-not (- ieee-rep 1)))
                            (64-modl  (bitwise-and (- (expt 2 63) 1) 64-mod)))
                       (* -1 64-modl))
-                    (ieee754 ast 'double))))
-          (codegen-flonum cgc immediate)
-          (jump-to-version cgc succ (ctx-push ctx CTX_FLO))))))
+                    (ieee754 ast 'double)))
+              (reg (ctx-get-free-reg ctx)))
+          (codegen-flonum cgc immediate reg)
+          (jump-to-version cgc succ (ctx-push ctx CTX_FLO reg))))))
 
 ;;
 ;; Make lazy code from symbol literal
