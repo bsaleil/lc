@@ -191,14 +191,16 @@
 (define (mlc-flonum ast succ)
   (make-lazy-code
       (lambda (cgc ctx)
-        (let ((immediate
+        (let* ((immediate
                 (if (< ast 0)
                     (let* ((ieee-rep (ieee754 (abs ast) 'double))
                            (64-mod   (bitwise-not (- ieee-rep 1)))
                            (64-modl  (bitwise-and (- (expt 2 63) 1) 64-mod)))
                       (* -1 64-modl))
                     (ieee754 ast 'double)))
-              (reg (ctx-get-free-reg ctx)))
+               (res (ctx-get-free-reg ctx))
+               (reg (car res))
+               (ctx (cdr res)))
           (codegen-flonum cgc immediate reg)
           (jump-to-version cgc succ (ctx-push ctx CTX_FLO reg))))))
 
@@ -230,7 +232,9 @@
 (define (mlc-string ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (let ((reg (ctx-get-free-reg ctx)))
+      (let* ((res (ctx-get-free-reg ctx))
+             (reg (car res))
+             (ctx (cdr res)))
         (codegen-string cgc ast reg)
         (jump-to-version cgc succ (ctx-push ctx CTX_STR reg))))))
 
@@ -303,7 +307,9 @@
     (mlc-flonum ast succ)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let ((reg (ctx-get-free-reg ctx)))
+        (let* ((res (ctx-get-free-reg ctx))
+               (reg (car res))
+               (ctx (cdr res)))
           (codegen-literal cgc ast reg)
           (jump-to-version cgc
                            succ
@@ -1722,8 +1728,15 @@
 (define (mlc-pair succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (codegen-pair cgc)
-      (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_PAI)))))
+      (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lcar (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+             (lcdr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+      (codegen-pair cgc reg lcar lcdr)
+      (jump-to-version cgc
+                       succ
+                       (ctx-push (ctx-pop (ctx-pop ctx)) CTX_PAI reg))))))
 
 ;;-----------------------------------------------------------------------------
 

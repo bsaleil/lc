@@ -177,7 +177,7 @@
 ;;-----------------------------------------------------------------------------
 
 ;; TODO
-;; TODO
+;; TODO regalloc
 (define codegen-regmap (list
   (cons 'r0 (x86-rbx))
   (cons 'r1 (x86-rcx))
@@ -185,7 +185,19 @@
   (cons 'r3 (x86-rsi))
   (cons 'r4 (x86-rdi))))
 
+;; TODO: BASE PTR
+;(define base-ptr (x86-r8))
+
 (assert (= (length codegen-regmap) regalloc-nbregs) "TODO ERROR")
+
+(define (codegen-loc-to-x86opnd loc)
+  (if (ctx-loc-is-register? loc)
+      (codegen-reg-to-x86reg loc)
+      (codegen-mem-to-x86mem loc)))
+
+(define (codegen-mem-to-x86mem mem)
+  (error "NYI REGALLOC BASE PTR NOT YET USED")
+  (x86-mem (* -8 mem) base-ptr))
 
 (define (codegen-reg-to-x86reg reg)
   (let ((r (assoc reg codegen-regmap)))
@@ -256,22 +268,29 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Pair
-(define (codegen-pair cgc)
-  (let ((header-word (mem-header 3 STAG_PAIR)))
+(define (codegen-pair cgc reg lcar lcdr)
+  (let ((header-word (mem-header 3 STAG_PAIR))
+        (dest  (codegen-reg-to-x86reg reg))
+        (opcar (codegen-loc-to-x86opnd lcar))
+        (opcdr (codegen-loc-to-x86opnd lcdr)))
     ;; Alloc
     (gen-allocation cgc #f STAG_PAIR 3)
     ;; Write object header
     (x86-mov cgc (x86-rax) (x86-imm-int header-word))
     (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-    (x86-pop cgc (x86-rbx)) ;; pop CDR
-    (x86-pop cgc (x86-rax)) ;; pop CAR
-    ;; Write pair
-    (x86-mov cgc (x86-mem 8 alloc-ptr)  (x86-rax))
-    (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
-    ;; Tag,Push closure and update alloc-ptr
-    (x86-mov cgc (x86-rax) alloc-ptr)
-    (x86-add cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-    (x86-push cgc (x86-rax))))
+    ;; Write car
+    (if (ctx-loc-is-memory? lcar)
+        (begin (x86-mov cgc (x86-rax) opcar)
+               (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
+        (x86-mov cgc (x86-mem 8 alloc-ptr) opcar))
+    ;; Write cdr
+    (if (ctx-loc-is-memory? lcdr)
+        (begin (x86-mov cgc (x86-rax) opcdr)
+               (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax)))
+        (x86-mov cgc (x86-mem 16 alloc-ptr) opcdr))
+    ;; Tag, move closure to dest
+    (x86-mov cgc dest alloc-ptr)
+    (x86-add cgc dest (x86-imm-int TAG_MEMOBJ))))
 
 ;;-----------------------------------------------------------------------------
 ;; Vector (all elements are pushed on the stack in reverse order: first at [RSP+0], second at [RSP+8], ...)

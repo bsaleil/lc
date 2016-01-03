@@ -1098,11 +1098,10 @@
                    (identifier-stype identifier)))
 
 ;;-----------------------------------------------------------------------------
-;; Ctx
-;; TODO : fonction pour supprimer des ids de l'environnement pour eviter des list-tails, et mettre dans let, begin et do
+;; Ctx TODO regalloc
 
 ;; TODO regalloc
-
+;; Context que le compilateur conserve
 (define-type ctx
   stack ;;
   reg-slot ;;
@@ -1111,64 +1110,30 @@
   nb-args ;;
 )
 
+;; Nombre de registres pour l'allocation de registre
+(define regalloc-nbregs 5)
+
+;; TODO regalloc
+;;-------------------------
+;; Ctx operations
+
+;; Initialise un nouveau contexte vide. (pile vide, registres associés à rien, pas de slot, env vide et nb-args=-1)
 (define (ctx-init)
   (make-ctx '()
-            (ctx-reg-slot-init)
+            (reg-slot-init)
             '()
             '()
             -1))
 
-(define regalloc-nbregs 5)
-
-(define (ctx-reg-slot-init)
-  (define (reg-slot-init total rem)
-    (if (= rem 0)
-        '()
-        (cons (cons (string->symbol (string-append "r" (number->string (- total rem))))
-                     #f)
-              (reg-slot-init total (- rem 1)))))
-  (reg-slot-init regalloc-nbregs regalloc-nbregs))
-
-(define (ctx-get-loc ctx stack-pos)
-  (cdr (assoc stack-pos (ctx-slot-loc ctx))))
-
-(define (ctx-loc-is-register? loc)
-  (eq? (string-ref (symbol->string loc) 0) #\r))
-
-(define (ctx-get-free-reg ctx)
-  (define (get-free reg-slot)
-    (if (null? reg-slot)
-        (error "NYI regalloc")
-        (let ((first (car reg-slot)))
-          (if (not (cdr first))
-              (car first)
-              (get-free (cdr reg-slot))))))
-  (get-free (ctx-reg-slot ctx)))
-
-(define (stack-push stack type)
-  (cons type stack))
-
-;; TODO: un meme reg peut etre associé à plusieurs slots? (non géré) et vice versa
-(define (reg-slot-assign reg-slot reg slot)
-  (if (null? reg-slot)
-      (error "NYD INTERNAL ERROR")
-      (let ((first (car reg-slot)))
-        (if (eq? (car first) reg)
-            (cons (cons reg slot) (cdr reg-slot))
-            (cons first (reg-slot-assign (cdr reg-slot) reg slot))))))
-
-;; TODO: un meme slot peut etre associé à plusieurs regs ? (non géré) et vice versa
-;; Slot is not already in slot-loc (NOTE: assert this ?)
-(define (slot-loc-assign slot-loc slot reg)
-  (cons (cons slot reg)
-        slot-loc))
-
-;;
+;; Ajoute une valeur sur le haut de la pile. (ajout le type sur la pile)
+;; Ce nouveau slot est associé au registre 'reg'
+;; Sym est un symbole qui représente un id de varable. Si sym est donné, ca veut dire qu'on met sur le haut de la pile
+;; virtuelle une variable, donc il faut modifier le contexte (ATTENTION, faut-il modifier que l'env ?? aussi reg-slot non ?)
 (define (ctx-push ctx type reg #!optional (sym #f))
   (make-ctx ;; 1 Ajout du type sur la pile
             (stack-push (ctx-stack ctx) type)
             ;; 2 Maj reg slot
-            (reg-slot-assign (ctx-reg-slot ctx) reg (length (ctx-stack ctx)))
+            (reg-slot-assign (ctx-reg-slot ctx) reg (length (ctx-stack ctx))) ;; TODO use (ctx-lidx-to-slot ctx lidx)
             ;; 3 Maj slot reg
             (slot-loc-assign (ctx-slot-loc ctx) (length (ctx-stack ctx)) reg)
             ;; 4 Maj env
@@ -1178,6 +1143,140 @@
             ;;
             (ctx-nb-args ctx)))
 
+;; Retire la valeur du haut de la pile virtuelle. Enleve le type de la pile.
+;; Il faut mettre à jour l'ensemble du contexte avec cette nouvelle information
+(define (ctx-pop ctx)
+  (make-ctx ;; 1 Enleve le type de la pile
+            (stack-pop (ctx-stack ctx))
+            ;; 2 Maj reg slot (libere le(s) registre(s) associé(s) à ce slot) (TODO peut-il y en avoir plusieurs?)
+            (reg-slot-free-slot (ctx-reg-slot ctx) (ctx-lidx-to-slot ctx 0))
+            ;; 3 Maj slot-loc on enleve le slot
+            (slot-loc-remove (ctx-slot-loc ctx) (ctx-lidx-to-slot ctx 0))
+            ;; 4 Maj env
+            (println "NYI MAK ENV")
+            ;;
+            (ctx-nb-args ctx)))
+
+;; Convertir un index de liste vers un slot sur la pile de type EX:
+;; Pile:        haut (   a   b   c   d   e   ) bas
+;; Index liste:          0   1   2   3   4
+;; Slot pos:             4   3   2   1   0
+(define (ctx-lidx-to-slot ctx lidx)
+  (- (length (ctx-stack ctx)) lidx 1))
+
+;; Retourne la 'location' associée au slot de pile 'stack-po' ;; TODO: renommer stack-pos -> slot
+;; l'emplacement est soit un registre soit un emplacement mémoire, on peut donc interroger directement la structure slot-loc
+(define (ctx-get-loc ctx stack-pos)
+  (cdr (assoc stack-pos (ctx-slot-loc ctx))))
+
+;; Retourne #t si l'emplacement donné est un registre, #f sinon
+;; loc est un registre si il est de la forme (rx . value)
+;; loc est un emplacement mémoire si il est de la forme (integer . value)
+(define (ctx-loc-is-register? loc)
+  (not (integer? loc))) ;; register is r0, r1, ...
+
+;; Retourne #t si l'emplacement donné est un emplacement mémoire, #f sinon
+;; loc est un registre si il est de la forme (rx . value)
+;; loc est un emplacement mémoire si il est de la forme (integer . value)
+(define (ctx-loc-is-memory? loc)
+  (integer? loc)) ;; memory is 0, 1, ...
+
+;; TODO: cette fonction peut générer du code (spill), il faut donc faire attention ou on l'appelle, et lui envoyer le cgc
+;; TODO: ajouter un argument qui donne le nombre d'éléments sur la pile qui sont consommés pour cette opération (**)
+;; Retourne un registre vide
+;; Si un registre est vide, on le retourne
+;; Sinon, NYI:
+;;   * On regarde les n (**) éléments sur la pile virtuelle. Si un est associé à un registre, on peut le retourner car c'est une opérande de l'opération en cours donc il peut etre la destination
+;;   * Sinon, on libère un registre selon une certaine stratégie donnée (peu importe laquelle)
+;;     puis on le retourne
+(define (ctx-get-free-reg ctx)
+  (define (get-free reg-slot)
+    (if (null? reg-slot)
+        (error "NYI regalloc")
+        (let ((first (car reg-slot)))
+          (if (not (cdr first))
+              (cons (car first) ctx)
+              (get-free (cdr reg-slot))))))
+  (get-free (ctx-reg-slot ctx)))
+
+;; TODO regalloc
+;;-------------------------
+;; Stack
+
+;; Ajoute un type sur la pile de types
+(define (stack-push stack type)
+  (cons type stack))
+
+;; Enleve le type du haut de la pile de types
+(define (stack-pop stack)
+  (cdr stack))
+
+;; TODO regalloc
+;;-------------------------
+;; Reg-slot
+
+;; Créé une nouvelle structure reg-slot vide.
+;; Cette structure vide est de la forme:
+;; ((r0 . #f) (r1 . #f) ... (rn . #f))
+(define (reg-slot-init)
+  (define (reg-slot-init total rem)
+    (if (= rem 0)
+        '()
+        (cons (cons (string->symbol (string-append "r" (number->string (- total rem))))
+                     #f)
+              (reg-slot-init total (- rem 1)))))
+  (reg-slot-init regalloc-nbregs regalloc-nbregs))
+
+;; TODO: étudier: un meme reg peut etre associé à plusieurs slots? (non géré) et vice versa
+;; Assigne un registre à un slot dans la structure reg-slot
+;; donc (rn . valeur) devient (rn . slot) (SI UN REGISTRE EST ASSOCIE A UN SEUL SLOT?)
+(define (reg-slot-assign reg-slot reg slot)
+  (if (null? reg-slot)
+      (error "NYD INTERNAL ERROR")
+      (let ((first (car reg-slot)))
+        (if (eq? (car first) reg)
+            (cons (cons reg slot) (cdr reg-slot))
+            (cons first (reg-slot-assign (cdr reg-slot) reg slot))))))
+
+;; TODO foldr?
+;; Libère une assignation précédemment effectuée (avec reg-slot-assign)
+;; donc (rn . valeur) devient (rn . #f) (SI UN REGISTRE EST ASSOCIE A UN SEUL SLOT?)
+(define (reg-slot-free-slot reg-slot slot)
+  (if (null? reg-slot)
+      '()
+      (let ((first (car reg-slot)))
+        (if (eq? (cdr first) slot)
+            (cons (cons (car first) #f)
+                  (reg-slot-free-slot (cdr reg-slot) slot))
+            (cons first (reg-slot-free-slot (cdr reg-slot) slot))))))
+
+;; TODO regalloc
+;;-------------------------
+;; Slot-loc
+
+;; TODO: un meme slot peut etre associé à plusieurs regs ? (non géré) et vice versa
+;; Assigne un slot à un emplacement
+;; Est-ce que le slot DOIT etre absent de slot-loc ? si oui assert ?
+(define (slot-loc-assign slot-loc slot loc)
+  (cons (cons slot loc)
+        slot-loc))
+
+;; TODO foldr?
+;; Enleve un slot assigné avec slot-loc-assign
+;; donc si on trouve une assignation (slot . loc) on l'enleve de la liste.
+;; TODO SI UN SLOT N'EST ASSOCIE QU'A UN EMPLACEMENT ?
+(define (slot-loc-remove slot-loc slot)
+  (if (null? slot-loc)
+      '()
+      (let ((first (car slot-loc)))
+        (if (eq? (car first) slot)
+            (slot-loc-remove (cdr slot-loc) slot)
+            (cons first (slot-loc-remove (cdr slot-loc) slot))))))
+
+;; TODO regalloc
+
+;; OLD FUNCTIONS:
+
 (define (ctx-get-top-pos ctx) (error "1"))
 (define (ctx-idx-to-pos ctx) (error "2"))
 (define (ctx-pos-to-idx ctx) (error "3"))
@@ -1186,7 +1285,7 @@
 (define (ctx-remove-pos ctx) (error "6"))
 (define (ctx-reset-pos ctx) (error "7"))
 (define (ctx-mov-nb ctx) (error "8"))
-(define (ctx-pop ctx) (error "9"))
+;(define (ctx-pop ctx) (error "9"))
 ;(define (ctx-push ctx) (error "10"))
 (define (ctx-clear ctx) (error "11"))
 

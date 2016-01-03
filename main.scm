@@ -169,7 +169,7 @@
 
               ;; TODO regalloc
               ;; 1 - mov top of vritual stack to rax
-              (let ((loc (ctx-get-loc ctx (- (length (ctx-stack ctx)) 1)))) ;; Get loc of value in top of stack
+              (let ((loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))) ;; Get loc of value in top of stack
                 (if (ctx-loc-is-register? loc)
                     (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc))
                     (error "NYI regalloc")))
