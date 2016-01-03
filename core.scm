@@ -1101,158 +1101,248 @@
 ;; Ctx
 ;; TODO : fonction pour supprimer des ids de l'environnement pour eviter des list-tails, et mettre dans let, begin et do
 
+;; TODO regalloc
+
 (define-type ctx
-  stack   ;; compile time stack, containing types
-  env     ;; compile time environment
-  nb-args ;; nb of arguments of current frame
+  stack ;;
+  reg-slot ;;
+  slot-loc ;;
+  env ;;
+  nb-args ;;
 )
 
-(define (ctx-get-top-pos ctx)
-  (- (length (ctx-stack ctx)) 2))
+(define (ctx-init)
+  (make-ctx '()
+            (ctx-reg-slot-init)
+            '()
+            '()
+            -1))
 
-(define (ctx-idx-to-pos ctx idx)
-  (- (length (ctx-stack ctx)) idx 2))
+(define regalloc-nbregs 5)
 
-(define (ctx-pos-to-idx ctx pos)
-  (- (length (ctx-stack ctx)) pos 2))
+(define (ctx-reg-slot-init)
+  (define (reg-slot-init total rem)
+    (if (= rem 0)
+        '()
+        (cons (cons (string->symbol (string-append "r" (number->string (- total rem))))
+                     #f)
+              (reg-slot-init total (- rem 1)))))
+  (reg-slot-init regalloc-nbregs regalloc-nbregs))
 
-(define (ctx-change-stack-type ctx pos type)
-  (let ((idx (ctx-pos-to-idx ctx pos)))
-    (make-ctx (append (list-head (ctx-stack ctx) idx) (list type) (list-tail (ctx-stack ctx) (+ idx 1)))
-              (ctx-env ctx)
-              (ctx-nb-args ctx))))
+(define (ctx-get-loc ctx stack-pos)
+  (cdr (assoc stack-pos (ctx-slot-loc ctx))))
 
-(define (ctx-change-stack-types ctx positions type)
-  (if (null? positions)
-    ctx
-    (ctx-change-stack-types (ctx-change-stack-type ctx (car positions) type)
-                            (cdr positions)
-                            type)))
+(define (ctx-loc-is-register? loc)
+  (eq? (string-ref (symbol->string loc) 0) #\r))
 
-;; Remove pos from ctx identifiers
-(define (ctx-remove-pos ctx pos)
-  (make-ctx (ctx-stack ctx)
-            (env-remove-pos (ctx-env ctx) pos)
+(define (ctx-get-free-reg ctx)
+  (define (get-free reg-slot)
+    (if (null? reg-slot)
+        (error "NYI regalloc")
+        (let ((first (car reg-slot)))
+          (if (not (cdr first))
+              (car first)
+              (get-free (cdr reg-slot))))))
+  (get-free (ctx-reg-slot ctx)))
+
+(define (stack-push stack type)
+  (cons type stack))
+
+;; TODO: un meme reg peut etre associé à plusieurs slots? (non géré) et vice versa
+(define (reg-slot-assign reg-slot reg slot)
+  (if (null? reg-slot)
+      (error "NYD INTERNAL ERROR")
+      (let ((first (car reg-slot)))
+        (if (eq? (car first) reg)
+            (cons (cons reg slot) (cdr reg-slot))
+            (cons first (reg-slot-assign (cdr reg-slot) reg slot))))))
+
+;; TODO: un meme slot peut etre associé à plusieurs regs ? (non géré) et vice versa
+;; Slot is not already in slot-loc (NOTE: assert this ?)
+(define (slot-loc-assign slot-loc slot reg)
+  (cons (cons slot reg)
+        slot-loc))
+
+;;
+(define (ctx-push ctx type reg #!optional (sym #f))
+  (make-ctx ;; 1 Ajout du type sur la pile
+            (stack-push (ctx-stack ctx) type)
+            ;; 2 Maj reg slot
+            (reg-slot-assign (ctx-reg-slot ctx) reg (length (ctx-stack ctx)))
+            ;; 3 Maj slot reg
+            (slot-loc-assign (ctx-slot-loc ctx) (length (ctx-stack ctx)) reg)
+            ;; 4 Maj env
+            (if sym
+                (error "NYI UPDATE ENV")
+                (ctx-env ctx))
+            ;;
             (ctx-nb-args ctx)))
 
-;; Reset pos in identifier object associated to id 'sym'
-(define (ctx-reset-pos ctx sym)
-  (make-ctx (ctx-stack ctx)
-            (env-reset-pos (ctx-env ctx) sym)
-            (ctx-nb-args ctx)))
+(define (ctx-get-top-pos ctx) (error "1"))
+(define (ctx-idx-to-pos ctx) (error "2"))
+(define (ctx-pos-to-idx ctx) (error "3"))
+(define (ctx-change-stack-type ctx) (error "4"))
+(define (ctx-change-stack-types ctx) (error "5"))
+(define (ctx-remove-pos ctx) (error "6"))
+(define (ctx-reset-pos ctx) (error "7"))
+(define (ctx-mov-nb ctx) (error "8"))
+(define (ctx-pop ctx) (error "9"))
+;(define (ctx-push ctx) (error "10"))
+(define (ctx-clear ctx) (error "11"))
 
-;; Move nb slot from l-from to l-to (ascending)
-(define (ctx-mov-nb ctx nb l-from l-to)
-  (if (= nb 0)
-     ctx
-     (ctx-mov-nb (ctx-move ctx l-from l-to)
-                 (- nb 1)
-                 (+ l-from 1)
-                 (+ l-to 1))))
-
-;; Pop ctx
-(define (ctx-pop ctx #!optional (n 1))
-
-  (define (ctx-pop-one ctx)
-    (let* ((pos  (ctx-get-top-pos ctx))    ;; Get pos
-           (nctx (ctx-remove-pos ctx pos)) ;; Remove pos from identifiers
-           (stack (cdr (ctx-stack nctx)))) ;; Remove first from stack
-      ;; Return new ctx
-      (make-ctx stack (ctx-env nctx) (ctx-nb-args nctx))))
-
-  (define (ctx-pop-n ctx n)
-    (if (= n 0)
-       ctx
-       (ctx-pop-n (ctx-pop-one ctx) (- n 1))))
-
-  (ctx-pop-n ctx n))
-
-;; Push value to ctx
-;; Update stack and env if sym
-(define (ctx-push ctx ctx-type #!optional (n 1) sym)
-
-  (define (ctx-push-one ctx ctx-type sym)
-    (let ((stack (cons ctx-type (ctx-stack ctx)))
-          (env   (if sym
-                     (env-push-id (ctx-env ctx) ctx sym)
-                     (ctx-env ctx))))
-      (make-ctx stack env (ctx-nb-args ctx))))
-
-  (define (ctx-push-n ctx ctx-type n)
-    (if (= n 0)
-        ctx
-        (ctx-push-n (ctx-push-one ctx ctx-type #f) ctx-type (- n 1))))
-
-  (assert (or (= n 1) (not sym)) ERR_INTERNAL)
-
-  (if sym
-      (ctx-push-one ctx ctx-type sym)
-      (ctx-push-n  ctx ctx-type n)))
-
-;; Remove all ctx information.
-;; Return the 'generic' version of this context
-(define (ctx-clear ctx)
-  (make-ctx ;; Remove stack information
-            (make-list (length (ctx-stack ctx)) CTX_UNK)
-            ;; Remove env information
-            (foldr (lambda (id others)
-                     (cons (cons (car id)
-                                 (make-identifier (identifier-type (cdr id))
-                                                  (identifier-offset (cdr id))
-                                                  '()
-                                                  (identifier-flags (cdr id))
-                                                  CTX_UNK))
-                           others))
-                   '()
-                   (ctx-env ctx))
-            (ctx-nb-args ctx)))
-
-;; Change type at 'idx' to 'type'
-;; Change types at all other positions of the id(s) at this slot.
-(define (ctx-change-type ctx idx type)
-
-  (define (change-for-identifiers env pos ctx)
-    (if (null? env)
-      ctx
-      (let* ((idpair     (car env))
-             (identifier (cdr idpair)))
-        (if (member pos (identifier-pos identifier))
-          ;; TODO: This function returns as soon as it encounters an identifier containing 'pos'
-          ;;       Add the possibility to keep same positions of two identifier if they are non mutable.
-          ;;       ex: (let ((a X)) (let ((b a)) BODY)) if in BODY, the compiler discovers the type of a, change the type of b !
-          ;;       Then, this function must continue to change all identifiers. Only if an identifier associated to the current identifier as not yet been modified.
-          ;;       (if there are to variable 'v in the env, discovering the type of 'v only changes the stack positions of most visible (recent) 'v)
-          (ctx-change-stack-types ctx (identifier-pos identifier) type)
-          ;; (change-for-identifiers (cdr env)
-          ;;                         pos
-          ;;                         (ctx-change-stack-types ctx (identifier-pos identifier) type))
-          (change-for-identifiers (cdr env) pos ctx)))))
-
-  (let* ((pos (ctx-idx-to-pos ctx idx))
-         (nctx  (change-for-identifiers (ctx-env ctx) pos ctx))
-         (mctx  (ctx-change-stack-type nctx pos type)))
-    mctx))
-
-;; Move type from index 'from' to index 'to'
-(define (ctx-stack-move stack idx-from idx-to)
-   (if (eq? (list-ref stack idx-to) CTX_MOBJ)
-       stack
-       (append (list-head stack idx-to)
-               (cons (list-ref stack idx-from)
-                     (list-tail stack (+ idx-to 1))))))
-
-;; Move slot from stack index 'from' to stack index 'to'
-;; Optionnally update env
-(define (ctx-move ctx idx-from idx-to #!optional (update-env? #t))
-   (let ((pos-from (ctx-idx-to-pos ctx idx-from))
-         (pos-to   (ctx-idx-to-pos ctx idx-to)))
-
-     (let ((env   (if update-env?
-                      (env-move (ctx-env ctx) pos-from pos-to)
-                      (ctx-env ctx)))
-           (stack (ctx-stack-move (ctx-stack ctx) idx-from idx-to)))
-
-       (make-ctx stack env (ctx-nb-args ctx)))))
+;(define-type ctx
+;  stack   ;; compile time stack, containing types
+;  regmap  ;; TODO
+;  env     ;; compile time environment
+;  nb-args ;; nb of arguments of current frame
+;)
+;
+;(define (ctx-get-top-pos ctx)
+;  (- (length (ctx-stack ctx)) 2))
+;
+;(define (ctx-idx-to-pos ctx idx)
+;  (- (length (ctx-stack ctx)) idx 2))
+;
+;(define (ctx-pos-to-idx ctx pos)
+;  (- (length (ctx-stack ctx)) pos 2))
+;
+;(define (ctx-change-stack-type ctx pos type)
+;  (let ((idx (ctx-pos-to-idx ctx pos)))
+;    (make-ctx (append (list-head (ctx-stack ctx) idx) (list type) (list-tail (ctx-stack ctx) (+ idx 1)))
+;              (ctx-env ctx)
+;              (ctx-nb-args ctx))))
+;
+;(define (ctx-change-stack-types ctx positions type)
+;  (if (null? positions)
+;    ctx
+;    (ctx-change-stack-types (ctx-change-stack-type ctx (car positions) type)
+;                            (cdr positions)
+;                            type)))
+;
+;;; Remove pos from ctx identifiers
+;(define (ctx-remove-pos ctx pos)
+;  (make-ctx (ctx-stack ctx)
+;            (env-remove-pos (ctx-env ctx) pos)
+;            (ctx-nb-args ctx)))
+;
+;;; Reset pos in identifier object associated to id 'sym'
+;(define (ctx-reset-pos ctx sym)
+;  (make-ctx (ctx-stack ctx)
+;            (env-reset-pos (ctx-env ctx) sym)
+;            (ctx-nb-args ctx)))
+;
+;;; Move nb slot from l-from to l-to (ascending)
+;(define (ctx-mov-nb ctx nb l-from l-to)
+;  (if (= nb 0)
+;     ctx
+;     (ctx-mov-nb (ctx-move ctx l-from l-to)
+;                 (- nb 1)
+;                 (+ l-from 1)
+;                 (+ l-to 1))))
+;
+;;; Pop ctx
+;(define (ctx-pop ctx #!optional (n 1))
+;
+;  (define (ctx-pop-one ctx)
+;    (let* ((pos  (ctx-get-top-pos ctx))    ;; Get pos
+;           (nctx (ctx-remove-pos ctx pos)) ;; Remove pos from identifiers
+;           (stack (cdr (ctx-stack nctx)))) ;; Remove first from stack
+;      ;; Return new ctx
+;      (make-ctx stack (ctx-env nctx) (ctx-nb-args nctx))))
+;
+;  (define (ctx-pop-n ctx n)
+;    (if (= n 0)
+;       ctx
+;       (ctx-pop-n (ctx-pop-one ctx) (- n 1))))
+;
+;  (ctx-pop-n ctx n))
+;
+;;; Push value to ctx
+;;; Update stack and env if sym
+;(define (ctx-push ctx ctx-type #!optional (n 1) sym)
+;
+;  (define (ctx-push-one ctx ctx-type sym)
+;    (let ((stack (cons ctx-type (ctx-stack ctx)))
+;          (env   (if sym
+;                     (env-push-id (ctx-env ctx) ctx sym)
+;                     (ctx-env ctx))))
+;      (make-ctx stack env (ctx-nb-args ctx))))
+;
+;  (define (ctx-push-n ctx ctx-type n)
+;    (if (= n 0)
+;        ctx
+;        (ctx-push-n (ctx-push-one ctx ctx-type #f) ctx-type (- n 1))))
+;
+;  (assert (or (= n 1) (not sym)) ERR_INTERNAL)
+;
+;  (if sym
+;      (ctx-push-one ctx ctx-type sym)
+;      (ctx-push-n  ctx ctx-type n)))
+;
+;;; Remove all ctx information.
+;;; Return the 'generic' version of this context
+;(define (ctx-clear ctx)
+;  (make-ctx ;; Remove stack information
+;            (make-list (length (ctx-stack ctx)) CTX_UNK)
+;            ;; Remove env information
+;            (foldr (lambda (id others)
+;                     (cons (cons (car id)
+;                                 (make-identifier (identifier-type (cdr id))
+;                                                  (identifier-offset (cdr id))
+;                                                  '()
+;                                                  (identifier-flags (cdr id))
+;                                                  CTX_UNK))
+;                           others))
+;                   '()
+;                   (ctx-env ctx))
+;            (ctx-nb-args ctx)))
+;
+;;; Change type at 'idx' to 'type'
+;;; Change types at all other positions of the id(s) at this slot.
+;(define (ctx-change-type ctx idx type)
+;
+;  (define (change-for-identifiers env pos ctx)
+;    (if (null? env)
+;      ctx
+;      (let* ((idpair     (car env))
+;             (identifier (cdr idpair)))
+;        (if (member pos (identifier-pos identifier))
+;          ;; TODO: This function returns as soon as it encounters an identifier containing 'pos'
+;          ;;       Add the possibility to keep same positions of two identifier if they are non mutable.
+;          ;;       ex: (let ((a X)) (let ((b a)) BODY)) if in BODY, the compiler discovers the type of a, change the type of b !
+;          ;;       Then, this function must continue to change all identifiers. Only if an identifier associated to the current identifier as not yet been modified.
+;          ;;       (if there are to variable 'v in the env, discovering the type of 'v only changes the stack positions of most visible (recent) 'v)
+;          (ctx-change-stack-types ctx (identifier-pos identifier) type)
+;          ;; (change-for-identifiers (cdr env)
+;          ;;                         pos
+;          ;;                         (ctx-change-stack-types ctx (identifier-pos identifier) type))
+;          (change-for-identifiers (cdr env) pos ctx)))))
+;
+;  (let* ((pos (ctx-idx-to-pos ctx idx))
+;         (nctx  (change-for-identifiers (ctx-env ctx) pos ctx))
+;         (mctx  (ctx-change-stack-type nctx pos type)))
+;    mctx))
+;
+;;; Move type from index 'from' to index 'to'
+;(define (ctx-stack-move stack idx-from idx-to)
+;   (if (eq? (list-ref stack idx-to) CTX_MOBJ)
+;       stack
+;       (append (list-head stack idx-to)
+;               (cons (list-ref stack idx-from)
+;                     (list-tail stack (+ idx-to 1))))))
+;
+;;; Move slot from stack index 'from' to stack index 'to'
+;;; Optionnally update env
+;(define (ctx-move ctx idx-from idx-to #!optional (update-env? #t))
+;   (let ((pos-from (ctx-idx-to-pos ctx idx-from))
+;         (pos-to   (ctx-idx-to-pos ctx idx-to)))
+;
+;     (let ((env   (if update-env?
+;                      (env-move (ctx-env ctx) pos-from pos-to)
+;                      (ctx-env ctx)))
+;           (stack (ctx-stack-move (ctx-stack ctx) idx-from idx-to)))
+;
+;       (make-ctx stack env (ctx-nb-args ctx)))))
 
 ;;-------------------------
 

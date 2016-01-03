@@ -151,7 +151,7 @@
       (or succ
           (make-lazy-code
             (lambda (cgc ctx)
-              (x86-pop cgc (x86-rax))
+              ;(x86-pop cgc (x86-rax))
 
               ;; Set time slot with total time if opt-time is #t
               (if opt-time
@@ -164,7 +164,17 @@
                     (x86-sub cgc (x86-rax) (x86-rcx))
                     (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-rax))))
 
-              (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
+              ;; TODO regalloc code before regalloc
+              ;(x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
+
+              ;; TODO regalloc
+              ;; 1 - mov top of vritual stack to rax
+              (let ((loc (ctx-get-loc ctx (- (length (ctx-stack ctx)) 1)))) ;; Get loc of value in top of stack
+                (if (ctx-loc-is-register? loc)
+                    (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc))
+                    (error "NYI regalloc")))
+              ;; 2 - TODO: clean stack
+
               (pop-regs-reverse cgc all-regs)
               (x86-ret cgc))))
       (gen-ast (car exprs)
@@ -238,13 +248,15 @@
          (lazy-lib-end
            (make-lazy-code
              (lambda (cgc ctx)
-               (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (length lib))))
-               (jump-to-version cgc lazy-prog (ctx-pop ctx (length lib))))))
+               ;; TODO regalloc LIB
+               (jump-to-version cgc lazy-prog ctx))))
+               ;(x86-add cgc (x86-rsp) (x86-imm-int (* 8 (length lib))))
+               ;(jump-to-version cgc lazy-prog (ctx-pop ctx (length lib))))))
          (lazy-lib  (lazy-exprs lib  lazy-lib-end)))
 
      (gen-version code-alloc
                   lazy-lib
-                  (make-ctx '() '() -1)))
+                  (ctx-init)))
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)
@@ -267,8 +279,8 @@
 (define (main . args)
 
   ;; Get library
-  ;(define lib '())
-  (define lib (expand-tl (read-all (open-input-file "./lib.scm"))))
+  (define lib '())
+  ;(define lib (expand-tl (read-all (open-input-file "./lib.scm"))))
   ;; Set options and get files from cl args
   (define files (parse-args args))
 
@@ -297,7 +309,8 @@
                   (if (null? lib)
                      base
                      (let ((el (car lib)))
-                       (if (eq? (car el) 'define)
+                       (if (and (pair? el)
+                                (eq? (car el) 'define))
                           (if (pair? (cadr el))
                              (cons (cons (caadr el) (get-global-type el)) (get-gids (cdr lib) base))
                              (cons (cons (cadr el)  (get-global-type el)) (get-gids (cdr lib) base)))

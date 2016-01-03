@@ -176,15 +176,29 @@
 ;; Values
 ;;-----------------------------------------------------------------------------
 
+;; TODO
+;; TODO
+(define codegen-regmap (list
+  (cons 'r0 (x86-rbx))
+  (cons 'r1 (x86-rcx))
+  (cons 'r2 (x86-rdx))
+  (cons 'r3 (x86-rsi))
+  (cons 'r4 (x86-rdi))))
+
+(assert (= (length codegen-regmap) regalloc-nbregs) "TODO ERROR")
+
+(define (codegen-reg-to-x86reg reg)
+  (let ((r (assoc reg codegen-regmap)))
+    (cdr r)))
+
+;; TODO regalloc
+;; TODO regalloc
+
 ;;-----------------------------------------------------------------------------
 ;; Literal
-(define (codegen-literal cgc lit)
-  (if (and (number? lit)
-           (or (>= lit (expt 2 29))   ;; 2^(32-1-2) (32bits-sign-tags)
-               (<  lit (expt 2 28))))
-      (begin (x86-mov  cgc (x86-rax) (x86-imm-int (obj-encoding lit)))
-             (x86-push cgc (x86-rax)))
-      (x86-push cgc (x86-imm-int (obj-encoding lit)))))
+(define (codegen-literal cgc lit reg)
+  (let ((dest (codegen-reg-to-x86reg reg)))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding lit)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Flonum
@@ -210,10 +224,11 @@
 
 ;;-----------------------------------------------------------------------------
 ;; String
-(define (codegen-string cgc str)
+(define (codegen-string cgc str reg)
   (let* ((len (string-length str))
          (size (arithmetic-shift (bitwise-and (+ len 8) (bitwise-not 7)) -3))
-         (header-word (mem-header (+ size 2) STAG_STRING)))
+         (header-word (mem-header (+ size 2) STAG_STRING))
+         (dest (codegen-reg-to-x86reg reg)))
 
     (gen-allocation cgc #f STAG_STRING (+ size 2))
     ;; Write header
@@ -225,8 +240,7 @@
     ;; Write chars
     (write-chars cgc str 0 16)
     ;; Push string
-    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-    (x86-push cgc (x86-rax))))
+    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
 
 ;; Write chars of the literal string 'str':
 ;; Write str[pos] char to [alloc-ptr+offset], and write next chars

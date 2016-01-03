@@ -229,8 +229,9 @@
 (define (mlc-string ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (codegen-string cgc ast)
-      (jump-to-version cgc succ (ctx-push ctx CTX_STR)))))
+      (let ((reg (ctx-get-free-reg ctx)))
+        (codegen-string cgc ast reg)
+        (jump-to-version cgc succ (ctx-push ctx CTX_STR reg))))))
 
 ;;
 ;; Make lazy code from QUOTE
@@ -301,15 +302,17 @@
     (mlc-flonum ast succ)
     (make-lazy-code
       (lambda (cgc ctx)
-        (codegen-literal cgc ast)
-        (jump-to-version cgc
-                         succ
-                         (ctx-push ctx
-                                   (cond ((integer? ast) CTX_NUM)
-                                         ((boolean? ast) CTX_BOOL)
-                                         ((char? ast)    CTX_CHAR)
-                                         ((null? ast)    CTX_NULL)
-                                         (else (error ERR_INTERNAL)))))))))
+        (let ((reg (ctx-get-free-reg ctx)))
+          (codegen-literal cgc ast reg)
+          (jump-to-version cgc
+                           succ
+                           (ctx-push ctx
+                                     (cond ((integer? ast) CTX_NUM)
+                                           ((boolean? ast) CTX_BOOL)
+                                           ((char? ast)    CTX_CHAR)
+                                           ((null? ast)    CTX_NULL)
+                                           (else (error ERR_INTERNAL)))
+                                     reg)))))))
 
 ;;-----------------------------------------------------------------------------
 ;; INTERNAL FORMS
