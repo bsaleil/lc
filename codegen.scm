@@ -69,10 +69,14 @@
   (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
   (x86-mov cgc (x86-mem (* 8 (length globals)) (x86-r10)) (x86-rax)))
 
-(define (codegen-define-bind cgc pos)
-  (x86-pop cgc (x86-rax))
-  (x86-mov cgc (x86-mem (* 8 pos) (x86-r10)) (x86-rax))
-  (x86-push cgc (x86-imm-int ENCODING_VOID)))
+(define (codegen-define-bind cgc pos reg lvalue)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opval (codegen-loc-to-x86opnd lvalue)))
+    (if (ctx-loc-is-register? lvalue)
+        (x86-mov cgc (x86-mem (* 8 pos) (x86-r10)) opval)
+        (begin (x86-mov cgc (x86-rax) opval)
+               (x86-mov cgc (x86-mem (* 8 pos) (x86-r10)) (x86-rax))))
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
 
 ;;-----------------------------------------------------------------------------
 ;; Variables

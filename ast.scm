@@ -367,13 +367,19 @@
          (lazy-bind (make-lazy-code
                       (lambda (cgc ctx)
                         (let* ((res (assoc identifier globals)) ;; Lookup in globals
-                               (pos (cdr res)))                 ;; Get global pos
-                          (codegen-define-bind cgc pos)
-                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
+                               (pos (cdr res))                  ;; Get global pos
+                               ;;
+                               (res (ctx-get-free-reg ctx))     ;; Return reg,ctx
+                               (reg (car res))
+                               (ctx (cdr res))
+                               (lvalue (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                          (codegen-define-bind cgc pos reg lvalue)
+                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))))
          (lazy-val (gen-ast (caddr ast) lazy-bind)))
 
     (make-lazy-code
       (lambda (cgc ctx)
+        ;; TODO regalloc: this codegen is useless ? Just update globals set?
         (codegen-define-id cgc)
         (set! globals (cons (cons identifier (length globals)) globals))
         (jump-to-version cgc lazy-val ctx)))))
