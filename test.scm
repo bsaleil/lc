@@ -1,6 +1,7 @@
 
-(quotient 11 2)
-(modulo 11 2)
+(begin 10 20 30 40)
+
+10
 
 ;; TODO: AVANT ALLOC DE REGISTRE:
 ;;  - Vérifier si --max-versions 3 et --max-versions 0 ne dépassent pas le nb de versions

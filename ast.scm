@@ -643,34 +643,29 @@
 ;; Make lazy code from BEGIN
 ;;
 (define (mlc-begin ast succ)
+
+  (define (build-chain exprs succ)
+    (cond ((null? exprs)
+             succ)
+          ;; Last expr
+          ((eq? (length exprs) 1)
+             (gen-ast (car exprs) succ))
+          ;; Not last expr, eval then free loc
+          (else
+             (let ((next (build-chain (cdr exprs) succ)))
+               (gen-ast (car exprs)
+                        (make-lazy-code
+                          (lambda (cgc ctx)
+                            (jump-to-version cgc next (ctx-pop ctx)))))))))
+
   (cond ;; There is no body
         ((null? (cdr ast))
-           (if (member 'ret (lazy-code-flags succ))
-             ;; No body and succ is a ret object
-             (error ERR_BEGIN)
-             ;; No body and succ is *not* a ret object
-             (make-lazy-code
-               (lambda (cgc ctx)
-                 (codegen-void cgc)
-                 (jump-to-version cgc succ (ctx-push ctx CTX_VOID))))))
+           (error ERR_BEGIN))
         ;; Only one body
         ((= (length (cdr ast)) 1)
            (gen-ast (cadr ast) succ))
         ;; >1 body
-        (else
-           (let (;; LAZY BEGIN OUT
-                 (lazy-begin-out
-                  (let ((make-lc (if (member 'ret (lazy-code-flags succ))
-                          make-lazy-code-ret
-                          make-lazy-code)))
-                    (make-lc
-                      (lambda (cgc ctx)
-                        (let* ((nctx (ctx-move ctx 0 (- (length (cdr ast)) 1)))
-                               (mctx (ctx-pop nctx (- (length (cdr ast)) 1))))
-                          (codegen-begin-out cgc (- (length (cdr ast)) 1))
-                          (jump-to-version cgc succ mctx)))))))
-             ;; LAZY BODIES
-             (gen-ast-l (cdr ast) lazy-begin-out)))))
+        (else (build-chain (cdr ast) succ))))
 
 ;;-----------------------------------------------------------------------------
 ;; Bindings (let, letrec, let*)
