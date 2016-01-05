@@ -685,28 +685,41 @@
 ;;-----------------------------------------------------------------------------
 ;; Binary operators
 
-(define (codegen-binop cgc op label-div0)
-  (x86-pop cgc (x86-rbx)) ;; Pop right
-  (x86-pop cgc (x86-rax)) ;; Pop left
-  (x86-sar cgc (x86-rax) (x86-imm-int 2))
-  (x86-sar cgc (x86-rbx) (x86-imm-int 2))
-  (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
-  (x86-je  cgc label-div0) ;; Check '/0'
-  (x86-cqo cgc)
-  (x86-idiv cgc (x86-rbx))
-  (cond ((eq? op 'quotient)
-          (x86-shl cgc (x86-rax) (x86-imm-int 2))
-          (x86-push cgc (x86-rax)))
-        ((eq? op 'remainder)
-          (x86-shl cgc (x86-rdx) (x86-imm-int 2))
-          (x86-push cgc (x86-rdx)))
-        ((eq? op 'modulo)
-          (x86-mov cgc (x86-rax) (x86-rdx)) ;; (a%b) in rax, b in rbx
-          (x86-add cgc (x86-rax) (x86-rbx)) ;; (a%b + b) in rax
-          (x86-cqo cgc)
-          (x86-idiv cgc (x86-rbx))
-          (x86-shl cgc (x86-rdx) (x86-imm-int 2))
-          (x86-push cgc (x86-rdx)))))
+(define (codegen-binop cgc op label-div0 reg lleft lright)
+  (let ((dest (codegen-reg-to-x86reg reg))
+        (lopnd (codegen-loc-to-x86opnd lleft))
+        (ropnd (codegen-loc-to-x86opnd lright)))
+
+    (if (not (eq? dest (x86-rdx)))
+        (x86-push cgc (x86-rdx))) ;; used by idiv
+
+    (x86-mov cgc (x86-rax) lopnd)
+    (x86-sar cgc (x86-rax) (x86-imm-int 2))
+    (if (ctx-loc-is-memory? lright)
+        (begin (x86-mov cgc dest ropnd)
+               (set! ropnd dest)))
+    (x86-sar cgc ropnd (x86-imm-int 2))
+    (x86-cmp cgc ropnd (x86-imm-int 0)) ;; Check '/0'
+    (x86-je  cgc label-div0)
+    (x86-cqo cgc)
+    (x86-idiv cgc ropnd)
+
+    (cond ((eq? op 'quotient)
+             (x86-shl cgc (x86-rax) (x86-imm-int 2))
+             (x86-mov cgc dest (x86-rax)))
+          ((eq? op 'remainder)
+             (x86-shl cgc (x86-rdx) (x86-imm-int 2))
+             (x86-mov cgc dest (x86-rax)))
+          ((eq? op 'modulo)
+             (x86-mov cgc (x86-rax) (x86-rdx))
+             (x86-add cgc (x86-rax) ropnd)
+             (x86-cqo cgc)
+             (x86-idiv cgc ropnd)
+             (x86-shl cgc (x86-rdx) (x86-imm-int 2))
+             (x86-mov cgc dest (x86-rdx))))
+
+    (if (not (eq? dest (x86-rdx)))
+        (x86-pop cgc (x86-rdx)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Primitives

@@ -1125,6 +1125,19 @@
             '()
             -1))
 
+;; TODO
+(define (ctx-change-type ctx stack-idx type)
+  (println "NYI ctx-change-type") ;; TODO regalloc: changes only stack type for now
+  (let* ((stack (ctx-stack ctx))
+         (nstack (append (list-head stack stack-idx) (cons type (list-tail stack (+ stack-idx 1))))))
+    (make-ctx nstack
+              (ctx-reg-slot ctx)
+              (ctx-slot-loc ctx)
+              (ctx-env ctx)
+              (ctx-nb-args ctx))))
+
+
+
 ;; Ajoute une valeur sur le haut de la pile. (ajout le type sur la pile)
 ;; Ce nouveau slot est associé au registre 'reg'
 ;; Sym est un symbole qui représente un id de varable. Si sym est donné, ca veut dire qu'on met sur le haut de la pile
@@ -1164,7 +1177,7 @@
 (define (ctx-lidx-to-slot ctx lidx)
   (- (length (ctx-stack ctx)) lidx 1))
 
-;; Retourne la 'location' associée au slot de pile 'stack-po' ;; TODO: renommer stack-pos -> slot
+;; Retourne la 'location' associée au slot de pile 'stack-pos' ;; TODO: renommer stack-pos -> slot
 ;; l'emplacement est soit un registre soit un emplacement mémoire, on peut donc interroger directement la structure slot-loc
 (define (ctx-get-loc ctx stack-pos)
   (cdr (assoc stack-pos (ctx-slot-loc ctx))))
@@ -1755,7 +1768,7 @@
      (lambda (cgc ctx)
        ;; TODO: plus nettoyer tout ca
        (let* ((ctx-success (ctx-change-type ctx stack-idx type))
-              (ctx-success-known ctx);; Is know type is tested type, do not change ctx
+              (ctx-success-known ctx);; If know type is tested type, do not change ctx
               (ctx-fail ctx)
               (known-type (list-ref (ctx-stack ctx) stack-idx)))
 
@@ -1822,42 +1835,45 @@
        (if opt-stats
         (gen-inc-slot cgc 'tests))
 
-       (cond ;; Number type test
-             ((eq? type CTX_NUM)
-                 (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
-                 (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
-                 ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_NUMBER)))
-             ;; Null type test
-             ((eq? type CTX_NULL)
-                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                 (x86-cmp cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
-             ;; Char type test
-             ((eq? type CTX_CHAR)
-                 (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
-                 (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
-                 (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
-                 ;(x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
-                 ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
-             ;; Procedure type test
-             ((member type (list CTX_FLO CTX_CLO CTX_PAI CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))
-                 (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
-                 (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
-                 (x86-and cgc (x86-rax) (x86-imm-int 3))
-                 (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-                 (x86-jne cgc label-jump)
-                 (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
-                 (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
-                 ;; STAG_XXX << 3
-                 (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_FLO)  STAG_FLONUM)
-                                                                ((eq? type CTX_CLO)  STAG_PROCEDURE)
-                                                                ((eq? type CTX_SYM)  STAG_SYMBOL)
-                                                                ((eq? type CTX_STR)  STAG_STRING)
-                                                                ((eq? type CTX_IPORT) STAG_IPORT)
-                                                                ((eq? type CTX_OPORT) STAG_OPORT)
-                                                                ((eq? type CTX_VECT) STAG_VECTOR)
-                                                                ((eq? type CTX_PAI)  STAG_PAIR))))))
-             ;; Other
-             (else (error "Unknown type" type)))
+       (let ((loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx stack-idx))))
+         (pp loc)
+         (error "NYI gen-dyn-type-test"))
+    ;   (cond ;; Number type test
+    ;         ((eq? type CTX_NUM)
+    ;             (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
+    ;             (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
+    ;             ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_NUMBER)))
+    ;         ;; Null type test
+    ;         ((eq? type CTX_NULL)
+    ;             (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+    ;             (x86-cmp cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
+    ;         ;; Char type test
+    ;         ((eq? type CTX_CHAR)
+    ;             (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
+    ;             (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
+    ;             (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
+    ;             ;(x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
+    ;             ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
+    ;         ;; Procedure type test
+    ;         ((member type (list CTX_FLO CTX_CLO CTX_PAI CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))
+    ;             (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
+    ;             (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
+    ;             (x86-and cgc (x86-rax) (x86-imm-int 3))
+    ;             (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+    ;             (x86-jne cgc label-jump)
+    ;             (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
+    ;             (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
+    ;             ;; STAG_XXX << 3
+    ;             (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_FLO)  STAG_FLONUM)
+    ;                                                            ((eq? type CTX_CLO)  STAG_PROCEDURE)
+    ;                                                            ((eq? type CTX_SYM)  STAG_SYMBOL)
+    ;                                                            ((eq? type CTX_STR)  STAG_STRING)
+    ;                                                            ((eq? type CTX_IPORT) STAG_IPORT)
+    ;                                                            ((eq? type CTX_OPORT) STAG_OPORT)
+    ;                                                            ((eq? type CTX_VECT) STAG_VECTOR)
+    ;                                                            ((eq? type CTX_PAI)  STAG_PAIR))))))
+    ;         ;; Other
+    ;         (else (error "Unknown type" type)))
        (x86-label cgc label-jump)
        (x86-je cgc (list-ref stub-labels 0))
        (x86-jmp cgc (list-ref stub-labels 1)))))))))

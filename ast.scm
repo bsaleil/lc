@@ -1549,11 +1549,16 @@
       (let* ((lazy-op
                (make-lazy-code
                  (lambda (cgc ctx)
-                   (let ((label-div0 (get-label-error ERR_DIVIDE_ZERO)))
-                     (codegen-binop cgc op label-div0))
-                   (jump-to-version cgc
-                                    succ
-                                    (ctx-push (ctx-pop ctx 2) CTX_NUM))))))
+                   (let* ((label-div0 (get-label-error ERR_DIVIDE_ZERO))
+                          (res (ctx-get-free-reg ctx))
+                          (reg (car res))
+                          (ctx (cdr res))
+                          (lleft (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+                          (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                     (codegen-binop cgc op label-div0 reg lleft lright)
+                     (jump-to-version cgc
+                                      succ
+                                      (ctx-push (ctx-pop (ctx-pop ctx)) CTX_NUM reg)))))))
          ;; Check operands type
          (check-types (list CTX_NUM CTX_NUM)
                       (list (car opnds) (cadr opnds))
