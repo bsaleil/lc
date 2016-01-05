@@ -1165,7 +1165,9 @@
                  (let ((label-false (list-ref stub-labels 0))
                        (label-true  (list-ref stub-labels 1)))
                    ;; Gen code
-                   (codegen-if cgc label-jump label-false label-true)))))))
+                   ;; TODO regalloc MTN
+                   (let* ((lcond (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                     (codegen-if cgc label-jump label-false label-true lcond))))))))
     (gen-ast
       (cadr ast)
       lazy-code-test)))

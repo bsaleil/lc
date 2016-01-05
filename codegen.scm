@@ -125,12 +125,12 @@
 
 ;;-----------------------------------------------------------------------------
 ;; If
-(define (codegen-if cgc label-jump label-false label-true)
-  (x86-pop cgc (x86-rax))
-  (x86-cmp cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-  (x86-label cgc label-jump)
-  (x86-je  cgc label-false)
-  (x86-jmp cgc label-true))
+(define (codegen-if cgc label-jump label-false label-true lcond)
+  (let ((opcond (codegen-loc-to-x86opnd lcond)))
+    (x86-cmp cgc opcond (x86-imm-int (obj-encoding #f)))
+    (x86-label cgc label-jump)
+    (x86-je  cgc label-false)
+    (x86-jmp cgc label-true)))
 
 ;;-----------------------------------------------------------------------------
 ;; Begin
