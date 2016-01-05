@@ -37,9 +37,9 @@
 (define (codegen-void cgc)
   (x86-push cgc (x86-imm-int ENCODING_VOID)))
 
-(define (codegen-set-bool cgc b)
-  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding b)))
-  (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+(define (codegen-set-bool cgc b reg)
+  (let ((dest (codegen-reg-to-x86reg reg)))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding b)))))
 
 (define (codegen-push-n cgc imm n)
   (call-n n x86-push cgc (x86-imm-int (obj-encoding n))))
@@ -294,7 +294,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Vector (all elements are pushed on the stack in reverse order: first at [RSP+0], second at [RSP+8], ...)
-(define (codegen-vector cgc vector)
+(define (codegen-vector cgc vector reg)
   (let ((label-loop (asm-make-label #f (new-sym 'label-loop)))
         (label-end  (asm-make-label #f (new-sym 'label-end)))
         (header-word (mem-header (+ 2 (vector-length vector)) STAG_VECTOR)))

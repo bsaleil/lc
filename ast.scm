@@ -217,6 +217,12 @@
 ;;
 ;; Make lazy code from vector literal
 ;;
+;; TODO regalloc, need to handle make-vector
+;; Stratégie:
+;; Lazy-put : 'push' le vecteur?? et saute au succ
+;; Lazy-chain : chaine v[i] -> mov-in-vector -> v[i+1] -> mov-in-vector ...
+;; Lazy-alloc : alloue un vector de taille n rempli de 0 (important pour le GC) -> donc dépend de make-vector
+;;              puis saute vers Lazy-chain
 (define (mlc-vector ast succ)
   (let ((lazy-vector
           (make-lazy-code
@@ -1165,7 +1171,6 @@
                  (let ((label-false (list-ref stub-labels 0))
                        (label-true  (list-ref stub-labels 1)))
                    ;; Gen code
-                   ;; TODO regalloc MTN
                    (let* ((lcond (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
                      (codegen-if cgc label-jump label-false label-true lcond))))))))
     (gen-ast
@@ -1707,18 +1712,19 @@
 ;;
 (define (mlc-test ast succ)
 
+  (define (get-lazy-res bool)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (let* ((res (ctx-get-free-reg ctx))
+               (reg (car res))
+               (ctx (cdr res)))
+        (codegen-set-bool cgc bool reg)
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))))
+
   (let ((type (predicate-to-ctxtype (car ast)))
         (stack-idx 0)
-        (lazy-success
-          (make-lazy-code
-            (lambda (cgc ctx)
-                (codegen-set-bool cgc #t)
-                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))
-        (lazy-fail
-          (make-lazy-code
-            (lambda (cgc ctx)
-              (codegen-set-bool cgc #f)
-              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL))))))
+        (lazy-success (get-lazy-res #t))
+        (lazy-fail    (get-lazy-res #f)))
 
     (gen-ast (cadr ast)
              (gen-dyn-type-test type stack-idx lazy-success lazy-fail ast))))
