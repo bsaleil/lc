@@ -145,19 +145,19 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Bindings (let, let*, letrec)
-;; TODO
-(define (codegen-binding-clear cgc nb-slots)
-  (x86-pop cgc (x86-rax))
-  (x86-add cgc (x86-rsp) (x86-imm-int (* 8 nb-slots)))
-  (x86-push cgc (x86-rax)))
-
-(define (codegen-letrec-end cgc nb-slots)
-  (x86-add cgc (x86-rsp) (x86-imm-int (* 8 nb-slots))))
-
-(define (codegen-letrec-bind cgc from to)
-  (x86-mov cgc (x86-rax) (x86-mem (* 8 from) (x86-rsp)))
-  (x86-mov cgc (x86-rbx) (x86-mem (* 8 to) (x86-rsp)))
-  (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)) (x86-rax)))
+;; TODO regalloc remove when finished
+;(define (codegen-binding-clear cgc nb-slots)
+;  (x86-pop cgc (x86-rax))
+;  (x86-add cgc (x86-rsp) (x86-imm-int (* 8 nb-slots)))
+;  (x86-push cgc (x86-rax)))
+;
+;(define (codegen-letrec-end cgc nb-slots)
+;  (x86-add cgc (x86-rsp) (x86-imm-int (* 8 nb-slots))))
+;
+;(define (codegen-letrec-bind cgc from to)
+;  (x86-mov cgc (x86-rax) (x86-mem (* 8 from) (x86-rsp)))
+;  (x86-mov cgc (x86-rbx) (x86-mem (* 8 to) (x86-rsp)))
+;  (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)) (x86-rax)))
 
 ;;-----------------------------------------------------------------------------
 ;; Do

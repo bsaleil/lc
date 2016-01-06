@@ -3,8 +3,9 @@
 ;(define b 3)
 
 ;(+ 1.0 2.0)
-(let ((a 10)
-      (b 20))
+(let* ((a 10)
+       (b 20)
+       (c 30))
     1 2 3 4)
 
 ;; TODO: AVANT ALLOC DE REGISTRE:

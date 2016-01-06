@@ -52,7 +52,8 @@
       ((equal? (car expr) 'if) (expand-if expr))
       ((equal? (car expr) 'begin) (expand-begin expr))
       ((equal? (car expr) 'let) (expand-let expr))
-      ((member (car expr) '(let* letrec)) (expand-binding expr))
+      ((equal? (car expr) 'let*) (expand-let* expr))
+      ((equal? (car expr) 'letrec) (error "NYI expand.scm"))
       ((equal? (car expr) 'lambda) (expand-lambda expr))
       ((equal? (car expr) 'or) (expand-or expr))
       ((equal? (car expr) 'and) (expand-and expr))
@@ -119,38 +120,35 @@
         (expand (build-internal-defs defs body))
         `(begin ,@(map expand (cdr expr)))))))
 
+;; LET*
+(define (expand-let* expr)
+  (let ((bindings (cadr expr))
+        (bodies   (cddr expr)))
+    (if (<= (length bindings) 1)
+        (expand `(let ,bindings ,@bodies))
+        (expand `(let (,(car bindings))
+                   (let* ,(cdr bindings)
+                     ,@bodies))))))
+
+
 ;; LET
 ;; letn and let with internal defs are not handled by compiler (mlc-let)
 (define (expand-let expr)
 
   ;; NAMED LET
   (define (expand-letn expr)
-     (let ((id (cadr expr))
-           (bindings (caddr expr))
-           (body (cdddr expr)))
-       (expand `((letrec ((,id (lambda ,(map car bindings) ,@body))) ,id) ,@(map cadr bindings)))))
+    (error "NYI letrec")
+    (let ((id (cadr expr))
+          (bindings (caddr expr))
+          (body (cdddr expr)))
+      (expand `((letrec ((,id (lambda ,(map car bindings) ,@body))) ,id) ,@(map cadr bindings)))))
 
   (if (symbol? (cadr expr))
-    ;; Named let
-    (expand-letn expr)
-    ;; Normal let
-    (expand-binding expr)))
-
-;; LET, LET*, LETREC
-(define (expand-binding expr)
-  (let ((ids    (map car (cadr expr)))
-        (values (map cadr (cadr expr)))
-        (bodies (cddr expr)))
-
-      (let ((r (get-internal-defs bodies)))
-
-        (if (null? (car r)) ;; no def
-          `(,(car expr) ,(map (lambda (i v)
-                      (list i (expand v))) ids values)
-              ,@(map expand bodies))
-          `(,(car expr) ,(map (lambda (i v)
-                      (list i (expand v))) ids values)
-              ,(expand (build-internal-defs (car r) (cdr r))))))))
+      ;; Named let
+      (begin  (pp (expand-letn expr)) (error "J"))
+      ;; let
+      `(let ,(expand (cadr expr))
+         ,(expand (cons 'begin (cddr expr))))))
 
 ;; DO-h
 (define (do-steps ids)
