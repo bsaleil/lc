@@ -1055,50 +1055,62 @@
 ;;-----------------------------------------------------------------------------
 ;; Identifier management
 
+;;; Identifier in environment associated to an identifier
+;(define-type identifier
+;  constructor: make-identifier*
+;  type   ;; 'free or 'local
+;  offset ;; offset in closure or stack
+;  pos    ;; set of offset where the identifier is located
+;  flags  ;; list of flags (possible flags : mutable)
+;  stype  ;; ctx type if identifier is a free var
+;)
+;
+;(define (make-identifier type offset pos flags stype)
+;  (make-identifier* type offset (sort pos <) flags stype))
+;
+;(define (identifier-mutable? id)
+;  (member 'mutable (identifier-flags id)))
+;
+;;; Add pos to identifier object
+;(define (identifier-add-pos identifier pos)
+;  (if (member pos (identifier-pos identifier))
+;    identifier
+;    (make-identifier (identifier-type identifier)
+;                     (identifier-offset identifier)
+;                     (cons pos (identifier-pos identifier))
+;                     (identifier-flags identifier)
+;                     (identifier-stype identifier))))
+;
+;;; Remove pos from identifier object
+;(define (identifier-remove-pos identifier pos)
+;  (make-identifier (identifier-type    identifier)
+;                   (identifier-offset  identifier)
+;                   (set-sub (identifier-pos identifier) (list pos) '())
+;                   (identifier-flags   identifier)
+;                   (identifier-stype   identifier)))
+;
+;;; Reset pos of given identifier
+;(define (identifier-reset-pos identifier)
+;  (make-identifier (identifier-type identifier)
+;                   (identifier-offset identifier)
+;                   '()
+;                   (identifier-flags identifier)
+;                   (identifier-stype identifier)))
+
+;;-----------------------------------------------------------------------------
+;; Ctx TODO regalloc
+
 ;; Identifier in environment associated to an identifier
 (define-type identifier
   constructor: make-identifier*
-  type   ;; 'free or 'local
-  offset ;; offset in closure or stack
-  pos    ;; set of offset where the identifier is located
+  kind   ;; 'free or 'local
+  locs   ;; set of offset where the identifier is located
   flags  ;; list of flags (possible flags : mutable)
   stype  ;; ctx type if identifier is a free var
 )
 
-(define (make-identifier type offset pos flags stype)
-  (make-identifier* type offset (sort pos <) flags stype))
-
-(define (identifier-mutable? id)
-  (member 'mutable (identifier-flags id)))
-
-;; Add pos to identifier object
-(define (identifier-add-pos identifier pos)
-  (if (member pos (identifier-pos identifier))
-    identifier
-    (make-identifier (identifier-type identifier)
-                     (identifier-offset identifier)
-                     (cons pos (identifier-pos identifier))
-                     (identifier-flags identifier)
-                     (identifier-stype identifier))))
-
-;; Remove pos from identifier object
-(define (identifier-remove-pos identifier pos)
-  (make-identifier (identifier-type    identifier)
-                   (identifier-offset  identifier)
-                   (set-sub (identifier-pos identifier) (list pos) '())
-                   (identifier-flags   identifier)
-                   (identifier-stype   identifier)))
-
-;; Reset pos of given identifier
-(define (identifier-reset-pos identifier)
-  (make-identifier (identifier-type identifier)
-                   (identifier-offset identifier)
-                   '()
-                   (identifier-flags identifier)
-                   (identifier-stype identifier)))
-
-;;-----------------------------------------------------------------------------
-;; Ctx TODO regalloc
+(define (make-identifier kind loc flags stype)
+  (make-identifier* kind (list loc) flags stype))
 
 ;; TODO regalloc
 ;; Context que le compilateur conserve
@@ -1124,6 +1136,155 @@
             '()
             '()
             -1))
+
+;; RR
+;(define (ctx-free ctx lidx)
+;  (make-ctx ;; 1 Enleve le type de la pile
+;            (let ((stack (ctx-stack ctx)))
+;              (append (list-head stack lidx)
+;                      (cons type (list-tail stack (+ stack-idx 1)))))
+;            ;; 2 Maj reg slot (libere le(s) registre(s) associé(s) à ce slot) (TODO peut-il y en avoir plusieurs?)
+;            (reg-slot-free-slot (ctx-reg-slot ctx) (ctx-lidx-to-slot ctx 0))
+;            ;; 3 Maj slot-loc on enleve le slot
+;            (slot-loc-remove (ctx-slot-loc ctx) (ctx-lidx-to-slot ctx 0))
+;            ;; 4 Maj env
+;            (begin (println "NYI MAK ENV") (ctx-env ctx))
+;            ;;
+;            (ctx-nb-args ctx)))
+
+;; TODO verifier etat de ctx-stack apres ctx-pop et ctx-unbind
+
+;(define (ctx-free-locs ctx locs)
+;
+;  (define (get-slot slot-loc loc)
+;    (if (null? slot-loc)
+;        (error "NYI INTERNAL")
+;        (let ((first (car slot-loc)))
+;          (if (eq? (cdr first) loc)
+;              (car first)
+;              (get-slot (cdr slot-loc) loc)))))
+;
+;  (define (free-one ctx loc)
+;    (let ((slot (get-slot (ctx-slot-loc ctx) loc)))
+;      (make-ctx ;; 1
+;                (ctx-stack ctx)
+;                ;; 2
+;                (reg-slot-free-slot (ctx-reg-slot ctx) slot)
+;                ;; 3
+;                (slot-loc-remove (ctx-slot-loc ctx) slot)
+;                ;; 4
+;                (begin (println "NYI FREE ONE") (ctx-env ctx))
+;                ;;
+;                (ctx-nb-args ctx))))
+;
+;  (foldr (lambda (el ctx) (free-one ctx el))
+;         ctx
+;         locs))
+
+;; TODO comment + mov
+(define (reg-slot-move reg-slot slot-from slot-to)
+  (foldr (lambda (el reg-slot)
+           (cond ;; Si on trouve l'élément, on change la valeur du slot
+                 ((eq? (cdr el) slot-from)
+                    (cons (cons (car el) slot-to)
+                          reg-slot))
+                 ;; Si on trouve le slot vers lequel on va, on libère le registre
+                 ((eq? (cdr el) slot-to)
+                    (cons (cons (car el) #f)
+                          reg-slot))
+                 ;; Sinon, on conserve l'élément tel quel
+                 (else (cons el reg-slot))))
+         '()
+         reg-slot))
+
+;; TODO comment + mov
+(define (slot-loc-move slot-loc slot-from slot-to)
+  (foldr (lambda (el slot-loc)
+           (cond ;; Si on trouve l'élément, on change la valeur du slot
+                 ((eq? (car el) slot-from)
+                    (cons (cons slot-to (cdr el))
+                          slot-loc))
+                 ;; Si c'est le slot vers lequel on va, on enleve la valeur
+                 ((eq? (car el) slot-to)
+                    slot-loc)
+                 ;; Sinon, on conserve l'élément tel quel
+                 (else (cons el slot-loc))))
+         '()
+         slot-loc))
+
+;; TODO comment + mov?
+(define (ctx-move-lidx ctx lfrom lto)
+  (make-ctx ;; 1
+            (let ((stack (ctx-stack ctx)))
+              (append (list-head stack lto) (cons (list-ref stack lfrom) (list-tail stack (+ lto 1)))))
+            ;; 2
+            (reg-slot-move (ctx-reg-slot ctx) (ctx-lidx-to-slot ctx lfrom) (ctx-lidx-to-slot ctx lto))
+            ;; 3
+            (slot-loc-move (ctx-slot-loc ctx) (ctx-lidx-to-slot ctx lfrom) (ctx-lidx-to-slot ctx lto))
+            ;; 4
+            (begin (println "NYI ctx-move-lidx") (ctx-env ctx))
+            ;;
+            (ctx-nb-args ctx)))
+
+;; ids est une liste de symboles qui correspond aux identifiants
+;; Cette fonction supprime les liaisons du contexte (libere registres/memoire et enleve les identifiers)
+(define (ctx-unbind ctx ids)
+  (define (remove-id ctx id)
+    (make-ctx (ctx-stack ctx)
+              (ctx-reg-slot ctx)
+              (ctx-slot-loc ctx)
+              (foldr (lambda (el env)
+                       (if (eq? id (car el))
+                           env
+                           (cons el env)))
+                     '()
+                     (ctx-env ctx))
+              (ctx-nb-args ctx)))
+
+  (foldr (lambda (el ctx) (remove-id ctx el))
+         ctx
+         ids))
+;(define (ctx-unbind ctx ids)
+;
+;  (define (remove-id ctx id)
+;    (make-ctx (ctx-stack ctx)
+;              (ctx-reg-slot ctx)
+;              (ctx-slot-loc ctx)
+;              (foldr (lambda (el env)
+;                       (if (eq? id (car el))
+;                           env
+;                           (cons el env)))
+;                     '()
+;                     (ctx-env ctx))
+;              (ctx-nb-args ctx)))
+;
+;  (define (unbind-one ctx id)
+;    (let* ((identifier (assoc id (ctx-env ctx)))
+;           (locs (identifier-locs (cdr identifier)))
+;           (ctx (ctx-free-locs ctx locs)))
+;      (remove-id ctx id)))
+;
+;  (foldr (lambda (el ctx) (unbind-one ctx el))
+;         ctx
+;         ids))
+
+;; id-ctx est une liste qui contient des couples (id . lidx)
+;; Cette fonction modifie tous les éléments du contexte pour associer l'identifiant de variable à l'index de la pile virtuelle
+(define (ctx-bind ctx id-idx)
+
+  (define (bind-one ctx id-idx)
+    (let* ((loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx (cdr id-idx))))
+           (identifier (make-identifier 'TODOkind loc 'TODOflags 'TODOstype)))
+      (make-ctx (ctx-stack ctx)
+                (ctx-reg-slot ctx)
+                (ctx-slot-loc ctx)
+                (cons (cons (car id-idx) identifier)
+                      (ctx-env ctx))
+                (ctx-nb-args ctx))))
+
+  (foldr (lambda (el ctx) (bind-one ctx el))
+         ctx
+         id-idx))
 
 ;; TODO
 (define (ctx-change-type ctx stack-idx type)
@@ -1156,6 +1317,12 @@
             ;;
             (ctx-nb-args ctx)))
 
+;; TODO : remplacer les (ctx-pop (ctx-pop ...)) par ça
+(define (ctx-pop-n ctx n)
+  (if (= n 0)
+      ctx
+      (ctx-pop (ctx-pop-n ctx (- n 1)))))
+
 ;; Retire la valeur du haut de la pile virtuelle. Enleve le type de la pile.
 ;; Il faut mettre à jour l'ensemble du contexte avec cette nouvelle information
 (define (ctx-pop ctx)
@@ -1166,7 +1333,7 @@
             ;; 3 Maj slot-loc on enleve le slot
             (slot-loc-remove (ctx-slot-loc ctx) (ctx-lidx-to-slot ctx 0))
             ;; 4 Maj env
-            (println "NYI MAK ENV")
+            (begin (println "NYI MAK ENV") (ctx-env ctx))
             ;;
             (ctx-nb-args ctx)))
 

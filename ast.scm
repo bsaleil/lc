@@ -160,7 +160,8 @@
                  ;; Do
                  ((eq? op 'do) (mlc-do ast succ))
                  ;; Binding
-                 ((member op '(let let* letrec)) (mlc-binding ast succ op))
+                 ;((member op '(let let* letrec)) (mlc-binding ast succ op))
+                 ((eq? op 'let) (mlc-let ast succ))
                  ;; Operator num
                  ((member op '(FLOAT+ FLOAT- FLOAT* FLOAT/ FLOAT< FLOAT> FLOAT<= FLOAT>= FLOAT=))
                    (let ((generic-op (list->symbol (list-tail (symbol->list op) 5))))
@@ -824,23 +825,58 @@
 ;;
 ;; Make lazy code from LET
 ;;
+;; TODO regalloc kin, flags, stype (voir ctx-bind)
+;; TODO + utiliser mlc-binding quand mlc-let* mlc-letrec ajoutés
 (define (mlc-let ast succ)
+
+  (define (build-id-idx ids l)
+    (if (null? ids)
+        '()
+        (cons (cons (car ids) l)
+              (build-id-idx (cdr ids) (- l 1)))))
+
   (let* ((ids (map car (cadr ast)))
          (values (map cadr (cadr ast)))
-         ;; 2 - Update env, ctx, gen mutable and jump to bodies
-         (lazy-let-in
-            (make-lazy-code
+         (body   (cddr ast))
+         (lazy-out
+           (let ((make-lc (if (member 'ret (lazy-code-flags succ))
+                          make-lazy-code-ret
+                          make-lazy-code)))
+             (make-lc
                (lambda (cgc ctx)
-                  (let* ((mvars (mutable-vars ast ids))
-                         (start (- (length (ctx-stack ctx)) (length ids) 1))
-                         (env (build-env mvars ids start (ctx-env ctx)))
-                         (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx)))
-                         ;; Gen mutable vars
-                         (mctx (gen-mutable cgc nctx mvars)))
-                     ;; Jump to first body
-                     (jump-to-version cgc succ mctx))))))
-      ;; 1 - Gen all bound values
-      (gen-ast-l values lazy-let-in)))
+                 (let* ((ctx (ctx-unbind ctx ids)) ;; update env
+                        (ctx (ctx-move-lidx ctx 0 (length ids))) ;; mov result slot
+                        (ctx (ctx-pop-n ctx (length ids)))) ;; pop from virtual stack
+                   (jump-to-version cgc succ ctx))))))
+         (lazy-body
+           (gen-ast (cons 'begin body) lazy-out))
+         (lazy-binds
+           (make-lazy-code
+             (lambda (cgc ctx)
+               (let* ((id-idx (build-id-idx ids (- (length ids) 1)))
+                      (ctx (ctx-bind ctx id-idx)))
+                 (jump-to-version cgc lazy-body ctx))))))
+    (gen-ast-l values lazy-binds)))
+
+;; TODO: remove build-env
+
+;(define (mlc-let ast succ)
+;  (let* ((ids (map car (cadr ast)))
+;         (values (map cadr (cadr ast)))
+;         ;; 2 - Update env, ctx, gen mutable and jump to bodies
+;         (lazy-let-in
+;            (make-lazy-code
+;               (lambda (cgc ctx)
+;                  (let* ((mvars (mutable-vars ast ids))
+;                         (start (- (length (ctx-stack ctx)) (length ids) 1))
+;                         (env (build-env mvars ids start (ctx-env ctx)))
+;                         (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx)))
+;                         ;; Gen mutable vars
+;                         (mctx (gen-mutable cgc nctx mvars)))
+;                     ;; Jump to first body
+;                     (jump-to-version cgc succ mctx))))))
+;      ;; 1 - Gen all bound values
+;      (gen-ast-l values lazy-let-in)))
 
 ;;-----------------------------------------------------------------------------
 ;; SPECIAL & PRIMITIVES
@@ -1584,6 +1620,11 @@
 ;;
 ;; Make lazy code from N-ARY COMPARISON OPERATOR
 ;;
+;; TODO regalloc:
+;; (< 1 2 3) ->
+;; (let ((a 1) (b 2) (c 3))
+;;   (and (< a b) (< b c)))
+;; PAREIL POUR OP-N-NUM ?
 (define (mlc-op-n-cmp ast succ op)
 
   ;; Create final lazy object. This object clean stack and push 'res'

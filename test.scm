@@ -3,7 +3,9 @@
 ;(define b 3)
 
 ;(+ 1.0 2.0)
-3.0
+(let ((a 10)
+      (b 20))
+    1 2 3 4)
 
 ;; TODO: AVANT ALLOC DE REGISTRE:
 ;;  - Vérifier si --max-versions 3 et --max-versions 0 ne dépassent pas le nb de versions
