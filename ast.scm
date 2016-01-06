@@ -1689,8 +1689,13 @@
   (define (get-op-ii succ)
     (make-lazy-code
       (lambda (cgc ctx)
-        (codegen-num-ii cgc op)
-        (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_NUM)))))
+        (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+               (reg (car res))
+               (ctx (cdr res))
+               (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+               (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+        (codegen-num-ii cgc op reg lleft lright)
+        (jump-to-version cgc succ (ctx-push (ctx-pop (ctx-pop ctx)) CTX_NUM reg))))))
 
   ;; Get lazy code object for operation with float and float, float and int, and int and float
   ;; leftint?  to #t if left operand is an integer
@@ -1698,8 +1703,13 @@
   (define (get-op-ff succ leftint? rightint?)
     (make-lazy-code
       (lambda (cgc ctx)
-        (codegen-num-ff cgc op leftint? rightint?)
-        (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_FLO)))))
+        (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+               (reg (car res))
+               (ctx (cdr res))
+               (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+               (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+          (codegen-num-ff cgc op reg lleft leftint? lright rightint?)
+          (jump-to-version cgc succ (ctx-push (ctx-pop (ctx-pop ctx)) CTX_FLO reg))))))
 
   (cond ((= (length ast) 1)
            (cond ((eq? op '+) (gen-ast 0 succ))
@@ -1708,7 +1718,7 @@
                  (else (error "Unknown operator " op))))
         ((and (= (length ast) 2) (eq? op '-))
            (gen-ast (list '* -1 (cadr ast)) succ))
-        ((and (= (length ast) 2) (member op '(< > <= >= =)))
+        ((and (= (length ast) 2) (member op '(< > <= >= =))) ;; TODO: useless ?
            (gen-ast #t succ))
         (else
            (gen-ast (cadr ast) (build-chain (cddr ast))))))

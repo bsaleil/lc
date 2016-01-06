@@ -1,7 +1,9 @@
 
-(define a 10)
-(define b 3)
+;(define a 10)
+;(define b 3)
 
+;(+ 1.0 2.0)
+3.0
 
 ;; TODO: AVANT ALLOC DE REGISTRE:
 ;;  - Vérifier si --max-versions 3 et --max-versions 0 ne dépassent pas le nb de versions

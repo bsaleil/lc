@@ -600,51 +600,75 @@
 ;; N-ary arithmetic operators
 
 ;; Gen code for arithmetic operation on int/int
-(define (codegen-num-ii cgc op)
+(define (codegen-num-ii cgc op reg lleft lright)
   (let ((labels-overflow (add-callback #f 0 (lambda (ret-addr selector)
-                                              (error ERR_ARR_OVERFLOW)))))
-    (x86-pop cgc (x86-rax))
-    (cond ((eq? op '+) (x86-add cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-          ((eq? op '-) (x86-sub cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
-          ((eq? op '*) (x86-sar cgc (x86-rax) (x86-imm-int 2))
-                       (x86-imul cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-                       (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+                                              (error ERR_ARR_OVERFLOW))))
+        (dest    (codegen-reg-to-x86reg reg))
+        (opleft  (codegen-loc-to-x86opnd lleft))
+        (opright (codegen-loc-to-x86opnd lright)))
+
+    (if (not (eq? dest opleft))
+        (x86-mov cgc dest opleft))
+
+    (cond ((eq? op '+) (x86-add cgc dest opright))
+          ((eq? op '-) (x86-sub cgc dest opright))
+          ((eq? op '*) (x86-sar cgc dest (x86-imm-int 2))
+                       (x86-imul cgc dest opright))
           (else (error "NYI" op)))
     (x86-jo cgc (list-ref labels-overflow 0))))
 
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
-(define (codegen-num-ff cgc op leftint? rightint?)
-  ;; Alloc result flonum
-  (gen-allocation cgc #f STAG_FLONUM 2)
+(define (codegen-num-ff cgc op reg lleft leftint? lright rightint?)
 
-  (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd) (/ . ,x86-divsd))))))
+  (let ((dest    (codegen-reg-to-x86reg reg))
+        (opleft  (codegen-loc-to-x86opnd lleft))
+        (opright (codegen-loc-to-x86opnd lright)))
 
-    (x86-pop cgc (x86-rbx)) ;; right in rbx
-    (x86-pop cgc (x86-rax)) ;; left in rax
+    ;; Alloc result flonum
+    (gen-allocation cgc #f STAG_FLONUM 2)
 
-    (if leftint?
-        ;; Left is integer, the compiler converts it to double precision FP
-        (begin (x86-sar cgc (x86-rax) (x86-imm-int 2))  ;; untag integer
-               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
-        ;; Left is double precision FP
-        (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+    (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd) (/ . ,x86-divsd))))))
 
+    ;; Right operand
     (if rightint?
-        ;; Right is integer, the compiler converts it to double precision FP
-        (begin (x86-sar cgc (x86-rbx) (x86-imm-int 2))
-               (x86-cvtsi2sd cgc (x86-xmm1) (x86-rbx))
-               (x86-op cgc (x86-xmm0) (x86-xmm1)))
-        ;; Right is double precision FP
-        (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))))
+        ;; Right is register or mem and integer
+        (begin (x86-mov (x86-rax) opright)
+               (x86-sar cgc (x86-rax) (x86-imm-int 2))  ;; untag integer
+               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
+        (if (ctx-loc-is-register? lright)
+            ;; Right is register and not integer, then get float value in xmm0
+            (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright))
+            ;; Right is memory and not integer, then get float value in xmm0
+            (begin (x86-mov cgc (x86-rax) opright)
+                   (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))))
+    (set! opright (x86-xmm0))
 
-  ;; Write header
-  (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 2 STAG_FLONUM)))
-  (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-  ;; Write number
-  (x86-movsd cgc (x86-mem 8 alloc-ptr) (x86-xmm0))
-  ;;
-  (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-  (x86-push cgc (x86-rax)))
+    ;; Left operand
+    (if leftint?
+        ;; Left is register or mem and integer
+        (begin (x86-mov cgc (x86-rax) opleft)
+               (x86-sar cgc (x86-rax) (x86-imm-int 2)) ;; untag integer
+               (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))) ;; convert to double
+        (if (ctx-loc-is-register? lleft)
+            ;; Left is register and not integer, then get float value in xmm1
+            (x86-movsd cgc (x86-xmm1) (x86-mem (- 8 TAG_MEMOBJ) opleft))
+            ;; Left is memory and not integer, then get float value in xmm1
+            (begin (x86-mov cgc (x86-rax) opleft)
+                   (x86-movsd cgc (x86-xmm1) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))))
+    (set! opleft (x86-xmm1))
+
+    ;; Operator, result in opleft
+    (x86-op cgc opleft opright)
+
+    ;; Write header
+    (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 2 STAG_FLONUM)))
+    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+
+    ;; Write number
+    (x86-movsd cgc (x86-mem 8 alloc-ptr) opleft)
+
+    ;; Put
+    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr)))))
 
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
