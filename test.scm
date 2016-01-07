@@ -3,10 +3,13 @@
 ;(define b 3)
 
 ;(+ 1.0 2.0)
-(let* ((a 10)
-       (b 20)
-       (c 30))
-    1 2 3 4)
+;(let* ((a 10)
+;       (b 20)
+;       (c 30))
+;    1 2 3 4)
+
+(let ((a 10) (b 20))
+  (+ a b))
 
 ;; TODO: AVANT ALLOC DE REGISTRE:
 ;;  - Vérifier si --max-versions 3 et --max-versions 0 ne dépassent pas le nb de versions

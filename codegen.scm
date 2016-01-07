@@ -84,11 +84,9 @@
 
 ;;-----------------------------------------------------------------------------
 ;; get
-
-(define (codegen-get-global cgc dest pos)
-  (if (eq? dest 'stack)
-    (x86-push cgc (x86-mem (* 8 pos) (x86-r10)))
-    (x86-mov cgc (x86-rax) (x86-mem (* 8 pos) (x86-r10)))))
+(define (codegen-get-global cgc pos reg)
+  (let ((dest  (codegen-reg-to-x86reg reg)))
+    (x86-mov cgc dest (x86-mem (* 8 pos) (x86-r10)))))
 
 (define (codegen-get-local cgc dest pos raw? mutable?)
   (if (or raw? (not mutable?))

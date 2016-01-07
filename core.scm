@@ -1270,11 +1270,16 @@
 
 ;; id-ctx est une liste qui contient des couples (id . lidx)
 ;; Cette fonction modifie tous les éléments du contexte pour associer l'identifiant de variable à l'index de la pile virtuelle
-(define (ctx-bind ctx id-idx)
+(define (ctx-bind ctx id-idx mvars)
 
   (define (bind-one ctx id-idx)
     (let* ((loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx (cdr id-idx))))
-           (identifier (make-identifier 'TODOkind loc 'TODOflags 'TODOstype)))
+           (identifier (make-identifier 'TODOkind
+                                        loc
+                                        (if (member (car id-idx) mvars)
+                                            '(mutable)
+                                            '())
+                                        'TODOstype)))
       (make-ctx (ctx-stack ctx)
                 (ctx-reg-slot ctx)
                 (ctx-slot-loc ctx)
@@ -1297,12 +1302,17 @@
               (ctx-env ctx)
               (ctx-nb-args ctx))))
 
-
+;; TODO comment + move
+(define (ctx-get-type-from-loc ctx loc)
+  (let* ((slot (slot-loc-get-slot-from-loc (ctx-slot-loc ctx) loc))
+         (idx  (ctx-slot-to-lidx ctx slot)))
+    (list-ref (ctx-stack ctx) idx)))
 
 ;; Ajoute une valeur sur le haut de la pile. (ajout le type sur la pile)
 ;; Ce nouveau slot est associé au registre 'reg'
 ;; Sym est un symbole qui représente un id de varable. Si sym est donné, ca veut dire qu'on met sur le haut de la pile
 ;; virtuelle une variable, donc il faut modifier le contexte (ATTENTION, faut-il modifier que l'env ?? aussi reg-slot non ?)
+;; TODO: rename reg -> loc because loc could be a memory location
 (define (ctx-push ctx type reg #!optional (sym #f))
   (make-ctx ;; 1 Ajout du type sur la pile
             (stack-push (ctx-stack ctx) type)
@@ -1343,6 +1353,10 @@
 ;; Slot pos:             4   3   2   1   0
 (define (ctx-lidx-to-slot ctx lidx)
   (- (length (ctx-stack ctx)) lidx 1))
+
+;; TODO comment
+(define (ctx-slot-to-lidx ctx slot)
+  (- (length (ctx-stack ctx)) slot 1))
 
 ;; Retourne la 'location' associée au slot de pile 'stack-pos' ;; TODO: renommer stack-pos -> slot
 ;; l'emplacement est soit un registre soit un emplacement mémoire, on peut donc interroger directement la structure slot-loc
@@ -1452,6 +1466,15 @@
         (if (eq? (car first) slot)
             (slot-loc-remove (cdr slot-loc) slot)
             (cons first (slot-loc-remove (cdr slot-loc) slot))))))
+
+;; TODO
+(define (slot-loc-get-slot-from-loc slot-loc loc)
+  (if (null? slot-loc)
+      (error "NYI INTERNAL slot-loc-get-slot-from-loc")
+      (let ((first (car slot-loc)))
+        (if (eq? (cdr first) loc)
+            (car first)
+            (slot-loc-get-slot-from-loc (cdr slot-loc) loc)))))
 
 ;; TODO regalloc
 

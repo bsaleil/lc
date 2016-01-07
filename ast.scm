@@ -262,46 +262,80 @@
 ;; Make lazy code from SYMBOL
 ;;
 (define (mlc-identifier ast succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
 
- (make-lazy-code
-   (lambda (cgc ctx)
+      (let ((local  (assoc ast (ctx-env ctx)))
+            (global (assoc ast globals)))
+        ;;
+        (cond ;; Identifier is a free variable
+              ((and local (eq? (identifier-kind (cdr local)) 'free))
+                 (error "NYI mlc-identifier free"))
+              ;; Identifier is a local variable
+              (local
+                 (let* (;; Get loc from id
+                        (loc (car (identifier-locs (cdr local))))
+                        ;; Get type from id
+                        (type (ctx-get-type-from-loc ctx loc)))
+                   (jump-to-version cgc succ (ctx-push ctx type loc))))
+              ;; Identifier is a global variable
+              (global
+                (let* (;; Get variable type if known
+                       (r (assoc (car global) gids))
+                       (type (if (and r (cdr r))
+                                 (cdr r)
+                                 CTX_UNK))
+                       ;; Get free register (dest)
+                       (res (ctx-get-free-reg ctx))
+                       (reg (car res))
+                       (ctx (cdr res)))
+                  ;; Generate code to get global var from memory
+                  (codegen-get-global cgc (cdr global) reg)
+                  ;; Jump with updated ctx
+                  (jump-to-version cgc succ (ctx-push ctx type reg))))
+              (else (error "NYI mlc-identifier primitive")))))))
 
-     (let ((local  (assoc ast (ctx-env ctx)))
-           (global (assoc ast globals)))
-     ;; If local or global (not primitive nor type predicate)
-     (if (or local global)
-         ;; Id lookup
-         (let ((ctx-type (cond (local
-                                  (if (eq? (identifier-type (cdr local)) 'free)
-                                     ;; Free var
-                                     (gen-get-freevar  cgc ctx local 'stack #f)
-                                     ;; Local var
-                                     (gen-get-localvar cgc ctx local 'stack #f)))
-                               (global
-                                  (gen-get-globalvar cgc ctx global 'stack))
-                               (else
-                                  (gen-error cgc (ERR_UNKNOWN_VAR ast))))))
-
-            (let* ((nctx (if (eq? ctx-type CTX_MOBJ)
-                           (ctx-push ctx CTX_UNK 1 ast)
-                           (ctx-push ctx ctx-type 1 ast))))
-              (jump-to-version cgc succ nctx)))
-         ;; Else it is a primitive / type predicate
-         (let ((r (assoc ast primitives)))
-            (if r
-               ;; Create and return function calling primitive
-               (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
-                 (jump-to-version cgc
-                                  (gen-ast `(lambda ,args
-                                              (,ast ,@args))
-                                           succ)
-                                  ctx))
-               ;; Type predicate
-               (if (type-predicate? ast)
-                 (jump-to-version cgc
-                                  (gen-ast `(lambda (a) (,ast a)) succ)
-                                  ctx)
-                 (gen-error cgc (ERR_UNKNOWN_VAR ast))))))))))
+;(define (mlc-identifier ast succ)
+;
+; (make-lazy-code
+;   (lambda (cgc ctx)
+;
+;     (let ((local  (assoc ast (ctx-env ctx)))
+;           (global (assoc ast globals)))
+;     ;; If local or global (not primitive nor type predicate)
+;     (if (or local global)
+;         ;; Id lookup
+;         (let ((ctx-type (cond (local
+;                                  (if (eq? (identifier-type (cdr local)) 'free)
+;                                     ;; Free var
+;                                     (gen-get-freevar  cgc ctx local 'stack #f)
+;                                     ;; Local var
+;                                     (gen-get-localvar cgc ctx local 'stack #f)))
+;                               (global
+;                                  (gen-get-globalvar cgc ctx global 'stack))
+;                               (else
+;                                  (gen-error cgc (ERR_UNKNOWN_VAR ast))))))
+;
+;            (let* ((nctx (if (eq? ctx-type CTX_MOBJ)
+;                           (ctx-push ctx CTX_UNK 1 ast)
+;                           (ctx-push ctx ctx-type 1 ast))))
+;              (jump-to-version cgc succ nctx)))
+;         ;; Else it is a primitive / type predicate
+;         (let ((r (assoc ast primitives)))
+;            (if r
+;               ;; Create and return function calling primitive
+;               (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
+;                 (jump-to-version cgc
+;                                  (gen-ast `(lambda ,args
+;                                              (,ast ,@args))
+;                                           succ)
+;                                  ctx))
+;               ;; Type predicate
+;               (if (type-predicate? ast)
+;                 (jump-to-version cgc
+;                                  (gen-ast `(lambda (a) (,ast a)) succ)
+;                                  ctx)
+;                 (gen-error cgc (ERR_UNKNOWN_VAR ast))))))))))
 
 ;;
 ;; Make lazy code from num/bool/char/null literal
@@ -832,6 +866,7 @@
 
 ;; TODO regalloc kind, flags, stype (voir ctx-bind)
 ;; TODO + utiliser mlc-binding quand mlc-let* mlc-letrec ajoutés
+;; TODO ajouter un lc après 'bind' pour mettre les variables mutables en mémoire
 (define (mlc-let ast succ)
 
   (define (build-id-idx ids l)
@@ -859,7 +894,9 @@
            (make-lazy-code
              (lambda (cgc ctx)
                (let* ((id-idx (build-id-idx ids (- (length ids) 1)))
-                      (ctx (ctx-bind ctx id-idx)))
+                      (mvars (mutable-vars ast ids)) ;; Get mutable vars
+                      (ctx (ctx-bind ctx id-idx mvars)))
+                 (println "NYI mlc-let: copy mutable vars in memory")
                  (jump-to-version cgc lazy-body ctx))))))
     (gen-ast-l values lazy-binds)))
 
@@ -1914,25 +1951,27 @@
     ;; Return variable ctx type
     (identifier-stype (cdr variable))))
 
+;; TODO regalloc: remove, or move new code here (mlc-identifier)
 ;; Local variable
-(define (gen-get-localvar cgc ctx variable dest #!optional (raw? #t))
-  (let* ((fs (length (ctx-stack ctx)))
-         (pos (- fs 2 (identifier-offset (cdr variable))))
-         (mutable? (identifier-mutable? (cdr variable))))
-    ;; Gen code
-    (codegen-get-local cgc dest pos raw? mutable?)
-    ;; Return variable ctx type
-    (list-ref (ctx-stack ctx) pos)))
+;(define (gen-get-localvar cgc ctx variable dest #!optional (raw? #t))
+;  (let* ((fs (length (ctx-stack ctx)))
+;         (pos (- fs 2 (identifier-offset (cdr variable))))
+;         (mutable? (identifier-mutable? (cdr variable))))
+;    ;; Gen code
+;    (codegen-get-local cgc dest pos raw? mutable?)
+;    ;; Return variable ctx type
+;    (list-ref (ctx-stack ctx) pos)))
 
-;; Gen code to get a global var
-(define (gen-get-globalvar cgc ctx variable dest)
-   ;; Gen code
-   (codegen-get-global cgc dest (cdr variable))
-   ;; If this global is a non mutable global, return type else return unknown
-   (let ((r (assoc (car variable) gids)))
-     (if (and r (cdr r))
-         (cdr r)
-         CTX_UNK)))
+;; TODO regalloc: remove, or move new code here (mlc-identifier)
+;;; Gen code to get a global var
+;(define (gen-get-globalvar cgc ctx variable dest)
+;   ;; Gen code
+;   (codegen-get-global cgc dest (cdr variable))
+;   ;; If this global is a non mutable global, return type else return unknown
+;   (let ((r (assoc (car variable) gids)))
+;     (if (and r (cdr r))
+;         (cdr r)
+;         CTX_UNK)))
 
 ;;
 ;; FREE VARS
