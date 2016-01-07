@@ -117,18 +117,18 @@
   (x86-pop cgc (x86-rcx)))
 
 ;;-----------------------------------------------------------------------------
-;; READ-CHAR TODO regalloc NYI
+;; READ-CHAR
 
 (define (gen-syscall-read-char cgc)
 
   ;; Save destroyed regs
-  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel
-  (x86-push cgc (x86-r11)) ;; Destroyed by kernel
+  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
+  (x86-push cgc (x86-r11)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
 
   ;; file descriptor (rdi)
-  (x86-mov cgc (x86-rdi) (x86-mem 32 (x86-rsp))) ;; Port object in rdi
+  (x86-mov cgc (x86-rdi) (x86-rax)) ;; Port object in rdi (port is in rax)
   (x86-mov cgc (x86-rdi) (x86-mem (- 8 TAG_MEMOBJ) (x86-rdi)))
   ;; syscall number (rax)
   (x86-mov cgc (x86-rax) (x86-imm-int (cdr (assoc 'read LINUX_SYSCALL))))
@@ -167,33 +167,30 @@
   (x86-pop cgc (x86-rcx)))
 
 ;;-----------------------------------------------------------------------------
-;; WRITE-CHAR TODO regalloc NYI
-
-(define (gen-syscall-write-char cgc #!optional (stdout? #f))
+;; WRITE-CHAR
+;; TODO: stdout ??
+(define (gen-syscall-write-char cgc)
 
   ;; Save destroyed regs
-  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel
-  (x86-push cgc (x86-r11)) ;; Destroyed by kernel
+  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
+  (x86-push cgc (x86-r11)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
 
   ;; file descriptor (rdi)
-  (if stdout?
-     (x86-mov cgc (x86-rdi) (x86-imm-int 1)) ;; stdout
-     (begin (x86-mov cgc (x86-rdi) (x86-mem 32 (x86-rsp))) ;; Port object in rdi
-            (x86-mov cgc (x86-rdi) (x86-mem (- 8 TAG_MEMOBJ) (x86-rdi)))))
-  ;; buffer (rsi)
-  (let ((offset (if stdout? 32 40)))
-    (x86-mov cgc (x86-rax) (x86-mem offset (x86-rsp)))
-    (x86-shr cgc (x86-rax) (x86-imm-int 2))
-    (x86-mov cgc (x86-mem offset (x86-rsp)) (x86-rax))
-    (x86-lea cgc (x86-rsi) (x86-mem offset (x86-rsp)))
-    ;; count (rdx)
-    (x86-mov cgc (x86-rdx) (x86-imm-int 1)) ;; Read only one byte
-    ;; syscall number (rax)
-    (x86-mov cgc (x86-rax) (x86-imm-int (cdr (assoc 'write LINUX_SYSCALL)))))
+  (x86-mov cgc (x86-rdi) (x86-rax)) ;; Port object in rdi (port is in rax)
+  (x86-mov cgc (x86-rdi) (x86-mem (- 8 TAG_MEMOBJ) (x86-rdi)))
 
-  ;; perform syscall
+  ;; buffer (rsi)
+  (x86-mov cgc (x86-rax) (x86-mem 32 (x86-rsp)))
+  (x86-shr cgc (x86-rax) (x86-imm-int 2))
+  (x86-mov cgc (x86-mem 32 (x86-rsp)) (x86-rax))
+  (x86-lea cgc (x86-rsi) (x86-mem 32 (x86-rsp)))
+  ;; count (rdx)
+  (x86-mov cgc (x86-rdx) (x86-imm-int 1)) ;; Read only one byte
+  ;; syscall number (rax)
+  (x86-mov cgc (x86-rax) (x86-imm-int (cdr (assoc 'write LINUX_SYSCALL))))
+
   (x86-syscall cgc)
 
   ;; Returned value

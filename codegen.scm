@@ -864,32 +864,52 @@
 
 ;;-----------------------------------------------------------------------------
 ;; eof-object?
-(define (codegen-eof? cgc)
-  (let ((label-end (asm-make-label #f (new-sym 'label-end))))
-    (x86-pop cgc (x86-rax))
-    (x86-cmp cgc (x86-rax) (x86-imm-int ENCODING_EOF))
-    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+(define (codegen-eof? cgc reg lval)
+  (let ((label-end (asm-make-label #f (new-sym 'label-end)))
+        (dest  (codegen-reg-to-x86reg reg))
+        (opval (codegen-loc-to-x86opnd lval)))
+
+    ;; If value is in memory, move it to rax (can't compare m64 and imm64)
+    (if (ctx-loc-is-memory? lval)
+        (begin (x86-mov cgc (x86-rax) opval)
+               (set! opval (x86-rax))))
+    (x86-cmp cgc opval (x86-imm-int ENCODING_EOF))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
     (x86-jne cgc label-end)
-    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
-    (x86-label cgc label-end)
-    (x86-push cgc (x86-rax))))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+    (x86-label cgc label-end)))
 
 ;;-----------------------------------------------------------------------------
 ;; read-char
-(define (codegen-read-char cgc)
-  ;; Gen 'read' syscall (read 1 byte), encoded value (char or eof) in rax
-  (gen-syscall-read-char cgc)
-  ;; Push encoded result
-  (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax)))
+(define (codegen-read-char cgc reg lport)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opport (codegen-loc-to-x86opnd lport)))
+    ;; Mov port to rax for syscall
+    (x86-mov cgc (x86-rax) opport)
+    ;; Gen 'read' syscall (read 1 byte), encoded value (char or eof) in rax
+    (gen-syscall-read-char cgc)
+    ;; Push encoded result
+    (x86-mov cgc dest (x86-rax))))
 
 ;;-----------------------------------------------------------------------------
 ;; write-char
-(define (codegen-write-char cgc)
-  ;; Gen 'read' syscall, encoded value (char or eof) in rax
-  (gen-syscall-write-char cgc)
-  (x86-add cgc (x86-rsp) (x86-imm-int 16)) ;; NOTE: clean stack in gen-syscall-write-char?
-  ;; Push encoded result
-  (x86-push cgc (x86-imm-int ENCODING_VOID)))
+(define (codegen-write-char cgc reg lchar lport)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opport (codegen-loc-to-x86opnd lport))
+        (opchar (codegen-loc-to-x86opnd lchar)))
+
+    ;; Char on stack for syscall
+    (if (ctx-loc-is-memory? lchar)
+        (begin (x86-mov cgc (x86-rax) opchar)
+               (set! opchar (x86-rax))))
+    (x86-push cgc opchar)
+    ;; Mov port to rax for syscall
+    (x86-mov cgc (x86-rax) opport)
+    ;; Gen 'read' syscall, encoded value (char or eof) in rax
+    (gen-syscall-write-char cgc)
+    (x86-pop cgc (x86-rax)) ;; Pop char
+    ;; Put encoded result
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
 
 ;;-----------------------------------------------------------------------------
 ;; char->integer/integer->char

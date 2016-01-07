@@ -1054,23 +1054,39 @@
                                                                          CTX_OPORT)
                                                                      reg))))))
                          ;; EOF-OBJECT?
+                         ;; TODO regalloc ok
                          ((eq? special 'eof-object?)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (codegen-eof? cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))
+                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                     (reg (car res))
+                                     (ctx (cdr res))
+                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                                (codegen-eof? cgc reg lval)
+                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))))
                          ;; READ-CHAR
+                         ;; TODO regalloc ok
                          ((eq? special 'read-char)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (codegen-read-char cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_CHAR)))))
+                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                     (reg (car res))
+                                     (ctx (cdr res))
+                                     (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                                (codegen-read-char cgc reg lport)
+                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_CHAR reg))))))
                          ;; WRITE-CHAR
+                         ;; TODO regalloc ok
                          ((eq? special 'write-char)
                             (make-lazy-code
                               (lambda (cgc ctx)
-                                (codegen-write-char cgc)
-                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_VOID)))))
+                                (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                       (reg (car res))
+                                       (ctx (cdr res))
+                                       (lchar (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+                                       (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                                  (codegen-write-char cgc reg lchar lport)
+                                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_VOID reg))))))
                          ;; CHAR<->INTEGER
                          ((member special '(char->integer integer->char))
                           (make-lazy-code

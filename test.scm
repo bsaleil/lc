@@ -7,7 +7,8 @@
 ;       (b 20)
 ;       (c 30))
 ;    1 2 3 4)
-1
+
+10
 
 ;; TODO: AVANT ALLOC DE REGISTRE:
 ;;  - Vérifier si --max-versions 3 et --max-versions 0 ne dépassent pas le nb de versions
