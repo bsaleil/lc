@@ -761,39 +761,51 @@
 
 ;;-----------------------------------------------------------------------------
 ;; not
-(define (codegen-not cgc)
+(define (codegen-not cgc reg lval)
   (let ((label-done
-          (asm-make-label cgc (new-sym 'done))))
-    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-    (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+          (asm-make-label cgc (new-sym 'done)))
+        (dest (codegen-reg-to-x86reg reg))
+        (opval (codegen-loc-to-x86opnd lval)))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+    (x86-cmp cgc opval dest)
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
     (x86-je  cgc label-done)
-    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-    (x86-label cgc label-done)
-    (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #f))) ;; TODO: useless ?
+    (x86-label cgc label-done)))
 
 ;;-----------------------------------------------------------------------------
 ;; eq?
-(define (codegen-eq? cgc)
-  (let ((label-done (asm-make-label cgc (new-sym 'done))))
-    (x86-pop cgc (x86-rax))
-    (x86-cmp cgc (x86-mem 0 (x86-rsp)) (x86-rax))
-    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #t)))
+(define (codegen-eq? cgc reg lleft lright)
+  (let ((label-done (asm-make-label cgc (new-sym 'done)))
+        (dest  (codegen-reg-to-x86reg reg))
+        (opleft  (codegen-loc-to-x86opnd lleft))
+        (opright (codegen-loc-to-x86opnd lright)))
+    ;; If both are mem, move one in rax
+    (if (and (ctx-loc-is-memory? lleft)
+             (ctx-loc-is-memory? lright))
+        (begin (x86-mov cgc (x86-rax) opleft)
+               (set! opleft (x86-rax))))
+    (x86-cmp cgc opleft opright)
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
     (x86-je  cgc label-done)
-    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-    (x86-label cgc label-done)
-    (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+    (x86-label cgc label-done)))
 
 ;;-----------------------------------------------------------------------------
 ;; car/cdr
-(define (codegen-car/cdr cgc op)
+(define (codegen-car/cdr cgc op reg lval)
   (let ((offset
           (if (eq? op 'car)
               (-  8 TAG_MEMOBJ)
-              (- 16 TAG_MEMOBJ))))
-    (x86-pop cgc (x86-rax))
-    (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
-    (x86-push cgc (x86-rax))))
+              (- 16 TAG_MEMOBJ)))
+        (dest  (codegen-reg-to-x86reg reg))
+        (opval (codegen-loc-to-x86opnd lval)))
+        
+    (if (ctx-loc-is-memory? lval)
+        (begin (x86-mov cgc (x86-rax) opval)
+               (set! opval (x86-rax))))
+
+    (x86-mov cgc dest (x86-mem offset opval))))
 
 ;;-----------------------------------------------------------------------------
 ;; set-car!/set-cdr!

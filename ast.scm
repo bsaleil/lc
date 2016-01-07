@@ -967,28 +967,46 @@
           (let* ((special (car ast))
                  (lazy-special
                    (cond ;; EXIT
+                         ;; TODO regalloc ok
                          ((eq? special 'exit)
                             (get-lazy-error ""))
                          ;; CONS
+                         ;; TODO ragalloc ok
                          ((eq? special 'cons) (mlc-pair succ))
                          ;; NOT
+                         ;; TODO regalloc ok
                          ((eq? special 'not)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (codegen-not cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))
+                              (let* ((res (ctx-get-free-reg ctx))
+                                     (reg (car res))
+                                     (ctx (cdr res))
+                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                                (codegen-not cgc reg lval)
+                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))))
                          ;; EQ?
+                         ;; TODO regalloc ok
                          ((eq? special 'eq?)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (codegen-eq? cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_BOOL)))))
+                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                     (reg (car res))
+                                     (ctx (cdr res))
+                                     (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+                                     (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                                (codegen-eq? cgc reg lleft lright)
+                                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg))))))
                          ;; CAR & CDR
+                         ;; TODO regalloc ok
                          ((member special '(car cdr))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (codegen-car/cdr cgc special)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK)))))
+                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                     (reg (car res))
+                                     (ctx (cdr res))
+                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                                (codegen-car/cdr cgc special reg lval)
+                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK reg))))))
                          ;; SET-CAR! & SET-CDR!
                          ((member special '(set-car! set-cdr!))
                           (make-lazy-code
