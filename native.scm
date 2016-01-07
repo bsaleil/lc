@@ -42,8 +42,8 @@
 (define (gen-syscall-open cgc direction)
 
   (define flags (if (eq? direction 'in)
-                  0    ;;  0 is O_RDONLY
-                  577)) ;; 65 is O_WRONLY | O_CREAT | O_TRUNC
+                  0     ;; O_RDONLY
+                  577)) ;; O_WRONLY | O_CREAT | O_TRUNC
 
   (define permissions 420) ;; S_IRUSR |  S_IWUSR | S_IRGRP | S_IROTH
 
@@ -52,13 +52,13 @@
                 ERR_OPEN_OUTPUT_FILE))
 
   ;; Save destroyed regs
-  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel
-  (x86-push cgc (x86-r11)) ;; Destroyed by kernel
+  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
+  (x86-push cgc (x86-r11)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
 
   ;; c-string argument (rdi)
-  (x86-mov cgc (x86-rdi) (x86-mem 32 (x86-rsp))) ;; Str in rdi
+  (x86-mov cgc (x86-rdi) (x86-rax)) ;; Str in rdi (Str is in rax)
   (x86-mov cgc (x86-rbx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rdi)))  ;; Str length in rbx
   (x86-shr cgc (x86-rbx) (x86-imm-int 2))        ;; Decode str length
   (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx) (x86-rdi)) (x86-imm-int 0) 8) ;; Add null char (c string)
@@ -72,7 +72,6 @@
   ;; syscall number (rax)
   (x86-mov cgc (x86-rax) (x86-imm-int (cdr (assoc 'open LINUX_SYSCALL))))
 
-  ;; perform syscall
   (x86-syscall cgc)
 
   ;; Returned value
@@ -94,11 +93,11 @@
 
 (define (gen-syscall-close cgc)
 
-  (x86-pop cgc (x86-rax)) ;; Port in rax
+  ;; Port is in rax
 
   ;; Save destroyed regs
-  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel
-  (x86-push cgc (x86-r11)) ;; Destroyed by kernel
+  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
+  (x86-push cgc (x86-r11)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
 
@@ -107,7 +106,6 @@
   ;; syscall number (rax)
   (x86-mov cgc (x86-rax) (x86-imm-int (cdr (assoc 'close LINUX_SYSCALL))))
 
-  ;; perform syscall
   (x86-syscall cgc)
 
   ;; No effect if the file has already been closed
@@ -119,7 +117,7 @@
   (x86-pop cgc (x86-rcx)))
 
 ;;-----------------------------------------------------------------------------
-;; READ-CHAR
+;; READ-CHAR TODO regalloc NYI
 
 (define (gen-syscall-read-char cgc)
 
@@ -169,7 +167,7 @@
   (x86-pop cgc (x86-rcx)))
 
 ;;-----------------------------------------------------------------------------
-;; WRITE-CHAR
+;; WRITE-CHAR TODO regalloc NYI
 
 (define (gen-syscall-write-char cgc #!optional (stdout? #f))
 

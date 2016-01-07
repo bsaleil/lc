@@ -800,7 +800,7 @@
               (- 16 TAG_MEMOBJ)))
         (dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd lval)))
-        
+
     (if (ctx-loc-is-memory? lval)
         (begin (x86-mov cgc (x86-rax) opval)
                (set! opval (x86-rax))))
@@ -821,36 +821,46 @@
 
 ;;-----------------------------------------------------------------------------
 ;; current-input/output-port
-(define (codegen-current-io-port cgc op)
-  (let ((block-offset (if (eq? op 'current-output-port) 8 24)))
-    (x86-mov cgc (x86-rax) (x86-imm-int (+ TAG_MEMOBJ block-offset block-addr)))
-    (x86-push cgc (x86-rax))))
+(define (codegen-current-io-port cgc op reg)
+  (let ((block-offset (if (eq? op 'current-output-port) 8 24))
+        (dest  (codegen-reg-to-x86reg reg)))
+    (x86-mov cgc dest (x86-imm-int (+ TAG_MEMOBJ block-offset block-addr)))))
 
 ;;-----------------------------------------------------------------------------
 ;; close-input/output-port
-(define (codegen-close-io-port cgc)
-  (gen-syscall-close cgc)
-  (x86-push cgc (x86-imm-int ENCODING_VOID)))
+(define (codegen-close-io-port cgc reg lport)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opport (codegen-loc-to-x86opnd lport)))
+    ;; Mov port to rax for syscall
+    (x86-mov cgc (x86-rax) opport)
+    (gen-syscall-close cgc)
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
 
 ;;-----------------------------------------------------------------------------
 ;; open-input/output-port
-(define (codegen-open-io-file cgc op)
+(define (codegen-open-io-file cgc op reg lval)
   (let* ((direction   (if (eq? op 'open-output-file) 'out 'in))
          (stag        (if (eq? direction 'in) STAG_IPORT STAG_OPORT))
-         (header-word (mem-header 2 stag)))
+         (header-word (mem-header 2 stag))
+         (dest  (codegen-reg-to-x86reg reg))
+         (opval (codegen-loc-to-x86opnd lval)))
+    ;; Move operand to rax for syscall
+    (x86-mov cgc (x86-rax) opval)
     ;; Gen 'open' syscall, file descriptor in rax
     (gen-syscall-open cgc direction)
-    (x86-mov cgc (x86-rbx) (x86-rax))
     ;; Allocate port object
+    (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode descriptor (in case gen-alloc triggers GC)
+    (x86-push cgc (x86-rax))
     (gen-allocation cgc #f stag 2)
     ;; Mov header
     (x86-mov cgc (x86-rax) (x86-imm-int header-word))
     (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
     ;; Mov descriptor
-    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rbx))
-    ;; Tag & push
-    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-    (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-rax))))
+    (x86-pop cgc (x86-rax))
+    (x86-shr cgc (x86-rax) (x86-imm-int 2)) ;; Decode descriptor
+    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+    ;;; Tag & push
+    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
 
 ;;-----------------------------------------------------------------------------
 ;; eof-object?

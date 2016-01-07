@@ -1014,29 +1014,45 @@
                               (codegen-scar/scdr cgc special)
                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_VOID)))))
                          ;; CURRENT-INPUT-PORT / CURRENT-OUTPUT-PORT
+                         ;; TODO regalloc ok
                          ((member special '(current-input-port current-output-port))
                            (make-lazy-code
                              (lambda (cgc ctx)
-                               (codegen-current-io-port cgc special)
-                               (jump-to-version cgc succ (ctx-push ctx
-                                                                   (if (eq? special 'current-output-port)
-                                                                       CTX_OPORT
-                                                                       CTX_IPORT))))))
+                               (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                      (reg (car res))
+                                      (ctx (cdr res)))
+                                 (codegen-current-io-port cgc special reg)
+                                 (jump-to-version cgc succ (ctx-push ctx
+                                                                     (if (eq? special 'current-output-port)
+                                                                         CTX_OPORT
+                                                                         CTX_IPORT)
+                                                                     reg))))))
                          ;; CLOSE-INPUT-PORT / CLOSE-OUTPUT-PORT
+                         ;; TODO regalloc ok
                          ((member special '(close-output-port close-input-port))
                            (make-lazy-code
                              (lambda (cgc ctx)
-                               (codegen-close-io-port cgc)
-                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))
+                               (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                      (reg (car res))
+                                      (ctx (cdr res))
+                                      (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                                 (codegen-close-io-port cgc reg lport)
+                                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))))
                          ;; OPEN-INPUT-FILE / OPEN-OUTPUT-FILE
+                         ;; TODO regalloc ok
                          ((member special '(open-output-file open-input-file))
                            (make-lazy-code
                              (lambda (cgc ctx)
-                               (codegen-open-io-file cgc special)
-                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
-                                                                   (if (eq? special 'open-input-file)
-                                                                       CTX_IPORT
-                                                                       CTX_OPORT))))))
+                               (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                      (reg (car res))
+                                      (ctx (cdr res))
+                                      (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                                 (codegen-open-io-file cgc special reg lval)
+                                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
+                                                                     (if (eq? special 'open-input-file)
+                                                                         CTX_IPORT
+                                                                         CTX_OPORT)
+                                                                     reg))))))
                          ;; EOF-OBJECT?
                          ((eq? special 'eof-object?)
                           (make-lazy-code
