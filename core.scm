@@ -2025,9 +2025,23 @@
        (if opt-stats
         (gen-inc-slot cgc 'tests))
 
-       (let ((loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx stack-idx))))
-         (pp loc)
-         (error "NYI gen-dyn-type-test"))
+       (let* ((lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx stack-idx)))
+              (opval (codegen-loc-to-x86opnd lval)))
+
+         (cond ;; Number type check
+               ((eq? type CTX_NUM) (error "NYI gen-dyn"))
+               ;; Char type check
+               ((eq? type CTX_CHAR)
+                  (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
+                  (x86-and cgc (x86-rax) opval)
+                  (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL))) ;; TODO: not enough ? TAG_SPECIAL is uses by other types ?
+               ;; NYI
+               (else (error "NYI gen-dyn")))
+
+         (x86-label cgc label-jump)
+         (x86-je cgc (list-ref stub-labels 0))
+         (x86-jmp cgc (list-ref stub-labels 1))))))))))
+
     ;   (cond ;; Number type test
     ;         ((eq? type CTX_NUM)
     ;             (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
@@ -2064,9 +2078,9 @@
     ;                                                            ((eq? type CTX_PAI)  STAG_PAIR))))))
     ;         ;; Other
     ;         (else (error "Unknown type" type)))
-       (x86-label cgc label-jump)
-       (x86-je cgc (list-ref stub-labels 0))
-       (x86-jmp cgc (list-ref stub-labels 1)))))))))
+      ; (x86-label cgc label-jump)
+      ; (x86-je cgc (list-ref stub-labels 0))
+      ; (x86-jmp cgc (list-ref stub-labels 1)))))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Global cc table

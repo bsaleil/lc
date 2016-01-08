@@ -182,8 +182,8 @@
 ;; TODO regalloc
 (define codegen-regmap (list
   (cons 'r0 (x86-rbx))
-  (cons 'r1 (x86-rcx))
-  (cons 'r2 (x86-rdx))
+  (cons 'r1 (x86-rdx))
+  (cons 'r2 (x86-r8))
   (cons 'r3 (x86-rsi))
   (cons 'r4 (x86-rdi))))
 
@@ -984,6 +984,7 @@
 ;;-----------------------------------------------------------------------------
 ;; make-vector
 (define (codegen-make-vector cgc reg llen lval)
+
   (let* ((header-word (mem-header 2 STAG_VECTOR))
          (dest  (codegen-reg-to-x86reg reg))
          (oplen (codegen-loc-to-x86opnd llen))
@@ -993,7 +994,6 @@
 
     ;; Len is encoded in rax (if (make-vector 3) rax=12)
     (x86-mov cgc (x86-rax) oplen)
-
     ;; Alloc
     (gen-allocation cgc #f STAG_VECTOR 2 #t)
 
@@ -1015,7 +1015,7 @@
     (x86-cmp cgc (x86-rax) (x86-imm-int 0))
     (x86-je cgc label-end)
 
-      (x86-mov cgc (x86-mem 16 alloc-ptr (x86-rax)) opval)
+      (x86-mov cgc (x86-mem 8 alloc-ptr (x86-rax)) opval)
       (x86-sub cgc (x86-rax) (x86-imm-int 8))
       (x86-jmp cgc label-loop)
 
@@ -1090,18 +1090,41 @@
 
 ;;-----------------------------------------------------------------------------
 ;; vector/string-length
-(define (codegen-vec/str-length cgc)
-  (x86-pop cgc (x86-rax)) ;; Pop vector
-  (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+(define (codegen-vec/str-length cgc reg lval)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opval (codegen-loc-to-x86opnd lval)))
+
+    (if (ctx-loc-is-memory? opval)
+        (begin (x86-mov cgc (x86-rax) opval)
+               (set! opval (x86-rax))))
+
+    (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) opval))))
 
 ;;-----------------------------------------------------------------------------
 ;; vector-ref
-(define (codegen-vector-ref cgc)
-  (x86-pop cgc (x86-rax)) ;; Pop index
-  (x86-pop cgc (x86-rbx)) ;; Pop vector
-  (x86-shl cgc (x86-rax) (x86-imm-int 1))
-  (x86-add cgc (x86-rbx) (x86-rax))
-  (x86-push cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx))))
+(define (codegen-vector-ref cgc reg lvec lidx)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opvec (codegen-loc-to-x86opnd lvec))
+        (opidx (codegen-loc-to-x86opnd lidx)))
+
+    (cond ;; Both operands are in memory, use rax and dest registers
+          ((and (ctx-loc-is-memory? lvec)
+                (ctx-loc-is-memory? lidx))
+             (x86-mov cgc dest opvec)
+             (x86-mov cgc (x86-rax) opidx)
+             (set! opvec dest)
+             (set! opidx (x86-rax)))
+          ;; Vector is in memory, use rax
+          ((ctx-loc-is-memory? lvec)
+             (x86-mov cgc (x86-rax) opvec)
+             (set! opvec (x86-rax)))
+          ;; Index is in memory, use rax
+          ((ctx-loc-is-memory? lidx)
+             (x86-mov cgc (x86-rax) opidx)
+             (set! opidx (x86-rax))))
+
+    ;; mov dest, [opvec + opidx*2 + 15]
+    (x86-mov cgc dest (x86-mem (- 16 TAG_MEMOBJ) opvec opidx 1))))
 
 ;;-----------------------------------------------------------------------------
 ;; string-ref
