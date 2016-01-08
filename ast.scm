@@ -1088,14 +1088,20 @@
                                   (codegen-write-char cgc reg lchar lport)
                                   (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_VOID reg))))))
                          ;; CHAR<->INTEGER
+                         ;; TODO regalloc ok
                          ((member special '(char->integer integer->char))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (codegen-ch<->int cgc special)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
-                                                                  (if (eq? special 'char->integer)
-                                                                      CTX_NUM
-                                                                      CTX_CHAR))))))
+                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                     (reg (car res))
+                                     (ctx (cdr res))
+                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                                (codegen-ch<->int cgc special reg lval)
+                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
+                                                                    (if (eq? special 'char->integer)
+                                                                        CTX_NUM
+                                                                        CTX_CHAR)
+                                                                    reg))))))
                          ;; MAKE-STRING
                          ((eq? special 'make-string)
                           (make-lazy-code

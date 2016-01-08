@@ -913,10 +913,16 @@
 
 ;;-----------------------------------------------------------------------------
 ;; char->integer/integer->char
-(define (codegen-ch<->int cgc op)
-  (if (eq? op 'char->integer)
-      (x86-xor cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8)
-      (x86-or  cgc (x86-mem 0 (x86-rsp)) (x86-imm-int TAG_SPECIAL) 8)))
+(define (codegen-ch<->int cgc op reg lval)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opval (codegen-loc-to-x86opnd lval)))
+
+    (if (not (eq? dest opval))
+      (x86-mov cgc dest opval))
+
+    (if (eq? op 'char->integer)
+        (x86-xor cgc dest (x86-imm-int TAG_SPECIAL))
+        (x86-or  cgc dest (x86-imm-int TAG_SPECIAL)))))
 
 ;;-----------------------------------------------------------------------------
 ;; make-string
