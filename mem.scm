@@ -95,6 +95,8 @@
 ;; DESTROY RAX !!
 ;; DESTROY R15 !!
 ;; TODO: MERGE gen-alloc-imm and gen-alloc-regimm
+;; Rax contains the encoded number of 64bits words to alloc
+;; Ex. For (make-vector 3) rax contains 12
 (define (gen-alloc-regimm cgc stag length)
 
     (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok)))

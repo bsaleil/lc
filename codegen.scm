@@ -983,54 +983,61 @@
 
 ;;-----------------------------------------------------------------------------
 ;; make-vector
-(define (codegen-make-vector cgc init-value?)
-  (let* ((header-word (mem-header 2 STAG_VECTOR)))
-    ;; Pop encoded length
-    (if init-value?
-        (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
-        (x86-pop cgc (x86-rax)))
-    (x86-mov cgc (x86-rbx) (x86-rax))
+(define (codegen-make-vector cgc reg llen lval)
+  (let* ((header-word (mem-header 2 STAG_VECTOR))
+         (dest  (codegen-reg-to-x86reg reg))
+         (oplen (codegen-loc-to-x86opnd llen))
+         (opval (if lval (codegen-loc-to-x86opnd lval) #f))
+         (label-loop (asm-make-label #f (new-sym 'make-vector-loop)))
+         (label-end  (asm-make-label #f (new-sym 'make-vector-end))))
+
+    ;; Len is encoded in rax (if (make-vector 3) rax=12)
+    (x86-mov cgc (x86-rax) oplen)
+
     ;; Alloc
     (gen-allocation cgc #f STAG_VECTOR 2 #t)
-    ;; Get vector position in R15
-    (x86-mov cgc (x86-r15) alloc-ptr)
-    ;; Fill vector
-    (x86-push cgc (x86-rbx))
-    ;; Init value in RAX (0)
-    (if init-value?
-        (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
-        (x86-mov cgc (x86-rax) (x86-imm-int 0)))
-    ;;
-    (let ((label-loop (asm-make-label #f (new-sym 'fill-vector-loop)))
-          (label-end  (asm-make-label #f (new-sym 'fill-vector-end))))
 
-      ;; LOOP:
-      ;;    if (rbx == 0) jump END
-      (x86-label cgc label-loop)
-      (x86-cmp cgc (x86-rbx) (x86-imm-int 0))
-      (x86-je  cgc label-end)
-        ;; Init vector slot
-        (x86-mov cgc (x86-mem 16 (x86-r15)) (x86-rax))
-        ;; Update offset and remaining elements nb
-        (x86-add cgc (x86-r15) (x86-imm-int 8))
-        (x86-sub cgc (x86-rbx) (x86-imm-int 4))
-        ;; loop
-        (x86-jmp cgc label-loop)
-      ;; END:
-      (x86-label cgc label-end)
-      (x86-pop cgc (x86-rbx)))
-    ;; Clean stack
-    (if init-value?
-        (x86-add cgc (x86-rsp) (x86-imm-int 16)))
+    (x86-mov cgc (x86-rax) oplen)
+    (x86-shl cgc (x86-rax) (x86-imm-int 1))
+    ;; If opval not in register, save rbx and use it
+    (cond ((not lval)
+             ;; No init val given, then use rbx with value 0
+             (x86-push cgc (x86-rbx))
+             (x86-mov cgc (x86-rbx) (x86-imm-int 0))
+             (set! opval (x86-rbx)))
+          ((not (ctx-loc-is-register? lval))
+             ;; Init value id in memory, then use rbx with given init valuesss
+             (x86-push cgc (x86-rbx))
+             (x86-mov cgc (x86-rbx) opval)
+             (set! opval (x86-rbx))))
+
+    (x86-label cgc label-loop)
+    (x86-cmp cgc (x86-rax) (x86-imm-int 0))
+    (x86-je cgc label-end)
+
+      (x86-mov cgc (x86-mem 16 alloc-ptr (x86-rax)) opval)
+      (x86-sub cgc (x86-rax) (x86-imm-int 8))
+      (x86-jmp cgc label-loop)
+
+    (x86-label cgc label-end)
+
+    ;; Restore rbx
+    (if (or (not lval)
+            (not (ctx-loc-is-register? lval)))
+        (x86-pop cgc (x86-rbx)))
+
     ;; Write encoded length
-    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rbx))
+    (if (ctx-loc-is-memory? oplen)
+        (begin (x86-mov cgc (x86-rax) oplen)
+               (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
+        (x86-mov cgc (x86-mem 8 alloc-ptr) oplen))
     ;; Write header
-    (x86-shl cgc (x86-rbx) (x86-imm-int 6))
-    (x86-add cgc (x86-rbx) (x86-imm-int header-word))
-    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rbx))
-    ;; Push vector
-    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-    (x86-push cgc (x86-rax))))
+    (x86-mov cgc (x86-rax) oplen)
+    (x86-shl cgc (x86-rax) (x86-imm-int 6))
+    (x86-add cgc (x86-rax) (x86-imm-int header-word))
+    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+    ;; Put vector
+    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
 
 ;;-----------------------------------------------------------------------------
 ;; string->symbol

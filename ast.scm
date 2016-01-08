@@ -1113,15 +1113,22 @@
                                                                         (ctx-pop ctx))
                                                                     CTX_STR))))))
                          ;; MAKE-VECTOR
+                         ;; TODO regalloc ok
                          ((eq? special 'make-vector)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let ((init-value? (= (length (cdr ast)) 2)))
-                                (codegen-make-vector cgc (= (length (cdr ast)) 2))
+                              (let* ((init-value? (= (length (cdr ast)) 2))
+                                     (res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                     (reg (car res))
+                                     (ctx (cdr res))
+                                     (llen (ctx-get-loc ctx (ctx-lidx-to-slot ctx (if init-value? 1 0))))
+                                     (lval (if init-value? (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)) #f)))
+                                (codegen-make-vector cgc reg llen lval)
                                 (jump-to-version cgc succ (ctx-push (if init-value?
-                                                                       (ctx-pop ctx 2)
+                                                                       (ctx-pop-n ctx 2)
                                                                        (ctx-pop ctx))
-                                                                    CTX_VECT))))))
+                                                                    CTX_VECT
+                                                                    reg))))))
                          ;; STRING->SYMBOL
                          ((eq? special 'string->symbol)
                           (make-lazy-code

@@ -176,6 +176,7 @@
               ;; 2 - TODO: clean stack
 
               ;; TODO regalloc debug print result (rax)
+              ;; vect in rax
               ;(gen-breakpoint cgc)
 
               (pop-regs-reverse cgc all-regs)
