@@ -273,25 +273,22 @@
                  (error "NYI mlc-identifier free"))
               ;; Identifier is a local variable
               (local
-                (let ((loc (identifier-rloc (cdr local))))
-                  (error "WIP")
-                  (if (not loc)
-                      ;; If there is no register associated to variable
-                      ;; then assign a new register to identifier
-                      (let* ((mem-loc (identifier-mloc (cdr local)))
+                (let ((rloc (identifier-rloc (cdr local))))
+                  (if rloc
+                      ;;
+                      (let ((type (ctx-get-type-from-loc ctx rloc)))
+                        (jump-to-version cgc succ (ctx-push ctx type rloc)))
+                      ;;
+                      (let* ((mloc (identifier-mloc (cdr local)))
+                             (type (ctx-get-type-from-loc ctx mloc))
                              (res (ctx-get-free-reg ctx))
                              (reg (car res))
-                             (nctx (cdr res))
+                             (ctx (cdr res))
                              (opr (codegen-reg-to-x86reg reg))
-                             (opm (codegen-loc-to-x86opnd mem-loc)))
-                        (pp "OK")
-                        (set! loc reg)
-                        (set! ctx nctx)
+                             (opm (codegen-loc-to-x86opnd mloc)))
                         (x86-mov cgc opr opm)
-                        (pp nctx)
-                        (error "K")))
-                  (let ((type (ctx-get-type-from-loc ctx loc)))
-                    (jump-to-version cgc succ (ctx-push ctx type loc)))))
+                        ;; TODO regalloc, add symbol to ctx-push
+                        (jump-to-version cgc succ (ctx-push ctx type reg))))))
               ;; Identifier is a global variable
               (global
                 (let* (;; Get variable type if known
@@ -1643,6 +1640,8 @@
                                           (x86-push cgc (x86-r8))
                                           (x86-push cgc (x86-rsi))
                                           (x86-push cgc (x86-rdi))
+                                          (x86-push cgc base-ptr)
+                                          (x86-mov cgc base-ptr (x86-rsp))
 
                                           ;; 3 TODO continuation slot ;; TODO rename gen-continuation-loader
                                           (gen-continuation-cr cgc ast succ ctx)
@@ -1731,6 +1730,7 @@
   (let* ((lazy-continuation
            (make-lazy-code
              (lambda (cgc ctx)
+               (x86-pop cgc base-ptr)
                (x86-pop cgc (x86-rdi))
                (x86-pop cgc (x86-rsi))
                (x86-pop cgc (x86-r8))

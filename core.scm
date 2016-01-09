@@ -1372,9 +1372,10 @@
             ;; 3 Maj slot reg
             (slot-loc-assign (ctx-slot-loc ctx) (length (ctx-stack ctx)) reg)
             ;; 4 Maj env
+            (begin (println "NYI update env")
             (if sym
                 (error "NYI UPDATE ENV")
-                (ctx-env ctx))
+                (ctx-env ctx)))
             ;;
             (ctx-nb-args ctx)))
 

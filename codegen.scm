@@ -198,7 +198,7 @@
       (codegen-mem-to-x86mem loc)))
 
 (define (codegen-mem-to-x86mem mem)
-  (x86-mem (* -8 mem) base-ptr))
+  (x86-mem (- (* -8 mem) 8) base-ptr))
 
 (define (codegen-reg-to-x86reg reg)
   (let ((r (assoc reg codegen-regmap)))
