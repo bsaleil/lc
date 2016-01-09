@@ -28,7 +28,7 @@
 ;;---------------------------------------------------------------------------
 
 (include "~~lib/_asm#.scm")
-
+(include "~~lib/_x86#.scm") ;; TODO regalloc remove when finished
 ;;-----------------------------------------------------------------------------
 ;; Macros
 
@@ -273,11 +273,25 @@
                  (error "NYI mlc-identifier free"))
               ;; Identifier is a local variable
               (local
-                 (let* (;; Get loc from id
-                        (loc (car (identifier-locs (cdr local))))
-                        ;; Get type from id
-                        (type (ctx-get-type-from-loc ctx loc)))
-                   (jump-to-version cgc succ (ctx-push ctx type loc))))
+                (let ((loc (identifier-rloc (cdr local))))
+                  (error "WIP")
+                  (if (not loc)
+                      ;; If there is no register associated to variable
+                      ;; then assign a new register to identifier
+                      (let* ((mem-loc (identifier-mloc (cdr local)))
+                             (res (ctx-get-free-reg ctx))
+                             (reg (car res))
+                             (nctx (cdr res))
+                             (opr (codegen-reg-to-x86reg reg))
+                             (opm (codegen-loc-to-x86opnd mem-loc)))
+                        (pp "OK")
+                        (set! loc reg)
+                        (set! ctx nctx)
+                        (x86-mov cgc opr opm)
+                        (pp nctx)
+                        (error "K")))
+                  (let ((type (ctx-get-type-from-loc ctx loc)))
+                    (jump-to-version cgc succ (ctx-push ctx type loc)))))
               ;; Identifier is a global variable
               (global
                 (let* (;; Get variable type if known
@@ -501,20 +515,36 @@
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
                      (lambda (cgc ctx)
-                       ;; Stack:
-                       ;;         RSP
-                       ;;     | ret-val | closure | arg n |  ...  | arg 1 | ret-addr |
-                       ;; Or if rest :
-                       ;;     | ret-val | closure |  rest | arg n |  ...  | arg 1 | ret-addr |
-                       (let ((retaddr-offset ;; after pop ret-val
-                               (if rest-param
-                                   (* 8 (+ 2 (length params)))
-                                   (* 8 (+ 1 (length params))))))
-                         (if opt-return-points
-                             (let* ((ret-type (car (ctx-stack ctx)))
-                                    (crtable-offset (type-to-cridx ret-type)))
-                               (codegen-return-cr cgc retaddr-offset crtable-offset))
-                             (codegen-return-rp cgc retaddr-offset))))))
+                       ;; TODO regalloc
+                       ;; 1 - Get clean stack size (higher mx in ctx)
+                       (let* ((clean-nb (ctx-get-fs ctx))
+                              (lres (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                              (opres (codegen-loc-to-x86opnd lres)))
+                         ;; 2 - Move res in rax
+                         (x86-mov cgc (x86-rax) opres)
+
+                         ;; 3 - Clean stack
+                         (x86-add cgc (x86-rsp) (x86-imm-int (* 8 clean-nb)))
+                         ;;
+                         (let* ((ret-type (car (ctx-stack ctx)))
+                                (crtable-offset (type-to-cridx ret-type)))
+                           (codegen-return-cr cgc crtable-offset)))
+                       ;; 4 - ret seq
+                       )))
+                      ; ;; Stack:
+                      ; ;;         RSP
+                      ; ;;     | ret-val | closure | arg n |  ...  | arg 1 | ret-addr |
+                      ; ;; Or if rest :
+                      ; ;;     | ret-val | closure |  rest | arg n |  ...  | arg 1 | ret-addr |
+                      ; (let ((retaddr-offset ;; after pop ret-val
+                      ;         (if rest-param
+                      ;             (* 8 (+ 2 (length params)))
+                      ;             (* 8 (+ 1 (length params))))))
+                      ;   (if opt-return-points
+                      ;       (let* ((ret-type (car (ctx-stack ctx)))
+                      ;              (crtable-offset (type-to-cridx ret-type)))
+                      ;         (codegen-return-cr cgc retaddr-offset crtable-offset))
+                      ;       (codegen-return-rp cgc retaddr-offset))))))
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
@@ -525,17 +555,16 @@
     ;; Lazy closure generation
     (make-lazy-code
       (lambda (cgc ctx)
-
         (let* (;; Lambda stub
                (stub-labels (add-fn-callback cgc
                                              1
                                              (lambda (sp sctx ret-addr selector closure)
-
                                               (cond ;; CASE 1 - Use multiple entry points AND use max-versions limit AND this limit is reached
                                                     ((and (= selector 0)
                                                           opt-max-versions
                                                           (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
 
+                                                       (error "NYI fn callback mlc-lambda")
                                                        ;; Then, generate a generic version and patch cc-table entry corresponding to call-ctx with the generic version
                                                        (let* ((env     (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0)))
                                                               (nb-args (length params))
@@ -547,6 +576,7 @@
 
                                                     ;; CASE 2 - Don't use multiple entry points
                                                     ((= selector 1)
+                                                        (error "NYI fn callback mlc-lambda")
                                                         ;; Then, generate a generic version and patch generic ptr in closure
                                                         (let ((ctx (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD))
                                                                              (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
@@ -555,11 +585,16 @@
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
-                                                       ;; Then, generate a specified version and patch cc-table in closure
-                                                       (let ((ctx (make-ctx (ctx-stack sctx)
-                                                                            (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
-                                                                            (length params))))
-                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
+                                                      (let ((ctx (ctx-init-fn sctx params)))
+                                                        (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
+
+                                                      ; ;; Then, generate a specified version and patch cc-table in closure
+                                                      ; (let ((ctx (make-ctx (ctx-stack sctx)
+                                                      ;                      (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
+                                                      ;                      (length params))))
+                                                      ;   (pp ctx)
+                                                      ;   (error "KK")
+                                                      ;   (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
                (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
 
@@ -584,16 +619,24 @@
               (let ((ep-loc (get-entry-points-loc ast stub-addr)))
                 (codegen-closure-ep cgc ep-loc)))
 
+          ;; TODO regalloc
+          (if (not (null? fvars))
+              (error "NYI GEN FREEVARS WITH REGALLOC"))
+
           ;; Write free variables
           (gen-free-vars cgc fvars ctx 16)
 
-          ;; Push closure
-          (codegen-closure-put cgc)
+          (let* ((res (ctx-get-free-reg ctx))
+                 (reg (car res))
+                 (ctx (cdr res)))
 
-          ;; Trigger the next object
-          (if opt-propagate-functionid
-              (error "NYI - mlc-lambda: Use (CTX_CLOi with cctable or closure id)")
-              (jump-to-version cgc succ (ctx-push ctx CTX_CLO))))))))
+            ;; Put closure
+            (codegen-closure-put cgc reg)
+
+            ;; Trigger the next object
+            (if opt-propagate-functionid
+                (error "NYI - mlc-lambda: Use (CTX_CLOi with cctable or closure id)")
+                (jump-to-version cgc succ (ctx-push ctx CTX_CLO reg)))))))))
 
 ;; This is the key used in hash table to find the cc-table for this closure.
 ;; The key is (ast . free-vars-inf) with ast the s-expression of the lambda
@@ -646,25 +689,45 @@
 
         (cond ;; rest AND actual == formal
               ((and rest-param (= nb-actual nb-formal))
-                (codegen-prologue-rest= cgc)
-                ;; Update ctx information
-                (set! nstack (cons CTX_CLO (cons CTX_NULL (cdr (ctx-stack ctx)))))
-                (set! nnbargs (+ (ctx-nb-args ctx) 1)))
+                 (error "NYI prologue1"))
               ;; rest AND actual > formal
               ((and rest-param (> nb-actual nb-formal))
-                (codegen-prologue-rest> cgc (- nb-actual nb-formal))
-                ;; Update ctx information
-                (set! nstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) nb-formal 1)))))
-                (set! nnbargs (+ (ctx-nb-args ctx) 1)))
+                 (error "NYI prologue2"))
               ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
               ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
-                (gen-error cgc ERR_WRONG_NUM_ARGS))
-              ;; !rest AND actual == formal
-              (else #f)) ;; Nothing to do
+                 (gen-error cgc ERR_WRONG_NUM_ARGS))
+              ;; Else, nothing to do
+              (else #f))
 
-        (let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
-               (mctx (gen-mutable cgc nctx mvars)))
-          (jump-to-version cgc succ mctx))))))
+        (println "CTX prologue")
+        (pp ctx)
+        (println "TODO prologue: update ctx")
+        (jump-to-version cgc succ ctx)))))
+        ;(let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
+        ;      ;       (mctx (gen-mutable cgc nctx mvars)))
+        ;      ;  (jump-to-version cgc succ mctx))))))
+
+        ;(cond ;; rest AND actual == formal
+        ;      ((and rest-param (= nb-actual nb-formal))
+        ;        (codegen-prologue-rest= cgc)
+        ;        ;; Update ctx information
+        ;        (set! nstack (cons CTX_CLO (cons CTX_NULL (cdr (ctx-stack ctx)))))
+        ;        (set! nnbargs (+ (ctx-nb-args ctx) 1)))
+        ;      ;; rest AND actual > formal
+        ;      ((and rest-param (> nb-actual nb-formal))
+        ;        (codegen-prologue-rest> cgc (- nb-actual nb-formal))
+        ;        ;; Update ctx information
+        ;        (set! nstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) nb-formal 1)))))
+        ;        (set! nnbargs (+ (ctx-nb-args ctx) 1)))
+        ;      ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
+        ;      ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
+        ;        (gen-error cgc ERR_WRONG_NUM_ARGS))
+        ;      ;; !rest AND actual == formal
+        ;      (else #f)) ;; Nothing to do
+        ;
+        ;(let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
+        ;       (mctx (gen-mutable cgc nctx mvars)))
+        ;  (jump-to-version cgc succ mctx))))))
 
 ;; Create a new cc table with 'init' as stub value
 (define (make-cc len init generic)
@@ -1566,32 +1629,66 @@
          (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
+                                        ;; TODO regalloc
+                                        ;; 1 - Build call ctx
+                                        (let ((call-ctx
+                                                (make-ctx (append (ctx-stack ctx) (list CTX_RETAD))
+                                                          (reg-slot-init)
+                                                          '()
+                                                          '()
+                                                          -1)))
+                                          ;; 2 - push all regs (call conv) ;; TODO
+                                          (x86-push cgc (x86-rbx))
+                                          (x86-push cgc (x86-rdx))
+                                          (x86-push cgc (x86-r8))
+                                          (x86-push cgc (x86-rsi))
+                                          (x86-push cgc (x86-rdi))
 
-                                        ;; Call ctx in rdx
-                                        (let* ((call-stack (if tail
-                                                              (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
-                                                              (list-head (ctx-stack ctx) (+ (length args) 2))))
-                                               (call-ctx (make-ctx call-stack '() -1)))
+                                          ;; 3 TODO continuation slot ;; TODO rename gen-continuation-loader
+                                          (gen-continuation-cr cgc ast succ ctx)
 
-                                        (if tail
-                                          (tail-shift cgc
-                                                      ;; Nb slots to shift
-                                                      (+ (length args) 1) ;; +1 closure
-                                                      ;; Initial from slot
-                                                      (length args)
-                                                      ;; Initial to slot
-                                                      (- (length (ctx-stack ctx)) 2)))
+                                          ;; 4 TODO closure slot
+                                          (let* ((lclo (ctx-get-loc ctx (ctx-lidx-to-slot ctx (length (cdr ast)))))
+                                                 (opclo (codegen-loc-to-x86opnd lclo)))
+                                            (x86-mov cgc (x86-rax) opclo) ;; TODO optimize
+                                            (x86-push cgc (x86-rax)))
+                                          ;; TODO
 
-                                        ;; If count calls compiler opt
-                                        (if (eq? (car ast) opt-count-calls)
-                                           (gen-inc-slot cgc 'calls))
+                                          ;; 5 - Mov args on stack
+                                          (let* ((larg (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                                                 (oparg (codegen-loc-to-x86opnd larg)))
+                                            (x86-push cgc oparg))
+                                          (if (> (length ast) 2)
+                                              (error "NYI call with args"))
 
-                                        ;; Gen call sequence with closure in RAX
-                                        (let ((nb-unk (count call-stack (lambda (n) (eq? n CTX_UNK)))))
-                                          (if (and opt-entry-points (= nb-unk (length args)))
-                                              (begin (codegen-call-set-nbargs cgc (length args))
-                                                     (gen-call-sequence cgc #f #f))
-                                              (gen-call-sequence cgc call-ctx (length (cdr ast)))))))))
+                                          ;; 6 - Gen call sequence
+                                          (gen-call-sequence cgc call-ctx (length (cdr ast)))))))
+
+                                        ;;; Call ctx in rdx
+                                        ;(let* ((call-stack (if tail
+                                        ;                      (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
+                                        ;                      (list-head (ctx-stack ctx) (+ (length args) 2))))
+                                        ;       (call-ctx (make-ctx call-stack '() -1)))
+                                        ;
+                                        ;(if tail
+                                        ;  (tail-shift cgc
+                                        ;              ;; Nb slots to shift
+                                        ;              (+ (length args) 1) ;; +1 closure
+                                        ;              ;; Initial from slot
+                                        ;              (length args)
+                                        ;              ;; Initial to slot
+                                        ;              (- (length (ctx-stack ctx)) 2)))
+                                        ;
+                                        ;;; If count calls compiler opt
+                                        ;(if (eq? (car ast) opt-count-calls)
+                                        ;   (gen-inc-slot cgc 'calls))
+                                        ;
+                                        ;;; Gen call sequence with closure in RAX
+                                        ;(let ((nb-unk (count call-stack (lambda (n) (eq? n CTX_UNK)))))
+                                        ;  (if (and opt-entry-points (= nb-unk (length args)))
+                                        ;      (begin (codegen-call-set-nbargs cgc (length args))
+                                        ;             (gen-call-sequence cgc #f #f))
+                                        ;      (gen-call-sequence cgc call-ctx (length (cdr ast)))))))))
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
@@ -1607,18 +1704,68 @@
             (let* (;; Lazy code object to build continuation and move it to stack slot
                    (lazy-build-continuation (get-lazy-continuation-builder (car ast) succ lazy-call args ctx #f ast))
                    ;; Lazy code object to push operator of the call
-                   (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-build-continuation ast)))
+                   (lazy-operator (check-types (list CTX_CLO) (list (car ast)) (gen-ast-l (cdr ast) lazy-call) ast))
+                   ;; TODO Regalloc
+                   (lazy-build-continuation
+                     (make-lazy-code
+                       (lambda (cgc ctx)
+                         ;; ...
+                         (jump-to-version cgc lazy-operator ctx)))))
 
-              (codegen-push-n cgc #f 1) ;; Reserve a slot for continuation
-              (jump-to-version cgc
-                               (gen-ast-l args lazy-operator) ;; Compile args and jump to operator
-                               (ctx-push ctx CTX_RETAD))))))))
+              ;; TODO Regalloc
+              (jump-to-version cgc lazy-operator ctx)))))))
+              ;; TODO regalloc
+              ;(codegen-push-n cgc #f 1) ;; Reserve a slot for continuation
+              ;(jump-to-version cgc
+              ;                 (gen-ast-l args lazy-operator) ;; Compile args and jump to operator
+              ;                 (ctx-push ctx CTX_RETAD))))))))
 
 (define (get-lazy-continuation-builder op lazy-succ lazy-call args continuation-ctx from-apply? ast)
 
   (if opt-return-points
     (get-lazy-continuation-builder-cr  op lazy-succ lazy-call args continuation-ctx from-apply? ast)
     (get-lazy-continuation-builder-nor op lazy-succ lazy-call args continuation-ctx from-apply?)))
+
+(define (gen-continuation-cr cgc ast succ ctx)
+
+  (let* ((lazy-continuation
+           (make-lazy-code
+             (lambda (cgc ctx)
+               (x86-pop cgc (x86-rdi))
+               (x86-pop cgc (x86-rsi))
+               (x86-pop cgc (x86-r8))
+               (x86-pop cgc (x86-rdx))
+               (x86-pop cgc (x86-rbx))
+               ;; Move res to location
+               (let* ((lres (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                      (opres  (codegen-loc-to-x86opnd lres)))
+                 (x86-mov cgc opres (x86-rax)))
+               (jump-to-version cgc succ ctx))))
+         (stub-labels
+           (add-cont-callback cgc
+                              0
+                              (lambda (ret-addr selector type table)
+
+                                     (if (> (length ast) 1)
+                                         (println "NYI continuation with args (clean stack)"))
+                                     ;; res is in rax
+
+                                     (let* ((ctx (ctx-pop ctx)) ;; Remove closure from virtual stack TODO:args
+                                            (res (ctx-get-free-reg ctx))
+                                            (reg (car res))
+                                            (ctx (cdr res)))
+                                         (gen-version-continuation-cr lazy-continuation
+                                                                      (ctx-push ctx type reg)
+                                                                      type
+                                                                      table)))))
+         ;; CRtable
+         (crtable-key (get-crtable-key ast ctx))
+         (stub-addr (vector-ref (list-ref stub-labels 0) 1))
+         (crtable (get-crtable ast crtable-key stub-addr))
+         (crtable-loc (- (obj-encoding crtable) 1)))
+
+    ;; Generate code
+    (codegen-load-cont-cr cgc crtable-loc)))
 
 ;; TODO: rename from-apply? -> apply?
 (define (get-lazy-continuation-builder-cr op lazy-succ lazy-call args continuation-ctx from-apply? ast)
@@ -1630,6 +1777,7 @@
               (lazy-continuation
                 (make-lazy-code
                   (lambda (cgc ctx)
+                    (error "CONTINUATION REACHED")
                     (codegen-push-tmp cgc)
                     (jump-to-version cgc lazy-succ ctx))))
               ;; Continuation stub
@@ -1655,6 +1803,7 @@
 ;; TODO: rename from-apply? -> apply?
 ;; Build continuation stub and load stub address to the continuation slot
 (define (get-lazy-continuation-builder-nor op lazy-succ lazy-call args continuation-ctx from-apply?)
+  (error "NYI")
   ;; Create stub and push ret addr
   (make-lazy-code-cont
     (lambda (cgc ctx)
@@ -1666,6 +1815,7 @@
              (lazy-continuation
                 (make-lazy-code
                    (lambda (cgc ctx)
+                      (error "CONTINUATION REACHED")
                       (codegen-push-tmp cgc)
                       (jump-to-version cgc lazy-succ (ctx-push ctx CTX_UNK)))))
              ;; Continuation stub

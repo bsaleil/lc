@@ -434,8 +434,13 @@
              #f
              (still-ref->ctx still-encoding)))
 
+         (nb-args
+           (if (= selector 1)
+               (error "NYI")
+               (- (length (ctx-stack ctx)) 2)))
+
          (closure
-          (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
+          (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8 (* 8 nb-args))))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
@@ -473,6 +478,7 @@
 
          (new-ret-addr
            (callback-fn ret-addr selector type table)))
+
     ;; replace return address
     (put-i64 (+ sp (* nb-c-caller-save-regs 8)) new-ret-addr)
 
@@ -899,6 +905,9 @@
     (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
     (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rsp))
 
+    ;; Init base-ptr
+    (x86-mov cgc base-ptr (x86-rsp))
+
     ;; Put heaplimit in heaplimit slot
     ;; TODO: remove cst slots
     (x86-mov cgc (x86-rcx) (x86-imm-int (- from-space space-len)))
@@ -1112,6 +1121,21 @@
 (define (make-identifier kind loc flags stype)
   (make-identifier* kind (list loc) flags stype))
 
+(define (identifier-xloc identifier loc-test)
+  (define (get-xloc locs)
+    (if (null? locs)
+        #f
+        (if (loc-test (car locs))
+            (car locs)
+            (get-xloc (cdr locs)))))
+  (get-xloc (identifier-locs identifier)))
+
+(define (identifier-rloc identifier)
+  (identifier-xloc identifier ctx-loc-is-register?))
+
+(define (identifier-mloc identifier)
+  (identifier-xloc identifier ctx-loc-is-memory?))
+
 ;; TODO regalloc
 ;; Context que le compilateur conserve
 (define-type ctx
@@ -1136,6 +1160,33 @@
             '()
             '()
             -1))
+
+(define (ctx-init-fn call-ctx args)
+  (make-ctx (ctx-stack call-ctx)
+            (reg-slot-init)
+            (slot-loc-init-fn (length args))
+            (env-init-fn args 2)
+            (length args)))
+
+;; TODO MOVE
+(define (env-init-fn args loc)
+  (if (null? args)
+      '()
+      (cons (cons (car args)
+                  (make-identifier 'local
+                                   loc
+                                   '(TODOflags)
+                                   #f))
+            (env-init-fn (cdr args) (+ loc 1)))))
+
+(define (ctx-get-fs ctx)
+  (foldr (lambda (el res)
+           (if (and (ctx-loc-is-memory? (cdr el))
+                    (> (cdr el) res))
+               (cdr el)
+               res))
+         0
+         (ctx-slot-loc ctx)))
 
 ;; RR
 ;(define (ctx-free ctx lidx)
@@ -1447,6 +1498,15 @@
 ;; TODO regalloc
 ;;-------------------------
 ;; Slot-loc
+
+;; Construit le slot-loc initial pour une fonction
+;; Pour le moment, les arguments sont passés sur la pile
+;; donc chaque slot de pile est associé à l'emplacement mémoire
+(define (slot-loc-init-fn nb-args)
+  (if (= nb-args 0)
+      (list '(1 . 1) '(0 . 0)) ;; closure & retaddr
+      (cons (cons (+ 1 nb-args) (+ 1 nb-args))
+            (slot-loc-init-fn (- nb-args 1)))))
 
 ;; TODO: un meme slot peut etre associé à plusieurs regs ? (non géré) et vice versa
 ;; Assigne un slot à un emplacement

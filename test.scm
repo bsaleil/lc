@@ -8,7 +8,9 @@
 ;       (c 30))
 ;    1 2 3 4)
 
-(write-char (vector-ref (make-vector 1 #\T) 0))
+;(write-char (integer->char ((lambda (a) a) 50)))
+((lambda (a) a) 10)
+
 ;(vector-ref (make-vector 1 #\T) 0)
 ;(make-vector 1 #\T)
 

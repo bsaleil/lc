@@ -188,7 +188,7 @@
   (cons 'r4 (x86-rdi))))
 
 ;; TODO: BASE PTR
-;(define base-ptr (x86-r8))
+(define base-ptr (x86-rbp))
 
 (assert (= (length codegen-regmap) regalloc-nbregs) "TODO ERROR")
 
@@ -198,7 +198,6 @@
       (codegen-mem-to-x86mem loc)))
 
 (define (codegen-mem-to-x86mem mem)
-  (error "NYI REGALLOC BASE PTR NOT YET USED")
   (x86-mem (* -8 mem) base-ptr))
 
 (define (codegen-reg-to-x86reg reg)
@@ -463,9 +462,9 @@
   (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
 
 ;; Push closure
-(define (codegen-closure-put cgc)
-  (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-  (x86-push cgc (x86-rax)))
+(define (codegen-closure-put cgc reg)
+  (let ((dest  (codegen-reg-to-x86reg reg)))
+    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
 
 ;; Generate function return using a return address
 (define (codegen-return-rp cgc retaddr-offset)
@@ -480,15 +479,11 @@
   (x86-jmp cgc (x86-rdx)))
 
 ;; Generate function return using a crtable
-(define (codegen-return-cr cgc retaddr-offset crtable-offset)
-  ;; Pop return value
-  (x86-pop  cgc (x86-rax))
-  ;; Update SP to ret addr
-  (x86-add  cgc (x86-rsp) (x86-imm-int retaddr-offset))
-  ;; Get return point from cr table and jump to it
-  (x86-pop cgc (x86-rdx))
+(define (codegen-return-cr cgc crtable-offset)
+  ;; rax contains ret val
+  (x86-pop cgc (x86-rdx)) ;; Table must be in rdx
   (x86-mov cgc (x86-rbx) (x86-mem crtable-offset (x86-rdx)))
-  (x86-mov cgc (x86-r11) (x86-imm-int crtable-offset))
+  (x86-mov cgc (x86-r11) (x86-imm-int crtable-offset)) ;; TODO (?)
   (x86-jmp cgc (x86-rbx)))
 
 ;;-----------------------------------------------------------------------------
@@ -548,34 +543,38 @@
 
 ;; Generate function call using a cctable and specialized entry point
 (define (codegen-call-cc-spe cgc idx ctx-imm nb-args)
-  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Get closure
-  (let ((cct-offset (* 8 (+ 2 idx))))
-    ;; 1 - Put ctx in r11
-    (x86-mov cgc (x86-r11) (x86-imm-int ctx-imm))
-    ;; 2- Get cc-table
-    (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-    ;; 3 - If opt-max-versions is not #f, a generic version could be called. So we need to give nb-args
-    (if opt-max-versions ;; TODO(?)
-        (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
-    ;; 4 - Get entry point in cc-table
-    (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
-    ;; 5 - Jump to entry point
-    (x86-jmp cgc (x86-rax))))
+;; TODO regalloc: WIP
+    ;; Closure is in rax
+    (let ((cct-offset (* 8 (+ 2 idx))))
+      ;; 1 - Put ctx in r11
+      (x86-mov cgc (x86-r11) (x86-imm-int ctx-imm))
+      ;; 2- Get cc-table
+      (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+      ;; 3 - If opt-max-versions is not #f, a generic version could be called. So we need to give nb-args
+      (if opt-max-versions ;; TODO(?)
+          (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
+      ;; 4 - Get entry point in cc-table
+      (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
+      ;; 5 - Jump to entry point
+      (x86-jmp cgc (x86-rax))))
 
 ;;-----------------------------------------------------------------------------
 ;; Call continuation
 
 ;; Load continuation using specialized return points
-(define (codegen-load-cont-cr cgc crtable-loc apply? nbargs)
-  ;; CR table location in rax
+(define (codegen-load-cont-cr cgc crtable-loc)
   (x86-mov cgc (x86-rax) (x86-imm-int crtable-loc))
-  (if apply?
-      ;; Call from apply
-      (begin (x86-shl cgc (x86-rdi) (x86-imm-int 1)) ;; Rdi contains encoded number of args. Shiftl 1 to left to get nbargs*8
-             (x86-mov cgc (x86-mem 8 (x86-rsp) (x86-rdi)) (x86-rax)) ;; Move to the continuation stack slot [rsp+rdi+8] (rsp + nbArgs*8 + 8)
-             (x86-shr cgc (x86-rdi) (x86-imm-int 1)))
-      ;; Other call
-      (x86-mov cgc (x86-mem (* 8 (+ 1 nbargs)) (x86-rsp)) (x86-rax)))) ;; Move to the continuation stack slot
+  (x86-push cgc (x86-rax)))
+;(define (codegen-load-cont-cr cgc crtable-loc apply? nbargs)
+;  ;; CR table location in rax
+;  (x86-mov cgc (x86-rax) (x86-imm-int crtable-loc))
+;  (if apply?
+;      ;; Call from apply
+;      (begin (x86-shl cgc (x86-rdi) (x86-imm-int 1)) ;; Rdi contains encoded number of args. Shiftl 1 to left to get nbargs*8
+;             (x86-mov cgc (x86-mem 8 (x86-rsp) (x86-rdi)) (x86-rax)) ;; Move to the continuation stack slot [rsp+rdi+8] (rsp + nbArgs*8 + 8)
+;             (x86-shr cgc (x86-rdi) (x86-imm-int 1)))
+;      ;; Other call
+;      (x86-mov cgc (x86-mem (* 8 (+ 1 nbargs)) (x86-rsp)) (x86-rax)))) ;; Move to the continuation stack slot
 
 ;; TODO
 (define (codegen-load-cont-nor cgc label-load-ret label-cont-stub apply? nbargs)
