@@ -9,7 +9,14 @@
 ;    1 2 3 4)
 
 ;(write-char (integer->char ((lambda (a) a) 50)))
-(write-char ((lambda (a) (integer->char a)) 53))
+
+(define (retDouble a)
+  10)
+
+(define (retTriple)
+  (retDouble 3))
+
+(retTriple)
 
 ;(vector-ref (make-vector 1 #\T) 0)
 ;(make-vector 1 #\T)

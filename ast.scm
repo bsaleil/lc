@@ -696,9 +696,6 @@
               ;; Else, nothing to do
               (else #f))
 
-        (println "CTX prologue")
-        (pp ctx)
-        (println "TODO prologue: update ctx")
         (jump-to-version cgc succ ctx)))))
         ;(let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
         ;      ;       (mctx (gen-mutable cgc nctx mvars)))
@@ -1629,7 +1626,8 @@
                                         ;; TODO regalloc
                                         ;; 1 - Build call ctx
                                         (let ((call-ctx
-                                                (make-ctx (append (ctx-stack ctx) (list CTX_RETAD))
+                                                (make-ctx (append (list-head (ctx-stack ctx) (length (cdr ast)))
+                                                                  (list CTX_CLO CTX_RETAD))
                                                           (reg-slot-init)
                                                           '()
                                                           '()
@@ -1649,16 +1647,16 @@
                                           ;; 4 TODO closure slot
                                           (let* ((lclo (ctx-get-loc ctx (ctx-lidx-to-slot ctx (length (cdr ast)))))
                                                  (opclo (codegen-loc-to-x86opnd lclo)))
-                                            (x86-mov cgc (x86-rax) opclo) ;; TODO optimize
+                                            (x86-mov cgc (x86-rax) opclo) ;; closure need to be in rax for do-callback-fn (TODO: get closure from stack in do-callback-fn and remove this)
                                             (x86-push cgc (x86-rax)))
-                                          ;; TODO
 
-                                          ;; 5 - Mov args on stack
-                                          (let* ((larg (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-                                                 (oparg (codegen-loc-to-x86opnd larg)))
-                                            (x86-push cgc oparg))
-                                          (if (> (length ast) 2)
-                                              (error "NYI call with args"))
+                                          ;; 5 - Move args to stack
+                                          (let loop ((nb-args (length args)))
+                                            (if (not (= nb-args 0))
+                                                (begin (let* ((larg (ctx-get-loc ctx (ctx-lidx-to-slot ctx (- nb-args 1))))
+                                                              (oparg (codegen-loc-to-x86opnd larg)))
+                                                         (x86-push cgc oparg)
+                                                         (loop (- nb-args 1))))))
 
                                           ;; 6 - Gen call sequence
                                           (gen-call-sequence cgc call-ctx (length (cdr ast)))))))
