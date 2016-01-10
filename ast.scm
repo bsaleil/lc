@@ -1616,7 +1616,7 @@
 (define (mlc-call ast succ)
 
   (let* (;; Tail call if successor's flags set contains 'ret flag
-         (tail (member 'ret (lazy-code-flags succ)))
+         (tail #f) ;; TODO regalloc disabled for test (member 'ret (lazy-code-flags succ)))
          ;; Call arguments
          (args (cdr ast))
          ;; Lazy fail

@@ -1438,7 +1438,7 @@
 (define (ctx-get-free-reg ctx)
   (define (get-free reg-slot)
     (if (null? reg-slot)
-        (error "NYI regalloc")
+        (error "NYIctx regalloc")
         (let ((first (car reg-slot)))
           (if (not (cdr first))
               (cons (car first) ctx)

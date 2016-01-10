@@ -11,12 +11,12 @@
 ;(write-char (integer->char ((lambda (a) a) 50)))
 
 (define (retDouble a)
-  10)
+  (+ a a))
 
-(define (retTriple)
-  (retDouble 3))
+(define (retTriple h)
+  (+ (retDouble h) h))
 
-(retTriple)
+(write-char (integer->char (retTriple 15)))
 
 ;(vector-ref (make-vector 1 #\T) 0)
 ;(make-vector 1 #\T)
