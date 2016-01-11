@@ -643,14 +643,15 @@
 ;; This allows us to use different cctable if types of free vars are not the same.
 ;; (to properly handle type checks)
 (define (get-cctable-key ast ctx fvars)
-  (pp fvars)
   (cons ast
         (foldr (lambda (n r)
                  (if (member (car n) fvars) ;; If this id is a free var of future lambda
                      (cons (cons (car n)
-                                 (if (eq? (identifier-type (cdr n)) 'local)
+                                 (if (eq? (identifier-kind (cdr n)) 'local)
                                      ;; If local, get type from stack
-                                     (list-ref (ctx-stack ctx) (- (length (ctx-stack ctx)) (identifier-offset (cdr n)) 2))
+                                     (let* ((loc (car (identifier-locs (cdr n))))
+                                            (type (ctx-get-type-from-loc ctx loc)))
+                                       type)
                                      ;; If free, get type from env
                                      (identifier-stype (cdr n))))
                            r)

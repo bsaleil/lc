@@ -1336,7 +1336,7 @@
 
   (define (bind-one ctx id-idx)
     (let* ((loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx (cdr id-idx))))
-           (identifier (make-identifier 'TODOkind
+           (identifier (make-identifier 'local
                                         loc
                                         (if (member (car id-idx) mvars)
                                             '(mutable)
