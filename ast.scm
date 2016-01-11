@@ -331,7 +331,7 @@
                   (codegen-get-global cgc (cdr global) reg)
                   ;; Jump with updated ctx
                   (jump-to-version cgc succ (ctx-push ctx type reg))))
-              (else (error "NYI mlc-identifier primitive")))))))
+              (else (gen-error cgc (ERR_UNKNOWN_VAR ast))))))))
 
 ;(define (mlc-identifier ast succ)
 ;
