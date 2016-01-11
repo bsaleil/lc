@@ -10,16 +10,27 @@
 
 ;(write-char (integer->char ((lambda (a) a) 50)))
 
+(define (print n)
+  (if (> n 0)
+      (begin
+        (print (quotient n 10))
+        (write-char (integer->char (+ (modulo n 10) 48))))))
 
+(define (ack m n)
+  (cond ((= m 0) (+ n 1))
+        ((= n 0) (ack (- m 1) 1))
+        (else (ack (- m 1) (ack m (- n 1))))))
 
-(define (fib n)
-  (if (<= n 2)
-      1
-      (+ (fib (- n 1)) (fib (- n 2)))))
-
-(fib 40)
-;(printn (fib 40))
-;(printn (fib 40))
+(let ()
+    (print (ack 0 0))
+    (write-char #\newline)
+    (print (ack 1 2))
+    (write-char #\newline)
+    (print (ack 3 4))
+    (write-char #\newline)
+    (print (ack 4 0))
+    (write-char #\newline)
+    (print (ack 3 9)))
 
 
 ;(vector-ref (make-vector 1 #\T) 0)

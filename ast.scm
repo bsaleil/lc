@@ -953,7 +953,7 @@
                (let* ((id-idx (build-id-idx ids (- (length ids) 1)))
                       (mvars (mutable-vars ast ids)) ;; Get mutable vars
                       (ctx (ctx-bind ctx id-idx mvars)))
-                 (println "NYI mlc-let: copy mutable vars in memory")
+                 (pp "NYI mlc-let: copy mutable vars in memory")
                  (jump-to-version cgc lazy-body ctx))))))
     (gen-ast-l values lazy-binds)))
 
@@ -1728,7 +1728,7 @@
   (let* ((lazy-continuation
            (make-lazy-code
              (lambda (cgc ctx)
-             
+
                ;; Restore registers
                (x86-pop cgc base-ptr)
                (for-each
