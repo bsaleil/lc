@@ -53,7 +53,7 @@
       ((equal? (car expr) 'begin) (expand-begin expr))
       ((equal? (car expr) 'let) (expand-let expr))
       ((equal? (car expr) 'let*) (expand-let* expr))
-      ((equal? (car expr) 'letrec) (error "NYI expand.scm"))
+      ((equal? (car expr) 'letrec) (expand-letrec expr))
       ((equal? (car expr) 'lambda) (expand-lambda expr))
       ((equal? (car expr) 'or) (expand-or expr))
       ((equal? (car expr) 'and) (expand-and expr))
@@ -136,7 +136,6 @@
                    (let* ,(cdr bindings)
                      ,@bodies))))))
 
-
 ;; LET
 ;; letn and let with internal defs are not handled by compiler (mlc-let)
 (define (expand-let expr)
@@ -156,6 +155,14 @@
       `(let ,(expand (cadr expr))
          ,(expand (cons 'begin (cddr expr))))))
 
+;; LETREC
+(define (expand-letrec expr)
+  (let ((bindings (cadr expr))
+        (body (cddr expr)))
+    `(letrec ,(map (lambda (n) (cons (car n) (expand (cdr n))))
+                       bindings)
+       ,@body)))
+       
 ;; DO-h
 (define (do-steps ids)
   (if (null? ids)

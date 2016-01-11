@@ -161,6 +161,7 @@
                  ((eq? op 'do) (mlc-do ast succ))
                  ;; Binding
                  ((eq? op 'let) (mlc-let ast succ)) ;; Also handles let* (let* is a macro)
+                 ((eq? op 'letrec) (mlc-letrec ast succ))
                  ;; Operator num
                  ((member op '(FLOAT+ FLOAT- FLOAT* FLOAT/ FLOAT< FLOAT> FLOAT<= FLOAT>= FLOAT=))
                    (let ((generic-op (list->symbol (list-tail (symbol->list op) 5))))
@@ -642,6 +643,7 @@
 ;; This allows us to use different cctable if types of free vars are not the same.
 ;; (to properly handle type checks)
 (define (get-cctable-key ast ctx fvars)
+  (pp fvars)
   (cons ast
         (foldr (lambda (n r)
                  (if (member (car n) fvars) ;; If this id is a free var of future lambda
@@ -956,6 +958,42 @@
                  (pp "NYI mlc-let: copy mutable vars in memory")
                  (jump-to-version cgc lazy-body ctx))))))
     (gen-ast-l values lazy-binds)))
+
+(define (mlc-letrec ast succ)
+
+  (define (alloc cgc ids ctx)
+    (if (null? ids)
+        ctx
+        (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+               (reg (car res))
+               (ctx (cdr res)))
+          (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int ENCODING_VOID))
+          (alloc
+            cgc
+            (cdr ids)
+            (ctx-push ctx CTX_VOID reg)))))
+
+  (error "NYI mlc-letrec - need free variables")
+
+  (let* ((ids (map car (cadr ast)))
+         (lazy-set
+           (make-lazy-code
+             (lambda (cgc ctx)
+               (pp ctx)
+               (error "K"))))
+         (lazy-pre
+           (make-lazy-code
+             (lambda (cgc ctx)
+               (let* ((ctx (alloc cgc ids ctx)) ;; Init ids slots with VOID
+                      (bind-list (map (lambda (l) (cons (list-ref ids l) l))
+                                      (build-list (length ids) (lambda (l) l))))
+                      (ctx (ctx-bind ctx bind-list '()))) ;; Bind identifiers to virtual stack slots ;; TODO: mutable vars
+                 (pp ctx)
+                 (jump-to-version
+                   cgc
+                   (gen-ast-l (map cadr (cadr ast)) lazy-set)
+                   ctx))))))
+    lazy-pre))
 
 ;; TODO: remove build-env
 
