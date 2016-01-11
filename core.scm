@@ -1344,7 +1344,7 @@
 
 ;; TODO
 (define (ctx-change-type ctx stack-idx type)
-  (println "NYI ctx-change-type") ;; TODO regalloc: changes only stack type for now
+  (pp "NYI ctx-change-type") ;; TODO regalloc: changes only stack type for now
   (let* ((stack (ctx-stack ctx))
          (nstack (append (list-head stack stack-idx) (cons type (list-tail stack (+ stack-idx 1))))))
     (make-ctx nstack
@@ -1372,7 +1372,7 @@
             ;; 3 Maj slot reg
             (slot-loc-assign (ctx-slot-loc ctx) (length (ctx-stack ctx)) reg)
             ;; 4 Maj env
-            (begin (println "NYI update env")
+            (begin (pp "NYI update env")
             (if sym
                 (error "NYI UPDATE ENV")
                 (ctx-env ctx)))
@@ -1395,7 +1395,7 @@
             ;; 3 Maj slot-loc on enleve le slot
             (slot-loc-remove (ctx-slot-loc ctx) (ctx-lidx-to-slot ctx 0))
             ;; 4 Maj env
-            (begin (println "NYI MAK ENV") (ctx-env ctx))
+            (begin (pp "NYI MAK ENV") (ctx-env ctx))
             ;;
             (ctx-nb-args ctx)))
 

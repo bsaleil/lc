@@ -31,7 +31,8 @@
 (include "~~lib/_x86#.scm")
 (include "./extern/Sort.scm")
 
-(define pp pretty-print)
+;; TODO regalloc for unit tests
+;(define pp pretty-print)
 (define repl-print-lco #f)
 
 (define-macro (string-bold str)
@@ -176,7 +177,7 @@
               ;; 2 - TODO: clean stack
 
               ;; TODO regalloc debug print result (rax)
-              (gen-breakpoint cgc)
+              ;(gen-breakpoint cgc)
 
               (pop-regs-reverse cgc all-regs)
               (x86-ret cgc))))

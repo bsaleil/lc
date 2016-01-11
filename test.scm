@@ -10,13 +10,23 @@
 
 ;(write-char (integer->char ((lambda (a) a) 50)))
 
-(define (retDouble a)
-  (+ a a))
 
-(define (retTriple h)
-  (+ (retDouble h) h))
+(define (printn n)
+  (if (> n 0)
+      (begin
+        (printn (quotient n 10))
+        (write-char (integer->char (+ (modulo n 10) 48))))
+      (write-char #\newline)))
 
-(write-char (integer->char (retTriple 15)))
+
+(define (fib n)
+  (if (<= n 2)
+      1
+      (+ (fib (- n 1)) (fib (- n 2)))))
+
+(printn (fib 40))
+;(printn (fib 40))
+
 
 ;(vector-ref (make-vector 1 #\T) 0)
 ;(make-vector 1 #\T)

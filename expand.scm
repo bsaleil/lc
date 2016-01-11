@@ -61,6 +61,7 @@
       ((equal? (car expr) 'case) (expand-case expr))
       ((equal? (car expr) 'quote) expr)
       ((equal? (car expr) 'set!) (expand-set! expr))
+      ((member (car expr) '(> >= < <= =)) (expand-cmp expr))
       ((member (car expr) list-accessors) (expand-accessor expr))
       (else (if (list? (cdr expr))
                 (map expand expr)
@@ -86,6 +87,11 @@
         (set-cdr! r #f)))
 
   `(set! ,(cadr expr) ,(expand (caddr expr))))
+
+(define (expand-cmp expr)
+  (if (<= (length (cdr expr)) 2)
+      (cons (car expr) (expand (cdr expr)))
+      (error "NYI expand cmpop")))
 
 ;; DEFINE
 (define (expand-define expr)

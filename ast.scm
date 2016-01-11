@@ -1734,24 +1734,20 @@
                (x86-pop cgc (x86-r8))
                (x86-pop cgc (x86-rdx))
                (x86-pop cgc (x86-rbx))
-               ;; Move res to location
+               ;; Move result to location
                (let* ((lres (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
                       (opres  (codegen-loc-to-x86opnd lres)))
+                 ;; Result is in rax
                  (x86-mov cgc opres (x86-rax)))
                (jump-to-version cgc succ ctx))))
          (stub-labels
            (add-cont-callback cgc
                               0
                               (lambda (ret-addr selector type table)
-
-                                     (if (> (length ast) 1)
-                                         (println "NYI continuation with args (clean stack)"))
-                                     ;; res is in rax
-
-                                     (let* ((ctx (ctx-pop ctx)) ;; Remove closure from virtual stack TODO:args
+                                     (let* ((args (cdr ast))
+                                            (ctx (ctx-pop-n ctx (+ (length args) 1))) ;; Remove closure and args from virtual stack
                                             (res (ctx-get-free-reg ctx))
-                                            (reg (car res))
-                                            (ctx (cdr res)))
+                                            (reg (car res)))
                                          (gen-version-continuation-cr lazy-continuation
                                                                       (ctx-push ctx type reg)
                                                                       type
@@ -1892,69 +1888,113 @@
 ;; PAREIL POUR OP-N-NUM ?
 (define (mlc-op-n-cmp ast succ op)
 
-  ;; Create final lazy object. This object clean stack and push 'res'
-  (define (get-lazy-final res)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (codegen-cmp-end cgc (- (length ast) 1) res)
-        (jump-to-version cgc succ (ctx-push (ctx-pop ctx (- (length ast) 1))
-                                            CTX_BOOL)))))
-
-  ;; Gen false stub from jump-label & ctx and return stub label
-  (define (get-stub-label label-jump ctx)
-    (list-ref (add-callback #f 0 (lambda (ret-addr selector)
-                                   (gen-version (asm-label-pos label-jump)
-                                                (get-lazy-final #f)
-                                                ctx)))
-              0))
-
-  ;; Build chain for all operands
-  (define (build-chain lidx ridx)
-    (if (or (< lidx 0) (< ridx 0))
-        ;; All operands compared
-        (get-lazy-final #t)
-        ;; There is at least 1 comparison to perform
-        (build-bincomp (build-chain (- lidx 1) (- ridx 1)) lidx ridx)))
-
-  ;; Gen lazy code objects chain for binary comparison (x op y)
+  ;; Gen lazy code objects chain for binary operation (x op y)
   ;; Build a lco for each node of the type checks tree (with int and float)
-  (define (build-bincomp succ lidx ridx)
+  (define (build-binop succ)
     (let* (;; Operations lco
-           (lazy-ii (get-comp-ii succ lidx ridx))       ;; lco for int int operation
-           (lazy-if (get-comp-ff succ lidx ridx #t #f)) ;; lco for int float operation
-           (lazy-fi (get-comp-ff succ lidx ridx #f #t)) ;; lco for float int operation
-           (lazy-ff (get-comp-ff succ lidx ridx #f #f)) ;; lco for float float operation
+           (lazy-ii (get-op-ii succ))
+           (lazy-if (get-op-ff succ #t #f)) ;; lco for int float operation
+           (lazy-fi (get-op-ff succ #f #t)) ;; lco for float int operation
+           (lazy-ff (get-op-ff succ #f #f)) ;; lco for float float operation
            ;; Right branch
-           (lazy-yfloat2 (gen-fatal-type-test CTX_FLO ridx lazy-ff ast))
-           (lazy-yint2   (gen-dyn-type-test CTX_NUM ridx lazy-fi lazy-yfloat2 ast))
-           (lazy-xfloat  (gen-fatal-type-test CTX_FLO lidx lazy-yint2 ast))
+           (lazy-yfloat2 (gen-fatal-type-test CTX_FLO 0 lazy-ff ast))
+           (lazy-yint2   (gen-dyn-type-test CTX_NUM 0 lazy-fi lazy-yfloat2 ast))
+           (lazy-xfloat  (gen-fatal-type-test CTX_FLO 1 lazy-yint2 ast))
            ;; Left branch
-           (lazy-yfloat  (gen-fatal-type-test CTX_FLO ridx lazy-if ast))
-           (lazy-yint    (gen-dyn-type-test CTX_NUM ridx lazy-ii lazy-yfloat ast))
+           (lazy-yfloat  (gen-fatal-type-test CTX_FLO 0 lazy-if ast))
+           (lazy-yint    (gen-dyn-type-test CTX_NUM 0 lazy-ii lazy-yfloat ast))
            ;; Root node
-           (lazy-xint    (gen-dyn-type-test CTX_NUM lidx lazy-yint lazy-xfloat ast)))
+           (lazy-xint    (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat ast)))
       lazy-xint))
 
-  ;; Get lazy code object for comparison with int and int
-  (define (get-comp-ii succ lidx ridx)
+  ;; Get lazy code object for operation with int and int
+  (define (get-op-ii succ)
     (make-lazy-code
       (lambda (cgc ctx)
-        (codegen-cmp-ii cgc ctx op lidx ridx get-stub-label)
-        (jump-to-version cgc succ ctx))))
+        (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+               (reg (car res))
+               (ctx (cdr res))
+               (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+               (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+               (codegen-cmp-ii cgc op reg lleft lright)
+               (jump-to-version cgc succ (ctx-push (ctx-pop (ctx-pop ctx)) CTX_BOOL reg))))))
 
-  ;; Get lazy code object for comparison with float and float, float and int, and int and float
-  ;; leftint?  to #t if left operand is an integer
-  ;; rightint? to #t if right operand is an integer
-  (define (get-comp-ff succ lidx ridx leftint? rightint?)
+  (define (get-op-ff succ l r)
     (make-lazy-code
       (lambda (cgc ctx)
-        (codegen-cmp-ff cgc ctx op lidx ridx get-stub-label leftint? rightint?)
-        (jump-to-version cgc succ ctx))))
+        (error "NYI regalloc (mlc-op-n-cmp)"))))
 
-  ;; Push operands and start comparisons
-  (gen-ast-l (cdr ast)
-             (build-chain (- (length ast) 2)
-                          (- (length ast) 3))))
+  (cond ((<= (length (cdr ast)) 1)
+           (gen-ast #t succ))
+        ((=  (length (cdr ast)) 2)
+           (gen-ast-l (cdr ast) (build-binop succ)))
+        (else (error "Internal error (mlc-op-n-cmp)"))))
+
+;(define (mlc-op-n-cmp ast succ op)
+
+  ;;; Create final lazy object. This object clean stack and push 'res'
+  ;(define (get-lazy-final res)
+  ;  (make-lazy-code
+  ;    (lambda (cgc ctx)
+  ;      (codegen-cmp-end cgc (- (length ast) 1) res)
+  ;      (jump-to-version cgc succ (ctx-push (ctx-pop ctx (- (length ast) 1))
+  ;                                          CTX_BOOL)))))
+  ;
+  ;;; Gen false stub from jump-label & ctx and return stub label
+  ;(define (get-stub-label label-jump ctx)
+  ;  (list-ref (add-callback #f 0 (lambda (ret-addr selector)
+  ;                                 (gen-version (asm-label-pos label-jump)
+  ;                                              (get-lazy-final #f)
+  ;                                              ctx)))
+  ;            0))
+  ;
+  ;;; Build chain for all operands
+  ;(define (build-chain lidx ridx)
+  ;  (if (or (< lidx 0) (< ridx 0))
+  ;      ;; All operands compared
+  ;      (get-lazy-final #t)
+  ;      ;; There is at least 1 comparison to perform
+  ;      (build-bincomp (build-chain (- lidx 1) (- ridx 1)) lidx ridx)))
+  ;
+  ;;; Gen lazy code objects chain for binary comparison (x op y)
+  ;;; Build a lco for each node of the type checks tree (with int and float)
+  ;(define (build-bincomp succ lidx ridx)
+  ;  (let* (;; Operations lco
+  ;         (lazy-ii (get-comp-ii succ lidx ridx))       ;; lco for int int operation
+  ;         (lazy-if (get-comp-ff succ lidx ridx #t #f)) ;; lco for int float operation
+  ;         (lazy-fi (get-comp-ff succ lidx ridx #f #t)) ;; lco for float int operation
+  ;         (lazy-ff (get-comp-ff succ lidx ridx #f #f)) ;; lco for float float operation
+  ;         ;; Right branch
+  ;         (lazy-yfloat2 (gen-fatal-type-test CTX_FLO ridx lazy-ff ast))
+  ;         (lazy-yint2   (gen-dyn-type-test CTX_NUM ridx lazy-fi lazy-yfloat2 ast))
+  ;         (lazy-xfloat  (gen-fatal-type-test CTX_FLO lidx lazy-yint2 ast))
+  ;         ;; Left branch
+  ;         (lazy-yfloat  (gen-fatal-type-test CTX_FLO ridx lazy-if ast))
+  ;         (lazy-yint    (gen-dyn-type-test CTX_NUM ridx lazy-ii lazy-yfloat ast))
+  ;         ;; Root node
+  ;         (lazy-xint    (gen-dyn-type-test CTX_NUM lidx lazy-yint lazy-xfloat ast)))
+  ;    lazy-xint))
+  ;
+  ;;; Get lazy code object for comparison with int and int
+  ;(define (get-comp-ii succ lidx ridx)
+  ;  (make-lazy-code
+  ;    (lambda (cgc ctx)
+  ;      (codegen-cmp-ii cgc ctx op lidx ridx get-stub-label)
+  ;      (jump-to-version cgc succ ctx))))
+  ;
+  ;;; Get lazy code object for comparison with float and float, float and int, and int and float
+  ;;; leftint?  to #t if left operand is an integer
+  ;;; rightint? to #t if right operand is an integer
+  ;(define (get-comp-ff succ lidx ridx leftint? rightint?)
+  ;  (make-lazy-code
+  ;    (lambda (cgc ctx)
+  ;      (codegen-cmp-ff cgc ctx op lidx ridx get-stub-label leftint? rightint?)
+  ;      (jump-to-version cgc succ ctx))))
+  ;
+  ;;; Push operands and start comparisons
+  ;(gen-ast-l (cdr ast)
+  ;           (build-chain (- (length ast) 2)
+  ;                        (- (length ast) 3))))
 
 ;;
 ;; Make lazy code from N-ARY ARITHMETIC OPERATOR
@@ -2027,7 +2067,12 @@
         ((and (= (length ast) 2) (member op '(< > <= >= =))) ;; TODO: useless ?
            (gen-ast #t succ))
         (else
-           (gen-ast (cadr ast) (build-chain (cddr ast))))))
+           (let ((dummy
+                   (make-lazy-code
+                       (lambda (cgc ctx)
+                         (jump-to-version cgc (gen-ast (cadr ast) (build-chain (cddr ast))) ctx)))))
+            dummy))))
+
 
 ;;
 ;; Make lazy code from TYPE TEST

@@ -670,18 +670,23 @@
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
 
-(define (codegen-cmp-end cgc nb-opnd res)
-  (x86-add cgc (x86-rsp) (x86-imm-int (* 8 nb-opnd)))
-  (x86-push cgc (x86-imm-int (obj-encoding res))))
+(define (codegen-cmp-ii cgc op reg lleft lright)
+  (let ((label-end (asm-make-label #f (new-sym 'label-end)))
+        (x86-op (cdr (assoc op `((< . ,x86-jl) (> . ,x86-jg) (<= . ,x86-jle) (>= . ,x86-jge) (= . ,x86-je)))))
+        (dest (codegen-reg-to-x86reg reg))
+        (opl  (codegen-loc-to-x86opnd lleft))
+        (opr  (codegen-loc-to-x86opnd lright)))
 
-(define (codegen-cmp-ii cgc ctx op lidx ridx get-stub-label)
-  (let ((label-jump (asm-make-label #f (new-sym 'label-jump)))
-        (x86-op (cdr (assoc op `((< . ,x86-jge) (> . ,x86-jle) (<= . ,x86-jg) (>= . ,x86-jl) (= . ,x86-jne))))))
+    (if (and (ctx-loc-is-memory? lleft)
+             (ctx-loc-is-memory? lright))
+        (begin (x86-mov cgc (x86-rax) opl)
+               (set! opl (x86-rax))))
 
-    (x86-mov cgc (x86-rax) (x86-mem (* 8 lidx) (x86-rsp)))
-    (x86-cmp cgc (x86-rax) (x86-mem (* 8 ridx) (x86-rsp)))
-    (x86-label cgc label-jump)
-    (x86-op cgc (get-stub-label label-jump ctx))))
+    (x86-cmp cgc opl opr)
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+    (x86-op cgc label-end)
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+    (x86-label cgc label-end)))
 
 (define (codegen-cmp-ff cgc ctx op lidx ridx get-stub-label leftint? rightint?)
   (let ((label-jump (asm-make-label #f (new-sym 'label-jump)))
@@ -715,14 +720,19 @@
         (lopnd (codegen-loc-to-x86opnd lleft))
         (ropnd (codegen-loc-to-x86opnd lright)))
 
-    (if (not (eq? dest (x86-rdx)))
-        (x86-push cgc (x86-rdx))) ;; used by idiv
+    (if (and (not (eq? dest  (x86-rbx)))
+             (not (eq? lopnd (x86-rbx)))
+             (not (eq? ropnd (x86-rbx))))
+        (x86-push cgc (x86-rdx)))
 
     (x86-mov cgc (x86-rax) lopnd)
-    (x86-sar cgc (x86-rax) (x86-imm-int 2))
-    (if (ctx-loc-is-memory? lright)
-        (begin (x86-mov cgc dest ropnd)
+
+    (if (or (eq? ropnd (x86-rdx))
+            (ctx-loc-is-memory? lright))
+        (begin (x86-mov cgc dest (x86-rdx))
                (set! ropnd dest)))
+
+    (x86-sar cgc (x86-rax) (x86-imm-int 2))
     (x86-sar cgc ropnd (x86-imm-int 2))
     (x86-cmp cgc ropnd (x86-imm-int 0)) ;; Check '/0'
     (x86-je  cgc label-div0)
@@ -743,7 +753,9 @@
              (x86-shl cgc (x86-rdx) (x86-imm-int 2))
              (x86-mov cgc dest (x86-rdx))))
 
-    (if (not (eq? dest (x86-rdx)))
+    (if (and (not (eq? dest  (x86-rbx)))
+             (not (eq? lopnd (x86-rbx)))
+             (not (eq? ropnd (x86-rbx))))
         (x86-pop cgc (x86-rdx)))))
 
 ;;-----------------------------------------------------------------------------
