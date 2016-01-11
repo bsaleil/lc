@@ -271,6 +271,9 @@
         ;;
         (cond ;; Identifier is a free variable
               ((and local (eq? (identifier-kind (cdr local)) 'free))
+                 ;; Algo:
+                 ;; Si la variable à une pos registre, on l'utilise
+                 ;; Sinon, on libère un registre et on copie la variable en utilisant les fx 
                  (error "NYI mlc-identifier free"))
               ;; Identifier is a local variable
               (local
@@ -583,7 +586,7 @@
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
-                                                      (let ((ctx (ctx-init-fn sctx params)))
+                                                      (let ((ctx (ctx-init-fn sctx ctx params fvars)))
                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
 
                                                       ; ;; Then, generate a specified version and patch cc-table in closure
@@ -617,12 +620,11 @@
               (let ((ep-loc (get-entry-points-loc ast stub-addr)))
                 (codegen-closure-ep cgc ep-loc)))
 
-          ;; TODO regalloc
-          (if (not (null? fvars))
-              (error "NYI GEN FREEVARS WITH REGALLOC"))
-
           ;; Write free variables
-          (gen-free-vars cgc fvars ctx 16)
+          (pp "NYI write mutable free vars in closure")
+          (pp "NYI write free var from free var in closure")
+          ;;   -> Une variable qui est libre et qui devient libre peut ne pas avoir de 'loc', ATTENTION.
+          (gen-free-vars cgc fvars ctx 0)
 
           (let* ((res (ctx-get-free-reg ctx))
                  (reg (car res))
@@ -2250,13 +2252,14 @@
 ;;              #f if the value is copied from memory (id variable is mutable)
 
 ;; Free variable
-(define (gen-get-freevar cgc ctx variable dest #!optional (raw? #t))
-  (let* ((pos      (identifier-offset   (cdr variable)))
-         (mutable? (identifier-mutable? (cdr variable))))
-    ;; Gen code
-    (codegen-get-free cgc dest pos raw? mutable? (closure-pos ctx))
-    ;; Return variable ctx type
-    (identifier-stype (cdr variable))))
+;; TODO: regalloc
+;(define (gen-get-freevar cgc ctx variable dest #!optional (raw? #t))
+;  (let* ((pos      (identifier-offset   (cdr variable)))
+;         (mutable? (identifier-mutable? (cdr variable))))
+;    ;; Gen code
+;    (codegen-get-free cgc dest pos raw? mutable? (closure-pos ctx))
+;    ;; Return variable ctx type
+;    (identifier-stype (cdr variable))))
 
 ;; TODO regalloc: remove, or move new code here (mlc-identifier)
 ;; Local variable
@@ -2308,21 +2311,19 @@
 
             (build-fenv saved-stack saved-env mvars (cdr fvars) (+ offset 1)))))
 
-;; Write free vars in closure
-(define (gen-free-vars cgc vars ctx offset)
-  (if (null? vars)
+
+(define (gen-free-vars cgc ids ctx offset)
+  (if (null? ids)
       '()
-      (let* ((var (car vars))
-             (res (assoc var (ctx-env ctx))))
-         (if res
-            (if (eq? (identifier-type (cdr res)) 'free)
-               ;; Free var
-               (gen-get-freevar  cgc ctx res 'gen-reg)
-               ;; Local var
-               (gen-get-localvar cgc ctx res 'gen-reg))
-            (error "Can't find variable: " var))
-         (codegen-move-tmp cgc offset alloc-ptr)
-         (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))))
+      (let* ((identifier (cdr (assoc (car ids) (ctx-env ctx))))
+             (loc (identifier-loc identifier))
+             (opn
+               (if (ctx-loc-is-memory? loc)
+                   (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd loc))
+                          (x86-rax))
+                   (codegen-reg-to-x86reg loc))))
+        (x86-mov cgc (x86-mem (+ 16 (* offset 8)) alloc-ptr) opn)
+        (gen-free-vars cgc (cdr ids) ctx (+ offset 1)))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst clo-env ctx)
@@ -2438,30 +2439,31 @@
      '()
      (cons (car l) (formal-params (cdr l)))))
 
-;; Gen mutable variable
-;; This code is a function prelude. It transforms variable from stack (args) tagged as "mutable"
-;; into memory-allocated variables.
-(define (gen-mutable cgc ctx mutable)
-
-    (if (null? mutable)
-       ctx ;; Return new ctx
-       (let* ((res (assoc (car mutable) (ctx-env ctx)))
-              (header-word (mem-header 2 STAG_MOBJECT))
-              (fs (length (ctx-stack ctx)))
-              (local-idx (- fs 2 (identifier-offset (cdr res)))))
-
-         ;; Get current variable
-         (gen-get-localvar cgc ctx res 'stack) ;; There are only localvar here (no free vars)
-
-         ;; Create mutable object and copy variable
-         (codegen-mutable cgc local-idx)
-
-         (let* ((nstack (append (list-head (ctx-stack ctx) local-idx)
-                                (cons CTX_MOBJ
-                                      (list-tail (ctx-stack ctx) (+ local-idx 1)))))
-                (nctx (make-ctx nstack (ctx-env ctx) (ctx-nb-args ctx))))
-           ;; Gen next mutable vars
-           (gen-mutable cgc nctx (cdr mutable))))))
+;; TODO regalloc: remove?
+;;; Gen mutable variable
+;;; This code is a function prelude. It transforms variable from stack (args) tagged as "mutable"
+;;; into memory-allocated variables.
+;(define (gen-mutable cgc ctx mutable)
+;
+;    (if (null? mutable)
+;       ctx ;; Return new ctx
+;       (let* ((res (assoc (car mutable) (ctx-env ctx)))
+;              (header-word (mem-header 2 STAG_MOBJECT))
+;              (fs (length (ctx-stack ctx)))
+;              (local-idx (- fs 2 (identifier-offset (cdr res)))))
+;
+;         ;; Get current variable
+;         (gen-get-localvar cgc ctx res 'stack) ;; There are only localvar here (no free vars)
+;
+;         ;; Create mutable object and copy variable
+;         (codegen-mutable cgc local-idx)
+;
+;         (let* ((nstack (append (list-head (ctx-stack ctx) local-idx)
+;                                (cons CTX_MOBJ
+;                                      (list-tail (ctx-stack ctx) (+ local-idx 1)))))
+;                (nctx (make-ctx nstack (ctx-env ctx) (ctx-nb-args ctx))))
+;           ;; Gen next mutable vars
+;           (gen-mutable cgc nctx (cdr mutable))))))
 
 ;; Return label of a stub generating error with 'msg'
 (define (get-label-error msg) (list-ref (add-callback #f   0 (lambda (ret-addr selector) (error msg))) 0))

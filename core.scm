@@ -1127,10 +1127,23 @@
   locs   ;; set of offset where the identifier is located
   flags  ;; list of flags (possible flags : mutable)
   stype  ;; ctx type if identifier is a free var
+  floc   ;; location in closure if identifier is a free var
 )
 
+;; TODO: retourne une 'location' pour un identifiant donné.
+;; Retourne un registre si cet identifiant est dans un registre
+;; Retourne l'emplacement mémoire sinon.
+;; L'interet est que si l'identifiant est dans un registre ET en mémoire, on va plutot retourner le registre pour générer un code plus efficace
+(define (identifier-loc identifier)
+  (let ((rloc (identifier-rloc identifier)))
+    (if rloc
+        rloc
+        (identifier-mloc identifier))))
+
 (define (make-identifier kind loc flags stype)
-  (make-identifier* kind (list loc) flags stype))
+  (if (eq? kind 'free)
+      (make-identifier* kind '() flags stype loc)
+      (make-identifier* kind (list loc) flags stype #f)))
 
 (define (identifier-xloc identifier loc-test)
   (define (get-xloc locs)
@@ -1172,23 +1185,43 @@
             '()
             -1))
 
-(define (ctx-init-fn call-ctx args)
+(define (ctx-init-fn call-ctx enclosing-ctx args free-vars)
   (make-ctx (ctx-stack call-ctx)
             (reg-slot-init)
             (slot-loc-init-fn (length args))
-            (env-init-fn args 2)
+            (env-init-fn args 2 free-vars enclosing-ctx)
             (length args)))
 
 ;; TODO MOVE
-(define (env-init-fn args loc)
-  (if (null? args)
-      '()
-      (cons (cons (car args)
-                  (make-identifier 'local
-                                   loc
-                                   '(TODOflags)
-                                   #f))
-            (env-init-fn (cdr args) (+ loc 1)))))
+(define (env-init-fn args loc free-vars enclosing-ctx)
+
+  (define (init-free free-vars enclosing-env i)
+    (if (null? free-vars)
+        '()
+        (let* ((ident (cdr (assoc (car free-vars) enclosing-env)))
+               (type
+                 (if (eq? (identifier-kind ident) 'local)
+                     (ctx-get-type-from-loc enclosing-ctx (identifier-loc ident))
+                     (identifier-stype ident))))
+          (cons (cons (car free-vars)
+                      (make-identifier 'free
+                                       (string->symbol (string-append "f" (number->string i)))
+                                       '(TODOflags)
+                                       type))
+                (init-free (cdr free-vars) enclosing-env (+ i 1))))))
+
+  (define (init-local args loc)
+    (if (null? args)
+        '()
+        (cons (cons (car args)
+                    (make-identifier 'local
+                                     loc
+                                     '(TODOflags)
+                                     #f))
+              (init-local (cdr args) (+ loc 1)))))
+
+  (append (init-free free-vars (ctx-env enclosing-ctx) 1)
+          (init-local args loc)))
 
 (define (ctx-get-fs ctx)
   (foldr (lambda (el res)
