@@ -1632,13 +1632,13 @@
                                                           '()
                                                           '()
                                                           -1)))
-                                          ;; 2 - push all regs (call conv) ;; TODO
-                                          (x86-push cgc (x86-rbx))
-                                          (x86-push cgc (x86-rdx))
-                                          (x86-push cgc (x86-r8))
-                                          (x86-push cgc (x86-rsi))
-                                          (x86-push cgc (x86-rdi))
+
+                                          ;; 2 - push all regs
+                                          (for-each
+                                            (lambda (i) (x86-push cgc i))
+                                            regalloc-regs)
                                           (x86-push cgc base-ptr)
+
                                           (x86-mov cgc base-ptr (x86-rsp))
 
                                           ;; 3 TODO continuation slot ;; TODO rename gen-continuation-loader
@@ -1728,12 +1728,13 @@
   (let* ((lazy-continuation
            (make-lazy-code
              (lambda (cgc ctx)
+             
+               ;; Restore registers
                (x86-pop cgc base-ptr)
-               (x86-pop cgc (x86-rdi))
-               (x86-pop cgc (x86-rsi))
-               (x86-pop cgc (x86-r8))
-               (x86-pop cgc (x86-rdx))
-               (x86-pop cgc (x86-rbx))
+               (for-each
+                 (lambda (i) (x86-pop cgc i))
+                 (reverse regalloc-regs))
+
                ;; Move result to location
                (let* ((lres (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
                       (opres  (codegen-loc-to-x86opnd lres)))

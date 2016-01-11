@@ -31,6 +31,27 @@
 (include "~~lib/_asm#.scm")
 
 ;;-----------------------------------------------------------------------------
+;; x86 Registers
+
+;; x86 registers map associate virtual register to x86-register
+;; ex. ((r0 . (x86-rax)) (r1 . (x86-rbx)) ...)
+(define codegen-regmap
+  (foldr (lambda (el r)
+           (cons (cons (string->symbol (string-append "r" (number->string el)))
+                       (list-ref regalloc-regs el))
+                 r))
+         '()
+         (build-list (length regalloc-regs) (lambda (l) l))))
+
+(define base-ptr   (x86-rbp))
+(define alloc-ptr  (x86-r9))
+(define global-ptr (x86-r8))
+
+;; NOTE: temporary register is always rax
+;; NOTE: selector is always rcx
+;; NOTE: stack pointer is always rsp
+
+;;-----------------------------------------------------------------------------
 ;; x86 Codegen utils
 
 ;; TODO: use (codegen-push-n?)
@@ -67,15 +88,15 @@
 ;; Define
 (define (codegen-define-id cgc)
   (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
-  (x86-mov cgc (x86-mem (* 8 (length globals)) (x86-r10)) (x86-rax)))
+  (x86-mov cgc (x86-mem (* 8 (length globals)) global-ptr) (x86-rax)))
 
 (define (codegen-define-bind cgc pos reg lvalue)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd lvalue)))
     (if (ctx-loc-is-register? lvalue)
-        (x86-mov cgc (x86-mem (* 8 pos) (x86-r10)) opval)
+        (x86-mov cgc (x86-mem (* 8 pos) global-ptr) opval)
         (begin (x86-mov cgc (x86-rax) opval)
-               (x86-mov cgc (x86-mem (* 8 pos) (x86-r10)) (x86-rax))))
+               (x86-mov cgc (x86-mem (* 8 pos) global-ptr) (x86-rax))))
     (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
 
 ;;-----------------------------------------------------------------------------
@@ -86,7 +107,7 @@
 ;; get
 (define (codegen-get-global cgc pos reg)
   (let ((dest  (codegen-reg-to-x86reg reg)))
-    (x86-mov cgc dest (x86-mem (* 8 pos) (x86-r10)))))
+    (x86-mov cgc dest (x86-mem (* 8 pos) global-ptr))))
 
 (define (codegen-get-local cgc dest pos raw? mutable?)
   (if (or raw? (not mutable?))
@@ -114,7 +135,7 @@
 
 (define (codegen-set-global cgc pos)
   (x86-pop cgc (x86-rax))
-  (x86-mov cgc (x86-mem (* 8 pos) (x86-r10)) (x86-rax)))
+  (x86-mov cgc (x86-mem (* 8 pos) global-ptr) (x86-rax)))
 
 ;; mutable object (local or free) already is in rax
 (define (codegen-set-not-global cgc)
@@ -177,20 +198,6 @@
 ;;-----------------------------------------------------------------------------
 ;; Values
 ;;-----------------------------------------------------------------------------
-
-;; TODO
-;; TODO regalloc
-(define codegen-regmap (list
-  (cons 'r0 (x86-rbx))
-  (cons 'r1 (x86-rdx))
-  (cons 'r2 (x86-r8))
-  (cons 'r3 (x86-rsi))
-  (cons 'r4 (x86-rdi))))
-
-;; TODO: BASE PTR
-(define base-ptr (x86-rbp))
-
-(assert (= (length codegen-regmap) regalloc-nbregs) "TODO ERROR")
 
 (define (codegen-loc-to-x86opnd loc)
   (if (ctx-loc-is-register? loc)

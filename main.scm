@@ -218,7 +218,7 @@
            (lazy-print (make-lazy-code
               (lambda (cgc ctx)
                  (x86-pop cgc (x86-rax))
-                 (x86-mov cgc (x86-mem 0 (x86-r10)) (x86-rax))
+                 (x86-mov cgc (x86-mem 0 global-ptr) (x86-rax))
                  (jump-to-version cgc (gen-ast '(pp $$REPL-RES) lazy-read-eval) (ctx-pop ctx)))))
            ;; Lazy read-eval
            (lazy-read-eval (make-lazy-code

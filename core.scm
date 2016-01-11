@@ -690,7 +690,6 @@
 ;; Set to 2gb (2000000000) to exec all benchmarks without GC (except lattice.scm)
 ;; Set to 7gb (7000000000) to exec all benchmarks without GC
 (define space-len 1000000000)
-(define alloc-ptr (x86-r12))
 
 (assert (= (modulo space-len 8) 0) ERR_HEAP_NOT_8)
 
@@ -915,7 +914,7 @@
 
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
     (x86-mov cgc alloc-ptr (x86-imm-int from-space))       ;; Heap addr in alloc-ptr
-    (x86-mov cgc (x86-r10) (x86-imm-int (+ block-addr (* 8 global-offset)))) ;; Globals addr in r10
+    (x86-mov cgc global-ptr (x86-imm-int (+ block-addr (* 8 global-offset)))) ;; Globals addr in r10
 
     (let ((label (asm-make-label #f (new-sym 'prog_begin))))
       (x86-label cgc label))))
@@ -975,6 +974,18 @@
         (x86-rdi)
         (x86-r8)
         (x86-r9)
+        (x86-r10)
+        (x86-r11)
+        (x86-r12)
+        (x86-r13)
+        (x86-r14)
+        (x86-r15)))
+
+(define regalloc-regs
+  (list (x86-rbx)
+        (x86-rdx)
+        (x86-rsi)
+        (x86-rdi)
         (x86-r10)
         (x86-r11)
         (x86-r12)
@@ -1147,7 +1158,7 @@
 )
 
 ;; Nombre de registres pour l'allocation de registre
-(define regalloc-nbregs 5)
+(define regalloc-nbregs 10) ;; NOTE: regalloc-nbregs MUST BE == to length of 'regalloc-regs' (nb virtual regs == nb x86 regs)
 
 ;; TODO regalloc
 ;;-------------------------
