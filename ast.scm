@@ -271,10 +271,33 @@
         ;;
         (cond ;; Identifier is a free variable
               ((and local (eq? (identifier-kind (cdr local)) 'free))
-                 ;; Algo:
-                 ;; Si la variable à une pos registre, on l'utilise
-                 ;; Sinon, on libère un registre et on copie la variable en utilisant les fx 
-                 (error "NYI mlc-identifier free"))
+                 (let ((rloc (identifier-rloc (cdr local))))
+                   (if rloc
+                       (jump-to-version cgc succ (ctx-push ctx type rloc))
+                       (let* (;; Get dest
+                              (res (ctx-get-free-reg ctx))
+                              (reg (car res))
+                              (ctx (cdr res))
+                              (dest (codegen-reg-to-x86reg reg))
+                              ;; Get closure loc
+                              (f (identifier-floc (cdr local)))
+                              (closure-lidx (- (length (ctx-stack ctx)) 2))
+                              (closure-loc (ctx-get-loc-from-lidx ctx closure-lidx))
+                              (closure-opnd (codegen-loc-to-x86opnd closure-loc))
+                              ;; Get free var offset
+                              (fvar-pos (string->number
+                                          (list->string
+                                            (cdr (string->list
+                                                   (symbol->string (identifier-floc (cdr local))))))))
+                              (fvar-offset (+ 16 (* 8 (- fvar-pos 1)))) ;; 16:header,entrypoint -1: pos starts from 1 and not 0
+                              (fvar-type (identifier-stype (cdr local))))
+                        ;; GEN CODE
+                        (if (ctx-loc-is-memory? closure-loc)
+                            (begin (x86-mov cgc (x86-rax) closure-opnd)
+                                   (set! closure-opnd (x86-rax))))
+
+                        (x86-mov cgc dest (x86-mem (- fvar-offset TAG_MEMOBJ) closure-opnd))
+                        (jump-to-version cgc succ (ctx-push ctx fvar-type reg)))))) ;; TODO type
               ;; Identifier is a local variable
               (local
                 (let ((rloc (identifier-rloc (cdr local))))

@@ -677,6 +677,7 @@
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
 
+;; TODO regalloc: on ne DOIT PAS écraser les valeurs des opérandes qui peuvent servir plus tard
 (define (codegen-cmp-ii cgc op reg lleft lright)
   (let ((label-end (asm-make-label #f (new-sym 'label-end)))
         (x86-op (cdr (assoc op `((< . ,x86-jl) (> . ,x86-jg) (<= . ,x86-jle) (>= . ,x86-jge) (= . ,x86-je)))))
@@ -695,6 +696,7 @@
     (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
     (x86-label cgc label-end)))
 
+;; TODO regalloc: on ne DOIT PAS écraser les valeurs des opérandes qui peuvent servir plus tard
 (define (codegen-cmp-ff cgc ctx op lidx ridx get-stub-label leftint? rightint?)
   (let ((label-jump (asm-make-label #f (new-sym 'label-jump)))
         ;; DO NOT USE jg* and jl* WITH FP VALUES !

@@ -1398,6 +1398,11 @@
               (ctx-nb-args ctx))))
 
 ;; TODO comment + move
+(define (ctx-get-loc-from-lidx ctx lidx)
+  (let ((slot (ctx-lidx-to-slot ctx lidx)))
+    (cdr (assoc slot (ctx-slot-loc ctx)))))
+
+;; TODO comment + move
 (define (ctx-get-type-from-loc ctx loc)
   (let* ((slot (slot-loc-get-slot-from-loc (ctx-slot-loc ctx) loc))
          (idx  (ctx-slot-to-lidx ctx slot)))

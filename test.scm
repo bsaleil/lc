@@ -1,7 +1,12 @@
 
-(let* ((a 10)
-       (foo (lambda (b) (+ a b))))
-  (foo 1))
+(letrec ((is-even? (lambda (n)
+                       (or (= n 0)
+                           (is-odd? (- n 1)))))
+           (is-odd? (lambda (n)
+                      (and (not (= n 0))
+                           (is-even? (- n 1))))))
+    (is-odd? 11))
+
 
 
 
