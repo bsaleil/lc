@@ -272,7 +272,8 @@
         ;;
         (cond ;; Identifier is a free variable
               ((and local (eq? (identifier-kind (cdr local)) 'free))
-                 (let ((rloc (identifier-rloc (cdr local))))
+                 (let ((rloc (identifier-rloc (cdr local)))
+                       (mutable? (member 'mutable (identifier-flags (cdr local)))))
                    (if rloc
                        (jump-to-version cgc succ (ctx-push ctx type rloc))
                        (let* (;; Get dest
@@ -292,6 +293,8 @@
                                                    (symbol->string (identifier-floc (cdr local))))))))
                               (fvar-offset (+ 16 (* 8 (- fvar-pos 1)))) ;; 16:header,entrypoint -1: pos starts from 1 and not 0
                               (fvar-type (identifier-stype (cdr local))))
+                        (if mutable?
+                            (error "NYI mlc-identifier get free mutable var"))
                         ;; GEN CODE
                         (if (ctx-loc-is-memory? closure-loc)
                             (begin (x86-mov cgc (x86-rax) closure-opnd)
@@ -301,11 +304,20 @@
                         (jump-to-version cgc succ (ctx-push ctx fvar-type reg)))))) ;; TODO type
               ;; Identifier is a local variable
               (local
-                (let ((rloc (identifier-rloc (cdr local))))
+                (let ((rloc (identifier-rloc (cdr local)))
+                      (mutable? (member 'mutable (identifier-flags (cdr local)))))
                   (if rloc
                       ;;
                       (let ((type (ctx-get-type-from-loc ctx rloc)))
-                        (jump-to-version cgc succ (ctx-push ctx type rloc)))
+                        (if mutable?
+                            (let* ((res (ctx-get-free-reg ctx))
+                                   (reg (car res))
+                                   (ctx (cdr res))
+                                   (opnd (codegen-loc-to-x86opnd reg))
+                                   (opvar (codegen-reg-to-x86reg rloc)))
+                              (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opvar))
+                              (jump-to-version cgc succ (ctx-push ctx type reg)))
+                           (jump-to-version cgc succ (ctx-push ctx type rloc))))
                       ;;
                       (let* ((mloc (identifier-mloc (cdr local)))
                              (type (ctx-get-type-from-loc ctx mloc))
@@ -315,6 +327,8 @@
                              (opr (codegen-reg-to-x86reg reg))
                              (opm (codegen-loc-to-x86opnd mloc)))
                         (x86-mov cgc opr opm)
+                        (if mutable?
+                            (x86-mov cgc opr (x86-mem (- 8 TAG_MEMOBJ) opr)))
                         ;; TODO regalloc, add symbol to ctx-push
                         (jump-to-version cgc succ (ctx-push ctx type reg))))))
               ;; Identifier is a global variable

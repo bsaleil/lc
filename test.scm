@@ -10,7 +10,7 @@
 (let ((a 10)
       (b 20))
   (set! a 1)
-  a)
+  (+ a b))
 
 
 ;; TODO: AVANT ALLOC DE REGISTRE:
