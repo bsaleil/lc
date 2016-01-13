@@ -1015,12 +1015,24 @@
             (cdr ids)
             (ctx-push ctx CTX_VOID reg)))))
 
-  (error "NEED MUTABLE VAR HANDLING")
-
   (let* ((ids (map car (cadr ast)))
          (lazy-set
            (make-lazy-code
              (lambda (cgc ctx)
+               (error "WIP")
+               ;; for i=0, i<nbBindings, i++
+               ;;   ;; rax = valeur de virtual-stack[i+nbBindings]
+               ;;   ;; op = operand(virtual-stack[i])
+               ;;   ;; mov [op+7], rax (reg intermediaire si en mémoire)
+              ; (let loop ((i 0))
+              ;   (if (< i (length ids))
+              ;       (x86-mov
+               ;; Tous les ids sont en mémoire (mutables)
+
+               ;; toutes les valeurs sont calculées et sur la pile
+               ;; Pour chaque binding:
+               ;;   on copie la valeur dans la case mémoire
+               ;; Pop n
                (pp ctx)
                (error "K"))))
          (lazy-pre
@@ -1030,7 +1042,7 @@
                       (bind-list (map (lambda (l) (cons (list-ref ids l) l))
                                       (build-list (length ids) (lambda (l) l))))
                       (ctx (ctx-bind ctx bind-list '()))) ;; Bind identifiers to virtual stack slots ;; TODO: mutable vars
-                 (pp ctx)
+                 (gen-mutable cgc ctx ids)
                  (jump-to-version
                    cgc
                    (gen-ast-l (map cadr (cadr ast)) lazy-set)

@@ -1,17 +1,11 @@
 
-;(letrec ((is-even? (lambda (n)
-;                       (or (= 0 n)
-;                           (is-odd? (- n 1)))))
-;           (is-odd? (lambda (n)
-;                      (and (not (= n 0))
-;                           (is-even? (- n 1))))))
-;    (is-odd? 11))
-
-(let ((a 10)
-      (b 20))
-  (set! a 1)
-  (+ a b))
-
+(letrec ((is-even? (lambda (n)
+                       (or (= 0 n)
+                           (is-odd? (- n 1)))))
+           (is-odd? (lambda (n)
+                      (and (not (= n 0))
+                           (is-even? (- n 1))))))
+  (is-odd? 11))
 
 ;; TODO: AVANT ALLOC DE REGISTRE:
 ;;  - Vérifier si --max-versions 3 et --max-versions 0 ne dépassent pas le nb de versions
