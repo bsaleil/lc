@@ -2,8 +2,8 @@
 ;(let ((a 10) (b 20))
 ;  (+ a b))
 
+(println 10)
 
-1 2 3 4 5 6 7
 ;(letrec ((is-even? (lambda (n)
 ;                       (or (= 0 n)
 ;                           (is-odd? (- n 1)))))

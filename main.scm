@@ -33,6 +33,7 @@
 
 ;; TODO regalloc for unit tests
 ;(define pp pretty-print)
+(define pp (lambda (n) #f))
 (define repl-print-lco #f)
 
 (define-macro (string-bold str)
@@ -159,7 +160,7 @@
                     (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc))
                     (error "NYI regalloc")))
               ;;
-              (gen-breakpoint cgc)
+              ;(gen-breakpoint cgc)
 
               ;;
               (pop-regs-reverse cgc all-regs)
@@ -283,19 +284,8 @@
 
   (init)
 
-  (let* ((lazy-prog (lazy-exprs prog #f))
-         (lazy-lib-end
-           (make-lazy-code
-             (lambda (cgc ctx)
-               ;; TODO regalloc LIB
-               (jump-to-version cgc lazy-prog ctx))))
-               ;(x86-add cgc (x86-rsp) (x86-imm-int (* 8 (length lib))))
-               ;(jump-to-version cgc lazy-prog (ctx-pop ctx (length lib))))))
-         (lazy-lib  (lazy-exprs lib  lazy-lib-end)))
-
-     (gen-version code-alloc
-                  lazy-lib
-                  (ctx-init)))
+  (let ((lazy-lib  (lazy-exprs (append lib prog) #f)))
+    (gen-version code-alloc  lazy-lib (ctx-init)))
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)
@@ -318,8 +308,8 @@
 (define (main . args)
 
   ;; Get library
-  (define lib '())
-  ;(define lib (expand-tl (read-all (open-input-file "./lib.scm"))))
+  ;(define lib '())
+  (define lib (expand-tl (read-all (open-input-file "./lib.scm"))))
   ;; Set options and get files from cl args
   (define files (parse-args args))
 

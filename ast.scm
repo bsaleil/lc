@@ -346,6 +346,13 @@
                   (codegen-get-global cgc (cdr global) reg)
                   ;; Jump with updated ctx
                   (jump-to-version cgc succ (ctx-push ctx type reg))))
+              ((assoc ast primitives) =>
+                 (lambda (r)
+                   (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
+                     (jump-to-version
+                       cgc
+                       (gen-ast `(lambda ,args (,ast ,@args)) succ)
+                       ctx))))
               (else (gen-error cgc (ERR_UNKNOWN_VAR ast))))))))
 
 ;(define (mlc-identifier ast succ)
