@@ -1130,6 +1130,15 @@
   floc   ;; location in closure if identifier is a free var
 )
 
+;; TODO macro générique pour modifier chaque champ? (comme identifier-kind-set! mais immutable)
+(define (identifier-change-locs identifier locs)
+  (make-identifier*
+    (identifier-kind identifier)
+    locs
+    (identifier-flags identifier)
+    (identifier-stype identifier)
+    (identifier-floc identifier)))
+
 ;; TODO: retourne une 'location' pour un identifiant donné.
 ;; Retourne un registre si cet identifiant est dans un registre
 ;; Retourne l'emplacement mémoire sinon.
@@ -1308,18 +1317,44 @@
          slot-loc))
 
 ;; TODO comment + mov?
+;; TODO: l'environnement n'est pas modifié et est géré séparément TODO uniformiser ca dans les fonctions ctx-...
 (define (ctx-move-lidx ctx lfrom lto)
-  (make-ctx ;; 1
-            (let ((stack (ctx-stack ctx)))
-              (append (list-head stack lto) (cons (list-ref stack lfrom) (list-tail stack (+ lto 1)))))
-            ;; 2
-            (reg-slot-move (ctx-reg-slot ctx) (ctx-lidx-to-slot ctx lfrom) (ctx-lidx-to-slot ctx lto))
-            ;; 3
-            (slot-loc-move (ctx-slot-loc ctx) (ctx-lidx-to-slot ctx lfrom) (ctx-lidx-to-slot ctx lto))
-            ;; 4
-            (begin (println "NYI ctx-move-lidx") (ctx-env ctx))
-            ;;
-            (ctx-nb-args ctx)))
+  (pp "MOVE FROM TO")
+  (pp lfrom) (pp lto)
+  (let* ((stack
+           (let ((old (ctx-stack ctx)))
+             (append (list-head old lto) (cons (list-ref old lfrom) (list-tail old (+ lto 1))))))
+         (reg-slot
+           (reg-slot-move (ctx-reg-slot ctx) (ctx-lidx-to-slot ctx lfrom) (ctx-lidx-to-slot ctx lto)))
+         (slot-loc
+           (slot-loc-move (ctx-slot-loc ctx) (ctx-lidx-to-slot ctx lfrom) (ctx-lidx-to-slot ctx lto)))
+         (env
+           (ctx-env ctx))
+         (nb-args (ctx-nb-args ctx)))
+
+  (make-ctx stack reg-slot slot-loc env nb-args)))
+
+;; TODO comment + mov!
+;; Modifie l'objet identifier associé à 'id' dans l'environnement:
+;; l'identifier contient, dans locs, l'ensemble des locs qui sont associées au slot 'slot'
+(define (ctx-set-id-slot ctx id slot)
+  (make-ctx
+    (ctx-stack ctx)
+    (ctx-reg-slot ctx)
+    (ctx-slot-loc ctx)
+    (env-set-id-locs (ctx-env ctx) id (ctx-get-locs-from-slot ctx slot))
+    (ctx-nb-args ctx)))
+
+;; TODO comment + move
+(define (env-set-id-locs env id locs)
+  (foldr (lambda (el r)
+           (if (eq? (car el) id)
+               (cons (cons (car el)
+                           (identifier-change-locs (cdr el) locs))
+                     r)
+               (cons el r)))
+         '()
+         env))
 
 ;; ids est une liste de symboles qui correspond aux identifiants
 ;; Cette fonction supprime les liaisons du contexte (libere registres/memoire et enleve les identifiers)
@@ -1396,6 +1431,15 @@
               (ctx-slot-loc ctx)
               (ctx-env ctx)
               (ctx-nb-args ctx))))
+
+;; TODO comment + move
+(define (ctx-get-locs-from-slot ctx slot)
+  (foldr (lambda (el r)
+           (if (eq? (car el) slot)
+               (cons (cdr el) r)
+               r))
+         '()
+         (ctx-slot-loc ctx)))
 
 ;; TODO comment + move
 (define (ctx-get-loc-from-lidx ctx lidx)

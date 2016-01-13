@@ -965,6 +965,7 @@
 
 ;; TODO
 
+;; TODO regalloc: factoriser avec mlc-letrec (body lazy-out)
 ;; TODO regalloc kind, flags, stype (voir ctx-bind)
 ;; TODO + utiliser mlc-binding quand mlc-let* mlc-letrec ajoutés
 ;; TODO ajouter un lc après 'bind' pour mettre les variables mutables en mémoire
@@ -1016,25 +1017,58 @@
             (ctx-push ctx CTX_VOID reg)))))
 
   (let* ((ids (map car (cadr ast)))
+         (body (cddr ast))
+         (lazy-out
+             ;; TODO
+             (let ((make-lc (if (member 'ret (lazy-code-flags succ))
+                            make-lazy-code-ret
+                            make-lazy-code)))
+               (make-lc
+                 (lambda (cgc ctx)
+                   (let* ((ctx (ctx-unbind ctx ids)) ;; update env
+                          (ctx (ctx-move-lidx ctx 0 (length ids))) ;; mov result slot
+                          (ctx (ctx-pop-n ctx (length ids)))) ;; pop from virtual stack
+                     (jump-to-version cgc succ ctx))))))
+         (lazy-body
+           (gen-ast (cons 'begin body) lazy-out))
          (lazy-set
            (make-lazy-code
              (lambda (cgc ctx)
-               (error "WIP")
+               (pp "AVANT LOOP")
+               (pp ctx)
+               ;; TODO regalloc comment this
                ;; for i=0, i<nbBindings, i++
                ;;   ;; rax = valeur de virtual-stack[i+nbBindings]
                ;;   ;; op = operand(virtual-stack[i])
                ;;   ;; mov [op+7], rax (reg intermediaire si en mémoire)
-              ; (let loop ((i 0))
-              ;   (if (< i (length ids))
-              ;       (x86-mov
-               ;; Tous les ids sont en mémoire (mutables)
+               (let loop ((i 0)
+                          (ctx ctx)
+                          (ids (reverse ids)))
+                    (if (= i (length (map car (cadr ast)))) ;; TODO: use ids, but not the one in loop
+                        (jump-to-version cgc
+                                         lazy-body
+                                         (ctx-pop-n ctx (length ids)))
+                        (let* ((lfrom  (ctx-get-loc ctx (ctx-lidx-to-slot ctx i)))
+                               (lto    (ctx-get-loc ctx (ctx-lidx-to-slot ctx (+ i (length ids)))))
+                               (ctx    (ctx-move-lidx ctx i (+ i (length (map car (cadr ast)))))) ;; TODO: use ids, but not the one in loop
+                               (ctx    (ctx-set-id-slot ctx (car ids) (ctx-lidx-to-slot ctx (+ i (length (map car (cadr ast))))))) ;; TODO: use ids, but not the one in loop
+                               (opfrom (codegen-loc-to-x86opnd lfrom))
+                               (opto   (codegen-loc-to-x86opnd lto)))
+                          ;; If mobject is in memory, move to rax
+                          (cond ((and (ctx-loc-is-memory? lfrom)
+                                      (ctx-loc-is-memory? lto))
+                                   (error "NYI mlc-letrec"))
+                                ((ctx-loc-is-memory? lfrom)
+                                   (x86-mov cgc (x86-rax) opfrom)
+                                   (set! opfrom (x86-rax)))
+                                ((ctx-loc-is-memory? lto)
+                                   (x86-mov cgc (x86-rax) opto)
+                                   (set! opto (x86-rax))))
 
-               ;; toutes les valeurs sont calculées et sur la pile
-               ;; Pour chaque binding:
-               ;;   on copie la valeur dans la case mémoire
-               ;; Pop n
-               (pp ctx)
-               (error "K"))))
+                          (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opto) opfrom)
+                          (loop (+ i 1)
+                                ctx
+                                (cdr ids))))))))
          (lazy-pre
            (make-lazy-code
              (lambda (cgc ctx)
@@ -1043,6 +1077,8 @@
                                       (build-list (length ids) (lambda (l) l))))
                       (ctx (ctx-bind ctx bind-list '()))) ;; Bind identifiers to virtual stack slots ;; TODO: mutable vars
                  (gen-mutable cgc ctx ids)
+                 (pp "PRE ")
+                 (pp ctx)
                  (jump-to-version
                    cgc
                    (gen-ast-l (map cadr (cadr ast)) lazy-set)
