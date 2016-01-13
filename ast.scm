@@ -265,6 +265,7 @@
 (define (mlc-identifier ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
+      (pp "NYI mlc-identifier read mutable var")
 
       (let ((local  (assoc ast (ctx-env ctx)))
             (global (assoc ast globals)))
@@ -408,27 +409,28 @@
 (define (mlc-set! ast succ)
 
   (let* ((id (cadr ast))
-         (lazy-set
-            (make-lazy-code
-               (lambda (cgc ctx)
-                  (let* ((glookup-res (assoc id globals))
-                         (nctx
-                           (if glookup-res
-                              ;; Global var
-                              (gen-set-globalvar cgc ctx glookup-res)
-                                 (let ((res (assoc id (ctx-env ctx))))
-                                    (if res
-                                       (if (eq? (identifier-type (cdr res)) 'free)
-                                          (gen-set-freevar  cgc ctx res)  ;; Free var
-                                          (gen-set-localvar cgc ctx res)) ;; Local var
-                                      #f)))))
-                      (if (not nctx)
-                          (gen-error cgc (ERR_UNKNOWN_VAR id))
-                          (begin
-                            (codegen-void cgc)
-                            (jump-to-version cgc succ (ctx-push (ctx-pop nctx) CTX_VOID)))))))))
+         (lazy-set!
+           (make-lazy-code
+             (lambda (cgc ctx)
+               ;; Loc de la variable: l1
+               ;; Loc de la valeur: l2
 
-     (gen-ast (caddr ast) lazy-set)))
+               ;; Déplacer l2 dans l1 puis pop
+               (let ((id (assoc id (ctx-env ctx))))
+
+                 (if (not id)
+                     (error "NYI set! global")
+                     (let* ((identifier (cdr id))
+                            (res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                            (reg (car res))
+                            (ctx (cdr res))
+                            (lvar (identifier-loc identifier))
+                            (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+
+                       (codegen-set-not-global cgc reg lvar lval)
+
+                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg)))))))))
+    (gen-ast (caddr ast) lazy-set!)))
 
 ;;
 ;; Make lazy code from DEFINE
@@ -981,7 +983,7 @@
                (let* ((id-idx (build-id-idx ids (- (length ids) 1)))
                       (mvars (mutable-vars ast ids)) ;; Get mutable vars
                       (ctx (ctx-bind ctx id-idx mvars)))
-                 (pp "NYI mlc-let: copy mutable vars in memory")
+                 (gen-mutable cgc ctx mvars)
                  (jump-to-version cgc lazy-body ctx))))))
     (gen-ast-l values lazy-binds)))
 
@@ -999,7 +1001,7 @@
             (cdr ids)
             (ctx-push ctx CTX_VOID reg)))))
 
-  (error "NYI mlc-letrec - need free variables")
+  (error "NEED MUTABLE VAR HANDLING")
 
   (let* ((ids (map car (cadr ast)))
          (lazy-set
@@ -2461,6 +2463,19 @@
   (if (not (pair? l))
      '()
      (cons (car l) (formal-params (cdr l)))))
+
+
+;; TODO regalloc
+(define (gen-mutable cgc ctx mvars)
+  (if (null? mvars)
+      ctx
+      (let* ((mid (car mvars))
+             (resid (assoc mid (ctx-env ctx)))
+             (identifier (cdr resid))
+             (loc (identifier-loc identifier)))
+
+        (codegen-mutable cgc loc)
+        (gen-mutable cgc ctx (cdr mvars)))))
 
 ;; TODO regalloc: remove?
 ;;; Gen mutable variable

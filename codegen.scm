@@ -138,9 +138,26 @@
   (x86-mov cgc (x86-mem (* 8 pos) global-ptr) (x86-rax)))
 
 ;; mutable object (local or free) already is in rax
-(define (codegen-set-not-global cgc)
-  (x86-pop cgc (x86-rbx))
-  (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (x86-rbx)))
+(define (codegen-set-not-global cgc reg lvar lval)
+  (let ((opvar (codegen-loc-to-x86opnd lvar))
+        (opval (codegen-loc-to-x86opnd lval))
+        (dest  (codegen-reg-to-x86reg reg)))
+
+    (if (ctx-loc-is-memory? lvar)
+        (begin (x86-mov cgc (x86-rax) opvar)
+               (set! opvar (x86-rax))))
+
+    (if (ctx-loc-is-memory? lval)
+        (begin (x86-push cgc (x86-rbx))
+               (x86-mov cgc (x86-rbx) opval)
+               (set! opval (x86-rbx))))
+
+    (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opvar) opval)
+
+    (if (ctx-loc-is-memory? lval)
+        (x86-pop cgc (x86-rbx)))
+
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
 
 ;;-----------------------------------------------------------------------------
 ;; Special forms
@@ -1223,16 +1240,24 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Mutable var (creates mutable object, write variable and header and replace local with mutable object)
-(define (codegen-mutable cgc local-idx)
-  (let ((header-word (mem-header 2 STAG_MOBJECT)))
+(define (codegen-mutable cgc lval)
+  (let ((header-word (mem-header 2 STAG_MOBJECT))
+        (opval (codegen-loc-to-x86opnd lval))
+        (tmpopval #f))
+
+    (if (ctx-loc-is-memory? lval)
+        (begin (x86-mov cgc (x86-rax) opval)
+               (set! tmpopval (x86-rax)))
+        (set! tmpopval opval))
+
     ;; Alloc mutable
     (gen-allocation cgc #f STAG_MOBJECT 2)
     ;; Write variable
-    (x86-pop cgc (x86-rax))
-    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+    (x86-mov cgc (x86-mem 8 alloc-ptr) tmpopval)
     ;; Write header
     (x86-mov cgc (x86-rax) (x86-imm-int header-word))
     (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
     ;; Replace local
-    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-    (x86-mov cgc (x86-mem (* 8 local-idx) (x86-rsp)) (x86-rax))))
+    (x86-lea cgc tmpopval (x86-mem TAG_MEMOBJ alloc-ptr)) ;; Register or rax if mem
+    (if (ctx-loc-is-memory? lval)
+        (x86-mov cgc opval tmpopval))))
