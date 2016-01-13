@@ -162,7 +162,7 @@
     `(letrec ,(map (lambda (n) (cons (car n) (expand (cdr n))))
                        bindings)
        ,@body)))
-       
+
 ;; DO-h
 (define (do-steps ids)
   (if (null? ids)

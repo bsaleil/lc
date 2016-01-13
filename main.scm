@@ -147,42 +147,77 @@
 
 ;;-----------------------------------------------------------------------------
 
+;; TODO regalloc
 (define (lazy-exprs exprs succ)
-  (if (null? exprs)
-      (or succ
+
+  (let ((lazy-final
           (make-lazy-code
             (lambda (cgc ctx)
-              ;(x86-pop cgc (x86-rax))
-
-              ;; Set time slot with total time if opt-time is #t
-              (if opt-time
-                 (begin
-                    (x86-mov   cgc (x86-rbx) (x86-imm-int (+ block-addr (* 9 8)))) ;; Get slot addr in rbx
-                    (x86-mov cgc (x86-rcx) (x86-mem 0 (x86-rbx))) ;; rcx = before
-                    (x86-rdtsc cgc)
-                    (x86-shl   cgc (x86-rdx) (x86-imm-int 32))
-                    (x86-or    cgc (x86-rax) (x86-rdx))               ;; rax = after
-                    (x86-sub cgc (x86-rax) (x86-rcx))
-                    (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-rax))))
-
-              ;; TODO regalloc code before regalloc
-              ;(x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
-
-              ;; TODO regalloc
-              ;; 1 - mov top of vritual stack to rax
+              ;; TODO regalloc: opt-time
               (let ((loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))) ;; Get loc of value in top of stack
                 (if (ctx-loc-is-register? loc)
                     (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc))
                     (error "NYI regalloc")))
-              ;; 2 - TODO: clean stack
-
-              ;; TODO regalloc debug print result (rax)
+              ;;
               (gen-breakpoint cgc)
 
+              ;;
               (pop-regs-reverse cgc all-regs)
-              (x86-ret cgc))))
-      (gen-ast (car exprs)
-               (lazy-exprs (cdr exprs) succ))))
+              (x86-ret cgc)))))
+
+
+    (cond ((null? exprs) succ)
+          ((= (length exprs) 1) (gen-ast (car exprs) lazy-final))
+          (else
+            (let ((next (lazy-exprs (cdr exprs) succ)))
+              (gen-ast (car exprs)
+                       (make-lazy-code
+                         (lambda (cgc ctx)
+                           (jump-to-version cgc
+                                            next
+                                            (ctx-pop ctx))))))))))
+;(define (lazy-exprs exprs succ)
+;  (if (null? exprs)
+;      (or succ
+;          (make-lazy-code
+;            (lambda (cgc ctx)
+;              ;(x86-pop cgc (x86-rax))
+;
+;              ;; Set time slot with total time if opt-time is #t
+;              (if opt-time
+;                 (begin
+;                    (x86-mov   cgc (x86-rbx) (x86-imm-int (+ block-addr (* 9 8)))) ;; Get slot addr in rbx
+;                    (x86-mov cgc (x86-rcx) (x86-mem 0 (x86-rbx))) ;; rcx = before
+;                    (x86-rdtsc cgc)
+;                    (x86-shl   cgc (x86-rdx) (x86-imm-int 32))
+;                    (x86-or    cgc (x86-rax) (x86-rdx))               ;; rax = after
+;                    (x86-sub cgc (x86-rax) (x86-rcx))
+;                    (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-rax))))
+;
+;              ;; TODO regalloc code before regalloc
+;              ;(x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
+;
+;              ;; TODO regalloc
+;              ;; 1 - mov top of vritual stack to rax
+;              (let ((loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))) ;; Get loc of value in top of stack
+;                (if (ctx-loc-is-register? loc)
+;                    (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc))
+;                    (error "NYI regalloc")))
+;              ;; 2 - TODO: clean stack
+;
+;              ;; TODO regalloc debug print result (rax)
+;              (gen-breakpoint cgc)
+;
+;              (pop-regs-reverse cgc all-regs)
+;              (x86-ret cgc))))
+;    ;  (gen-ast (car exprs)
+;    ;           (lazy-exprs (cdr exprs) succ))))
+;    (gen-ast (car exprs)
+;             (make-lazy-code
+;               (lambda (cgc ctx)
+;                 (jump-to-version cgc
+;                                  next
+;                                  (ctx-pop ctx)))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Interactive mode (REPL)
