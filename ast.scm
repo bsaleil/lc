@@ -1034,8 +1034,8 @@
          (lazy-set
            (make-lazy-code
              (lambda (cgc ctx)
-               (pp "AVANT LOOP")
-               (pp ctx)
+               (x86-push cgc (x86-rax))
+               (x86-pop cgc (x86-rax))
                ;; TODO regalloc comment this
                ;; for i=0, i<nbBindings, i++
                ;;   ;; rax = valeur de virtual-stack[i+nbBindings]
@@ -1047,9 +1047,9 @@
                     (if (= i (length (map car (cadr ast)))) ;; TODO: use ids, but not the one in loop
                         (jump-to-version cgc
                                          lazy-body
-                                         (ctx-pop-n ctx (length ids)))
+                                         (ctx-pop-n ctx (length (map car (cadr ast))))) ;; TODO meme que partout
                         (let* ((lfrom  (ctx-get-loc ctx (ctx-lidx-to-slot ctx i)))
-                               (lto    (ctx-get-loc ctx (ctx-lidx-to-slot ctx (+ i (length ids)))))
+                               (lto    (ctx-get-loc ctx (ctx-lidx-to-slot ctx (+ i (length (map car (cadr ast))))))) ;; TODO: meme que dessous
                                (ctx    (ctx-move-lidx ctx i (+ i (length (map car (cadr ast)))))) ;; TODO: use ids, but not the one in loop
                                (ctx    (ctx-set-id-slot ctx (car ids) (ctx-lidx-to-slot ctx (+ i (length (map car (cadr ast))))))) ;; TODO: use ids, but not the one in loop
                                (opfrom (codegen-loc-to-x86opnd lfrom))
