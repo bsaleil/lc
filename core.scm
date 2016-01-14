@@ -2183,14 +2183,47 @@
               (opval (codegen-loc-to-x86opnd lval)))
 
          (cond ;; Number type check
-               ((eq? type CTX_NUM) (error "NYI gen-dyn"))
+               ((eq? type CTX_NUM)
+                 (x86-mov cgc (x86-rax) (x86-imm-int 3))
+                 (x86-and cgc (x86-rax) opval))
+               ;; Null type test
+               ((eq? type CTX_NULL)
+                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+                 (x86-cmp cgc (x86-rax) opval))
                ;; Char type check
                ((eq? type CTX_CHAR)
                   (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
                   (x86-and cgc (x86-rax) opval)
                   (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL))) ;; TODO: not enough ? TAG_SPECIAL is uses by other types ?
+               ;; Procedure type test
+               ((member type (list CTX_FLO CTX_CLO CTX_PAI CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))
+                  ;; Vérifier le tag memobj
+                  ;; extraire le tag du header
+                  ;; Vérifier le tag stag
+
+                  ;; Check tag
+                  (x86-mov cgc (x86-rax) opval)
+                  (x86-and cgc (x86-rax) (x86-imm-int 3))
+                  (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                  (x86-jne cgc label-jump)
+                  ;; Check stag
+                  (if (ctx-loc-is-memory? lval)
+                      (begin
+                        (x86-mov cgc (x86-rax) opval)
+                        (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rax))))
+                      (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) opval)))
+                  (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
+                  ;; stag xxx << 3
+                  (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_FLO)  STAG_FLONUM)
+                                                                 ((eq? type CTX_CLO)  STAG_PROCEDURE)
+                                                                 ((eq? type CTX_SYM)  STAG_SYMBOL)
+                                                                 ((eq? type CTX_STR)  STAG_STRING)
+                                                                 ((eq? type CTX_IPORT) STAG_IPORT)
+                                                                 ((eq? type CTX_OPORT) STAG_OPORT)
+                                                                 ((eq? type CTX_VECT) STAG_VECTOR)
+                                                                 ((eq? type CTX_PAI)  STAG_PAIR))))))
                ;; NYI
-               (else (error "NYI gen-dyn")))
+               (else (error "Unknown type " type)))
 
          (x86-label cgc label-jump)
          (x86-je cgc (list-ref stub-labels 0))

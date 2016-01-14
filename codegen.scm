@@ -653,7 +653,7 @@
     ;; Right operand
     (if rightint?
         ;; Right is register or mem and integer
-        (begin (x86-mov (x86-rax) opright)
+        (begin (x86-mov cgc (x86-rax) opright)
                (x86-sar cgc (x86-rax) (x86-imm-int 2))  ;; untag integer
                (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
         (if (ctx-loc-is-register? lright)

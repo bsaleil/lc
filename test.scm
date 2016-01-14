@@ -2,7 +2,7 @@
 ;(let ((a 10) (b 20))
 ;  (+ a b))
 
-(println 10)
+(+ (car '(2.2 3)) 2)
 
 ;(letrec ((is-even? (lambda (n)
 ;                       (or (= 0 n)
