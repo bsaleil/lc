@@ -1359,16 +1359,17 @@
 ;; ids est une liste de symboles qui correspond aux identifiants
 ;; Cette fonction supprime les liaisons du contexte (libere registres/memoire et enleve les identifiers)
 (define (ctx-unbind ctx ids)
+  (define (env-remove-id env id)
+    (if (null? env)
+        '()
+        (if (eq? (car (car env)) id)
+            (cdr env)
+            (cons (car env) (env-remove-id (cdr env) id)))))
   (define (remove-id ctx id)
     (make-ctx (ctx-stack ctx)
               (ctx-reg-slot ctx)
               (ctx-slot-loc ctx)
-              (foldr (lambda (el env)
-                       (if (eq? id (car el))
-                           env
-                           (cons el env)))
-                     '()
-                     (ctx-env ctx))
+              (env-remove-id (ctx-env ctx) id)
               (ctx-nb-args ctx)))
 
   (foldr (lambda (el ctx) (remove-id ctx el))
