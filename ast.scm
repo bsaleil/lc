@@ -1345,8 +1345,8 @@
                                 (codegen-vec/str-length cgc reg lval)
                                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM reg))))))
                          ;; VECTOR-REF
+                         ;; TODO regalloc ok
                          ((eq? special 'vector-ref)
-                          ;; TODO regalloc ok
                           (make-lazy-code
                             (lambda (cgc ctx)
                               (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
@@ -1357,11 +1357,17 @@
                                 (codegen-vector-ref cgc reg lvec lidx)
                                 (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_UNK reg))))))
                          ;; STRING-REF
+                         ;; TODO regalloc ok
                          ((eq? special 'string-ref)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (codegen-string-ref cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_CHAR)))))
+                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                     (reg (car res))
+                                     (ctx (cdr res))
+                                     (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+                                     (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                              (codegen-string-ref cgc reg lstr lidx)
+                              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_CHAR reg))))))
                          ;; VECTOR-SET!
                          ((eq? special 'vector-set!)
                           (make-lazy-code

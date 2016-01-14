@@ -1165,15 +1165,25 @@
 
 ;;-----------------------------------------------------------------------------
 ;; string-ref
-(define (codegen-string-ref cgc)
-  (x86-pop cgc (x86-rax)) ;; Pop index
-  (x86-pop cgc (x86-rbx)) ;; Pop string
-  (x86-shr cgc (x86-rax) (x86-imm-int 2)) ;; Decode position
-  (x86-mov cgc (x86-al) (x86-mem (- 16 TAG_MEMOBJ) (x86-rax) (x86-rbx))) ;; Get Char
+(define (codegen-string-ref cgc reg lstr lidx)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opstr (codegen-loc-to-x86opnd lstr))
+        (opidx (codegen-loc-to-x86opnd lidx)))
+
+  (if (ctx-loc-is-memory? lidx)
+      (begin (x86-mov cgc (x86-rax) opidx)
+             (set! opidx (x86-rax))))
+
+  (if (ctx-loc-is-memory? lstr)
+      (begin (x86-mov cgc dest opstr)
+             (set! opstr dest)))
+
+  (x86-shr cgc opidx (x86-imm-int 2)) ;; Decode position
+  (x86-mov cgc (x86-al) (x86-mem (- 16 TAG_MEMOBJ) opidx opstr)) ;; Get Char
   (x86-and cgc (x86-rax) (x86-imm-int 255)) ;; Clear bits before al
   (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode char
-  (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
-  (x86-push cgc (x86-rax))) ;; Push char
+  (x86-inc cgc (x86-rax))
+  (x86-mov cgc dest (x86-rax))))
 
 ;;-----------------------------------------------------------------------------
 ;; vector-set!
