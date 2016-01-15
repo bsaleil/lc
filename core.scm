@@ -1463,6 +1463,15 @@
          (idx  (ctx-slot-to-lidx ctx slot)))
     (list-ref (ctx-stack ctx) idx)))
 
+;; TODO comment+ move
+;; Ajoute un type en haut de la pile, ne modifie que la pile
+(define (ctx-stack-push ctx type)
+  (make-ctx (cons type (ctx-stack ctx))
+            (ctx-reg-slot ctx)
+            (ctx-slot-loc ctx)
+            (ctx-env ctx)
+            (ctx-nb-args ctx)))
+
 ;; Ajoute une valeur sur le haut de la pile. (ajout le type sur la pile)
 ;; Ce nouveau slot est associé au registre 'reg'
 ;; Sym est un symbole qui représente un id de varable. Si sym est donné, ca veut dire qu'on met sur le haut de la pile
@@ -1472,7 +1481,9 @@
   (make-ctx ;; 1 Ajout du type sur la pile
             (stack-push (ctx-stack ctx) type)
             ;; 2 Maj reg slot
-            (reg-slot-assign (ctx-reg-slot ctx) reg (length (ctx-stack ctx))) ;; TODO use (ctx-lidx-to-slot ctx lidx)
+            (if (ctx-loc-is-register? reg)
+                (reg-slot-assign (ctx-reg-slot ctx) reg (length (ctx-stack ctx))) ;; TODO use (ctx-lidx-to-slot ctx lidx)
+                (ctx-reg-slot ctx))
             ;; 3 Maj slot reg
             (slot-loc-assign (ctx-slot-loc ctx) (length (ctx-stack ctx)) reg)
             ;; 4 Maj env

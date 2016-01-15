@@ -650,7 +650,7 @@
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
-                                                      (let ((ctx (ctx-init-fn sctx ctx params fvars)))
+                                                      (let ((ctx (ctx-init-fn sctx ctx all-params fvars)))
                                                         (if (not (null? mvars))
                                                             (error "NYI mvars in closure mlc-lambda"))
                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
@@ -756,8 +756,10 @@
              (nnbargs (ctx-nb-args ctx))) ;; New nbargs (change if rest-param)
 
         (cond ;; rest AND actual == formal
-              ((and rest-param (= nb-actual nb-formal))
-                 (error "NYI prologue1"))
+              ((and rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
+                 (set! ctx (ctx-stack-push ctx CTX_NULL))
+                 (codegen-prologue-rest= cgc)
+                 (pp ctx))
               ;; rest AND actual > formal
               ((and rest-param (> nb-actual nb-formal))
                  (error "NYI prologue2"))

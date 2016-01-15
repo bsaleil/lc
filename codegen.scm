@@ -353,12 +353,14 @@
 
 ;; Generate specialized function prologue with rest param and actual == formal
 (define (codegen-prologue-rest= cgc)
-  ;; Shift closure
-  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-  (x86-push cgc (x86-rax))
-  ;; Mov '() in rest param slot
   (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-  (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax)))
+  (x86-push cgc (x86-rax)))
+  ;;; Shift closure
+  ;(x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+  ;(x86-push cgc (x86-rax))
+  ;;; Mov '() in rest param slot
+  ;(x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+  ;(x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax)))
 
 ;; Generate specialized function prologue with rest param and actual > formal
 (define (codegen-prologue-rest> cgc restlen)
