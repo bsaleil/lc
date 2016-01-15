@@ -5,14 +5,7 @@
 ;(letrec ((foo 10)
 ;         (bar 100))
 ;  10)
-
-(letrec ((is-even? (lambda (n)
-                       (or (= 0 n)
-                           (is-odd? (- n 1)))))
-           (is-odd? (lambda (n)
-                      (and (not (= 0 n))
-                           (is-even? (- n 1))))))
-  (is-even? 1))
+1
 
 
 ;; TODO: AVANT ALLOC DE REGISTRE:

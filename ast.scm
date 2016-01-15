@@ -1292,11 +1292,17 @@
                                 (codegen-car/cdr cgc special reg lval)
                                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK reg))))))
                          ;; SET-CAR! & SET-CDR!
+                         ;; TODO regalloc ok
                          ((member special '(set-car! set-cdr!))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (codegen-scar/scdr cgc special)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_VOID)))))
+                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                     (reg (car res))
+                                     (ctx (cdr res))
+                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                                     (lpair (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+                               (codegen-scar/scdr cgc special reg lpair lval)
+                               (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_VOID reg))))))
                          ;; CURRENT-INPUT-PORT / CURRENT-OUTPUT-PORT
                          ;; TODO regalloc ok
                          ((member special '(current-input-port current-output-port))

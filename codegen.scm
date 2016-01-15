@@ -846,15 +846,25 @@
 
 ;;-----------------------------------------------------------------------------
 ;; set-car!/set-cdr!
-(define (codegen-scar/scdr cgc op)
+(define (codegen-scar/scdr cgc op reg lpair lval)
   (let ((offset
           (if (eq? op 'set-car!)
               (-  8 TAG_MEMOBJ)
-              (- 16 TAG_MEMOBJ))))
-    (x86-pop cgc (x86-rax)) ;; val
-    (x86-pop cgc (x86-rbx)) ;; pair
-    (x86-mov cgc (x86-mem offset (x86-rbx)) (x86-rax))
-    (x86-push cgc (x86-imm-int ENCODING_VOID))))
+              (- 16 TAG_MEMOBJ)))
+        (dest (codegen-reg-to-x86reg reg))
+        (oppair (codegen-loc-to-x86opnd lpair))
+        (opval  (codegen-loc-to-x86opnd lval)))
+
+    (if (ctx-loc-is-memory? lpair)
+        (begin (x86-mov cgc (x86-rax) oppair)
+               (set! oppair (x86-rax))))
+
+    (if (ctx-loc-is-memory? lval)
+        (begin (x86-mov cgc dest opval)
+               (set! opval dest)))
+
+    (x86-mov cgc (x86-mem offset oppair) opval)
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
 
 ;;-----------------------------------------------------------------------------
 ;; current-input/output-port
