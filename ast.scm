@@ -451,24 +451,31 @@
          (lazy-set!
            (make-lazy-code
              (lambda (cgc ctx)
-               ;; Loc de la variable: l1
-               ;; Loc de la valeur: l2
 
-               ;; Déplacer l2 dans l1 puis pop
-               (let ((id (assoc id (ctx-env ctx))))
+               (let ((rid (assoc id (ctx-env ctx))))
 
-                 (if (not id)
-                     (error "NYI set! global")
-                     (let* ((identifier (cdr id))
-                            (res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                 (if rid
+                     ;; Local
+                     (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
                             (reg (car res))
                             (ctx (cdr res))
+                            (identifier (cdr rid))
                             (lvar (identifier-loc identifier))
                             (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
 
                        (codegen-set-not-global cgc reg lvar lval)
+                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg)))
+                     ;; Global
+                     (let ((rid (assoc id globals)))
+                       (if rid
+                           (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                  (reg (car res))
+                                  (ctx (cdr res))
+                                  (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                             (codegen-set-global cgc reg lval (cdr rid))
+                             (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg)))
+                           (gen-error cgc (ERR_UNKNOWN_VAR id))))))))))
 
-                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg)))))))))
     (gen-ast (caddr ast) lazy-set!)))
 
 ;;

@@ -24,14 +24,7 @@
 ;;;NW: (oth 1 2 3 4)
 ;;;NW: (baz 1 2 3 4 5 6)
 
-
-(define (foo a b . c)
-  (pp a)
-  (pp b)
-  (pp c))
-
-(foo 1 2 3 4)
-
+10
 
 ;; TODO: AVANT ALLOC DE REGISTRE:
 ;;  - Vérifier si --max-versions 3 et --max-versions 0 ne dépassent pas le nb de versions

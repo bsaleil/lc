@@ -133,9 +133,14 @@
 ;;-----------------------------------------------------------------------------
 ;; set
 
-(define (codegen-set-global cgc pos)
-  (x86-pop cgc (x86-rax))
-  (x86-mov cgc (x86-mem (* 8 pos) global-ptr) (x86-rax)))
+(define (codegen-set-global cgc reg lval pos)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opval (codegen-loc-to-x86opnd lval)))
+    (if (ctx-loc-is-memory? lval)
+        (begin (x86-mov cgc (x86-rax) opval)
+               (set! opval (x86-rax))))
+    (x86-mov cgc (x86-mem (* 8 pos) global-ptr) opval)
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
 
 ;; mutable object (local or free) already is in rax
 (define (codegen-set-not-global cgc reg lvar lval)
