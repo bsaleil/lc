@@ -365,44 +365,74 @@
 ;; Generate specialized function prologue with rest param and actual > formal
 (define (codegen-prologue-rest> cgc restlen)
 
-  ;; Create a pair with
-  ;; car: [rsp+sp_offset]
-  ;; cdr: top of stack
-  ;; Then, push this pair and create next until pos == 0
-  (define (gen-rest-lst cgc pos nb sp-offset)
-    (if (= pos 0)
-        ;; All pairs created, then change stack layout
-        (begin ;; Mov rest list to stack
-               (x86-pop cgc (x86-rax))
-               (x86-mov cgc (x86-mem (* nb 8) (x86-rsp)) (x86-rax))
-               ;; Update closure position
-               (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-               (x86-mov cgc (x86-mem (- (* 8 nb) 8) (x86-rsp)) (x86-rax))
-               ;; Update rsp
-               (x86-add cgc (x86-rsp) (x86-imm-int (- (* 8 nb) 8))))
-        ;; Create a pair and continue
-        (begin ;; Alloc pair
-               (gen-allocation cgc #f STAG_PAIR 3)
-               (let ((header (mem-header 3 STAG_PAIR)))
-                 ;; Write header in pair
-                 (x86-mov cgc (x86-rax) (x86-imm-int header))
-                 (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-                 ;; Get car from stack (arg slot) and write in pair
-                 (x86-mov cgc (x86-rax) (x86-mem sp-offset (x86-rsp)))
-                 (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-                 ;; Get cdr from stack (top of stack) and write in pair
-                 (x86-pop cgc (x86-rax))
-                 (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))
-                 ;; Tag & push
-                 (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-                 (x86-push cgc (x86-rax)))
-               ;; Create next pair
-               (gen-rest-lst cgc (- pos 1) nb (+ sp-offset 8)))))
+  (define (gen-rest-lst cgc pos)
+    (if (= pos restlen)
+        (begin
+            (x86-mov cgc (x86-mem (* (+ (- restlen 1) 2) 8) (x86-rsp)) (x86-rbx))
+            (x86-pop cgc (x86-rcx))
+            (x86-pop cgc (x86-rbx))
+            (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- restlen 1)))))
+        (let ((header (mem-header 3 STAG_PAIR))
+              (offset (* 8 (+ pos 2)))) ;; +2 because we saved rbx and rcx
+          ;; cdr is in rbx
+          ;; Alloc pair
+          ;(gen-allocation cgc #f STAG_PAIR 3)
+          (x86-sub cgc (x86-r9) (x86-imm-int 24))
+          ;; Write header
+          (x86-mov cgc (x86-rax) (x86-imm-int header))
+          (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
+          ;; Write car
+          (x86-mov cgc (x86-rcx) (x86-mem offset (x86-rsp))) ;; car in rcx
+          (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rcx))
+          ;; Write cdr
+          (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
+          ;; Next cdr is this new pairs
+          (x86-lea cgc (x86-rbx) (x86-mem TAG_MEMOBJ alloc-ptr))
+          (gen-rest-lst cgc (+ pos 1)))))
 
-  ;; Build rest argument
-  (x86-push cgc (x86-imm-int (obj-encoding '())))
-  ;; Gen code to create rest list from stack
-  (gen-rest-lst cgc restlen restlen 16)) ;; 16 TODO
+  (x86-push cgc (x86-rbx))
+  (x86-push cgc (x86-rcx))
+  (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding '())))
+  (gen-rest-lst cgc 0))
+
+  ;;; Create a pair with
+  ;;; car: [rsp+sp_offset]
+  ;;; cdr: top of stack
+  ;;; Then, push this pair and create next until pos == 0
+  ;(define (gen-rest-lst cgc pos nb sp-offset)
+  ;  (if (= pos 0)
+  ;      ;; All pairs created, then change stack layout
+  ;      (begin ;; Mov rest list to stack
+  ;             (x86-pop cgc (x86-rax))
+  ;             (x86-mov cgc (x86-mem (* nb 8) (x86-rsp)) (x86-rax))
+  ;             ;; Update closure position
+  ;             (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+  ;             (x86-mov cgc (x86-mem (- (* 8 nb) 8) (x86-rsp)) (x86-rax))
+  ;             ;; Update rsp
+  ;             (x86-add cgc (x86-rsp) (x86-imm-int (- (* 8 nb) 8))))
+  ;      ;; Create a pair and continue
+  ;      (begin ;; Alloc pair
+  ;             (gen-allocation cgc #f STAG_PAIR 3)
+  ;             (let ((header (mem-header 3 STAG_PAIR)))
+  ;               ;; Write header in pair
+  ;               (x86-mov cgc (x86-rax) (x86-imm-int header))
+  ;               (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+  ;               ;; Get car from stack (arg slot) and write in pair
+  ;               (x86-mov cgc (x86-rax) (x86-mem sp-offset (x86-rsp)))
+  ;               (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+  ;               ;; Get cdr from stack (top of stack) and write in pair
+  ;               (x86-pop cgc (x86-rax))
+  ;               (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))
+  ;               ;; Tag & push
+  ;               (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+  ;               (x86-push cgc (x86-rax)))
+  ;             ;; Create next pair
+  ;             (gen-rest-lst cgc (- pos 1) nb (+ sp-offset 8)))))
+  ;
+  ;;; Build rest argument
+  ;(x86-push cgc (x86-imm-int (obj-encoding '())))
+  ;;; Gen code to create rest list from stack
+  ;(gen-rest-lst cgc restlen restlen 16)) ;; 16 TODO
 
 ;; Generate generic function prologue
 (define (codegen-prologue-gen cgc rest? nb-formal err-label)

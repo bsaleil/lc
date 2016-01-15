@@ -1,37 +1,36 @@
+;(define (foo)
+;  (println "PREMIER"))
 ;
-;(let ((a 10) (b 20))
-;  (+ a b))
+;(define (bar a b)
+;  (println "SECOND 10 20")
+;  (pp a)
+;  (pp b))
+;
+;(define (baz a u . c)
+;  (println "TROISIEME 100 200 ()")
+;  (pp a) (pp u) (pp c))
+;
+;(define oth (lambda n (println "QUATRIEME ()") (pp n)))
+;
+;;; (a u . c) 1 2 3 4 5 6
+;;; (lambda n (...)
+;
+;(foo)
+;(bar 10 20)
+;(baz 100 200)
+;(oth)
+;
+;;;NW: (oth 2)
+;;;NW: (oth 1 2 3 4)
+;;;NW: (baz 1 2 3 4 5 6)
 
-;(letrec ((foo 10)
-;         (bar 100))
-;  10)
 
-(define (foo)
-  (println "PREMIER"))
-
-(define (bar a b)
-  (println "SECOND 10 20")
+(define (foo a b . c)
   (pp a)
-  (pp b))
+  (pp b)
+  (pp c))
 
-(define (baz a u . c)
-  (println "TROISIEME 100 200 ()")
-  (pp a) (pp u) (pp c))
-
-(define oth (lambda n (println "QUATRIEME ()") (pp n)))
-
-;; (a u . c) 1 2 3 4 5 6
-;; (lambda n (...)
-
-(foo)
-(bar 10 20)
-(baz 100 200)
-(oth)
-
-;;NW: (oth 2)
-;;NW: (oth 1 2 3 4)
-;;NW: (baz 1 2 3 4 5 6)
-
+(foo 1 2 3 4)
 
 
 ;; TODO: AVANT ALLOC DE REGISTRE:

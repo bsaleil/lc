@@ -1432,7 +1432,7 @@
          ctx
          id-idx))
 
-;; TODO
+;; TODO lidx
 (define (ctx-change-type ctx stack-idx type)
   (pp "NYI ctx-change-type") ;; TODO regalloc: changes only stack type for now
   (let* ((stack (ctx-stack ctx))
