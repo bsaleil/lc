@@ -1,30 +1,11 @@
-;(define (foo)
-;  (println "PREMIER"))
-;
-;(define (bar a b)
-;  (println "SECOND 10 20")
-;  (pp a)
-;  (pp b))
-;
-;(define (baz a u . c)
-;  (println "TROISIEME 100 200 ()")
-;  (pp a) (pp u) (pp c))
-;
-;(define oth (lambda n (println "QUATRIEME ()") (pp n)))
-;
-;;; (a u . c) 1 2 3 4 5 6
-;;; (lambda n (...)
-;
-;(foo)
-;(bar 10 20)
-;(baz 100 200)
-;(oth)
-;
-;;;NW: (oth 2)
-;;;NW: (oth 1 2 3 4)
-;;;NW: (baz 1 2 3 4 5 6)
 
-10
+
+(let ((v (make-vector 10)))
+
+  (pp v)
+  (vector-set! v 0 1)
+  (vector-set! v 3 100)
+  (pp v))
 
 ;; TODO: AVANT ALLOC DE REGISTRE:
 ;;  - Vérifier si --max-versions 3 et --max-versions 0 ne dépassent pas le nb de versions

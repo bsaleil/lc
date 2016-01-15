@@ -1234,15 +1234,43 @@
 
 ;;-----------------------------------------------------------------------------
 ;; vector-set!
-(define (codegen-vector-set! cgc)
-  (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))  ;; Get index
-  (x86-mov cgc (x86-rbx) (x86-mem 16 (x86-rsp))) ;; Get vector
-  (x86-mov cgc (x86-rdx) (x86-mem 0 (x86-rsp)))  ;; Get new value
-  (x86-shl cgc (x86-rax) (x86-imm-int 1))
-  (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx) (x86-rax)) (x86-rdx))
-  (x86-add cgc (x86-rsp) (x86-imm-int 24))
-  (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
-  (x86-push cgc (x86-rax)))
+(define (codegen-vector-set! cgc reg lvec lidx lval)
+  (let ((dest (codegen-reg-to-x86reg reg))
+        (opvec (codegen-loc-to-x86opnd lvec))
+        (opidx (codegen-loc-to-x86opnd lidx))
+        (opval (codegen-loc-to-x86opnd lval))
+        (regsaved #f))
+
+  (if (ctx-loc-is-memory? lvec)
+      (begin (x86-mov cgc (x86-rax) opvec)
+             (set! opvec (x86-rax))))
+
+  (if (ctx-loc-is-memory? lidx)
+      (begin (x86-mov cgc dest opidx)
+             (set! opidx dest)))
+
+  (if (ctx-loc-is-memory? lval)
+      (if (and (eq? opvec (x86-rax))
+               (eq? opidx dest))
+          ;; both tmp regs are already used
+          (let ((reg (if (eq? dest (x86-rbx)) (x86-rcx) (x86-rbx))))
+            (x86-push cgc reg)
+            (x86-mov cgc reg opval)
+            (set! opval reg)
+            (set! regsaved reg))
+          ;; At least one is free, use it
+          (if (eq? opvec (x86-rax))
+              (begin (x86-mov cgc dest opval)
+                     (set! opval dest))
+              (begin (x86-mov cgc (x86-rax) opval)
+                     (set! opval (x86-rax))))))
+
+  (x86-shl cgc opidx (x86-imm-int 1))
+  (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) opvec opidx) opval)
+  (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+
+  (if regsaved
+      (x86-pop cgc reg))))
 
 ;;-----------------------------------------------------------------------------
 ;; string-set!

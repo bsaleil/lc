@@ -1455,11 +1455,18 @@
                               (codegen-string-ref cgc reg lstr lidx)
                               (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_CHAR reg))))))
                          ;; VECTOR-SET!
+                         ;; TODO regalloc ok
                          ((eq? special 'vector-set!)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (codegen-vector-set! cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 3) CTX_VOID)))))
+                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                     (reg (car res))
+                                     (ctx (cdr res))
+                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                                     (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+                                     (lvec (ctx-get-loc ctx (ctx-lidx-to-slot ctx 2))))
+                                (codegen-vector-set! cgc reg lvec lidx lval)
+                                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) CTX_VOID reg))))))
                          ;; STRING-SET!
                          ((eq? special 'string-set!)
                           (make-lazy-code
