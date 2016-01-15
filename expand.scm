@@ -142,7 +142,6 @@
 
   ;; NAMED LET
   (define (expand-letn expr)
-    (error "NYI letrec")
     (let ((id (cadr expr))
           (bindings (caddr expr))
           (body (cdddr expr)))
@@ -150,7 +149,7 @@
 
   (if (symbol? (cadr expr))
       ;; Named let
-      (begin  (pp (expand-letn expr)) (error "J"))
+      (expand-letn expr)
       ;; let
       `(let ,(expand (cadr expr))
          ,(expand (cons 'begin (cddr expr))))))

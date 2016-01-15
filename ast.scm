@@ -774,31 +774,6 @@
               (else #f))
 
         (jump-to-version cgc succ ctx)))))
-        ;(let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
-        ;      ;       (mctx (gen-mutable cgc nctx mvars)))
-        ;      ;  (jump-to-version cgc succ mctx))))))
-
-        ;(cond ;; rest AND actual == formal
-        ;      ((and rest-param (= nb-actual nb-formal))
-        ;        (codegen-prologue-rest= cgc)
-        ;        ;; Update ctx information
-        ;        (set! nstack (cons CTX_CLO (cons CTX_NULL (cdr (ctx-stack ctx)))))
-        ;        (set! nnbargs (+ (ctx-nb-args ctx) 1)))
-        ;      ;; rest AND actual > formal
-        ;      ((and rest-param (> nb-actual nb-formal))
-        ;        (codegen-prologue-rest> cgc (- nb-actual nb-formal))
-        ;        ;; Update ctx information
-        ;        (set! nstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) nb-formal 1)))))
-        ;        (set! nnbargs (+ (ctx-nb-args ctx) 1)))
-        ;      ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
-        ;      ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
-        ;        (gen-error cgc ERR_WRONG_NUM_ARGS))
-        ;      ;; !rest AND actual == formal
-        ;      (else #f)) ;; Nothing to do
-        ;
-        ;(let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
-        ;       (mctx (gen-mutable cgc nctx mvars)))
-        ;  (jump-to-version cgc succ mctx))))))
 
 ;; Create a new cc table with 'init' as stub value
 (define (make-cc len init generic)
