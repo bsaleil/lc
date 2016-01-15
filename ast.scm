@@ -262,11 +262,11 @@
 ;;
 ;; Make lazy code from SYMBOL
 ;;
+;; TODO: réécrire: attention la recherche d'id met à jour le ctx
 (define (mlc-identifier ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (pp "NYI mlc-identifier read mutable var")
-
+      (pp ast) (pp ctx)
       (let ((local  (assoc ast (ctx-env ctx)))
             (global (assoc ast globals)))
         ;;
@@ -275,7 +275,10 @@
                  (let ((rloc (identifier-rloc (cdr local)))
                        (mutable? (member 'mutable (identifier-flags (cdr local)))))
                    (if rloc
-                       (jump-to-version cgc succ (ctx-push ctx type rloc))
+                       (begin
+                         (if mutable?
+                             (error "NYI mlc-identifier mutable"))
+                         (jump-to-version cgc succ (ctx-push ctx type rloc)))
                        (let* (;; Get dest
                               (res (ctx-get-free-reg ctx))
                               (reg (car res))
@@ -293,59 +296,24 @@
                                                    (symbol->string (identifier-floc (cdr local))))))))
                               (fvar-offset (+ 16 (* 8 (- fvar-pos 1)))) ;; 16:header,entrypoint -1: pos starts from 1 and not 0
                               (fvar-type (identifier-stype (cdr local))))
-                        (if mutable?
-                            (error "NYI mlc-identifier get free mutable var"))
-                        ;; GEN CODE
+
                         (if (ctx-loc-is-memory? closure-loc)
                             (begin (x86-mov cgc (x86-rax) closure-opnd)
                                    (set! closure-opnd (x86-rax))))
 
                         (x86-mov cgc dest (x86-mem (- fvar-offset TAG_MEMOBJ) closure-opnd))
-                        (jump-to-version cgc succ (ctx-push ctx fvar-type reg)))))) ;; TODO type
+
+                        (if mutable?
+                            (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) dest)))
+
+                        (jump-to-version cgc succ (ctx-push ctx fvar-type reg))))))
               ;; Identifier is a local variable
               (local
-                (let ((rloc (identifier-rloc (cdr local)))
-                      (mutable? (member 'mutable (identifier-flags (cdr local)))))
-                  (if rloc
-                      ;;
-                      (let ((type (ctx-get-type-from-loc ctx rloc)))
-                        (if mutable?
-                            (let* ((res (ctx-get-free-reg ctx))
-                                   (reg (car res))
-                                   (ctx (cdr res))
-                                   (opnd (codegen-loc-to-x86opnd reg))
-                                   (opvar (codegen-reg-to-x86reg rloc)))
-                              (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opvar))
-                              (jump-to-version cgc succ (ctx-push ctx type reg)))
-                           (jump-to-version cgc succ (ctx-push ctx type rloc))))
-                      ;;
-                      (let* ((mloc (identifier-mloc (cdr local)))
-                             (type (ctx-get-type-from-loc ctx mloc))
-                             (res (ctx-get-free-reg ctx))
-                             (reg (car res))
-                             (ctx (cdr res))
-                             (opr (codegen-reg-to-x86reg reg))
-                             (opm (codegen-loc-to-x86opnd mloc)))
-                        (x86-mov cgc opr opm)
-                        (if mutable?
-                            (x86-mov cgc opr (x86-mem (- 8 TAG_MEMOBJ) opr)))
-                        ;; TODO regalloc, add symbol to ctx-push
-                        (jump-to-version cgc succ (ctx-push ctx type reg))))))
+                (gen-get-localvar cgc ctx local succ))
               ;; Identifier is a global variable
               (global
-                (let* (;; Get variable type if known
-                       (r (assoc (car global) gids))
-                       (type (if (and r (cdr r))
-                                 (cdr r)
-                                 CTX_UNK))
-                       ;; Get free register (dest)
-                       (res (ctx-get-free-reg ctx))
-                       (reg (car res))
-                       (ctx (cdr res)))
-                  ;; Generate code to get global var from memory
-                  (codegen-get-global cgc (cdr global) reg)
-                  ;; Jump with updated ctx
-                  (jump-to-version cgc succ (ctx-push ctx type reg))))
+                (gen-get-globalvar cgc ctx global succ))
+              ;; TODO
               ((assoc ast primitives) =>
                  (lambda (r)
                    (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
@@ -354,6 +322,56 @@
                        (gen-ast `(lambda ,args (,ast ,@args)) succ)
                        ctx))))
               (else (gen-error cgc (ERR_UNKNOWN_VAR ast))))))))
+
+(define (gen-get-localvar cgc ctx local succ)
+
+  (let ((rloc (identifier-rloc (cdr local)))
+        (mutable? (member 'mutable (identifier-flags (cdr local)))))
+
+    (cond ;; rloc and not mutable
+          ((and rloc (not mutable?))
+            (let ((type (ctx-get-type-from-loc ctx rloc)))
+              (jump-to-version cgc succ (ctx-push ctx type rloc))))
+          ;; rloc and mutable
+          (rloc
+            (let* ((res (ctx-get-free-reg ctx (list rloc)))
+                   (reg (car res))
+                   (ctx (cdr res))
+                   (opnd (codegen-loc-to-x86opnd reg))
+                   (opvar (codegen-reg-to-x86reg rloc))
+                   (type (ctx-get-type-from-loc ctx rloc)))
+              (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opvar))
+              (jump-to-version cgc succ (ctx-push ctx type reg))))
+          ;; not rloc and mutable or not
+          (else
+            (let* ((mloc (identifier-mloc (cdr local)))
+                   (type (ctx-get-type-from-loc ctx mloc))
+                   (res (ctx-get-free-reg ctx))
+                   (reg (car res))
+                   (ctx (cdr res))
+                   (opr (codegen-reg-to-x86reg reg))
+                   (opm (codegen-loc-to-x86opnd mloc)))
+              (x86-mov cgc opr opm)
+              (if mutable?
+                  (x86-mov cgc opr (x86-mem (- 8 TAG_MEMOBJ) opr)))
+              ;; TODO regalloc, add symbol to ctx-push
+              (pp "NYI mlc-identifier add symbol to ctx-push")
+              (jump-to-version cgc succ (ctx-push ctx type reg)))))))
+
+(define (gen-get-globalvar cgc ctx global succ)
+  (let* (;; Get variable type if known
+         (r (assoc (car global) gids))
+         (type (if (and r (cdr r))
+                   (cdr r)
+                   CTX_UNK))
+         ;; Get free register (dest)
+         (res (ctx-get-free-reg ctx))
+         (reg (car res))
+         (ctx (cdr res)))
+    ;; Generate code to get global var from memory
+    (codegen-get-global cgc (cdr global) reg)
+    ;; Jump with updated ctx
+    (jump-to-version cgc succ (ctx-push ctx type reg))))
 
 ;(define (mlc-identifier ast succ)
 ;
@@ -633,6 +651,8 @@
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
                                                       (let ((ctx (ctx-init-fn sctx ctx params fvars)))
+                                                        (if (not (null? mvars))
+                                                            (error "NYI mvars in closure mlc-lambda"))
                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
 
                                                       ; ;; Then, generate a specified version and patch cc-table in closure
@@ -1014,83 +1034,155 @@
   (define (alloc cgc ids ctx)
     (if (null? ids)
         ctx
-        (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+        (let* ((res (ctx-get-free-reg ctx))
                (reg (car res))
                (ctx (cdr res)))
-          (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int ENCODING_VOID))
-          (alloc
-            cgc
-            (cdr ids)
-            (ctx-push ctx CTX_VOID reg)))))
+
+          (let ((header-word (mem-header 2 STAG_MOBJECT))
+                (dest (codegen-reg-to-x86reg reg)))
+            ;; Alloc code
+            (gen-allocation cgc #f STAG_MOBJECT 2)
+            ;; Write variable
+            (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
+            (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+            ;; Write header
+            (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+            (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+            ;; Replace local
+            (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))
+            (alloc cgc (cdr ids) (ctx-push ctx CTX_UNK reg))))))
 
   (let* ((ids (map car (cadr ast)))
          (body (cddr ast))
          (lazy-out
-             ;; TODO
-             (let ((make-lc (if (member 'ret (lazy-code-flags succ))
-                            make-lazy-code-ret
-                            make-lazy-code)))
-               (make-lc
-                 (lambda (cgc ctx)
-                   (let* ((ctx (ctx-unbind ctx ids)) ;; update env
-                          (ctx (ctx-move-lidx ctx 0 (length ids))) ;; mov result slot
-                          (ctx (ctx-pop-n ctx (length ids)))) ;; pop from virtual stack
-                     (jump-to-version cgc succ ctx))))))
-         (lazy-body
-           (gen-ast (cons 'begin body) lazy-out))
+           (let ((make-lc (if (member 'ret (lazy-code-flags succ))
+                          make-lazy-code-ret
+                          make-lazy-code)))
+             (make-lc
+               (lambda (cgc ctx)
+                 (let* ((ctx (ctx-unbind ctx ids)) ;; update env
+                        (ctx (ctx-move-lidx ctx 0 (length ids))) ;; mov result slot
+                        (ctx (ctx-pop-n ctx (length ids)))) ;; pop from virtual stack
+                   (jump-to-version cgc succ ctx))))))
          (lazy-set
            (make-lazy-code
              (lambda (cgc ctx)
-               (x86-push cgc (x86-rax))
-               (x86-pop cgc (x86-rax))
-               ;; TODO regalloc comment this
-               ;; for i=0, i<nbBindings, i++
-               ;;   ;; rax = valeur de virtual-stack[i+nbBindings]
-               ;;   ;; op = operand(virtual-stack[i])
-               ;;   ;; mov [op+7], rax (reg intermediaire si en mémoire)
                (let loop ((i 0)
-                          (ctx ctx)
-                          (ids (reverse ids)))
-                    (if (= i (length (map car (cadr ast)))) ;; TODO: use ids, but not the one in loop
-                        (jump-to-version cgc
-                                         lazy-body
-                                         (ctx-pop-n ctx (length (map car (cadr ast))))) ;; TODO meme que partout
-                        (let* ((lfrom  (ctx-get-loc ctx (ctx-lidx-to-slot ctx i)))
-                               (lto    (ctx-get-loc ctx (ctx-lidx-to-slot ctx (+ i (length (map car (cadr ast))))))) ;; TODO: meme que dessous
-                               (ctx    (ctx-move-lidx ctx i (+ i (length (map car (cadr ast)))))) ;; TODO: use ids, but not the one in loop
-                               (ctx    (ctx-set-id-slot ctx (car ids) (ctx-lidx-to-slot ctx (+ i (length (map car (cadr ast))))))) ;; TODO: use ids, but not the one in loop
-                               (opfrom (codegen-loc-to-x86opnd lfrom))
-                               (opto   (codegen-loc-to-x86opnd lto)))
-                          ;; If mobject is in memory, move to rax
-                          (cond ((and (ctx-loc-is-memory? lfrom)
-                                      (ctx-loc-is-memory? lto))
-                                   (error "NYI mlc-letrec"))
-                                ((ctx-loc-is-memory? lfrom)
-                                   (x86-mov cgc (x86-rax) opfrom)
-                                   (set! opfrom (x86-rax)))
-                                ((ctx-loc-is-memory? lto)
-                                   (x86-mov cgc (x86-rax) opto)
-                                   (set! opto (x86-rax))))
+                          (ctx ctx))
+                 (if (= i (length ids))
+                     (jump-to-version cgc (gen-ast-l body lazy-out) ctx)
+                     (let ((lfrom (ctx-get-loc ctx (ctx-lidx-to-slot ctx i)))
+                           (lto   (ctx-get-loc ctx (ctx-lidx-to-slot ctx (+ i (length ids)))))
+                           (ctx   (ctx-move-type ctx i (+ i (length ids)))))
+                       (let ((opfrom (codegen-loc-to-x86opnd lfrom))
+                             (opto   (codegen-loc-to-x86opnd lto)))
+                         (cond ((and (ctx-loc-is-memory? lfrom)
+                                     (ctx-loc-is-memory? lto))
+                                  (error "NYI letrec"))
+                               ((ctx-loc-is-memory? lfrom)
+                                  (x86-mov cgc (x86-rax) opfrom)
+                                  (set! opfrom (x86-rax)))
+                               ((ctx-loc-is-memory? lto)
+                                  (x86-mov cgc (x86-rax) opto)
+                                  (set! opto (x86-rax))))
 
-                          (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opto) opfrom)
-                          (loop (+ i 1)
-                                ctx
-                                (cdr ids))))))))
+                         (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opto) opfrom)
+                         (loop (+ i 1) ctx))))))))
          (lazy-pre
            (make-lazy-code
              (lambda (cgc ctx)
-               (let* ((ctx (alloc cgc ids ctx)) ;; Init ids slots with VOID
-                      (bind-list (map (lambda (l) (cons (list-ref ids l) l))
-                                      (build-list (length ids) (lambda (l) l))))
-                      (ctx (ctx-bind ctx bind-list '()))) ;; Bind identifiers to virtual stack slots ;; TODO: mutable vars
-                 (gen-mutable cgc ctx ids)
-                 (pp "PRE ")
-                 (pp ctx)
+               (let* ((ctx (alloc cgc ids ctx))
+                      (rids (reverse ids))
+                      (bind-lst (build-list (length ids) (lambda (n) (cons (list-ref rids n) n)))))
                  (jump-to-version
                    cgc
                    (gen-ast-l (map cadr (cadr ast)) lazy-set)
-                   ctx))))))
+                   (ctx-bind ctx bind-lst ids)))))))
     lazy-pre))
+
+  ;(define (alloc cgc ids ctx)
+  ;  (if (null? ids)
+  ;      ctx
+  ;      (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+  ;             (reg (car res))
+  ;             (ctx (cdr res)))
+  ;        (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int ENCODING_VOID))
+  ;        (alloc
+  ;          cgc
+  ;          (cdr ids)
+  ;          (ctx-push ctx CTX_UNK reg))))) ;; TODO: unknown, because ids are mutable
+  ;
+  ;(let* ((ids (map car (cadr ast)))
+  ;       (body (cddr ast))
+  ;       (lazy-out
+  ;           ;; TODO
+  ;           (let ((make-lc (if (member 'ret (lazy-code-flags succ))
+  ;                          make-lazy-code-ret
+  ;                          make-lazy-code)))
+  ;             (make-lc
+  ;               (lambda (cgc ctx)
+  ;                 (let* ((ctx (ctx-unbind ctx ids)) ;; update env
+  ;                        (ctx (ctx-move-lidx ctx 0 (length ids))) ;; mov result slot
+  ;                        (ctx (ctx-pop-n ctx (length ids)))) ;; pop from virtual stack
+  ;                   (jump-to-version cgc succ ctx))))))
+  ;       (lazy-body
+  ;         (gen-ast (cons 'begin body) lazy-out))
+  ;       (lazy-set
+  ;         (make-lazy-code
+  ;           (lambda (cgc ctx)
+  ;             (pp "AVANT SET")
+  ;             (pp ctx)
+  ;             ;; TODO regalloc comment this
+  ;             ;; for i=0, i<nbBindings, i++
+  ;             ;;   ;; rax = valeur de virtual-stack[i+nbBindings]
+  ;             ;;   ;; op = operand(virtual-stack[i])
+  ;             ;;   ;; mov [op+7], rax (reg intermediaire si en mémoire)
+  ;             (let loop ((i 0)
+  ;                        (ctx ctx)
+  ;                        (ids (reverse ids)))
+  ;                  (if (= i (length (map car (cadr ast)))) ;; TODO: use ids, but not the one in loop
+  ;                      (begin (pp "APRES SET") (pp ctx)
+  ;                      (jump-to-version cgc
+  ;                                       lazy-body
+  ;                                       (ctx-pop-n ctx (length (map car (cadr ast)))))) ;; TODO meme que partout
+  ;                      (let* ((lfrom  (ctx-get-loc ctx (ctx-lidx-to-slot ctx i)))
+  ;                             (lto    (ctx-get-loc ctx (ctx-lidx-to-slot ctx (+ i (length (map car (cadr ast))))))) ;; TODO: meme que dessous
+  ;                             (ctx    (ctx-move-lidx ctx i (+ i (length (map car (cadr ast)))))) ;; TODO: use ids, but not the one in loop
+  ;                             (AA (begin (pp "APRES MOVE") (pp ctx)))
+  ;                             (ctx    (ctx-set-id-slot ctx (car ids) (ctx-lidx-to-slot ctx (+ i (length (map car (cadr ast))))))) ;; TODO: use ids, but not the one in loop
+  ;                             (BB (begin (pp "APRES SET SLOT") (pp ctx)))
+  ;                             (opfrom (codegen-loc-to-x86opnd lfrom))
+  ;                             (opto   (codegen-loc-to-x86opnd lto)))
+  ;
+  ;                        ;; If mobject is in memory, move to rax
+  ;                        (cond ((and (ctx-loc-is-memory? lfrom)
+  ;                                    (ctx-loc-is-memory? lto))
+  ;                                 (error "NYI mlc-letrec"))
+  ;                              ((ctx-loc-is-memory? lfrom)
+  ;                                 (x86-mov cgc (x86-rax) opfrom)
+  ;                                 (set! opfrom (x86-rax)))
+  ;                              ((ctx-loc-is-memory? lto)
+  ;                                 (x86-mov cgc (x86-rax) opto)
+  ;                                 (set! opto (x86-rax))))
+  ;
+  ;                        (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opto) opfrom)
+  ;                        (loop (+ i 1)
+  ;                              ctx
+  ;                              (cdr ids))))))))
+  ;       (lazy-pre
+  ;         (make-lazy-code
+  ;           (lambda (cgc ctx)
+  ;             (let* ((ctx (alloc cgc ids ctx)) ;; Init ids slots with VOID
+  ;                    (bind-list (map (lambda (l) (cons (list-ref ids l) l))
+  ;                                    (build-list (length ids) (lambda (l) l))))
+  ;                    (ctx (ctx-bind ctx bind-list ids))) ;; Bind identifiers to virtual stack slots ;; TODO: mutable vars
+  ;               (pp "AVANT LA LECTURE DE LA VARIABLE (OK)")
+  ;               (pp ctx)
+  ;               (jump-to-version
+  ;                 cgc
+  ;                 (gen-ast-l (map cadr (cadr ast)) lazy-set)
+  ;                 ctx))))))
+  ;  lazy-pre))
 
 ;; TODO: remove build-env
 

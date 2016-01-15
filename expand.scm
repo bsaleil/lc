@@ -161,7 +161,7 @@
         (body (cddr expr)))
     `(letrec ,(map (lambda (n) (cons (car n) (expand (cdr n))))
                        bindings)
-       ,@body)))
+       ,(expand (cons 'begin body)))))
 
 ;; DO-h
 (define (do-steps ids)

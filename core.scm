@@ -1215,7 +1215,7 @@
           (cons (cons (car free-vars)
                       (make-identifier 'free
                                        (string->symbol (string-append "f" (number->string i)))
-                                       '(TODOflags)
+                                       (identifier-flags ident)
                                        type))
                 (init-free (cdr free-vars) enclosing-env (+ i 1))))))
 
@@ -1334,6 +1334,16 @@
 
   (make-ctx stack reg-slot slot-loc env nb-args)))
 
+;;
+(define (ctx-move-type ctx lfrom lto)
+  (make-ctx
+    (let ((old (ctx-stack ctx)))
+      (append (list-head old lto) (cons (list-ref old lfrom) (list-tail old (+ lto 1)))))
+    (ctx-reg-slot ctx)
+    (ctx-slot-loc ctx)
+    (ctx-env ctx)
+    (ctx-nb-args ctx)))
+
 ;; TODO comment + mov!
 ;; Modifie l'objet identifier associé à 'id' dans l'environnement:
 ;; l'identifier contient, dans locs, l'ensemble des locs qui sont associées au slot 'slot'
@@ -1410,7 +1420,7 @@
                                         (if (member (car id-idx) mvars)
                                             '(mutable)
                                             '())
-                                        'TODOstype)))
+                                        #f)))
       (make-ctx (ctx-stack ctx)
                 (ctx-reg-slot ctx)
                 (ctx-slot-loc ctx)
@@ -1529,7 +1539,7 @@
 ;;   * On regarde les n (**) éléments sur la pile virtuelle. Si un est associé à un registre, on peut le retourner car c'est une opérande de l'opération en cours donc il peut etre la destination
 ;;   * Sinon, on libère un registre selon une certaine stratégie donnée (peu importe laquelle)
 ;;     puis on le retourne
-(define (ctx-get-free-reg ctx)
+(define (ctx-get-free-reg ctx #!optional (fixed-regs '())) ;; TODO : ne pas spiller les registres donnés dans fixed-regs
   (define (get-free reg-slot)
     (if (null? reg-slot)
         (error "NYIctx regalloc")
@@ -2116,7 +2126,6 @@
               (ctx-success-known ctx);; If know type is tested type, do not change ctx
               (ctx-fail ctx)
               (known-type (list-ref (ctx-stack ctx) stack-idx)))
-
          (cond ;; known == expected
                ((or (eq? known-type type)
                     (and (pair? known-type) (eq? (car known-type) type)))
