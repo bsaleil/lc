@@ -1,10 +1,23 @@
-;(let ((a 7) (b 3)) (println (= a b)))
-;(let ((a 5) (b 5)) (println (= a b)))
+;; etape2:
+;;string-set
+;;reverse
+;;make-string
 
-(let ((a 1) (b 2) (c 3) (d 4) (e 5) (f 6) (g 7))
-  (pp (+ a f)))
+;(let ((str (make-string 10 #\C)))
+;  (pp (string-ref str 0))
+;  (pp (string-ref str 1))
+;  (pp (string-ref str 2))
+;  (pp (string-ref str 3)))
+
+(define (fib n)
+  (if (<= n 1)
+      1
+      (+ (fib (- n 1)) (fib (- n 2)))))
+
+(fib 40)
 
 ;; TODO: ALLOC DE REGISTRE:
+;; - Vérifier les headers mémoire des vecteurs, et strings + taille au moment de l'allocation
 ;; - Un registre est assigné à UN slot mémoire
 ;; - Et vice versa
 ;; - Par contre, un identifier DOIT pouvoir etre assigné à plusieurs stack slots

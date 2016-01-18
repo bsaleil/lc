@@ -1389,15 +1389,22 @@
                                                                         CTX_CHAR)
                                                                     reg))))))
                          ;; MAKE-STRING
+                         ;; TODO regalloc ok
                          ((eq? special 'make-string)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let ((init-value? (= (length (cdr ast)) 2)))
-                                (codegen-make-string cgc init-value?)
+                              (let* ((init-value? (= (length (cdr ast)) 2))
+                                     (res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                     (reg (car res))
+                                     (ctx (cdr res))
+                                     (llen (ctx-get-loc ctx (ctx-lidx-to-slot ctx (if init-value? 1 0))))
+                                     (lval (if init-value? (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)) #f)))
+                                (codegen-make-string cgc reg llen lval)
                                 (jump-to-version cgc succ (ctx-push (if init-value?
-                                                                        (ctx-pop ctx 2)
+                                                                        (ctx-pop-n ctx 2)
                                                                         (ctx-pop ctx))
-                                                                    CTX_STR))))))
+                                                                    CTX_STR
+                                                                    reg))))))
                          ;; MAKE-VECTOR
                          ;; TODO regalloc ok
                          ((eq? special 'make-vector)
@@ -1476,6 +1483,7 @@
                                 (codegen-vector-set! cgc reg lvec lidx lval)
                                 (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) CTX_VOID reg))))))
                          ;; STRING-SET!
+                         ;; TODO regalloc ok
                          ((eq? special 'string-set!)
                           (make-lazy-code
                             (lambda (cgc ctx)
