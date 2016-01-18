@@ -10,12 +10,16 @@
 ;  (pp (string-ref str 3)))
 
 
-(define foo (lambda (n) 1))
-
-(foo
-  ((letrec ((fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1)))))))
-     fact)
-   4))
+(let ((a 10) (b 20))
+  ((lambda (n)
+    (pp a)
+    (set! a 100))
+    ; (pp a)
+    ; (set! a 100)
+    ; (pp a)
+    ; (pp n)
+    ; (pp b))
+    1))
 
 
 ;(define foo (lambda (n) 1))

@@ -1147,7 +1147,13 @@
   (let ((rloc (identifier-rloc identifier)))
     (if rloc
         rloc
-        (identifier-mloc identifier))))
+        (let ((mloc (identifier-mloc identifier)))
+          (if mloc
+              mloc
+              (let ((floc (identifier-floc identifier)))
+                (if floc
+                    floc
+                    (error "Internal error identifier-loc"))))))))
 
 (define (make-identifier kind loc flags stype)
   (if (eq? kind 'free)
@@ -1168,6 +1174,13 @@
 
 (define (identifier-mloc identifier)
   (identifier-xloc identifier ctx-loc-is-memory?))
+
+(define (ctx-floc-to-fpos floc)
+  (- (string->number
+       (list->string
+         (cdr (string->list
+                (symbol->string floc)))))
+     1))
 
 ;; TODO regalloc
 ;; Context que le compilateur conserve
@@ -1537,13 +1550,18 @@
 ;; loc est un registre si il est de la forme (rx . value)
 ;; loc est un emplacement mémoire si il est de la forme (integer . value)
 (define (ctx-loc-is-register? loc)
-  (not (integer? loc))) ;; register is r0, r1, ...
+  (and (symbol? loc)
+       (char=? (string-ref (symbol->string loc) 0) #\r)))
 
 ;; Retourne #t si l'emplacement donné est un emplacement mémoire, #f sinon
 ;; loc est un registre si il est de la forme (rx . value)
 ;; loc est un emplacement mémoire si il est de la forme (integer . value)
 (define (ctx-loc-is-memory? loc)
   (integer? loc)) ;; memory is 0, 1, ...
+
+(define (ctx-loc-is-floc? loc)
+  (and (symbol? loc)
+       (char=? (string-ref (symbol->string loc) 0) #\f)))
 
 ;; TODO: cette fonction peut générer du code (spill), il faut donc faire attention ou on l'appelle, et lui envoyer le cgc
 ;; TODO: ajouter un argument qui donne le nombre d'éléments sur la pile qui sont consommés pour cette opération (**)
