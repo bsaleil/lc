@@ -1270,20 +1270,53 @@
   (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
 
   (if regsaved
-      (x86-pop cgc reg))))
+      (x86-pop cgc regsaved))))
 
 ;;-----------------------------------------------------------------------------
 ;; string-set!
-(define (codegen-string-set! cgc)
-  (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))  ;; Get index
-  (x86-mov cgc (x86-rbx) (x86-mem 16 (x86-rsp))) ;; Get string
-  (x86-mov cgc (x86-rdx) (x86-mem 0 (x86-rsp)))  ;; Get new value
-  (x86-shr cgc (x86-rdx) (x86-imm-int 2))
-  (x86-shr cgc (x86-rax) (x86-imm-int 2))
-  (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx) (x86-rax)) (x86-dl))
-  (x86-add cgc (x86-rsp) (x86-imm-int 24))
-  (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
-  (x86-push cgc (x86-rax)))
+(define (codegen-string-set! cgc reg lstr lidx lchr)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opstr (codegen-loc-to-x86opnd lstr))
+        (opidx (codegen-loc-to-x86opnd lidx))
+        (opchr (codegen-loc-to-x86opnd lchr))
+        (regsaved #f))
+
+  (x86-mov cgc (x86-rax) (x86-imm-int 1000000000))
+
+  ;; Move idx to dest register if in memory
+  (if (ctx-loc-is-memory? lidx)
+      (begin (x86-mov cgc dest opidx)
+             (set! opidx dest)))
+
+  ;; Char must be in rax
+  (x86-mov cgc (x86-rax) opchr)
+
+  ;; Move str in a register if in memory
+  (if (ctx-loc-is-memory? lstr)
+      (if (ctx-loc-is-memory? lidx)
+          ;; dest register is already used
+          (let ((reg (if (eq? opidx (x86-rbx)) (x86-rdx) (x86-rbx))))
+            (x86-push cgc reg)
+            (x86-mov cgc reg opstr)
+            (set! opstr reg)
+            (set! regsaved reg))
+          ;; use dest register
+          (begin (x86-mov cgc dest opstr)
+                 (set! opstr dest))))
+
+  (x86-shr cgc (x86-rax) (x86-imm-int 2)) ;; char
+  (x86-shr cgc opidx (x86-imm-int 2)) ;; get idx bytes
+  (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) opstr opidx) (x86-al))
+  (x86-shl cgc opidx (x86-imm-int 2)) ;; Restore idx
+
+  (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+
+  (if regsaved
+      (x86-pop cgc regsaved))))
+
+
+
+
 
 ;;-----------------------------------------------------------------------------
 ;; list

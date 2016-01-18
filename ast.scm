@@ -278,6 +278,7 @@
                        (begin
                          (if mutable?
                              (error "NYI mlc-identifier mutable"))
+                         (error "NYI: copy to new loc")
                          (jump-to-version cgc succ (ctx-push ctx type rloc)))
                        (let* (;; Get dest
                               (res (ctx-get-free-reg ctx))
@@ -330,8 +331,12 @@
 
     (cond ;; rloc and not mutable
           ((and rloc (not mutable?))
-            (let ((type (ctx-get-type-from-loc ctx rloc)))
-              (jump-to-version cgc succ (ctx-push ctx type rloc))))
+            (let* ((res (ctx-get-free-reg ctx (list rloc)))
+                   (reg (car res))
+                   (ctx (cdr res))
+                   (type (ctx-get-type-from-loc ctx rloc)))
+              (x86-mov cgc (codegen-reg-to-x86reg reg) (codegen-loc-to-x86opnd rloc))
+              (jump-to-version cgc succ (ctx-push ctx type reg))))
           ;; rloc and mutable
           (rloc
             (let* ((res (ctx-get-free-reg ctx (list rloc)))
@@ -1471,8 +1476,14 @@
                          ((eq? special 'string-set!)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (codegen-string-set! cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 3) CTX_VOID)))))
+                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                     (reg (car res))
+                                     (ctx (cdr res))
+                                     (lchr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                                     (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+                                     (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 2))))
+                              (codegen-string-set! cgc reg lstr lidx lchr)
+                              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) CTX_VOID reg))))))
                          ;; LIST
                          ((eq? special 'list)
                           (make-lazy-code
@@ -1857,6 +1868,12 @@
          (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
+                                        (if (eq? (car ast) 'foo)
+                                          (begin
+                                          (x86-mov cgc (x86-rax) (x86-imm-int 1000000000))
+                                          (x86-mov cgc (x86-rax) (x86-imm-int 1000000000))
+                                          (x86-mov cgc (x86-rax) (x86-imm-int 1000000000))
+                                          (x86-mov cgc (x86-rax) (x86-imm-int 1000000000))))
                                         ;; TODO regalloc
                                         ;; 1 - Build call ctx
                                         (let ((call-ctx
@@ -1970,7 +1987,7 @@
                  (reverse regalloc-regs))
 
                ;; Move result to location
-               (let* ((lres (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+               (let* ((lres   (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
                       (opres  (codegen-loc-to-x86opnd lres)))
                  ;; Result is in rax
                  (x86-mov cgc opres (x86-rax)))

@@ -1,11 +1,6 @@
-
-
-(let ((v (make-vector 10)))
-
-  (pp v)
-  (vector-set! v 0 1)
-  (vector-set! v 3 100)
-  (pp v))
+;(let ((a 7) (b 3)) (println (= a b)))
+;(let ((a 5) (b 5)) (println (= a b)))
+1
 
 ;; TODO: AVANT ALLOC DE REGISTRE:
 ;;  - Vérifier si --max-versions 3 et --max-versions 0 ne dépassent pas le nb de versions
