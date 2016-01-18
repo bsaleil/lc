@@ -211,9 +211,11 @@
 (define (mlc-symbol ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (let ((qword (get-symbol-qword ast)))
-        (codegen-symbol cgc ast)
-        (jump-to-version cgc succ (ctx-push ctx CTX_SYM))))))
+      (let* ((res (ctx-get-free-reg ctx))
+             (reg (car res))
+             (ctx (cdr res)))
+        (codegen-symbol cgc ast reg)
+        (jump-to-version cgc succ (ctx-push ctx CTX_SYM reg))))))
 
 ;;
 ;; Make lazy code from vector literal
@@ -594,7 +596,7 @@
                      (lambda (cgc ctx)
                        ;; TODO regalloc
                        ;; 1 - Get clean stack size (higher mx in ctx)
-                       (let* ((clean-nb (ctx-get-fs ctx))
+                       (let* ((clean-nb (+ (ctx-fs ctx) 1))
                               (lres (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
                               (opres (codegen-loc-to-x86opnd lres)))
                          ;; 2 - Move res in rax
@@ -752,6 +754,7 @@
             ;; CTX_UNK because it could be NULL
             (set! ctx (make-ctx (cons CTX_CLO (cons CTX_UNK (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) nb-formal 1))))
                                 (ctx-env ctx)
+                                (+ (ctx-nb-args ctx) 1)
                                 (+ (ctx-nb-args ctx) 1))))
         ;; Gen prologue code
         (codegen-prologue-gen cgc rest-param nb-formal err-label)
@@ -1882,7 +1885,8 @@
                                                           (reg-slot-init)
                                                           '()
                                                           '()
-                                                          -1)))
+                                                          -1
+                                                          0)))
 
                                           ;; 2 - push all regs
                                           (for-each

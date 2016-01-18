@@ -1,6 +1,14 @@
 ;(let ((a 7) (b 3)) (println (= a b)))
 ;(let ((a 5) (b 5)) (println (= a b)))
-1
+
+(let ((a 1) (b 2) (c 3) (d 4) (e 5) (f 6) (g 7))
+  (pp (+ a f)))
+
+;; TODO: ALLOC DE REGISTRE:
+;; - Un registre est assigné à UN slot mémoire
+;; - Et vice versa
+;; - Par contre, un identifier DOIT pouvoir etre assigné à plusieurs stack slots
+;;   (pour le moment assigné à un loc, mais DOIT changer)
 
 ;; TODO: AVANT ALLOC DE REGISTRE:
 ;;  - Vérifier si --max-versions 3 et --max-versions 0 ne dépassent pas le nb de versions

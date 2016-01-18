@@ -259,10 +259,10 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Symbol
-(define (codegen-symbol cgc sym)
-  (let ((qword (get-symbol-qword sym)))
-    (x86-mov cgc (x86-rax) (x86-imm-int qword))
-    (x86-push cgc (x86-rax))))
+(define (codegen-symbol cgc sym reg)
+  (let ((qword (get-symbol-qword sym))
+        (dest  (codegen-reg-to-x86reg reg)))
+    (x86-mov cgc dest (x86-imm-int qword))))
 
 ;;-----------------------------------------------------------------------------
 ;; String

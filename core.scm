@@ -1177,6 +1177,7 @@
   slot-loc ;;
   env ;;
   nb-args ;;
+  fs ;;
 )
 
 ;; Nombre de registres pour l'allocation de registre
@@ -1192,14 +1193,16 @@
             (reg-slot-init)
             '()
             '()
-            -1))
+            -1
+            0))
 
 (define (ctx-init-fn call-ctx enclosing-ctx args free-vars)
   (make-ctx (ctx-stack call-ctx)
             (reg-slot-init)
             (slot-loc-init-fn (length args))
             (env-init-fn args 2 free-vars enclosing-ctx)
-            (length args)))
+            (length args)
+            (length args))) ;; fs is length args because all args are on the stack
 
 ;; TODO MOVE
 (define (env-init-fn args loc free-vars enclosing-ctx)
@@ -1231,15 +1234,6 @@
 
   (append (init-free free-vars (ctx-env enclosing-ctx) 1)
           (init-local args loc)))
-
-(define (ctx-get-fs ctx)
-  (foldr (lambda (el res)
-           (if (and (ctx-loc-is-memory? (cdr el))
-                    (> (cdr el) res))
-               (cdr el)
-               res))
-         0
-         (ctx-slot-loc ctx)))
 
 ;; RR
 ;(define (ctx-free ctx lidx)
@@ -1330,9 +1324,10 @@
            (slot-loc-move (ctx-slot-loc ctx) (ctx-lidx-to-slot ctx lfrom) (ctx-lidx-to-slot ctx lto)))
          (env
            (ctx-env ctx))
-         (nb-args (ctx-nb-args ctx)))
+         (nb-args (ctx-nb-args ctx))
+         (fs (ctx-fs ctx)))
 
-  (make-ctx stack reg-slot slot-loc env nb-args)))
+  (make-ctx stack reg-slot slot-loc env nb-args fs)))
 
 ;;
 (define (ctx-move-type ctx lfrom lto)
@@ -1342,7 +1337,8 @@
     (ctx-reg-slot ctx)
     (ctx-slot-loc ctx)
     (ctx-env ctx)
-    (ctx-nb-args ctx)))
+    (ctx-nb-args ctx)
+    (ctx-fs ctx)))
 
 ;; TODO comment + mov!
 ;; Modifie l'objet identifier associé à 'id' dans l'environnement:
@@ -1353,7 +1349,8 @@
     (ctx-reg-slot ctx)
     (ctx-slot-loc ctx)
     (env-set-id-locs (ctx-env ctx) id (ctx-get-locs-from-slot ctx slot))
-    (ctx-nb-args ctx)))
+    (ctx-nb-args ctx)
+    (ctx-fs ctx)))
 
 ;; TODO comment + move
 (define (env-set-id-locs env id locs)
@@ -1380,7 +1377,8 @@
               (ctx-reg-slot ctx)
               (ctx-slot-loc ctx)
               (env-remove-id (ctx-env ctx) id)
-              (ctx-nb-args ctx)))
+              (ctx-nb-args ctx)
+              (ctx-fs ctx)))
 
   (foldr (lambda (el ctx) (remove-id ctx el))
          ctx
@@ -1426,7 +1424,8 @@
                 (ctx-slot-loc ctx)
                 (cons (cons (car id-idx) identifier)
                       (ctx-env ctx))
-                (ctx-nb-args ctx))))
+                (ctx-nb-args ctx)
+                (ctx-fs ctx))))
 
   (foldr (lambda (el ctx) (bind-one ctx el))
          ctx
@@ -1441,7 +1440,8 @@
               (ctx-reg-slot ctx)
               (ctx-slot-loc ctx)
               (ctx-env ctx)
-              (ctx-nb-args ctx))))
+              (ctx-nb-args ctx)
+              (ctx-fs ctx))))
 
 ;; TODO comment + move
 (define (ctx-get-locs-from-slot ctx slot)
@@ -1470,7 +1470,8 @@
             (ctx-reg-slot ctx)
             (ctx-slot-loc ctx)
             (ctx-env ctx)
-            (ctx-nb-args ctx)))
+            (ctx-nb-args ctx)
+            (ctx-fs ctx)))
 
 ;; Ajoute une valeur sur le haut de la pile. (ajout le type sur la pile)
 ;; Ce nouveau slot est associé au registre 'reg'
@@ -1492,7 +1493,8 @@
                 (error "NYI UPDATE ENV")
                 (ctx-env ctx)))
             ;;
-            (ctx-nb-args ctx)))
+            (ctx-nb-args ctx)
+            (ctx-fs ctx)))
 
 ;; TODO : remplacer les (ctx-pop (ctx-pop ...)) par ça
 (define (ctx-pop-n ctx n)
@@ -1512,7 +1514,8 @@
             ;; 4 Maj env
             (begin (pp "NYI MAK ENV") (ctx-env ctx))
             ;;
-            (ctx-nb-args ctx)))
+            (ctx-nb-args ctx)
+            (ctx-fs ctx)))
 
 ;; Convertir un index de liste vers un slot sur la pile de type EX:
 ;; Pile:        haut (   a   b   c   d   e   ) bas
