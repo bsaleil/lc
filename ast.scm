@@ -305,9 +305,12 @@
 ;;
 ;; TODO: réécrire: attention la recherche d'id met à jour le ctx
 (define (mlc-identifier ast succ)
+
   (make-lazy-code
     (lambda (cgc ctx)
-      (pp ast) (pp ctx)
+
+      (if (eq? ast 'foo)
+        (x86-mov cgc (x86-rax) (x86-imm-int 1000000000)))
       (let ((local  (assoc ast (ctx-env ctx)))
             (global (assoc ast globals)))
         ;;
@@ -1105,7 +1108,8 @@
                (let loop ((i 0)
                           (ctx ctx))
                  (if (= i (length ids))
-                     (jump-to-version cgc (gen-ast-l body lazy-out) ctx)
+                     (let ((ctx (ctx-pop-n ctx (length ids))))
+                       (jump-to-version cgc (gen-ast-l body lazy-out) ctx))
                      (let ((lfrom (ctx-get-loc ctx (ctx-lidx-to-slot ctx i)))
                            (lto   (ctx-get-loc ctx (ctx-lidx-to-slot ctx (+ i (length ids)))))
                            (ctx   (ctx-move-type ctx i (+ i (length ids)))))
@@ -1918,12 +1922,6 @@
          (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
-                                        (if (eq? (car ast) 'foo)
-                                          (begin
-                                          (x86-mov cgc (x86-rax) (x86-imm-int 1000000000))
-                                          (x86-mov cgc (x86-rax) (x86-imm-int 1000000000))
-                                          (x86-mov cgc (x86-rax) (x86-imm-int 1000000000))
-                                          (x86-mov cgc (x86-rax) (x86-imm-int 1000000000))))
                                         ;; TODO regalloc
                                         ;; 1 - Build call ctx
                                         (let ((call-ctx

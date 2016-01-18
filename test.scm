@@ -9,8 +9,19 @@
 ;  (pp (string-ref str 2))
 ;  (pp (string-ref str 3)))
 
-(list 1 2 3)
 
+(define foo (lambda (n) 1))
+
+(foo
+  ((letrec ((fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1)))))))
+     fact)
+   4))
+
+
+;(define foo (lambda (n) 1))
+;
+;(foo
+; ((letrec ((fact (lambda () 1))) fact)))
 ;; cpstak
 ;; vector-ref
 
