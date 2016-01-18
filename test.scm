@@ -9,12 +9,10 @@
 ;  (pp (string-ref str 2))
 ;  (pp (string-ref str 3)))
 
-(define (fib n)
-  (if (<= n 1)
-      1
-      (+ (fib (- n 1)) (fib (- n 2)))))
+(list 1 2 3)
 
-(fib 40)
+;; cpstak
+;; vector-ref
 
 ;; TODO: ALLOC DE REGISTRE:
 ;; - Vérifier les headers mémoire des vecteurs, et strings + taille au moment de l'allocation

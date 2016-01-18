@@ -226,14 +226,53 @@
 ;; Lazy-chain : chaine v[i] -> mov-in-vector -> v[i+1] -> mov-in-vector ...
 ;; Lazy-alloc : alloue un vector de taille n rempli de 0 (important pour le GC) -> donc dépend de make-vector
 ;;              puis saute vers Lazy-chain
+;; TODO regalloc: comment
 (define (mlc-vector ast succ)
-  (let ((lazy-vector
-          (make-lazy-code
-            (lambda (cgc ctx)
-              (codegen-vector cgc ast)
-              (jump-to-version cgc succ (ctx-push (ctx-pop ctx (vector-length ast)) CTX_VECT))))))
-    ;; Push all vector elements in reverse order
-    (gen-ast-l (reverse (vector->list ast)) lazy-vector)))
+
+  (define (gen-set cgc ctx lidx)
+    (let* ((res (ctx-get-free-reg ctx))
+           (reg (car res))
+           (ctx (cdr res))
+           (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx lidx)))
+           (opval (codegen-loc-to-x86opnd lval)))
+
+      (if (ctx-loc-is-memory? lval)
+          (begin (x86-mov cgc (x86-rax) opval)
+                 (set! opval (x86-rax))))
+
+      (x86-mov cgc (x86-mem (+ (* lidx 8) 16) alloc-ptr) opval)
+      ctx))
+
+  (define lazy-vector
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (let loop ((pos 0) (ctx ctx))
+          (if (= pos (vector-length ast))
+              (let* ((res (ctx-get-free-reg ctx))
+                     (reg (car res))
+                     (ctx (cdr res)))
+                (x86-lea cgc (codegen-reg-to-x86reg reg) (x86-mem TAG_MEMOBJ alloc-ptr))
+                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx (vector-length ast)) CTX_VECT reg)))
+              (let ((ctx (gen-set cgc ctx pos)))
+                (loop (+ pos 1) ctx)))))))
+
+
+  (define lazy-alloc
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (let ((header-word (mem-header (+ 2 (vector-length ast)) STAG_VECTOR)))
+          ;; Allocate array in alloc-ptr
+          (gen-allocation cgc #f STAG_VECTOR (+ (vector-length ast) 2))
+          ;; Write header
+          (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+          (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+          ;; Write length
+          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (vector-length ast))))
+          (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+          (jump-to-version cgc lazy-vector ctx)))))
+
+
+  (gen-ast-l (reverse (vector->list ast)) lazy-alloc))
 
 ;;
 ;; Make lazy code from string literal
@@ -2540,10 +2579,34 @@
       (let* ((identifier (cdr (assoc (car ids) (ctx-env ctx))))
              (loc (identifier-loc identifier))
              (opn
-               (if (ctx-loc-is-memory? loc)
-                   (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd loc))
-                          (x86-rax))
-                   (codegen-reg-to-x86reg loc))))
+               (cond ;; No loc, free variable which is only in closure
+                     ((not loc)
+                       (let* (;; Get closure loc
+                              (f (identifier-floc identifier))
+                              (closure-lidx (- (length (ctx-stack ctx)) 2))
+                              (closure-loc  (ctx-get-loc-from-lidx ctx closure-lidx))
+                              (closure-opnd (codegen-loc-to-x86opnd closure-loc))
+                              ;; Get free var offset
+                              (fvar-pos (string->number
+                                         (list->string
+                                           (cdr (string->list
+                                                  (symbol->string f))))))
+                              (fvar-offset (+ 16 (* 8 (- fvar-pos 1))))) ;; 16:header,entrypoint -1: pos starts from 1 and not 0
+                         (if (ctx-loc-is-memory? closure-loc)
+                             (begin (x86-mov cgc (x86-rax) closure-opnd)
+                                    (set! closure-opnd (x86-rax))))
+                         (println "Closure loc " closure-loc)
+                         (println "fvar pos" fvar-pos)
+                         (println "fvar offset" fvar-offset)
+                         (x86-mov cgc (x86-rax) (x86-mem (- fvar-offset TAG_MEMOBJ) closure-opnd))
+                         (x86-rax)))
+                     ;;
+                     ((ctx-loc-is-memory? loc)
+                       (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd loc))
+                       (x86-rax))
+                     ;;
+                     (else
+                       (codegen-reg-to-x86reg loc)))))
         (x86-mov cgc (x86-mem (+ 16 (* offset 8)) alloc-ptr) opn)
         (gen-free-vars cgc (cdr ids) ctx (+ offset 1)))))
 
