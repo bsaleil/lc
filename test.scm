@@ -8,18 +8,20 @@
 ;  (pp (string-ref str 1))
 ;  (pp (string-ref str 2))
 ;  (pp (string-ref str 3)))
-
-
-(let ((a 10) (b 20))
-  ((lambda (n)
-    (pp a)
-    (set! a 100))
-    ; (pp a)
-    ; (set! a 100)
-    ; (pp a)
-    ; (pp n)
-    ; (pp b))
-    1))
+(
+(let ((a 10))
+  (lambda (n) (pp a) (pp n)))
+12)
+;(let ((a 10) (b 20))
+;  ((lambda (n)
+;    (pp a)
+;    (set! a 100))
+;    ; (pp a)
+;    ; (set! a 100)
+;    ; (pp a)
+;    ; (pp n)
+;    ; (pp b))
+;    1))
 
 
 ;(define foo (lambda (n) 1))

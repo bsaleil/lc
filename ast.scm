@@ -315,49 +315,13 @@
         (cond ;; Identifier is a free variable
               ((and local (eq? (identifier-kind (cdr local)) 'free))
                 (gen-get-freevar cgc ctx local succ))
-                ; (let ((rloc (identifier-rloc (cdr local)))
-                ;       (mutable? (member 'mutable (identifier-flags (cdr local)))))
-                ;   (if rloc
-                ;       (begin
-                ;         (if mutable?
-                ;             (error "NYI mlc-identifier mutable"))
-                ;         (error "NYI: copy to new loc")
-                ;         (jump-to-version cgc succ (ctx-push ctx type rloc)))
-                ;       (let* (;; Get dest
-                ;              (res (ctx-get-free-reg ctx))
-                ;              (reg (car res))
-                ;              (ctx (cdr res))
-                ;              (dest (codegen-reg-to-x86reg reg))
-                ;              ;; Get closure loc
-                ;              (f (identifier-floc (cdr local)))
-                ;              (closure-lidx (- (length (ctx-stack ctx)) 2))
-                ;              (closure-loc (ctx-get-loc-from-lidx ctx closure-lidx))
-                ;              (closure-opnd (codegen-loc-to-x86opnd closure-loc))
-                ;              ;; Get free var offset
-                ;              (fvar-pos (string->number
-                ;                          (list->string
-                ;                            (cdr (string->list
-                ;                                   (symbol->string (identifier-floc (cdr local))))))))
-                ;              (fvar-offset (+ 16 (* 8 (- fvar-pos 1)))) ;; 16:header,entrypoint -1: pos starts from 1 and not 0
-                ;              (fvar-type (identifier-stype (cdr local))))
-                 ;
-                ;        (if (ctx-loc-is-memory? closure-loc)
-                ;            (begin (x86-mov cgc (x86-rax) closure-opnd)
-                ;                   (set! closure-opnd (x86-rax))))
-                 ;
-                ;        (x86-mov cgc dest (x86-mem (- fvar-offset TAG_MEMOBJ) closure-opnd))
-                 ;
-                ;        (if mutable?
-                ;            (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) dest)))
-                 ;
-                ;        (jump-to-version cgc succ (ctx-push ctx fvar-type reg))))))
               ;; Identifier is a local variable
               (local
                 (gen-get-localvar cgc ctx local succ))
               ;; Identifier is a global variable
               (global
                 (gen-get-globalvar cgc ctx global succ))
-              ;; TODO
+              ;; Primitive
               ((assoc ast primitives) =>
                  (lambda (r)
                    (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
@@ -367,83 +331,111 @@
                        ctx))))
               (else (gen-error cgc (ERR_UNKNOWN_VAR ast))))))))
 
-(define (gen-get-freevar cgc ctx local succ)
+;; TODO: comment on recursive call in not raw?
+(define (gen-get-freevar cgc ctx local succ #!optional (raw? #f))
 
-  (let* ((loc (identifier-loc (cdr local)))
-         (mutable? (member 'mutable (identifier-flags (cdr local))))
-         (res (ctx-get-free-reg ctx (list loc)))
-         (reg (car res))
-         (ctx (cdr res))
-         (type (identifier-stype (cdr local))))
+  (let ((loc (identifier-loc (cdr local)))
+        (mutable? (member 'mutable (identifier-flags (cdr local)))))
 
-  (cond ;; Free var only in closure and mutable
-        ((and (ctx-loc-is-floc? loc) mutable?)
-           (let* ((fpos (ctx-floc-to-fpos loc))
-                  (dest (codegen-reg-to-x86reg reg))
-                  (closure-lidx (- (length (ctx-stack ctx)) 2))
-                  (closure-loc (ctx-get-loc-from-lidx ctx closure-lidx))
-                  (closure-opnd (codegen-loc-to-x86opnd closure-loc)))
-             (if (ctx-loc-is-memory? closure-loc)
-                 (begin (x86-mov cgc (x86-rax) closure-opnd)
-                        (set! closure-opnd (x86-rax))))
-             (x86-mov cgc dest (x86-mem (- (+ (* fpos 8) 16) TAG_MEMOBJ) closure-opnd))
-             (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) dest))
-             (jump-to-version cgc succ (ctx-push ctx type reg))))
+    (if raw?
+        ;; We want mobject, then write in rax
+        (if (ctx-loc-is-floc? loc)
+            (let* ((fpos (ctx-floc-to-fpos loc))
+                   (closure-lidx (- (length (ctx-stack ctx)) 2))
+                   (closure-loc (ctx-get-loc-from-lidx ctx closure-lidx))
+                   (closure-opnd (codegen-loc-to-x86opnd closure-loc)))
+              (if (ctx-loc-is-memory? closure-loc)
+                  (begin (x86-mov cgc (x86-rax) closure-opnd)
+                         (set! closure-opnd (x86-rax))))
+              (x86-mov cgc (x86-rax) (x86-mem (- (+ (* fpos 8) 16) TAG_MEMOBJ) closure-opnd)))
+            (let ((opnd (codegen-loc-to-x86opnd loc)))
+              (x86-mov cgc (x86-rax) opnd)))
+        ;; We don't want raw value
+        (begin
+          (gen-get-freevar cgc ctx local succ #t)
+          (let* ((res (ctx-get-free-reg ctx (list loc)))
+                 (reg (car res))
+                 (ctx (cdr res))
+                 (type (identifier-stype (cdr local)))
+                 (dest (codegen-reg-to-x86reg reg)))
 
-            ; (if (ctx-loc-is-memory? closure-loc)
-            ;     (begin (x86-mov cgc (x86-rax) closure-opnd)
-            ;            (set! closure-opnd (x86-rax))))
-             ;(x86-mov cgc dest (x86-mem (- (+ (* fpos 8) 16) TAG_MEMOBJ) closure-opnd))
-             ;(x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) dest))
-             ;(jump-to-version cgc succ (ctx-push ctx type reg))))
-        ;; Free var only in closure and not mutable
-        ((ctx-loc-is-floc? loc)
-           (let* ((fpos (ctx-floc-to-fpos loc))
-                  (dest (codegen-reg-to-x86reg reg))
-                  (closure-lidx (- (length (ctx-stack ctx)) 2))
-                  (closure-loc (ctx-get-loc-from-lidx ctx closure-lidx))
-                  (closure-opnd (codegen-loc-to-x86opnd closure-loc)))
-             (if (ctx-loc-is-memory? closure-loc)
-                 (begin (x86-mov cgc (x86-rax) closure-opnd)
-                        (set! closure-opnd (x86-rax))))
-             (x86-mov cgc dest (x86-mem (- (+ (* fpos 8) 16) TAG_MEMOBJ) closure-opnd))
-             (jump-to-version cgc succ (ctx-push ctx type reg))))
-        ;; Mutable and in memory
-        ((and (ctx-loc-is-memory? loc) mutable?)
-           (error "NYU3"))
-        ;; Mutable and in register
-        (mutable?
-           (error "NYU4"))
-        ;; Not mutable and in reg or mem
-        (else
-           (error "NYU5")))))
+            (if mutable?
+                (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+                (x86-mov cgc dest (x86-rax)))
 
-(define (gen-get-localvar cgc ctx local succ)
+            (jump-to-version cgc succ (ctx-push ctx type reg)))))))
 
-  (let* ((loc (identifier-loc (cdr local)))
-         (mutable? (member 'mutable (identifier-flags (cdr local))))
-         (res (ctx-get-free-reg ctx (list loc)))
-         (reg (car res))
-         (ctx (cdr res))
-         (type (ctx-get-type-from-loc ctx loc)))
+;(define (gen-get-freevar cgc ctx local succ #!optional (mobject? #f))
+;  (error "NYI (see comment)")
+;  (let* ((loc (identifier-loc (cdr local)))
+;         (mutable? (member 'mutable (identifier-flags (cdr local))))
+;         (res (ctx-get-free-reg ctx (list loc)))
+;         (reg (car res))
+;         (ctx (cdr res))
+;         (type (identifier-stype (cdr local))))
+;
+;  (assert (if mobject? mutable? #t) ERR_INTERNAL)
+;
+;  (cond ;; Free var only in closure and possibly mutable
+;        ((ctx-loc-is-floc? loc)
+;           (let* ((fpos (ctx-floc-to-fpos loc))
+;                  (dest (codegen-reg-to-x86reg reg))
+;                  (closure-lidx (- (length (ctx-stack ctx)) 2))
+;                  (closure-loc (ctx-get-loc-from-lidx ctx closure-lidx))
+;                  (closure-opnd (codegen-loc-to-x86opnd closure-loc)))
+;             (if (ctx-loc-is-memory? closure-loc)
+;                 (begin (x86-mov cgc (x86-rax) closure-opnd)
+;                        (set! closure-opnd (x86-rax))))
+;             (x86-mov cgc dest (x86-mem (- (+ (* fpos 8) 16) TAG_MEMOBJ) closure-opnd))
+;             (if (and mutable? (not mobject?))
+;                 (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) dest)))
+;             (jump-to-version cgc succ (ctx-push ctx type reg))))
+;        ;; Mutable and in memory
+;        ((and (ctx-loc-is-memory? loc) mutable?)
+;           (error "NYU3"))
+;        ;; Mutable and in register
+;        (mutable?
+;           (error "NYU4"))
+;        ;; Not mutable and in reg or mem
+;        (else
+;           (error "NYU5")))))
 
-    (cond ;; Mutable and in memory
-          ((and (ctx-loc-is-memory? loc) mutable?)
-            (error "NYI gen-get-localvar"))
-          ;; Mutable and in register
-          (mutable?
-            (let ((dest (codegen-reg-to-x86reg reg))
-                  (opnd (codegen-loc-to-x86opnd loc)))
-              (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) opnd))
-              (jump-to-version cgc succ (ctx-push ctx type reg))))
-          ;; Not mutable and in reg or mem
-          (else
-            (let ((dest (codegen-reg-to-x86reg reg))
-                  (opnd (codegen-loc-to-x86opnd loc)))
-              (x86-mov cgc dest opnd)
-              (jump-to-version cgc succ (ctx-push ctx type reg)))))))
+;; TODO: raw? au lieu de mobject? et enlever le assert (??)
+;; TODO: + utiliser un appel récursif comme pout gen-get-freevar (??)
+;; TODO coment: si mobject? est vrai, c'est qu'on veut le mobject dans le tmp reg (rax)
+(define (gen-get-localvar cgc ctx local succ #!optional (mobject? #f))
+
+  (let ((loc (identifier-loc (cdr local)))
+        (mutable? (member 'mutable (identifier-flags (cdr local)))))
+
+    (assert (if mobject? mutable? #t) ERR_INTERNAL)
+
+    (if mobject?
+        ;; We want mobject, then write in rax
+        (let ((opnd (codegen-loc-to-x86opnd loc)))
+          (x86-mov cgc (x86-rax) opnd))
+        ;; We don't want mobject
+        (let* ((res (ctx-get-free-reg ctx (list loc)))
+               (reg (car res))
+               (ctx (cdr res))
+               (type (ctx-get-type-from-loc ctx loc)))
+          (cond ;; Mutable and in memory
+                ((and (ctx-loc-is-memory? loc) mutable?)
+                  (error "NYI gen-get-localvar"))
+                ;; Mutable and in register
+                (mutable?
+                  (let ((dest (codegen-reg-to-x86reg reg))
+                        (opnd (codegen-loc-to-x86opnd loc)))
+                    (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) opnd))))
+                ;; Not mutable and in reg or mem
+                (else
+                  (let ((dest (codegen-reg-to-x86reg reg))
+                        (opnd (codegen-loc-to-x86opnd loc)))
+                    (x86-mov cgc dest opnd))))
+          (jump-to-version cgc succ (ctx-push ctx type reg))))))
 
 (define (gen-get-globalvar cgc ctx global succ)
+
   (let* (;; Get variable type if known
          (r (assoc (car global) gids))
          (type (if (and r (cdr r))
@@ -457,48 +449,6 @@
     (codegen-get-global cgc (cdr global) reg)
     ;; Jump with updated ctx
     (jump-to-version cgc succ (ctx-push ctx type reg))))
-
-;(define (mlc-identifier ast succ)
-;
-; (make-lazy-code
-;   (lambda (cgc ctx)
-;
-;     (let ((local  (assoc ast (ctx-env ctx)))
-;           (global (assoc ast globals)))
-;     ;; If local or global (not primitive nor type predicate)
-;     (if (or local global)
-;         ;; Id lookup
-;         (let ((ctx-type (cond (local
-;                                  (if (eq? (identifier-type (cdr local)) 'free)
-;                                     ;; Free var
-;                                     (gen-get-freevar  cgc ctx local 'stack #f)
-;                                     ;; Local var
-;                                     (gen-get-localvar cgc ctx local 'stack #f)))
-;                               (global
-;                                  (gen-get-globalvar cgc ctx global 'stack))
-;                               (else
-;                                  (gen-error cgc (ERR_UNKNOWN_VAR ast))))))
-;
-;            (let* ((nctx (if (eq? ctx-type CTX_MOBJ)
-;                           (ctx-push ctx CTX_UNK 1 ast)
-;                           (ctx-push ctx ctx-type 1 ast))))
-;              (jump-to-version cgc succ nctx)))
-;         ;; Else it is a primitive / type predicate
-;         (let ((r (assoc ast primitives)))
-;            (if r
-;               ;; Create and return function calling primitive
-;               (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
-;                 (jump-to-version cgc
-;                                  (gen-ast `(lambda ,args
-;                                              (,ast ,@args))
-;                                           succ)
-;                                  ctx))
-;               ;; Type predicate
-;               (if (type-predicate? ast)
-;                 (jump-to-version cgc
-;                                  (gen-ast `(lambda (a) (,ast a)) succ)
-;                                  ctx)
-;                 (gen-error cgc (ERR_UNKNOWN_VAR ast))))))))))
 
 ;;
 ;; Make lazy code from num/bool/char/null literal
@@ -536,33 +486,52 @@
          (lazy-set!
            (make-lazy-code
              (lambda (cgc ctx)
-               (let ((rid (assoc id (ctx-env ctx))))
-
-                 (if rid
-                     ;; Local
-                     (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
-                            (reg (car res))
-                            (ctx (cdr res))
-                            (identifier (cdr rid))
-                            (lvar (identifier-loc identifier))
-                            (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                       ;; TODO: rewrite this function using gen-get-local/free/global
-                       (if (eq? (identifier-kind identifier) 'free)
-                           (error "NYI set free var"))
-                       (codegen-set-not-global cgc reg lvar lval)
-                       (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg)))
-                     ;; Global
-                     (let ((rid (assoc id globals)))
-                       (if rid
-                           (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
-                                  (reg (car res))
-                                  (ctx (cdr res))
-                                  (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                             (codegen-set-global cgc reg lval (cdr rid))
-                             (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg)))
-                           (gen-error cgc (ERR_UNKNOWN_VAR id))))))))))
+               (let ((gres (assoc id globals)))
+                 (if gres
+                     (gen-set-globalvar cgc ctx gres succ)
+                     (let ((lres (assoc id (ctx-env ctx))))
+                       (if lres
+                           (if (eq? (identifier-kind (cdr lres)) 'free)
+                               (gen-set-freevar cgc ctx lres)
+                               (gen-set-localvar cgc ctx lres succ))
+                           (error (ERR_UNKNOWN_VAR id))))))))))
 
     (gen-ast (caddr ast) lazy-set!)))
+
+(define (gen-set-localvar cgc ctx local succ)
+  ;; Get mobject in tmp register
+  (gen-get-localvar cgc ctx local #f #t)
+  ;;
+  (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+         (reg (car res))
+         (ctx (cdr res))
+         (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+    (let ((dest (codegen-reg-to-x86reg reg))
+          (opval (codegen-loc-to-x86opnd lval)))
+      (if (ctx-loc-is-memory? lval)
+          (begin (x86-mov cgc dest opval)
+                 (set! opval dest)))
+      (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
+      (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+      (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg)))))
+
+(define (gen-set-freevar cgc ctx local)
+  (error "NYI set free"))
+
+(define (gen-set-globalvar cgc ctx global succ)
+  (let* ((pos (cdr global))
+         (res (ctx-get-free-reg ctx))
+         (reg (car res))
+         (ctx (cdr res))
+         (dest (codegen-reg-to-x86reg reg))
+         (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+         (opval (codegen-loc-to-x86opnd lval)))
+    (if (ctx-loc-is-memory? lval)
+        (begin (x86-mov cgc (x86-rax) opval)
+               (set! opval (x86-rax))))
+    (x86-mov cgc (x86-mem (* 8 pos) global-ptr) opval)
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))
 
 ;;
 ;; Make lazy code from DEFINE
@@ -2506,33 +2475,33 @@
 ;;  ex: variable = '(n . identifier-obj)
 
 ;; Free var
-(define (gen-set-freevar cgc ctx variable)
-  (let ((mutable (identifier-mutable? (cdr variable))))
-    (if mutable
-        (begin (gen-get-freevar cgc ctx variable 'gen-reg)
-               (codegen-set-not-global cgc)
-               ctx) ;; TODO: change ctx ?
-        (error "Compiler error : set a non mutable free var"))))
+;(define (gen-set-freevar cgc ctx variable)
+;  (let ((mutable (identifier-mutable? (cdr variable))))
+;    (if mutable
+;        (begin (gen-get-freevar cgc ctx variable 'gen-reg)
+;               (codegen-set-not-global cgc)
+;               ctx) ;; TODO: change ctx ?
+;        (error "Compiler error : set a non mutable free var"))))
 
 ;; Local var
-(define (gen-set-localvar cgc ctx variable)
-  (let ((mutable (identifier-mutable? (cdr variable))))
-    (if mutable
-        (begin (gen-get-localvar cgc ctx variable 'gen-reg)
-               (codegen-set-not-global cgc)
-               ;; Change ctx type
-               (let* ((fs (length (ctx-stack ctx)))
-                      (idx (- fs 2 (identifier-offset (cdr variable)))))
-                ;; move and reset pos
-                (ctx-reset-pos (ctx-move ctx 0 idx #f) (car variable))))
-        (error "Compiler error : set a non mutable local var"))))
+;(define (gen-set-localvar cgc ctx variable)
+;  (let ((mutable (identifier-mutable? (cdr variable))))
+;    (if mutable
+;        (begin (gen-get-localvar cgc ctx variable 'gen-reg)
+;               (codegen-set-not-global cgc)
+;               ;; Change ctx type
+;               (let* ((fs (length (ctx-stack ctx)))
+;                      (idx (- fs 2 (identifier-offset (cdr variable)))))
+;                ;; move and reset pos
+;                (ctx-reset-pos (ctx-move ctx 0 idx #f) (car variable))))
+;        (error "Compiler error : set a non mutable local var"))))
 
-;; Gen code to set a global var
-(define (gen-set-globalvar cgc ctx variable)
-  ;; Gen code
-  (codegen-set-global cgc (cdr variable))
-  ;; Return unchanged ctx
-  ctx)
+;;; Gen code to set a global var
+;(define (gen-set-globalvar cgc ctx variable)
+;  ;; Gen code
+;  (codegen-set-global cgc (cdr variable))
+;  ;; Return unchanged ctx
+;  ctx)
 
 ;;
 ;; VARIABLE GET
