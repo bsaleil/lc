@@ -365,52 +365,14 @@
 
             (jump-to-version cgc succ (ctx-push ctx type reg)))))))
 
-;(define (gen-get-freevar cgc ctx local succ #!optional (mobject? #f))
-;  (error "NYI (see comment)")
-;  (let* ((loc (identifier-loc (cdr local)))
-;         (mutable? (member 'mutable (identifier-flags (cdr local))))
-;         (res (ctx-get-free-reg ctx (list loc)))
-;         (reg (car res))
-;         (ctx (cdr res))
-;         (type (identifier-stype (cdr local))))
-;
-;  (assert (if mobject? mutable? #t) ERR_INTERNAL)
-;
-;  (cond ;; Free var only in closure and possibly mutable
-;        ((ctx-loc-is-floc? loc)
-;           (let* ((fpos (ctx-floc-to-fpos loc))
-;                  (dest (codegen-reg-to-x86reg reg))
-;                  (closure-lidx (- (length (ctx-stack ctx)) 2))
-;                  (closure-loc (ctx-get-loc-from-lidx ctx closure-lidx))
-;                  (closure-opnd (codegen-loc-to-x86opnd closure-loc)))
-;             (if (ctx-loc-is-memory? closure-loc)
-;                 (begin (x86-mov cgc (x86-rax) closure-opnd)
-;                        (set! closure-opnd (x86-rax))))
-;             (x86-mov cgc dest (x86-mem (- (+ (* fpos 8) 16) TAG_MEMOBJ) closure-opnd))
-;             (if (and mutable? (not mobject?))
-;                 (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) dest)))
-;             (jump-to-version cgc succ (ctx-push ctx type reg))))
-;        ;; Mutable and in memory
-;        ((and (ctx-loc-is-memory? loc) mutable?)
-;           (error "NYU3"))
-;        ;; Mutable and in register
-;        (mutable?
-;           (error "NYU4"))
-;        ;; Not mutable and in reg or mem
-;        (else
-;           (error "NYU5")))))
-
-;; TODO: raw? au lieu de mobject? et enlever le assert (??)
-;; TODO: + utiliser un appel récursif comme pout gen-get-freevar (??)
+;; TODO: + utiliser un appel récursif comme pour gen-get-freevar (??)
 ;; TODO coment: si mobject? est vrai, c'est qu'on veut le mobject dans le tmp reg (rax)
-(define (gen-get-localvar cgc ctx local succ #!optional (mobject? #f))
+(define (gen-get-localvar cgc ctx local succ #!optional (raw? #f))
 
   (let ((loc (identifier-loc (cdr local)))
         (mutable? (member 'mutable (identifier-flags (cdr local)))))
 
-    (assert (if mobject? mutable? #t) ERR_INTERNAL)
-
-    (if mobject?
+    (if raw?
         ;; We want mobject, then write in rax
         (let ((opnd (codegen-loc-to-x86opnd loc)))
           (x86-mov cgc (x86-rax) opnd))
@@ -421,7 +383,10 @@
                (type (ctx-get-type-from-loc ctx loc)))
           (cond ;; Mutable and in memory
                 ((and (ctx-loc-is-memory? loc) mutable?)
-                  (error "NYI gen-get-localvar"))
+                  (let ((dest (codegen-reg-to-x86reg reg))
+                        (opnd (codegen-loc-to-x86opnd loc)))
+                    (x86-mov cgc (x86-rax) opnd)
+                    (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))))
                 ;; Mutable and in register
                 (mutable?
                   (let ((dest (codegen-reg-to-x86reg reg))
@@ -712,9 +677,9 @@
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
-                                                      (let ((ctx (ctx-init-fn sctx ctx all-params fvars)))
-                                                        (if (not (null? mvars))
-                                                            (error "NYI mvars in closure mlc-lambda"))
+                                                      (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
+                                                      (pp "----- GEN FUN WITH")
+                                                      (pp ctx)
                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
 
                                                       ; ;; Then, generate a specified version and patch cc-table in closure
@@ -821,21 +786,21 @@
         (cond ;; rest AND actual == formal
               ((and rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
                  (set! ctx (ctx-stack-push ctx CTX_NULL))
-                 (codegen-prologue-rest= cgc)
-                 (pp ctx))
+                 (codegen-prologue-rest= cgc))
               ;; rest AND actual > formal
               ((and rest-param (> nb-actual (- nb-formal 1)))
                  (let* ((nb-extra (- nb-actual (- nb-formal 1)))
-                        (ctx (ctx-pop-n ctx (- nb-extra 1)))
-                        (ctx (ctx-change-type ctx 0 CTX_PAI)))
-                 (codegen-prologue-rest> cgc nb-extra)
-                 (jump-to-version cgc succ ctx)))
+                        (nctx (ctx-pop-n ctx (- nb-extra 1)))
+                        (nctx (ctx-change-type nctx 0 CTX_PAI)))
+                   (set! ctx nctx)
+                   (codegen-prologue-rest> cgc nb-extra)))
               ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
               ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
                  (gen-error cgc ERR_WRONG_NUM_ARGS))
               ;; Else, nothing to do
               (else #f))
 
+        (gen-mutable cgc ctx mvars)
         (jump-to-version cgc succ ctx)))))
 
 ;; Create a new cc table with 'init' as stub value
@@ -2599,9 +2564,6 @@
                          (if (ctx-loc-is-memory? closure-loc)
                              (begin (x86-mov cgc (x86-rax) closure-opnd)
                                     (set! closure-opnd (x86-rax))))
-                         (println "Closure loc " closure-loc)
-                         (println "fvar pos" fvar-pos)
-                         (println "fvar offset" fvar-offset)
                          (x86-mov cgc (x86-rax) (x86-mem (- fvar-offset TAG_MEMOBJ) closure-opnd))
                          (x86-rax)))
                      ;;

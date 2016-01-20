@@ -1365,22 +1365,20 @@
 ;; Mutable var (creates mutable object, write variable and header and replace local with mutable object)
 (define (codegen-mutable cgc lval)
   (let ((header-word (mem-header 2 STAG_MOBJECT))
-        (opval (codegen-loc-to-x86opnd lval))
-        (tmpopval #f))
-
-    (if (ctx-loc-is-memory? lval)
-        (begin (x86-mov cgc (x86-rax) opval)
-               (set! tmpopval (x86-rax)))
-        (set! tmpopval opval))
+        (opval (codegen-loc-to-x86opnd lval)))
 
     ;; Alloc mutable
     (gen-allocation cgc #f STAG_MOBJECT 2)
     ;; Write variable
-    (x86-mov cgc (x86-mem 8 alloc-ptr) tmpopval)
+    (if (ctx-loc-is-memory? lval)
+        (begin (x86-mov cgc (x86-rax) opval)
+               (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
+        (x86-mov cgc (x86-mem 8 alloc-ptr) opval))
     ;; Write header
     (x86-mov cgc (x86-rax) (x86-imm-int header-word))
     (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
     ;; Replace local
-    (x86-lea cgc tmpopval (x86-mem TAG_MEMOBJ alloc-ptr)) ;; Register or rax if mem
     (if (ctx-loc-is-memory? lval)
-        (x86-mov cgc opval tmpopval))))
+        (begin (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+               (x86-mov cgc opval (x86-rax)))
+        (x86-lea cgc opval (x86-mem TAG_MEMOBJ alloc-ptr)))))

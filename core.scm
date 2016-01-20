@@ -1209,16 +1209,16 @@
             -1
             0))
 
-(define (ctx-init-fn call-ctx enclosing-ctx args free-vars)
+(define (ctx-init-fn call-ctx enclosing-ctx args free-vars mutable-vars)
   (make-ctx (ctx-stack call-ctx)
             (reg-slot-init)
             (slot-loc-init-fn (length args))
-            (env-init-fn args 2 free-vars enclosing-ctx)
+            (env-init-fn args 2 free-vars mutable-vars enclosing-ctx)
             (length args)
             (length args))) ;; fs is length args because all args are on the stack
 
 ;; TODO MOVE
-(define (env-init-fn args loc free-vars enclosing-ctx)
+(define (env-init-fn args loc free-vars mutable-vars enclosing-ctx)
 
   (define (init-free free-vars enclosing-env i)
     (if (null? free-vars)
@@ -1241,7 +1241,9 @@
         (cons (cons (car args)
                     (make-identifier 'local
                                      loc
-                                     '(TODOflags)
+                                     (if (member (car args) mutable-vars)
+                                         '(mutable)
+                                         '())
                                      #f))
               (init-local (cdr args) (+ loc 1)))))
 
