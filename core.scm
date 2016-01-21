@@ -1075,478 +1075,268 @@
 ;;-----------------------------------------------------------------------------
 ;; Identifier management
 
-;;; Identifier in environment associated to an identifier
-;(define-type identifier
-;  constructor: make-identifier*
-;  type   ;; 'free or 'local
-;  offset ;; offset in closure or stack
-;  pos    ;; set of offset where the identifier is located
-;  flags  ;; list of flags (possible flags : mutable)
-;  stype  ;; ctx type if identifier is a free var
-;)
-;
-;(define (make-identifier type offset pos flags stype)
-;  (make-identifier* type offset (sort pos <) flags stype))
-;
-;(define (identifier-mutable? id)
-;  (member 'mutable (identifier-flags id)))
-;
-;;; Add pos to identifier object
-;(define (identifier-add-pos identifier pos)
-;  (if (member pos (identifier-pos identifier))
-;    identifier
-;    (make-identifier (identifier-type identifier)
-;                     (identifier-offset identifier)
-;                     (cons pos (identifier-pos identifier))
-;                     (identifier-flags identifier)
-;                     (identifier-stype identifier))))
-;
-;;; Remove pos from identifier object
-;(define (identifier-remove-pos identifier pos)
-;  (make-identifier (identifier-type    identifier)
-;                   (identifier-offset  identifier)
-;                   (set-sub (identifier-pos identifier) (list pos) '())
-;                   (identifier-flags   identifier)
-;                   (identifier-stype   identifier)))
-;
-;;; Reset pos of given identifier
-;(define (identifier-reset-pos identifier)
-;  (make-identifier (identifier-type identifier)
-;                   (identifier-offset identifier)
-;                   '()
-;                   (identifier-flags identifier)
-;                   (identifier-stype identifier)))
-
 ;;-----------------------------------------------------------------------------
 ;; Ctx TODO regalloc
 
 ;; Identifier in environment associated to an identifier
 (define-type identifier
   constructor: make-identifier*
-  kind   ;; 'free or 'local
-  locs   ;; set of offset where the identifier is located
-  flags  ;; list of flags (possible flags : mutable)
-  stype  ;; ctx type if identifier is a free var
-  floc   ;; location in closure if identifier is a free var
+  kind    ;; 'free or 'local
+  sslots  ;; stack slots
+  flags   ;; list of flags (possible flags : mutable)
+  stype   ;; ctx type (copied to virtual stack)
+  cloc   ;; closure slot if free variable
 )
-
-;; TODO macro générique pour modifier chaque champ? (comme identifier-kind-set! mais immutable)
-(define (identifier-change-locs identifier locs)
-  (make-identifier*
-    (identifier-kind identifier)
-    locs
-    (identifier-flags identifier)
-    (identifier-stype identifier)
-    (identifier-floc identifier)))
-
-;; TODO: retourne une 'location' pour un identifiant donné.
-;; Retourne un registre si cet identifiant est dans un registre
-;; Retourne l'emplacement mémoire sinon.
-;; L'interet est que si l'identifiant est dans un registre ET en mémoire, on va plutot retourner le registre pour générer un code plus efficace
-(define (identifier-loc identifier)
-  (let ((rloc (identifier-rloc identifier)))
-    (if rloc
-        rloc
-        (let ((mloc (identifier-mloc identifier)))
-          (if mloc
-              mloc
-              (let ((floc (identifier-floc identifier)))
-                (if floc
-                    floc
-                    (error "Internal error identifier-loc"))))))))
 
 (define (make-identifier kind loc flags stype)
   (if (eq? kind 'free)
       (make-identifier* kind '() flags stype loc)
       (make-identifier* kind (list loc) flags stype #f)))
 
-(define (identifier-xloc identifier loc-test)
-  (define (get-xloc locs)
-    (if (null? locs)
-        #f
-        (if (loc-test (car locs))
-            (car locs)
-            (get-xloc (cdr locs)))))
-  (get-xloc (identifier-locs identifier)))
-
-(define (identifier-rloc identifier)
-  (identifier-xloc identifier ctx-loc-is-register?))
-
-(define (identifier-mloc identifier)
-  (identifier-xloc identifier ctx-loc-is-memory?))
-
-(define (ctx-floc-to-fpos floc)
-  (- (string->number
-       (list->string
-         (cdr (string->list
-                (symbol->string floc)))))
-     1))
-
-;; TODO regalloc
-;; Context que le compilateur conserve
+;; ctx
 (define-type ctx
   stack ;;
-  reg-slot ;;
-  slot-loc ;;
+  slot-loc
+  free-regs
   env ;;
   nb-args ;;
   fs ;;
 )
 
-;; Nombre de registres pour l'allocation de registre
-(define regalloc-nbregs 10) ;; NOTE: regalloc-nbregs MUST BE == to length of 'regalloc-regs' (nb virtual regs == nb x86 regs)
-
-;; TODO regalloc
-;;-------------------------
-;; Ctx operations
-
 ;; Initialise un nouveau contexte vide. (pile vide, registres associés à rien, pas de slot, env vide et nb-args=-1)
 (define (ctx-init)
   (make-ctx '()
-            (reg-slot-init)
             '()
+            (build-list (length regalloc-regs) (lambda (i)
+                                                 (string->symbol
+                                                   (string-append "r" (number->string i)))))
             '()
             -1
             0))
 
+(define (ctx-init-with-stack stack)
+  (let ((ctx (ctx-init)))
+    (make-ctx
+      stack
+      (ctx-slot-loc ctx)
+      (ctx-free-regs ctx)
+      (ctx-env ctx)
+      (ctx-nb-args ctx)
+      (ctx-fs ctx))))
+
 (define (ctx-init-fn call-ctx enclosing-ctx args free-vars mutable-vars)
+
+  ;; Construit le slot-loc initial pour une fonction
+  ;; Pour le moment, les arguments sont passés sur la pile
+  ;; donc chaque slot de pile est associé à l'emplacement mémoire
+  (define (slot-loc-init-fn nb-args)
+    (if (= nb-args 0)
+        (list '(1 . 1) '(0 . 0)) ;; closure & retaddr
+        (cons (cons (+ 1 nb-args) (+ 1 nb-args))
+              (slot-loc-init-fn (- nb-args 1)))))
+
+
+  (define (env-init-fn args slot free-vars mutable-vars enclosing-ctx)
+
+    (define (init-free free-vars enclosing-env i)
+      (if (null? free-vars)
+          '()
+          (let* ((ident (cdr (assoc (car free-vars) enclosing-env)))
+                 (type (identifier-stype ident)))
+            (cons (cons (car free-vars)
+                        (make-identifier 'free
+                                         (string->symbol (string-append "f" (number->string i)))
+                                         (identifier-flags ident)
+                                         (if (member 'mutable (identifier-flags ident))
+                                             CTX_UNK ;; Can't write type of free mutable variable
+                                             type)))
+                  (init-free (cdr free-vars) enclosing-env (+ i 1))))))
+
+    (define (init-local args slot)
+      (if (null? args)
+          '()
+          (cons (cons (car args)
+                      (make-identifier 'local
+                                       slot
+                                       (if (member (car args) mutable-vars)
+                                           '(mutable)
+                                           '())
+                                       #f))
+                (init-local (cdr args) (+ slot 1)))))
+
+    (append (init-free free-vars (ctx-env enclosing-ctx) 1)
+            (init-local args slot)))
+
+  ;;
   (make-ctx (ctx-stack call-ctx)
-            (reg-slot-init)
             (slot-loc-init-fn (length args))
+            (build-list (length regalloc-regs) (lambda (i)
+                                                 (string->symbol
+                                                   (string-append "r" (number->string i)))))
             (env-init-fn args 2 free-vars mutable-vars enclosing-ctx)
             (length args)
             (length args))) ;; fs is length args because all args are on the stack
 
-;; TODO MOVE
-(define (env-init-fn args loc free-vars mutable-vars enclosing-ctx)
+(define (ctx-lidx-to-slot ctx lidx)
+  (- (length (ctx-stack ctx)) lidx 1))
 
-  (define (init-free free-vars enclosing-env i)
-    (if (null? free-vars)
-        '()
-        (let* ((ident (cdr (assoc (car free-vars) enclosing-env)))
-               (type
-                 (if (eq? (identifier-kind ident) 'local)
-                     (ctx-get-type-from-loc enclosing-ctx (identifier-loc ident))
-                     (identifier-stype ident))))
-          (cons (cons (car free-vars)
-                      (make-identifier 'free
-                                       (string->symbol (string-append "f" (number->string i)))
-                                       (identifier-flags ident)
-                                       type))
-                (init-free (cdr free-vars) enclosing-env (+ i 1))))))
+(define (ctx-slot-to-lidx ctx slot)
+  (- (length (ctx-stack ctx)) slot 1))
 
-  (define (init-local args loc)
-    (if (null? args)
-        '()
-        (cons (cons (car args)
-                    (make-identifier 'local
-                                     loc
-                                     (if (member (car args) mutable-vars)
-                                         '(mutable)
-                                         '())
-                                     #f))
-              (init-local (cdr args) (+ loc 1)))))
+;; Return pair:
+;; car: deleted element
+;; cdr: list with first occurrence of el removed
+(define (assoc-remove el lst)
+  (if (null? lst)
+      (cons #f '())
+      (if (equal? (car (car lst)) el)
+          lst
+          (let ((r (assoc-remove el (cdr lst))))
+            (cons (car r)
+                  (cons (car lst)
+                        (cdr r)))))))
 
-  (append (init-free free-vars (ctx-env enclosing-ctx) 1)
-          (init-local args loc)))
-
-;; RR
-;(define (ctx-free ctx lidx)
-;  (make-ctx ;; 1 Enleve le type de la pile
-;            (let ((stack (ctx-stack ctx)))
-;              (append (list-head stack lidx)
-;                      (cons type (list-tail stack (+ stack-idx 1)))))
-;            ;; 2 Maj reg slot (libere le(s) registre(s) associé(s) à ce slot) (TODO peut-il y en avoir plusieurs?)
-;            (reg-slot-free-slot (ctx-reg-slot ctx) (ctx-lidx-to-slot ctx 0))
-;            ;; 3 Maj slot-loc on enleve le slot
-;            (slot-loc-remove (ctx-slot-loc ctx) (ctx-lidx-to-slot ctx 0))
-;            ;; 4 Maj env
-;            (begin (println "NYI MAK ENV") (ctx-env ctx))
-;            ;;
-;            (ctx-nb-args ctx)))
-
-;; TODO verifier etat de ctx-stack apres ctx-pop et ctx-unbind
-
-;(define (ctx-free-locs ctx locs)
-;
-;  (define (get-slot slot-loc loc)
-;    (if (null? slot-loc)
-;        (error "NYI INTERNAL")
-;        (let ((first (car slot-loc)))
-;          (if (eq? (cdr first) loc)
-;              (car first)
-;              (get-slot (cdr slot-loc) loc)))))
-;
-;  (define (free-one ctx loc)
-;    (let ((slot (get-slot (ctx-slot-loc ctx) loc)))
-;      (make-ctx ;; 1
-;                (ctx-stack ctx)
-;                ;; 2
-;                (reg-slot-free-slot (ctx-reg-slot ctx) slot)
-;                ;; 3
-;                (slot-loc-remove (ctx-slot-loc ctx) slot)
-;                ;; 4
-;                (begin (println "NYI FREE ONE") (ctx-env ctx))
-;                ;;
-;                (ctx-nb-args ctx))))
-;
-;  (foldr (lambda (el ctx) (free-one ctx el))
-;         ctx
-;         locs))
-
-;; TODO comment + mov
-(define (reg-slot-move reg-slot slot-from slot-to)
-  (foldr (lambda (el reg-slot)
-           (cond ;; Si on trouve l'élément, on change la valeur du slot
-                 ((eq? (cdr el) slot-from)
-                    (cons (cons (car el) slot-to)
-                          reg-slot))
-                 ;; Si on trouve le slot vers lequel on va, on libère le registre
-                 ((eq? (cdr el) slot-to)
-                    (cons (cons (car el) #f)
-                          reg-slot))
-                 ;; Sinon, on conserve l'élément tel quel
-                 (else (cons el reg-slot))))
-         '()
-         reg-slot))
-
-;; TODO comment + mov
-(define (slot-loc-move slot-loc slot-from slot-to)
-  (foldr (lambda (el slot-loc)
-           (cond ;; Si on trouve l'élément, on change la valeur du slot
-                 ((eq? (car el) slot-from)
-                    (cons (cons slot-to (cdr el))
-                          slot-loc))
-                 ;; Si c'est le slot vers lequel on va, on enleve la valeur
-                 ((eq? (car el) slot-to)
-                    slot-loc)
-                 ;; Sinon, on conserve l'élément tel quel
-                 (else (cons el slot-loc))))
-         '()
-         slot-loc))
-
-;; TODO comment + mov?
-;; TODO: l'environnement n'est pas modifié et est géré séparément TODO uniformiser ca dans les fonctions ctx-...
-(define (ctx-move-lidx ctx lfrom lto)
-  (pp "MOVE FROM TO")
-  (pp lfrom) (pp lto)
-  (let* ((stack
-           (let ((old (ctx-stack ctx)))
-             (append (list-head old lto) (cons (list-ref old lfrom) (list-tail old (+ lto 1))))))
-         (reg-slot
-           (reg-slot-move (ctx-reg-slot ctx) (ctx-lidx-to-slot ctx lfrom) (ctx-lidx-to-slot ctx lto)))
-         (slot-loc
-           (slot-loc-move (ctx-slot-loc ctx) (ctx-lidx-to-slot ctx lfrom) (ctx-lidx-to-slot ctx lto)))
-         (env
-           (ctx-env ctx))
-         (nb-args (ctx-nb-args ctx))
-         (fs (ctx-fs ctx)))
-
-  (make-ctx stack reg-slot slot-loc env nb-args fs)))
-
-;;
-(define (ctx-move-type ctx lfrom lto)
+(define (ctx-push ctx type loc) ;; can only push reg ?
   (make-ctx
-    (let ((old (ctx-stack ctx)))
-      (append (list-head old lto) (cons (list-ref old lfrom) (list-tail old (+ lto 1)))))
-    (ctx-reg-slot ctx)
-    (ctx-slot-loc ctx)
+    ;; Stack
+    (cons type (ctx-stack ctx))
+    ;; Slot-loc
+    (cons
+      (cons (+ (ctx-lidx-to-slot ctx 0) 1) loc)
+      (ctx-slot-loc ctx))
+    ;; Free regs
+    (set-sub (ctx-free-regs ctx) (list loc) '())
+    ;; env
     (ctx-env ctx)
+    ;; nb-args
     (ctx-nb-args ctx)
+    ;;
     (ctx-fs ctx)))
 
-;; TODO comment + mov!
-;; Modifie l'objet identifier associé à 'id' dans l'environnement:
-;; l'identifier contient, dans locs, l'ensemble des locs qui sont associées au slot 'slot'
-(define (ctx-set-id-slot ctx id slot)
-  (make-ctx
-    (ctx-stack ctx)
-    (ctx-reg-slot ctx)
-    (ctx-slot-loc ctx)
-    (env-set-id-locs (ctx-env ctx) id (ctx-get-locs-from-slot ctx slot))
-    (ctx-nb-args ctx)
-    (ctx-fs ctx)))
-
-;; TODO comment + move
-(define (env-set-id-locs env id locs)
-  (foldr (lambda (el r)
-           (if (eq? (car el) id)
-               (cons (cons (car el)
-                           (identifier-change-locs (cdr el) locs))
-                     r)
-               (cons el r)))
-         '()
-         env))
-
-;; ids est une liste de symboles qui correspond aux identifiants
-;; Cette fonction supprime les liaisons du contexte (libere registres/memoire et enleve les identifiers)
-(define (ctx-unbind ctx ids)
-  (define (env-remove-id env id)
-    (if (null? env)
-        '()
-        (if (eq? (car (car env)) id)
-            (cdr env)
-            (cons (car env) (env-remove-id (cdr env) id)))))
-  (define (remove-id ctx id)
-    (make-ctx (ctx-stack ctx)
-              (ctx-reg-slot ctx)
-              (ctx-slot-loc ctx)
-              (env-remove-id (ctx-env ctx) id)
-              (ctx-nb-args ctx)
-              (ctx-fs ctx)))
-
-  (foldr (lambda (el ctx) (remove-id ctx el))
-         ctx
-         ids))
-;(define (ctx-unbind ctx ids)
-;
-;  (define (remove-id ctx id)
-;    (make-ctx (ctx-stack ctx)
-;              (ctx-reg-slot ctx)
-;              (ctx-slot-loc ctx)
-;              (foldr (lambda (el env)
-;                       (if (eq? id (car el))
-;                           env
-;                           (cons el env)))
-;                     '()
-;                     (ctx-env ctx))
-;              (ctx-nb-args ctx)))
-;
-;  (define (unbind-one ctx id)
-;    (let* ((identifier (assoc id (ctx-env ctx)))
-;           (locs (identifier-locs (cdr identifier)))
-;           (ctx (ctx-free-locs ctx locs)))
-;      (remove-id ctx id)))
-;
-;  (foldr (lambda (el ctx) (unbind-one ctx el))
-;         ctx
-;         ids))
-
-;; id-ctx est une liste qui contient des couples (id . lidx)
-;; Cette fonction modifie tous les éléments du contexte pour associer l'identifiant de variable à l'index de la pile virtuelle
-(define (ctx-bind ctx id-idx mvars)
-
-  (define (bind-one ctx id-idx)
-    (let* ((loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx (cdr id-idx))))
-           (identifier (make-identifier 'local
-                                        loc
-                                        (if (member (car id-idx) mvars)
-                                            '(mutable)
-                                            '())
-                                        #f)))
-      (make-ctx (ctx-stack ctx)
-                (ctx-reg-slot ctx)
-                (ctx-slot-loc ctx)
-                (cons (cons (car id-idx) identifier)
-                      (ctx-env ctx))
-                (ctx-nb-args ctx)
-                (ctx-fs ctx))))
-
-  (foldr (lambda (el ctx) (bind-one ctx el))
-         ctx
-         id-idx))
-
-;; TODO lidx
-(define (ctx-change-type ctx stack-idx type)
-  (pp "NYI ctx-change-type") ;; TODO regalloc: changes only stack type for now
-  (let* ((stack (ctx-stack ctx))
-         (nstack (append (list-head stack stack-idx) (cons type (list-tail stack (+ stack-idx 1))))))
-    (make-ctx nstack
-              (ctx-reg-slot ctx)
-              (ctx-slot-loc ctx)
-              (ctx-env ctx)
-              (ctx-nb-args ctx)
-              (ctx-fs ctx))))
-
-;; TODO comment + move
-(define (ctx-get-locs-from-slot ctx slot)
-  (foldr (lambda (el r)
-           (if (eq? (car el) slot)
-               (cons (cdr el) r)
-               r))
-         '()
-         (ctx-slot-loc ctx)))
-
-;; TODO comment + move
-(define (ctx-get-loc-from-lidx ctx lidx)
-  (let ((slot (ctx-lidx-to-slot ctx lidx)))
-    (cdr (assoc slot (ctx-slot-loc ctx)))))
-
-;; TODO comment + move
-(define (ctx-get-type-from-loc ctx loc)
-  (let* ((slot (slot-loc-get-slot-from-loc (ctx-slot-loc ctx) loc))
-         (idx  (ctx-slot-to-lidx ctx slot)))
-    (list-ref (ctx-stack ctx) idx)))
-
-;; TODO comment+ move
-;; Ajoute un type en haut de la pile, ne modifie que la pile
-(define (ctx-stack-push ctx type)
-  (make-ctx (cons type (ctx-stack ctx))
-            (ctx-reg-slot ctx)
-            (ctx-slot-loc ctx)
-            (ctx-env ctx)
-            (ctx-nb-args ctx)
-            (ctx-fs ctx)))
-
-;; Ajoute une valeur sur le haut de la pile. (ajout le type sur la pile)
-;; Ce nouveau slot est associé au registre 'reg'
-;; Sym est un symbole qui représente un id de varable. Si sym est donné, ca veut dire qu'on met sur le haut de la pile
-;; virtuelle une variable, donc il faut modifier le contexte (ATTENTION, faut-il modifier que l'env ?? aussi reg-slot non ?)
-;; TODO: rename reg -> loc because loc could be a memory location
-(define (ctx-push ctx type reg #!optional (sym #f))
-  (make-ctx ;; 1 Ajout du type sur la pile
-            (stack-push (ctx-stack ctx) type)
-            ;; 2 Maj reg slot
-            (if (ctx-loc-is-register? reg)
-                (reg-slot-assign (ctx-reg-slot ctx) reg (length (ctx-stack ctx))) ;; TODO use (ctx-lidx-to-slot ctx lidx)
-                (ctx-reg-slot ctx))
-            ;; 3 Maj slot reg
-            (slot-loc-assign (ctx-slot-loc ctx) (length (ctx-stack ctx)) reg)
-            ;; 4 Maj env
-            (begin (pp "NYI update env")
-            (if sym
-                (error "NYI UPDATE ENV")
-                (ctx-env ctx)))
-            ;;
-            (ctx-nb-args ctx)
-            (ctx-fs ctx)))
-
-;; TODO : remplacer les (ctx-pop (ctx-pop ...)) par ça
+;;; TODO : remplacer les (ctx-pop (ctx-pop ...)) par ça
 (define (ctx-pop-n ctx n)
   (if (= n 0)
       ctx
       (ctx-pop (ctx-pop-n ctx (- n 1)))))
 
-;; Retire la valeur du haut de la pile virtuelle. Enleve le type de la pile.
-;; Il faut mettre à jour l'ensemble du contexte avec cette nouvelle information
 (define (ctx-pop ctx)
-  (make-ctx ;; 1 Enleve le type de la pile
-            (stack-pop (ctx-stack ctx))
-            ;; 2 Maj reg slot (libere le(s) registre(s) associé(s) à ce slot) (TODO peut-il y en avoir plusieurs?)
-            (reg-slot-free-slot (ctx-reg-slot ctx) (ctx-lidx-to-slot ctx 0))
-            ;; 3 Maj slot-loc on enleve le slot
-            (slot-loc-remove (ctx-slot-loc ctx) (ctx-lidx-to-slot ctx 0))
-            ;; 4 Maj env
-            (begin (pp "NYI MAK ENV") (ctx-env ctx))
-            ;;
-            (ctx-nb-args ctx)
-            (ctx-fs ctx)))
+  (let* ((slot (ctx-lidx-to-slot ctx 0))
+         (stack (cdr (ctx-stack ctx)))
+         (r (assoc-remove slot (ctx-slot-loc ctx)))
+         (slot-loc (cdr r))
+         (loc (cdar r))
+         (free-regs (if (ctx-loc-is-register? loc)
+                        (cons loc (ctx-free-regs ctx))
+                        (ctx-free-regs ctx)))
+         (env
+           (foldr (lambda (el r)
+                    (if (member slot (identifier-sslots (cdr el)))
+                        (cons (cons (car el)
+                                    (make-identifier
+                                      (identifier-kind (cdr el))
+                                      (set-sub (identifier-sslots (cdr el)) slot)
+                                      (identifier-flags (cdr el))
+                                      (identifier-stype (cdr el))
+                                      (identifier-cloc (cdr el))))
+                              r)
+                        (cons el r)))
+                  '()
+                  (ctx-env ctx))))
+    (make-ctx stack slot-loc free-regs env (ctx-nb-args ctx) (ctx-fs ctx))))
 
-;; Convertir un index de liste vers un slot sur la pile de type EX:
-;; Pile:        haut (   a   b   c   d   e   ) bas
-;; Index liste:          0   1   2   3   4
-;; Slot pos:             4   3   2   1   0
-(define (ctx-lidx-to-slot ctx lidx)
-  (- (length (ctx-stack ctx)) lidx 1))
+;;
+(define (ctx-identifier-type ctx identifier)
+  (if (member 'mutable (identifier-flags identifier))
+      (identifier-stype identifier)
+      (let ((slot (car (identifier-sslots identifier))))
+        (list-ref (ctx-stack ctx) (ctx-slot-to-lidx ctx slot)))))
 
-;; TODO comment
-(define (ctx-slot-to-lidx ctx slot)
-  (- (length (ctx-stack ctx)) slot 1))
+;;
+(define (ctx-identifier-loc ctx identifier)
 
-;; Retourne la 'location' associée au slot de pile 'stack-pos' ;; TODO: renommer stack-pos -> slot
-;; l'emplacement est soit un registre soit un emplacement mémoire, on peut donc interroger directement la structure slot-loc
-(define (ctx-get-loc ctx stack-pos)
-  (cdr (assoc stack-pos (ctx-slot-loc ctx))))
+  ;; Retourne le premier registre trouvé si pas de registre, retourne l'emplacement mémoire
+  (define (get-loc slots ret)
+    (if (null? slots)
+        ret
+        (let* ((r (assoc (car slots) (ctx-slot-loc ctx)))
+               (loc (cdr r)))
+          (if (ctx-loc-is-register? loc)
+              loc
+              (get-loc (cdr slots) loc)))))
+
+
+  (let ((slots (identifier-sslots identifier)))
+    (if (not slots)
+        ;; Free var only in closure, return closure loc (fx)
+        (identifier-cloc identifier)
+        ;;
+        (get-loc slots #f))))
+
+;;
+(define (ctx-identifier-at ctx slot)
+  (define (env-identifier-at env)
+    (if (null? env)
+        #f
+        (let ((identifier (cdar env)))
+          (if (member slot (identifier-sslots identifier))
+              (car env)
+              (env-identifier-at (cdr env))))))
+  (env-identifier-at (ctx-env ctx)))
+
+;; TODO lidx
+(define (ctx-change-type ctx stack-idx type)
+
+  (define (change-stack stack lidx)
+    (append (list-head stack lidx)
+            (cons type
+                  (list-tail stack (+ lidx 1)))))
+
+  ;; slot = lidx_to_slot(stack_idx)
+  ;; id = id_at(slot)
+  ;; if id
+  ;;   for each slot of id
+  ;;      change-type
+  ;; else
+  ;;   change one
+
+  (let* ((slot (ctx-lidx-to-slot ctx stack-idx))
+         (identifier (ctx-identifier-at ctx slot))
+         (stack
+           (if identifier
+               (error "NYI")
+               (change-stack (ctx-stack ctx) stack-idx))))
+    (make-ctx
+      stack
+      (ctx-slot-loc ctx)
+      (ctx-free-regs ctx)
+      (ctx-env ctx)
+      (ctx-nb-args ctx)
+      (ctx-fs ctx))))
+
+;;; TODO: cette fonction peut générer du code (spill), il faut donc faire attention ou on l'appelle, et lui envoyer le cgc
+;;; TODO: ajouter un argument qui donne le nombre d'éléments sur la pile qui sont consommés pour cette opération (**)
+;;; Retourne un registre vide
+;;; Si un registre est vide, on le retourne
+;;; Sinon, NYI:
+;;;   * On regarde les n (**) éléments sur la pile virtuelle. Si un est associé à un registre, on peut le retourner car c'est une opérande de l'opération en cours donc il peut etre la destination
+;;;   * Sinon, on libère un registre selon une certaine stratégie donnée (peu importe laquelle)
+;;;     puis on le retourne
+(define (ctx-get-free-reg ctx #!optional (fixed-regs '())) ;; TODO : ne pas spiller les registres donnés dans fixed-regs
+  (let ((free-regs (ctx-free-regs ctx)))
+    (if (null? free-regs)
+        (error "NYI GET FREE REG")
+        (cons
+          (car free-regs)
+          ctx))))
+
+;;; Retourne la 'loc' associée au slot de pile 'slot'
+;;; l'emplacement est soit un registre soit un emplacement mémoire, on peut donc interroger directement la structure slot-loc
+(define (ctx-get-loc ctx slot)
+  (let ((r (assoc slot (ctx-slot-loc ctx))))
+    (if r
+        (cdr r)
+        (error "NYI error"))))
+
 
 ;; Retourne #t si l'emplacement donné est un registre, #f sinon
 ;; loc est un registre si il est de la forme (rx . value)
@@ -1565,344 +1355,390 @@
   (and (symbol? loc)
        (char=? (string-ref (symbol->string loc) 0) #\f)))
 
-;; TODO: cette fonction peut générer du code (spill), il faut donc faire attention ou on l'appelle, et lui envoyer le cgc
-;; TODO: ajouter un argument qui donne le nombre d'éléments sur la pile qui sont consommés pour cette opération (**)
-;; Retourne un registre vide
-;; Si un registre est vide, on le retourne
-;; Sinon, NYI:
-;;   * On regarde les n (**) éléments sur la pile virtuelle. Si un est associé à un registre, on peut le retourner car c'est une opérande de l'opération en cours donc il peut etre la destination
-;;   * Sinon, on libère un registre selon une certaine stratégie donnée (peu importe laquelle)
-;;     puis on le retourne
-(define (ctx-get-free-reg ctx #!optional (fixed-regs '())) ;; TODO : ne pas spiller les registres donnés dans fixed-regs
-  (define (get-free reg-slot)
-    (if (null? reg-slot)
-        (error "NYIctx regalloc")
-        (let ((first (car reg-slot)))
-          (if (not (cdr first))
-              (cons (car first) ctx)
-              (get-free (cdr reg-slot))))))
-  (get-free (ctx-reg-slot ctx)))
+;;-----------------------------------------------------------------------------
 
-;; TODO regalloc
-;;-------------------------
-;; Stack
 
-;; Ajoute un type sur la pile de types
-(define (stack-push stack type)
-  (cons type stack))
+;;;;
 
-;; Enleve le type du haut de la pile de types
-(define (stack-pop stack)
-  (cdr stack))
+;;; Identifier in environment associated to an identifier
+;(define-type identifier
+;  constructor: make-identifier*
+;  kind   ;; 'free or 'local
+;  locs   ;; set of offset where the identifier is located
+;  flags  ;; list of flags (possible flags : mutable)
+;  stype  ;; ctx type if identifier is a free var
+;  floc   ;; location in closure if identifier is a free var
+;)
 
-;; TODO regalloc
-;;-------------------------
-;; Reg-slot
+;;; TODO macro générique pour modifier chaque champ? (comme identifier-kind-set! mais immutable)
+;(define (identifier-change-locs identifier locs)
+;  (make-identifier*
+;    (identifier-kind identifier)
+;    locs
+;    (identifier-flags identifier)
+;    (identifier-stype identifier)
+;    (identifier-floc identifier)))
 
-;; Créé une nouvelle structure reg-slot vide.
-;; Cette structure vide est de la forme:
-;; ((r0 . #f) (r1 . #f) ... (rn . #f))
-(define (reg-slot-init)
-  (define (reg-slot-init total rem)
-    (if (= rem 0)
-        '()
-        (cons (cons (string->symbol (string-append "r" (number->string (- total rem))))
-                     #f)
-              (reg-slot-init total (- rem 1)))))
-  (reg-slot-init regalloc-nbregs regalloc-nbregs))
+;;; TODO: retourne une 'location' pour un identifiant donné.
+;;; Retourne un registre si cet identifiant est dans un registre
+;;; Retourne l'emplacement mémoire sinon.
+;;; L'interet est que si l'identifiant est dans un registre ET en mémoire, on va plutot retourner le registre pour générer un code plus efficace
+;(define (identifier-loc identifier)
+;  (let ((rloc (identifier-rloc identifier)))
+;    (if rloc
+;        rloc
+;        (let ((mloc (identifier-mloc identifier)))
+;          (if mloc
+;              mloc
+;              (let ((floc (identifier-floc identifier)))
+;                (if floc
+;                    floc
+;                    (error "Internal error identifier-loc"))))))))
 
-;; TODO: étudier: un meme reg peut etre associé à plusieurs slots? (non géré) et vice versa
-;; Assigne un registre à un slot dans la structure reg-slot
-;; donc (rn . valeur) devient (rn . slot) (SI UN REGISTRE EST ASSOCIE A UN SEUL SLOT?)
-(define (reg-slot-assign reg-slot reg slot)
-  (if (null? reg-slot)
-      (error "NYD INTERNAL ERROR")
-      (let ((first (car reg-slot)))
-        (if (eq? (car first) reg)
-            (cons (cons reg slot) (cdr reg-slot))
-            (cons first (reg-slot-assign (cdr reg-slot) reg slot))))))
 
-;; TODO foldr?
-;; Libère une assignation précédemment effectuée (avec reg-slot-assign)
-;; donc (rn . valeur) devient (rn . #f) (SI UN REGISTRE EST ASSOCIE A UN SEUL SLOT?)
-(define (reg-slot-free-slot reg-slot slot)
-  (if (null? reg-slot)
-      '()
-      (let ((first (car reg-slot)))
-        (if (eq? (cdr first) slot)
-            (cons (cons (car first) #f)
-                  (reg-slot-free-slot (cdr reg-slot) slot))
-            (cons first (reg-slot-free-slot (cdr reg-slot) slot))))))
 
-;; TODO regalloc
-;;-------------------------
-;; Slot-loc
+;(define (identifier-xloc identifier loc-test)
+;  (define (get-xloc locs)
+;    (if (null? locs)
+;        #f
+;        (if (loc-test (car locs))
+;            (car locs)
+;            (get-xloc (cdr locs)))))
+;  (get-xloc (identifier-locs identifier)))
 
-;; Construit le slot-loc initial pour une fonction
-;; Pour le moment, les arguments sont passés sur la pile
-;; donc chaque slot de pile est associé à l'emplacement mémoire
-(define (slot-loc-init-fn nb-args)
-  (if (= nb-args 0)
-      (list '(1 . 1) '(0 . 0)) ;; closure & retaddr
-      (cons (cons (+ 1 nb-args) (+ 1 nb-args))
-            (slot-loc-init-fn (- nb-args 1)))))
+;(define (identifier-rloc identifier)
+;  (identifier-xloc identifier ctx-loc-is-register?))
+;
+;(define (identifier-mloc identifier)
+;  (identifier-xloc identifier ctx-loc-is-memory?))
+;
+;(define (ctx-floc-to-fpos floc)
+;  (- (string->number
+;       (list->string
+;         (cdr (string->list
+;                (symbol->string floc)))))
+;     1))
 
-;; TODO: un meme slot peut etre associé à plusieurs regs ? (non géré) et vice versa
-;; Assigne un slot à un emplacement
-;; Est-ce que le slot DOIT etre absent de slot-loc ? si oui assert ?
-(define (slot-loc-assign slot-loc slot loc)
-  (cons (cons slot loc)
-        slot-loc))
-
-;; TODO foldr?
-;; Enleve un slot assigné avec slot-loc-assign
-;; donc si on trouve une assignation (slot . loc) on l'enleve de la liste.
-;; TODO SI UN SLOT N'EST ASSOCIE QU'A UN EMPLACEMENT ?
-(define (slot-loc-remove slot-loc slot)
-  (if (null? slot-loc)
-      '()
-      (let ((first (car slot-loc)))
-        (if (eq? (car first) slot)
-            (slot-loc-remove (cdr slot-loc) slot)
-            (cons first (slot-loc-remove (cdr slot-loc) slot))))))
-
-;; TODO
-(define (slot-loc-get-slot-from-loc slot-loc loc)
-  (if (null? slot-loc)
-      (error "NYI INTERNAL slot-loc-get-slot-from-loc")
-      (let ((first (car slot-loc)))
-        (if (eq? (cdr first) loc)
-            (car first)
-            (slot-loc-get-slot-from-loc (cdr slot-loc) loc)))))
-
-;; TODO regalloc
-
-;; OLD FUNCTIONS:
-
-(define (ctx-get-top-pos ctx) (error "1"))
-(define (ctx-idx-to-pos ctx) (error "2"))
-(define (ctx-pos-to-idx ctx) (error "3"))
-(define (ctx-change-stack-type ctx) (error "4"))
-(define (ctx-change-stack-types ctx) (error "5"))
-(define (ctx-remove-pos ctx) (error "6"))
-(define (ctx-reset-pos ctx) (error "7"))
-(define (ctx-mov-nb ctx) (error "8"))
-;(define (ctx-pop ctx) (error "9"))
-;(define (ctx-push ctx) (error "10"))
-(define (ctx-clear ctx) (error "11"))
-
+;;; TODO regalloc
+;;; Context que le compilateur conserve
 ;(define-type ctx
-;  stack   ;; compile time stack, containing types
-;  regmap  ;; TODO
-;  env     ;; compile time environment
-;  nb-args ;; nb of arguments of current frame
+;  stack ;;
+;  reg-slot ;;
+;  slot-loc ;;
+;  env ;;
+;  nb-args ;;
+;  fs ;;
 ;)
 ;
-;(define (ctx-get-top-pos ctx)
-;  (- (length (ctx-stack ctx)) 2))
-;
-;(define (ctx-idx-to-pos ctx idx)
-;  (- (length (ctx-stack ctx)) idx 2))
-;
-;(define (ctx-pos-to-idx ctx pos)
-;  (- (length (ctx-stack ctx)) pos 2))
-;
-;(define (ctx-change-stack-type ctx pos type)
-;  (let ((idx (ctx-pos-to-idx ctx pos)))
-;    (make-ctx (append (list-head (ctx-stack ctx) idx) (list type) (list-tail (ctx-stack ctx) (+ idx 1)))
-;              (ctx-env ctx)
-;              (ctx-nb-args ctx))))
-;
-;(define (ctx-change-stack-types ctx positions type)
-;  (if (null? positions)
-;    ctx
-;    (ctx-change-stack-types (ctx-change-stack-type ctx (car positions) type)
-;                            (cdr positions)
-;                            type)))
-;
-;;; Remove pos from ctx identifiers
-;(define (ctx-remove-pos ctx pos)
-;  (make-ctx (ctx-stack ctx)
-;            (env-remove-pos (ctx-env ctx) pos)
-;            (ctx-nb-args ctx)))
-;
-;;; Reset pos in identifier object associated to id 'sym'
-;(define (ctx-reset-pos ctx sym)
-;  (make-ctx (ctx-stack ctx)
-;            (env-reset-pos (ctx-env ctx) sym)
-;            (ctx-nb-args ctx)))
-;
-;;; Move nb slot from l-from to l-to (ascending)
-;(define (ctx-mov-nb ctx nb l-from l-to)
-;  (if (= nb 0)
-;     ctx
-;     (ctx-mov-nb (ctx-move ctx l-from l-to)
-;                 (- nb 1)
-;                 (+ l-from 1)
-;                 (+ l-to 1))))
-;
-;;; Pop ctx
-;(define (ctx-pop ctx #!optional (n 1))
-;
-;  (define (ctx-pop-one ctx)
-;    (let* ((pos  (ctx-get-top-pos ctx))    ;; Get pos
-;           (nctx (ctx-remove-pos ctx pos)) ;; Remove pos from identifiers
-;           (stack (cdr (ctx-stack nctx)))) ;; Remove first from stack
-;      ;; Return new ctx
-;      (make-ctx stack (ctx-env nctx) (ctx-nb-args nctx))))
-;
-;  (define (ctx-pop-n ctx n)
-;    (if (= n 0)
-;       ctx
-;       (ctx-pop-n (ctx-pop-one ctx) (- n 1))))
-;
-;  (ctx-pop-n ctx n))
-;
-;;; Push value to ctx
-;;; Update stack and env if sym
-;(define (ctx-push ctx ctx-type #!optional (n 1) sym)
-;
-;  (define (ctx-push-one ctx ctx-type sym)
-;    (let ((stack (cons ctx-type (ctx-stack ctx)))
-;          (env   (if sym
-;                     (env-push-id (ctx-env ctx) ctx sym)
-;                     (ctx-env ctx))))
-;      (make-ctx stack env (ctx-nb-args ctx))))
-;
-;  (define (ctx-push-n ctx ctx-type n)
-;    (if (= n 0)
-;        ctx
-;        (ctx-push-n (ctx-push-one ctx ctx-type #f) ctx-type (- n 1))))
-;
-;  (assert (or (= n 1) (not sym)) ERR_INTERNAL)
-;
-;  (if sym
-;      (ctx-push-one ctx ctx-type sym)
-;      (ctx-push-n  ctx ctx-type n)))
-;
-;;; Remove all ctx information.
-;;; Return the 'generic' version of this context
-;(define (ctx-clear ctx)
-;  (make-ctx ;; Remove stack information
-;            (make-list (length (ctx-stack ctx)) CTX_UNK)
-;            ;; Remove env information
-;            (foldr (lambda (id others)
-;                     (cons (cons (car id)
-;                                 (make-identifier (identifier-type (cdr id))
-;                                                  (identifier-offset (cdr id))
-;                                                  '()
-;                                                  (identifier-flags (cdr id))
-;                                                  CTX_UNK))
-;                           others))
-;                   '()
-;                   (ctx-env ctx))
-;            (ctx-nb-args ctx)))
-;
-;;; Change type at 'idx' to 'type'
-;;; Change types at all other positions of the id(s) at this slot.
-;(define (ctx-change-type ctx idx type)
-;
-;  (define (change-for-identifiers env pos ctx)
-;    (if (null? env)
-;      ctx
-;      (let* ((idpair     (car env))
-;             (identifier (cdr idpair)))
-;        (if (member pos (identifier-pos identifier))
-;          ;; TODO: This function returns as soon as it encounters an identifier containing 'pos'
-;          ;;       Add the possibility to keep same positions of two identifier if they are non mutable.
-;          ;;       ex: (let ((a X)) (let ((b a)) BODY)) if in BODY, the compiler discovers the type of a, change the type of b !
-;          ;;       Then, this function must continue to change all identifiers. Only if an identifier associated to the current identifier as not yet been modified.
-;          ;;       (if there are to variable 'v in the env, discovering the type of 'v only changes the stack positions of most visible (recent) 'v)
-;          (ctx-change-stack-types ctx (identifier-pos identifier) type)
-;          ;; (change-for-identifiers (cdr env)
-;          ;;                         pos
-;          ;;                         (ctx-change-stack-types ctx (identifier-pos identifier) type))
-;          (change-for-identifiers (cdr env) pos ctx)))))
-;
-;  (let* ((pos (ctx-idx-to-pos ctx idx))
-;         (nctx  (change-for-identifiers (ctx-env ctx) pos ctx))
-;         (mctx  (ctx-change-stack-type nctx pos type)))
-;    mctx))
-;
-;;; Move type from index 'from' to index 'to'
-;(define (ctx-stack-move stack idx-from idx-to)
-;   (if (eq? (list-ref stack idx-to) CTX_MOBJ)
-;       stack
-;       (append (list-head stack idx-to)
-;               (cons (list-ref stack idx-from)
-;                     (list-tail stack (+ idx-to 1))))))
-;
-;;; Move slot from stack index 'from' to stack index 'to'
-;;; Optionnally update env
-;(define (ctx-move ctx idx-from idx-to #!optional (update-env? #t))
-;   (let ((pos-from (ctx-idx-to-pos ctx idx-from))
-;         (pos-to   (ctx-idx-to-pos ctx idx-to)))
-;
-;     (let ((env   (if update-env?
-;                      (env-move (ctx-env ctx) pos-from pos-to)
-;                      (ctx-env ctx)))
-;           (stack (ctx-stack-move (ctx-stack ctx) idx-from idx-to)))
-;
-;       (make-ctx stack env (ctx-nb-args ctx)))))
+;;; Nombre de registres pour l'allocation de registre
+;(define regalloc-nbregs 10) ;; NOTE: regalloc-nbregs MUST BE == to length of 'regalloc-regs' (nb virtual regs == nb x86 regs)
 
+;; TODO regalloc
 ;;-------------------------
+;; Ctx operations
+;
+;;; TODO comment + mov
+;(define (reg-slot-move reg-slot slot-from slot-to)
+;  (foldr (lambda (el reg-slot)
+;           (cond ;; Si on trouve l'élément, on change la valeur du slot
+;                 ((eq? (cdr el) slot-from)
+;                    (cons (cons (car el) slot-to)
+;                          reg-slot))
+;                 ;; Si on trouve le slot vers lequel on va, on libère le registre
+;                 ((eq? (cdr el) slot-to)
+;                    (cons (cons (car el) #f)
+;                          reg-slot))
+;                 ;; Sinon, on conserve l'élément tel quel
+;                 (else (cons el reg-slot))))
+;         '()
+;         reg-slot))
+;
+;;; TODO comment + mov
+;(define (slot-loc-move slot-loc slot-from slot-to)
+;  (foldr (lambda (el slot-loc)
+;           (cond ;; Si on trouve l'élément, on change la valeur du slot
+;                 ((eq? (car el) slot-from)
+;                    (cons (cons slot-to (cdr el))
+;                          slot-loc))
+;                 ;; Si c'est le slot vers lequel on va, on enleve la valeur
+;                 ((eq? (car el) slot-to)
+;                    slot-loc)
+;                 ;; Sinon, on conserve l'élément tel quel
+;                 (else (cons el slot-loc))))
+;         '()
+;         slot-loc))
+;
+;;; TODO comment + mov?
+;;; TODO: l'environnement n'est pas modifié et est géré séparément TODO uniformiser ca dans les fonctions ctx-...
+;(define (ctx-move-lidx ctx lfrom lto)
+;  (pp "MOVE FROM TO")
+;  (pp lfrom) (pp lto)
+;  (let* ((stack
+;           (let ((old (ctx-stack ctx)))
+;             (append (list-head old lto) (cons (list-ref old lfrom) (list-tail old (+ lto 1))))))
+;         (reg-slot
+;           (reg-slot-move (ctx-reg-slot ctx) (ctx-lidx-to-slot ctx lfrom) (ctx-lidx-to-slot ctx lto)))
+;         (slot-loc
+;           (slot-loc-move (ctx-slot-loc ctx) (ctx-lidx-to-slot ctx lfrom) (ctx-lidx-to-slot ctx lto)))
+;         (env
+;           (ctx-env ctx))
+;         (nb-args (ctx-nb-args ctx))
+;         (fs (ctx-fs ctx)))
+;
+;  (make-ctx stack reg-slot slot-loc env nb-args fs)))
+;
+;;;
+;(define (ctx-move-type ctx lfrom lto)
+;  (make-ctx
+;    (let ((old (ctx-stack ctx)))
+;      (append (list-head old lto) (cons (list-ref old lfrom) (list-tail old (+ lto 1)))))
+;    (ctx-reg-slot ctx)
+;    (ctx-slot-loc ctx)
+;    (ctx-env ctx)
+;    (ctx-nb-args ctx)
+;    (ctx-fs ctx)))
+;
+;;; TODO comment + mov!
+;;; Modifie l'objet identifier associé à 'id' dans l'environnement:
+;;; l'identifier contient, dans locs, l'ensemble des locs qui sont associées au slot 'slot'
+;(define (ctx-set-id-slot ctx id slot)
+;  (make-ctx
+;    (ctx-stack ctx)
+;    (ctx-reg-slot ctx)
+;    (ctx-slot-loc ctx)
+;    (env-set-id-locs (ctx-env ctx) id (ctx-get-locs-from-slot ctx slot))
+;    (ctx-nb-args ctx)
+;    (ctx-fs ctx)))
+;
+;;; TODO comment + move
+;(define (env-set-id-locs env id locs)
+;  (foldr (lambda (el r)
+;           (if (eq? (car el) id)
+;               (cons (cons (car el)
+;                           (identifier-change-locs (cdr el) locs))
+;                     r)
+;               (cons el r)))
+;         '()
+;         env))
+;
+;;; ids est une liste de symboles qui correspond aux identifiants
+;;; Cette fonction supprime les liaisons du contexte (libere registres/memoire et enleve les identifiers)
+;(define (ctx-unbind ctx ids)
+;  (define (env-remove-id env id)
+;    (if (null? env)
+;        '()
+;        (if (eq? (car (car env)) id)
+;            (cdr env)
+;            (cons (car env) (env-remove-id (cdr env) id)))))
+;  (define (remove-id ctx id)
+;    (make-ctx (ctx-stack ctx)
+;              (ctx-reg-slot ctx)
+;              (ctx-slot-loc ctx)
+;              (env-remove-id (ctx-env ctx) id)
+;              (ctx-nb-args ctx)
+;              (ctx-fs ctx)))
+;
+;  (foldr (lambda (el ctx) (remove-id ctx el))
+;         ctx
+;         ids))
+;
+;;; id-ctx est une liste qui contient des couples (id . lidx)
+;;; Cette fonction modifie tous les éléments du contexte pour associer l'identifiant de variable à l'index de la pile virtuelle
+;(define (ctx-bind ctx id-idx mvars)
+;
+;  (define (bind-one ctx id-idx)
+;    (let* ((loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx (cdr id-idx))))
+;           (identifier (make-identifier 'local
+;                                        loc
+;                                        (if (member (car id-idx) mvars)
+;                                            '(mutable)
+;                                            '())
+;                                        #f)))
+;      (make-ctx (ctx-stack ctx)
+;                (ctx-reg-slot ctx)
+;                (ctx-slot-loc ctx)
+;                (cons (cons (car id-idx) identifier)
+;                      (ctx-env ctx))
+;                (ctx-nb-args ctx)
+;                (ctx-fs ctx))))
+;
+;  (foldr (lambda (el ctx) (bind-one ctx el))
+;         ctx
+;         id-idx))
+;
+;;; TODO: réécrire avec id qui stocke les pos
+;(define (ctx-identifier-change-type ctx identifier type)
+;
+;  (define (change-stack stack idlocs slot-loc)
+;    (if (null? idlocs)
+;        stack
+;        (let* ((loc (car idlocs))
+;               (slot (foldr (lambda (el r)
+;                              (if (equal? (cdr el) loc) el r))
+;                            #f
+;                            slot-loc)))
+;          (if slot
+;              (let ((stack (append (list-head stack (ctx-lidx-to-slot ctx (car slot)))
+;                                   (cons type
+;                                         (list-tail stack (+ (ctx-lidx-to-slot ctx (car slot)) 1))))))
+;                (change-stack stack (cdr idlocs) slot-loc))
+;              (change-stack stack (cdr idlocs) slot-loc)))))
+;
+;
+;  (define (change-env env identifier)
+;    (foldr (lambda (el r)
+;             (if (equal? (cdr el) identifier)
+;                 (if (eq? (identifier-kind identifier) 'local)
+;                     (cons el r)
+;                     (error "NYI change-env"))
+;                 (cons el r)))
+;           '()
+;           env))
+;
+; (pp identifier) (pp ctx)
+;
+;  (let ((idlocs (identifier-locs identifier)))
+;    (make-ctx
+;      (change-stack (ctx-stack ctx) idlocs (ctx-slot-loc ctx))
+;      (ctx-reg-slot ctx)
+;      (ctx-slot-loc ctx)
+;      (change-env (ctx-env ctx) identifier)
+;      (ctx-nb-args ctx)
+;      (ctx-fs ctx))))
+;
+;
+;;; TODO comment + move
+;(define (ctx-get-locs-from-slot ctx slot)
+;  (foldr (lambda (el r)
+;           (if (eq? (car el) slot)
+;               (cons (cdr el) r)
+;               r))
+;         '()
+;         (ctx-slot-loc ctx)))
+;
+;;; TODO comment + move
+;(define (ctx-get-loc-from-lidx ctx lidx)
+;  (let ((slot (ctx-lidx-to-slot ctx lidx)))
+;    (cdr (assoc slot (ctx-slot-loc ctx)))))
+;
+;;; TODO comment + move
+;(define (ctx-get-type-from-loc ctx loc)
+;  (let* ((slot (slot-loc-get-slot-from-loc (ctx-slot-loc ctx) loc))
+;         (idx  (ctx-slot-to-lidx ctx slot)))
+;    (list-ref (ctx-stack ctx) idx)))
+;
+;;; TODO comment+ move
+;;; Ajoute un type en haut de la pile, ne modifie que la pile
+;(define (ctx-stack-push ctx type)
+;  (make-ctx (cons type (ctx-stack ctx))
+;            (ctx-reg-slot ctx)
+;            (ctx-slot-loc ctx)
+;            (ctx-env ctx)
+;            (ctx-nb-args ctx)
+;            (ctx-fs ctx)))
+;
+;;; Ajoute une valeur sur le haut de la pile. (ajout le type sur la pile)
+;;; Ce nouveau slot est associé au registre 'reg'
+;;; Sym est un symbole qui représente un id de varable. Si sym est donné, ca veut dire qu'on met sur le haut de la pile
+;;; virtuelle une variable, donc il faut modifier le contexte (ATTENTION, faut-il modifier que l'env ?? aussi reg-slot non ?)
+;;; TODO: rename reg -> loc because loc could be a memory location
+;; CTX PUSH
+;
 
-;; Remove pos from env
-(define (env-remove-pos env pos)
-  (if (null? env)
-    '()
-    (let* ((idpair     (car env))
-           (idsym      (car idpair))
-           (identifier (cdr idpair)))
-      (if (member pos (identifier-pos identifier))
-        (cons (cons idsym (identifier-remove-pos identifier pos))
-              (env-remove-pos (cdr env) pos))
-        (cons idpair (env-remove-pos (cdr env) pos))))))
+;
+;;; Retire la valeur du haut de la pile virtuelle. Enleve le type de la pile.
+;;; Il faut mettre à jour l'ensemble du contexte avec cette nouvelle information
+;; CTX POP
+;
+;;; Convertir un index de liste vers un slot sur la pile de type EX:
+;;; Pile:        haut (   a   b   c   d   e   ) bas
+;;; Index liste:          0   1   2   3   4
+;;; Slot pos:             4   3   2   1   0
 
-;; Reset pos of given idsym
-(define (env-reset-pos env sym)
-  (if (null? env)
-    '()
-    (let* ((idpair     (car env))
-           (idsym      (car idpair))
-           (identifier (cdr idpair)))
-      (if (eq? idsym sym)
-         (cons (cons idsym (identifier-reset-pos identifier))
-               (cdr env))
-         (cons idpair (env-reset-pos (cdr env) sym))))))
-
-;; Mov slot 'from' to 'to' (update identifiers positions)
-(define (env-move env pos-from pos-to)
-  (if (null? env)
-    '()
-    (let* ((idpair (car env))
-           (idsym  (car idpair))
-           (identifier (cdr idpair)))
-      (cond
-        ;; If id contains 'from', add 'to'
-        ((and (member pos-from (identifier-pos identifier))
-              (not (member pos-to (identifier-pos identifier))))
-           (cons (cons idsym (identifier-add-pos identifier pos-to))
-                 (env-move (cdr env) pos-from pos-to)))
-        ;; If id contains 'to', remove it
-        ((and (member pos-to (identifier-pos identifier))
-              (not (member pos-from (identifier-pos identifier))))
-           (cons (cons idsym (identifier-remove-pos identifier pos-to))
-                 (env-move (cdr env) pos-from pos-to)))
-        (else
-          (cons idpair (env-move (cdr env) pos-from pos-to)))))))
-
-;; Push identifier on top of the stack (update identifiers positions)
-(define (env-push-id env ctx idsym-push)
-  (if (null? env)
-    '()
-    (let* ((idpair (car env))
-           (idsym  (car idpair))
-           (identifier (cdr idpair)))
-      (if (eq? idsym idsym-push)
-          (cons (cons idsym (identifier-add-pos identifier (+ (ctx-get-top-pos ctx) 1)))
-                (env-push-id (cdr env) ctx idsym-push))
-          (cons idpair (env-push-id (cdr env) ctx idsym-push))))))
+;
+;
+;;; TODO regalloc
+;;;-------------------------
+;;; Stack
+;
+;;; Ajoute un type sur la pile de types
+;(define (stack-push stack type)
+;  (cons type stack))
+;
+;;; Enleve le type du haut de la pile de types
+;(define (stack-pop stack)
+;  (cdr stack))
+;
+;;; TODO regalloc
+;;;-------------------------
+;;; Reg-slot
+;
+;;; Créé une nouvelle structure reg-slot vide.
+;;; Cette structure vide est de la forme:
+;;; ((r0 . #f) (r1 . #f) ... (rn . #f))
+;(define (reg-slot-init)
+;  (define (reg-slot-init total rem)
+;    (if (= rem 0)
+;        '()
+;        (cons (cons (string->symbol (string-append "r" (number->string (- total rem))))
+;                     #f)
+;              (reg-slot-init total (- rem 1)))))
+;  (reg-slot-init regalloc-nbregs regalloc-nbregs))
+;
+;;; TODO: étudier: un meme reg peut etre associé à plusieurs slots? (non géré) et vice versa
+;;; Assigne un registre à un slot dans la structure reg-slot
+;;; donc (rn . valeur) devient (rn . slot) (SI UN REGISTRE EST ASSOCIE A UN SEUL SLOT?)
+;(define (reg-slot-assign reg-slot reg slot)
+;  (if (null? reg-slot)
+;      (error "NYD INTERNAL ERROR")
+;      (let ((first (car reg-slot)))
+;        (if (eq? (car first) reg)
+;            (cons (cons reg slot) (cdr reg-slot))
+;            (cons first (reg-slot-assign (cdr reg-slot) reg slot))))))
+;
+;;; TODO foldr?
+;;; Libère une assignation précédemment effectuée (avec reg-slot-assign)
+;;; donc (rn . valeur) devient (rn . #f) (SI UN REGISTRE EST ASSOCIE A UN SEUL SLOT?)
+;(define (reg-slot-free-slot reg-slot slot)
+;  (if (null? reg-slot)
+;      '()
+;      (let ((first (car reg-slot)))
+;        (if (eq? (cdr first) slot)
+;            (cons (cons (car first) #f)
+;                  (reg-slot-free-slot (cdr reg-slot) slot))
+;            (cons first (reg-slot-free-slot (cdr reg-slot) slot))))))
+;
+;;; TODO regalloc
+;;;-------------------------
+;;; Slot-loc
+;
+;;; TODO: un meme slot peut etre associé à plusieurs regs ? (non géré) et vice versa
+;;; Assigne un slot à un emplacement
+;;; Est-ce que le slot DOIT etre absent de slot-loc ? si oui assert ?
+;(define (slot-loc-assign slot-loc slot loc)
+;  (cons (cons slot loc)
+;        slot-loc))
+;
+;;; TODO foldr?
+;;; Enleve un slot assigné avec slot-loc-assign
+;;; donc si on trouve une assignation (slot . loc) on l'enleve de la liste.
+;;; TODO SI UN SLOT N'EST ASSOCIE QU'A UN EMPLACEMENT ?
+;(define (slot-loc-remove slot-loc slot)
+;  (if (null? slot-loc)
+;      '()
+;      (let ((first (car slot-loc)))
+;        (if (eq? (car first) slot)
+;            (slot-loc-remove (cdr slot-loc) slot)
+;            (cons first (slot-loc-remove (cdr slot-loc) slot))))))
+;
+;;; TODO
+;(define (slot-loc-get-slot-from-loc slot-loc loc)
+;  (if (null? slot-loc)
+;      (error "NYI INTERNAL slot-loc-get-slot-from-loc")
+;      (let ((first (car slot-loc)))
+;        (if (eq? (cdr first) loc)
+;            (car first)
+;            (slot-loc-get-slot-from-loc (cdr slot-loc) loc)))))
 
 ;;-----------------------------------------------------------------------------
 

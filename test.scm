@@ -9,18 +9,9 @@
 ;  (pp (string-ref str 2))
 ;  (pp (string-ref str 3)))
 
-(let ((foo (lambda (var) (pp var) (set! var 200) (pp var))))
-  (foo 1))
-;(let ((a 10) (b 20))
-;  ((lambda (n)
-;    (pp a)
-;    (set! a 100))
-;    ; (pp a)
-;    ; (set! a 100)
-;    ; (pp a)
-;    ; (pp n)
-;    ; (pp b))
-;    1))
+
+
+((lambda (a b) (+ a b)) 10 20)
 
 
 ;(define foo (lambda (n) 1))

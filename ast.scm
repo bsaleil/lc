@@ -334,7 +334,7 @@
 ;; TODO: comment on recursive call in not raw?
 (define (gen-get-freevar cgc ctx local succ #!optional (raw? #f))
 
-  (let ((loc (identifier-loc (cdr local)))
+  (let ((loc (ctx-identifier-loc ctx (cdr local)))
         (mutable? (member 'mutable (identifier-flags (cdr local)))))
 
     (if raw?
@@ -369,7 +369,7 @@
 ;; TODO coment: si mobject? est vrai, c'est qu'on veut le mobject dans le tmp reg (rax)
 (define (gen-get-localvar cgc ctx local succ #!optional (raw? #f))
 
-  (let ((loc (identifier-loc (cdr local)))
+  (let ((loc (ctx-identifier-loc ctx (cdr local)))
         (mutable? (member 'mutable (identifier-flags (cdr local)))))
 
     (if raw?
@@ -380,7 +380,7 @@
         (let* ((res (ctx-get-free-reg ctx (list loc)))
                (reg (car res))
                (ctx (cdr res))
-               (type (ctx-get-type-from-loc ctx loc)))
+               (type (ctx-identifier-type ctx (cdr local))))
           (cond ;; Mutable and in memory
                 ((and (ctx-loc-is-memory? loc) mutable?)
                   (let ((dest (codegen-reg-to-x86reg reg))
@@ -457,7 +457,7 @@
                      (let ((lres (assoc id (ctx-env ctx))))
                        (if lres
                            (if (eq? (identifier-kind (cdr lres)) 'free)
-                               (gen-set-freevar cgc ctx lres)
+                               (gen-set-freevar cgc ctx lres succ)
                                (gen-set-localvar cgc ctx lres succ))
                            (error (ERR_UNKNOWN_VAR id))))))))))
 
@@ -467,7 +467,7 @@
   ;; Get mobject in tmp register
   (gen-get-localvar cgc ctx local #f #t)
   ;;
-  (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+  (let* ((res (ctx-get-free-reg ctx))
          (reg (car res))
          (ctx (cdr res))
          (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
@@ -478,10 +478,28 @@
                  (set! opval dest)))
       (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
       (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
-      (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg)))))
+      (let* ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg))
+             (ctx (ctx-identifier-change-type ctx (cdr local) CTX_UNK))) ;; TODO unk
+        (jump-to-version cgc succ ctx)))))
 
-(define (gen-set-freevar cgc ctx local)
-  (error "NYI set free"))
+(define (gen-set-freevar cgc ctx local succ)
+  ;; Get mobject in tmp register
+  (gen-get-freevar cgc ctx local #f #t)
+  ;;
+  (let* ((res (ctx-get-free-reg ctx))
+         (reg (car res))
+         (ctx (cdr res))
+         (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+    (let ((dest (codegen-reg-to-x86reg reg))
+          (opval (codegen-loc-to-x86opnd lval)))
+      (if (ctx-loc-is-memory? lval)
+          (begin (x86-mov cgc dest opval)
+                 (set! opval dest)))
+      (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
+      (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+      (let* ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg))
+             (ctx (ctx-identifier-change-type ctx (cdr local) CTX_UNK))) ;; TODO unk
+        (jump-to-version cgc succ ctx)))))
 
 (define (gen-set-globalvar cgc ctx global succ)
   (let* ((pos (cdr global))
@@ -678,8 +696,6 @@
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
                                                       (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
-                                                      (pp "----- GEN FUN WITH")
-                                                      (pp ctx)
                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
 
                                                       ; ;; Then, generate a specified version and patch cc-table in closure
@@ -744,8 +760,7 @@
                      (cons (cons (car n)
                                  (if (eq? (identifier-kind (cdr n)) 'local)
                                      ;; If local, get type from stack
-                                     (let* ((loc (car (identifier-locs (cdr n))))
-                                            (type (ctx-get-type-from-loc ctx loc)))
+                                     (let ((type (ctx-identifier-type ctx (cdr n))))
                                        type)
                                      ;; If free, get type from env
                                      (identifier-stype (cdr n))))
@@ -1896,13 +1911,9 @@
                                         ;; TODO regalloc
                                         ;; 1 - Build call ctx
                                         (let ((call-ctx
-                                                (make-ctx (append (list-head (ctx-stack ctx) (length (cdr ast)))
-                                                                  (list CTX_CLO CTX_RETAD))
-                                                          (reg-slot-init)
-                                                          '()
-                                                          '()
-                                                          -1
-                                                          0)))
+                                                (ctx-init-with-stack
+                                                  (append (list-head (ctx-stack ctx) (length (cdr ast)))
+                                                          (list CTX_CLO CTX_RETAD)))))
 
                                           ;; 2 - push all regs
                                           (for-each
@@ -2546,10 +2557,10 @@
   (if (null? ids)
       '()
       (let* ((identifier (cdr (assoc (car ids) (ctx-env ctx))))
-             (loc (identifier-loc identifier))
+             (loc (ctx-identifier-loc ctx identifier))
              (opn
                (cond ;; No loc, free variable which is only in closure
-                     ((not loc)
+                     ((not loc) ;; TODO: use ctx-loc-is-floc?!!!!
                        (let* (;; Get closure loc
                               (f (identifier-floc identifier))
                               (closure-lidx (- (length (ctx-stack ctx)) 2))
@@ -2698,7 +2709,7 @@
       (let* ((mid (car mvars))
              (resid (assoc mid (ctx-env ctx)))
              (identifier (cdr resid))
-             (loc (identifier-loc identifier)))
+             (loc (ctx-identifier-loc ctx identifier)))
 
         (codegen-mutable cgc loc)
         (gen-mutable cgc ctx (cdr mvars)))))
