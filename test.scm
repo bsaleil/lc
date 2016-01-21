@@ -9,8 +9,6 @@
 ;  (pp (string-ref str 2))
 ;  (pp (string-ref str 3)))
 
-10
-
 
 ;(define (cpstak x y z)
 ;  (tak x y z (lambda (a) a)))

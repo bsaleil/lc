@@ -779,13 +779,18 @@
 ;; Binary operators
 
 (define (codegen-binop cgc op label-div0 reg lleft lright)
-  (let ((dest (codegen-reg-to-x86reg reg))
-        (lopnd (codegen-loc-to-x86opnd lleft))
-        (ropnd (codegen-loc-to-x86opnd lright)))
+  (let* ((dest (codegen-reg-to-x86reg reg))
+         (lopnd (codegen-loc-to-x86opnd lleft))
+         (ropnd (codegen-loc-to-x86opnd lright))
 
-    (if (and (not (eq? dest  (x86-rdx)))
-             (not (eq? lopnd (x86-rdx)))
-             (not (eq? ropnd (x86-rdx))))
+         ;; TODO: save original opnd to restore rdx if needed
+         (ordest dest)
+         (orlopnd lopnd)
+         (orropnd ropnd))
+
+    (if (and (not (eq? ordest  (x86-rdx)))
+             (not (eq? orlopnd (x86-rdx)))
+             (not (eq? orropnd (x86-rdx))))
         (x86-push cgc (x86-rdx)))
 
     (x86-mov cgc (x86-rax) lopnd)
@@ -807,7 +812,7 @@
              (x86-mov cgc dest (x86-rax)))
           ((eq? op 'remainder)
              (x86-shl cgc (x86-rdx) (x86-imm-int 2))
-             (x86-mov cgc dest (x86-rax)))
+             (x86-mov cgc dest (x86-rdx)))
           ((eq? op 'modulo)
              (x86-mov cgc (x86-rax) (x86-rdx))
              (x86-add cgc (x86-rax) ropnd)
@@ -816,9 +821,9 @@
              (x86-shl cgc (x86-rdx) (x86-imm-int 2))
              (x86-mov cgc dest (x86-rdx))))
 
-    (if (and (not (eq? dest  (x86-rdx)))
-             (not (eq? lopnd (x86-rdx)))
-             (not (eq? ropnd (x86-rdx))))
+    (if (and (not (eq? ordest  (x86-rdx)))
+             (not (eq? orlopnd (x86-rdx)))
+             (not (eq? orropnd (x86-rdx))))
         (x86-pop cgc (x86-rdx)))))
 
 ;;-----------------------------------------------------------------------------
