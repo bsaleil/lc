@@ -1118,6 +1118,8 @@
       (ctx-nb-args ctx)
       (ctx-fs ctx))))
 
+;; TODO regalloc: uniformiser id, identfier et ident
+
 (define (ctx-init-fn call-ctx enclosing-ctx args free-vars mutable-vars)
 
   ;; Construit le slot-loc initial pour une fonction
@@ -1135,7 +1137,7 @@
       (if (null? free-vars)
           '()
           (let* ((ident (cdr (assoc (car free-vars) enclosing-env)))
-                 (type (identifier-stype ident)))
+                 (type (ctx-identifier-type enclosing-ctx ident)))
             (cons (cons (car free-vars)
                         (make-identifier 'free
                                          '()
@@ -1240,7 +1242,7 @@
 
 ;;
 (define (ctx-identifier-type ctx identifier)
-  (if (member 'mutable (identifier-flags identifier))
+  (if (eq? 'free (identifier-kind identifier))
       (identifier-stype identifier)
       (let ((slot (car (identifier-sslots identifier))))
         (list-ref (ctx-stack ctx) (ctx-slot-to-lidx ctx slot)))))
@@ -1258,9 +1260,8 @@
               loc
               (get-loc (cdr slots) loc)))))
 
-
   (let ((slots (identifier-sslots identifier)))
-    (if (not slots)
+    (if (null? slots)
         ;; Free var only in closure, return closure loc (fx)
         (identifier-cloc identifier)
         ;;
@@ -1268,6 +1269,7 @@
 
 ;; Retour l'ident (entrée de env) au slot 'slot'
 ;; Donc retourne un couple (id . identifier)
+;; TODO FUSIONNER AVEC ctx-change-type
 (define (ctx-ident-at ctx slot)
   (define (env-ident-at env)
     (if (null? env)
@@ -1278,7 +1280,54 @@
               (env-ident-at (cdr env))))))
   (env-ident-at (ctx-env ctx)))
 
+;; TODO
+(define (ctx-identifier-change-type ctx identifier type)
+
+  (define (change-stack stack lidx)
+    (append (list-head stack lidx)
+            (cons type
+                  (list-tail stack (+ lidx 1)))))
+
+  (define (change-stack-n-slots stack slots)
+    (if (null? slots)
+        stack
+        (change-stack-n-slots
+          (change-stack stack (ctx-slot-to-lidx ctx (car slots)))
+          (cdr slots))))
+
+  (define (change-stype env identifier)
+    (if (null? env)
+        '()
+        (let ((first (car env)))
+          (if (eq? (cdr first) identifier)
+              (cons (cons (car first)
+                          (make-identifier
+                            (identifier-kind identifier)
+                            (identifier-sslots identifier)
+                            (identifier-flags identifier)
+                            type
+                            (identifier-cloc identifier)))
+                    (cdr env))
+              (cons first
+                    (change-stype (cdr env) identifier))))))
+
+
+  (let* ((free? (eq? (identifier-kind identifier) 'free))
+         (env
+           (if free?
+               (change-stype (ctx-env ctx) identifier)
+               (ctx-env ctx))))
+
+    (make-ctx
+      (change-stack-n-slots (ctx-stack ctx) (identifier-sslots identifier))
+      (ctx-slot-loc ctx)
+      (ctx-free-regs ctx)
+      env
+      (ctx-nb-args ctx)
+      (ctx-fs ctx))))
+
 ;; TODO lidx
+;; TODO: utiliser ctx-identifier-change-type
 (define (ctx-change-type ctx stack-idx type)
 
   (define (change-stack stack lidx)
@@ -1287,7 +1336,6 @@
                   (list-tail stack (+ lidx 1)))))
 
   (define (change-stack-n-slots stack slots)
-    (println "--- " slots)
     (if (null? slots)
         stack
         (change-stack-n-slots
@@ -1303,9 +1351,9 @@
          (env
            (if (and ident
                     (eq? (identifier-kind (cdr ident)) 'free))
-               (change-stype (ctx-env ctx) identifier)
+               (change-stype (ctx-env ctx) identifier) ;; TODO: NYI change-stype
                (ctx-env ctx))))
-               
+
     (make-ctx
       stack
       (ctx-slot-loc ctx)
@@ -1383,6 +1431,32 @@
   (foldr (lambda (el ctx) (bind-one ctx el))
          ctx
          id-idx))
+
+;; TODO: utilisé que dans le letrec(?) faire ça autrement
+(define (ctx-move-type ctx lfrom lto)
+  (make-ctx
+    (let ((old (ctx-stack ctx)))
+      (append (list-head old lto) (cons (list-ref old lfrom) (list-tail old (+ lto 1)))))
+    (ctx-slot-loc ctx)
+    (ctx-free-regs ctx)
+    (ctx-env ctx)
+    (ctx-nb-args ctx)
+    (ctx-fs ctx)))
+
+(define (ctx-floc-to-fpos floc)
+  (- (string->number
+       (list->string
+         (cdr (string->list
+                (symbol->string floc)))))
+     1))
+
+(define (ctx-stack-push ctx type)
+  (make-ctx (cons type (ctx-stack ctx))
+            (ctx-slot-loc ctx)
+            (ctx-free-regs ctx)
+            (ctx-env ctx)
+            (ctx-nb-args ctx)
+            (ctx-fs ctx)))
 
 ;; ids est une liste de symboles qui correspond aux identifiants
 ;; Cette fonction supprime les liaisons du contexte (libere registres/memoire et enleve les identifiers)
@@ -1504,12 +1578,7 @@
 ;(define (identifier-mloc identifier)
 ;  (identifier-xloc identifier ctx-loc-is-memory?))
 ;
-;(define (ctx-floc-to-fpos floc)
-;  (- (string->number
-;       (list->string
-;         (cdr (string->list
-;                (symbol->string floc)))))
-;     1))
+
 
 ;;; TODO regalloc
 ;;; Context que le compilateur conserve
@@ -1561,16 +1630,7 @@
 ;         slot-loc))
 ;
 
-;;;
-;(define (ctx-move-type ctx lfrom lto)
-;  (make-ctx
-;    (let ((old (ctx-stack ctx)))
-;      (append (list-head old lto) (cons (list-ref old lfrom) (list-tail old (+ lto 1)))))
-;    (ctx-reg-slot ctx)
-;    (ctx-slot-loc ctx)
-;    (ctx-env ctx)
-;    (ctx-nb-args ctx)
-;    (ctx-fs ctx)))
+
 ;
 ;;; TODO comment + mov!
 ;;; Modifie l'objet identifier associé à 'id' dans l'environnement:
@@ -1660,13 +1720,7 @@
 ;
 ;;; TODO comment+ move
 ;;; Ajoute un type en haut de la pile, ne modifie que la pile
-;(define (ctx-stack-push ctx type)
-;  (make-ctx (cons type (ctx-stack ctx))
-;            (ctx-reg-slot ctx)
-;            (ctx-slot-loc ctx)
-;            (ctx-env ctx)
-;            (ctx-nb-args ctx)
-;            (ctx-fs ctx)))
+
 ;
 ;;; Ajoute une valeur sur le haut de la pile. (ajout le type sur la pile)
 ;;; Ce nouveau slot est associé au registre 'reg'

@@ -308,7 +308,6 @@
 
   (make-lazy-code
     (lambda (cgc ctx)
-
       (let ((local  (assoc ast (ctx-env ctx)))
             (global (assoc ast globals)))
         ;;
@@ -342,8 +341,9 @@
         (if (ctx-loc-is-floc? loc)
             (let* ((fpos (ctx-floc-to-fpos loc))
                    (closure-lidx (- (length (ctx-stack ctx)) 2))
-                   (closure-loc (ctx-get-loc-from-lidx ctx closure-lidx))
+                   (closure-loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx closure-lidx)))
                    (closure-opnd (codegen-loc-to-x86opnd closure-loc)))
+
               (if (ctx-loc-is-memory? closure-loc)
                   (begin (x86-mov cgc (x86-rax) closure-opnd)
                          (set! closure-opnd (x86-rax))))
@@ -368,7 +368,6 @@
 ;; TODO: + utiliser un appel récursif comme pour gen-get-freevar (??)
 ;; TODO coment: si mobject? est vrai, c'est qu'on veut le mobject dans le tmp reg (rax)
 (define (gen-get-localvar cgc ctx local succ #!optional (raw? #f))
-
   (let ((loc (ctx-identifier-loc ctx (cdr local)))
         (mutable? (member 'mutable (identifier-flags (cdr local)))))
 
@@ -479,7 +478,7 @@
       (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
       (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
       (let* ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg))
-             (ctx (ctx-identifier-change-type ctx (cdr local) CTX_UNK))) ;; TODO unk
+             (ctx (ctx-identifier-change-type ctx (cdr local) CTX_UNK))) ;; TODO regalloc unk
         (jump-to-version cgc succ ctx)))))
 
 (define (gen-set-freevar cgc ctx local succ)
@@ -696,9 +695,6 @@
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
                                                       (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
-                                                        (pp "Gen procedure ")
-                                                        (pp ast)
-                                                        (pp ctx)
                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
 
                                                       ; ;; Then, generate a specified version and patch cc-table in closure
@@ -2563,18 +2559,14 @@
              (loc (ctx-identifier-loc ctx identifier))
              (opn
                (cond ;; No loc, free variable which is only in closure
-                     ((not loc) ;; TODO: use ctx-loc-is-floc?!!!!
+                     ((ctx-loc-is-floc? loc)
                        (let* (;; Get closure loc
-                              (f (identifier-floc identifier))
                               (closure-lidx (- (length (ctx-stack ctx)) 2))
-                              (closure-loc  (ctx-get-loc-from-lidx ctx closure-lidx))
+                              (closure-loc  (ctx-get-loc ctx (ctx-lidx-to-slot ctx closure-lidx)))
                               (closure-opnd (codegen-loc-to-x86opnd closure-loc))
                               ;; Get free var offset
-                              (fvar-pos (string->number
-                                         (list->string
-                                           (cdr (string->list
-                                                  (symbol->string f))))))
-                              (fvar-offset (+ 16 (* 8 (- fvar-pos 1))))) ;; 16:header,entrypoint -1: pos starts from 1 and not 0
+                              (fvar-pos (ctx-floc-to-fpos loc))
+                              (fvar-offset (+ 16 (* 8 fvar-pos)))) ;; 16:header,entrypoint -1: pos starts from 1 and not 0
                          (if (ctx-loc-is-memory? closure-loc)
                              (begin (x86-mov cgc (x86-rax) closure-opnd)
                                     (set! closure-opnd (x86-rax))))
