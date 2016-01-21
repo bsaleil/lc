@@ -783,9 +783,9 @@
         (lopnd (codegen-loc-to-x86opnd lleft))
         (ropnd (codegen-loc-to-x86opnd lright)))
 
-    (if (and (not (eq? dest  (x86-rbx)))
-             (not (eq? lopnd (x86-rbx)))
-             (not (eq? ropnd (x86-rbx))))
+    (if (and (not (eq? dest  (x86-rdx)))
+             (not (eq? lopnd (x86-rdx)))
+             (not (eq? ropnd (x86-rdx))))
         (x86-push cgc (x86-rdx)))
 
     (x86-mov cgc (x86-rax) lopnd)
@@ -816,9 +816,9 @@
              (x86-shl cgc (x86-rdx) (x86-imm-int 2))
              (x86-mov cgc dest (x86-rdx))))
 
-    (if (and (not (eq? dest  (x86-rbx)))
-             (not (eq? lopnd (x86-rbx)))
-             (not (eq? ropnd (x86-rbx))))
+    (if (and (not (eq? dest  (x86-rdx)))
+             (not (eq? lopnd (x86-rdx)))
+             (not (eq? ropnd (x86-rdx))))
         (x86-pop cgc (x86-rdx)))))
 
 ;;-----------------------------------------------------------------------------

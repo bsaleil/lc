@@ -696,6 +696,9 @@
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
                                                       (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
+                                                        (pp "Gen procedure ")
+                                                        (pp ast)
+                                                        (pp ctx)
                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
 
                                                       ; ;; Then, generate a specified version and patch cc-table in closure

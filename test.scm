@@ -9,9 +9,12 @@
 ;  (pp (string-ref str 2))
 ;  (pp (string-ref str 3)))
 
+(define (print-pos-nz n)
+  (if (> n 0)
+      (begin
+        (print-pos-nz (quotient n 10)))))
 
-
-((lambda (a b) (+ a b)) 10 20)
+(print-pos-nz 20)
 
 
 ;(define foo (lambda (n) 1))

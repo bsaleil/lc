@@ -75,6 +75,9 @@
 ;; DESTROY R15 !!
 (define (gen-alloc-imm cgc stag length)
 
+;; TODO regalloc
+(x86-push cgc (x86-r15))
+
     (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok)))
           (label-alloc-end (asm-make-label cgc (new-sym 'alloc-end))))
 
@@ -88,6 +91,7 @@
             (x86-jmp cgc label-alloc-end)
 
         (x86-label cgc label-alloc-ok)
+        (x86-pop cgc (x86-r15))
         (x86-sub cgc alloc-ptr (x86-imm-int (* 8 length)))
         (x86-label cgc label-alloc-end)))
 
@@ -98,6 +102,9 @@
 ;; Rax contains the encoded number of 64bits words to alloc
 ;; Ex. For (make-vector 3) rax contains 12
 (define (gen-alloc-regimm cgc stag length)
+
+;; TODO regalloc
+(x86-push cgc (x86-r15))
 
     (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok)))
           (label-alloc-end (asm-make-label cgc (new-sym 'alloc-end))))
@@ -117,6 +124,7 @@
             (x86-jmp cgc label-alloc-end)
 
         (x86-label cgc label-alloc-ok)
+        (x86-pop cgc (x86-r15))
         (x86-mov cgc alloc-ptr (x86-rax))
         (x86-label cgc label-alloc-end)))
 
