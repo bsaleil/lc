@@ -159,7 +159,10 @@
                 (if (ctx-loc-is-register? loc)
                     (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc))
                     (error "NYI regalloc")))
+
+
               ;;
+              (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (ctx-fs ctx))))
               ;(gen-breakpoint cgc)
 
               ;;

@@ -1172,7 +1172,7 @@
                                                    (string-append "r" (number->string i)))))
             (env-init-fn args 2 free-vars mutable-vars enclosing-ctx)
             (length args)
-            (length args))) ;; fs is length args because all args are on the stack
+            (+ (length args) 2))) ;; fs is length args +2 (closure, retaddr) because all args are on the stack
 
 (define (ctx-lidx-to-slot ctx lidx)
   (- (length (ctx-stack ctx)) lidx 1))
@@ -1220,7 +1220,10 @@
   (let* ((slot (ctx-lidx-to-slot ctx 0))
          (stack (cdr (ctx-stack ctx)))
          (r (assoc-remove slot (ctx-slot-loc ctx)))
-         (slot-loc (cdr r))
+         (slot-loc
+           (if (or (not (car r)) (ctx-loc-is-register? (cdar r)))
+               (cdr r)
+               (cons (cons #f (cdar r)) (cdr r))))
          (free-regs (if (and (car r) (ctx-loc-is-register? (cdar r)))
                         (cons (cdar r) (ctx-free-regs ctx))
                         (ctx-free-regs ctx)))
@@ -1370,10 +1373,97 @@
 ;;;   * On regarde les n (**) éléments sur la pile virtuelle. Si un est associé à un registre, on peut le retourner car c'est une opérande de l'opération en cours donc il peut etre la destination
 ;;;   * Sinon, on libère un registre selon une certaine stratégie donnée (peu importe laquelle)
 ;;;     puis on le retourne
-(define (ctx-get-free-reg ctx #!optional (fixed-regs '())) ;; TODO : ne pas spiller les registres donnés dans fixed-regs
+(define (ctx-get-free-reg cgc ctx #!optional (fixed-regs '())) ;; TODO : ne pas spiller les registres donnés dans fixed-regs
+
+  (define (choose-reg)
+    (let ((regs (build-list (length regalloc-regs)
+                            (lambda (i)
+                               (string->symbol
+                               (string-append "r" (number->string i)))))))
+      (car regs)))
+
+  ;; Spill du registre reg vers un nouvel emplacement mémoire
+  ;; TODO: fusionner code avec spill-free
+  (define (spill-new ctx reg)
+    (let ((loc (ctx-fs ctx)))
+      (let* ((slot-loc
+               (foldr (lambda (el r)
+                        (if (eq? (cdr el) reg)
+                            (cons (cons (car el) loc)
+                                  r)
+                            (cons el r)))
+                      '()
+                      (ctx-slot-loc ctx)))
+             (free-regs (cons reg (ctx-free-regs ctx))))
+        (cons loc
+              (make-ctx
+                (ctx-stack ctx)
+                slot-loc
+                free-regs
+                (ctx-env ctx)
+                (ctx-nb-args ctx)
+                (+ (ctx-fs ctx) 1))))))
+
+  ;; Spill du registre reg vers un emplacement mémoire libre existant
+  (define (spill-free ctx reg)
+
+    ;; Récupère une emplacement mémoire libre
+    (define (get-free-mem-h slot-loc)
+      (if (null? slot-loc)
+          #f
+          (if (not (caar slot-loc))
+              (begin (assert (ctx-loc-is-memory? (cdar slot-loc)) "INTERNAL ERROR") (cdar slot-loc))
+              (get-free-mem-h (cdr slot-loc)))))
+
+    (let ((loc (get-free-mem-h (ctx-slot-loc ctx))))
+      (if (not loc)
+          #f
+          (let* ((slot-loc
+                   (foldr (lambda (el r)
+                            (cond ((eq? (cdr el) reg)
+                                     (cons (cons (car el) loc) r))
+                                  ((eq? (cdr el) loc)
+                                     r)
+                                  (else
+                                     (cons el r))))
+                          '()
+                          (ctx-slot-loc ctx)))
+                 (free-regs (cons reg (ctx-free-regs ctx))))
+            (cons loc
+                  (make-ctx
+                    (ctx-stack ctx)
+                    slot-loc
+                    free-regs
+                    (ctx-env ctx)
+                    (ctx-nb-args ctx)
+                    (ctx-fs ctx)))))))
+
+  ;; Retourne reg, mem, ctx
+  (define (spill ctx)
+    (let* ((reg (choose-reg))
+           (loc-ctx (spill-free ctx reg)))
+      (if loc-ctx
+          ;;
+          (let ((ropnd (codegen-reg-to-x86reg reg))
+                (mopnd (codegen-loc-to-x86opnd (car loc-ctx))))
+            (x86-mov cgc mopnd ropnd)
+            (cons reg
+                  (cdr loc-ctx)))
+          ;;
+          (let ((loc-ctx (spill-new ctx reg))
+                (ropnd (codegen-reg-to-x86reg reg)))
+            (x86-push cgc ropnd)
+            (cons reg
+                  (cdr loc-ctx))))))
+
+
+
   (let ((free-regs (ctx-free-regs ctx)))
     (if (null? free-regs)
-        (error "NYI GET FREE REG")
+        ;;
+        (let ((loc-ctx (spill ctx)))
+          loc-ctx)
+        ;;
         (cons
           (car free-regs)
           ctx))))
@@ -1495,14 +1585,15 @@
                    ((eq? (car el) sfrom)
                      (cons (cons sto (cdr el))
                            r))
-                   ;; Si on trouve le slot to, on enleve
+                   ;; Si on trouve le slot to, on libere
                    ((eq? (car el) sto)
-                     r)
+                     (if (ctx-loc-is-register? (cdr el))
+                         r
+                         (cons (cons #f (cdr el)) r)))
                    ;;
                    (else (cons el r))))
            '()
            slot-loc))
-
   (let* ((stack
            (let ((old (ctx-stack ctx)))
              (append (list-head old lto) (cons (list-ref old lfrom) (list-tail old (+ lto 1))))))

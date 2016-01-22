@@ -199,7 +199,7 @@
                            (64-modl  (bitwise-and (- (expt 2 63) 1) 64-mod)))
                       (* -1 64-modl))
                     (ieee754 ast 'double)))
-               (res (ctx-get-free-reg ctx))
+               (res (ctx-get-free-reg cgc ctx))
                (reg (car res))
                (ctx (cdr res)))
           (codegen-flonum cgc immediate reg)
@@ -211,7 +211,7 @@
 (define (mlc-symbol ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (let* ((res (ctx-get-free-reg ctx))
+      (let* ((res (ctx-get-free-reg cgc ctx))
              (reg (car res))
              (ctx (cdr res)))
         (codegen-symbol cgc ast reg)
@@ -230,7 +230,7 @@
 (define (mlc-vector ast succ)
 
   (define (gen-set cgc ctx lidx)
-    (let* ((res (ctx-get-free-reg ctx))
+    (let* ((res (ctx-get-free-reg cgc ctx))
            (reg (car res))
            (ctx (cdr res))
            (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx lidx)))
@@ -248,7 +248,7 @@
       (lambda (cgc ctx)
         (let loop ((pos 0) (ctx ctx))
           (if (= pos (vector-length ast))
-              (let* ((res (ctx-get-free-reg ctx))
+              (let* ((res (ctx-get-free-reg cgc ctx))
                      (reg (car res))
                      (ctx (cdr res)))
                 (x86-lea cgc (codegen-reg-to-x86reg reg) (x86-mem TAG_MEMOBJ alloc-ptr))
@@ -280,7 +280,7 @@
 (define (mlc-string ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (let* ((res (ctx-get-free-reg ctx))
+      (let* ((res (ctx-get-free-reg cgc ctx))
              (reg (car res))
              (ctx (cdr res)))
         (codegen-string cgc ast reg)
@@ -353,7 +353,7 @@
         ;; We don't want raw value
         (begin
           (gen-get-freevar cgc ctx local succ #t)
-          (let* ((res (ctx-get-free-reg ctx (list loc)))
+          (let* ((res (ctx-get-free-reg cgc ctx (list loc)))
                  (reg (car res))
                  (ctx (cdr res))
                  (type (identifier-stype (cdr local)))
@@ -376,7 +376,7 @@
         (let ((opnd (codegen-loc-to-x86opnd loc)))
           (x86-mov cgc (x86-rax) opnd))
         ;; We don't want mobject
-        (let* ((res (ctx-get-free-reg ctx (list loc)))
+        (let* ((res (ctx-get-free-reg cgc ctx (list loc)))
                (reg (car res))
                (ctx (cdr res))
                (type (ctx-identifier-type ctx (cdr local))))
@@ -406,7 +406,7 @@
                    (cdr r)
                    CTX_UNK))
          ;; Get free register (dest)
-         (res (ctx-get-free-reg ctx))
+         (res (ctx-get-free-reg cgc ctx))
          (reg (car res))
          (ctx (cdr res)))
     ;; Generate code to get global var from memory
@@ -424,7 +424,7 @@
     (mlc-flonum ast succ)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((res (ctx-get-free-reg ctx))
+    (let* ((res (ctx-get-free-reg cgc ctx))
                (reg (car res))
                (ctx (cdr res)))
           (codegen-literal cgc ast reg)
@@ -466,7 +466,7 @@
   ;; Get mobject in tmp register
   (gen-get-localvar cgc ctx local #f #t)
   ;;
-  (let* ((res (ctx-get-free-reg ctx))
+  (let* ((res (ctx-get-free-reg cgc ctx))
          (reg (car res))
          (ctx (cdr res))
          (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
@@ -485,7 +485,7 @@
   ;; Get mobject in tmp register
   (gen-get-freevar cgc ctx local #f #t)
   ;;
-  (let* ((res (ctx-get-free-reg ctx))
+  (let* ((res (ctx-get-free-reg cgc ctx))
          (reg (car res))
          (ctx (cdr res))
          (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
@@ -502,7 +502,7 @@
 
 (define (gen-set-globalvar cgc ctx global succ)
   (let* ((pos (cdr global))
-         (res (ctx-get-free-reg ctx))
+         (res (ctx-get-free-reg cgc ctx))
          (reg (car res))
          (ctx (cdr res))
          (dest (codegen-reg-to-x86reg reg))
@@ -526,7 +526,7 @@
                         (let* ((res (assoc identifier globals)) ;; Lookup in globals
                                (pos (cdr res))                  ;; Get global pos
                                ;;
-                               (res (ctx-get-free-reg ctx))     ;; Return reg,ctx
+                               (res (ctx-get-free-reg cgc ctx))     ;; Return reg,ctx
                                (reg (car res))
                                (ctx (cdr res))
                                (lvalue (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
@@ -626,7 +626,7 @@
                      (lambda (cgc ctx)
                        ;; TODO regalloc
                        ;; 1 - Get clean stack size (higher mx in ctx)
-                       (let* ((clean-nb (+ (ctx-fs ctx) 1))
+                       (let* ((clean-nb (- (ctx-fs ctx) 1))
                               (lres (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
                               (opres (codegen-loc-to-x86opnd lres)))
                          ;; 2 - Move res in rax
@@ -734,7 +734,7 @@
           ;;   -> Une variable qui est libre et qui devient libre peut ne pas avoir de 'loc', ATTENTION.
           (gen-free-vars cgc fvars ctx 0)
 
-          (let* ((res (ctx-get-free-reg ctx))
+          (let* ((res (ctx-get-free-reg cgc ctx))
                  (reg (car res))
                  (ctx (cdr res)))
 
@@ -1057,7 +1057,7 @@
   (define (alloc cgc ids ctx)
     (if (null? ids)
         ctx
-        (let* ((res (ctx-get-free-reg ctx))
+        (let* ((res (ctx-get-free-reg cgc ctx))
                (reg (car res))
                (ctx (cdr res)))
 
@@ -1286,7 +1286,7 @@
                          ((eq? special 'not)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg ctx))
+                              (let* ((res (ctx-get-free-reg cgc ctx))
                                      (reg (car res))
                                      (ctx (cdr res))
                                      (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
@@ -1297,7 +1297,7 @@
                          ((eq? special 'eq?)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                      (reg (car res))
                                      (ctx (cdr res))
                                      (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
@@ -1309,7 +1309,7 @@
                          ((member special '(car cdr))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                      (reg (car res))
                                      (ctx (cdr res))
                                      (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
@@ -1320,7 +1320,7 @@
                          ((member special '(set-car! set-cdr!))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                      (reg (car res))
                                      (ctx (cdr res))
                                      (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
@@ -1332,7 +1332,7 @@
                          ((member special '(current-input-port current-output-port))
                            (make-lazy-code
                              (lambda (cgc ctx)
-                               (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                               (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                       (reg (car res))
                                       (ctx (cdr res)))
                                  (codegen-current-io-port cgc special reg)
@@ -1346,7 +1346,7 @@
                          ((member special '(close-output-port close-input-port))
                            (make-lazy-code
                              (lambda (cgc ctx)
-                               (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                               (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                       (reg (car res))
                                       (ctx (cdr res))
                                       (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
@@ -1357,7 +1357,7 @@
                          ((member special '(open-output-file open-input-file))
                            (make-lazy-code
                              (lambda (cgc ctx)
-                               (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                               (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                       (reg (car res))
                                       (ctx (cdr res))
                                       (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
@@ -1372,7 +1372,7 @@
                          ((eq? special 'eof-object?)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                      (reg (car res))
                                      (ctx (cdr res))
                                      (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
@@ -1383,7 +1383,7 @@
                          ((eq? special 'read-char)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                      (reg (car res))
                                      (ctx (cdr res))
                                      (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
@@ -1394,7 +1394,7 @@
                          ((eq? special 'write-char)
                             (make-lazy-code
                               (lambda (cgc ctx)
-                                (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                        (reg (car res))
                                        (ctx (cdr res))
                                        (lchar (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
@@ -1406,7 +1406,7 @@
                          ((member special '(char->integer integer->char))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                      (reg (car res))
                                      (ctx (cdr res))
                                      (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
@@ -1422,7 +1422,7 @@
                           (make-lazy-code
                             (lambda (cgc ctx)
                               (let* ((init-value? (= (length (cdr ast)) 2))
-                                     (res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                     (res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                      (reg (car res))
                                      (ctx (cdr res))
                                      (llen (ctx-get-loc ctx (ctx-lidx-to-slot ctx (if init-value? 1 0))))
@@ -1439,7 +1439,7 @@
                           (make-lazy-code
                             (lambda (cgc ctx)
                               (let* ((init-value? (= (length (cdr ast)) 2))
-                                     (res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                                     (res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                      (reg (car res))
                                      (ctx (cdr res))
                                      (llen (ctx-get-loc ctx (ctx-lidx-to-slot ctx (if init-value? 1 0))))
@@ -1467,7 +1467,7 @@
                          ((member special '(vector-length string-length))
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                      (reg (car res))
                                      (ctx (cdr res))
                                      (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
@@ -1478,7 +1478,7 @@
                          ((eq? special 'vector-ref)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                      (reg (car res))
                                      (ctx (cdr res))
                                      (lvec (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
@@ -1490,7 +1490,7 @@
                          ((eq? special 'string-ref)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                      (reg (car res))
                                      (ctx (cdr res))
                                      (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
@@ -1502,7 +1502,7 @@
                          ((eq? special 'vector-set!)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                      (reg (car res))
                                      (ctx (cdr res))
                                      (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
@@ -1515,7 +1515,7 @@
                          ((eq? special 'string-set!)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                                      (reg (car res))
                                      (ctx (cdr res))
                                      (lchr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
@@ -1907,7 +1907,7 @@
          (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
-                                        ;; TODO regalloc
+                                          ;; TODO regalloc
                                         ;; 1 - Build call ctx
                                         (let ((call-ctx
                                                 (ctx-init-with-stack
@@ -1920,7 +1920,7 @@
                                             regalloc-regs)
                                           (x86-push cgc base-ptr)
 
-                                          (x86-mov cgc base-ptr (x86-rsp))
+                                          ;(x86-mov cgc base-ptr (x86-rsp))
 
                                           ;; 3 TODO continuation slot ;; TODO rename gen-continuation-loader
                                           (gen-continuation-cr cgc ast succ ctx)
@@ -1938,6 +1938,9 @@
                                                               (oparg (codegen-loc-to-x86opnd larg)))
                                                          (x86-push cgc oparg)
                                                          (loop (- nb-args 1))))))
+
+                                          ;; TODO update rbp for callee
+                                          (x86-lea cgc base-ptr (x86-mem (* (+ (length args) 2) 8) (x86-rsp)))
 
                                           ;; 6 - Gen call sequence
                                           (gen-call-sequence cgc call-ctx (length (cdr ast)))))))
@@ -2028,7 +2031,7 @@
                               (lambda (ret-addr selector type table)
                                      (let* ((args (cdr ast))
                                             (ctx (ctx-pop-n ctx (+ (length args) 1))) ;; Remove closure and args from virtual stack
-                                            (res (ctx-get-free-reg ctx))
+                                            (res (ctx-get-free-reg cgc ctx))
                                             (reg (car res)))
                                          (gen-version-continuation-cr lazy-continuation
                                                                       (ctx-push ctx type reg)
@@ -2137,7 +2140,7 @@
                (make-lazy-code
                  (lambda (cgc ctx)
                    (let* ((label-div0 (get-label-error ERR_DIVIDE_ZERO))
-                          (res (ctx-get-free-reg ctx))
+                          (res (ctx-get-free-reg cgc ctx))
                           (reg (car res))
                           (ctx (cdr res))
                           (lleft (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
@@ -2193,7 +2196,7 @@
   (define (get-op-ii succ)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+        (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                (reg (car res))
                (ctx (cdr res))
                (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
@@ -2317,7 +2320,7 @@
   (define (get-op-ii succ)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+        (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                (reg (car res))
                (ctx (cdr res))
                (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
@@ -2331,7 +2334,7 @@
   (define (get-op-ff succ leftint? rightint?)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+        (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
                (reg (car res))
                (ctx (cdr res))
                (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
@@ -2364,7 +2367,7 @@
   (define (get-lazy-res bool)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((res (ctx-get-free-reg ctx))
+        (let* ((res (ctx-get-free-reg cgc ctx))
                (reg (car res))
                (ctx (cdr res)))
         (codegen-set-bool cgc bool reg)
@@ -2385,7 +2388,7 @@
 (define (mlc-pair succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (let* ((res (ctx-get-free-reg ctx)) ;; Return reg,ctx
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
              (reg (car res))
              (ctx (cdr res))
              (lcar (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))

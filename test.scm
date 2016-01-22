@@ -1,40 +1,9 @@
-;; etape2:
-;;string-set
-;;reverse
-;;make-string
 
-;(let ((str (make-string 10 #\C)))
-;  (pp (string-ref str 0))
-;  (pp (string-ref str 1))
-;  (pp (string-ref str 2))
-;  (pp (string-ref str 3)))
-
-
-;(define (cpstak x y z)
-;  (tak x y z (lambda (a) a)))
-;
-;(define (tak x y z k)
-;  (if (not (< y x))
-;      (k z)
-;      (tak (- x 1)
-;           y
-;           z
-;           (lambda (v1)
-;             (- y 1)))))
-;
-;(println (cpstak 18 12 6))
-
-;7
-
-
-;(define foo (lambda (n) 1))
-;
-;(foo
-; ((letrec ((fact (lambda () 1))) fact)))
-;; cpstak
-;; vector-ref
+(let ((foo (lambda (n m) (+ n m))))
+  (foo 1 2))
 
 ;; TODO: ALLOC DE REGISTRE:
+;; - RBP inutile? puisqu'on connait le fs...
 ;; - Vérifier les headers mémoire des vecteurs, et strings + taille au moment de l'allocation
 ;; - Un registre est assigné à UN slot mémoire
 ;; - Et vice versa
