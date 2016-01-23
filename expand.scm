@@ -89,9 +89,30 @@
   `(set! ,(cadr expr) ,(expand (caddr expr))))
 
 (define (expand-cmp expr)
+
+  (define (expand-cmp-n op expr prev)
+    (cond ;;
+          ((= (length expr) 1)
+             (let ((s (gensym)))
+               `(let ((,s ,(car expr)))
+                  (,op ,prev ,s))))
+          ;; prev
+          (prev
+             (let ((s (gensym)))
+               `(let ((,s ,(car expr)))
+                  (and (,op ,prev ,s)
+                       ,(expand-cmp-n op (cdr expr) s)))))
+          ;;
+          (else
+             (let ((s1 (gensym))
+                   (s2 (gensym)))
+               `(let ((,s1 ,(car expr)) (,s2 ,(cadr expr)))
+                  (and (,op ,s1 ,s2)
+                       ,(expand-cmp-n op (cddr expr) s2)))))))
+
   (if (<= (length (cdr expr)) 2)
       (cons (car expr) (expand (cdr expr)))
-      (error "NYI expand cmpop")))
+      (expand (expand-cmp-n (car expr) (cdr expr) #f))))
 
 ;; DEFINE
 (define (expand-define expr)

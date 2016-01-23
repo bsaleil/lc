@@ -2201,13 +2201,20 @@
                (ctx (cdr res))
                (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
                (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
-               (codegen-cmp-ii cgc op reg lleft lright)
-               (jump-to-version cgc succ (ctx-push (ctx-pop (ctx-pop ctx)) CTX_BOOL reg))))))
+          (codegen-cmp-ii cgc op reg lleft lright)
+          (jump-to-version cgc succ (ctx-push (ctx-pop (ctx-pop ctx)) CTX_BOOL reg))))))
 
-  (define (get-op-ff succ l r)
+  ;; TODO regalloc comment
+  (define (get-op-ff succ leftint? rightint?)
     (make-lazy-code
       (lambda (cgc ctx)
-        (error "NYI regalloc (mlc-op-n-cmp)"))))
+        (let* ((res (ctx-get-free-reg cgc ctx))
+               (reg (car res))
+               (ctx (cdr res))
+               (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+               (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+          (codegen-cmp-ff cgc op reg lleft leftint? lright rightint?)
+          (jump-to-version cgc succ (ctx-push (ctx-pop (ctx-pop ctx)) CTX_BOOL reg))))))
 
   (cond ((<= (length (cdr ast)) 1)
            (gen-ast #t succ))

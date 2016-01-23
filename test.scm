@@ -1,6 +1,5 @@
 
-(let ((foo (lambda (n m) (+ n m))))
-  (foo 1 2))
+(= 100 2.4)
 
 ;; TODO: ALLOC DE REGISTRE:
 ;; - RBP inutile? puisqu'on connait le fs...
