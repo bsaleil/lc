@@ -1086,7 +1086,7 @@
     (x86-cmp cgc dest (x86-imm-int 0))
     (x86-je cgc label-end)
 
-      (x86-mov cgc (x86-mem 16 alloc-ptr dest) (x86-al))
+      (x86-mov cgc (x86-mem 15 alloc-ptr dest) (x86-al))
       (x86-dec cgc dest)
       (x86-jmp cgc label-loop)
 
@@ -1277,7 +1277,7 @@
   (x86-mov cgc (x86-al) (x86-mem (- 16 TAG_MEMOBJ) opidx opstr)) ;; Get Char
   (x86-and cgc (x86-rax) (x86-imm-int 255)) ;; Clear bits before al
   (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode char
-  (x86-inc cgc (x86-rax))
+  (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
   (x86-mov cgc dest (x86-rax))))
 
 ;;-----------------------------------------------------------------------------

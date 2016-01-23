@@ -79,14 +79,10 @@
         (substring-h new-str string start 0 end))))
 
 (define (string-append-two str str2)
-  (let* ((l1 (string-length str))
-       (l2 (string-length str2))
-       (new-str (make-string (+ l1 l2))))
-    (do ((pos 0 (+ pos 1)))
-      ((= pos (+ l1 l2)) new-str)
-      (if (< pos l1)
-         (string-set! new-str pos (string-ref str pos))
-         (string-set! new-str pos (string-ref str2 (- pos l1)))))))
+  (list->string
+    (append
+      (string->list str)
+      (string->list str2))))
 
 (define (string-append-h strings)
    (cond ((null? strings) "")
@@ -98,10 +94,7 @@
    (string-append-h strings))
 
 (define (string-copy str)
-   (do ((new-str (make-string (string-length str)))
-        (pos 0 (+ pos 1)))
-       ((= pos (string-length str)) new-str)
-       (string-set! new-str pos (string-ref str pos))))
+  (list->string (string->list str)))
 
 (define (string=?-h str1 str2 pos)
    (cond ((= pos (string-length str1)) (= pos (string-length str2)))
