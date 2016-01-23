@@ -1,7 +1,8 @@
 
-(= 100 2.4)
+1
 
 ;; TODO: ALLOC DE REGISTRE:
+;; - SUPPRIMER la primitive 'list' car macro. Mais, conserver la création de fermeture si mlc-identifier list
 ;; - RBP inutile? puisqu'on connait le fs...
 ;; - Vérifier les headers mémoire des vecteurs, et strings + taille au moment de l'allocation
 ;; - Un registre est assigné à UN slot mémoire
