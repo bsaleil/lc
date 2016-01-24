@@ -1,9 +1,9 @@
 
 ;(define aa (string-append "kk" "ll"))
 
-(define l2 (make-string 4 #\a))
+;(pp 'test)
 
-(pp l2)
+(string->symbol "bonjour")
 
 ;; TODO: ALLOC DE REGISTRE:
 ;; - SUPPRIMER la primitive 'list' car macro. Mais, conserver la création de fermeture si mlc-identifier list

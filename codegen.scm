@@ -1178,47 +1178,50 @@
 
 ;;-----------------------------------------------------------------------------
 ;; symbol->string
-(define (codegen-sym->str cgc)
-  ;; Alloc
-  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
-  (x86-sub cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax)))
-  (x86-shr cgc (x86-rax) (x86-imm-int 8))
-  (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Length in rax
-  (gen-allocation cgc #f STAG_STRING 0 #t)
-  ;; String address in rbx
-  (x86-mov cgc (x86-rbx) alloc-ptr)
-  ;; Symbol address in rax
-  (x86-pop cgc (x86-rax))
-  (x86-sub cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-  ;; Mov length in string
-  (x86-mov cgc (x86-r15) (x86-mem 8 (x86-rax)))
-  (x86-mov cgc (x86-mem 8 (x86-rbx)) (x86-r15))
-  ;; Mov header in string
-  (x86-mov cgc (x86-r15) (x86-mem 0 (x86-rax)))
-  (x86-add cgc (x86-r15) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3)))
-  (x86-mov cgc (x86-mem 0 (x86-rbx)) (x86-r15))
-  ;; Encoded length in r15
-  (x86-shr cgc (x86-r15) (x86-imm-int 8))
-  (x86-shl cgc (x86-r15) (x86-imm-int 3))
-  ;; If encoded length == 16
-  ;;    jump label-fin
-  (let ((label-loop (asm-make-label cgc (new-sym 'label-loop)))
-        (label-fin  (asm-make-label cgc (new-sym 'label-fin))))
+(define (codegen-sym->str cgc reg lsym)
 
-    (x86-label cgc label-loop)
-    (x86-cmp cgc (x86-r15) (x86-imm-int 16))
-    (x86-jle cgc label-fin)
+  (let ((dest (codegen-reg-to-x86reg reg))
+        (opsym (codegen-loc-to-x86opnd lsym)))
 
-      (x86-mov cgc (x86-rdx) (x86-mem -8 (x86-r15) (x86-rax)))
-      (x86-mov cgc (x86-mem -8 (x86-r15) (x86-rbx)) (x86-rdx))
-      (x86-sub cgc (x86-r15) (x86-imm-int 8))
-      (x86-jmp cgc label-loop)
+    (if (not (ctx-loc-is-register? opsym))
+        (error "NYI codegen"))
 
-    (x86-label cgc label-fin)
-    (x86-add cgc (x86-rbx) (x86-imm-int TAG_MEMOBJ))
-    (x86-push cgc (x86-rbx))))
+    ;; Alloc string
+    (x86-mov cgc dest opsym)
+    (x86-sub cgc dest (x86-imm-int TAG_MEMOBJ))
+    (x86-mov cgc dest (x86-mem 0 dest))
+    (x86-shr cgc dest (x86-imm-int 8))
+    (x86-shl cgc dest (x86-imm-int 2)) ;; Length in rax
+    (gen-allocation cgc #f STAG_STRING 0 #t)
 
+    ;; Write len
+    (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opsym))
+    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+
+    ;; Write header
+    (x86-mov cgc (x86-rax) (x86-mem (- 0 TAG_MEMOBJ) opsym))
+    (x86-add cgc (x86-rax) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3)))
+    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-r15))
+
+    ;; qword size in dest
+    (x86-shl cgc dest (x86-imm-int 1))
+
+    (let ((label-end  (asm-make-label #f (new-sym 'label-end)))
+          (label-loop (asm-make-label #f (new-sym 'label-loop))))
+
+      (x86-label cgc label-loop)
+      (x86-cmp cgc dest (x86-imm-int 16))
+      (x86-jle cgc label-end)
+
+        ;; Copy qword
+        (x86-mov cgc (x86-rax) (x86-mem (* -1 (+ 8 TAG_MEMOBJ)) opsym dest))
+        (x86-mov cgc (x86-mem -8 alloc-ptr dest) (x86-rax))
+        (x86-sub cgc dest (x86-imm-int 8))
+        (x86-jmp cgc label-loop)
+
+      (x86-label cgc label-end))
+
+    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
 
 ;;-----------------------------------------------------------------------------
 ;; vector/string-length
