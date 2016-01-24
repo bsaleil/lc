@@ -1451,11 +1451,16 @@
                                                                     CTX_VECT
                                                                     reg))))))
                          ;; STRING->SYMBOL
+                         ;; TODO regalloc ok
                          ((eq? special 'string->symbol)
                           (make-lazy-code
                             (lambda (cgc ctx)
-                              (codegen-str->sym cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM)))))
+                              (let* ((res (ctx-get-free-reg cgc ctx))
+                                     (reg (car res))
+                                     (ctx (cdr res))
+                                     (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                                (codegen-str->sym cgc reg lstr)
+                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM reg))))))
                          ;; SYMBOL->STRING
                          ;; TODO regalloc ok
                          ((eq? special 'symbol->string)

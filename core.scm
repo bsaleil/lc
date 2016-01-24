@@ -536,7 +536,7 @@
 ;; Entry point to create symbol from string at runtime
 (c-define (interned-symbol sp) (long) void "interned_symbol" ""
 
-  (let* ((str (get-i64 (+ sp (* nb-c-caller-save-regs 8)))) ;; Get str from top of runtime stack
+  (let* ((str (get-i64 (+ sp (* (length all-regs) 8)))) ;; Get str from top of runtime stack
          (len (quotient (get-i64 (+ (- str TAG_MEMOBJ) 8)) 4)))
 
     ;; Get gambit symbol from lc string
@@ -549,13 +549,14 @@
     (let* ((sym   (lcstr->gsym (+ (- str TAG_MEMOBJ) 16) len 0 (make-string len)))
            (qword (get-symbol-qword sym)))
       ;; Write symbol qword at top on runtime stack
-      (put-i64 (+ sp (* nb-c-caller-save-regs 8)) qword))))
+      (put-i64 (+ sp (* (length all-regs) 8)) qword))))
 
 ;; Gen code to call interner-symbol at runtime
 (define (gen-interned-symbol cgc)
   (push-pop-regs
      cgc
-     c-caller-save-regs ;; preserve regs for C call
+     ;;c-caller-save-regs ;; preserve regs for C call
+     all-regs
      (lambda (cgc)
        (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
        (x86-and  cgc (x86-rsp) (x86-imm-int -16))

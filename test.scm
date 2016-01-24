@@ -3,7 +3,11 @@
 
 ;(pp 'test)
 
-(string->symbol "bonjour")
+;; -6 #t
+;; -2 #f
+
+(>= -3.2 -3.2)
+
 
 ;; TODO: ALLOC DE REGISTRE:
 ;; - SUPPRIMER la primitive 'list' car macro. Mais, conserver la création de fermeture si mlc-identifier list

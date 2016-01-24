@@ -783,9 +783,9 @@
             (begin (x86-movsd (x86-xmm1) opright)
                    (x86-comisd cgc (x86-xmm0) (x86-xmm1)))))
 
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-    (x86-op cgc label-end)
     (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+    (x86-op cgc label-end)
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
     (x86-label cgc label-end)))
 
 
@@ -1173,8 +1173,13 @@
 
 ;;-----------------------------------------------------------------------------
 ;; string->symbol
-(define (codegen-str->sym cgc)
-  (gen-interned-symbol cgc))
+(define (codegen-str->sym cgc reg lstr)
+  (let ((dest (codegen-reg-to-x86reg reg))
+        (opstr (codegen-loc-to-x86opnd lstr)))
+
+    (x86-push cgc opstr)
+    (gen-interned-symbol cgc)
+    (x86-pop cgc dest)))
 
 ;;-----------------------------------------------------------------------------
 ;; symbol->string
@@ -1183,7 +1188,7 @@
   (let ((dest (codegen-reg-to-x86reg reg))
         (opsym (codegen-loc-to-x86opnd lsym)))
 
-    (if (not (ctx-loc-is-register? opsym))
+    (if (not (ctx-loc-is-register? lsym))
         (error "NYI codegen"))
 
     ;; Alloc string
