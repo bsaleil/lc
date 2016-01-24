@@ -6,7 +6,9 @@
 ;; -6 #t
 ;; -2 #f
 
-(>= -3.2 -3.2)
+;(symbol->string 'TEST)
+;'bonjour
+(symbol->string 'bonjour)
 
 
 ;; TODO: ALLOC DE REGISTRE:

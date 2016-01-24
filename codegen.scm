@@ -1196,7 +1196,8 @@
     (x86-sub cgc dest (x86-imm-int TAG_MEMOBJ))
     (x86-mov cgc dest (x86-mem 0 dest))
     (x86-shr cgc dest (x86-imm-int 8))
-    (x86-shl cgc dest (x86-imm-int 2)) ;; Length in rax
+    (x86-shl cgc dest (x86-imm-int 2)) ;; Length
+    (x86-mov cgc (x86-rax) dest) ;; Move for alloc
     (gen-allocation cgc #f STAG_STRING 0 #t)
 
     ;; Write len
