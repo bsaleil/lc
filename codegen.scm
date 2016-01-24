@@ -1207,7 +1207,7 @@
     ;; Write header
     (x86-mov cgc (x86-rax) (x86-mem (- 0 TAG_MEMOBJ) opsym))
     (x86-add cgc (x86-rax) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3)))
-    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-r15))
+    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
 
     ;; qword size in dest
     (x86-shl cgc dest (x86-imm-int 1))

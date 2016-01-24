@@ -1,15 +1,13 @@
 
-;(define aa (string-append "kk" "ll"))
+;(define (string-append-two str str2)
+;  (list->string
+;    (append
+;      (string->list str)
+;      (string->list str2))))
 
-;(pp 'test)
+2
 
-;; -6 #t
-;; -2 #f
-
-;(symbol->string 'TEST)
-;'bonjour
-(symbol->string 'bonjour)
-
+;(string-append (symbol->string 'Dark) "KK")
 
 ;; TODO: ALLOC DE REGISTRE:
 ;; - SUPPRIMER la primitive 'list' car macro. Mais, conserver la création de fermeture si mlc-identifier list

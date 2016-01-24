@@ -101,6 +101,17 @@
 (define expand-tl #f)      ;; expand.scm
 (define gen-ast #f)        ;; ast.scm
 (define repl-print-lco #f) ;; main.scm
+;; TODO regalloc
+(define alloc-ptr #f)
+(define base-ptr #f)
+(define global-ptr #f)
+
+;;
+(define change-stype #f)
+(define codegen-loc-to-x86opnd #f)
+(define codegen-reg-to-x86reg #f)
+(define ctx-clear #f)
+(define identifier #f)
 
 ;;-----------------------------------------------------------------------------
 
