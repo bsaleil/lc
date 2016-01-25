@@ -1,12 +1,7 @@
-
-;(define (string-append-two str str2)
-;  (list->string
-;    (append
-;      (string->list str)
-;      (string->list str2))))
-1
-
-;(string-append (symbol->string 'Dark) "KK")
+(pp
+(do ((i 10 (- i 1)))
+    ((zero? i))))
+    ;(put name (generate-symbol) #f))
 
 ;; TODO: ALLOC DE REGISTRE:
 ;; - SUPPRIMER la primitive 'list' car macro. Mais, conserver la création de fermeture si mlc-identifier list

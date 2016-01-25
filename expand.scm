@@ -51,6 +51,7 @@
       ((equal? (car expr) 'define) (error ILL-DEFINE))
       ((equal? (car expr) 'if) (expand-if expr))
       ((equal? (car expr) 'begin) (expand-begin expr))
+      ((equal? (car expr) 'do) (expand-do expr))
       ((equal? (car expr) 'list)  (expand-list expr))
       ((equal? (car expr) 'let) (expand-let expr))
       ((equal? (car expr) 'let*) (expand-let* expr))
@@ -148,6 +149,29 @@
         (expand (build-internal-defs defs body))
         `(begin ,@(map expand (cdr expr)))))))
 
+;; DO
+(define (expand-do expr)
+  (let ((vars-init (map (lambda (el) (list (car el) (cadr el))) (cadr expr)))
+        (steps
+          (foldr (lambda (el r)
+                   (if (not (null? (cddr el)))
+                       (cons (caddr el) r)
+                       (cons (car el) r)))
+                 '()
+                 (cadr expr)))
+        (test (caaddr expr))
+        (exprs
+          (let ((e (cdaddr expr)))
+            (if (null? e) (list #f) e)))
+        (body (cdddr expr))
+        (loopname (gensym)))
+    (expand
+      `(let ,loopname ,vars-init
+         (if ,test
+             (begin ,@exprs)
+             (begin ,@body
+                    (,loopname ,@steps)))))))
+
 ;; LIST
 (define (expand-list expr)
   (cond ((null? (cdr expr))
@@ -193,31 +217,6 @@
     `(letrec ,(map (lambda (n) (cons (car n) (expand (cdr n))))
                        bindings)
        ,(expand (cons 'begin body)))))
-
-;; DO-h
-(define (do-steps ids)
-  (if (null? ids)
-    '()
-    (let ((stepl (cddr (car ids))))
-      (if (null? stepl)
-        (cons (car (car ids)) (do-steps (cdr ids)))
-        (cons (car stepl) (do-steps (cdr ids)))))))
-
-;; DO
-(define (expand-do expr)
-
-   (let ((SYM (gensym))
-         (ids (cadr expr))
-         (stop (caddr expr))
-         (commands (cdddr expr)))
-      (expand `(letrec ((,SYM (lambda ,(map car ids)
-                         (if ,(car stop)
-                            ,(if (null? (cdr stop))
-                                #t
-                                `(begin ,@(cdr stop)))
-                            (begin ,@commands
-                                   (,SYM ,@(do-steps ids)))))))
-               (,SYM ,@(map cadr ids))))))
 
 ;; LAMBDA
 (define (expand-lambda expr)

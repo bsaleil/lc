@@ -157,8 +157,8 @@
                  ((eq? op 'lambda) (mlc-lambda ast succ #f))
                  ;; Begin
                  ((eq? op 'begin) (mlc-begin ast succ))
-                 ;; Do
-                 ((eq? op 'do) (mlc-do ast succ))
+                ; ;; Do
+                ; ((eq? op 'do) (mlc-do ast succ))
                  ;; Binding
                  ((eq? op 'let) (mlc-let ast succ)) ;; Also handles let* (let* is a macro)
                  ((eq? op 'letrec) (mlc-letrec ast succ))
@@ -1726,105 +1726,106 @@
 ;;                         +------+   +-------+
 ;;                         | bind |<--| steps |
 ;;                         +------+   +-------+
-(define (mlc-do ast succ)
-
-  ;; Get list of steps
-  (define (get-steps variables)
-    (if (null? variables)
-      '()
-      (let ((variable (car variables)))
-        (if (null? (cddr variable))
-          ;; No step, use variable
-          (cons (car variable)   (get-steps (cdr variables)))
-          ;; Step exists, add step
-          (cons (caddr variable) (get-steps (cdr variables)))))))
-
-  (let* (;; DO components
-         (test       (car (caddr ast)))
-         (test-exprs (if (null? (cdr (caddr ast)))
-                         '(#f)
-                         (cdr (caddr ast))))
-         (variables  (map car (cadr ast)))
-         (inits      (map cadr (cadr ast)))
-         (steps      (get-steps (cadr ast)))
-         (bodies     (cdddr ast))
-         (mvars      (mutable-vars ast variables))
-         ;; LAZY-END
-         (lazy-end
-           ;; Last object. Executed if test evaluates to true
-           ;; Update ctx and rsp
-           (make-lazy-code
-             (lambda (cgc ctx)
-
-               (let* ((nctx (ctx-move ctx 0 (- (+ (length test-exprs) (length variables)) 1)))
-                      (mctx (ctx-pop nctx (- (+ (length test-exprs) (length variables)) 1)))
-                      (env (list-tail (ctx-env mctx) (length variables)))
-                      (ctx (make-ctx (ctx-stack mctx) env (ctx-nb-args mctx))))
-                ;; Clean stack and push result on top of stack
-                (codegen-do-end cgc (+ (length variables) (length test-exprs) -1))
-                ;; Jump to succ
-                (jump-to-version cgc succ ctx)))))
-         ;; LAZY-TEST
-         (lazy-test #f) ;; do test
-         ;; LAZY-BIND
-         (lazy-bind
-           (make-lazy-code
-             (lambda (cgc ctx)
-               ;; Update variables
-               (do ((it   variables (cdr it))
-                    (from (- (* 8 (length variables)) 8) (- from 8))
-                    (to   (- (* 8 (+ (length variables) (length variables) (length bodies))) 8) (- to 8)))
-                   ((null? it) #f)
-                   (codegen-do-bind-var cgc (member (car it) mvars) from to))
-
-               ;; Clean stack
-               (codegen-clean-stack cgc (+ (length variables) (length bodies)))
-
-               ;; Update ctx
-               (let* (;; Mov stack types
-                    (lctx (ctx-mov-nb ctx
-                                      (length variables)
-                                      0
-                                      (+ (length variables) (length bodies))))
-                    ;; Keep same env
-                    (env (ctx-env ctx))
-                    ;; Remove pushed values
-                    (mctx (ctx-pop (make-ctx (ctx-stack lctx)
-                                             env
-                                             (ctx-nb-args lctx))
-                                   (+ (length variables) (length bodies)))))
-
-               (jump-to-version cgc lazy-test mctx)))))
-         ;; LAZY-STEP
-         (lazy-steps
-           (gen-ast-l steps lazy-bind))
-         ;; LAZY-BODY
-         (lazy-body
-           (if (null? bodies)
-              lazy-steps ;; Jump directly to lazy-steps if no body
-              (gen-ast-l bodies lazy-steps)))
-         ;; LAZY-TEST-EXPRS
-         (lazy-test-exprs (gen-ast-l test-exprs lazy-end))
-         ;; LAZY-DISPATCH: Read result of test and jump to test-exors if #t or body if #f
-         (lazy-dispatch (get-lazy-dispatch lazy-test-exprs lazy-body #t #f))
-         ;; LAZY-ADD-CTX
-         (lazy-add-ctx
-           ;; Add variables to env and gen mutable vars
-           (make-lazy-code
-             (lambda (cgc ctx)
-               (let* ((start (- (length (ctx-stack ctx)) (length variables) 1))
-                      (env  (build-env mvars variables start (ctx-env ctx)))
-                      (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx)))
-                      ;; Gen mutable vars
-                      (mctx (gen-mutable cgc nctx mvars)))
-                 ;; Jump to test with new ctx
-                 (jump-to-version cgc lazy-test mctx))))))
-
-    ;; Lazy-dispatch exists then generate test ast
-    (set! lazy-test (gen-ast test lazy-dispatch))
-
-    ;; Return first init lazy object
-    (gen-ast-l inits lazy-add-ctx)))
+;; TODO REGALLOC
+;(define (mlc-do ast succ)
+;
+;  ;; Get list of steps
+;  (define (get-steps variables)
+;    (if (null? variables)
+;      '()
+;      (let ((variable (car variables)))
+;        (if (null? (cddr variable))
+;          ;; No step, use variable
+;          (cons (car variable)   (get-steps (cdr variables)))
+;          ;; Step exists, add step
+;          (cons (caddr variable) (get-steps (cdr variables)))))))
+;
+;  (let* (;; DO components
+;         (test       (car (caddr ast)))
+;         (test-exprs (if (null? (cdr (caddr ast)))
+;                         '(#f)
+;                         (cdr (caddr ast))))
+;         (variables  (map car (cadr ast)))
+;         (inits      (map cadr (cadr ast)))
+;         (steps      (get-steps (cadr ast)))
+;         (bodies     (cdddr ast))
+;         (mvars      (mutable-vars ast variables))
+;         ;; LAZY-END
+;         (lazy-end
+;           ;; Last object. Executed if test evaluates to true
+;           ;; Update ctx and rsp
+;           (make-lazy-code
+;             (lambda (cgc ctx)
+;
+;               (let* ((nctx (ctx-move ctx 0 (- (+ (length test-exprs) (length variables)) 1)))
+;                      (mctx (ctx-pop nctx (- (+ (length test-exprs) (length variables)) 1)))
+;                      (env (list-tail (ctx-env mctx) (length variables)))
+;                      (ctx (make-ctx (ctx-stack mctx) env (ctx-nb-args mctx))))
+;                ;; Clean stack and push result on top of stack
+;                (codegen-do-end cgc (+ (length variables) (length test-exprs) -1))
+;                ;; Jump to succ
+;                (jump-to-version cgc succ ctx)))))
+;         ;; LAZY-TEST
+;         (lazy-test #f) ;; do test
+;         ;; LAZY-BIND
+;         (lazy-bind
+;           (make-lazy-code
+;             (lambda (cgc ctx)
+;               ;; Update variables
+;               (do ((it   variables (cdr it))
+;                    (from (- (* 8 (length variables)) 8) (- from 8))
+;                    (to   (- (* 8 (+ (length variables) (length variables) (length bodies))) 8) (- to 8)))
+;                   ((null? it) #f)
+;                   (codegen-do-bind-var cgc (member (car it) mvars) from to))
+;
+;               ;; Clean stack
+;               (codegen-clean-stack cgc (+ (length variables) (length bodies)))
+;
+;               ;; Update ctx
+;               (let* (;; Mov stack types
+;                    (lctx (ctx-mov-nb ctx
+;                                      (length variables)
+;                                      0
+;                                      (+ (length variables) (length bodies))))
+;                    ;; Keep same env
+;                    (env (ctx-env ctx))
+;                    ;; Remove pushed values
+;                    (mctx (ctx-pop (make-ctx (ctx-stack lctx)
+;                                             env
+;                                             (ctx-nb-args lctx))
+;                                   (+ (length variables) (length bodies)))))
+;
+;               (jump-to-version cgc lazy-test mctx)))))
+;         ;; LAZY-STEP
+;         (lazy-steps
+;           (gen-ast-l steps lazy-bind))
+;         ;; LAZY-BODY
+;         (lazy-body
+;           (if (null? bodies)
+;              lazy-steps ;; Jump directly to lazy-steps if no body
+;              (gen-ast-l bodies lazy-steps)))
+;         ;; LAZY-TEST-EXPRS
+;         (lazy-test-exprs (gen-ast-l test-exprs lazy-end))
+;         ;; LAZY-DISPATCH: Read result of test and jump to test-exors if #t or body if #f
+;         (lazy-dispatch (get-lazy-dispatch lazy-test-exprs lazy-body #t #f))
+;         ;; LAZY-ADD-CTX
+;         (lazy-add-ctx
+;           ;; Add variables to env and gen mutable vars
+;           (make-lazy-code
+;             (lambda (cgc ctx)
+;               (let* ((start (- (length (ctx-stack ctx)) (length variables) 1))
+;                      (env  (build-env mvars variables start (ctx-env ctx)))
+;                      (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx)))
+;                      ;; Gen mutable vars
+;                      (mctx (gen-mutable cgc nctx mvars)))
+;                 ;; Jump to test with new ctx
+;                 (jump-to-version cgc lazy-test mctx))))))
+;
+;    ;; Lazy-dispatch exists then generate test ast
+;    (set! lazy-test (gen-ast test lazy-dispatch))
+;
+;    ;; Return first init lazy object
+;    (gen-ast-l inits lazy-add-ctx)))
 
 ;; Create a new lazy code object.
 ;; Takes the value from stack and cmp to #f
