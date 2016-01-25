@@ -1099,10 +1099,25 @@
                            (lto   (ctx-get-loc ctx (ctx-lidx-to-slot ctx (+ i (length ids)))))
                            (ctx   (ctx-move-type ctx i (+ i (length ids)))))
                        (let ((opfrom (codegen-loc-to-x86opnd lfrom))
-                             (opto   (codegen-loc-to-x86opnd lto)))
+                             (opto   (codegen-loc-to-x86opnd lto))
+                             (regtopop #f))
                          (cond ((and (ctx-loc-is-memory? lfrom)
                                      (ctx-loc-is-memory? lto))
-                                  (error "NYI letrec"))
+                                  (let* ((regs (list (x86-rbx) (x86-rcx) (x86-rdx)))
+                                         (pr (foldr
+                                               (lambda (el r)
+                                                 (if (and (not (eq? el opfrom))
+                                                          (not (eq? el opto)))
+                                                     el
+                                                     r))
+                                               #f
+                                               regs)))
+                                    (x86-push cgc pr)
+                                    (x86-mov cgc (x86-rax) opfrom)
+                                    (x86-mov cgc pr opto)
+                                    (set! opfrom (x86-rax))
+                                    (set! opto pr)
+                                    (set! regtopop pr)))
                                ((ctx-loc-is-memory? lfrom)
                                   (x86-mov cgc (x86-rax) opfrom)
                                   (set! opfrom (x86-rax)))
@@ -1111,6 +1126,8 @@
                                   (set! opto (x86-rax))))
 
                          (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opto) opfrom)
+                         (if regtopop
+                             (x86-pop cgc regtopop))
                          (loop (+ i 1) ctx))))))))
          (lazy-pre
            (make-lazy-code

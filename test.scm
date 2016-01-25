@@ -4,8 +4,7 @@
 ;    (append
 ;      (string->list str)
 ;      (string->list str2))))
-
-2
+1
 
 ;(string-append (symbol->string 'Dark) "KK")
 
