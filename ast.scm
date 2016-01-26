@@ -591,15 +591,19 @@
           (table-set! crtables crtable-key t)
           t))))
 
+;; TODO regalloc: Créer de nouvelles entrées dans la table (+ que le type de la valeur de retour)
+;;                avec slot-loc free-regs
 ;; Return crtable key from ast and ctx
 ;; The key contains ast, stack types, and a list of known identifier with types
 (define (get-crtable-key ast ctx)
   (cons ast
-        (cons (ctx-stack ctx)
-          (map (lambda (el)
-                 (cons (car el)
+        (list (ctx-slot-loc ctx)
+              (ctx-free-regs ctx)
+              (ctx-stack ctx)
+              (map (lambda (el)
+                     (cons (car el)
                        (identifier-stype (cdr el))))
-               (ctx-env ctx)))))
+                   (ctx-env ctx)))))
 
 ;; TODO: change to table, merge with cctables ? (change cctable-key to something better)
 ;; Store pairs associating cctable address to the code of the corresponding function

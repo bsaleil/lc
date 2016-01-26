@@ -1,5 +1,14 @@
 
-10
+;; apply
+;; arguments par registres
+;; segfault
+
+(define (foo n)
+  (if (= n 0)
+      #f
+      (begin 100 (foo (- n 1)))))
+
+(foo 100000000)
 
 ;; TODO: ALLOC DE REGISTRE:
 ;; - Vérifier que le flag ret est bien propagé
