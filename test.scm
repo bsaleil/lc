@@ -1,9 +1,9 @@
-(pp
-(do ((i 10 (- i 1)))
-    ((zero? i))))
-    ;(put name (generate-symbol) #f))
+
+10
 
 ;; TODO: ALLOC DE REGISTRE:
+;; - Vérifier que le flag ret est bien propagé
+;; - Conventio d'appel : Retaddr, Op, arg1, ..., argn
 ;; - SUPPRIMER la primitive 'list' car macro. Mais, conserver la création de fermeture si mlc-identifier list
 ;; - RBP inutile? puisqu'on connait le fs...
 ;; - Vérifier les headers mémoire des vecteurs, et strings + taille au moment de l'allocation

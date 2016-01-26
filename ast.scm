@@ -1928,7 +1928,7 @@
 (define (mlc-call ast succ)
 
   (let* (;; Tail call if successor's flags set contains 'ret flag
-         (tail #f) ;; TODO regalloc disabled for test (member 'ret (lazy-code-flags succ)))
+         (tail (member 'ret (lazy-code-flags succ)))
          ;; Call arguments
          (args (cdr ast))
          ;; Lazy fail
@@ -1943,15 +1943,16 @@
                                                           (list CTX_CLO CTX_RETAD)))))
 
                                           ;; 2 - push all regs
-                                          (for-each
-                                            (lambda (i) (x86-push cgc i))
-                                            regalloc-regs)
-                                          (x86-push cgc base-ptr)
-
-                                          ;(x86-mov cgc base-ptr (x86-rsp))
+                                          (if (not tail)
+                                              (begin
+                                                (for-each
+                                                  (lambda (i) (x86-push cgc i))
+                                                  regalloc-regs)
+                                                (x86-push cgc base-ptr)))
 
                                           ;; 3 TODO continuation slot ;; TODO rename gen-continuation-loader
-                                          (gen-continuation-cr cgc ast succ ctx)
+                                          (if (not tail)
+                                              (gen-continuation-cr cgc ast succ ctx))
 
                                           ;; 4 TODO closure slot
                                           (let* ((lclo (ctx-get-loc ctx (ctx-lidx-to-slot ctx (length (cdr ast)))))
@@ -1966,6 +1967,23 @@
                                                               (oparg (codegen-loc-to-x86opnd larg)))
                                                          (x86-push cgc oparg)
                                                          (loop (- nb-args 1))))))
+
+                                          ;; Shift args and closure for tail call
+                                          ;; 0 -> (length args) COMPARISON
+                                          ;; Use rbx because rax holds closure
+                                          (if tail
+                                              (let ((nb-args (length args))
+                                                    (fs (ctx-fs ctx)))
+                                                (let loop ((n (length args)))
+                                                  (if (>= n 0)
+                                                      (begin
+                                                        (x86-mov cgc (x86-rbx) (x86-mem (* 8 n) (x86-rsp)))
+                                                        (x86-mov cgc (x86-mem (* 8 (+ (- fs 1) n)) (x86-rsp)) (x86-rbx))
+                                                        (loop (- n 1)))))))
+
+                                          ;; TODO update rsp
+                                          (if tail
+                                              (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (ctx-fs ctx) 1)))))
 
                                           ;; TODO update rbp for callee
                                           (x86-lea cgc base-ptr (x86-mem (* (+ (length args) 2) 8) (x86-rsp)))
@@ -2001,7 +2019,7 @@
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
-    (if tail
+    (if #f ;; TODO regalloc
         (if (> (length args) 0)
             ;; If args, then compile args
             (gen-ast-l args lazy-tail-operator)
