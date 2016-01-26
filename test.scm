@@ -3,14 +3,16 @@
 ;; arguments par registres
 ;; segfault
 
-(define (foo n)
-  (if (= n 0)
-      #f
-      (begin 100 (foo (- n 1)))))
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-(foo 100000000)
+(fib 40)
 
 ;; TODO: ALLOC DE REGISTRE:
+;; - Fonction pour init les registres libres (utilisé 3 ou 4 fois)
 ;; - Vérifier que le flag ret est bien propagé
 ;; - Conventio d'appel : Retaddr, Op, arg1, ..., argn
 ;; - SUPPRIMER la primitive 'list' car macro. Mais, conserver la création de fermeture si mlc-identifier list

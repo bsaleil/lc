@@ -1948,15 +1948,20 @@
 
                                           ;; 2 - push all regs
                                           (if (not tail)
-                                              (begin
+                                              (let* ((free (ctx-free-regs ctx))
+                                                     (all  (build-list (length regalloc-regs) (lambda (i)
+                                                                                         (string->symbol
+                                                                                           (string-append "r" (number->string i))))))
+                                                     (save (set-sub all free '())))
+                                                ;; Save used regs
                                                 (for-each
-                                                  (lambda (i) (x86-push cgc i))
-                                                  regalloc-regs)
-                                                (x86-push cgc base-ptr)))
-
-                                          ;; 3 TODO continuation slot ;; TODO rename gen-continuation-loader
-                                          (if (not tail)
-                                              (gen-continuation-cr cgc ast succ ctx))
+                                                  (lambda (i)
+                                                    (let ((opnd (codegen-reg-to-x86reg i)))
+                                                      (x86-push cgc opnd)))
+                                                  save)
+                                                (x86-push cgc base-ptr)
+                                                ;; Gen continuation
+                                                (gen-continuation-cr cgc ast succ ctx save)))
 
                                           ;; 4 TODO closure slot
                                           (let* ((lclo (ctx-get-loc ctx (ctx-lidx-to-slot ctx (length (cdr ast)))))
@@ -2057,7 +2062,7 @@
     (get-lazy-continuation-builder-cr  op lazy-succ lazy-call args continuation-ctx from-apply? ast)
     (get-lazy-continuation-builder-nor op lazy-succ lazy-call args continuation-ctx from-apply?)))
 
-(define (gen-continuation-cr cgc ast succ ctx)
+(define (gen-continuation-cr cgc ast succ ctx saved-regs)
 
   (let* ((lazy-continuation
            (make-lazy-code
@@ -2066,8 +2071,10 @@
                ;; Restore registers
                (x86-pop cgc base-ptr)
                (for-each
-                 (lambda (i) (x86-pop cgc i))
-                 (reverse regalloc-regs))
+                 (lambda (i)
+                   (let ((opnd (codegen-reg-to-x86reg i)))
+                     (x86-pop cgc opnd)))
+                 (reverse saved-regs))
 
                ;; Move result to location
                (let* ((lres   (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
