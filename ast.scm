@@ -368,6 +368,7 @@
 ;; TODO: + utiliser un appel récursif comme pour gen-get-freevar (??)
 ;; TODO coment: si mobject? est vrai, c'est qu'on veut le mobject dans le tmp reg (rax)
 (define (gen-get-localvar cgc ctx local succ #!optional (raw? #f))
+
   (let ((loc (ctx-identifier-loc ctx (cdr local)))
         (mutable? (member 'mutable (identifier-flags (cdr local)))))
 
@@ -396,7 +397,7 @@
                   (let ((dest (codegen-reg-to-x86reg reg))
                         (opnd (codegen-loc-to-x86opnd loc)))
                     (x86-mov cgc dest opnd))))
-          (jump-to-version cgc succ (ctx-push ctx type reg))))))
+          (jump-to-version cgc succ (ctx-push ctx type reg (car local)))))))
 
 (define (gen-get-globalvar cgc ctx global succ)
 
@@ -733,9 +734,6 @@
                 (codegen-closure-ep cgc ep-loc)))
 
           ;; Write free variables
-          (pp "NYI write mutable free vars in closure")
-          (pp "NYI write free var from free var in closure")
-          ;;   -> Une variable qui est libre et qui devient libre peut ne pas avoir de 'loc', ATTENTION.
           (gen-free-vars cgc fvars ctx 0)
 
           (let* ((res (ctx-get-free-reg cgc ctx))
@@ -1050,7 +1048,7 @@
            (make-lazy-code
              (lambda (cgc ctx)
                (let* ((id-idx (build-id-idx ids (- (length ids) 1)))
-                      (mvars (mutable-vars ast ids)) ;; Get mutable vars
+                      (mvars (mutable-vars (cddr ast) ids)) ;; Get mutable vars
                       (ctx (ctx-bind ctx id-idx mvars)))
                  (gen-mutable cgc ctx mvars)
                  (jump-to-version cgc lazy-body ctx))))))
@@ -2710,6 +2708,19 @@
                                  (if (member (cadr ast) params)
                                    (list (cadr ast))
                                    '())))
+                    ((eq? op 'let)
+                      ;; Search for mutable only in bindings, and body if ids not redefined
+                      (let* ((mvars-bindings (mutable-vars-l (cadr ast) params))
+                             (let-ids (map car (cadr ast)))
+                             (p (set-sub params let-ids '()))
+                             (mvars-body (mutable-vars-l (cddr ast) p)))
+                        (set-union mvars-bindings mvars-body)))
+                    ((eq? op 'letrec)
+                      ;; Search for mutable in ast if ids not redefined
+                      (let* ((letrec-ids (map car (cadr ast)))
+                             (p (set-sub params letrec-ids '())))
+                        (set-union (mutable-vars-l (cadr ast) p)
+                                   (mutable-vars-l (cddr ast) p))))
                     (else (mutable-vars-l ast params)))))))
 
 ;;

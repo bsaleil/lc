@@ -1,15 +1,13 @@
 
-;; apply
-;; arguments par registres
-;; segfault
+(define (foo n)
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
+  (let ((f (lambda (a)
+             (lambda (b)
+               (pp a) (pp b) (pp n)))))
+    ((f 2) 4)))
 
-(fib 40)
+(foo 30)
+
 
 ;; TODO: ALLOC DE REGISTRE:
 ;; - Fonction pour init les registres libres (utilisé 3 ou 4 fois)

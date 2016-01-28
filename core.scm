@@ -701,7 +701,7 @@
 (define to-space   #f)
 ;; Set to 2gb (2000000000) to exec all benchmarks without GC (except lattice.scm)
 ;; Set to 7gb (7000000000) to exec all benchmarks without GC
-(define space-len 2000000000)
+(define space-len 7000000000)
 
 (assert (= (modulo space-len 8) 0) ERR_HEAP_NOT_8)
 
@@ -1096,7 +1096,7 @@
   sslots  ;; stack slots
   flags   ;; list of flags (possible flags : mutable)
   stype   ;; ctx type (copied to virtual stack)
-  cloc   ;; closure slot if free variable
+  cloc    ;; closure slot if free variable
 )
 
 ;; ctx
@@ -1205,7 +1205,24 @@
                   (cons (car lst)
                         (cdr r)))))))
 
-(define (ctx-push ctx type loc) ;; can only push reg ?
+(define (ctx-push ctx type loc #!optional (id #f)) ;; can only push reg ?
+
+  (define (env-push-id env slot)
+    (if (null? env)
+        '()
+        (let ((ident (car env)))
+          (if (eq? (car ident) id)
+              (cons
+                (cons (car ident)
+                      (make-identifier
+                        (identifier-kind (cdr ident))
+                        (cons slot (identifier-sslots (cdr ident)))
+                        (identifier-flags (cdr ident))
+                        (identifier-stype (cdr ident))
+                        (identifier-cloc  (cdr ident))))
+                (cdr env))
+              (cons ident (env-push-id (cdr env) slot))))))
+
   (make-ctx
     ;; Stack
     (cons type (ctx-stack ctx))
@@ -1216,7 +1233,9 @@
     ;; Free regs
     (set-sub (ctx-free-regs ctx) (list loc) '())
     ;; env
-    (ctx-env ctx)
+    (if id
+        (env-push-id (ctx-env ctx) (length (ctx-stack ctx)))
+        (ctx-env ctx))
     ;; nb-args
     (ctx-nb-args ctx)
     ;;
@@ -1245,7 +1264,7 @@
                         (cons (cons (car el)
                                     (make-identifier
                                       (identifier-kind (cdr el))
-                                      (set-sub (identifier-sslots (cdr el)) slot)
+                                      (set-sub (identifier-sslots (cdr el)) (list slot) '())
                                       (identifier-flags (cdr el))
                                       (identifier-stype (cdr el))
                                       (identifier-cloc (cdr el))))
@@ -1511,6 +1530,21 @@
 ;; Cette fonction modifie tous les éléments du contexte pour associer l'identifiant de variable à l'index de la pile virtuelle
 (define (ctx-bind ctx id-idx mvars)
 
+  (define (remove-sslot slot env)
+    (if (null? env)
+        '()
+        (let ((ident (car env)))
+          (if (member slot (identifier-sslots (cdr ident)))
+              (cons (cons (car ident)
+                          (make-identifier
+                            (identifier-kind (cdr ident))
+                            (set-sub (identifier-sslots (cdr ident)) (list slot) '())
+                            (identifier-flags (cdr ident))
+                            (identifier-stype (cdr ident))
+                            (identifier-cloc (cdr ident))))
+                    (remove-sslot slot (cdr env)))
+              (cons ident (remove-sslot slot (cdr env)))))))
+
   (define (bind-one ctx id-idx)
     (let ((identifier
             (make-identifier
@@ -1526,7 +1560,8 @@
         (ctx-slot-loc ctx)
         (ctx-free-regs ctx)
         (cons (cons (car id-idx) identifier)
-              (ctx-env ctx))
+              (remove-sslot (ctx-lidx-to-slot ctx (cdr id-idx))
+                            (ctx-env ctx)))
         (ctx-nb-args ctx)
         (ctx-fs ctx))))
 

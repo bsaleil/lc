@@ -296,13 +296,13 @@
                    (after  #f))
                 (set! before (real-time))
                 ;; 10 execs
-                (one-exec) (one-exec)
+                (one-exec) (one-exec) (one-exec)
                 ;(one-exec) (one-exec)
                 ;(one-exec) (one-exec)
                 ;(one-exec) (one-exec)
                 ;(one-exec) (one-exec)
                 (set! after (real-time))
-                (println "Time: " (* (/ (- after before) 10) 1000))))
+                (println "Time: " (* (- after before) 100000))))
       (##machine-code-block-exec mcb)))
 
 ;;-----------------------------------------------------------------------------
