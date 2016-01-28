@@ -528,14 +528,7 @@
     (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
 
 ;; Generate function return using a return address
-(define (codegen-return-rp cgc retaddr-offset)
-  ;; Pop return value
-  (x86-pop  cgc (x86-rax))
-  ;; Update SP to ret addr
-  (x86-add  cgc (x86-rsp) (x86-imm-int retaddr-offset))
-  ;; Jump to continuation (ret)
-  ;; Do not use ret instruction. This ret is not paired with a call. Using a ret would cause branch misprediction
-  ;; TODO: use call/ret if no entry points and no return points used
+(define (codegen-return-rp cgc)
   (x86-pop cgc (x86-rdx))
   (x86-jmp cgc (x86-rdx)))
 
@@ -626,29 +619,11 @@
 (define (codegen-load-cont-cr cgc crtable-loc)
   (x86-mov cgc (x86-rax) (x86-imm-int crtable-loc))
   (x86-push cgc (x86-rax)))
-;(define (codegen-load-cont-cr cgc crtable-loc apply? nbargs)
-;  ;; CR table location in rax
-;  (x86-mov cgc (x86-rax) (x86-imm-int crtable-loc))
-;  (if apply?
-;      ;; Call from apply
-;      (begin (x86-shl cgc (x86-rdi) (x86-imm-int 1)) ;; Rdi contains encoded number of args. Shiftl 1 to left to get nbargs*8
-;             (x86-mov cgc (x86-mem 8 (x86-rsp) (x86-rdi)) (x86-rax)) ;; Move to the continuation stack slot [rsp+rdi+8] (rsp + nbArgs*8 + 8)
-;             (x86-shr cgc (x86-rdi) (x86-imm-int 1)))
-;      ;; Other call
-;      (x86-mov cgc (x86-mem (* 8 (+ 1 nbargs)) (x86-rsp)) (x86-rax)))) ;; Move to the continuation stack slot
 
-;; TODO
-(define (codegen-load-cont-nor cgc label-load-ret label-cont-stub apply? nbargs)
-  ;; Return address (continuation label)
+(define (codegen-load-cont-rp cgc label-load-ret label-cont-stub)
   (x86-label cgc label-load-ret)
   (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref label-cont-stub 1)))
-  (if apply?
-      ;; Call from apply
-      (begin (x86-shl cgc (x86-rdi) (x86-imm-int 1)) ;; Rdi contains encoded number of args. Shiftl 1 to left to get nbargs*8
-             (x86-mov cgc (x86-mem 8 (x86-rsp) (x86-rdi)) (x86-rax)) ;; Mov to continuation stack slot [rsp+rdi+8] (rsp + nbArgs*8 + 8)
-             (x86-shr cgc (x86-rdi) (x86-imm-int 1))) ;; Restore encoded number of args
-      ;; Other call
-      (x86-mov cgc (x86-mem (* 8 (+ 1 nbargs)) (x86-rsp)) (x86-rax)))) ;; Move continuation value to the continuation stack slot
+  (x86-push cgc (x86-rax)))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators

@@ -2005,7 +2005,15 @@
 
 ;; Generate a continuation
 (define (gen-version-continuation load-ret-label lazy-code ctx)
-  ;; TODO: print msg if opt-verbose-jit (see gen-version-fn)
+
+  (if opt-verbose-jit
+      (begin
+        (print "GEN VERSION CONTINUATION (RP)")
+        (print " >>> Patch label ")
+        (pp load-ret-label)
+        (println " with ctx:")
+        (pp ctx)))
+
   (let ((continuation-label (asm-make-label #f (new-sym 'continuation_)))
         (load-addr (asm-label-pos load-ret-label)))
 
@@ -2020,7 +2028,14 @@
 
 ;; Generate continuation using cr table (patch cr entry)
 (define (gen-version-continuation-cr lazy-code ctx type table)
-  ;; TODO: print msg if opt-verbose-jit (see gen-version-fn)
+
+  (if opt-verbose-jit
+      (begin
+        (print "GEN VERSION CONTINUATION (CR)")
+        (print " >>> Patch table with type ")
+        (print type)
+        (println " and ctx:")
+        (pp ctx)))
 
   (let ((label-dest (get-version lazy-code ctx)))
 

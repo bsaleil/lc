@@ -1,12 +1,8 @@
 
-(define (foo n)
 
-  (let ((f (lambda (a)
-             (lambda (b)
-               (pp a) (pp b) (pp n)))))
-    ((f 2) 4)))
-
-(foo 30)
+;; Graph ok:
+;;  -- propagation des points d'entrée + points de retour (no opts)
+;;  -- propagation des points d'entrée uniquement (--disable-return-points)
 
 
 ;; TODO: ALLOC DE REGISTRE:

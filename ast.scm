@@ -640,25 +640,13 @@
                          ;; 3 - Clean stack
                          (x86-add cgc (x86-rsp) (x86-imm-int (* 8 clean-nb)))
                          ;;
-                         (let* ((ret-type (car (ctx-stack ctx)))
-                                (crtable-offset (type-to-cridx ret-type)))
-                           (codegen-return-cr cgc crtable-offset)))
+                         (if opt-return-points
+                             (let* ((ret-type (car (ctx-stack ctx)))
+                                    (crtable-offset (type-to-cridx ret-type)))
+                               (codegen-return-cr cgc crtable-offset))
+                             (codegen-return-rp cgc)))
                        ;; 4 - ret seq
                        )))
-                      ; ;; Stack:
-                      ; ;;         RSP
-                      ; ;;     | ret-val | closure | arg n |  ...  | arg 1 | ret-addr |
-                      ; ;; Or if rest :
-                      ; ;;     | ret-val | closure |  rest | arg n |  ...  | arg 1 | ret-addr |
-                      ; (let ((retaddr-offset ;; after pop ret-val
-                      ;         (if rest-param
-                      ;             (* 8 (+ 2 (length params)))
-                      ;             (* 8 (+ 1 (length params))))))
-                      ;   (if opt-return-points
-                      ;       (let* ((ret-type (car (ctx-stack ctx)))
-                      ;              (crtable-offset (type-to-cridx ret-type)))
-                      ;         (codegen-return-cr cgc retaddr-offset crtable-offset))
-                      ;       (codegen-return-rp cgc retaddr-offset))))))
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
@@ -1937,7 +1925,7 @@
          (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
-                                          ;; TODO regalloc
+
                                         ;; 1 - Build call ctx
                                         (let ((call-ctx
                                                 (ctx-init-with-stack
@@ -1959,7 +1947,9 @@
                                                   save)
                                                 (x86-push cgc base-ptr)
                                                 ;; Gen continuation
-                                                (gen-continuation-cr cgc ast succ ctx save)))
+                                                (if opt-return-points
+                                                    (gen-continuation-cr cgc ast succ ctx save)
+                                                    (gen-continuation-rp cgc ast succ ctx save))))
 
                                           ;; 4 TODO closure slot
                                           (let* ((lclo (ctx-get-loc ctx (ctx-lidx-to-slot ctx (length (cdr ast)))))
@@ -1997,32 +1987,6 @@
 
                                           ;; 6 - Gen call sequence
                                           (gen-call-sequence cgc call-ctx (length (cdr ast)))))))
-
-                                        ;;; Call ctx in rdx
-                                        ;(let* ((call-stack (if tail
-                                        ;                      (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
-                                        ;                      (list-head (ctx-stack ctx) (+ (length args) 2))))
-                                        ;       (call-ctx (make-ctx call-stack '() -1)))
-                                        ;
-                                        ;(if tail
-                                        ;  (tail-shift cgc
-                                        ;              ;; Nb slots to shift
-                                        ;              (+ (length args) 1) ;; +1 closure
-                                        ;              ;; Initial from slot
-                                        ;              (length args)
-                                        ;              ;; Initial to slot
-                                        ;              (- (length (ctx-stack ctx)) 2)))
-                                        ;
-                                        ;;; If count calls compiler opt
-                                        ;(if (eq? (car ast) opt-count-calls)
-                                        ;   (gen-inc-slot cgc 'calls))
-                                        ;
-                                        ;;; Gen call sequence with closure in RAX
-                                        ;(let ((nb-unk (count call-stack (lambda (n) (eq? n CTX_UNK)))))
-                                        ;  (if (and opt-entry-points (= nb-unk (length args)))
-                                        ;      (begin (codegen-call-set-nbargs cgc (length args))
-                                        ;             (gen-call-sequence cgc #f #f))
-                                        ;      (gen-call-sequence cgc call-ctx (length (cdr ast)))))))))
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
@@ -2033,33 +1997,54 @@
             ;; Else, compile call
             lazy-tail-operator)
         ;; First object of the chain
-        (make-lazy-code
-          (lambda (cgc ctx)
-            (let* (;; Lazy code object to build continuation and move it to stack slot
-                   (lazy-build-continuation (get-lazy-continuation-builder (car ast) succ lazy-call args ctx #f ast))
-                   ;; Lazy code object to push operator of the call
-                   (lazy-operator (check-types (list CTX_CLO) (list (car ast)) (gen-ast-l (cdr ast) lazy-call) ast))
-                   ;; TODO Regalloc
-                   (lazy-build-continuation
-                     (make-lazy-code
-                       (lambda (cgc ctx)
-                         ;; ...
-                         (jump-to-version cgc lazy-operator ctx)))))
+        (let ((lazy-operator (check-types (list CTX_CLO) (list (car ast)) (gen-ast-l (cdr ast) lazy-call) ast)))
+          lazy-operator))))
 
-              ;; TODO Regalloc
-              (jump-to-version cgc lazy-operator ctx)))))))
-              ;; TODO regalloc
-              ;(codegen-push-n cgc #f 1) ;; Reserve a slot for continuation
-              ;(jump-to-version cgc
-              ;                 (gen-ast-l args lazy-operator) ;; Compile args and jump to operator
-              ;                 (ctx-push ctx CTX_RETAD))))))))
+;; TODO regalloc: merge -rp and -cr + comments
+(define (gen-continuation-rp cgc ast succ ctx saved-regs)
 
-(define (get-lazy-continuation-builder op lazy-succ lazy-call args continuation-ctx from-apply? ast)
+  (let* ((lazy-continuation
+           (make-lazy-code
+             (lambda (cgc ctx)
 
-  (if opt-return-points
-    (get-lazy-continuation-builder-cr  op lazy-succ lazy-call args continuation-ctx from-apply? ast)
-    (get-lazy-continuation-builder-nor op lazy-succ lazy-call args continuation-ctx from-apply?)))
+               ;; Restore registers
+               (x86-pop cgc base-ptr)
+               (for-each
+                 (lambda (i)
+                   (let ((opnd (codegen-reg-to-x86reg i)))
+                     (x86-pop cgc opnd)))
+                 (reverse saved-regs))
 
+               ;; Move result to location
+               (let* ((lres   (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                      (opres  (codegen-loc-to-x86opnd lres)))
+                 ;; Result is in rax
+                 (x86-mov cgc opres (x86-rax)))
+               (jump-to-version cgc succ ctx))))
+         ;; Label for return address loading
+         (load-ret-label (asm-make-label #f (new-sym 'load-ret-addr)))
+         ;; Flag in stub : is the continuation already generated ?
+         (gen-flag #f)
+         ;; Continuation stub
+         (stub-labels
+           (add-callback cgc
+                              0
+                              (lambda (ret-addr selector)
+                                (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag to continuation addr
+                                    (let* ((args (cdr ast))
+                                           (ctx (ctx-pop-n ctx (+ (length args) 1)))
+                                           (res (ctx-get-free-reg cgc ctx))
+                                           (reg (car res)))
+                                      (set! gen-flag
+                                            (gen-version-continuation
+                                              load-ret-label
+                                              lazy-continuation
+                                              (ctx-push ctx CTX_UNK reg)))))
+                                gen-flag))))
+   ;; Generate code
+   (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0))))
+
+;; TODO regalloc: merge -rp and -cr + comments
 (define (gen-continuation-cr cgc ast succ ctx saved-regs)
 
   (let* ((lazy-continuation
@@ -2100,72 +2085,6 @@
 
     ;; Generate code
     (codegen-load-cont-cr cgc crtable-loc)))
-
-;; TODO: rename from-apply? -> apply?
-(define (get-lazy-continuation-builder-cr op lazy-succ lazy-call args continuation-ctx from-apply? ast)
-
-  ;; Create stub and push ret addr
-  (make-lazy-code-cont
-     (lambda (cgc ctx)
-       (let* (;; Lazy-continuation, push returned value
-              (lazy-continuation
-                (make-lazy-code
-                  (lambda (cgc ctx)
-                    (error "CONTINUATION REACHED")
-                    (codegen-push-tmp cgc)
-                    (jump-to-version cgc lazy-succ ctx))))
-              ;; Continuation stub
-              (stub-labels (add-cont-callback cgc
-                                              0
-                                              (lambda (ret-addr selector type table)
-
-                                                (let ((continuation-ctx (ctx-push continuation-ctx type)))
-                                                  (gen-version-continuation-cr lazy-continuation
-                                                                               continuation-ctx
-                                                                               type
-                                                                               table)))))
-              ;; CRtable
-              (crtable-key (get-crtable-key ast ctx))
-              (stub-addr (vector-ref (list-ref stub-labels 0) 1))
-              (crtable (get-crtable ast crtable-key stub-addr))
-              (crtable-loc (- (obj-encoding crtable) 1)))
-         ;; Generate code
-         (codegen-load-cont-cr cgc crtable-loc from-apply? (length args))
-         ;; Jump to call object
-         (jump-to-version cgc lazy-call ctx)))))
-
-;; TODO: rename from-apply? -> apply?
-;; Build continuation stub and load stub address to the continuation slot
-(define (get-lazy-continuation-builder-nor op lazy-succ lazy-call args continuation-ctx from-apply?)
-  (error "NYI")
-  ;; Create stub and push ret addr
-  (make-lazy-code-cont
-    (lambda (cgc ctx)
-      (let* (;; Flag in stub : is the continuation already generated ?
-             (gen-flag #f)
-             ;; Label for return address loading
-             (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
-             ;; Lazy continuation, push returned value
-             (lazy-continuation
-                (make-lazy-code
-                   (lambda (cgc ctx)
-                      (error "CONTINUATION REACHED")
-                      (codegen-push-tmp cgc)
-                      (jump-to-version cgc lazy-succ (ctx-push ctx CTX_UNK)))))
-             ;; Continuation stub
-             (stub-labels (add-callback cgc
-                                        0
-                                        (lambda (ret-addr selector)
-                                            (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag to continuation addr
-                                               (set! gen-flag (gen-version-continuation load-ret-label
-                                                                                        lazy-continuation
-                                                                                        continuation-ctx))) ;; Remove operator, args, and continuation from stack
-                                            gen-flag))))
-
-        ;; Generate code
-        (codegen-load-cont-nor cgc load-ret-label (list-ref stub-labels 0) from-apply? (length args))
-        ;; Jump to call object
-        (jump-to-version cgc lazy-call ctx)))))
 
 ;; Gen call sequence (call instructions) with call closure in RAX
 (define (gen-call-sequence cgc call-ctx nb-args) ;; Use multiple entry points?

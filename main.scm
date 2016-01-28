@@ -32,8 +32,8 @@
 (include "./extern/Sort.scm")
 
 ;; TODO regalloc for unit tests
-;(define pp pretty-print)
-(define pp (lambda (n) #f))
+(define pp pretty-print)
+;(define pp (lambda (n) #f))
 (define repl-print-lco #f)
 
 (define-macro (string-bold str)
