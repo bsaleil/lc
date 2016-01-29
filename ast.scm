@@ -666,15 +666,7 @@
                                                           opt-max-versions
                                                           (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
 
-                                                       (error "NYI fn callback mlc-lambda")
-                                                       ;; Then, generate a generic version and patch cc-table entry corresponding to call-ctx with the generic version
-                                                       (let* ((env     (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0)))
-                                                              (nb-args (length params))
-                                                              ;; Call ctx used to patch cc-table
-                                                              (call-ctx (make-ctx (ctx-stack sctx) env nb-args))
-                                                              ;; Generic ctx used to generate version
-                                                              (gen-ctx  (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD)) env nb-args)))
-                                                          (gen-version-fn ast closure lazy-generic-prologue gen-ctx call-ctx #f)))
+                                                       (error "NYI fn callback mlc-lambda"))
 
                                                     ;; CASE 2 - Do not use multiple entry points
                                                     ((= selector 1)
@@ -1788,33 +1780,7 @@
 ;; Make lazy code from APPLY
 ;;
 (define (mlc-apply ast succ)
-
-  (let (;; Get closure and gen call sequence
-        (lazy-call
-          (make-lazy-code
-            (lambda (cgc ctx)
-              (gen-call-sequence cgc #f #f)))))
-
-    ;; First object of the chain, reserve a slot for the continuation
-    (make-lazy-code
-      (lambda (cgc ctx)
-         (let* (;; Lazy code object to build continuation and move it to stack slot
-                (lazy-build-continuation (get-lazy-continuation-builder (cadr ast) succ lazy-call '() ctx #t ast))
-                ;; Remove apply op and lst, push args from lst and push closure
-                (lazy-move-args
-                  (make-lazy-code
-                    (lambda (cgc ctx)
-                      (codegen-pre-apply cgc)
-                      ;; Jump to lazy-build-continuation without ctx
-                      ;; This works because lazy-build-continuation and its successor lazy-call do not use ctx. ;; TODO (use ctx? instead of empty ctx)
-                      (jump-to-version cgc lazy-build-continuation (make-ctx '() '() -1)))))
-                  ;; Push args list of apply
-                  (lazy-args-list (gen-ast (caddr ast) lazy-move-args)) ;; TODO: check that caddr is a pair ?
-                  ;; Push function of apply
-                  (lazy-fun (check-types (list CTX_CLO) (list (cadr ast)) lazy-args-list ast)))
-
-              (codegen-push-n cgc #f 1) ;; Reserve stack slot
-              (jump-to-version cgc lazy-fun (ctx-push ctx CTX_RETAD)))))))
+  (error "Apply: NYI"))
 
 ;;
 ;; Make lazy code from CALL EXPR
@@ -2415,31 +2381,6 @@
 ;;
 ;; FREE VARS
 ;;
-
-;; Extends env with 'fvars' free vars starting with offset
-(define (build-fenv saved-stack saved-env mvars fvars offset)
-
-  (if (null? fvars)
-      '()
-      (cons (cons (car fvars) (make-identifier 'free
-                                               offset
-                                               '()
-                                               ;; Flags
-                                               (let ((res (assoc (car fvars) saved-env)))
-                                                  (if (identifier-mutable? (cdr res))
-                                                    '(mutable)
-                                                    '()))
-                                               ;; SType
-                                               (let* ((res (assoc (car fvars) saved-env)))
-                                                 (if (eq? (identifier-type (cdr res)) 'local)
-                                                    ;; From local var
-                                                    (let ((idx (- (length saved-stack) 2 (identifier-offset (cdr res)))))
-                                                      (list-ref saved-stack idx))
-                                                    ;; From free var
-                                                    (identifier-stype (cdr res))))))
-
-            (build-fenv saved-stack saved-env mvars (cdr fvars) (+ offset 1)))))
-
 
 (define (gen-free-vars cgc ids ctx offset)
   (if (null? ids)

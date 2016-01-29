@@ -65,7 +65,6 @@
                (esc "\33[K")))))
 
 (define (run path . args)
-(pp args)
   (let* ((port
           (open-process (list path: path
                               arguments: args
@@ -78,20 +77,32 @@
     (close-port port)
     (cons status output)))
 
+(define (run-lc file . args)
+  (let* ((run-args (append (list "./lazy-comp" file) args))
+         (x (apply run run-args)))
+    (if (= (car x) 0)
+        (let ((y (apply run run-args)))
+          (if (= (car y) 0)
+              (if (equal? (cdr y)
+                          (get-expected-output file))
+                  y
+                  (cons 1 (cdr y)))))
+        x)))
+
 (define (test-using-mode file mode)
 
   (cond ((equal? mode "gsi")
          (run "gsi" "-:d-,fu,=.." file))
         ((equal? mode "lc")
-         (let ((x (run "./lazy-comp" file)))
-           (if (= (car x) 0)
-               (let ((y (run "./lazy-comp" file)))
-                 (if (= (car y) 0)
-                     (if (equal? (cdr y)
-                                 (get-expected-output file))
-                         y
-                         (cons 1 (cdr y)))))
-               x)))))
+         (run-lc file))
+        ((equal? mode "lc-nep")
+         (run-lc file "--disable-entry-points"))
+        ((equal? mode "lc-nrp")
+         (run-lc file "--disable-return-points"))
+        ((or (equal? mode "lc-nep-nrp")
+             (equal? mode "lc-nrp-nep"))
+         (run-lc file "--disable-entry-points" "--disable-return-points"))
+        (else (error "Unknown mode " mode))))
 
 (define (get-expected-output filename)
   (call-with-input-file
@@ -136,7 +147,7 @@
   (set! nb-good 0)
   (set! nb-fail 0)
   (set! nb-other 0)
-  (set! nb-total (length files))
+  (set! nb-total (* (length modes) (length files)))
   (set! start (time->seconds (current-time)))
 
   (for-each test files)

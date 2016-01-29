@@ -35,7 +35,11 @@ expand.o1: expand.scm
 
 # Run unit tests
 test:
-	./run-ut.scm
+	./run-ut.scm -lc
+
+# Run full unit tests with and without entry and return points
+full-test:
+	./run-ut.scm -lc -lc-nep -lc-nrp -lc-nep-nrp
 
 # Clean
 clean:
