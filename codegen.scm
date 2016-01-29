@@ -582,9 +582,9 @@
 
 ;; Generate function call using a single entry point
 (define (codegen-call-ep cgc nb-args)
-  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Get closure
-  (if nb-args ;; If nb-args is given, move encoded number in rdi. Else, nb-args is already encoded in rdi
-      (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
+  ;; TODO: use call/ret if opt-entry-points opt-return-points are #f
+  (if nb-args ;; If nb-args given, move encoded in rdi, else nb-args is already encoded in rdi (apply)
+      (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args))))
   (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
   (x86-jmp cgc (x86-rax)))
 
@@ -597,7 +597,6 @@
 
 ;; Generate function call using a cctable and specialized entry point
 (define (codegen-call-cc-spe cgc idx ctx-imm nb-args)
-;; TODO regalloc: WIP
     ;; Closure is in rax
     (let ((cct-offset (* 8 (+ 2 idx))))
       ;; 1 - Put ctx in r11

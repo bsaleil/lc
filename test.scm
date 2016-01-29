@@ -1,4 +1,21 @@
 
+(define (notrest a b)
+  (pp a) (pp b))
+
+;(notrest 10 20)
+;(notrest 10)
+;(notrest)
+;(notrest 10 20 30 40)
+
+(define (foo a b c)
+  (pp a)
+  (set! a 10)
+  (pp a))
+
+(foo 1 2 3)
+
+
+;; WIP: Segfault (bar)
 
 ;; Graph ok:
 ;;  -- propagation des points d'entrée + points de retour (no opts)

@@ -447,7 +447,8 @@
 
          (nb-args
            (if (= selector 1)
-               (error "NYI")
+               (let ((encoded (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8)))))
+                 (/ encoded 4))
                (- (length (ctx-stack ctx)) 2)))
 
          (closure
@@ -1130,7 +1131,7 @@
       (ctx-nb-args ctx)
       (ctx-fs ctx))))
 
-;; TODO regalloc: uniformiser id, identfier et ident
+;; TODO regalloc: uniformiser id, identifier et ident
 
 (define (ctx-init-fn call-ctx enclosing-ctx args free-vars mutable-vars)
 
@@ -1176,8 +1177,11 @@
     (append (init-free free-vars (ctx-env enclosing-ctx) 1)
             (init-local args slot)))
 
+
   ;;
-  (make-ctx (ctx-stack call-ctx)
+  (make-ctx (if call-ctx
+                (ctx-stack call-ctx)
+                (append (make-list (length args) CTX_UNK) (list CTX_CLO CTX_RETAD)))
             (slot-loc-init-fn (length args))
             (build-list (length regalloc-regs) (lambda (i)
                                                  (string->symbol

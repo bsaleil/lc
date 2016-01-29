@@ -652,7 +652,7 @@
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
          (lazy-prologue (get-lazy-prologue ast lazy-body rest-param mvars))
          ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
-         (lazy-generic-prologue (get-lazy-generic-prologue ast lazy-body rest-param mvars params)))
+         (lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param mvars)))
 
     ;; Lazy closure generation
     (make-lazy-code
@@ -676,27 +676,15 @@
                                                               (gen-ctx  (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD)) env nb-args)))
                                                           (gen-version-fn ast closure lazy-generic-prologue gen-ctx call-ctx #f)))
 
-                                                    ;; CASE 2 - Don't use multiple entry points
+                                                    ;; CASE 2 - Do not use multiple entry points
                                                     ((= selector 1)
-                                                        (error "NYI fn callback mlc-lambda")
-                                                        ;; Then, generate a generic version and patch generic ptr in closure
-                                                        (let ((ctx (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD))
-                                                                             (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
-                                                                             (length params))))
-                                                          (gen-version-fn ast closure lazy-generic-prologue ctx ctx #t)))
+                                                        (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
+                                                          (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t)))
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
                                                       (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
-
-                                                      ; ;; Then, generate a specified version and patch cc-table in closure
-                                                      ; (let ((ctx (make-ctx (ctx-stack sctx)
-                                                      ;                      (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
-                                                      ;                      (length params))))
-                                                      ;   (pp ctx)
-                                                      ;   (error "KK")
-                                                      ;   (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
                (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
 
@@ -758,25 +746,64 @@
                '()
                (ctx-env ctx))))
 
-;; Create and return a generic lazy prologue
-(define (get-lazy-generic-prologue ast succ rest-param mvars params)
+(define (get-lazy-generic-prologue ast succ rest-param mvars)
   (make-lazy-code-entry
     (lambda (cgc ctx)
-      (let* ((nb-formal (length params))
-             (err-labels (add-callback #f 0 (lambda (ret-addr selector)
-                                             (error ERR_WRONG_NUM_ARGS))))
-             (err-label (list-ref err-labels 0)))
+      (let ((nb-args (ctx-nb-args ctx))
+            (label-next (asm-make-label #f (new-sym 'label-next))))
+
         (if rest-param
-            ;; If there is a rest param then we need to change the context to include it
-            ;; CTX_UNK because it could be NULL
-            (set! ctx (make-ctx (cons CTX_CLO (cons CTX_UNK (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) nb-formal 1))))
-                                (ctx-env ctx)
-                                (+ (ctx-nb-args ctx) 1)
-                                (+ (ctx-nb-args ctx) 1))))
-        ;; Gen prologue code
-        (codegen-prologue-gen cgc rest-param nb-formal err-label)
-        ;; Gen mutable vars and jump to function body
-        (jump-to-version cgc succ (gen-mutable cgc ctx mvars))))))
+            ;; Function using rest param
+            (let ((label-case2 (asm-make-label #f (new-sym 'generic-prologue-case2-)))
+                  (label-end   (asm-make-label #f (new-sym 'generic-prologue-end))))
+              ;; If rdi < nb-args - 1, error
+              (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (- nb-args 1))))
+              (x86-jge cgc label-case2)
+                (gen-error cgc ERR_WRONG_NUM_ARGS)
+              ;; If rdi >= nb-args - 1, gen rest list from arguments
+              (x86-label cgc label-case2)
+                (let ((label-lend (asm-make-label #f (new-sym 'label-lend)))
+                      (label-lloop (asm-make-label #f (new-sym 'label-lloop)))
+                      (header-word (mem-header 3 STAG_PAIR)))
+                  ;; pos (rsi) = 0
+                  (x86-mov cgc (x86-rsi) (x86-imm-int 0))
+                  ;; cdr (rbx) = '()
+                  (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding '())))
+                  ;; lim (rdi) = rdi - nb-args - 1
+                  (x86-sub cgc (x86-rdi) (x86-imm-int (obj-encoding (- nb-args 1))))
+                  (x86-shl cgc (x86-rdi) (x86-imm-int 1))
+                  ;; if po == lim then goto end
+                  (x86-label cgc label-lloop)
+                  (x86-cmp cgc (x86-rsi) (x86-rdi))
+                  (x86-je cgc label-lend)
+                    ;;; p = pair
+                    (gen-allocation cgc #f STAG_PAIR 3)
+                    ;; p.header = header-word
+                    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+                    (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
+                    ;; p.cdr = cdr
+                    (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
+                    ;; p.car = stack[pos]
+                    (x86-mov cgc (x86-rbx) (x86-mem 0 (x86-rsp) (x86-rsi)))
+                    (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rbx))
+                    ;; cdr = p
+                    (x86-lea cgc (x86-rbx) (x86-mem TAG_MEMOBJ alloc-ptr))
+                    ;; pos++
+                    (x86-add cgc (x86-rsi) (x86-imm-int 8))
+                    (x86-jmp cgc label-lloop)
+                  (x86-label cgc label-lend)
+                  (x86-add cgc (x86-rsp) (x86-rdi))
+                  (x86-push cgc (x86-rbx)))
+              (x86-label cgc label-end))
+
+            ;; Not rest param, then if formal != actual, error.
+            (begin
+              (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args)))
+              (x86-je cgc label-next)
+                (gen-error cgc ERR_WRONG_NUM_ARGS)
+              (x86-label cgc label-next)))
+        (gen-mutable cgc ctx mvars)
+        (jump-to-version cgc succ ctx)))))
 
 ;; Create and return a lazy prologue
 (define (get-lazy-prologue ast succ rest-param mvars)
@@ -1694,129 +1721,6 @@
       (cadr ast)
       lazy-code-test)))
 
-;;-----------------------------------------------------------------------------
-;;
-;; Make lazy code from DO
-;;
-;; NOTE: optimization: if <step> is <variable> it is useless to compile
-;;       and move in stack, we can use the value of previous iteration
-;;
-;; Lazy objects chain :
-;;
-;; +-------+  +---------+  +------+  +----------+  +------------+  +-----+  +------+
-;; | inits |->| ctx-add |->| test |->| dispatch |->| test-exprs |->| end |->| succ |-> ...
-;; +-------+  +---------+  +------+  +----------+  +------------+  +-----+  +------+
-;;                            ^           |
-;;                            |           V
-;;                            |       +--------+
-;;                            |       | bodies |
-;;                            |       +--------+
-;;                            |           |
-;;                            |           V
-;;                         +------+   +-------+
-;;                         | bind |<--| steps |
-;;                         +------+   +-------+
-;; TODO REGALLOC
-;(define (mlc-do ast succ)
-;
-;  ;; Get list of steps
-;  (define (get-steps variables)
-;    (if (null? variables)
-;      '()
-;      (let ((variable (car variables)))
-;        (if (null? (cddr variable))
-;          ;; No step, use variable
-;          (cons (car variable)   (get-steps (cdr variables)))
-;          ;; Step exists, add step
-;          (cons (caddr variable) (get-steps (cdr variables)))))))
-;
-;  (let* (;; DO components
-;         (test       (car (caddr ast)))
-;         (test-exprs (if (null? (cdr (caddr ast)))
-;                         '(#f)
-;                         (cdr (caddr ast))))
-;         (variables  (map car (cadr ast)))
-;         (inits      (map cadr (cadr ast)))
-;         (steps      (get-steps (cadr ast)))
-;         (bodies     (cdddr ast))
-;         (mvars      (mutable-vars ast variables))
-;         ;; LAZY-END
-;         (lazy-end
-;           ;; Last object. Executed if test evaluates to true
-;           ;; Update ctx and rsp
-;           (make-lazy-code
-;             (lambda (cgc ctx)
-;
-;               (let* ((nctx (ctx-move ctx 0 (- (+ (length test-exprs) (length variables)) 1)))
-;                      (mctx (ctx-pop nctx (- (+ (length test-exprs) (length variables)) 1)))
-;                      (env (list-tail (ctx-env mctx) (length variables)))
-;                      (ctx (make-ctx (ctx-stack mctx) env (ctx-nb-args mctx))))
-;                ;; Clean stack and push result on top of stack
-;                (codegen-do-end cgc (+ (length variables) (length test-exprs) -1))
-;                ;; Jump to succ
-;                (jump-to-version cgc succ ctx)))))
-;         ;; LAZY-TEST
-;         (lazy-test #f) ;; do test
-;         ;; LAZY-BIND
-;         (lazy-bind
-;           (make-lazy-code
-;             (lambda (cgc ctx)
-;               ;; Update variables
-;               (do ((it   variables (cdr it))
-;                    (from (- (* 8 (length variables)) 8) (- from 8))
-;                    (to   (- (* 8 (+ (length variables) (length variables) (length bodies))) 8) (- to 8)))
-;                   ((null? it) #f)
-;                   (codegen-do-bind-var cgc (member (car it) mvars) from to))
-;
-;               ;; Clean stack
-;               (codegen-clean-stack cgc (+ (length variables) (length bodies)))
-;
-;               ;; Update ctx
-;               (let* (;; Mov stack types
-;                    (lctx (ctx-mov-nb ctx
-;                                      (length variables)
-;                                      0
-;                                      (+ (length variables) (length bodies))))
-;                    ;; Keep same env
-;                    (env (ctx-env ctx))
-;                    ;; Remove pushed values
-;                    (mctx (ctx-pop (make-ctx (ctx-stack lctx)
-;                                             env
-;                                             (ctx-nb-args lctx))
-;                                   (+ (length variables) (length bodies)))))
-;
-;               (jump-to-version cgc lazy-test mctx)))))
-;         ;; LAZY-STEP
-;         (lazy-steps
-;           (gen-ast-l steps lazy-bind))
-;         ;; LAZY-BODY
-;         (lazy-body
-;           (if (null? bodies)
-;              lazy-steps ;; Jump directly to lazy-steps if no body
-;              (gen-ast-l bodies lazy-steps)))
-;         ;; LAZY-TEST-EXPRS
-;         (lazy-test-exprs (gen-ast-l test-exprs lazy-end))
-;         ;; LAZY-DISPATCH: Read result of test and jump to test-exors if #t or body if #f
-;         (lazy-dispatch (get-lazy-dispatch lazy-test-exprs lazy-body #t #f))
-;         ;; LAZY-ADD-CTX
-;         (lazy-add-ctx
-;           ;; Add variables to env and gen mutable vars
-;           (make-lazy-code
-;             (lambda (cgc ctx)
-;               (let* ((start (- (length (ctx-stack ctx)) (length variables) 1))
-;                      (env  (build-env mvars variables start (ctx-env ctx)))
-;                      (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx)))
-;                      ;; Gen mutable vars
-;                      (mctx (gen-mutable cgc nctx mvars)))
-;                 ;; Jump to test with new ctx
-;                 (jump-to-version cgc lazy-test mctx))))))
-;
-;    ;; Lazy-dispatch exists then generate test ast
-;    (set! lazy-test (gen-ast test lazy-dispatch))
-;
-;    ;; Return first init lazy object
-;    (gen-ast-l inits lazy-add-ctx)))
-
 ;; Create a new lazy code object.
 ;; Takes the value from stack and cmp to #f
 ;; If == #f jump to lazy-fail
@@ -2086,17 +1990,18 @@
     ;; Generate code
     (codegen-load-cont-cr cgc crtable-loc)))
 
-;; Gen call sequence (call instructions) with call closure in RAX
-(define (gen-call-sequence cgc call-ctx nb-args) ;; Use multiple entry points?
-
+;; Gen call sequence (call instructions)
+(define (gen-call-sequence cgc call-ctx nb-args)
     (cond ((and opt-entry-points nb-args)
              (let* ((idx (get-closure-index call-ctx)))
                (if idx
                    (codegen-call-cc-spe cgc idx (ctx->still-ref call-ctx) nb-args)
                    (codegen-call-cc-gen cgc))))
           ((and opt-entry-points (not nb-args))
+             (error "REG ALLOC NYI")
              (codegen-call-cc-gen cgc))
-          (else (codegen-call-ep cgc nb-args))))
+          (else
+             (codegen-call-ep cgc nb-args))))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
