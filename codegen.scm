@@ -590,10 +590,13 @@
 
 ;;; Generate function call using a cctable and generic entry point
 (define (codegen-call-cc-gen cgc)
-  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Get closure
-  (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-  (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax)))
+  (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; Get table
+  (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax))) ;; Get generic entry point
   (x86-jmp cgc (x86-rax)))
+  ;(x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Get closure
+  ;(x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+  ;(x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax)))
+  ;(x86-jmp cgc (x86-rax)))
 
 ;; Generate function call using a cctable and specialized entry point
 (define (codegen-call-cc-spe cgc idx ctx-imm nb-args)

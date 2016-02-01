@@ -1780,7 +1780,82 @@
 ;; Make lazy code from APPLY
 ;;
 (define (mlc-apply ast succ)
-  (error "Apply: NYI"))
+
+  (let* ((lazy-call
+          (make-lazy-code
+            (lambda (cgc ctx)
+              (x86-lea cgc base-ptr (x86-mem 16 (x86-rsp) (x86-rdi) 1))
+              (gen-call-sequence cgc #f #f))))
+        (lazy-args
+          (make-lazy-code
+            (lambda (cgc ctx)
+              (let* ((llst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                     (oplst (codegen-loc-to-x86opnd llst))
+                     (label-loop (asm-make-label #f (new-sym 'apply-loop)))
+                     (label-end  (asm-make-label #f (new-sym 'apply-end))))
+                (x86-mov cgc base-ptr oplst)
+                (x86-mov cgc (x86-rdi) (x86-imm-int 0))
+                (x86-label cgc label-loop)
+                (x86-cmp cgc base-ptr (x86-imm-int (obj-encoding '())))
+                (x86-je cgc label-end)
+                  (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) base-ptr))
+                  (x86-mov cgc (x86-rbp) (x86-mem (- 16 TAG_MEMOBJ) base-ptr))
+                  (x86-add cgc (x86-rdi) (x86-imm-int 4))
+                  (x86-jmp cgc label-loop)
+                (x86-label cgc label-end)
+                (jump-to-version cgc lazy-call ctx)))))
+        (lazy-closure
+          (make-lazy-code
+            (lambda (cgc ctx)
+              (let* ((lclo (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+                     (opclo (codegen-loc-to-x86opnd lclo)))
+                (x86-mov cgc (x86-rax) opclo) ;; closure need to be in rax for do-callback-fn (TODO: get closure from stack in do-callback-fn and remove this)
+                (x86-push cgc (x86-rax))
+                (jump-to-version cgc lazy-args ctx)))))
+        (lazy-retaddr
+          (make-lazy-code
+            (lambda (cgc ctx)
+
+              (let* ((free (ctx-free-regs ctx))
+                     (all  (build-list (length regalloc-regs) (lambda (i)
+                                                         (string->symbol
+                                                           (string-append "r" (number->string i))))))
+                     (save (set-sub all free '())))
+                ;; Save used regs
+                (for-each
+                  (lambda (i)
+                    (let ((opnd (codegen-reg-to-x86reg i)))
+                      (x86-push cgc opnd)))
+                  save)
+                (x86-push cgc base-ptr)
+
+                (if opt-return-points
+                    (gen-continuation-cr cgc ast succ ctx save)
+                    (gen-continuation-rp cgc ast succ ctx save #t))
+                (jump-to-version cgc lazy-closure ctx))))))
+
+    (let ((lazy-lst (gen-ast (caddr ast) lazy-retaddr)))
+      (gen-ast (cadr ast) lazy-lst))))
+  ;(make-lazy-code
+  ;  (lambda (cgc ctx)
+  ;    ;; 2 - push all regs
+  ;    (if (not tail)
+  ;        (let* ((free (ctx-free-regs ctx))
+  ;               (all  (build-list (length regalloc-regs) (lambda (i)
+  ;                                                          (string->symbol
+  ;                                                            (string-append "r" (number->string i))))))
+  ;               (save (set-sub all free '())))
+  ;          ;; Save used regs
+  ;          (for-each
+  ;            (lambda (i)
+  ;              (let ((opnd (codegen-reg-to-x86reg i)))
+  ;                (x86-push cgc opnd)))
+  ;            save)
+  ;          (x86-push cgc base-ptr)
+  ;          ;; Gen continuation
+  ;          (if opt-return-points
+  ;              (gen-continuation-cr cgc ast succ ctx save)
+  ;              (gen-continuation-rp cgc ast succ ctx save)))))))
 
 ;;
 ;; Make lazy code from CALL EXPR
@@ -1819,7 +1894,7 @@
                                                 ;; Gen continuation
                                                 (if opt-return-points
                                                     (gen-continuation-cr cgc ast succ ctx save)
-                                                    (gen-continuation-rp cgc ast succ ctx save))))
+                                                    (gen-continuation-rp cgc ast succ ctx save #f))))
 
                                           ;; 4 TODO closure slot
                                           (let* ((lclo (ctx-get-loc ctx (ctx-lidx-to-slot ctx (length (cdr ast)))))
@@ -1871,7 +1946,7 @@
           lazy-operator))))
 
 ;; TODO regalloc: merge -rp and -cr + comments
-(define (gen-continuation-rp cgc ast succ ctx saved-regs)
+(define (gen-continuation-rp cgc ast succ ctx saved-regs apply?)
 
   (let* ((lazy-continuation
            (make-lazy-code
@@ -1902,7 +1977,10 @@
                               (lambda (ret-addr selector)
                                 (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag to continuation addr
                                     (let* ((args (cdr ast))
-                                           (ctx (ctx-pop-n ctx (+ (length args) 1)))
+                                           (ctx
+                                             (if apply?
+                                                 (ctx-pop-n ctx 2) ;; Pop operator and args
+                                                 (ctx-pop-n ctx (+ (length args) 1))))
                                            (res (ctx-get-free-reg cgc ctx))
                                            (reg (car res)))
                                       (set! gen-flag
@@ -1964,7 +2042,6 @@
                    (codegen-call-cc-spe cgc idx (ctx->still-ref call-ctx) nb-args)
                    (codegen-call-cc-gen cgc))))
           ((and opt-entry-points (not nb-args))
-             (error "REG ALLOC NYI")
              (codegen-call-cc-gen cgc))
           (else
              (codegen-call-ep cgc nb-args))))

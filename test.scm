@@ -1,19 +1,9 @@
 
-(define (notrest a b)
-  (pp a) (pp b))
+(define (foo a b c d . z)
+ (pp a) (pp b) (pp c) (pp d) (pp z))
 
-;(notrest 10 20)
-;(notrest 10)
-;(notrest)
-;(notrest 10 20 30 40)
-
-(define (foo a b c)
-  (pp a)
-  (set! a 10)
-  (pp a))
-
-(foo 1 2 3)
-
+(apply foo '(100 200 300 1 2 3 4 5))
+;(foo 1 2)
 
 ;; WIP: Segfault (bar)
 
