@@ -5,8 +5,14 @@
 
   (let* ((bar (lambda (n) 1))
          (f (lambda () (bar (bar 10)))))
-
+    (set! bar (lambda (n) 2))
     (f)))
+
+
+;; TODO:
+;;  * meme travail pour gen-get-freevar que gen-get-localvar:
+;;    Il faut faire attenton au orig-loc
+;;  * au gen set local/free, changer le type
 
 (foo)
 

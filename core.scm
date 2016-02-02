@@ -1375,6 +1375,14 @@
             (cons type
                   (list-tail stack (+ lidx 1)))))
 
+  (define (change-stype env identifier)
+    (if (null? env)
+        '()
+        (let ((first (car env)))
+          (if (eq? (cdr first) identifier)
+              (error "NYI change-stype")
+              (cons first (change-stype (cdr env) identifier))))))
+
   (define (change-stack-n-slots stack slots)
     (if (null? slots)
         stack
