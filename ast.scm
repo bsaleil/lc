@@ -2424,83 +2424,9 @@
 ;; VARIABLE SET
 ;;
 
-;; Gen code to set a free/local
-;; variable is the lookup result which contains id info
-;;  ex: variable = '(n . identifier-obj)
-
-;; Free var
-;(define (gen-set-freevar cgc ctx variable)
-;  (let ((mutable (identifier-mutable? (cdr variable))))
-;    (if mutable
-;        (begin (gen-get-freevar cgc ctx variable 'gen-reg)
-;               (codegen-set-not-global cgc)
-;               ctx) ;; TODO: change ctx ?
-;        (error "Compiler error : set a non mutable free var"))))
-
-;; Local var
-;(define (gen-set-localvar cgc ctx variable)
-;  (let ((mutable (identifier-mutable? (cdr variable))))
-;    (if mutable
-;        (begin (gen-get-localvar cgc ctx variable 'gen-reg)
-;               (codegen-set-not-global cgc)
-;               ;; Change ctx type
-;               (let* ((fs (length (ctx-stack ctx)))
-;                      (idx (- fs 2 (identifier-offset (cdr variable)))))
-;                ;; move and reset pos
-;                (ctx-reset-pos (ctx-move ctx 0 idx #f) (car variable))))
-;        (error "Compiler error : set a non mutable local var"))))
-
-;;; Gen code to set a global var
-;(define (gen-set-globalvar cgc ctx variable)
-;  ;; Gen code
-;  (codegen-set-global cgc (cdr variable))
-;  ;; Return unchanged ctx
-;  ctx)
-
 ;;
 ;; VARIABLE GET
 ;;
-
-;; Gen code to get a variable from closure/stack
-;; variable is the lookup result which contains id info
-;;  ex: variable = '(n . identifier-obj)
-;; dest is the destination. possible values are :
-;;  'stack : push value
-;;  'gen-reg : general register (mov value to rax)
-;; raw_value is #t if the value is copied directly from closure
-;;              #f if the value is copied from memory (id variable is mutable)
-
-;; Free variable
-;; TODO: regalloc
-;(define (gen-get-freevar cgc ctx variable dest #!optional (raw? #t))
-;  (let* ((pos      (identifier-offset   (cdr variable)))
-;         (mutable? (identifier-mutable? (cdr variable))))
-;    ;; Gen code
-;    (codegen-get-free cgc dest pos raw? mutable? (closure-pos ctx))
-;    ;; Return variable ctx type
-;    (identifier-stype (cdr variable))))
-
-;; TODO regalloc: remove, or move new code here (mlc-identifier)
-;; Local variable
-;(define (gen-get-localvar cgc ctx variable dest #!optional (raw? #t))
-;  (let* ((fs (length (ctx-stack ctx)))
-;         (pos (- fs 2 (identifier-offset (cdr variable))))
-;         (mutable? (identifier-mutable? (cdr variable))))
-;    ;; Gen code
-;    (codegen-get-local cgc dest pos raw? mutable?)
-;    ;; Return variable ctx type
-;    (list-ref (ctx-stack ctx) pos)))
-
-;; TODO regalloc: remove, or move new code here (mlc-identifier)
-;;; Gen code to get a global var
-;(define (gen-get-globalvar cgc ctx variable dest)
-;   ;; Gen code
-;   (codegen-get-global cgc dest (cdr variable))
-;   ;; If this global is a non mutable global, return type else return unknown
-;   (let ((r (assoc (car variable) gids)))
-;     (if (and r (cdr r))
-;         (cdr r)
-;         CTX_UNK)))
 
 ;;
 ;; FREE VARS
