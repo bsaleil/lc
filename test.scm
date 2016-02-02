@@ -1,11 +1,14 @@
 
-(define (foo a b c d . z)
- (pp a) (pp b) (pp c) (pp d) (pp z))
+(define (foo)
 
-(apply foo '(100 200 300 1 2 3 4 5))
-;(foo 1 2)
+  ;; Bar doit etre une variable mutable, libre
 
-;; WIP: Segfault (bar)
+  (let* ((bar (lambda (n) 1))
+         (f (lambda () (bar (bar 10)))))
+
+    (f)))
+
+(foo)
 
 ;; Graph ok:
 ;;  -- propagation des points d'entrée + points de retour (no opts)

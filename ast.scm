@@ -308,6 +308,7 @@
 
   (make-lazy-code
     (lambda (cgc ctx)
+
       (let ((local  (assoc ast (ctx-env ctx)))
             (global (assoc ast globals)))
         ;;
@@ -363,21 +364,29 @@
                 (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
                 (x86-mov cgc dest (x86-rax)))
 
-            (jump-to-version cgc succ (ctx-push ctx type reg)))))))
+            (jump-to-version cgc succ (ctx-push ctx type reg (car local))))))))
 
 ;; TODO: + utiliser un appel récursif comme pour gen-get-freevar (??)
 ;; TODO coment: si mobject? est vrai, c'est qu'on veut le mobject dans le tmp reg (rax)
 (define (gen-get-localvar cgc ctx local succ #!optional (raw? #f))
 
-  (let ((loc (ctx-identifier-loc ctx (cdr local)))
-        (mutable? (member 'mutable (identifier-flags (cdr local)))))
+  ;; TODO regalloc: core.scm
+  (define (ctx-loc-is-orig-loc ctx identifier loc)
+    (let ((orig-slot (list-ref (identifier-sslots identifier)
+                               (- (length (identifier-sslots identifier)) 1))))
+      (eq? loc (ctx-get-loc ctx orig-slot))))
+
+  (let ((mutable? (member 'mutable (identifier-flags (cdr local)))))
 
     (if raw?
         ;; We want mobject, then write in rax
-        (let ((opnd (codegen-loc-to-x86opnd loc)))
+        (let* ((loc (ctx-identifier-loc ctx (cdr local) #t))
+               (opnd (codegen-loc-to-x86opnd loc)))
           (x86-mov cgc (x86-rax) opnd))
         ;; We don't want mobject
-        (let* ((res (ctx-get-free-reg cgc ctx (list loc)))
+        (let* ((loc (ctx-identifier-loc ctx (cdr local)))
+               (boxed? (ctx-loc-is-orig-loc ctx (cdr local) loc))
+               (res (ctx-get-free-reg cgc ctx (list loc)))
                (reg (car res))
                (ctx (cdr res))
                (type (ctx-identifier-type ctx (cdr local))))
@@ -386,12 +395,16 @@
                   (let ((dest (codegen-reg-to-x86reg reg))
                         (opnd (codegen-loc-to-x86opnd loc)))
                     (x86-mov cgc (x86-rax) opnd)
-                    (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))))
+                    (if boxed?
+                        (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+                        (x86-mov cgc dest (x86-rax))))) ;; TODO
                 ;; Mutable and in register
                 (mutable?
                   (let ((dest (codegen-reg-to-x86reg reg))
                         (opnd (codegen-loc-to-x86opnd loc)))
-                    (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) opnd))))
+                    (if boxed?
+                        (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) opnd))
+                        (x86-mov cgc dest opnd)))) ;; TODO
                 ;; Not mutable and in reg or mem
                 (else
                   (let ((dest (codegen-reg-to-x86reg reg))
@@ -464,8 +477,10 @@
     (gen-ast (caddr ast) lazy-set!)))
 
 (define (gen-set-localvar cgc ctx local succ)
+
   ;; Get mobject in tmp register
   (gen-get-localvar cgc ctx local #f #t)
+
   ;;
   (let* ((res (ctx-get-free-reg cgc ctx))
          (reg (car res))

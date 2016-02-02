@@ -1286,7 +1286,7 @@
         (list-ref (ctx-stack ctx) (ctx-slot-to-lidx ctx slot)))))
 
 ;;
-(define (ctx-identifier-loc ctx identifier)
+(define (ctx-identifier-loc ctx identifier #!optional (orig-loc? #f))
 
   ;; Retourne le premier registre trouvé si pas de registre, retourne l'emplacement mémoire
   (define (get-loc slots ret)
@@ -1303,7 +1303,9 @@
         ;; Free var only in closure, return closure loc (fx)
         (identifier-cloc identifier)
         ;;
-        (get-loc slots #f))))
+        (if orig-loc?
+            (ctx-get-loc ctx (list-ref slots (- (length slots) 1)))
+            (get-loc slots #f)))))
 
 ;; Retour l'ident (entrée de env) au slot 'slot'
 ;; Donc retourne un couple (id . identifier)
