@@ -1,20 +1,40 @@
+(define (cpstak)
 
-(define (foo)
+  (define (tak x k)
+    (if (= x 0)
+        (k)
+        (tak 0
+             (lambda ()
+               (tak 0
+                    (lambda () 1))))))
 
-  ;; Bar doit etre une variable mutable, libre
+  (tak 1 (lambda () 1)))
 
-  (let* ((bar (lambda (n) 1))
-         (f (lambda () (bar (bar 10)))))
-    (set! bar (lambda (n) 2))
-    (f)))
+(cpstak)
 
+
+;; Au moment de la capture, on veut l'orig loc
+
+;
+;(define (foo)
+;
+;  ;; Bar doit etre une variable mutable, libre
+;
+;  (let* ((bar (lambda (n) 1))
+;         (f (lambda () (bar (bar 10)))))
+;    (set! bar (lambda (n) 2))
+;    (f)))
+;
+;(pp (foo))
 
 ;; TODO:
+;; voir ou est utilisé (ctx-identifier-loc ...) peut-etre faut-il ajouter #t pour avoir la orig-loc
+;;  ((AU SPILL, CONSERVER LES DEUX LOCS))
 ;;  * meme travail pour gen-get-freevar que gen-get-localvar:
 ;;    Il faut faire attenton au orig-loc
 ;;  * au gen set local/free, changer le type
+;;  ATTENTION: au set, changer la valeur DANS ORIG POS et enlever les autres locs qui ne sont plus bonnes
 
-(foo)
 
 ;; Graph ok:
 ;;  -- propagation des points d'entrée + points de retour (no opts)

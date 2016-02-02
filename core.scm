@@ -1298,11 +1298,12 @@
               loc
               (get-loc (cdr slots) loc)))))
 
-  (let ((slots (identifier-sslots identifier)))
-    (if (null? slots)
-        ;; Free var only in closure, return closure loc (fx)
-        (identifier-cloc identifier)
-        ;;
+  (if (eq? (identifier-kind identifier) 'free)
+      (let ((slots (identifier-sslots identifier)))
+        (if (or orig-loc? (null? slots))
+            (identifier-cloc identifier)
+            (get-loc slots #f)))
+      (let ((slots (identifier-sslots identifier)))
         (if orig-loc?
             (ctx-get-loc ctx (list-ref slots (- (length slots) 1)))
             (get-loc slots #f)))))
@@ -2231,6 +2232,11 @@
 (let ((lazy-error
          (make-lazy-code
             (lambda (cgc ctx)
+               (pp "PB")
+               (pp ast)
+               (pp ctx)
+               (pp stack-idx)
+               (pp type)
                (if (or (eq? type CTX_FLO) (eq? type CTX_NUM))
                  (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM))
                  (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
@@ -2243,6 +2249,7 @@
 
   (make-lazy-code
      (lambda (cgc ctx)
+
        ;; TODO: plus nettoyer tout ca
        (let* ((ctx-success (ctx-change-type ctx stack-idx type))
               (ctx-success-known ctx);; If know type is tested type, do not change ctx
