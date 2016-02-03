@@ -1,31 +1,15 @@
-(define (cpstak)
-
-  (define (tak x k)
-    (if (= x 0)
-        (k)
-        (tak 0
-             (lambda ()
-               (tak 0
-                    (lambda () 1))))))
-
-  (tak 1 (lambda () 1)))
-
-(cpstak)
-
-
-;; Au moment de la capture, on veut l'orig loc
-
 ;
-;(define (foo)
+;(define (run n)
+;  (let loop ((i n) (sum 0))
+;    (if (< i 0)
+;      sum
+;      (loop (- i 1) (+ i sum)))))
 ;
-;  ;; Bar doit etre une variable mutable, libre
-;
-;  (let* ((bar (lambda (n) 1))
-;         (f (lambda () (bar (bar 10)))))
-;    (set! bar (lambda (n) 2))
-;    (f)))
-;
-;(pp (foo))
+;(apply run '(10000))
+
+(let ((a (car (cons 1 2))))
+  (+ a 20))
+
 
 ;; TODO:
 ;; voir ou est utilisé (ctx-identifier-loc ...) peut-etre faut-il ajouter #t pour avoir la orig-loc

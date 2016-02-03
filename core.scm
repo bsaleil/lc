@@ -1132,7 +1132,6 @@
       (ctx-fs ctx))))
 
 ;; TODO regalloc: uniformiser id, identifier et ident
-
 (define (ctx-init-fn call-ctx enclosing-ctx args free-vars mutable-vars)
 
   ;; Construit le slot-loc initial pour une fonction
@@ -2232,11 +2231,6 @@
 (let ((lazy-error
          (make-lazy-code
             (lambda (cgc ctx)
-               (pp "PB")
-               (pp ast)
-               (pp ctx)
-               (pp stack-idx)
-               (pp type)
                (if (or (eq? type CTX_FLO) (eq? type CTX_NUM))
                  (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM))
                  (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
