@@ -1,14 +1,10 @@
-;
-;(define (run n)
-;  (let loop ((i n) (sum 0))
-;    (if (< i 0)
-;      sum
-;      (loop (- i 1) (+ i sum)))))
-;
-;(apply run '(10000))
 
-(let ((a (car (cons 1 2))))
-  (+ a 20))
+(letrec ((lst #\C)
+         (bar (lambda () (set! lst #f))))
+  (char=? lst #\F)
+  (bar)
+  (char=? lst #\R)
+  (pp lst))
 
 
 ;; TODO:

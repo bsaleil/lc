@@ -106,7 +106,7 @@
 (define (string=? str1 str2)
   (string=?-h str1 str2 0))
 
-;; Rewrite stirng<?
+;; Rewrite string<?
 (define (string<? str1 str2)
   (define (string<?-h str1 str2 pos)
     (cond ((= pos (- (string-length str2) 1))

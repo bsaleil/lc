@@ -408,7 +408,10 @@
                (reg (car res))
                (ctx (cdr res))
                (boxed? (ctx-loc-is-orig-loc ctx (cdr local) loc))
-               (type (ctx-identifier-type ctx (cdr local))))
+               (type
+                 (if mutable?
+                     CTX_UNK
+                     (ctx-identifier-type ctx (cdr local)))))
           (cond ;; Mutable and in memory
                 ((and (ctx-loc-is-memory? loc) mutable?)
                   (let ((dest (codegen-reg-to-x86reg reg))
@@ -635,10 +638,12 @@
         (list (ctx-slot-loc ctx)
               (ctx-free-regs ctx)
               (ctx-stack ctx)
-              (map (lambda (el)
-                     (cons (car el)
-                       (identifier-stype (cdr el))))
-                   (ctx-env ctx)))))
+              (ctx-env ctx))))
+              ;; TODO regalloc: need to store sslots of identifiers
+            ;  (map (lambda (el)
+            ;         (cons (car el)
+            ;           (identifier-stype (cdr el))))
+            ;       (ctx-env ctx)))))
 
 ;; TODO: change to table, merge with cctables ? (change cctable-key to something better)
 ;; Store pairs associating cctable address to the code of the corresponding function
@@ -1687,7 +1692,7 @@
           (make-lazy-code
             (lambda (cgc ctx)
               (x86-lea cgc base-ptr (x86-mem 16 (x86-rsp) (x86-rdi) 1))
-              (gen-call-sequence cgc #f #f))))
+              (gen-call-sequence ast cgc #f #f))))
         (lazy-args
           (make-lazy-code
             (lambda (cgc ctx)
@@ -1833,7 +1838,7 @@
                                           (x86-lea cgc base-ptr (x86-mem (* (+ (length args) 2) 8) (x86-rsp)))
 
                                           ;; 6 - Gen call sequence
-                                          (gen-call-sequence cgc call-ctx (length (cdr ast)))))))
+                                          (gen-call-sequence ast cgc call-ctx (length (cdr ast)))))))
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
@@ -1885,6 +1890,7 @@
                                                  (ctx-pop-n ctx (+ (length args) 1))))
                                            (res (ctx-get-free-reg cgc ctx))
                                            (reg (car res)))
+
                                       (set! gen-flag
                                             (gen-version-continuation
                                               load-ret-label
@@ -1923,6 +1929,9 @@
                                             (ctx (ctx-pop-n ctx (+ (length args) 1))) ;; Remove closure and args from virtual stack
                                             (res (ctx-get-free-reg cgc ctx))
                                             (reg (car res)))
+                                        ; (print "Gen version cont de ")
+                                        ; (pp ast)
+                                        ; (pp ctx)
                                          (gen-version-continuation-cr lazy-continuation
                                                                       (ctx-push ctx type reg)
                                                                       type
@@ -1937,7 +1946,7 @@
     (codegen-load-cont-cr cgc crtable-loc)))
 
 ;; Gen call sequence (call instructions)
-(define (gen-call-sequence cgc call-ctx nb-args)
+(define (gen-call-sequence ast cgc call-ctx nb-args)
     (cond ((and opt-entry-points nb-args)
              (let* ((idx (get-closure-index call-ctx)))
                (if idx
