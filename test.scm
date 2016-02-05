@@ -1,16 +1,14 @@
 
 ;; Avec les arguments par registres:
-;; Registre pour le ctx et le nbargs (DOIT ETRE != des registres pour arguments)
 ;; Rest
-;; Générique
-;; Apply
+;; bug sans option --disable-return-points
 
 ;(declare (standard-bindings) (block))
 
-(define (foo a b c d e f)
-  f)
+(define (foo a b c)
+  (+ a b c))
 
-($apply foo '(1 2 3 4 5 6))
+
 
 
 ;; TODO:
