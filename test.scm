@@ -1,13 +1,20 @@
 
-(letrec ((lst #\C)
-         (bar (lambda () (set! lst #f))))
-  (char=? lst #\F)
-  (bar)
-  (char=? lst #\R)
-  (pp lst))
+;; Avec les arguments par registres:
+;; Registre pour le ctx et le nbargs (DOIT ETRE != des registres pour arguments)
+;; Rest
+;; Générique
+;; Apply
+
+;(declare (standard-bindings) (block))
+
+(define (foo a b c d e f)
+  f)
+
+($apply foo '(1 2 3 4 5 6))
 
 
 ;; TODO:
+;; get-free : retourner les mouvements à faire (spill), puis le faire dans le générateur de code
 ;; voir ou est utilisé (ctx-identifier-loc ...) peut-etre faut-il ajouter #t pour avoir la orig-loc
 ;;  ((AU SPILL, CONSERVER LES DEUX LOCS))
 ;;  * meme travail pour gen-get-freevar que gen-get-localvar:

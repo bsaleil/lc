@@ -451,8 +451,14 @@
                  (/ encoded 4))
                (- (length (ctx-stack ctx)) 2)))
 
+(rrr (println "NARGS=" nb-args))
+
          (closure
-          (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8 (* 8 nb-args))))
+          ;; TODO regalloc: closure offset is computed from nb args on stack only
+          (let ((stack-offset
+                  (let ((r (- nb-args (length args-regs))))
+                    (if (< r 0) 0 r))))
+            (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8 (* 8 stack-offset)))))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
@@ -1137,11 +1143,20 @@
   ;; Construit le slot-loc initial pour une fonction
   ;; Pour le moment, les arguments sont passés sur la pile
   ;; donc chaque slot de pile est associé à l'emplacement mémoire
-  (define (slot-loc-init-fn nb-args)
-    (if (= nb-args 0)
-        (list '(1 . 1) '(0 . 0)) ;; closure & retaddr
-        (cons (cons (+ 1 nb-args) (+ 1 nb-args))
-              (slot-loc-init-fn (- nb-args 1)))))
+  (define (slot-loc-init-fn nb-args curr regs r)
+    (cond ((= curr nb-args)
+             (let* ((all (build-list (length regalloc-regs) (lambda (i)
+                                                              (string->symbol
+                                                                (string-append "r" (number->string i))))))
+                    (free (set-sub all (set-sub args-regs regs '()) '())))
+             (cons free
+                   (append r '((1 . 1) (0 . 0))))))
+          ((null? regs)
+            (let ((next (cons (cons (+ 2 curr) (+ 2 (- curr (length args-regs)))) r)))
+              (slot-loc-init-fn nb-args (+ curr 1) regs next)))
+          (else
+            (let ((next (cons (cons (+ 2 curr) (car regs)) r)))
+              (slot-loc-init-fn nb-args (+ curr 1) (cdr regs) next)))))
 
   (define (env-init-fn args slot free-vars mutable-vars enclosing-ctx)
 
@@ -1176,18 +1191,28 @@
     (append (init-free free-vars (ctx-env enclosing-ctx) 1)
             (init-local args slot)))
 
+  (define fs
+    (let ((r (- (length args) (length args-regs))))
+      (if (>= r 0)
+          (+ r 2)
+          2)))
+
+  (define free/slot-loc
+      (slot-loc-init-fn
+        (length args)
+        0
+        args-regs
+        '()))
 
   ;;
   (make-ctx (if call-ctx
                 (ctx-stack call-ctx)
                 (append (make-list (length args) CTX_UNK) (list CTX_CLO CTX_RETAD)))
-            (slot-loc-init-fn (length args))
-            (build-list (length regalloc-regs) (lambda (i)
-                                                 (string->symbol
-                                                   (string-append "r" (number->string i)))))
+            (cdr free/slot-loc)
+            (car free/slot-loc)
             (env-init-fn args 2 free-vars mutable-vars enclosing-ctx)
             (length args)
-            (+ (length args) 2))) ;; fs is length args +2 (closure, retaddr) because all args are on the stack
+            fs))
 
 (define (ctx-lidx-to-slot ctx lidx)
   (- (length (ctx-stack ctx)) lidx 1))
@@ -1672,6 +1697,104 @@
 
   (make-ctx stack slot-loc free-regs env nb-args fs)))
 
+;; TODO regalloc
+;;--------------------------------------------------
+;; TESTS
+;;--------------------------------------------------
+;
+;;; TODO: uniformiser et placer
+;; TODO: not 3 & 5 because rdi and R11 are used for ctx, nb-args
+(define args-regs '(r0 r1 r2 r4 r6)) ;; TODO
+
+(define (ctx-get-call-args-moves ctx nb-args)
+
+   (define slot-loc (ctx-slot-loc ctx))
+   (define len-stack (length (ctx-stack ctx)))
+   (define all-reg
+     (build-list (length regalloc-regs) (lambda (i)
+                                          (string->symbol
+                                            (string-append "r" (number->string i))))))
+
+   ;; Check if value in location 'loc' is used for
+   ;; a next argument (if so, we can' overwrite it)
+   (define (is-used-after? loc curr-slot lim-slot)
+     (foldr (lambda (el r)
+              (or (and (eq? (cdr el) loc)
+                       (> (car el) curr-slot)
+                       (<= (car el) lim-slot))
+                  r))
+            #f
+            slot-loc))
+
+   ;; Return the ordered locations
+   (define (pushed-locs)
+     (define (pushed-locs-h lidx)
+       (if (< lidx 0)
+           '()
+           (let ((r (pushed-locs-h (- lidx 1))))
+             (cons
+               (ctx-get-loc ctx (ctx-lidx-to-slot ctx lidx))
+               r))))
+     (pushed-locs-h (- nb-args (length args-regs) 1)))
+
+   ;; Return the registers unused for the function call
+   ;; A register is unused if it is free or associated to
+   ;; a value which is not an argument
+   (define (get-unused-regs)
+     (let* ((slot-start (- len-stack nb-args))
+            (slot-end   (+ slot-start (length args-regs) -1)))
+       (foldr (lambda (el r)
+                (if (and (>= (car el) slot-start)
+                         (<= (car el) slot-end))
+                    r
+                    (cons (cdr el) r)))
+              '()
+              slot-loc)))
+
+   ;; Compute and return all moves needed to put the arguments in the
+   ;; calling convention registers
+   ;; Return a pair with:
+   ;; moves in car
+   ;; moves needed to retrieve saved values in unused registers
+   (define (move-regs unregs)
+     (define (rec-loop rem lidx args-regs unregs)
+       (if (= rem 0)
+           (cons '() '())
+           (let* ((src (ctx-get-loc ctx (ctx-lidx-to-slot ctx lidx)))
+                  (dst (car args-regs))
+                  (moves/save (rec-loop (- rem 1) (- lidx 1) (cdr args-regs) (cdr unregs)))
+                  (moves (car moves/save))
+                  (save  (cdr moves/save)))
+             (cond ((eq? src dst)
+                      moves/save)
+                   ((is-used-after? dst (ctx-lidx-to-slot ctx lidx) (ctx-lidx-to-slot ctx (- lidx rem -1)))
+                      (cons
+                        (cons (cons (car unregs) src) moves)
+                        (cons (cons dst (car unregs)) save)))
+                   (else
+                        (cons
+                          (cons (cons dst src) moves)
+                           save))))))
+
+     (let ((moves/save
+             (rec-loop
+               (min nb-args (length args-regs))
+               (- nb-args 1)
+               args-regs
+               unregs)))
+       (append (car moves/save) (cdr moves/save))))
+
+ ;;; GO
+ (let* (;; 1 - Get unused registers
+        (unregs
+          (append (ctx-free-regs ctx)
+                  (get-unused-regs)))
+        ;; 2 - Get needed moves
+        (moves  (move-regs unregs))
+        ;; 3 - Get locs to push
+        (locs   (pushed-locs)))
+
+ (cons locs moves)))
 
 ;;-----------------------------------------------------------------------------
 

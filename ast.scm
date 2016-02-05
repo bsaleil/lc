@@ -710,6 +710,8 @@
                                                     ;; CASE 2 - Do not use multiple entry points
                                                     ((= selector 1)
                                                         (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
+                                                          (pp "Gen version with")
+                                                          (pp ctx)
                                                           (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t)))
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
@@ -1691,24 +1693,47 @@
   (let* ((lazy-call
           (make-lazy-code
             (lambda (cgc ctx)
-              (x86-lea cgc base-ptr (x86-mem 16 (x86-rsp) (x86-rdi) 1))
-              (gen-call-sequence ast cgc #f #f))))
+              (let ((label-g (asm-make-label #f (new-sym 'label-apply-nargs-g)))
+                    (label-e (asm-make-label #f (new-sym 'label-apply-nargs-e))))
+                (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
+                (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (length args-regs))))
+                (x86-jg cgc label-g)
+                  (x86-lea cgc base-ptr (x86-mem 16 (x86-rsp)))
+                  (x86-jmp cgc label-e)
+                (x86-label cgc label-g)
+                  (x86-lea cgc base-ptr (x86-mem (- 16 (* 8 (length args-regs)))
+                                                 (x86-rsp)
+                                                 (x86-rdi)
+                                                 1))
+                (x86-label cgc label-e)
+                (gen-call-sequence ast cgc #f #f)))))
         (lazy-args
           (make-lazy-code
             (lambda (cgc ctx)
-              (let* ((llst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-                     (oplst (codegen-loc-to-x86opnd llst))
-                     (label-loop (asm-make-label #f (new-sym 'apply-loop)))
-                     (label-end  (asm-make-label #f (new-sym 'apply-end))))
-                (x86-mov cgc base-ptr oplst)
-                (x86-mov cgc (x86-rdi) (x86-imm-int 0))
-                (x86-label cgc label-loop)
-                (x86-cmp cgc base-ptr (x86-imm-int (obj-encoding '())))
-                (x86-je cgc label-end)
-                  (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) base-ptr))
-                  (x86-mov cgc (x86-rbp) (x86-mem (- 16 TAG_MEMOBJ) base-ptr))
-                  (x86-add cgc (x86-rdi) (x86-imm-int 4))
-                  (x86-jmp cgc label-loop)
+              ;; rax = lst
+              (let* ((label-end (asm-make-label #f (new-sym 'apply-end-args)))
+                     (llst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                     (oplst (codegen-loc-to-x86opnd llst)))
+                (x86-mov cgc (x86-rbp) oplst)
+                (x86-mov cgc (x86-r11) (x86-imm-int 0))
+                (let loop ((args-regs args-regs))
+                  (if (null? args-regs)
+                      (let ((label-loop (asm-make-label #f (new-sym 'apply-loop-args))))
+                        (x86-label cgc label-loop)
+                        (x86-cmp cgc (x86-rbp) (x86-imm-int (obj-encoding '())))
+                        (x86-je cgc label-end)
+                          (x86-add cgc (x86-r11) (x86-imm-int 4))
+                          (x86-mov cgc (x86-r14) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbp)))
+                          (x86-push cgc (x86-r14))
+                          (x86-mov cgc (x86-rbp) (x86-mem (- 16 TAG_MEMOBJ) (x86-rbp)))
+                          (x86-jmp cgc label-loop))
+                      (begin
+                        (x86-cmp cgc (x86-rbp) (x86-imm-int (obj-encoding '())))
+                        (x86-je cgc label-end)
+                          (x86-add cgc (x86-r11) (x86-imm-int 4))
+                          (x86-mov cgc (codegen-loc-to-x86opnd (car args-regs)) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbp)))
+                          (x86-mov cgc (x86-rbp) (x86-mem (- 16 TAG_MEMOBJ) (x86-rbp)))
+                        (loop (cdr args-regs)))))
                 (x86-label cgc label-end)
                 (jump-to-version cgc lazy-call ctx)))))
         (lazy-closure
@@ -1809,13 +1834,18 @@
                                             (x86-mov cgc (x86-rax) opclo) ;; closure need to be in rax for do-callback-fn (TODO: get closure from stack in do-callback-fn and remove this)
                                             (x86-push cgc (x86-rax)))
 
-                                          ;; 5 - Move args to stack
-                                          (let loop ((nb-args (length args)))
-                                            (if (not (= nb-args 0))
-                                                (begin (let* ((larg (ctx-get-loc ctx (ctx-lidx-to-slot ctx (- nb-args 1))))
-                                                              (oparg (codegen-loc-to-x86opnd larg)))
-                                                         (x86-push cgc oparg)
-                                                         (loop (- nb-args 1))))))
+                                          ;; 5 - Move args to regs or stack following calling convention
+                                          (let* ((stackp/moves (ctx-get-call-args-moves ctx (length args)))
+                                                 (stackp (car stackp/moves))
+                                                 (moves (cdr stackp/moves)))
+                                            (if (not (null? stackp))
+                                                (error "NYI"))
+                                            (for-each
+                                                (lambda (el)
+                                                  (let ((opnddst (codegen-loc-to-x86opnd (car el)))
+                                                        (opndsrc (codegen-loc-to-x86opnd (cdr el))))
+                                                    (x86-mov cgc opnddst opndsrc)))
+                                                moves))
 
                                           ;; Shift args and closure for tail call
                                           ;; 0 -> (length args) COMPARISON
@@ -1835,7 +1865,10 @@
                                               (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (ctx-fs ctx) 1)))))
 
                                           ;; TODO update rbp for callee
-                                          (x86-lea cgc base-ptr (x86-mem (* (+ (length args) 2) 8) (x86-rsp)))
+                                          (let ((args-fs
+                                                   (let ((r (- (length args) (length args-regs))))
+                                                     (if (< r 0) 0 r))))
+                                            (x86-lea cgc base-ptr (x86-mem (* (+ args-fs 2) 8) (x86-rsp))))
 
                                           ;; 6 - Gen call sequence
                                           (gen-call-sequence ast cgc call-ctx (length (cdr ast)))))))
