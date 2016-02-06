@@ -1,14 +1,11 @@
 
 ;; Avec les arguments par registres:
 ;; Rest
-;; bug sans option --disable-return-points
 
-;(declare (standard-bindings) (block))
+(define (foo a b . c)
+  1)
 
-(define (foo a b c)
-  (+ a b c))
-
-
+(foo 1 2)
 
 
 ;; TODO:
