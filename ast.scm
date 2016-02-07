@@ -710,8 +710,6 @@
                                                     ;; CASE 2 - Do not use multiple entry points
                                                     ((= selector 1)
                                                         (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
-                                                          (pp "Gen version with")
-                                                          (pp ctx)
                                                           (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t)))
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
@@ -779,65 +777,143 @@
                '()
                (ctx-env ctx))))
 
+;; TODO CLEAN raglloc args regs
 (define (get-lazy-generic-prologue ast succ rest-param mvars)
   (make-lazy-code-entry
     (lambda (cgc ctx)
       (let ((nb-args (ctx-nb-args ctx))
-            (label-next (asm-make-label #f (new-sym 'label-next))))
-
-        (if rest-param
-            ;; Function using rest param
-            (let ((label-case2 (asm-make-label #f (new-sym 'generic-prologue-case2-)))
-                  (label-end   (asm-make-label #f (new-sym 'generic-prologue-end))))
-              ;; If rdi < nb-args - 1, error
-              (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (- nb-args 1))))
-              (x86-jge cgc label-case2)
-                (gen-error cgc ERR_WRONG_NUM_ARGS)
-              ;; If rdi >= nb-args - 1, gen rest list from arguments
-              (x86-label cgc label-case2)
-                (let ((label-lend (asm-make-label #f (new-sym 'label-lend)))
-                      (label-lloop (asm-make-label #f (new-sym 'label-lloop)))
-                      (header-word (mem-header 3 STAG_PAIR)))
-                  ;; pos (rsi) = 0
-                  (x86-mov cgc (x86-rsi) (x86-imm-int 0))
-                  ;; cdr (rbx) = '()
-                  (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding '())))
-                  ;; lim (rdi) = rdi - nb-args - 1
-                  (x86-sub cgc (x86-rdi) (x86-imm-int (obj-encoding (- nb-args 1))))
-                  (x86-shl cgc (x86-rdi) (x86-imm-int 1))
-                  ;; if po == lim then goto end
-                  (x86-label cgc label-lloop)
-                  (x86-cmp cgc (x86-rsi) (x86-rdi))
-                  (x86-je cgc label-lend)
-                    ;;; p = pair
-                    (gen-allocation cgc #f STAG_PAIR 3)
-                    ;; p.header = header-word
-                    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-                    (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
-                    ;; p.cdr = cdr
-                    (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
-                    ;; p.car = stack[pos]
-                    (x86-mov cgc (x86-rbx) (x86-mem 0 (x86-rsp) (x86-rsi)))
-                    (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rbx))
-                    ;; cdr = p
-                    (x86-lea cgc (x86-rbx) (x86-mem TAG_MEMOBJ alloc-ptr))
-                    ;; pos++
-                    (x86-add cgc (x86-rsi) (x86-imm-int 8))
-                    (x86-jmp cgc label-lloop)
-                  (x86-label cgc label-lend)
-                  (x86-add cgc (x86-rsp) (x86-rdi))
-                  (x86-push cgc (x86-rbx)))
-              (x86-label cgc label-end))
-
-            ;; Not rest param, then if formal != actual, error.
+            (label-next (asm-make-label #f (new-sym 'label-next)))
+            (label-end (asm-make-label #f (new-sym 'label-end))))
+        (if (not rest-param)
+            ;; If not rest, only check args number
             (begin
               (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args)))
-              (x86-je cgc label-next)
-                (gen-error cgc ERR_WRONG_NUM_ARGS)
-              (x86-label cgc label-next)))
-        (gen-mutable cgc ctx mvars)
-        (jump-to-version cgc succ ctx)))))
+              (x86-je cgc label-end)
+              (gen-error cgc "TODO ERR1")
+              (x86-label cgc label-end))
+            ;; If rest, check args number then build rest list from regs and stack
+            (let ((nb-args-regs (length args-regs))
+                  (label-rest       (asm-make-label #f (new-sym 'prologue-rest)))
+                  (label-rest-loop  (asm-make-label #f (new-sym 'prologue-rest-loop)))
+                  (label-rest-end   (asm-make-label #f (new-sym 'prologue-rest-end)))
+                  (label-next-arg   (asm-make-label #f (new-sym 'prologue-next-arg)))
+                  (label-from-stack (asm-make-label #f (new-sym 'prologue-from-stack)))
+                  (label-next-arg-end (asm-make-label #f (new-sym 'prologue-next-arg-end))))
+              (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (- nb-args 1))))
+              (x86-jge cgc label-rest)
+                (gen-error cgc "TODO ERR2")
+              ;; GET NEXT ARG PART
+              (x86-label cgc label-next-arg)
+                (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (length args-regs))))
+                (x86-jg cgc label-from-stack)
+                (let loop ((i (length args-regs))
+                           (regs (reverse args-regs)))
+                  (if (> i 0)
+                      (begin
+                          (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding i)))
+                          (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (car regs)))
+                          (x86-je cgc label-next-arg-end)
+                          (loop (- i 1) (cdr regs)))))
+                ;(x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (car (reverse args-regs))))
+                ;
+                ;(let loop ((i (- (length args-regs) 1))
+                ;           (regs (cdr (reverse args-regs))))
+                ;  (if (not (= i 0))
+                ;      (begin
+                ;        ;  (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding i)))
+                ;        ;  (x86-je cgc label-next-arg-end)
+                ;        ;  (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (car regs)))
+                ;          (loop (- i 1) (cdr regs)))))
+                (x86-jmp cgc label-next-arg-end)
+                (x86-label cgc label-from-stack)
+                (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
+                (x86-mov cgc (x86-r13) (x86-mem 0 (x86-rsp)))
+                (x86-add cgc (x86-rsp) (x86-imm-int 16))
+                (x86-sub cgc (x86-rdi) (x86-imm-int (obj-encoding 1)))
+                (x86-jmp cgc (x86-r13))
+                (x86-label cgc label-next-arg-end)
+                (x86-sub cgc (x86-rdi) (x86-imm-int (obj-encoding 1)))
+                (x86-ret cgc)
+              ;; END GET NEXT ARG PART
 
+              (x86-label cgc label-rest)
+              ;; cdr (rax) = '()
+              (x86-mov cgc (x86-r14) (x86-imm-int (obj-encoding '())))
+              (x86-label cgc label-rest-loop)
+              (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (- nb-args 1))))
+              (x86-je cgc label-rest-end)
+                (let ((header-word (mem-header 3 STAG_PAIR)))
+                ;; Alloc
+                (gen-allocation cgc #f STAG_PAIR 3)
+                (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+                (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
+                (x86-call cgc label-next-arg)
+                (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rax))
+                (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-r14))
+                (x86-lea cgc (x86-r14) (x86-mem TAG_MEMOBJ alloc-ptr))
+                (x86-jmp cgc label-rest-loop))
+              ;
+              (x86-label cgc label-rest-end)
+              (if (< nb-args (length args-regs))
+                  (let ((reg (list-ref args-regs (- nb-args 1))))
+                    (x86-mov cgc (codegen-loc-to-x86opnd reg) (x86-r14)))
+                  (x86-push cgc (x86-r14)))))
+
+        (jump-to-version cgc succ ctx)))))
+        ;
+        ;(if rest-param
+        ;    ;; Function using rest param
+        ;    (let ((label-case2 (asm-make-label #f (new-sym 'generic-prologue-case2-)))
+        ;          (label-end   (asm-make-label #f (new-sym 'generic-prologue-end))))
+        ;      ;; If rdi < nb-args - 1, error
+        ;      (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (- nb-args 1))))
+        ;      (x86-jge cgc label-case2)
+        ;        (gen-error cgc ERR_WRONG_NUM_ARGS)
+        ;      ;; If rdi >= nb-args - 1, gen rest list from arguments
+        ;      (x86-label cgc label-case2)
+        ;        (let ((label-lend (asm-make-label #f (new-sym 'label-lend)))
+        ;              (label-lloop (asm-make-label #f (new-sym 'label-lloop)))
+        ;              (header-word (mem-header 3 STAG_PAIR)))
+        ;          ;; pos (rsi) = 0
+        ;          (x86-mov cgc (x86-rsi) (x86-imm-int 0))
+        ;          ;; cdr (rbx) = '()
+        ;          (x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding '())))
+        ;          ;; lim (rdi) = rdi - nb-args - 1
+        ;          (x86-sub cgc (x86-rdi) (x86-imm-int (obj-encoding (- nb-args 1))))
+        ;          (x86-shl cgc (x86-rdi) (x86-imm-int 1))
+        ;          ;; if po == lim then goto end
+        ;          (x86-label cgc label-lloop)
+        ;          (x86-cmp cgc (x86-rsi) (x86-rdi))
+        ;          (x86-je cgc label-lend)
+        ;            ;;; p = pair
+        ;            (gen-allocation cgc #f STAG_PAIR 3)
+        ;            ;; p.header = header-word
+        ;            (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+        ;            (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
+        ;            ;; p.cdr = cdr
+        ;            (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
+        ;            ;; p.car = stack[pos]
+        ;            (x86-mov cgc (x86-rbx) (x86-mem 0 (x86-rsp) (x86-rsi)))
+        ;            (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rbx))
+        ;            ;; cdr = p
+        ;            (x86-lea cgc (x86-rbx) (x86-mem TAG_MEMOBJ alloc-ptr))
+        ;            ;; pos++
+        ;            (x86-add cgc (x86-rsi) (x86-imm-int 8))
+        ;            (x86-jmp cgc label-lloop)
+        ;          (x86-label cgc label-lend)
+        ;          (x86-add cgc (x86-rsp) (x86-rdi))
+        ;          (x86-push cgc (x86-rbx)))
+        ;      (x86-label cgc label-end))
+        ;
+        ;    ;; Not rest param, then if formal != actual, error.
+        ;    (begin
+        ;      (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args)))
+        ;      (x86-je cgc label-next)
+        ;        (gen-error cgc ERR_WRONG_NUM_ARGS)
+        ;      (x86-label cgc label-next)))
+        ;(gen-mutable cgc ctx mvars)
+        ;(jump-to-version cgc succ ctx)))))
+        ;
 ;; Create and return a lazy prologue
 (define (get-lazy-prologue ast succ rest-param mvars)
   (make-lazy-code-entry
@@ -1795,7 +1871,7 @@
 (define (mlc-call ast succ)
 
   (let* (;; Tail call if successor's flags set contains 'ret flag
-         (tail (member 'ret (lazy-code-flags succ)))
+         (tail #f) ;(member 'ret (lazy-code-flags succ))) ;; TODO TAIL CALL WITH ARGS REGS
          ;; Call arguments
          (args (cdr ast))
          ;; Lazy fail
@@ -1839,13 +1915,17 @@
                                                  (stackp (car stackp/moves))
                                                  (moves (cdr stackp/moves)))
                                             (if (not (null? stackp))
-                                                (error "NYI"))
+                                                (for-each
+                                                   (lambda (el)
+                                                     (let ((opnd (codegen-loc-to-x86opnd el)))
+                                                       (x86-push cgc opnd)))
+                                                   stackp))
                                             (for-each
                                                 (lambda (el)
                                                   (let ((opnddst (codegen-loc-to-x86opnd (car el)))
                                                         (opndsrc (codegen-loc-to-x86opnd (cdr el))))
                                                     (x86-mov cgc opnddst opndsrc)))
-                                                moves))
+                                                moves) (x86-label cgc (asm-make-label #f (new-sym 'LAB_AP))))
 
                                           ;; Shift args and closure for tail call
                                           ;; 0 -> (length args) COMPARISON
@@ -1856,8 +1936,8 @@
                                                 (let loop ((n (length args)))
                                                   (if (>= n 0)
                                                       (begin
-                                                        (x86-mov cgc (x86-rbx) (x86-mem (* 8 n) (x86-rsp)))
-                                                        (x86-mov cgc (x86-mem (* 8 (+ (- fs 1) n)) (x86-rsp)) (x86-rbx))
+                                                        (x86-mov cgc (x86-rax) (x86-mem (* 8 n) (x86-rsp)))
+                                                        (x86-mov cgc (x86-mem (* 8 (+ (- fs 1) n)) (x86-rsp)) (x86-rax))
                                                         (loop (- n 1)))))))
 
                                           ;; TODO update rsp

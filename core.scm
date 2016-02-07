@@ -451,8 +451,6 @@
                  (/ encoded 4))
                (- (length (ctx-stack ctx)) 2)))
 
-(rrr (println "NARGS=" nb-args))
-
          (closure
           ;; TODO regalloc: closure offset is computed from nb args on stack only
           (let ((stack-offset
@@ -1747,7 +1745,9 @@
                 (if (and (>= (car el) slot-start)
                          (<= (car el) slot-end))
                     r
-                    (cons (cdr el) r)))
+                    (if (ctx-loc-is-register? (cdr el))
+                        (cons (cdr el) r)
+                        r)))
               '()
               slot-loc)))
 
@@ -1761,20 +1761,26 @@
        (if (= rem 0)
            (cons '() '())
            (let* ((src (ctx-get-loc ctx (ctx-lidx-to-slot ctx lidx)))
-                  (dst (car args-regs))
-                  (moves/save (rec-loop (- rem 1) (- lidx 1) (cdr args-regs) (cdr unregs)))
-                  (moves (car moves/save))
-                  (save  (cdr moves/save)))
+                  (dst (car args-regs)))
              (cond ((eq? src dst)
-                      moves/save)
+                      (let* ((moves/save (rec-loop (- rem 1) (- lidx 1) (cdr args-regs) unregs))
+                             (moves (car moves/save))
+                             (save  (cdr moves/save)))
+                        moves/save))
                    ((is-used-after? dst (ctx-lidx-to-slot ctx lidx) (ctx-lidx-to-slot ctx (- lidx rem -1)))
-                      (cons
-                        (cons (cons (car unregs) src) moves)
-                        (cons (cons dst (car unregs)) save)))
-                   (else
+                      (let* ((moves/save (rec-loop (- rem 1) (- lidx 1) (cdr args-regs) (cdr unregs)))
+                             (moves (car moves/save))
+                             (save  (cdr moves/save)))
                         (cons
-                          (cons (cons dst src) moves)
-                           save))))))
+                          (cons (cons (car unregs) src) moves)
+                          (cons (cons dst (car unregs)) save))))
+                   (else
+                        (let* ((moves/save (rec-loop (- rem 1) (- lidx 1) (cdr args-regs) unregs))
+                               (moves (car moves/save))
+                               (save  (cdr moves/save)))
+                          (cons
+                            (cons (cons dst src) moves)
+                            save)))))))
 
      (let ((moves/save
              (rec-loop
@@ -1787,13 +1793,15 @@
  ;;; GO
  (let* (;; 1 - Get unused registers
         (unregs
-          (append (ctx-free-regs ctx)
-                  (get-unused-regs)))
+          (set-sub (append (ctx-free-regs ctx)
+                           (get-unused-regs))
+                   args-regs
+                   '()))
         ;; 2 - Get needed moves
         (moves  (move-regs unregs))
         ;; 3 - Get locs to push
         (locs   (pushed-locs)))
-
+        
  (cons locs moves)))
 
 ;;-----------------------------------------------------------------------------
