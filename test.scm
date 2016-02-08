@@ -2,9 +2,11 @@
 ;; Avec les arguments par registres, il manque:
 ;; Rest non générique + gen-mutable dans les deux prologues
 ;; Tail call
+;; Au site d'appel, sauvegarder sur la pile les registres associés à des valeurs,
+;;   mais PAS ceux des arguments
 
-(define (foo a b c d e f g . h)
-  c)
+(define (foo a b c d e f g h . z)
+  (pp a) (pp z))
 
 (foo 1 2 3 4 5 6 7 8 9 10)
 

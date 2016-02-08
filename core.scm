@@ -1742,8 +1742,9 @@
      (let* ((slot-start (- len-stack nb-args))
             (slot-end   (+ slot-start (length args-regs) -1)))
        (foldr (lambda (el r)
-                (if (and (>= (car el) slot-start)
-                         (<= (car el) slot-end))
+                (if (or (not (car el))
+                        (and (>= (car el) slot-start)
+                             (<= (car el) slot-end)))
                     r
                     (if (ctx-loc-is-register? (cdr el))
                         (cons (cdr el) r)
@@ -1801,7 +1802,7 @@
         (moves  (move-regs unregs))
         ;; 3 - Get locs to push
         (locs   (pushed-locs)))
-        
+
  (cons locs moves)))
 
 ;;-----------------------------------------------------------------------------

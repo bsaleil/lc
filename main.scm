@@ -163,7 +163,7 @@
 
               ;;
               (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (ctx-fs ctx))))
-              (gen-breakpoint cgc)
+              ;(gen-breakpoint cgc)
 
               ;;
               (pop-regs-reverse cgc all-regs)
@@ -269,8 +269,8 @@
 (define (main . args)
 
   ;; Get library
-  (define lib '())
-  ;(define lib (expand-tl (read-all (open-input-file "./lib.scm"))))
+  ;(define lib '())
+  (define lib (expand-tl (read-all (open-input-file "./lib.scm"))))
   ;; Set options and get files from cl args
   (define files (parse-args args))
 

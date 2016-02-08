@@ -925,10 +925,6 @@
              (nb-formal (ctx-nb-args ctx))
              (nstack  (ctx-stack ctx))    ;; New stack  (change if rest-param)
              (nnbargs (ctx-nb-args ctx))) ;; New nbargs (change if rest-param)
-        (pp "OKOKKKKKK")
-        (pp rest-param)
-        (pp nb-actual)
-        (pp nb-formal)
         (cond ;; rest AND actual == formal
               ((and rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
                  (set! ctx (ctx-stack-push ctx CTX_NULL))
@@ -940,27 +936,39 @@
                    (gen-mutable cgc ctx mvars)
                    (jump-to-version cgc succ ctx)))
               ;; rest AND actual > formal
+              ;; TODO merge > and == (?)
               ((and rest-param (> nb-actual (- nb-formal 1)))
                  (let* ((nb-extra (- nb-actual (- nb-formal 1)))
                         (nctx (ctx-pop-n ctx (- nb-extra 1)))
                         (nctx (ctx-change-type nctx 0 CTX_PAI)))
                    (set! ctx nctx)
 
-                   (let* ((nb-rest-stack
+                   (let* ((nb-formal-stack
+                            (if (> (- nb-formal 1) (length args-regs))
+                                (- nb-formal 1 (length args-regs))
+                                0))
+                          (r
                             (if (<= nb-actual (length args-regs))
                                 0
                                 (- nb-actual (length args-regs))))
-                          (rest-args
+                          (nb-rest-stack (- r nb-formal-stack))
+                          (rest-regs
                             (if (>= (- nb-formal 1) (length args-regs))
                                 '()
                                 (list-head
                                   (list-tail args-regs (- nb-formal 1))
-                                  (- nb-actual nb-rest-stack nb-formal -1)))))
+                                  (- nb-actual nb-rest-stack nb-formal -1))))
+                          (reg
+                            (if (<= nb-formal (length args-regs))
+                                (list-ref args-regs (- nb-formal 1))
+                                #f)))
 
                      (codegen-prologue-rest>
                        cgc
                        nb-rest-stack
-                       rest-args))
+                       (reverse rest-regs)
+                       reg))
+
                    (gen-mutable cgc ctx mvars)
                    (jump-to-version cgc succ ctx)))
               ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)

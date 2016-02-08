@@ -359,50 +359,56 @@
 ;; Generate specialized function prologue with rest param and actual == formal
 (define (codegen-prologue-rest= cgc destreg)
   (let ((dest
-          (if destreg
-              (codegen-loc-to-x86opnd destreg)
-              #f)))
+          (and destreg (codegen-loc-to-x86opnd destreg))))
     (if dest
         (x86-mov cgc dest (x86-imm-int (obj-encoding '())))
         (x86-push cgc (x86-imm-int (obj-encoding '()))))))
 
 ;; Generate specialized function prologue with rest param and actual > formal
-(define (codegen-prologue-rest> cgc nb-formal restlen)
-  (print "Rest length=")
-  (pp restlen)
-  (print "Formal=")
-  (pp nb-formal)
-  (error "OK"))
-  ;
-  ;(define (gen-rest-lst cgc pos)
-  ;  (if (= pos restlen)
-  ;      (begin
-  ;          (x86-mov cgc (x86-mem (* (+ (- restlen 1) 2) 8) (x86-rsp)) (x86-rbx))
-  ;          (x86-pop cgc (x86-rcx))
-  ;          (x86-pop cgc (x86-rbx))
-  ;          (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- restlen 1)))))
-  ;      (let ((header (mem-header 3 STAG_PAIR))
-  ;            (offset (* 8 (+ pos 2)))) ;; +2 because we saved rbx and rcx
-  ;        ;; cdr is in rbx
-  ;        ;; Alloc pair
-  ;        ;(gen-allocation cgc #f STAG_PAIR 3)
-  ;        (x86-sub cgc (x86-r9) (x86-imm-int 24))
-  ;        ;; Write header
-  ;        (x86-mov cgc (x86-rax) (x86-imm-int header))
-  ;        (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
-  ;        ;; Write car
-  ;        (x86-mov cgc (x86-rcx) (x86-mem offset (x86-rsp))) ;; car in rcx
-  ;        (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rcx))
-  ;        ;; Write cdr
-  ;        (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
-  ;        ;; Next cdr is this new pairs
-  ;        (x86-lea cgc (x86-rbx) (x86-mem TAG_MEMOBJ alloc-ptr))
-  ;        (gen-rest-lst cgc (+ pos 1)))))
-  ;
-  ;(x86-push cgc (x86-rbx))
-  ;(x86-push cgc (x86-rcx))
-  ;(x86-mov cgc (x86-rbx) (x86-imm-int (obj-encoding '())))
-  ;(gen-rest-lst cgc 0))
+(define (codegen-prologue-rest> cgc nb-rest-stack rest-regs destreg)
+
+  (let ((regs
+          (map (lambda (el) (codegen-loc-to-x86opnd el))
+                rest-regs))
+        (dest
+          (and destreg (codegen-loc-to-x86opnd destreg)))
+        (header-word     (mem-header 3 STAG_PAIR))
+        (label-loop-end (asm-make-label #f (new-sym 'prologue-loop-end)))
+        (label-loop     (asm-make-label #f (new-sym 'prologue-loop))))
+
+    ;; TODO: Only one alloc
+
+    (x86-mov cgc (x86-r14) (x86-imm-int (obj-encoding '())))
+    ;; Stack
+    (x86-mov cgc (x86-r15) (x86-imm-int (obj-encoding nb-rest-stack)))
+    (x86-label cgc label-loop)
+    (x86-cmp cgc (x86-r15) (x86-imm-int 0))
+    (x86-je cgc label-loop-end)
+        (gen-allocation cgc #f STAG_PAIR 3)
+        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+        (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
+        (x86-pop cgc (x86-rax))
+        (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-r14))
+        (x86-lea cgc (x86-r14) (x86-mem TAG_MEMOBJ alloc-ptr))
+        (x86-sub cgc (x86-r15) (x86-imm-int (obj-encoding 1)))
+        (x86-jmp cgc label-loop)
+    (x86-label cgc label-loop-end)
+    ;; Regs
+    (for-each
+      (lambda (src)
+        (gen-allocation cgc #f STAG_PAIR 3)
+        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+        (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
+        (x86-mov cgc (x86-mem  8 alloc-ptr) src)
+        (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-r14))
+        (x86-lea cgc (x86-r14) (x86-mem TAG_MEMOBJ alloc-ptr)))
+      regs)
+    ;; Dest
+    (if dest
+        (x86-mov cgc dest (x86-r14))
+        (x86-push cgc (x86-r14)))))
+
 
 ;; Generate generic function prologue
 (define (codegen-prologue-gen cgc rest? nb-formal err-label)
