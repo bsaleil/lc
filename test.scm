@@ -1,8 +1,7 @@
 
 ;; Avec les arguments par registres, il manque:
-;; Rest non générique + gen-mutable dans les deux prologues
+;; Rest non générique
 ;; Attention, est-ce que les registres sont bien sauvegardés dans mlc-apply ?
-;; Pousser sur le serveur le changement de la sauvegarde des registres ?
 ;; Tail call
 
 ;; FAIT?
