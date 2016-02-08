@@ -862,6 +862,7 @@
                 (if rest-param
                     (ctx-pop-n ctx (- (length (ctx-stack ctx)) 3 nb-formal))
                     ctx)))
+          (gen-mutable cgc ctx mvars)
           (jump-to-version cgc succ ctx))))))
         ;
         ;(if rest-param
@@ -1923,11 +1924,18 @@
 
                                           ;; 2 - push all regs
                                           (if (not tail)
-                                              (let* ((free (ctx-free-regs ctx))
+                                              (let* ((args-clo
+                                                       (let loop ((i (- (length ast) 1))
+                                                                  (regs '()))
+                                                         (if (< i 0)
+                                                             regs
+                                                             (let ((loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx i))))
+                                                               (loop (- i 1) (cons loc regs))))))
+                                                     (free (ctx-free-regs ctx))
                                                      (all  (build-list (length regalloc-regs) (lambda (i)
                                                                                          (string->symbol
                                                                                            (string-append "r" (number->string i))))))
-                                                     (save (set-sub all free '())))
+                                                     (save (set-sub (set-sub all free '()) args-clo '())))
                                                 ;; Save used regs
                                                 (for-each
                                                   (lambda (i)

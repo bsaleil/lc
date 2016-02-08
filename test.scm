@@ -1,14 +1,24 @@
 
 ;; Avec les arguments par registres, il manque:
 ;; Rest non générique + gen-mutable dans les deux prologues
+;; Attention, est-ce que les registres sont bien sauvegardés dans mlc-apply ?
+;; Pousser sur le serveur le changement de la sauvegarde des registres ?
 ;; Tail call
+
+;; FAIT?
 ;; Au site d'appel, sauvegarder sur la pile les registres associés à des valeurs,
 ;;   mais PAS ceux des arguments
 
-(define (foo a b c d e f g h . z)
-  (pp a) (pp z))
+;(declare (standard-bindings) (block))
+;(declare (fixnum) (not safe))
 
-(foo 1 2 3 4 5 6 7 8 9 10)
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
+
+(println (fib 40))
 
 ;(print-pos 10)
 ;(define (foo a b . c)
