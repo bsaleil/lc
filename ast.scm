@@ -394,7 +394,6 @@
 ;; TODO: + utiliser un appel récursif comme pour gen-get-freevar (??)
 ;; TODO coment: si mobject? est vrai, c'est qu'on veut le mobject dans le tmp reg (rax)
 (define (gen-get-localvar cgc ctx local succ #!optional (raw? #f))
-
   (let ((mutable? (member 'mutable (identifier-flags (cdr local)))))
 
     (if raw?
@@ -460,19 +459,19 @@
     (mlc-flonum ast succ)
     (make-lazy-code
       (lambda (cgc ctx)
-    (let* ((res (ctx-get-free-reg cgc ctx))
-               (reg (car res))
-               (ctx (cdr res)))
-          (codegen-literal cgc ast reg)
-          (jump-to-version cgc
-                           succ
-                           (ctx-push ctx
-                                     (cond ((integer? ast) CTX_NUM)
-                                           ((boolean? ast) CTX_BOOL)
-                                           ((char? ast)    CTX_CHAR)
-                                           ((null? ast)    CTX_NULL)
-                                           (else (error ERR_INTERNAL)))
-                                     reg)))))))
+        (let* ((res (ctx-get-free-reg cgc ctx))
+                   (reg (car res))
+                   (ctx (cdr res)))
+              (codegen-literal cgc ast reg)
+              (jump-to-version cgc
+                               succ
+                               (ctx-push ctx
+                                         (cond ((integer? ast) CTX_NUM)
+                                               ((boolean? ast) CTX_BOOL)
+                                               ((char? ast)    CTX_CHAR)
+                                               ((null? ast)    CTX_NULL)
+                                               (else (error ERR_INTERNAL)))
+                                         reg)))))))
 
 ;;-----------------------------------------------------------------------------
 ;; INTERNAL FORMS
@@ -691,7 +690,7 @@
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
          (lazy-prologue (get-lazy-prologue ast lazy-body rest-param mvars))
          ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
-         (lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param mvars)))
+         (lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param mvars(length params))))
 
     ;; Lazy closure generation
     (make-lazy-code
@@ -778,7 +777,7 @@
                (ctx-env ctx))))
 
 ;; TODO CLEAN raglloc args regs
-(define (get-lazy-generic-prologue ast succ rest-param mvars)
+(define (get-lazy-generic-prologue ast succ rest-param mvars nb-formal)
   (make-lazy-code-entry
     (lambda (cgc ctx)
       (let ((nb-args (ctx-nb-args ctx))
@@ -859,7 +858,11 @@
                     (x86-mov cgc (codegen-loc-to-x86opnd reg) (x86-r14)))
                   (x86-push cgc (x86-r14)))))
 
-        (jump-to-version cgc succ ctx)))))
+        (let ((ctx
+                (if rest-param
+                    (ctx-pop-n ctx (- (length (ctx-stack ctx)) 3 nb-formal))
+                    ctx)))
+          (jump-to-version cgc succ ctx))))))
         ;
         ;(if rest-param
         ;    ;; Function using rest param
@@ -922,26 +925,51 @@
              (nb-formal (ctx-nb-args ctx))
              (nstack  (ctx-stack ctx))    ;; New stack  (change if rest-param)
              (nnbargs (ctx-nb-args ctx))) ;; New nbargs (change if rest-param)
-
+        (pp "OKOKKKKKK")
+        (pp rest-param)
+        (pp nb-actual)
+        (pp nb-formal)
         (cond ;; rest AND actual == formal
               ((and rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
                  (set! ctx (ctx-stack-push ctx CTX_NULL))
-                 (codegen-prologue-rest= cgc))
+                 (let ((reg
+                         (if (<= nb-formal (length args-regs))
+                             (list-ref args-regs (- nb-formal 1))
+                             #f)))
+                   (codegen-prologue-rest= cgc reg)
+                   (gen-mutable cgc ctx mvars)
+                   (jump-to-version cgc succ ctx)))
               ;; rest AND actual > formal
               ((and rest-param (> nb-actual (- nb-formal 1)))
                  (let* ((nb-extra (- nb-actual (- nb-formal 1)))
                         (nctx (ctx-pop-n ctx (- nb-extra 1)))
                         (nctx (ctx-change-type nctx 0 CTX_PAI)))
                    (set! ctx nctx)
-                   (codegen-prologue-rest> cgc nb-extra)))
+
+                   (let* ((nb-rest-stack
+                            (if (<= nb-actual (length args-regs))
+                                0
+                                (- nb-actual (length args-regs))))
+                          (rest-args
+                            (if (>= (- nb-formal 1) (length args-regs))
+                                '()
+                                (list-head
+                                  (list-tail args-regs (- nb-formal 1))
+                                  (- nb-actual nb-rest-stack nb-formal -1)))))
+
+                     (codegen-prologue-rest>
+                       cgc
+                       nb-rest-stack
+                       rest-args))
+                   (gen-mutable cgc ctx mvars)
+                   (jump-to-version cgc succ ctx)))
               ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
               ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
                  (gen-error cgc ERR_WRONG_NUM_ARGS))
               ;; Else, nothing to do
-              (else #f))
-
-        (gen-mutable cgc ctx mvars)
-        (jump-to-version cgc succ ctx)))))
+              (else
+                 (gen-mutable cgc ctx mvars)
+                 (jump-to-version cgc succ ctx)))))))
 
 ;; Create a new cc table with 'init' as stub value
 (define (make-cc len init generic)
