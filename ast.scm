@@ -187,6 +187,30 @@
 ;; LITERALS
 
 ;;
+;; Make lazy code from num/bool/char/null literal
+;;
+(define (mlc-literal ast succ)
+  (if (and (number? ast)
+           (or (>= ast (expt 2 61))
+               (<  ast (* -1  (expt 2 60)))))
+    (mlc-flonum ast succ)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (let* ((res (ctx-get-free-reg cgc ctx))
+               (reg (car res))
+               (ctx (cdr res)))
+          (codegen-literal cgc ast reg)
+          (jump-to-version cgc
+                           succ
+                           (ctx-push ctx
+                                     (cond ((integer? ast) CTX_NUM)
+                                           ((boolean? ast) CTX_BOOL)
+                                           ((char? ast)    CTX_CHAR)
+                                           ((null? ast)    CTX_NULL)
+                                           (else (error ERR_INTERNAL)))
+                                     reg)))))))
+
+;;
 ;; Make lazy code from flonum literal
 ;;
 (define (mlc-flonum ast succ)
@@ -220,12 +244,6 @@
 ;;
 ;; Make lazy code from vector literal
 ;;
-;; TODO regalloc, need to handle make-vector
-;; Stratégie:
-;; Lazy-put : 'push' le vecteur?? et saute au succ
-;; Lazy-chain : chaine v[i] -> mov-in-vector -> v[i+1] -> mov-in-vector ...
-;; Lazy-alloc : alloue un vector de taille n rempli de 0 (important pour le GC) -> donc dépend de make-vector
-;;              puis saute vers Lazy-chain
 ;; TODO regalloc: comment
 (define (mlc-vector ast succ)
 
@@ -300,6 +318,9 @@
             (mlc-vector ast succ))
         (else (gen-ast ast succ))))
 
+;;-----------------------------------------------------------------------------
+;; VARIABLES GET
+
 ;;
 ;; Make lazy code from SYMBOL
 ;;
@@ -371,26 +392,6 @@
                     (x86-mov cgc dest opvar))))
           (jump-to-version cgc succ (ctx-push ctx type reg (car local))))))) ;; TODO type
 
-          ;; cas1: mutable & boxed (donc mutable & fn)
-          ;;    mov dest, closure
-          ;;    mov dest, [closure+offset]
-          ;;    mov dest, [dest+offset]
-          ;; cas2: mutable & !boxed (donc reg ou mem)
-          ;;    mov dest, loc
-          ;; cas3: !mutable
-          ;;    cas 3.1 floc:
-          ;;        mov dest, closure
-          ;;        mov dest, [closure+offset]
-          ;;    cas 3.2 !floc:
-          ;;        mov dest,loc
-
-(define (ctx-loc-is-orig-loc ctx identifier loc)
-  (if (eq? (identifier-kind identifier) 'free)
-      (eq? loc (identifier-cloc identifier))
-      (let ((orig-slot (list-ref (identifier-sslots identifier)
-                                 (- (length (identifier-sslots identifier)) 1))))
-        (eq? loc (ctx-get-loc ctx orig-slot)))))
-
 ;; TODO: + utiliser un appel récursif comme pour gen-get-freevar (??)
 ;; TODO coment: si mobject? est vrai, c'est qu'on veut le mobject dans le tmp reg (rax)
 (define (gen-get-localvar cgc ctx local succ #!optional (raw? #f))
@@ -449,32 +450,8 @@
     ;; Jump with updated ctx
     (jump-to-version cgc succ (ctx-push ctx type reg))))
 
-;;
-;; Make lazy code from num/bool/char/null literal
-;;
-(define (mlc-literal ast succ)
-  (if (and (number? ast)
-           (or (>= ast (expt 2 61))
-               (<  ast (* -1  (expt 2 60)))))
-    (mlc-flonum ast succ)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (let* ((res (ctx-get-free-reg cgc ctx))
-                   (reg (car res))
-                   (ctx (cdr res)))
-              (codegen-literal cgc ast reg)
-              (jump-to-version cgc
-                               succ
-                               (ctx-push ctx
-                                         (cond ((integer? ast) CTX_NUM)
-                                               ((boolean? ast) CTX_BOOL)
-                                               ((char? ast)    CTX_CHAR)
-                                               ((null? ast)    CTX_NULL)
-                                               (else (error ERR_INTERNAL)))
-                                         reg)))))))
-
 ;;-----------------------------------------------------------------------------
-;; INTERNAL FORMS
+;; VARIABLES SET
 
 ;;
 ;; Make lazy code from SET!
@@ -552,6 +529,9 @@
     (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))
 
+;;-----------------------------------------------------------------------------
+;; INTERNAL FORMS
+
 ;;
 ;; Make lazy code from DEFINE
 ;;
@@ -592,7 +572,6 @@
 (define crtables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))
                                                       (equal? (cdr a) (cdr b))))))
 
-;; TODO
 (define entry-points-locs (make-table test: eq?))
 
 (define (get-entry-points-loc ast stub-addr)
@@ -603,7 +582,6 @@
           (vector-set! v 0 (quotient stub-addr 4)) ;; quotient 4 because vector-set write the encoded value (bug when using put-i64?)
           (table-set! entry-points-locs ast v)
           v))))
-;; TODO
 
 ;; Return cctable from cctable-key
 ;; Return the existing table if already created or create one, add entry, and return it
@@ -1908,7 +1886,7 @@
 (define (mlc-call ast succ)
 
   (let* (;; Tail call if successor's flags set contains 'ret flag
-         (tail #f) ;(member 'ret (lazy-code-flags succ))) ;; TODO TAIL CALL WITH ARGS REGS
+         (tail (member 'ret (lazy-code-flags succ))) ;; TODO TAIL CALL WITH ARGS REGS
          ;; Call arguments
          (args (cdr ast))
          ;; Lazy fail
@@ -1973,15 +1951,15 @@
 
                                           ;; Shift args and closure for tail call
                                           ;; 0 -> (length args) COMPARISON
-                                          ;; Use rbx because rax holds closure
+                                          ;; Use r14 because it is not an args reg
                                           (if tail
-                                              (let ((nb-args (length args))
+                                              (let ((r (- (length args) (length args-regs)))
                                                     (fs (ctx-fs ctx)))
-                                                (let loop ((n (length args)))
-                                                  (if (>= n 0)
+                                                (let loop ((n (if (> r 0) r 0)))
+                                                  (if (>= n 0) ;;  >= 0 for closure
                                                       (begin
-                                                        (x86-mov cgc (x86-rax) (x86-mem (* 8 n) (x86-rsp)))
-                                                        (x86-mov cgc (x86-mem (* 8 (+ (- fs 1) n)) (x86-rsp)) (x86-rax))
+                                                        (x86-mov cgc (x86-r14) (x86-mem (* 8 n) (x86-rsp)))
+                                                        (x86-mov cgc (x86-mem (* 8 (+ (- fs 1) n)) (x86-rsp)) (x86-r14))
                                                         (loop (- n 1)))))))
 
                                           ;; TODO update rsp
@@ -2208,75 +2186,9 @@
 
   (cond ((<= (length (cdr ast)) 1)
            (gen-ast #t succ))
-        ((=  (length (cdr ast)) 2)
+        ((= (length (cdr ast)) 2)
            (gen-ast-l (cdr ast) (build-binop succ)))
         (else (error "Internal error (mlc-op-n-cmp)"))))
-
-;(define (mlc-op-n-cmp ast succ op)
-
-  ;;; Create final lazy object. This object clean stack and push 'res'
-  ;(define (get-lazy-final res)
-  ;  (make-lazy-code
-  ;    (lambda (cgc ctx)
-  ;      (codegen-cmp-end cgc (- (length ast) 1) res)
-  ;      (jump-to-version cgc succ (ctx-push (ctx-pop ctx (- (length ast) 1))
-  ;                                          CTX_BOOL)))))
-  ;
-  ;;; Gen false stub from jump-label & ctx and return stub label
-  ;(define (get-stub-label label-jump ctx)
-  ;  (list-ref (add-callback #f 0 (lambda (ret-addr selector)
-  ;                                 (gen-version (asm-label-pos label-jump)
-  ;                                              (get-lazy-final #f)
-  ;                                              ctx)))
-  ;            0))
-  ;
-  ;;; Build chain for all operands
-  ;(define (build-chain lidx ridx)
-  ;  (if (or (< lidx 0) (< ridx 0))
-  ;      ;; All operands compared
-  ;      (get-lazy-final #t)
-  ;      ;; There is at least 1 comparison to perform
-  ;      (build-bincomp (build-chain (- lidx 1) (- ridx 1)) lidx ridx)))
-  ;
-  ;;; Gen lazy code objects chain for binary comparison (x op y)
-  ;;; Build a lco for each node of the type checks tree (with int and float)
-  ;(define (build-bincomp succ lidx ridx)
-  ;  (let* (;; Operations lco
-  ;         (lazy-ii (get-comp-ii succ lidx ridx))       ;; lco for int int operation
-  ;         (lazy-if (get-comp-ff succ lidx ridx #t #f)) ;; lco for int float operation
-  ;         (lazy-fi (get-comp-ff succ lidx ridx #f #t)) ;; lco for float int operation
-  ;         (lazy-ff (get-comp-ff succ lidx ridx #f #f)) ;; lco for float float operation
-  ;         ;; Right branch
-  ;         (lazy-yfloat2 (gen-fatal-type-test CTX_FLO ridx lazy-ff ast))
-  ;         (lazy-yint2   (gen-dyn-type-test CTX_NUM ridx lazy-fi lazy-yfloat2 ast))
-  ;         (lazy-xfloat  (gen-fatal-type-test CTX_FLO lidx lazy-yint2 ast))
-  ;         ;; Left branch
-  ;         (lazy-yfloat  (gen-fatal-type-test CTX_FLO ridx lazy-if ast))
-  ;         (lazy-yint    (gen-dyn-type-test CTX_NUM ridx lazy-ii lazy-yfloat ast))
-  ;         ;; Root node
-  ;         (lazy-xint    (gen-dyn-type-test CTX_NUM lidx lazy-yint lazy-xfloat ast)))
-  ;    lazy-xint))
-  ;
-  ;;; Get lazy code object for comparison with int and int
-  ;(define (get-comp-ii succ lidx ridx)
-  ;  (make-lazy-code
-  ;    (lambda (cgc ctx)
-  ;      (codegen-cmp-ii cgc ctx op lidx ridx get-stub-label)
-  ;      (jump-to-version cgc succ ctx))))
-  ;
-  ;;; Get lazy code object for comparison with float and float, float and int, and int and float
-  ;;; leftint?  to #t if left operand is an integer
-  ;;; rightint? to #t if right operand is an integer
-  ;(define (get-comp-ff succ lidx ridx leftint? rightint?)
-  ;  (make-lazy-code
-  ;    (lambda (cgc ctx)
-  ;      (codegen-cmp-ff cgc ctx op lidx ridx get-stub-label leftint? rightint?)
-  ;      (jump-to-version cgc succ ctx))))
-  ;
-  ;;; Push operands and start comparisons
-  ;(gen-ast-l (cdr ast)
-  ;           (build-chain (- (length ast) 2)
-  ;                        (- (length ast) 3))))
 
 ;;
 ;; Make lazy code from N-ARY ARITHMETIC OPERATOR

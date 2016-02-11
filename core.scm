@@ -1095,24 +1095,14 @@
 ;;-----------------------------------------------------------------------------
 ;; Ctx TODO regalloc
 
-;; Identifier in environment associated to an identifier
-(define-type identifier
-  kind    ;; 'free or 'local
-  sslots  ;; stack slots
-  flags   ;; list of flags (possible flags : mutable)
-  stype   ;; ctx type (copied to virtual stack)
-  cloc    ;; closure slot if free variable
-)
 
-;; ctx
-(define-type ctx
-  stack ;;
-  slot-loc
-  free-regs
-  env ;;
-  nb-args ;;
-  fs ;;
-)
+
+(define (ctx-loc-is-orig-loc ctx identifier loc)
+  (if (eq? (identifier-kind identifier) 'free)
+      (eq? loc (identifier-cloc identifier))
+      (let ((orig-slot (list-ref (identifier-sslots identifier)
+                                 (- (length (identifier-sslots identifier)) 1))))
+        (eq? loc (ctx-get-loc ctx orig-slot)))))
 
 ;; Initialise un nouveau contexte vide. (pile vide, registres associés à rien, pas de slot, env vide et nb-args=-1)
 (define (ctx-init)

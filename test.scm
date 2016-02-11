@@ -1,6 +1,33 @@
 
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1))
+;         (fib (- n 2)))))
+;
+;(fib 40)
+
+(let ((a 100))
+  (pp (< 1 a))
+  (pp (< 100 a))
+  (pp (< 200 a)))
+
+
+
+
+
+;; Optimisations:
+;; Ne pas utiliser de booléen dans les conditions du if
+;; Détecter les constantes en opérandes des opérateurs
+;; Enlever rbp
+;; Récupérer directement la valeur de retour dans rax (pareil pour les arguments?)
+;; Tail call: écraser les valeurs des registres d'argument
+
+
+
+
+
 ;; Avec les arguments par registres, il manque:
-;; Rest non générique
 ;; Attention, est-ce que les registres sont bien sauvegardés dans mlc-apply ?
 ;; Tail call
 
@@ -11,13 +38,12 @@
 ;(declare (standard-bindings) (block))
 ;(declare (fixnum) (not safe))
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
-
-(println (fib 40))
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1)) (fib (- n 2)))))
+;
+;(println (fib 40))
 
 ;(print-pos 10)
 ;(define (foo a b . c)
