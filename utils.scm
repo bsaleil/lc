@@ -93,6 +93,19 @@
         #t
         #f)))
 
+;; Return pair:
+;; car: removed element
+;; cdr: list with first occurrence of el removed
+(define (assoc-remove el lst)
+  (if (null? lst)
+      (cons #f '())
+      (if (equal? (car (car lst)) el)
+          lst
+          (let ((r (assoc-remove el (cdr lst))))
+            (cons (car r)
+                  (cons (car lst)
+                        (cdr r)))))))
+
 (define (symbol->list s)
   (string->list (symbol->string s)))
 

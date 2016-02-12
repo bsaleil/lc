@@ -93,7 +93,6 @@
 ;;-----------------------------------------------------------------------------
 
 (define mem-header #f)
-(define ctx-change-type #f)
 (define get-entry-points-loc #f)
 
 ;; Forward declarations
@@ -1097,33 +1096,7 @@
 
 
 
-(define (ctx-loc-is-orig-loc ctx identifier loc)
-  (if (eq? (identifier-kind identifier) 'free)
-      (eq? loc (identifier-cloc identifier))
-      (let ((orig-slot (list-ref (identifier-sslots identifier)
-                                 (- (length (identifier-sslots identifier)) 1))))
-        (eq? loc (ctx-get-loc ctx orig-slot)))))
 
-;; Initialise un nouveau contexte vide. (pile vide, registres associés à rien, pas de slot, env vide et nb-args=-1)
-(define (ctx-init)
-  (make-ctx '()
-            '()
-            (build-list (length regalloc-regs) (lambda (i)
-                                                 (string->symbol
-                                                   (string-append "r" (number->string i)))))
-            '()
-            -1
-            0))
-
-(define (ctx-init-with-stack stack)
-  (let ((ctx (ctx-init)))
-    (make-ctx
-      stack
-      (ctx-slot-loc ctx)
-      (ctx-free-regs ctx)
-      (ctx-env ctx)
-      (ctx-nb-args ctx)
-      (ctx-fs ctx))))
 
 ;; TODO regalloc: uniformiser id, identifier et ident
 (define (ctx-init-fn call-ctx enclosing-ctx args free-vars mutable-vars)
@@ -1202,25 +1175,6 @@
             (length args)
             fs))
 
-(define (ctx-lidx-to-slot ctx lidx)
-  (- (length (ctx-stack ctx)) lidx 1))
-
-(define (ctx-slot-to-lidx ctx slot)
-  (- (length (ctx-stack ctx)) slot 1))
-
-;; Return pair:
-;; car: deleted element
-;; cdr: list with first occurrence of el removed
-(define (assoc-remove el lst)
-  (if (null? lst)
-      (cons #f '())
-      (if (equal? (car (car lst)) el)
-          lst
-          (let ((r (assoc-remove el (cdr lst))))
-            (cons (car r)
-                  (cons (car lst)
-                        (cdr r)))))))
-
 (define (ctx-push ctx type loc #!optional (id #f)) ;; can only push reg ?
 
   (define (env-push-id env slot)
@@ -1289,49 +1243,6 @@
                   '()
                   (ctx-env ctx))))
     (make-ctx stack slot-loc free-regs env (ctx-nb-args ctx) (ctx-fs ctx))))
-
-;;
-(define (ctx-identifier-type ctx identifier)
-  (if (eq? 'free (identifier-kind identifier))
-      (identifier-stype identifier)
-      (let ((slot (car (identifier-sslots identifier))))
-        (list-ref (ctx-stack ctx) (ctx-slot-to-lidx ctx slot)))))
-
-;;
-(define (ctx-identifier-loc ctx identifier #!optional (orig-loc? #f))
-
-  ;; Retourne le premier registre trouvé si pas de registre, retourne l'emplacement mémoire
-  (define (get-loc slots ret)
-    (if (null? slots)
-        ret
-        (let* ((r (assoc (car slots) (ctx-slot-loc ctx)))
-               (loc (cdr r)))
-          (if (ctx-loc-is-register? loc)
-              loc
-              (get-loc (cdr slots) loc)))))
-
-  (if (eq? (identifier-kind identifier) 'free)
-      (let ((slots (identifier-sslots identifier)))
-        (if (or orig-loc? (null? slots))
-            (identifier-cloc identifier)
-            (get-loc slots #f)))
-      (let ((slots (identifier-sslots identifier)))
-        (if orig-loc?
-            (ctx-get-loc ctx (list-ref slots (- (length slots) 1)))
-            (get-loc slots #f)))))
-
-;; Retour l'ident (entrée de env) au slot 'slot'
-;; Donc retourne un couple (id . identifier)
-;; TODO FUSIONNER AVEC ctx-change-type
-(define (ctx-ident-at ctx slot)
-  (define (env-ident-at env)
-    (if (null? env)
-        #f
-        (let ((identifier (cdar env)))
-          (if (member slot (identifier-sslots identifier))
-              (car env)
-              (env-ident-at (cdr env))))))
-  (env-ident-at (ctx-env ctx)))
 
 ;; TODO
 (define (ctx-identifier-change-type ctx identifier type)
@@ -1526,32 +1437,6 @@
           (car free-regs)
           ctx))))
 
-;;; Retourne la 'loc' associée au slot de pile 'slot'
-;;; l'emplacement est soit un registre soit un emplacement mémoire, on peut donc interroger directement la structure slot-loc
-(define (ctx-get-loc ctx slot)
-  (let ((r (assoc slot (ctx-slot-loc ctx))))
-    (if r
-        (cdr r)
-        (error "NYI error"))))
-
-
-;; Retourne #t si l'emplacement donné est un registre, #f sinon
-;; loc est un registre si il est de la forme (rx . value)
-;; loc est un emplacement mémoire si il est de la forme (integer . value)
-(define (ctx-loc-is-register? loc)
-  (and (symbol? loc)
-       (char=? (string-ref (symbol->string loc) 0) #\r)))
-
-;; Retourne #t si l'emplacement donné est un emplacement mémoire, #f sinon
-;; loc est un registre si il est de la forme (rx . value)
-;; loc est un emplacement mémoire si il est de la forme (integer . value)
-(define (ctx-loc-is-memory? loc)
-  (integer? loc)) ;; memory is 0, 1, ...
-
-(define (ctx-loc-is-floc? loc)
-  (and (symbol? loc)
-       (char=? (string-ref (symbol->string loc) 0) #\f)))
-
 ;;
 ;; id-ctx est une liste qui contient des couples (id . lidx)
 ;; Cette fonction modifie tous les éléments du contexte pour associer l'identifiant de variable à l'index de la pile virtuelle
@@ -1606,13 +1491,6 @@
     (ctx-env ctx)
     (ctx-nb-args ctx)
     (ctx-fs ctx)))
-
-(define (ctx-floc-to-fpos floc)
-  (- (string->number
-       (list->string
-         (cdr (string->list
-                (symbol->string floc)))))
-     1))
 
 (define (ctx-stack-push ctx type)
   (make-ctx (cons type (ctx-stack ctx))
