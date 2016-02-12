@@ -92,9 +92,6 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define mem-header #f)
-(define get-entry-points-loc #f)
-
 ;; Forward declarations
 (define run-gc #f)         ;; mem.scm
 (define expand-tl #f)      ;; expand.scm
@@ -120,24 +117,14 @@
 (define globals '())
 (define gids '()) ;; TODO : merge with 'globals'
 
-(define label-print-msg        #f)
-(define label-print-msg-val    #f)
-(define label-exec-error       #f)
-(define label-gc               #f)
-(define label-do-callback      #f)
-(define label-do-callback-fn   #f)
-(define label-do-callback-cont #f)
-(define label-repl #f)
-(define label-gc-trampoline    #f)
-
 ;;-----------------------------------------------------------------------------
 
 ;; Tags
-(define TAG_NUMBER  0) ;; Must be 0
+(define TAG_NUMBER  0)
 (define TAG_MEMOBJ  1)
 (define TAG_SPECIAL 2)
 
-;; Sub tag
+;; Sub tags
 (define STAG_PROCEDURE 14)
 (define STAG_PAIR       1)
 (define STAG_MOBJECT    2)
@@ -151,7 +138,7 @@
 
 ;; Context types
 (define CTX_UNK   'unknown)
-(define CTX_ALL   '*) ;; cst reprsenting all ctx types
+(define CTX_ALL   '*) ;;Represents all ctx types
 (define CTX_NUM   'number)
 (define CTX_CHAR  'char)
 (define CTX_BOOL  'boolean)
@@ -173,33 +160,35 @@
       (cons CTX_CLO cctable)
       CTX_CLO))
 
-;; Exec errors
+;;-----------------------------------------------------------------------------
+
+;; Errors
 (define ERR_MSG             "EXEC ERROR")
 (define ERR_ARR_OVERFLOW    "ARITHMETIC OVERFLOW")
 (define ERR_WRONG_NUM_ARGS  "WRONG NUMBER OF ARGUMENTS")
-(define ERR_TYPE_EXPECTED   (lambda (type)
-                              (string-append (string-upcase type)
-                                             " EXPECTED")))
 (define ERR_OPEN_INPUT_FILE  "CAN'T OPEN INPUT FILE")
 (define ERR_OPEN_OUTPUT_FILE "CAN'T OPEN OUTPUT FILE")
 (define ERR_READ_CHAR        "CAN'T READ CHAR")
 (define ERR_WRITE_CHAR       "CAN'T WRITE CHAR")
 (define ERR_DIVIDE_ZERO      "DIVIDE BY ZERO")
 (define ERR_INTERNAL         "INTERNAL ERROR")
-
 (define ERR_BEGIN            "ILL-FORMED BEGIN")
 (define ERR_LET              "ILL-FORMED LET")
 (define ERR_LET*             "ILL-FORMED LET*")
 (define ERR_LETREC           "ILL-FORMED LETREC")
+(define ERR_HEAP_NOT_8       "INTERNAL ERROR: heap size should be a multiple of 8")
+
+(define (ERR_TYPE_EXPECTED type)
+  (string-append (string-upcase type)
+                 " EXPECTED"))
 
 (define (ERR_UNKNOWN_VAR var)
   (if (string? var)
       (string-append "Can't find variable: " var)
       (string-append "Can't find variable: " (symbol->string var))))
 
-(define ERR_HEAP_NOT_8       "INTERNAL ERROR: heap size should be a multiple of 8")
+;;-----------------------------------------------------------------------------
 
-;;
 (define ENCODING_VOID -18) ;; encoded VOID
 (define ENCODING_EOF  -14) ;; encoded EOF
 (define NENCODING_EOF  -4) ;; non encoded EOF
