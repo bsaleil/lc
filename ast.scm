@@ -79,38 +79,38 @@
 ;;-----------------------------------------------------------------------------
 ;; Primitives
 
-;; Primitives: name, nb args min, nb args max
+;; Primitives: name, nb args min, nb args max, args types, cst positions
 (define primitives `(
-   (car                 1  1  ,(prim-types 1 CTX_PAI))
-   (cdr                 1  1  ,(prim-types 1 CTX_PAI))
-   (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL))
-   (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR))
-   (not                 1  1  ,(prim-types 1 CTX_ALL))
-   (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL))
-   (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL))
-   (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL))
-   (vector-length       1  1  ,(prim-types 1 CTX_VECT))
-   (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM))
-   (char->integer       1  1  ,(prim-types 1 CTX_CHAR))
-   (integer->char       1  1  ,(prim-types 1 CTX_NUM))
-   (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM))
-   (string->symbol      1  1  ,(prim-types 1 CTX_STR))
-   (symbol->string      1  1  ,(prim-types 1 CTX_SYM))
-   (close-output-port   1  1  ,(prim-types 1 CTX_OPORT))
-   (close-input-port    1  1  ,(prim-types 1 CTX_IPORT))
-   (open-output-file    1  1  ,(prim-types 1 CTX_STR))
-   (open-input-file     1  1  ,(prim-types 1 CTX_STR))
-   (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_NUM CTX_CHAR))
-   (vector-set!         3  3  ,(prim-types 3 CTX_VECT CTX_NUM CTX_ALL))
-   (string-length       1  1  ,(prim-types 1 CTX_STR))
-   (read-char           1  1  ,(prim-types 1 CTX_IPORT))
-   (exit                0  0  ,(prim-types 0 ))
-   (make-vector         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_ALL))
-   (make-string         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_CHAR))
-   (eof-object?         1  1  ,(prim-types 1 CTX_ALL))
-   (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT))
-   (current-output-port 0  0  ,(prim-types 0 ))
-   (current-input-port  0  0  ,(prim-types 0 ))
+   (car                 1  1  ,(prim-types 1 CTX_PAI)                     ())
+   (cdr                 1  1  ,(prim-types 1 CTX_PAI)                     ())
+   (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ())
+   (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR)           ())
+   (not                 1  1  ,(prim-types 1 CTX_ALL)                     ())
+   (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)             ())
+   (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)             ())
+   (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ())
+   (vector-length       1  1  ,(prim-types 1 CTX_VECT)                    ())
+   (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM)            ())
+   (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                    ())
+   (integer->char       1  1  ,(prim-types 1 CTX_NUM)                     ())
+   (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM)             ())
+   (string->symbol      1  1  ,(prim-types 1 CTX_STR)                     ())
+   (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ())
+   (close-output-port   1  1  ,(prim-types 1 CTX_OPORT)                   ())
+   (close-input-port    1  1  ,(prim-types 1 CTX_IPORT)                   ())
+   (open-output-file    1  1  ,(prim-types 1 CTX_STR)                     ())
+   (open-input-file     1  1  ,(prim-types 1 CTX_STR)                     ())
+   (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_NUM CTX_CHAR)    ())
+   (vector-set!         3  3  ,(prim-types 3 CTX_VECT CTX_NUM CTX_ALL)    ())
+   (string-length       1  1  ,(prim-types 1 CTX_STR)                     ())
+   (read-char           1  1  ,(prim-types 1 CTX_IPORT)                   ())
+   (exit                0  0  ,(prim-types 0 )                            ())
+   (make-vector         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_ALL)   ())
+   (make-string         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_CHAR)  ())
+   (eof-object?         1  1  ,(prim-types 1 CTX_ALL)                     ())
+   (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT)          ())
+   (current-output-port 0  0  ,(prim-types 0 )                            ())
+   (current-input-port  0  0  ,(prim-types 0 )                            ())
    (list                #f) ;; nb-args and types are not fixed
 ))
 
@@ -1115,308 +1115,692 @@
 ;;
 ;; Make lazy code from SPECIAL FORM (inlined specials)
 ;;
+;; TODO new prim
+;(define (gen-args args cst-positions succ)
+;  (define (gen-args-h args cst-positions curr-pos)
+;    (if (null? args)
+;        succ
+;        (if (eq? curr-pos (car cst-positions))
+;            (gen-args (cdr args) (cdr cst-positions) succ)
+;            (gen-ast (car args)
+;                     (gen-args (cdr args) cst-positions succ))))))
+;
+;;; EXIT primitive
+;(define (mlc-prim-exit ast succ)
+;  (let ((lazy-exit (get-lazy-error "")))
+;    lazy-exit))
+;
+;;; CONS primitive
+;(define (mlc-prim-cons ast succ)
+;  (mlc-pair ast succ))
+;
+;;; NOT primitive
+;(define (mlc-prim-not ast succ)
+;  (let ((cst-infos (get-cst-infos (cdr ast) 0))
+;        (lazy-prim
+;          (make-lazy-code
+;            (lambda (cgc ctx)
+;              (let* ((res (ctx-get-free-reg cgc ctx))
+;                     (reg (car res))
+;                     (ctx (cdr res))
+;                     (lval
+;                       (if (member 0 cst-infos)
+;                           (error "NYI")
+;                           (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))))
+;              (codegen-not cgc reg lval)
+;              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg)))))))
+;    (gen-args (cdr ast) (map car cst-infos) lazy-prim)))
+
+;; NOT primitive
+(define (mlc-prim-not cst-infos succ) (error "NYI"))
+
+;; TODO WIP
+(define (get-prim-cst-infos ast)
+
+  (define (get-prim-cst-infos-h args cst-positions curr-pos)
+    (if (or (null? args)
+            (null? cst-positions))
+        '()
+        (if (eq? curr-pos (car cst-positions))
+            (error "NYI get-prim-cst-infos")
+            (get-prim-cst-infos-h (cdr args) cst-positions (+ curr-pos 1)))))
+
+  (let ((primitive (assoc (car ast) primitives)))
+    (get-prim-cst-infos-h
+      (cdr ast)
+      (cadddr (cdr primitive))
+      0)))
+
+;; primitive not
+(define (prim-not cst-infos succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx))
+             (reg (car res))
+             (ctx (cdr res))
+             (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+        (codegen-not cgc reg lval)
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))))
+
+;; primitive eq?
+(define (prim-eq? cst-infos succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+             (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+        (codegen-eq? cgc reg lleft lright)
+        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg))))))
+
+;; primitives car & cdr
+(define (prim-cxr cst-infos succ op)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+        (codegen-car/cdr cgc op reg lval)
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK reg))))))
+
+;; primitive eof-object?
+(define (prim-eof-object? cst-infos succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+        (codegen-eof? cgc reg lval)
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))))
+
+;; primitive read-char
+(define (prim-read-char cst-infos succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+        (codegen-read-char cgc reg lport)
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_CHAR reg))))))
+
+;; primitive write-char
+(define (prim-write-char cst-infos succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lchar (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+             (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+        (codegen-write-char cgc reg lchar lport)
+        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_VOID reg))))))
+
+;; primitive make-string
+(define (prim-make-string cst-infos succ args)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((init-value? (= (length args) 2))
+             (res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (llen (ctx-get-loc ctx (ctx-lidx-to-slot ctx (if init-value? 1 0))))
+             (lval (if init-value? (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)) #f)))
+        (codegen-make-string cgc reg llen lval)
+        (jump-to-version cgc succ (ctx-push (if init-value?
+                                                (ctx-pop-n ctx 2)
+                                                (ctx-pop ctx))
+                                            CTX_STR
+                                            reg))))))
+
+;; primitive make-vector
+(define (prim-make-vector cst-infos succ args)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((init-value? (= (length args) 2))
+             (res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (llen (ctx-get-loc ctx (ctx-lidx-to-slot ctx (if init-value? 1 0))))
+             (lval (if init-value? (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)) #f)))
+        (codegen-make-vector cgc reg llen lval)
+        (jump-to-version cgc succ (ctx-push (if init-value?
+                                                (ctx-pop-n ctx 2)
+                                                (ctx-pop ctx))
+                                            CTX_VECT
+                                            reg))))))
+
+;; primitive symbol->string
+(define (prim-symbol->string cst-infos succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx))
+             (reg (car res))
+             (ctx (cdr res))
+             (lsym (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+      (codegen-sym->str cgc reg lsym)
+      (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR reg))))))
+
+;; primitive string->symbol
+(define (prim-string->symbol cst-infos succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx))
+             (reg (car res))
+             (ctx (cdr res))
+             (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+        (codegen-str->sym cgc reg lstr)
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM reg))))))
+
+;; primitive vector-ref
+(define (prim-vector-ref cst-infos succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lvec (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+             (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+        (codegen-vector-ref cgc reg lvec lidx)
+        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_UNK reg))))))
+
+;; primitive string-ref
+(define (prim-string-ref cst-infos succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+             (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+      (codegen-string-ref cgc reg lstr lidx)
+      (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_CHAR reg))))))
+
+;; primitive vector-set!
+(define (prim-vector-set! cst-infos succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+             (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+             (lvec (ctx-get-loc ctx (ctx-lidx-to-slot ctx 2))))
+        (codegen-vector-set! cgc reg lvec lidx lval)
+        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) CTX_VOID reg))))))
+
+;; primitive string-set!
+(define (prim-string-set! cst-infos succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lchr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+             (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+             (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 2))))
+      (codegen-string-set! cgc reg lstr lidx lchr)
+      (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) CTX_VOID reg))))))
+
+;; primitive list
+(define (prim-list cst-infos succ args)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let ((len (length args)))
+        (codegen-list cgc len)
+        (jump-to-version cgc
+                         succ
+                         (ctx-push (ctx-pop ctx len)
+                                   (if (null? args)
+                                       CTX_NULL
+                                       CTX_PAI)))))))
+
+;; primitives set-car! & set-cdr!
+(define (prim-set-cxr! cst-infos succ op)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+             (lpair (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+        (codegen-scar/scdr cgc op reg lpair lval)
+        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_VOID reg))))))
+
+;; primitives current-input-port & current-output-port
+(define (prim-current-x-port cst-infos succ op)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res)))
+        (codegen-current-io-port cgc op reg)
+        (jump-to-version cgc succ (ctx-push ctx
+                                            (if (eq? op 'current-output-port)
+                                                CTX_OPORT
+                                                CTX_IPORT)
+                                            reg))))))
+
+;; primitive close-input-port & close-output-port
+(define (prim-close-x-port cst-infos succ op)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+        (codegen-close-io-port cgc reg lport)
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))))
+
+;; primitives open-input-file & open-output-file
+(define (prim-open-x-file cst-infos succ op)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+        (codegen-open-io-file cgc op reg lval)
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
+                                            (if (eq? op 'open-input-file)
+                                                CTX_IPORT
+                                                CTX_OPORT)
+                                            reg))))))
+
+;; primitives char->integer & integer->char
+(define (prim-char<->int cst-infos succ op)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+        (codegen-ch<->int cgc op reg lval)
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
+                                            (if (eq? op 'char->integer)
+                                                CTX_NUM
+                                                CTX_CHAR)
+                                            reg))))))
+
+;; primitives vector-length & string-length
+(define (prim-x-length cst-infos succ op)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+             (reg (car res))
+             (ctx (cdr res))
+             (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+        (codegen-vec/str-length cgc reg lval)
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM reg))))))
+
+;;
 (define (mlc-primitive ast succ)
 
   ;; Adjust args for some primitives
   (cond ((and (eq? (car ast) 'write-char)
               (= (length ast) 2))
-          (set! ast (append ast '((current-output-port))))))
+           (set! ast (append ast '((current-output-port)))))
+        ((eq? (car ast) 'char=?)
+           (set! ast (cons 'eq? (cdr ast)))))
 
-  ;; Assert nb args primitive
+  ;; Assert primitive nb args
   (assert-p-nbargs ast)
 
-  ;; Manage fake implementation. NOTE: remove when all implemented
-  ;; TODO: implement 'char=?'
-  (cond ((eq? (car ast) 'char=?)
-            (gen-ast (cons 'eq? (cdr ast)) succ))
-        (else
-          (let* ((special (car ast))
-                 (lazy-special
-                   (cond ;; EXIT
-                         ;; TODO regalloc ok
-                         ((eq? special 'exit)
-                            (get-lazy-error ""))
-                         ;; CONS
-                         ;; TODO ragalloc ok
-                         ((eq? special 'cons) (mlc-pair succ))
-                         ;; NOT
-                         ;; TODO regalloc ok
-                         ((eq? special 'not)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg cgc ctx))
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                                (codegen-not cgc reg lval)
-                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))))
-                         ;; EQ?
-                         ;; TODO regalloc ok
-                         ((eq? special 'eq?)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
-                                     (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                                (codegen-eq? cgc reg lleft lright)
-                                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg))))))
-                         ;; CAR & CDR
-                         ;; TODO regalloc ok
-                         ((member special '(car cdr))
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                                (codegen-car/cdr cgc special reg lval)
-                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK reg))))))
-                         ;; SET-CAR! & SET-CDR!
-                         ;; TODO regalloc ok
-                         ((member special '(set-car! set-cdr!))
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-                                     (lpair (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
-                               (codegen-scar/scdr cgc special reg lpair lval)
-                               (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_VOID reg))))))
-                         ;; CURRENT-INPUT-PORT / CURRENT-OUTPUT-PORT
-                         ;; TODO regalloc ok
-                         ((member special '(current-input-port current-output-port))
-                           (make-lazy-code
-                             (lambda (cgc ctx)
-                               (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                      (reg (car res))
-                                      (ctx (cdr res)))
-                                 (codegen-current-io-port cgc special reg)
-                                 (jump-to-version cgc succ (ctx-push ctx
-                                                                     (if (eq? special 'current-output-port)
-                                                                         CTX_OPORT
-                                                                         CTX_IPORT)
-                                                                     reg))))))
-                         ;; CLOSE-INPUT-PORT / CLOSE-OUTPUT-PORT
-                         ;; TODO regalloc ok
-                         ((member special '(close-output-port close-input-port))
-                           (make-lazy-code
-                             (lambda (cgc ctx)
-                               (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                      (reg (car res))
-                                      (ctx (cdr res))
-                                      (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                                 (codegen-close-io-port cgc reg lport)
-                                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))))
-                         ;; OPEN-INPUT-FILE / OPEN-OUTPUT-FILE
-                         ;; TODO regalloc ok
-                         ((member special '(open-output-file open-input-file))
-                           (make-lazy-code
-                             (lambda (cgc ctx)
-                               (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                      (reg (car res))
-                                      (ctx (cdr res))
-                                      (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                                 (codegen-open-io-file cgc special reg lval)
-                                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
-                                                                     (if (eq? special 'open-input-file)
-                                                                         CTX_IPORT
-                                                                         CTX_OPORT)
-                                                                     reg))))))
-                         ;; EOF-OBJECT?
-                         ;; TODO regalloc ok
-                         ((eq? special 'eof-object?)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                                (codegen-eof? cgc reg lval)
-                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))))
-                         ;; READ-CHAR
-                         ;; TODO regalloc ok
-                         ((eq? special 'read-char)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                                (codegen-read-char cgc reg lport)
-                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_CHAR reg))))))
-                         ;; WRITE-CHAR
-                         ;; TODO regalloc ok
-                         ((eq? special 'write-char)
-                            (make-lazy-code
-                              (lambda (cgc ctx)
-                                (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                       (reg (car res))
-                                       (ctx (cdr res))
-                                       (lchar (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
-                                       (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                                  (codegen-write-char cgc reg lchar lport)
-                                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_VOID reg))))))
-                         ;; CHAR<->INTEGER
-                         ;; TODO regalloc ok
-                         ((member special '(char->integer integer->char))
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                                (codegen-ch<->int cgc special reg lval)
-                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
-                                                                    (if (eq? special 'char->integer)
-                                                                        CTX_NUM
-                                                                        CTX_CHAR)
-                                                                    reg))))))
-                         ;; MAKE-STRING
-                         ;; TODO regalloc ok
-                         ((eq? special 'make-string)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((init-value? (= (length (cdr ast)) 2))
-                                     (res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (llen (ctx-get-loc ctx (ctx-lidx-to-slot ctx (if init-value? 1 0))))
-                                     (lval (if init-value? (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)) #f)))
-                                (codegen-make-string cgc reg llen lval)
-                                (jump-to-version cgc succ (ctx-push (if init-value?
-                                                                        (ctx-pop-n ctx 2)
-                                                                        (ctx-pop ctx))
-                                                                    CTX_STR
-                                                                    reg))))))
-                         ;; MAKE-VECTOR
-                         ;; TODO regalloc ok
-                         ((eq? special 'make-vector)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((init-value? (= (length (cdr ast)) 2))
-                                     (res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (llen (ctx-get-loc ctx (ctx-lidx-to-slot ctx (if init-value? 1 0))))
-                                     (lval (if init-value? (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)) #f)))
-                                (codegen-make-vector cgc reg llen lval)
-                                (jump-to-version cgc succ (ctx-push (if init-value?
-                                                                       (ctx-pop-n ctx 2)
-                                                                       (ctx-pop ctx))
-                                                                    CTX_VECT
-                                                                    reg))))))
-                         ;; STRING->SYMBOL
-                         ;; TODO regalloc ok
-                         ((eq? special 'string->symbol)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg cgc ctx))
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                                (codegen-str->sym cgc reg lstr)
-                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM reg))))))
-                         ;; SYMBOL->STRING
-                         ;; TODO regalloc ok
-                         ((eq? special 'symbol->string)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg cgc ctx))
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (lsym (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                              (codegen-sym->str cgc reg lsym)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR reg))))))
-                         ;; VECTOR-LENGTH & STRING-LENGTH
-                         ;; TODO regalloc ok
-                         ((member special '(vector-length string-length))
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                                (codegen-vec/str-length cgc reg lval)
-                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM reg))))))
-                         ;; VECTOR-REF
-                         ;; TODO regalloc ok
-                         ((eq? special 'vector-ref)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (lvec (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
-                                     (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                                (codegen-vector-ref cgc reg lvec lidx)
-                                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_UNK reg))))))
-                         ;; STRING-REF
-                         ;; TODO regalloc ok
-                         ((eq? special 'string-ref)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
-                                     (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                              (codegen-string-ref cgc reg lstr lidx)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_CHAR reg))))))
-                         ;; VECTOR-SET!
-                         ;; TODO regalloc ok
-                         ((eq? special 'vector-set!)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-                                     (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
-                                     (lvec (ctx-get-loc ctx (ctx-lidx-to-slot ctx 2))))
-                                (codegen-vector-set! cgc reg lvec lidx lval)
-                                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) CTX_VOID reg))))))
-                         ;; STRING-SET!
-                         ;; TODO regalloc ok
-                         ((eq? special 'string-set!)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                                     (reg (car res))
-                                     (ctx (cdr res))
-                                     (lchr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-                                     (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
-                                     (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 2))))
-                              (codegen-string-set! cgc reg lstr lidx lchr)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) CTX_VOID reg))))))
-                         ;; LIST
-                         ((eq? special 'list)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let ((len (length (cdr ast))))
-                                (codegen-list cgc len)
-                                (jump-to-version cgc
-                                                 succ
-                                                 (ctx-push (ctx-pop ctx len)
-                                                           (if (null? (cdr ast))
-                                                               CTX_NULL
-                                                               CTX_PAI)))))))
-                         ;; OTHERS
-                         (else (error "NYI")))))
+  ;;
+  (let* ((cst-infos (get-prim-cst-infos ast))
+         (lazy-primitive
+           (case (car ast)
+             ((exit)           (get-lazy-error ""))
+             ((cons)           (mlc-pair succ))
+             ((not)            (prim-not cst-infos succ))
+             ((eq?)            (prim-eq? cst-infos succ))
+             ((car cdr)        (prim-cxr cst-infos succ (car ast)))
+             ((eof-object?)    (prim-eof-object? cst-infos succ))
+             ((read-char)      (prim-read-char cst-infos succ))
+             ((write-char)     (prim-write-char cst-infos succ))
+             ((make-string)    (prim-make-string cst-infos succ (cdr ast)))
+             ((make-vector)    (prim-make-vector cst-infos succ (cdr ast)))
+             ((string->symbol) (prim-string->symbol cst-infos succ))
+             ((symbol->string) (prim-symbol->string cst-infos succ))
+             ((vector-ref)     (prim-vector-ref cst-infos succ))
+             ((string-ref)     (prim-string-ref cst-infos succ))
+             ((vector-set!)    (prim-vector-set! cst-infos succ))
+             ((string-set!)    (prim-string-set! cst-infos succ))
+             ((list)           (prim-list cst-infos succ (cdr ast)))
+             ((set-car! set-cdr!)                      (prim-set-cxr! cst-infos succ (car ast)))
+             ((current-input-port current-output-port) (prim-current-x-port cst-infos succ (car ast)))
+             ((close-input-port close-output-port)     (prim-close-x-port cst-infos succ (car ast)))
+             ((open-input-file open-output-file)       (prim-open-x-file cst-infos succ (car ast)))
+             ((char->integer integer->char)            (prim-char<->int cst-infos succ (car ast)))
+             ((vector-length string-length)            (prim-x-length cst-infos succ (car ast)))
+             (else (error "Unknown primitive")))))
 
-            (let* ((primitive (assoc (car ast) primitives))
-                   ;; Get list of types required by this primitive
-                   (types (if (cadr primitive)
-                              (cdr (assoc (length (cdr ast))
-                                          (cadddr primitive)))
-                              (build-list (length (cdr ast)) (lambda (el) CTX_ALL)))))
-              (assert (= (length types)
-                         (length (cdr ast)))
-                      "Compiler: primitive error")
-              ;; Build args lazy object chain (with type checks)
-              (check-types types (cdr ast) lazy-special ast))))))
+    (let* ((primitive (assoc (car ast) primitives))
+           ;; Get list of types required by this primitive
+           (types (if (cadr primitive)
+                      (cdr (assoc (length (cdr ast))
+                                  (cadddr primitive)))
+                      (build-list (length (cdr ast)) (lambda (el) CTX_ALL)))))
+
+      (assert (= (length types)
+                 (length (cdr ast)))
+              "Primitive error")
+
+      (if (not (null? cst-infos))
+          (error "NYI CST INFOS NOT NULL"))
+
+      ;; Build args lco chain with type checks
+      (check-types types (cdr ast) lazy-primitive ast))))
+
+
+;(define (mlc-primitive ast succ)
+;
+;  (define (gen-args lazy-primitive)
+;    (let* ((primitive (assoc (car ast) primitives))
+;           ;; Get list of types required by this primitive
+;           (types (if (cadr primitive)
+;                      (cdr (assoc (length (cdr ast))
+;                                  (cadddr primitive)))
+;                      (build-list (length (cdr ast)) (lambda (el) CTX_ALL)))))
+;      (assert (= (length types)
+;                 (length (cdr ast)))
+;              "Compiler: primitive error")
+;      ;; Build args lazy object chain (with type checks)
+;      (check-types types (cdr ast) lazy-primitive ast)))
+;
+;  ;; Adjust args for some primitives
+;  (cond ((and (eq? (car ast) 'write-char)
+;              (= (length ast) 2))
+;          (set! ast (append ast '((current-output-port))))))
+;
+;  ;; Assert nb args primitive
+;  (assert-p-nbargs ast)
+;
+;  ;; Manage fake implementation. NOTE: remove when all implemented
+;  ;; TODO: implement 'char=?'
+;  (cond ((eq? (car ast) 'char=?)
+;            (gen-ast (cons 'eq? (cdr ast)) succ))
+;        (else
+;          (let* ((special (car ast))
+;                 (lazy-special
+;                   (cond ;; EXIT
+;                         ;; TODO regalloc ok
+;                         ((eq? special 'exit)
+;                            (get-lazy-error ""))
+;                         ;; CONS
+;                         ;; TODO ragalloc ok
+;                         ((eq? special 'cons) (mlc-pair succ))
+;                         ;; NOT
+;                         ;; TODO regalloc ok
+;                         ((eq? special 'not)
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((res (ctx-get-free-reg cgc ctx))
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+;                                (codegen-not cgc reg lval)
+;                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))))
+;                         ;; EQ?
+;                         ;; TODO regalloc ok
+;                         ((eq? special 'eq?)
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+;                                     (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+;                                (codegen-eq? cgc reg lleft lright)
+;                                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg))))))
+;                         ;; CAR & CDR
+;                         ;; TODO regalloc ok
+;                         ((member special '(car cdr))
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+;                                (codegen-car/cdr cgc special reg lval)
+;                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK reg))))))
+;                         ;; SET-CAR! & SET-CDR!
+;                         ;; TODO regalloc ok
+;                         ((member special '(set-car! set-cdr!))
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+;                                     (lpair (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+;                               (codegen-scar/scdr cgc special reg lpair lval)
+;                               (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_VOID reg))))))
+;                         ;; CURRENT-INPUT-PORT / CURRENT-OUTPUT-PORT
+;                         ;; TODO regalloc ok
+;                         ((member special '(current-input-port current-output-port))
+;                           (make-lazy-code
+;                             (lambda (cgc ctx)
+;                               (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                      (reg (car res))
+;                                      (ctx (cdr res)))
+;                                 (codegen-current-io-port cgc special reg)
+;                                 (jump-to-version cgc succ (ctx-push ctx
+;                                                                     (if (eq? special 'current-output-port)
+;                                                                         CTX_OPORT
+;                                                                         CTX_IPORT)
+;                                                                     reg))))))
+;                         ;; CLOSE-INPUT-PORT / CLOSE-OUTPUT-PORT
+;                         ;; TODO regalloc ok
+;                         ((member special '(close-output-port close-input-port))
+;                           (make-lazy-code
+;                             (lambda (cgc ctx)
+;                               (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                      (reg (car res))
+;                                      (ctx (cdr res))
+;                                      (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+;                                 (codegen-close-io-port cgc reg lport)
+;                                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))))
+;                         ;; OPEN-INPUT-FILE / OPEN-OUTPUT-FILE
+;                         ;; TODO regalloc ok
+;                         ((member special '(open-output-file open-input-file))
+;                           (make-lazy-code
+;                             (lambda (cgc ctx)
+;                               (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                      (reg (car res))
+;                                      (ctx (cdr res))
+;                                      (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+;                                 (codegen-open-io-file cgc special reg lval)
+;                                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
+;                                                                     (if (eq? special 'open-input-file)
+;                                                                         CTX_IPORT
+;                                                                         CTX_OPORT)
+;                                                                     reg))))))
+;                         ;; EOF-OBJECT?
+;                         ;; TODO regalloc ok
+;                         ((eq? special 'eof-object?)
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+;                                (codegen-eof? cgc reg lval)
+;                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))))
+;                         ;; READ-CHAR
+;                         ;; TODO regalloc ok
+;                         ((eq? special 'read-char)
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+;                                (codegen-read-char cgc reg lport)
+;                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_CHAR reg))))))
+;                         ;; WRITE-CHAR
+;                         ;; TODO regalloc ok
+;                         ((eq? special 'write-char)
+;                            (make-lazy-code
+;                              (lambda (cgc ctx)
+;                                (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                       (reg (car res))
+;                                       (ctx (cdr res))
+;                                       (lchar (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+;                                       (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+;                                  (codegen-write-char cgc reg lchar lport)
+;                                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_VOID reg))))))
+;                         ;; CHAR<->INTEGER
+;                         ;; TODO regalloc ok
+;                         ((member special '(char->integer integer->char))
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+;                                (codegen-ch<->int cgc special reg lval)
+;                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
+;                                                                    (if (eq? special 'char->integer)
+;                                                                        CTX_NUM
+;                                                                        CTX_CHAR)
+;                                                                    reg))))))
+;                         ;; MAKE-STRING
+;                         ;; TODO regalloc ok
+;                         ((eq? special 'make-string)
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((init-value? (= (length (cdr ast)) 2))
+;                                     (res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (llen (ctx-get-loc ctx (ctx-lidx-to-slot ctx (if init-value? 1 0))))
+;                                     (lval (if init-value? (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)) #f)))
+;                                (codegen-make-string cgc reg llen lval)
+;                                (jump-to-version cgc succ (ctx-push (if init-value?
+;                                                                        (ctx-pop-n ctx 2)
+;                                                                        (ctx-pop ctx))
+;                                                                    CTX_STR
+;                                                                    reg))))))
+;                         ;; MAKE-VECTOR
+;                         ;; TODO regalloc ok
+;                         ((eq? special 'make-vector)
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((init-value? (= (length (cdr ast)) 2))
+;                                     (res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (llen (ctx-get-loc ctx (ctx-lidx-to-slot ctx (if init-value? 1 0))))
+;                                     (lval (if init-value? (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)) #f)))
+;                                (codegen-make-vector cgc reg llen lval)
+;                                (jump-to-version cgc succ (ctx-push (if init-value?
+;                                                                       (ctx-pop-n ctx 2)
+;                                                                       (ctx-pop ctx))
+;                                                                    CTX_VECT
+;                                                                    reg))))))
+;                         ;; STRING->SYMBOL
+;                         ;; TODO regalloc ok
+;                         ((eq? special 'string->symbol)
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((res (ctx-get-free-reg cgc ctx))
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+;                                (codegen-str->sym cgc reg lstr)
+;                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM reg))))))
+;                         ;; SYMBOL->STRING
+;                         ;; TODO regalloc ok
+;                         ((eq? special 'symbol->string)
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((res (ctx-get-free-reg cgc ctx))
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (lsym (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+;                              (codegen-sym->str cgc reg lsym)
+;                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR reg))))))
+;                         ;; VECTOR-LENGTH & STRING-LENGTH
+;                         ;; TODO regalloc ok
+;                         ((member special '(vector-length string-length))
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+;                                (codegen-vec/str-length cgc reg lval)
+;                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM reg))))))
+;                         ;; VECTOR-REF
+;                         ;; TODO regalloc ok
+;                         ((eq? special 'vector-ref)
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (lvec (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+;                                     (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+;                                (codegen-vector-ref cgc reg lvec lidx)
+;                                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_UNK reg))))))
+;                         ;; STRING-REF
+;                         ;; TODO regalloc ok
+;                         ((eq? special 'string-ref)
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+;                                     (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+;                              (codegen-string-ref cgc reg lstr lidx)
+;                              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_CHAR reg))))))
+;                         ;; VECTOR-SET!
+;                         ;; TODO regalloc ok
+;                         ((eq? special 'vector-set!)
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+;                                     (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+;                                     (lvec (ctx-get-loc ctx (ctx-lidx-to-slot ctx 2))))
+;                                (codegen-vector-set! cgc reg lvec lidx lval)
+;                                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) CTX_VOID reg))))))
+;                         ;; STRING-SET!
+;                         ;; TODO regalloc ok
+;                         ((eq? special 'string-set!)
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+;                                     (reg (car res))
+;                                     (ctx (cdr res))
+;                                     (lchr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+;                                     (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+;                                     (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 2))))
+;                              (codegen-string-set! cgc reg lstr lidx lchr)
+;                              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) CTX_VOID reg))))))
+;                         ;; LIST
+;                         ((eq? special 'list)
+;                          (make-lazy-code
+;                            (lambda (cgc ctx)
+;                              (let ((len (length (cdr ast))))
+;                                (codegen-list cgc len)
+;                                (jump-to-version cgc
+;                                                 succ
+;                                                 (ctx-push (ctx-pop ctx len)
+;                                                           (if (null? (cdr ast))
+;                                                               CTX_NULL
+;                                                               CTX_PAI)))))))
+;                         ;; OTHERS
+;                         (else (error "NYI")))))
+;
+;            (gen-args lazy-special)))))
 
 ;; Build lazy objects chain of 'args' list
 ;; and insert type check for corresponding 'types'

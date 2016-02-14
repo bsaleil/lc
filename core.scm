@@ -101,6 +101,9 @@
 (define alloc-ptr #f)
 (define base-ptr #f)
 (define global-ptr #f)
+;; TODO refactoring
+(define get-entry-points-loc #f)
+(define mem-header #f)
 
 ;;
 (define change-stype #f)

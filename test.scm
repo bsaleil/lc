@@ -7,14 +7,11 @@
 ;
 ;(fib 40)
 
-(let ((a 100))
-  (pp (< 1 a))
-  (pp (< 100 a))
-  (pp (< 200 a)))
 
+;(println sym)
+;(println (symbol->string 'TEST))
 
-
-
+(string-length (symbol->string 'TEST))
 
 ;; Optimisations:
 ;; Ne pas utiliser de booléen dans les conditions du if
