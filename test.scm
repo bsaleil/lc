@@ -1,17 +1,4 @@
 
-;(define (fib n)
-;  (if (< n 2)
-;      1
-;      (+ (fib (- n 1))
-;         (fib (- n 2)))))
-;
-;(fib 40)
-
-
-;(println sym)
-;(println (symbol->string 'TEST))
-
-(string-length (symbol->string 'TEST))
 
 ;; Optimisations:
 ;; Ne pas utiliser de booléen dans les conditions du if
@@ -20,8 +7,15 @@
 ;; Récupérer directement la valeur de retour dans rax (pareil pour les arguments?)
 ;; Tail call: écraser les valeurs des registres d'argument
 
-
-
+(println #f)
+;(println (number?  1))
+;WIP: déplacer la combinaiseon:
+;(make-lazy-code
+;  (lambda (cgc ctx)
+;    (let ((res ...)
+;          (reg ...)
+;          (ctx ...))
+;de chaque fonction prim-* vers mlc-primitive
 
 
 ;; Avec les arguments par registres, il manque:
