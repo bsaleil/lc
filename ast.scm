@@ -1864,7 +1864,7 @@
                      (codegen-binop cgc op label-div0 reg lleft lright)
                      (jump-to-version cgc
                                       succ
-                                      (ctx-push (ctx-pop (ctx-pop ctx)) CTX_NUM reg)))))))
+                                      (ctx-push (ctx-pop-n ctx 2) CTX_NUM reg)))))))
          ;; Check operands type
          (check-types (list CTX_NUM CTX_NUM)
                       (list (car opnds) (cadr opnds))
@@ -1918,7 +1918,7 @@
                (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
                (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
           (codegen-cmp-ii cgc op reg lleft lright)
-          (jump-to-version cgc succ (ctx-push (ctx-pop (ctx-pop ctx)) CTX_BOOL reg))))))
+          (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg))))))
 
   ;; TODO regalloc comment
   (define (get-op-ff succ leftint? rightint?)
@@ -1930,7 +1930,7 @@
                (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
                (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
           (codegen-cmp-ff cgc op reg lleft leftint? lright rightint?)
-          (jump-to-version cgc succ (ctx-push (ctx-pop (ctx-pop ctx)) CTX_BOOL reg))))))
+          (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg))))))
 
   (cond ((<= (length (cdr ast)) 1)
            (gen-ast #t succ))
@@ -1983,7 +1983,7 @@
                (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
                (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
         (codegen-num-ii cgc op reg lleft lright)
-        (jump-to-version cgc succ (ctx-push (ctx-pop (ctx-pop ctx)) CTX_NUM reg))))))
+        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_NUM reg))))))
 
   ;; Get lazy code object for operation with float and float, float and int, and int and float
   ;; leftint?  to #t if left operand is an integer
@@ -1997,7 +1997,7 @@
                (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
                (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
           (codegen-num-ff cgc op reg lleft leftint? lright rightint?)
-          (jump-to-version cgc succ (ctx-push (ctx-pop (ctx-pop ctx)) CTX_FLO reg))))))
+          (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_FLO reg))))))
 
   (cond ((= (length ast) 1)
            (cond ((eq? op '+) (gen-ast 0 succ))
@@ -2053,7 +2053,7 @@
       (codegen-pair cgc reg lcar lcdr)
       (jump-to-version cgc
                        succ
-                       (ctx-push (ctx-pop (ctx-pop ctx)) CTX_PAI reg))))))
+                       (ctx-push (ctx-pop-n ctx 2) CTX_PAI reg))))))
 
 ;;-----------------------------------------------------------------------------
 
