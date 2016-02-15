@@ -84,15 +84,15 @@
    (car                 1  1  ,(prim-types 1 CTX_PAI)                     ())
    (cdr                 1  1  ,(prim-types 1 CTX_PAI)                     ())
    (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ())
-   (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR)           ())
+   (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR)           ()) ;; todo
    (not                 1  1  ,(prim-types 1 CTX_ALL)                     ())
    (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)             ())
    (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)             ())
    (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ())
    (vector-length       1  1  ,(prim-types 1 CTX_VECT)                    ())
    (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM)            ())
-   (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                    ())
-   (integer->char       1  1  ,(prim-types 1 CTX_NUM)                     ())
+   (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                   (0))
+   (integer->char       1  1  ,(prim-types 1 CTX_NUM)                    (0))
    (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM)             ())
    (string->symbol      1  1  ,(prim-types 1 CTX_STR)                     ())
    (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ())
@@ -1257,9 +1257,14 @@
 
 ;; primitives char->integer & integer->char
 (define (prim-char<->int cgc ctx reg succ cst-infos op)
-  (let ((lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-    (codegen-ch<->int cgc op reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
+  (let* ((cst-arg (assoc 0 cst-infos))
+         (lval
+          (if cst-arg
+              (cdr cst-arg)
+              (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+         (n-pop (if cst-arg 0 1)))
+    (codegen-ch<->int cgc op reg lval cst-arg)
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop)
                                         (if (eq? op 'char->integer)
                                             CTX_NUM
                                             CTX_CHAR)
@@ -1331,11 +1336,8 @@
                  (length (cdr ast)))
               "Primitive error")
 
-      (if (not (null? cst-infos))
-          (error "NYI CST INFOS NOT NULL"))
-
       ;; Build args lco chain with type checks
-      (check-types types (cdr ast) lazy-primitive ast))))
+      (check-types types (cdr ast) lazy-primitive ast cst-infos))))
 
 ;; TODO WIP
 (define (get-prim-cst-infos ast)
@@ -1344,8 +1346,13 @@
     (if (or (null? args)
             (null? cst-positions))
         '()
-        (if (eq? curr-pos (car cst-positions))
-            (error "NYI get-prim-cst-infos")
+        (if (and (eq? curr-pos (car cst-positions))
+                 (or (integer? (car args))
+                     (boolean? (car args))
+                     (char?    (car args))
+                     (null?    (car args))))
+            (cons (cons curr-pos (car args))
+                  (get-prim-cst-infos-h (cdr args) (cdr cst-positions) (+ curr-pos 1)))
             (get-prim-cst-infos-h (cdr args) cst-positions (+ curr-pos 1)))))
 
   (let ((primitive (assoc (car ast) primitives)))
@@ -1356,14 +1363,38 @@
 
 ;; Build lazy objects chain of 'args' list
 ;; and insert type check for corresponding 'types'
-(define (check-types types args succ ast)
-  (if (null? types)
-     succ
-     (let ((next-arg (check-types (cdr types) (cdr args) succ ast)))
-        (if (eq? (car types) '*)
-           (gen-ast (car args) next-arg)
-           (gen-ast (car args)
-                    (gen-fatal-type-test (car types) 0 next-arg ast))))))
+(define (check-types types args succ ast #!optional (cst-infos '()))
+
+  (define (check-cst-type type cst)
+    (cond
+      ((eq? type CTX_NUM) (integer? cst))
+      ((eq? type CTX_FLO) (flonum? cst))
+      ((eq? type CTX_NULL) (null? cst))
+      ((eq? type CTX_BOOL) (boolean? cst))
+      ((eq? type CTX_CHAR) (char? cst))
+      (else #f)))
+
+  (define (check-types-h types args curr-pos)
+    (if (null? types)
+        succ
+        (let ((lazy-next (check-types-h (cdr types) (cdr args) (+ curr-pos 1))))
+          (if (eq? (car types) CTX_ALL)
+              (gen-ast (car args) lazy-next)
+              (let ((r (assoc curr-pos cst-infos)))
+                (if r
+                    (if (check-cst-type (car types) (cdr r))
+                        lazy-next
+                        (get-lazy-error "NYI ERROR WRONG TYPE"))
+                    (gen-ast (car args)
+                             (gen-fatal-type-test (car types) 0 lazy-next ast))))))))
+  (check-types-h types args 0))
+  ;(if (null? types)
+  ;   succ
+  ;   (let ((next-arg (check-types (cdr types) (cdr args) succ ast)))
+  ;      (if (eq? (car types) '*)
+  ;         (gen-ast (car args) next-arg)
+  ;         (gen-ast (car args)
+  ;                  (gen-fatal-type-test (car types) 0 next-arg ast))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Conditionals

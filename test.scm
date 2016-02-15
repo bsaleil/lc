@@ -7,7 +7,13 @@
 ;; Récupérer directement la valeur de retour dans rax (pareil pour les arguments?)
 ;; Tail call: écraser les valeurs des registres d'argument
 
-(println #f)
+
+;(not 10)
+;(write-char (integer->char 48))
+
+(write-char (integer->char 48))
+
+
 ;(println (number?  1))
 ;WIP: déplacer la combinaiseon:
 ;(make-lazy-code

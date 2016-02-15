@@ -988,16 +988,24 @@
 
 ;;-----------------------------------------------------------------------------
 ;; char->integer/integer->char
-(define (codegen-ch<->int cgc op reg lval)
-  (let ((dest  (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd lval)))
+(define (codegen-ch<->int cgc op reg lval cst?)
 
-    (if (not (eq? dest opval))
-      (x86-mov cgc dest opval))
+  (let ((dest (codegen-reg-to-x86reg reg)))
 
-    (if (eq? op 'char->integer)
-        (x86-xor cgc dest (x86-imm-int TAG_SPECIAL))
-        (x86-or  cgc dest (x86-imm-int TAG_SPECIAL)))))
+  (cond
+    ((and cst? (eq? op 'integer->char))
+       (x86-mov cgc dest (x86-imm-int (obj-encoding (integer->char lval)))))
+    ((and cst? (eq? op 'char->integer))
+       (x86-mov cgc dest (x86-imm-int (obj-encoding (char->integer lval)))))
+    (else
+       (let ((opval (codegen-loc-to-x86opnd lval)))
+
+         (if (not (eq? dest opval))
+             (x86-mov cgc dest opval))
+
+         (if (eq? op 'char->integer)
+             (x86-xor cgc dest (x86-imm-int TAG_SPECIAL))
+             (x86-or  cgc dest (x86-imm-int TAG_SPECIAL))))))))
 
 ;;-----------------------------------------------------------------------------
 ;; make-string
