@@ -84,10 +84,10 @@
    (car                 1  1  ,(prim-types 1 CTX_PAI)                     ())
    (cdr                 1  1  ,(prim-types 1 CTX_PAI)                     ())
    (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
-   (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR)           ()) ;; todo ne marche pas à cause de la conversion ?
+   (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR)        (0 1)) ;; todo ne marche pas à cause de la conversion ?
    (not                 1  1  ,(prim-types 1 CTX_ALL)                     ()) ;; + efficace cst
-   (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)             ()) ;; + efficace cst
-   (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)             ()) ;; + efficace cst
+   (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1)) ;; + efficace cst
+   (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1)) ;; + efficace cst
    (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ()) ;; + efficace cst
    (vector-length       1  1  ,(prim-types 1 CTX_VECT)                    ()) ;; NTD
    (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM)            ()) ;; + efficace cst
@@ -1234,10 +1234,16 @@
 
 ;; primitives set-car! & set-cdr!
 (define (prim-set-cxr! cgc ctx reg succ cst-infos op)
-  (let ((lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-        (lpair (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
-    (codegen-scar/scdr cgc op reg lpair lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_VOID reg))))
+
+  (let* ((valcst (assoc 1 cst-infos))
+         (lval  (if valcst (cdr valcst) (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+         (lpair
+           (if valcst
+               (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))
+               (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+         (n-pop (if valcst 1 2)))
+    (codegen-scar/scdr cgc op reg lpair lval valcst)
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_VOID reg))))
 
 ;; primitives current-input-port & current-output-port
 (define (prim-current-x-port cgc ctx reg succ cst-infos op)
@@ -1289,11 +1295,9 @@
 (define (mlc-primitive ast succ)
 
   ;; Adjust args for some primitives
-  (cond ((and (eq? (car ast) 'write-char)
-              (= (length ast) 2))
-           (set! ast (append ast '((current-output-port)))))
-        ((eq? (car ast) 'char=?)
-           (set! ast (cons 'eq? (cdr ast)))))
+  (if (and (eq? (car ast) 'write-char)
+           (= (length ast) 2))
+      (set! ast (append ast '((current-output-port)))))
 
   ;; Assert primitive nb args
   (assert-p-nbargs ast)
@@ -1313,6 +1317,7 @@
                      (case (car ast)
                        ((not)            (prim-not            cgc ctx reg succ cst-infos))
                        ((eq?)            (prim-eq?            cgc ctx reg succ cst-infos))
+                       ((char=?)         (prim-eq?            cgc ctx reg succ cst-infos))
                        ((car cdr)        (prim-cxr            cgc ctx reg succ cst-infos (car ast)))
                        ((eof-object?)    (prim-eof-object?    cgc ctx reg succ cst-infos))
                        ((read-char)      (prim-read-char      cgc ctx reg succ cst-infos))

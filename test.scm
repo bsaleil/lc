@@ -11,10 +11,18 @@
 ;(not 10)
 ;(write-char (integer->char 48))
 
-(define a 100)
-(define b 200)
+(define a (cons 1 2))
 
-(eq? a b)
+(pp a)
+
+(set-car! a #\P)
+
+(pp a)
+
+(set-cdr! a 200)
+
+(pp a)
+;(define b 200)
 
 
 ;(println (number?  1))

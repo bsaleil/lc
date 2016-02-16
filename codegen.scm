@@ -893,24 +893,28 @@
 
 ;;-----------------------------------------------------------------------------
 ;; set-car!/set-cdr!
-(define (codegen-scar/scdr cgc op reg lpair lval)
+(define (codegen-scar/scdr cgc op reg lpair lval val-cst?)
   (let ((offset
           (if (eq? op 'set-car!)
               (-  8 TAG_MEMOBJ)
               (- 16 TAG_MEMOBJ)))
         (dest (codegen-reg-to-x86reg reg))
         (oppair (codegen-loc-to-x86opnd lpair))
-        (opval  (codegen-loc-to-x86opnd lval)))
+        (opval (and (not val-cst?) (codegen-loc-to-x86opnd lval))))
 
     (if (ctx-loc-is-memory? lpair)
         (begin (x86-mov cgc (x86-rax) oppair)
                (set! oppair (x86-rax))))
 
-    (if (ctx-loc-is-memory? lval)
-        (begin (x86-mov cgc dest opval)
-               (set! opval dest)))
+    (cond
+      (val-cst?
+        (x86-mov cgc (x86-mem offset oppair) (x86-imm-int (obj-encoding lval)) 64))
+      ((ctx-loc-is-memory? lval)
+        (x86-mov cgc dest opval)
+        (x86-mov cgc (x86-mem offset oppair) dest))
+      (else
+        (x86-mov cgc (x86-mem offset oppair) opval)))
 
-    (x86-mov cgc (x86-mem offset oppair) opval)
     (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
 
 ;;-----------------------------------------------------------------------------
