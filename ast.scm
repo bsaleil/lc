@@ -86,13 +86,13 @@
    (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
    (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR)        (0 1)) ;; todo ne marche pas à cause de la conversion ?
    (not                 1  1  ,(prim-types 1 CTX_ALL)                     ()) ;; + efficace cst
-   (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1)) ;; + efficace cst
-   (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1)) ;; + efficace cst
-   (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ()) ;; + efficace cst
+   (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1))
+   (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1))
+   (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ()) ;; + efficace cst  (mlc-pair)
    (vector-length       1  1  ,(prim-types 1 CTX_VECT)                    ()) ;; NTD
-   (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM)            ()) ;; + efficace cst
-   (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                   (0)) ;; done
-   (integer->char       1  1  ,(prim-types 1 CTX_NUM)                    (0)) ;; done
+   (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM)           (1))
+   (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                   (0))
+   (integer->char       1  1  ,(prim-types 1 CTX_NUM)                    (0))
    (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM)             ()) ;; + efficace cst
    (string->symbol      1  1  ,(prim-types 1 CTX_STR)                     ()) ;; NTD
    (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ()) ;; NTD
@@ -1200,10 +1200,17 @@
 
 ;; primitive vector-ref
 (define (prim-vector-ref cgc ctx reg succ cst-infos)
-  (let ((lvec (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
-        (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-    (codegen-vector-ref cgc reg lvec lidx)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_UNK reg))))
+
+  (let* ((poscst (assoc 1 cst-infos))
+         (lidx (if poscst (cdr poscst) (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+         (lvec
+           (if poscst
+               (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))
+               (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+         (n-pop (if poscst 1 2)))
+
+    (codegen-vector-ref cgc reg lvec lidx poscst)
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_UNK reg))))
 
 ;; primitive string-ref
 (define (prim-string-ref cgc ctx reg succ cst-infos)

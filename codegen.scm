@@ -1222,29 +1222,25 @@
 
 ;;-----------------------------------------------------------------------------
 ;; vector-ref
-(define (codegen-vector-ref cgc reg lvec lidx)
-  (let ((dest  (codegen-reg-to-x86reg reg))
-        (opvec (codegen-loc-to-x86opnd lvec))
-        (opidx (codegen-loc-to-x86opnd lidx)))
+(define (codegen-vector-ref cgc reg lvec lidx val-cst?)
+  (let* ((dest  (codegen-reg-to-x86reg reg))
+         (opvec (codegen-loc-to-x86opnd lvec))
+         (opidx (and (not val-cst?) (codegen-loc-to-x86opnd lidx))))
 
-    (cond ;; Both operands are in memory, use rax and dest registers
-          ((and (ctx-loc-is-memory? lvec)
-                (ctx-loc-is-memory? lidx))
-             (x86-mov cgc dest opvec)
-             (x86-mov cgc (x86-rax) opidx)
-             (set! opvec dest)
-             (set! opidx (x86-rax)))
-          ;; Vector is in memory, use rax
-          ((ctx-loc-is-memory? lvec)
-             (x86-mov cgc (x86-rax) opvec)
-             (set! opvec (x86-rax)))
-          ;; Index is in memory, use rax
-          ((ctx-loc-is-memory? lidx)
-             (x86-mov cgc (x86-rax) opidx)
-             (set! opidx (x86-rax))))
+    ;; If vector is in memory, use rax
+    (if (ctx-loc-is-memory? lvec)
+        (begin
+          (x86-mov cgc (x86-rax) opvec)
+          (set! opvec (x86-rax))))
 
-    ;; mov dest, [opvec + opidx*2 + 15]
-    (x86-mov cgc dest (x86-mem (- 16 TAG_MEMOBJ) opvec opidx 1))))
+    (cond
+      (val-cst?
+        (x86-mov cgc dest (x86-mem (+ (- 16 TAG_MEMOBJ) (* 8 lidx)) opvec #f 1)))
+      ((ctx-loc-is-memory? lidx)
+        (x86-mov cgc dest opidx)
+        (x86-mov cgc dest (x86-mem (- 16 TAG_MEMOBJ) opvec dest 1)))
+      (else
+        (x86-mov cgc dest (x86-mem (- 16 TAG_MEMOBJ) opvec opidx 1))))))
 
 ;;-----------------------------------------------------------------------------
 ;; string-ref

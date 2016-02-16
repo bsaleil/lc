@@ -1,4 +1,4 @@
-
+;; TODO: probleme de tableau: (pp (vector 1 2 3))
 
 ;; Optimisations:
 ;; Ne pas utiliser de booléen dans les conditions du if
@@ -6,24 +6,6 @@
 ;; Enlever rbp
 ;; Récupérer directement la valeur de retour dans rax (pareil pour les arguments?)
 ;; Tail call: écraser les valeurs des registres d'argument
-
-
-;(not 10)
-;(write-char (integer->char 48))
-
-(define a (cons 1 2))
-
-(pp a)
-
-(set-car! a #\P)
-
-(pp a)
-
-(set-cdr! a 200)
-
-(pp a)
-;(define b 200)
-
 
 ;(println (number?  1))
 ;WIP: déplacer la combinaiseon:
@@ -33,7 +15,6 @@
 ;          (reg ...)
 ;          (ctx ...))
 ;de chaque fonction prim-* vers mlc-primitive
-
 
 ;; Avec les arguments par registres, il manque:
 ;; Attention, est-ce que les registres sont bien sauvegardés dans mlc-apply ?
