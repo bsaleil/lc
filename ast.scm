@@ -83,7 +83,7 @@
 (define primitives `(
    (car                 1  1  ,(prim-types 1 CTX_PAI)                     ())
    (cdr                 1  1  ,(prim-types 1 CTX_PAI)                     ())
-   (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1)) ;; + efficace cst
+   (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
    (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR)           ()) ;; todo ne marche pas à cause de la conversion ?
    (not                 1  1  ,(prim-types 1 CTX_ALL)                     ()) ;; + efficace cst
    (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)             ()) ;; + efficace cst
