@@ -156,6 +156,9 @@
     (begin (apply fn args)
            (apply call-n (append (list (- n 1) fn ) args)))))
 
+(define-macro (1-if condition)
+  `(if ,condition 1 0))
+
 ;;-----------------------------------------------------------------------------
 ;; Specific to Gambit
 

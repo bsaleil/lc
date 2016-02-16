@@ -11,7 +11,10 @@
 ;(not 10)
 ;(write-char (integer->char 48))
 
-(write-char (integer->char 48))
+(define a 100)
+(define b 200)
+
+(eq? a b)
 
 
 ;(println (number?  1))

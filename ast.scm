@@ -83,34 +83,34 @@
 (define primitives `(
    (car                 1  1  ,(prim-types 1 CTX_PAI)                     ())
    (cdr                 1  1  ,(prim-types 1 CTX_PAI)                     ())
-   (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ())
-   (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR)           ()) ;; todo
-   (not                 1  1  ,(prim-types 1 CTX_ALL)                     ())
-   (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)             ())
-   (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)             ())
-   (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ())
-   (vector-length       1  1  ,(prim-types 1 CTX_VECT)                    ())
-   (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM)            ())
-   (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                   (0))
-   (integer->char       1  1  ,(prim-types 1 CTX_NUM)                    (0))
-   (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM)             ())
-   (string->symbol      1  1  ,(prim-types 1 CTX_STR)                     ())
-   (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ())
-   (close-output-port   1  1  ,(prim-types 1 CTX_OPORT)                   ())
-   (close-input-port    1  1  ,(prim-types 1 CTX_IPORT)                   ())
-   (open-output-file    1  1  ,(prim-types 1 CTX_STR)                     ())
-   (open-input-file     1  1  ,(prim-types 1 CTX_STR)                     ())
-   (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_NUM CTX_CHAR)    ())
-   (vector-set!         3  3  ,(prim-types 3 CTX_VECT CTX_NUM CTX_ALL)    ())
-   (string-length       1  1  ,(prim-types 1 CTX_STR)                     ())
-   (read-char           1  1  ,(prim-types 1 CTX_IPORT)                   ())
-   (exit                0  0  ,(prim-types 0 )                            ())
-   (make-vector         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_ALL)   ())
-   (make-string         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_CHAR)  ())
-   (eof-object?         1  1  ,(prim-types 1 CTX_ALL)                     ())
-   (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT)          ())
-   (current-output-port 0  0  ,(prim-types 0 )                            ())
-   (current-input-port  0  0  ,(prim-types 0 )                            ())
+   (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1)) ;; + efficace cst
+   (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR)           ()) ;; todo ne marche pas à cause de la conversion ?
+   (not                 1  1  ,(prim-types 1 CTX_ALL)                     ()) ;; + efficace cst
+   (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)             ()) ;; + efficace cst
+   (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)             ()) ;; + efficace cst
+   (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ()) ;; + efficace cst
+   (vector-length       1  1  ,(prim-types 1 CTX_VECT)                    ()) ;; NTD
+   (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM)            ()) ;; + efficace cst
+   (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                   (0)) ;; done
+   (integer->char       1  1  ,(prim-types 1 CTX_NUM)                    (0)) ;; done
+   (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM)             ()) ;; + efficace cst
+   (string->symbol      1  1  ,(prim-types 1 CTX_STR)                     ()) ;; NTD
+   (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ()) ;; NTD
+   (close-output-port   1  1  ,(prim-types 1 CTX_OPORT)                   ()) ;; NTD
+   (close-input-port    1  1  ,(prim-types 1 CTX_IPORT)                   ()) ;; NTD
+   (open-output-file    1  1  ,(prim-types 1 CTX_STR)                     ()) ;; NTD
+   (open-input-file     1  1  ,(prim-types 1 CTX_STR)                     ()) ;; NTD
+   (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_NUM CTX_CHAR)    ()) ;; + efficace cst
+   (vector-set!         3  3  ,(prim-types 3 CTX_VECT CTX_NUM CTX_ALL)    ()) ;; + efficace cst
+   (string-length       1  1  ,(prim-types 1 CTX_STR)                     ()) ;; NTD
+   (read-char           1  1  ,(prim-types 1 CTX_IPORT)                   ()) ;; NTD
+   (exit                0  0  ,(prim-types 0 )                            ()) ;; NTD
+   (make-vector         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_ALL)   ()) ;; + efficace cst
+   (make-string         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_CHAR)  ()) ;; + efficace cst
+   (eof-object?         1  1  ,(prim-types 1 CTX_ALL)                     ()) ;; + efficace cst
+   (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT)          ()) ;; + efficace cst (?)
+   (current-output-port 0  0  ,(prim-types 0 )                            ()) ;; NTD
+   (current-input-port  0  0  ,(prim-types 0 )                            ()) ;; NTD
    (list                #f) ;; nb-args and types are not fixed
 ))
 
@@ -1123,10 +1123,19 @@
 
 ;; primitive eq?
 (define (prim-eq? cgc ctx reg succ cst-infos)
-  (let ((lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
-        (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-    (codegen-eq? cgc reg lleft lright)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg))))
+
+  (let* ((lcst (assoc 0 cst-infos))
+         (rcst (assoc 1 cst-infos))
+         (lright (if rcst (cdr rcst) (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+         (lleft
+           (if lcst
+               (cdr lcst)
+               (if rcst
+                   (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))
+                   (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))))
+         (n-pop (count (list lcst rcst) not)))
+    (codegen-eq? cgc reg lleft lright lcst rcst)
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_BOOL reg))))
 
 ;; primitives car & cdr
 (define (prim-cxr cgc ctx reg succ cst-infos op)
@@ -1346,13 +1355,14 @@
     (if (or (null? args)
             (null? cst-positions))
         '()
-        (if (and (eq? curr-pos (car cst-positions))
-                 (or (integer? (car args))
-                     (boolean? (car args))
-                     (char?    (car args))
-                     (null?    (car args))))
-            (cons (cons curr-pos (car args))
-                  (get-prim-cst-infos-h (cdr args) (cdr cst-positions) (+ curr-pos 1)))
+        (if (eq? curr-pos (car cst-positions))
+            (if (or (integer? (car args))
+                    (boolean? (car args))
+                    (char?    (car args))
+                    (null?    (car args)))
+                (cons (cons curr-pos (car args))
+                      (get-prim-cst-infos-h (cdr args) (cdr cst-positions) (+ curr-pos 1)))
+                (get-prim-cst-infos-h (cdr args) (cdr cst-positions) (+ curr-pos 1)))
             (get-prim-cst-infos-h (cdr args) cst-positions (+ curr-pos 1)))))
 
   (let ((primitive (assoc (car ast) primitives)))
@@ -1375,26 +1385,27 @@
       (else #f)))
 
   (define (check-types-h types args curr-pos)
+
     (if (null? types)
         succ
-        (let ((lazy-next (check-types-h (cdr types) (cdr args) (+ curr-pos 1))))
-          (if (eq? (car types) CTX_ALL)
-              (gen-ast (car args) lazy-next)
-              (let ((r (assoc curr-pos cst-infos)))
-                (if r
-                    (if (check-cst-type (car types) (cdr r))
-                        lazy-next
-                        (get-lazy-error "NYI ERROR WRONG TYPE"))
-                    (gen-ast (car args)
-                             (gen-fatal-type-test (car types) 0 lazy-next ast))))))))
+        (let* ((lazy-next (check-types-h (cdr types) (cdr args) (+ curr-pos 1)))
+               (r (assoc curr-pos cst-infos)))
+          (cond ;;
+                ((or (and r (eq? (car types) CTX_ALL))
+                     (and r (check-cst-type (car types) (cdr r))))
+                   lazy-next)
+                ;;
+                (r
+                   (get-lazy-error "NYI ERROR WRONG TYPE"))
+                ;;
+                ((eq? (car types) CTX_ALL)
+                   (gen-ast (car args) lazy-next))
+                ;;
+                (else
+                   (gen-ast (car args)
+                            (gen-fatal-type-test (car types) 0 lazy-next ast)))))))
+
   (check-types-h types args 0))
-  ;(if (null? types)
-  ;   succ
-  ;   (let ((next-arg (check-types (cdr types) (cdr args) succ ast)))
-  ;      (if (eq? (car types) '*)
-  ;         (gen-ast (car args) next-arg)
-  ;         (gen-ast (car args)
-  ;                  (gen-fatal-type-test (car types) 0 next-arg ast))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Conditionals

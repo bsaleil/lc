@@ -840,21 +840,40 @@
 
 ;;-----------------------------------------------------------------------------
 ;; eq?
-(define (codegen-eq? cgc reg lleft lright)
-  (let ((label-done (asm-make-label cgc (new-sym 'done)))
-        (dest  (codegen-reg-to-x86reg reg))
-        (opleft  (codegen-loc-to-x86opnd lleft))
-        (opright (codegen-loc-to-x86opnd lright)))
-    ;; If both are mem, move one in rax
-    (if (and (ctx-loc-is-memory? lleft)
-             (ctx-loc-is-memory? lright))
-        (begin (x86-mov cgc (x86-rax) opleft)
-               (set! opleft (x86-rax))))
-    (x86-cmp cgc opleft opright)
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-    (x86-je  cgc label-done)
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-    (x86-label cgc label-done)))
+(define (codegen-eq? cgc reg lleft lright lcst? rcst?)
+
+  (let ((dest  (codegen-reg-to-x86reg reg)))
+
+    (if (and lcst? rcst?)
+
+        ;; Two cst, generate only a mov
+        (x86-mov cgc dest (x86-imm-int (obj-encoding (eq? lleft lright))))
+
+        ;; Else
+        (let ((label-done (asm-make-label cgc (new-sym 'done)))
+              (opleft  (and (not lcst?) (codegen-loc-to-x86opnd lleft)))
+              (opright (and (not rcst?) (codegen-loc-to-x86opnd lright))))
+
+          (cond
+            ;; Left only is a cst
+            (lcst?
+              (x86-cmp cgc opright (x86-imm-int (obj-encoding lleft))))
+            ;; Right only is a cst
+            (rcst?
+              (x86-cmp cgc opleft  (x86-imm-int (obj-encoding lright))))
+            ;; Left and Right are not cst but are both in memory
+            ((and (ctx-loc-is-memory? lleft)
+                  (ctx-loc-is-memory? lright))
+              (x86-mov cgc (x86-rax) opleft)
+              (x86-cmp cgc (x86-rax) opright))
+            ;; Left and Right are not cst and at least one is in a register
+            (else
+              (x86-cmp cgc opleft opright)))
+
+          (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+          (x86-je  cgc label-done)
+          (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+          (x86-label cgc label-done)))))
 
 ;;-----------------------------------------------------------------------------
 ;; car/cdr
