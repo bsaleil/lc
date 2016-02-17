@@ -9,7 +9,12 @@
 
 (define str "bonjour")
 
-(string-ref str 4)
+(define ch #\U)
+(define ii 3)
+
+(string-set! str ii ch)
+
+(pp str)
 
 ;; Avec les arguments par registres, il manque:
 ;; Attention, est-ce que les registres sont bien sauvegardés dans mlc-apply ?
@@ -37,6 +42,9 @@
 
 
 ;; TODO:
+;; REGALLOC: décider si on utilise des registres des opérandes ou non. L'avantage est qu'on a moins de spill.
+;;           l'inconvénient est que le code générer de peut pas utiliser le registre dest comme temporaire (ce qu'on fait en ce moment)
+;;           donc bcp de code à changer
 ;; get-free : retourner les mouvements à faire (spill), puis le faire dans le générateur de code
 ;; voir ou est utilisé (ctx-identifier-loc ...) peut-etre faut-il ajouter #t pour avoir la orig-loc
 ;;  ((AU SPILL, CONSERVER LES DEUX LOCS))

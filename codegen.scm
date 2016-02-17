@@ -1315,45 +1315,89 @@
 
 ;;-----------------------------------------------------------------------------
 ;; string-set!
-(define (codegen-string-set! cgc reg lstr lidx lchr)
-  (let ((dest  (codegen-reg-to-x86reg reg))
+(define (codegen-string-set! cgc reg lstr lidx lchr idx-cst? chr-cst?)
+
+  (let ((dest (codegen-reg-to-x86reg reg))
         (opstr (codegen-loc-to-x86opnd lstr))
-        (opidx (codegen-loc-to-x86opnd lidx))
-        (opchr (codegen-loc-to-x86opnd lchr))
-        (regsaved #f))
+        (opidx (and (not idx-cst?) (codegen-loc-to-x86opnd lidx)))
+        (opchr (and (not chr-cst?) (codegen-loc-to-x86opnd lchr))))
 
-  (x86-mov cgc (x86-rax) (x86-imm-int 1000000000))
+    ;; If string is in memory, use dest register
+    (if (or (eq? dest opidx) (eq? dest opchr)) (error "CODEGEN error string-set!"))
+    (if (ctx-loc-is-memory? lstr)
+        (begin (x86-mov cgc dest opstr)
+               (set! dest (x86-rax))))
 
-  ;; Move idx to dest register if in memory
-  (if (ctx-loc-is-memory? lidx)
-      (begin (x86-mov cgc dest opidx)
-             (set! opidx dest)))
+    (cond
+      ((and idx-cst? chr-cst?)
+         (x86-mov cgc
+           (x86-mem (+ (- 16 TAG_MEMOBJ) lidx) opstr)
+           (x86-imm-int (char->integer lchr))
+           8))
+      (idx-cst?
+         (x86-mov cgc (x86-rax) opchr)
+         (x86-shr cgc (x86-rax) (x86-imm-int 2))
+         (x86-mov cgc (x86-mem (+ (- 16 TAG_MEMOBJ) lidx) opstr) (x86-al)))
+      (chr-cst?
+         (x86-mov cgc (x86-rax) opidx)
+         (x86-shr cgc (x86-rax) (x86-imm-int 2))
+         (x86-mov cgc
+           (x86-mem (- 16 TAG_MEMOBJ) opstr (x86-rax))
+           (x86-imm-int (char->integer lchr))
+           8))
+      (else
+         ;; Move decoded char in rax
+         (x86-mov cgc (x86-rax) opchr)
+         (x86-shr cgc (x86-rax) (x86-imm-int 2))
+         ;; If idx is in memory, use opchr (because char is in rax)
+         (if (ctx-loc-is-memory? lidx)
+             (begin (x86-mov cgc opchr opidx)
+                    (set! opidx opchr)))
+         (x86-shr cgc opidx (x86-imm-int 2))
+         (x86-mov cgc
+           (x86-mem (- 16 TAG_MEMOBJ) opstr opidx)
+           (x86-al))))
 
-  ;; Char must be in rax
-  (x86-mov cgc (x86-rax) opchr)
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
 
-  ;; Move str in a register if in memory
-  (if (ctx-loc-is-memory? lstr)
-      (if (ctx-loc-is-memory? lidx)
-          ;; dest register is already used
-          (let ((reg (if (eq? opidx (x86-rbx)) (x86-rdx) (x86-rbx))))
-            (x86-push cgc reg)
-            (x86-mov cgc reg opstr)
-            (set! opstr reg)
-            (set! regsaved reg))
-          ;; use dest register
-          (begin (x86-mov cgc dest opstr)
-                 (set! opstr dest))))
-
-  (x86-shr cgc (x86-rax) (x86-imm-int 2)) ;; char
-  (x86-shr cgc opidx (x86-imm-int 2)) ;; get idx bytes
-  (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) opstr opidx) (x86-al))
-  (x86-shl cgc opidx (x86-imm-int 2)) ;; Restore idx
-
-  (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
-
-  (if regsaved
-      (x86-pop cgc regsaved))))
+  ;(let ((dest  (codegen-reg-to-x86reg reg))
+  ;      (opstr (codegen-loc-to-x86opnd lstr))
+  ;      (opidx (codegen-loc-to-x86opnd lidx))
+  ;      (opchr (codegen-loc-to-x86opnd lchr))
+  ;      (regsaved #f))
+  ;
+  ;(x86-mov cgc (x86-rax) (x86-imm-int 1000000000))
+  ;
+  ;;; Move idx to dest register if in memory
+  ;(if (ctx-loc-is-memory? lidx)
+  ;    (begin (x86-mov cgc dest opidx)
+  ;           (set! opidx dest)))
+  ;
+  ;;; Char must be in rax
+  ;(x86-mov cgc (x86-rax) opchr)
+  ;
+  ;;; Move str in a register if in memory
+  ;(if (ctx-loc-is-memory? lstr)
+  ;    (if (ctx-loc-is-memory? lidx)
+  ;        ;; dest register is already used
+  ;        (let ((reg (if (eq? opidx (x86-rbx)) (x86-rdx) (x86-rbx))))
+  ;          (x86-push cgc reg)
+  ;          (x86-mov cgc reg opstr)
+  ;          (set! opstr reg)
+  ;          (set! regsaved reg))
+  ;        ;; use dest register
+  ;        (begin (x86-mov cgc dest opstr)
+  ;               (set! opstr dest))))
+  ;
+  ;(x86-shr cgc (x86-rax) (x86-imm-int 2)) ;; char
+  ;(x86-shr cgc opidx (x86-imm-int 2)) ;; get idx bytes
+  ;(x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) opstr opidx) (x86-al))
+  ;(x86-shl cgc opidx (x86-imm-int 2)) ;; Restore idx
+  ;
+  ;(x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+  ;
+  ;(if regsaved
+  ;    (x86-pop cgc regsaved))))
 
 
 

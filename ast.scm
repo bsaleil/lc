@@ -93,14 +93,14 @@
    (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM)           (1))
    (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                   (0))
    (integer->char       1  1  ,(prim-types 1 CTX_NUM)                    (0))
-   (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM)            (1)) ;; + efficace cst
+   (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM)            (1))
    (string->symbol      1  1  ,(prim-types 1 CTX_STR)                     ()) ;; NTD
    (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ()) ;; NTD
    (close-output-port   1  1  ,(prim-types 1 CTX_OPORT)                   ()) ;; NTD
    (close-input-port    1  1  ,(prim-types 1 CTX_IPORT)                   ()) ;; NTD
    (open-output-file    1  1  ,(prim-types 1 CTX_STR)                     ()) ;; NTD
    (open-input-file     1  1  ,(prim-types 1 CTX_STR)                     ()) ;; NTD
-   (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_NUM CTX_CHAR)    ()) ;; + efficace cst
+   (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_NUM CTX_CHAR) (1 2)) ;; + efficace cst WIP
    (vector-set!         3  3  ,(prim-types 3 CTX_VECT CTX_NUM CTX_ALL)    ()) ;; + efficace cst
    (string-length       1  1  ,(prim-types 1 CTX_STR)                     ()) ;; NTD
    (read-char           1  1  ,(prim-types 1 CTX_IPORT)                   ()) ;; NTD
@@ -1235,11 +1235,21 @@
 
 ;; primitive string-set!
 (define (prim-string-set! cgc ctx reg succ cst-infos)
-  (let ((lchr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-        (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
-        (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 2))))
-    (codegen-string-set! cgc reg lstr lidx lchr)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) CTX_VOID reg))))
+
+  (let* ((idx-cst (assoc 1 cst-infos))
+         (chr-cst (assoc 2 cst-infos))
+
+         (lchr (if chr-cst (cdr chr-cst) (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+         (lidx
+           (if idx-cst
+               (cdr idx-cst)
+               (if chr-cst
+                   (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))
+                   (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))))
+         (n-pop (+ (count (list idx-cst chr-cst) not) 1))
+         (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx (- n-pop 1)))))
+    (codegen-string-set! cgc reg lstr lidx lchr idx-cst chr-cst)
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_VOID reg))))
 
 ;; primitive list
 (define (prim-list cgc ctx reg succ cst-infos args)
