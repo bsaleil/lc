@@ -7,14 +7,9 @@
 ;; Récupérer directement la valeur de retour dans rax (pareil pour les arguments?)
 ;; Tail call: écraser les valeurs des registres d'argument
 
-;(println (number?  1))
-;WIP: déplacer la combinaiseon:
-;(make-lazy-code
-;  (lambda (cgc ctx)
-;    (let ((res ...)
-;          (reg ...)
-;          (ctx ...))
-;de chaque fonction prim-* vers mlc-primitive
+(define str "bonjour")
+
+(string-ref str 4)
 
 ;; Avec les arguments par registres, il manque:
 ;; Attention, est-ce que les registres sont bien sauvegardés dans mlc-apply ?

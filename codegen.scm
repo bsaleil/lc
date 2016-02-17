@@ -1222,6 +1222,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; vector-ref
+;; TODO val-cst? -> idx-cst?
 (define (codegen-vector-ref cgc reg lvec lidx val-cst?)
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (opvec (codegen-loc-to-x86opnd lvec))
@@ -1244,23 +1245,31 @@
 
 ;;-----------------------------------------------------------------------------
 ;; string-ref
-(define (codegen-string-ref cgc reg lstr lidx)
+(define (codegen-string-ref cgc reg lstr lidx idx-cst?)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opstr (codegen-loc-to-x86opnd lstr))
-        (opidx (codegen-loc-to-x86opnd lidx)))
+        (opidx (and (not idx-cst?) (codegen-loc-to-x86opnd lidx))))
 
-  (if (ctx-loc-is-memory? lidx)
-      (begin (x86-mov cgc (x86-rax) opidx)
-             (set! opidx (x86-rax))))
-
+  ;; If string is in memory, use rax
   (if (ctx-loc-is-memory? lstr)
-      (begin (x86-mov cgc dest opstr)
-             (set! opstr dest)))
+      (begin (x86-mov cgc (x86-rax) opstr)
+             (set! opstr (x86-rax))))
 
-  (x86-shr cgc opidx (x86-imm-int 2)) ;; Decode position
-  (x86-mov cgc (x86-al) (x86-mem (- 16 TAG_MEMOBJ) opidx opstr)) ;; Get Char
+  (cond
+    (idx-cst?
+      (x86-mov cgc (x86-al) (x86-mem (+ (- 16 TAG_MEMOBJ) lidx) opstr)))
+    ((ctx-loc-is-memory? lidx)
+      (x86-mov cgc dest opidx)
+      (x86-shr cgc dest (x86-imm-int 2)) ;; Decode position
+      (x86-mov cgc (x86-al) (x86-mem (- 26 TAG_MEMOBJ) dest opstr)))
+    (else
+      (x86-shr cgc opidx (x86-imm-int 2)) ;; Decode position
+      (x86-mov cgc (x86-al) (x86-mem (- 16 TAG_MEMOBJ) opidx opstr))))
+
+  ;; TODO: bug gambit, can't generate lea rax [rax*4+2] ?
   (x86-and cgc (x86-rax) (x86-imm-int 255)) ;; Clear bits before al
-  (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode char
+  ;(x86-lea cgc dest (x86-mem TAG_SPECIAL #f (x86-rax) 2))
+  (x86-shl cgc (x86-rax) (x86-imm-int 2))
   (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
   (x86-mov cgc dest (x86-rax))))
 

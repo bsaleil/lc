@@ -93,7 +93,7 @@
    (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM)           (1))
    (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                   (0))
    (integer->char       1  1  ,(prim-types 1 CTX_NUM)                    (0))
-   (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM)             ()) ;; + efficace cst
+   (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM)            (1)) ;; + efficace cst
    (string->symbol      1  1  ,(prim-types 1 CTX_STR)                     ()) ;; NTD
    (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ()) ;; NTD
    (close-output-port   1  1  ,(prim-types 1 CTX_OPORT)                   ()) ;; NTD
@@ -1214,10 +1214,16 @@
 
 ;; primitive string-ref
 (define (prim-string-ref cgc ctx reg succ cst-infos)
-  (let ((lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
-        (lidx (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-    (codegen-string-ref cgc reg lstr lidx)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_CHAR reg))))
+
+  (let* ((poscst (assoc 1 cst-infos))
+         (lidx (if poscst (cdr poscst) (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+         (lstr
+           (if poscst
+               (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))
+               (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+         (n-pop (if poscst 1 2)))
+    (codegen-string-ref cgc reg lstr lidx poscst)
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_CHAR reg))))
 
 ;; primitive vector-set!
 (define (prim-vector-set! cgc ctx reg succ cst-infos)
