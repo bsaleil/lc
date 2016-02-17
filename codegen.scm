@@ -298,29 +298,35 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Pair
-(define (codegen-pair cgc reg lcar lcdr)
+(define (codegen-pair cgc reg lcar lcdr car-cst? cdr-cst?)
   (let ((header-word (mem-header 3 STAG_PAIR))
         (dest  (codegen-reg-to-x86reg reg))
-        (opcar (codegen-loc-to-x86opnd lcar))
-        (opcdr (codegen-loc-to-x86opnd lcdr)))
+        (opcar (and (not car-cst?) (codegen-loc-to-x86opnd lcar)))
+        (opcdr (and (not cdr-cst?) (codegen-loc-to-x86opnd lcdr))))
     ;; Alloc
     (gen-allocation cgc #f STAG_PAIR 3)
     ;; Write object header
     (x86-mov cgc (x86-rax) (x86-imm-int header-word))
     (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
     ;; Write car
-    (if (ctx-loc-is-memory? lcar)
-        (begin (x86-mov cgc (x86-rax) opcar)
-               (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
-        (x86-mov cgc (x86-mem 8 alloc-ptr) opcar))
+    (cond
+      (car-cst?
+        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-imm-int (obj-encoding lcar)) 64))
+      ((ctx-loc-is-memory? lcar)
+        (x86-mov cgc (x86-rax) opcar)
+        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
+      (else
+        (x86-mov cgc (x86-mem 8 alloc-ptr) opcar)))
     ;; Write cdr
-    (if (ctx-loc-is-memory? lcdr)
-        (begin (x86-mov cgc (x86-rax) opcdr)
-               (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax)))
-        (x86-mov cgc (x86-mem 16 alloc-ptr) opcdr))
-    ;; Tag, move closure to dest
-    (x86-mov cgc dest alloc-ptr)
-    (x86-add cgc dest (x86-imm-int TAG_MEMOBJ))))
+    (cond
+      (cdr-cst?
+        (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-imm-int (obj-encoding lcdr)) 64))
+      ((ctx-loc-is-memory? lcdr)
+        (x86-mov cgc (x86-rax) opcdr)
+        (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax)))
+      (else
+        (x86-mov cgc (x86-mem 16 alloc-ptr) opcdr)))
+    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
 
 ;;-----------------------------------------------------------------------------
 ;; Vector (all elements are pushed on the stack in reverse order: first at [RSP+0], second at [RSP+8], ...)

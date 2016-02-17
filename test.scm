@@ -1,4 +1,10 @@
-;; TODO: probleme de tableau: (pp (vector 1 2 3))
+
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1)) (fib (- n 2)))))
+
+(fib 30)
 
 ;; Optimisations:
 ;; Ne pas utiliser de booléen dans les conditions du if
@@ -6,15 +12,6 @@
 ;; Enlever rbp
 ;; Récupérer directement la valeur de retour dans rax (pareil pour les arguments?)
 ;; Tail call: écraser les valeurs des registres d'argument
-
-(define str "bonjour")
-
-(define ch #\U)
-(define ii 3)
-
-(string-set! str ii ch)
-
-(pp str)
 
 ;; Avec les arguments par registres, il manque:
 ;; Attention, est-ce que les registres sont bien sauvegardés dans mlc-apply ?

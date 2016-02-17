@@ -79,38 +79,38 @@
 ;;-----------------------------------------------------------------------------
 ;; Primitives
 
-;; Primitives: name, nb args min, nb args max, args types, cst positions
+;; Primitives: name, nb args min, nb args max, args types, cst positions to check
 (define primitives `(
    (car                 1  1  ,(prim-types 1 CTX_PAI)                     ())
    (cdr                 1  1  ,(prim-types 1 CTX_PAI)                     ())
    (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
-   (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR)        (0 1)) ;; todo ne marche pas à cause de la conversion ?
-   (not                 1  1  ,(prim-types 1 CTX_ALL)                     ()) ;; + efficace cst
+   (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR)        (0 1))
+   (not                 1  1  ,(prim-types 1 CTX_ALL)                     ()) ;; + efficace cst TODO
    (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1))
    (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1))
-   (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ()) ;; + efficace cst  (mlc-pair)
-   (vector-length       1  1  ,(prim-types 1 CTX_VECT)                    ()) ;; NTD
+   (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
+   (vector-length       1  1  ,(prim-types 1 CTX_VECT)                    ())
    (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM)           (1))
    (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                   (0))
    (integer->char       1  1  ,(prim-types 1 CTX_NUM)                    (0))
    (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM)            (1))
-   (string->symbol      1  1  ,(prim-types 1 CTX_STR)                     ()) ;; NTD
-   (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ()) ;; NTD
-   (close-output-port   1  1  ,(prim-types 1 CTX_OPORT)                   ()) ;; NTD
-   (close-input-port    1  1  ,(prim-types 1 CTX_IPORT)                   ()) ;; NTD
-   (open-output-file    1  1  ,(prim-types 1 CTX_STR)                     ()) ;; NTD
-   (open-input-file     1  1  ,(prim-types 1 CTX_STR)                     ()) ;; NTD
-   (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_NUM CTX_CHAR) (1 2)) ;; + efficace cst WIP
-   (vector-set!         3  3  ,(prim-types 3 CTX_VECT CTX_NUM CTX_ALL)    ()) ;; + efficace cst
-   (string-length       1  1  ,(prim-types 1 CTX_STR)                     ()) ;; NTD
-   (read-char           1  1  ,(prim-types 1 CTX_IPORT)                   ()) ;; NTD
-   (exit                0  0  ,(prim-types 0 )                            ()) ;; NTD
-   (make-vector         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_ALL)   ()) ;; + efficace cst
-   (make-string         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_CHAR)  ()) ;; + efficace cst
-   (eof-object?         1  1  ,(prim-types 1 CTX_ALL)                     ()) ;; + efficace cst
-   (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT)          ()) ;; + efficace cst (?)
-   (current-output-port 0  0  ,(prim-types 0 )                            ()) ;; NTD
-   (current-input-port  0  0  ,(prim-types 0 )                            ()) ;; NTD
+   (string->symbol      1  1  ,(prim-types 1 CTX_STR)                     ())
+   (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ())
+   (close-output-port   1  1  ,(prim-types 1 CTX_OPORT)                   ())
+   (close-input-port    1  1  ,(prim-types 1 CTX_IPORT)                   ())
+   (open-output-file    1  1  ,(prim-types 1 CTX_STR)                     ())
+   (open-input-file     1  1  ,(prim-types 1 CTX_STR)                     ())
+   (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_NUM CTX_CHAR) (1 2))
+   (vector-set!         3  3  ,(prim-types 3 CTX_VECT CTX_NUM CTX_ALL)    ()) ;; + efficace cst TODO
+   (string-length       1  1  ,(prim-types 1 CTX_STR)                     ())
+   (read-char           1  1  ,(prim-types 1 CTX_IPORT)                   ())
+   (exit                0  0  ,(prim-types 0 )                            ())
+   (make-vector         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_ALL)   ())
+   (make-string         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_CHAR)  ())
+   (eof-object?         1  1  ,(prim-types 1 CTX_ALL)                     ())
+   (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT)          ())
+   (current-output-port 0  0  ,(prim-types 0 )                            ())
+   (current-input-port  0  0  ,(prim-types 0 )                            ())
    (list                #f) ;; nb-args and types are not fixed
 ))
 
@@ -1330,7 +1330,7 @@
          (lazy-primitive
            (cond
              ((eq? (car ast) 'exit) (get-lazy-error ""))
-             ((eq? (car ast) 'cons) (mlc-pair succ))
+             ((eq? (car ast) 'cons) (mlc-pair succ cst-infos))
              (else
                (make-lazy-code
                  (lambda (cgc ctx)
@@ -2112,18 +2112,27 @@
 ;; Make lazy code to create pair
 ;; Create pair with the too values on top of the stack
 ;;
-(define (mlc-pair succ)
+(define (mlc-pair succ #!optional (cst-infos '()))
   (make-lazy-code
     (lambda (cgc ctx)
       (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
              (reg (car res))
              (ctx (cdr res))
-             (lcar (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
-             (lcdr (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-      (codegen-pair cgc reg lcar lcdr)
+             (car-cst (assoc 0 cst-infos))
+             (cdr-cst (assoc 1 cst-infos))
+             (lcdr (if cdr-cst (cdr cdr-cst) (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+             (lcar
+               (if car-cst
+                   (cdr car-cst)
+                   (if cdr-cst
+                       (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))
+                       (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))))
+             (n-pop (count (list car-cst cdr-cst) not)))
+
+      (codegen-pair cgc reg lcar lcdr car-cst cdr-cst)
       (jump-to-version cgc
                        succ
-                       (ctx-push (ctx-pop-n ctx 2) CTX_PAI reg))))))
+                       (ctx-push (ctx-pop-n ctx n-pop) CTX_PAI reg))))))
 
 ;;-----------------------------------------------------------------------------
 
