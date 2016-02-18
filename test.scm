@@ -1,10 +1,12 @@
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1)) (fib (- n 2)))))
+(+ 1 2 3 4)
 
-(fib 30)
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1)) (fib (- n 2)))))
+;
+;(fib 30)
 
 ;; Optimisations:
 ;; Ne pas utiliser de booléen dans les conditions du if

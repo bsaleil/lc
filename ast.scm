@@ -1956,7 +1956,6 @@
 ;; (< 1 2 3) ->
 ;; (let ((a 1) (b 2) (c 3))
 ;;   (and (< a b) (< b c)))
-;; PAREIL POUR OP-N-NUM ?
 (define (mlc-op-n-cmp ast succ op)
 
   ;; Gen lazy code objects chain for binary operation (x op y)
@@ -2076,15 +2075,8 @@
                  (else (error "Unknown operator " op))))
         ((and (= (length ast) 2) (eq? op '-))
            (gen-ast (list '* -1 (cadr ast)) succ))
-        ((and (= (length ast) 2) (member op '(< > <= >= =))) ;; TODO: useless ?
-           (gen-ast #t succ))
         (else
-           (let ((dummy
-                   (make-lazy-code
-                       (lambda (cgc ctx)
-                         (jump-to-version cgc (gen-ast (cadr ast) (build-chain (cddr ast))) ctx)))))
-            dummy))))
-
+          (gen-ast (cadr ast) (build-chain (cddr ast))))))
 
 ;;
 ;; Make lazy code from TYPE TEST
