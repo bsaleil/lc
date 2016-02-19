@@ -612,29 +612,72 @@
 ;; N-ary arithmetic operators
 
 ;; Gen code for arithmetic operation on int/int
-(define (codegen-num-ii cgc op reg lleft lright)
+(define (codegen-num-ii cgc op reg lleft lright lcst? rcst?)
+
   (let ((labels-overflow (add-callback #f 0 (lambda (ret-addr selector)
                                               (error ERR_ARR_OVERFLOW))))
-        (dest    (codegen-reg-to-x86reg reg))
-        (opleft  (codegen-loc-to-x86opnd lleft))
-        (opright (codegen-loc-to-x86opnd lright)))
+        (dest (codegen-reg-to-x86reg reg))
+        (opleft  (and (not lcst?) (codegen-loc-to-x86opnd lleft)))
+        (opright (and (not rcst?) (codegen-loc-to-x86opnd lright))))
 
-    (if (not (eq? dest opleft))
-        (x86-mov cgc dest opleft))
+  ;; Handle cases like 1. 2. etc...
+  (if (and lcst? (flonum? lleft))
+      (set! lleft (##flonum->fixnum lleft)))
+  (if (and rcst? (flonum? lright))
+      (set! lright (##flonum->fixnum lright)))
 
-    (cond ((eq? op '+) (x86-add cgc dest opright))
-          ((eq? op '-) (x86-sub cgc dest opright))
-          ((eq? op '*) (x86-sar cgc dest (x86-imm-int 2))
-                       (x86-imul cgc dest opright))
-          (else (error "NYI" op)))
-    (x86-jo cgc (list-ref labels-overflow 0))))
+  (cond
+    ((and lcst? rcst?) (error "Internal error")) ;; This case already is handled
+    (lcst?
+
+      (cond ((eq? op '+) (x86-mov cgc dest opright)
+                         (x86-add cgc dest (x86-imm-int (obj-encoding lleft))))
+            ((eq? op '-) (x86-mov cgc dest (x86-imm-int (obj-encoding lleft)))
+                         (x86-sub cgc dest opright))
+            ((eq? op '*) (x86-imul cgc dest opright (x86-imm-int lleft)))))
+    (rcst?
+      (x86-mov cgc dest opleft)
+      (cond ((eq? op '+) (x86-add cgc dest (x86-imm-int (obj-encoding lright))))
+            ((eq? op '-) (x86-sub cgc dest (x86-imm-int (obj-encoding lright))))
+            ((eq? op '*) (x86-imul cgc dest (x86-imm-int lright)))))
+    (else
+      (x86-mov cgc dest opleft)
+      (cond ((eq? op '+) (x86-add cgc dest opright))
+            ((eq? op '-) (x86-sub cgc dest opright))
+            ((eq? op '*) (x86-sar cgc dest (x86-imm-int 2))
+                         (x86-imul cgc dest opright)))))
+
+  (x86-jo cgc (list-ref labels-overflow 0))))
+
+
+  ;(let ((labels-overflow (add-callback #f 0 (lambda (ret-addr selector)
+  ;                                            (error ERR_ARR_OVERFLOW))))
+  ;      (dest    (codegen-reg-to-x86reg reg))
+  ;      (opleft  (codegen-loc-to-x86opnd lleft))
+  ;      (opright (codegen-loc-to-x86opnd lright)))
+  ;
+  ;  (if (not (eq? dest opleft))
+  ;      (x86-mov cgc dest opleft))
+  ;
+  ;  (cond ((eq? op '+) (x86-add cgc dest opright))
+  ;        ((eq? op '-) (x86-sub cgc dest opright))
+  ;        ((eq? op '*) (x86-sar cgc dest (x86-imm-int 2))
+  ;                     (x86-imul cgc dest opright))
+  ;        (else (error "NYI" op)))
+  ;  (x86-jo cgc (list-ref labels-overflow 0))))
 
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
-(define (codegen-num-ff cgc op reg lleft leftint? lright rightint?)
+(define (codegen-num-ff cgc op reg lleft leftint? lright rightint? lcst? rcst?)
 
   (let ((dest    (codegen-reg-to-x86reg reg))
-        (opleft  (codegen-loc-to-x86opnd lleft))
-        (opright (codegen-loc-to-x86opnd lright)))
+        (opleft  (and (not lcst?) (codegen-loc-to-x86opnd lleft)))
+        (opright (and (not rcst?) (codegen-loc-to-x86opnd lright))))
+
+    ;; Handle cases like 1. 2. etc...
+    (if (and lcst? (flonum? lleft))
+        (set! lleft (##flonum->fixnum lleft)))
+    (if (and rcst? (flonum? lright))
+        (set! lright (##flonum->fixnum lright)))
 
     ;; Alloc result flonum
     (gen-allocation cgc #f STAG_FLONUM 2)
@@ -643,10 +686,13 @@
 
     ;; Right operand
     (if rightint?
-        ;; Right is register or mem and integer
-        (begin (x86-mov cgc (x86-rax) opright)
-               (x86-sar cgc (x86-rax) (x86-imm-int 2))  ;; untag integer
-               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
+        ;; Right is register or mem or cst and integer
+        (begin
+          (if rcst?
+              (x86-mov cgc (x86-rax) (x86-imm-int lright))
+              (begin (x86-mov cgc (x86-rax) opright)
+                     (x86-sar cgc (x86-rax) (x86-imm-int 2)))) ;; untag integer
+          (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
         (if (ctx-loc-is-register? lright)
             ;; Right is register and not integer, then get float value in xmm0
             (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright))
@@ -657,10 +703,13 @@
 
     ;; Left operand
     (if leftint?
-        ;; Left is register or mem and integer
-        (begin (x86-mov cgc (x86-rax) opleft)
-               (x86-sar cgc (x86-rax) (x86-imm-int 2)) ;; untag integer
-               (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))) ;; convert to double
+        ;; Left is register or mem or cst and integer
+        (begin
+          (if lcst?
+              (x86-mov cgc (x86-rax) (x86-imm-int lleft))
+              (begin (x86-mov cgc (x86-rax) opleft)
+                     (x86-sar cgc (x86-rax) (x86-imm-int 2)))) ;; untag integer
+          (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))) ;; convert to double
         (if (ctx-loc-is-register? lleft)
             ;; Left is register and not integer, then get float value in xmm1
             (x86-movsd cgc (x86-xmm1) (x86-mem (- 8 TAG_MEMOBJ) opleft))
@@ -824,11 +873,14 @@
 
 ;;-----------------------------------------------------------------------------
 ;; SPECIAL $$print-flonum: call gambit at the moment. TODO: write print flonum asm code
-(define (codegen-print-flonum cgc)
-  (x86-pop cgc (x86-rax))
-  ;; NOTE: This uses Gambit function to print a flonum (because LC uses the same flonum encoding)
-  (gen-print-msg cgc (x86-rax) #f #f)
-  (x86-push cgc (x86-imm-int ENCODING_VOID)))
+(define (codegen-print-flonum cgc reg loc)
+  (let ((dest (codegen-reg-to-x86reg reg))
+        (opnd (codegen-loc-to-x86opnd loc)))
+
+    (x86-mov cgc (x86-rax) opnd)
+    ;; NOTE: This uses Gambit function to print a flonum (because LC uses the same flonum encoding)
+    (gen-print-msg cgc (x86-rax) #f #f)
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
 
 ;;-----------------------------------------------------------------------------
 ;; not

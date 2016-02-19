@@ -284,7 +284,8 @@
                 (define (get-global-type g)
                   (cond ((symbol? (cadr g))
                             (cond ((symbol?  (caddr g)) CTX_UNK) ;; TODO si globale connue, mettre type
-                                  ((number?  (caddr g)) CTX_NUM)
+                                  ((integer? (caddr g)) CTX_NUM)
+                                  ((flonum?  (caddr g)) CTX_FLO)
                                   ((char?    (caddr g)) CTX_CHAR)
                                   ((string?  (caddr g)) CTX_STR)
                                   ((boolean? (caddr g)) CTX_BOOL)
