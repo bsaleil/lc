@@ -1406,7 +1406,7 @@
       (if loc-ctx
           ;;
           (let ((ropnd (codegen-reg-to-x86reg reg))
-                (mopnd (codegen-loc-to-x86opnd (car loc-ctx))))
+                (mopnd (codegen-loc-to-x86opnd (ctx-fs ctx) (car loc-ctx))))
             (x86-mov cgc mopnd ropnd)
             (cons reg
                   (cdr loc-ctx)))
@@ -2001,7 +2001,7 @@
         (gen-inc-slot cgc 'tests))
 
        (let* ((lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx stack-idx)))
-              (opval (codegen-loc-to-x86opnd lval)))
+              (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
 
          (cond ;; Number type check
                ((eq? type CTX_NUM)

@@ -90,9 +90,9 @@
   (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
   (x86-mov cgc (x86-mem (* 8 (length globals)) global-ptr) (x86-rax)))
 
-(define (codegen-define-bind cgc pos reg lvalue)
+(define (codegen-define-bind cgc fs pos reg lvalue)
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd lvalue)))
+        (opval (codegen-loc-to-x86opnd fs lvalue)))
     (if (ctx-loc-is-register? lvalue)
         (x86-mov cgc (x86-mem (* 8 pos) global-ptr) opval)
         (begin (x86-mov cgc (x86-rax) opval)
@@ -170,8 +170,8 @@
 
 ;;-----------------------------------------------------------------------------
 ;; If
-(define (codegen-if cgc label-jump label-false label-true lcond)
-  (let ((opcond (codegen-loc-to-x86opnd lcond)))
+(define (codegen-if cgc fs label-jump label-false label-true lcond)
+  (let ((opcond (codegen-loc-to-x86opnd fs lcond)))
     (x86-cmp cgc opcond (x86-imm-int (obj-encoding #f)))
     (x86-label cgc label-jump)
     (x86-je  cgc label-false)
@@ -221,13 +221,13 @@
 ;; Values
 ;;-----------------------------------------------------------------------------
 
-(define (codegen-loc-to-x86opnd loc)
+(define (codegen-loc-to-x86opnd fs loc)
   (if (ctx-loc-is-register? loc)
       (codegen-reg-to-x86reg loc)
-      (codegen-mem-to-x86mem loc)))
+      (codegen-mem-to-x86mem fs loc)))
 
-(define (codegen-mem-to-x86mem mem)
-  (x86-mem (- (* -8 mem) 8) base-ptr))
+(define (codegen-mem-to-x86mem fs mem)
+  (x86-mem (* 8 (- fs mem 1)) (x86-rsp)))
 
 (define (codegen-reg-to-x86reg reg)
   (let ((r (assoc reg codegen-regmap)))
@@ -298,11 +298,11 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Pair
-(define (codegen-pair cgc reg lcar lcdr car-cst? cdr-cst?)
+(define (codegen-pair cgc fs reg lcar lcdr car-cst? cdr-cst?)
   (let ((header-word (mem-header 3 STAG_PAIR))
         (dest  (codegen-reg-to-x86reg reg))
-        (opcar (and (not car-cst?) (codegen-loc-to-x86opnd lcar)))
-        (opcdr (and (not cdr-cst?) (codegen-loc-to-x86opnd lcdr))))
+        (opcar (and (not car-cst?) (codegen-loc-to-x86opnd fs lcar)))
+        (opcdr (and (not cdr-cst?) (codegen-loc-to-x86opnd fs lcdr))))
     ;; Alloc
     (gen-allocation cgc #f STAG_PAIR 3)
     ;; Write object header
@@ -365,19 +365,19 @@
 ;; Generate specialized function prologue with rest param and actual == formal
 (define (codegen-prologue-rest= cgc destreg)
   (let ((dest
-          (and destreg (codegen-loc-to-x86opnd destreg))))
+          (and destreg (codegen-reg-to-x86reg destreg))))
     (if dest
         (x86-mov cgc dest (x86-imm-int (obj-encoding '())))
         (x86-push cgc (x86-imm-int (obj-encoding '()))))))
 
 ;; Generate specialized function prologue with rest param and actual > formal
-(define (codegen-prologue-rest> cgc nb-rest-stack rest-regs destreg)
+(define (codegen-prologue-rest> cgc fs nb-rest-stack rest-regs destreg)
 
   (let ((regs
-          (map (lambda (el) (codegen-loc-to-x86opnd el))
+          (map (lambda (el) (codegen-loc-to-x86opnd fs el))
                 rest-regs))
         (dest
-          (and destreg (codegen-loc-to-x86opnd destreg)))
+          (and destreg (codegen-loc-to-x86opnd fs destreg)))
         (header-word     (mem-header 3 STAG_PAIR))
         (label-loop-end (asm-make-label #f (new-sym 'prologue-loop-end)))
         (label-loop     (asm-make-label #f (new-sym 'prologue-loop))))
@@ -612,13 +612,13 @@
 ;; N-ary arithmetic operators
 
 ;; Gen code for arithmetic operation on int/int
-(define (codegen-num-ii cgc op reg lleft lright lcst? rcst?)
+(define (codegen-num-ii cgc fs op reg lleft lright lcst? rcst?)
 
   (let ((labels-overflow (add-callback #f 0 (lambda (ret-addr selector)
                                               (error ERR_ARR_OVERFLOW))))
         (dest (codegen-reg-to-x86reg reg))
-        (opleft  (and (not lcst?) (codegen-loc-to-x86opnd lleft)))
-        (opright (and (not rcst?) (codegen-loc-to-x86opnd lright))))
+        (opleft  (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
+        (opright (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
 
   ;; Handle cases like 1. 2. etc...
   (if (and lcst? (flonum? lleft))
@@ -667,11 +667,11 @@
   ;  (x86-jo cgc (list-ref labels-overflow 0))))
 
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
-(define (codegen-num-ff cgc op reg lleft leftint? lright rightint? lcst? rcst?)
+(define (codegen-num-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst?)
 
   (let ((dest    (codegen-reg-to-x86reg reg))
-        (opleft  (and (not lcst?) (codegen-loc-to-x86opnd lleft)))
-        (opright (and (not rcst?) (codegen-loc-to-x86opnd lright))))
+        (opleft  (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
+        (opright (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
 
     ;; Handle cases like 1. 2. etc...
     (if (and lcst? (flonum? lleft))
@@ -735,12 +735,12 @@
 ;; N-ary comparison operators
 
 ;; TODO regalloc: on ne DOIT PAS écraser les valeurs des opérandes qui peuvent servir plus tard
-(define (codegen-cmp-ii cgc op reg lleft lright)
+(define (codegen-cmp-ii cgc fs op reg lleft lright)
   (let ((label-end (asm-make-label #f (new-sym 'label-end)))
         (x86-op (cdr (assoc op `((< . ,x86-jl) (> . ,x86-jg) (<= . ,x86-jle) (>= . ,x86-jge) (= . ,x86-je)))))
         (dest (codegen-reg-to-x86reg reg))
-        (opl  (codegen-loc-to-x86opnd lleft))
-        (opr  (codegen-loc-to-x86opnd lright)))
+        (opl  (codegen-loc-to-x86opnd fs lleft))
+        (opr  (codegen-loc-to-x86opnd fs lright)))
 
     (if (and (ctx-loc-is-memory? lleft)
              (ctx-loc-is-memory? lright))
@@ -754,12 +754,12 @@
     (x86-label cgc label-end)))
 
 ;; TODO regalloc: on ne DOIT PAS écraser les valeurs des opérandes qui peuvent servir plus tard
-(define (codegen-cmp-ff cgc op reg lleft leftint? lright rightint?)
+(define (codegen-cmp-ff cgc fs op reg lleft leftint? lright rightint?)
 
   (let ((label-end (asm-make-label #f (new-sym 'label-end)))
         (dest    (codegen-reg-to-x86reg reg))
-        (opleft  (codegen-loc-to-x86opnd lleft))
-        (opright (codegen-loc-to-x86opnd lright))
+        (opleft  (codegen-loc-to-x86opnd fs lleft))
+        (opright (codegen-loc-to-x86opnd fs lright))
         (x86-op  (cdr (assoc op `((< . ,x86-jae) (> . ,x86-jbe) (<= . ,x86-ja) (>= . ,x86-jb) (= . ,x86-jne))))))
 
     (if leftint?
@@ -819,11 +819,11 @@
 ;;-----------------------------------------------------------------------------
 ;; Binary operators
 
-(define (codegen-binop cgc op label-div0 reg lleft lright)
-  (let* ((dest (codegen-reg-to-x86reg reg))
-         (lopnd (codegen-loc-to-x86opnd lleft))
-         (ropnd (codegen-loc-to-x86opnd lright))
+(define (codegen-binop cgc fs op label-div0 reg lleft lright)
 
+  (let* ((dest (codegen-reg-to-x86reg reg))
+         (lopnd (codegen-loc-to-x86opnd fs lleft))
+         (ropnd (codegen-loc-to-x86opnd fs lright))
          ;; TODO: save original opnd to restore rdx if needed
          (ordest dest)
          (orlopnd lopnd)
@@ -832,7 +832,10 @@
     (if (and (not (eq? ordest  (x86-rdx)))
              (not (eq? orlopnd (x86-rdx)))
              (not (eq? orropnd (x86-rdx))))
-        (x86-push cgc (x86-rdx)))
+        (begin (x86-push cgc (x86-rdx))
+               ;; Update loc with updated fs
+               (set! lopnd (codegen-loc-to-x86opnd (+ fs 1) lleft))
+               (set! ropnd (codegen-loc-to-x86opnd (+ fs 1) lright))))
 
     (x86-mov cgc (x86-rax) lopnd)
 
@@ -873,9 +876,9 @@
 
 ;;-----------------------------------------------------------------------------
 ;; SPECIAL $$print-flonum: call gambit at the moment. TODO: write print flonum asm code
-(define (codegen-print-flonum cgc reg loc)
+(define (codegen-print-flonum cgc fs reg loc)
   (let ((dest (codegen-reg-to-x86reg reg))
-        (opnd (codegen-loc-to-x86opnd loc)))
+        (opnd (codegen-loc-to-x86opnd fs loc)))
 
     (x86-mov cgc (x86-rax) opnd)
     ;; NOTE: This uses Gambit function to print a flonum (because LC uses the same flonum encoding)
@@ -884,11 +887,11 @@
 
 ;;-----------------------------------------------------------------------------
 ;; not
-(define (codegen-not cgc reg lval)
+(define (codegen-not cgc fs reg lval)
   (let ((label-done
           (asm-make-label cgc (new-sym 'done)))
         (dest (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd lval)))
+        (opval (codegen-loc-to-x86opnd fs lval)))
     (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
     (x86-cmp cgc opval dest)
     (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
@@ -898,7 +901,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; eq?
-(define (codegen-eq? cgc reg lleft lright lcst? rcst?)
+(define (codegen-eq? cgc fs reg lleft lright lcst? rcst?)
 
   (let ((dest  (codegen-reg-to-x86reg reg)))
 
@@ -909,8 +912,8 @@
 
         ;; Else
         (let ((label-done (asm-make-label cgc (new-sym 'done)))
-              (opleft  (and (not lcst?) (codegen-loc-to-x86opnd lleft)))
-              (opright (and (not rcst?) (codegen-loc-to-x86opnd lright))))
+              (opleft  (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
+              (opright (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
 
           (cond
             ;; Left only is a cst
@@ -935,13 +938,13 @@
 
 ;;-----------------------------------------------------------------------------
 ;; car/cdr
-(define (codegen-car/cdr cgc op reg lval)
+(define (codegen-car/cdr cgc fs op reg lval)
   (let ((offset
           (if (eq? op 'car)
               (-  8 TAG_MEMOBJ)
               (- 16 TAG_MEMOBJ)))
         (dest  (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd lval)))
+        (opval (codegen-loc-to-x86opnd fs lval)))
 
     (if (ctx-loc-is-memory? lval)
         (begin (x86-mov cgc (x86-rax) opval)
@@ -951,14 +954,14 @@
 
 ;;-----------------------------------------------------------------------------
 ;; set-car!/set-cdr!
-(define (codegen-scar/scdr cgc op reg lpair lval val-cst?)
+(define (codegen-scar/scdr cgc fs op reg lpair lval val-cst?)
   (let ((offset
           (if (eq? op 'set-car!)
               (-  8 TAG_MEMOBJ)
               (- 16 TAG_MEMOBJ)))
         (dest (codegen-reg-to-x86reg reg))
-        (oppair (codegen-loc-to-x86opnd lpair))
-        (opval (and (not val-cst?) (codegen-loc-to-x86opnd lval))))
+        (oppair (codegen-loc-to-x86opnd fs lpair))
+        (opval (and (not val-cst?) (codegen-loc-to-x86opnd fs lval))))
 
     (if (ctx-loc-is-memory? lpair)
         (begin (x86-mov cgc (x86-rax) oppair)
@@ -984,9 +987,9 @@
 
 ;;-----------------------------------------------------------------------------
 ;; close-input/output-port
-(define (codegen-close-io-port cgc reg lport)
+(define (codegen-close-io-port cgc fs reg lport)
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opport (codegen-loc-to-x86opnd lport)))
+        (opport (codegen-loc-to-x86opnd fs lport)))
     ;; Mov port to rax for syscall
     (x86-mov cgc (x86-rax) opport)
     (gen-syscall-close cgc)
@@ -994,12 +997,12 @@
 
 ;;-----------------------------------------------------------------------------
 ;; open-input/output-port
-(define (codegen-open-io-file cgc op reg lval)
+(define (codegen-open-io-file cgc fs op reg lval)
   (let* ((direction   (if (eq? op 'open-output-file) 'out 'in))
          (stag        (if (eq? direction 'in) STAG_IPORT STAG_OPORT))
          (header-word (mem-header 2 stag))
          (dest  (codegen-reg-to-x86reg reg))
-         (opval (codegen-loc-to-x86opnd lval)))
+         (opval (codegen-loc-to-x86opnd fs lval)))
     ;; Move operand to rax for syscall
     (x86-mov cgc (x86-rax) opval)
     ;; Gen 'open' syscall, file descriptor in rax
@@ -1020,10 +1023,10 @@
 
 ;;-----------------------------------------------------------------------------
 ;; eof-object?
-(define (codegen-eof? cgc reg lval)
+(define (codegen-eof? cgc fs reg lval)
   (let ((label-end (asm-make-label #f (new-sym 'label-end)))
         (dest  (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd lval)))
+        (opval (codegen-loc-to-x86opnd fs lval)))
 
     ;; If value is in memory, move it to rax (can't compare m64 and imm64)
     (if (ctx-loc-is-memory? lval)
@@ -1037,9 +1040,9 @@
 
 ;;-----------------------------------------------------------------------------
 ;; read-char
-(define (codegen-read-char cgc reg lport)
+(define (codegen-read-char cgc fs reg lport)
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opport (codegen-loc-to-x86opnd lport)))
+        (opport (codegen-loc-to-x86opnd fs lport)))
     ;; Mov port to rax for syscall
     (x86-mov cgc (x86-rax) opport)
     ;; Gen 'read' syscall (read 1 byte), encoded value (char or eof) in rax
@@ -1049,10 +1052,10 @@
 
 ;;-----------------------------------------------------------------------------
 ;; write-char
-(define (codegen-write-char cgc reg lchar lport)
+(define (codegen-write-char cgc fs reg lchar lport)
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opport (codegen-loc-to-x86opnd lport))
-        (opchar (codegen-loc-to-x86opnd lchar)))
+        (opport (codegen-loc-to-x86opnd (+ fs 1) lport))
+        (opchar (codegen-loc-to-x86opnd fs lchar)))
 
     ;; Char on stack for syscall
     (if (ctx-loc-is-memory? lchar)
@@ -1069,7 +1072,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; char->integer/integer->char
-(define (codegen-ch<->int cgc op reg lval cst?)
+(define (codegen-ch<->int cgc fs op reg lval cst?)
 
   (let ((dest (codegen-reg-to-x86reg reg)))
 
@@ -1079,7 +1082,7 @@
     ((and cst? (eq? op 'char->integer))
        (x86-mov cgc dest (x86-imm-int (obj-encoding (char->integer lval)))))
     (else
-       (let ((opval (codegen-loc-to-x86opnd lval)))
+       (let ((opval (codegen-loc-to-x86opnd fs lval)))
 
          (if (not (eq? dest opval))
              (x86-mov cgc dest opval))
@@ -1090,11 +1093,11 @@
 
 ;;-----------------------------------------------------------------------------
 ;; make-string
-(define (codegen-make-string cgc reg llen lval)
+(define (codegen-make-string cgc fs reg llen lval)
   (let* ((header-word (mem-header 3 STAG_STRING))
          (dest  (codegen-reg-to-x86reg reg))
-         (oplen (codegen-loc-to-x86opnd llen))
-         (opval (if lval (codegen-loc-to-x86opnd lval) #f))
+         (oplen (codegen-loc-to-x86opnd fs llen))
+         (opval (if lval (codegen-loc-to-x86opnd fs lval) #f))
          (label-loop (asm-make-label #f (new-sym 'make-string-loop)))
          (label-end  (asm-make-label #f (new-sym 'make-string-end))))
 
@@ -1152,12 +1155,12 @@
 
 ;;-----------------------------------------------------------------------------
 ;; make-vector
-(define (codegen-make-vector cgc reg llen lval)
+(define (codegen-make-vector cgc fs reg llen lval)
 
   (let* ((header-word (mem-header 2 STAG_VECTOR))
          (dest  (codegen-reg-to-x86reg reg))
-         (oplen (codegen-loc-to-x86opnd llen))
-         (opval (if lval (codegen-loc-to-x86opnd lval) #f))
+         (oplen (codegen-loc-to-x86opnd fs llen))
+         (opval (if lval (codegen-loc-to-x86opnd fs lval) #f))
          (label-loop (asm-make-label #f (new-sym 'make-vector-loop)))
          (label-end  (asm-make-label #f (new-sym 'make-vector-end))))
 
@@ -1173,11 +1176,13 @@
              ;; No init val given, then use rbx with value 0
              (x86-push cgc (x86-rbx))
              (x86-mov cgc (x86-rbx) (x86-imm-int 0))
+             (set! oplen (codegen-loc-to-x86opnd (+ fs 1) llen))
              (set! opval (x86-rbx)))
           ((not (ctx-loc-is-register? lval))
-             ;; Init value id in memory, then use rbx with given init valuesss
+             ;; Init value id in memory, then use rbx with given init value
              (x86-push cgc (x86-rbx))
              (x86-mov cgc (x86-rbx) opval)
+             (set! oplen (codegen-loc-to-x86opnd (+ fs 1) llen))
              (set! opval (x86-rbx))))
 
     (x86-label cgc label-loop)
@@ -1193,10 +1198,11 @@
     ;; Restore rbx
     (if (or (not lval)
             (not (ctx-loc-is-register? lval)))
-        (x86-pop cgc (x86-rbx)))
+        (begin (x86-pop cgc (x86-rbx))
+               (set! oplen (codegen-loc-to-x86opnd fs llen))))
 
     ;; Write encoded length
-    (if (ctx-loc-is-memory? oplen)
+    (if (ctx-loc-is-memory? llen)
         (begin (x86-mov cgc (x86-rax) oplen)
                (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
         (x86-mov cgc (x86-mem 8 alloc-ptr) oplen))
@@ -1210,9 +1216,9 @@
 
 ;;-----------------------------------------------------------------------------
 ;; string->symbol
-(define (codegen-str->sym cgc reg lstr)
+(define (codegen-str->sym cgc fs reg lstr)
   (let ((dest (codegen-reg-to-x86reg reg))
-        (opstr (codegen-loc-to-x86opnd lstr)))
+        (opstr (codegen-loc-to-x86opnd fs lstr)))
 
     (x86-push cgc opstr)
     (gen-interned-symbol cgc)
@@ -1220,10 +1226,10 @@
 
 ;;-----------------------------------------------------------------------------
 ;; symbol->string
-(define (codegen-sym->str cgc reg lsym)
+(define (codegen-sym->str cgc fs reg lsym)
 
   (let ((dest (codegen-reg-to-x86reg reg))
-        (opsym (codegen-loc-to-x86opnd lsym)))
+        (opsym (codegen-loc-to-x86opnd fs lsym)))
 
     (if (not (ctx-loc-is-register? lsym))
         (error "NYI codegen"))
@@ -1268,9 +1274,9 @@
 
 ;;-----------------------------------------------------------------------------
 ;; vector/string-length
-(define (codegen-vec/str-length cgc reg lval)
+(define (codegen-vec/str-length cgc fs reg lval)
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd lval)))
+        (opval (codegen-loc-to-x86opnd fs lval)))
 
     (if (ctx-loc-is-memory? opval)
         (begin (x86-mov cgc (x86-rax) opval)
@@ -1281,10 +1287,10 @@
 ;;-----------------------------------------------------------------------------
 ;; vector-ref
 ;; TODO val-cst? -> idx-cst?
-(define (codegen-vector-ref cgc reg lvec lidx val-cst?)
+(define (codegen-vector-ref cgc fs reg lvec lidx val-cst?)
   (let* ((dest  (codegen-reg-to-x86reg reg))
-         (opvec (codegen-loc-to-x86opnd lvec))
-         (opidx (and (not val-cst?) (codegen-loc-to-x86opnd lidx))))
+         (opvec (codegen-loc-to-x86opnd fs lvec))
+         (opidx (and (not val-cst?) (codegen-loc-to-x86opnd fs lidx))))
 
     ;; If vector is in memory, use rax
     (if (ctx-loc-is-memory? lvec)
@@ -1303,10 +1309,10 @@
 
 ;;-----------------------------------------------------------------------------
 ;; string-ref
-(define (codegen-string-ref cgc reg lstr lidx idx-cst?)
+(define (codegen-string-ref cgc fs reg lstr lidx idx-cst?)
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opstr (codegen-loc-to-x86opnd lstr))
-        (opidx (and (not idx-cst?) (codegen-loc-to-x86opnd lidx))))
+        (opstr (codegen-loc-to-x86opnd fs lstr))
+        (opidx (and (not idx-cst?) (codegen-loc-to-x86opnd fs lidx))))
 
   ;; If string is in memory, use rax
   (if (ctx-loc-is-memory? lstr)
@@ -1333,11 +1339,11 @@
 
 ;;-----------------------------------------------------------------------------
 ;; vector-set!
-(define (codegen-vector-set! cgc reg lvec lidx lval)
+(define (codegen-vector-set! cgc fs reg lvec lidx lval)
   (let ((dest (codegen-reg-to-x86reg reg))
-        (opvec (codegen-loc-to-x86opnd lvec))
-        (opidx (codegen-loc-to-x86opnd lidx))
-        (opval (codegen-loc-to-x86opnd lval))
+        (opvec (codegen-loc-to-x86opnd fs lvec))
+        (opidx (codegen-loc-to-x86opnd fs lidx))
+        (opval (codegen-loc-to-x86opnd fs lval))
         (regsaved #f))
 
   (if (ctx-loc-is-memory? lvec)
@@ -1354,6 +1360,7 @@
           ;; both tmp regs are already used
           (let ((reg (if (eq? dest (x86-rbx)) (x86-rcx) (x86-rbx))))
             (x86-push cgc reg)
+            (set! opval (codegen-loc-to-x86opnd (+ fs 1) lval))
             (x86-mov cgc reg opval)
             (set! opval reg)
             (set! regsaved reg))
@@ -1373,12 +1380,12 @@
 
 ;;-----------------------------------------------------------------------------
 ;; string-set!
-(define (codegen-string-set! cgc reg lstr lidx lchr idx-cst? chr-cst?)
+(define (codegen-string-set! cgc fs reg lstr lidx lchr idx-cst? chr-cst?)
 
   (let ((dest (codegen-reg-to-x86reg reg))
-        (opstr (codegen-loc-to-x86opnd lstr))
-        (opidx (and (not idx-cst?) (codegen-loc-to-x86opnd lidx)))
-        (opchr (and (not chr-cst?) (codegen-loc-to-x86opnd lchr))))
+        (opstr (codegen-loc-to-x86opnd fs lstr))
+        (opidx (and (not idx-cst?) (codegen-loc-to-x86opnd fs lidx)))
+        (opchr (and (not chr-cst?) (codegen-loc-to-x86opnd fs lchr))))
 
     ;; If string is in memory, use dest register
     (if (or (eq? dest opidx) (eq? dest opchr)) (error "CODEGEN error string-set!"))
@@ -1501,9 +1508,9 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Mutable var (creates mutable object, write variable and header and replace local with mutable object)
-(define (codegen-mutable cgc lval)
+(define (codegen-mutable cgc fs lval)
   (let ((header-word (mem-header 2 STAG_MOBJECT))
-        (opval (codegen-loc-to-x86opnd lval)))
+        (opval (codegen-loc-to-x86opnd fs lval)))
 
     ;; Alloc mutable
     (gen-allocation cgc #f STAG_MOBJECT 2)

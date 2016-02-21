@@ -1,11 +1,19 @@
+;;; PNPOLY - Test if a point is contained in a 2D polygon.
 
-(define a 10)
+(define (vector . l)
+   (pp l))
 
-(pp (+ 1 2 3 4 5))
-(pp (- 1 2 3 4 5))
-(pp (* 1 2 3 4 5))
-(pp (/ 1 2 3 4 5))
+(define (foo n) 1)
 
+(foo (vector 1 2 3 4 5 6 7 8 9 10))
+
+
+
+
+;(define (foo a b c d e f)
+;  f)
+;
+;(foo 10 20 30 40 50 60)
 
 ;(define (fib n)
 ;  (if (< n 2)

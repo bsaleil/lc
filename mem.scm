@@ -74,26 +74,26 @@
 ;; DESTROY RAX !!
 ;; DESTROY R15 !!
 (define (gen-alloc-imm cgc stag length)
-
-;; TODO regalloc
-(x86-push cgc (x86-r15))
-
-    (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok)))
-          (label-alloc-end (asm-make-label cgc (new-sym 'alloc-end))))
-
-        (x86-lea cgc (x86-rax) (x86-mem (* length -8) alloc-ptr)) ;; RAX = alloc-ptr - N
-        (x86-mov cgc (x86-r15) (x86-imm-int block-addr)) ;; R15 = block-addr
-        (x86-cmp cgc (x86-rax) (x86-mem (* 5 8) (x86-r15)))
-        (x86-jge cgc label-alloc-ok)
-
-            (x86-mov cgc (x86-rax) (x86-imm-int (* length 8)))
-            (x86-call cgc label-gc-trampoline) ;; This call updates alloc-ptr
-            (x86-jmp cgc label-alloc-end)
-
-        (x86-label cgc label-alloc-ok)
-        (x86-pop cgc (x86-r15))
-        (x86-sub cgc alloc-ptr (x86-imm-int (* 8 length)))
-        (x86-label cgc label-alloc-end)))
+ (x86-sub cgc alloc-ptr (x86-imm-int (* 8 length))))
+;;; TODO regalloc
+;(x86-push cgc (x86-r15))
+;
+;    (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok)))
+;          (label-alloc-end (asm-make-label cgc (new-sym 'alloc-end))))
+;
+;        (x86-lea cgc (x86-rax) (x86-mem (* length -8) alloc-ptr)) ;; RAX = alloc-ptr - N
+;        (x86-mov cgc (x86-r15) (x86-imm-int block-addr)) ;; R15 = block-addr
+;        (x86-cmp cgc (x86-rax) (x86-mem (* 5 8) (x86-r15)))
+;        (x86-jge cgc label-alloc-ok)
+;
+;            (x86-mov cgc (x86-rax) (x86-imm-int (* length 8)))
+;            (x86-call cgc label-gc-trampoline) ;; This call updates alloc-ptr
+;            (x86-jmp cgc label-alloc-end)
+;
+;        (x86-label cgc label-alloc-ok)
+;        (x86-pop cgc (x86-r15))
+;        (x86-sub cgc alloc-ptr (x86-imm-int (* 8 length)))
+;        (x86-label cgc label-alloc-end)))
 
 ;; Allocate RAX(reg) + length(imm) bytes in heap
 ;; DESTROY RAX !!
