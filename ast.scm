@@ -1630,20 +1630,9 @@
   (let* ((lazy-call
           (make-lazy-code
             (lambda (cgc ctx)
-              (let ((label-g (asm-make-label #f (new-sym 'label-apply-nargs-g)))
-                    (label-e (asm-make-label #f (new-sym 'label-apply-nargs-e))))
-                (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
-                (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (length args-regs))))
-                (x86-jg cgc label-g)
-                  (x86-lea cgc base-ptr (x86-mem 16 (x86-rsp)))
-                  (x86-jmp cgc label-e)
-                (x86-label cgc label-g)
-                  (x86-lea cgc base-ptr (x86-mem (- 16 (* 8 (length args-regs)))
-                                                 (x86-rsp)
-                                                 (x86-rdi)
-                                                 1))
-                (x86-label cgc label-e)
-                (gen-call-sequence ast cgc #f #f)))))
+              (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
+              (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (length args-regs))))
+              (gen-call-sequence ast cgc #f #f))))
         (lazy-args
           (make-lazy-code
             (lambda (cgc ctx)
@@ -1696,7 +1685,6 @@
                     (let ((opnd (codegen-reg-to-x86reg i)))
                       (x86-push cgc opnd)))
                   save)
-                (x86-push cgc base-ptr)
 
                 (if opt-return-points
                     (gen-continuation-cr cgc ast succ ctx save)
@@ -1747,8 +1735,7 @@
                                                     (let ((opnd (codegen-reg-to-x86reg i)))
                                                       (x86-push cgc opnd)))
                                                   save)
-                                                (x86-push cgc base-ptr)
-                                                (set! fs (+ fs (length save) 2)) ;; TODO base-tr +1 return address +1
+                                                (set! fs (+ fs (length save) 1)) ;; +1 for return address
                                                 ;; Gen continuation
                                                 (if opt-return-points
                                                     (gen-continuation-cr cgc ast succ ctx save)
@@ -1797,12 +1784,6 @@
                                           (if tail
                                               (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (ctx-fs ctx) 1)))))
 
-                                          ;; TODO update rbp for callee
-                                          (let ((args-fs
-                                                   (let ((r (- (length args) (length args-regs))))
-                                                     (if (< r 0) 0 r))))
-                                            (x86-lea cgc base-ptr (x86-mem (* (+ args-fs 2) 8) (x86-rsp))))
-
                                           ;; 6 - Gen call sequence
                                           (gen-call-sequence ast cgc call-ctx (length (cdr ast)))))))
          ;; Lazy code object to build the continuation
@@ -1826,7 +1807,6 @@
              (lambda (cgc ctx)
 
                ;; Restore registers
-               (x86-pop cgc base-ptr)
                (for-each
                  (lambda (i)
                    (let ((opnd (codegen-reg-to-x86reg i)))
@@ -1874,7 +1854,6 @@
              (lambda (cgc ctx)
 
                ;; Restore registers
-               (x86-pop cgc base-ptr)
                (for-each
                  (lambda (i)
                    (let ((opnd (codegen-reg-to-x86reg i)))
@@ -1883,7 +1862,7 @@
 
                ;; Move result to location
                (let* ((lres   (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-                      (fs (- (ctx-fs ctx) (length saved-regs) 1)) ;; TODO base-ptr -1
+                      (fs (- (ctx-fs ctx) (length saved-regs)))
                       (opres  (codegen-loc-to-x86opnd fs lres)))
                  ;; Result is in rax
                  (x86-mov cgc opres (x86-rax)))
