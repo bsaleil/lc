@@ -1119,8 +1119,9 @@
                         (make-identifier 'free
                                          '()
                                          (identifier-flags ident)
-                                         (if (member 'mutable (identifier-flags ident))
-                                             CTX_UNK ;; Can't write type of free mutable variable
+                                         (if (and (member 'mutable (identifier-flags ident))
+                                                  (not (member 'letrec-nm (identifier-flags ident))))
+                                             CTX_UNK
                                              type)
                                          (string->symbol (string-append "f" (number->string i)))))
                   (init-free (cdr free-vars) enclosing-env (+ i 1))))))
@@ -1429,7 +1430,7 @@
 ;;
 ;; id-ctx est une liste qui contient des couples (id . lidx)
 ;; Cette fonction modifie tous les éléments du contexte pour associer l'identifiant de variable à l'index de la pile virtuelle
-(define (ctx-bind ctx id-idx mvars)
+(define (ctx-bind ctx id-idx mvars #!optional (letrec-bind? #f))
 
   (define (remove-sslot slot env)
     (if (null? env)
@@ -1451,9 +1452,13 @@
             (make-identifier
               'local
               (list (ctx-lidx-to-slot ctx (cdr id-idx)))
-              (if (member (car id-idx) mvars)
-                  '(mutable)
-                  '())
+              (cond
+                ((and letrec-bind? (not (member (car id-idx) mvars)))
+                   '(mutable letrec-nm))
+                ((member (car id-idx) mvars)
+                   '(mutable))
+                (else
+                   '()))
               #f
               #f)))
       (make-ctx
