@@ -62,6 +62,13 @@
 ;;-----------------------------------------------------------------------------
 ;; ALLOCATOR
 
+;; Generate an heap object header
+;; NOTE : 'life' is fixed as 6 for now.
+;(define (memobj-header length stag life)
+(define (mem-header length stag)
+    ;; => Length (56 bits) | sTag (5 bits) | Life (3 bits)
+    (+ (arithmetic-shift length 8) (arithmetic-shift stag 3) 6))
+
 ;; Generate allocation code
 ;; use-rax to #t to allocate from register (with optional imm length)
 ;; use-rax to #f to allocate only from immediate
@@ -72,68 +79,34 @@
 
 ;; Allocate length(imm) bytes in heap
 ;; DESTROY RAX !!
-;; DESTROY R15 !!
 (define (gen-alloc-imm cgc stag length)
- (x86-sub cgc alloc-ptr (x86-imm-int (* 8 length))))
-;;; TODO regalloc
-;(x86-push cgc (x86-r15))
-;
-;    (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok)))
-;          (label-alloc-end (asm-make-label cgc (new-sym 'alloc-end))))
-;
-;        (x86-lea cgc (x86-rax) (x86-mem (* length -8) alloc-ptr)) ;; RAX = alloc-ptr - N
-;        (x86-mov cgc (x86-r15) (x86-imm-int block-addr)) ;; R15 = block-addr
-;        (x86-cmp cgc (x86-rax) (x86-mem (* 5 8) (x86-r15)))
-;        (x86-jge cgc label-alloc-ok)
-;
-;            (x86-mov cgc (x86-rax) (x86-imm-int (* length 8)))
-;            (x86-call cgc label-gc-trampoline) ;; This call updates alloc-ptr
-;            (x86-jmp cgc label-alloc-end)
-;
-;        (x86-label cgc label-alloc-ok)
-;        (x86-pop cgc (x86-r15))
-;        (x86-sub cgc alloc-ptr (x86-imm-int (* 8 length)))
-;        (x86-label cgc label-alloc-end)))
+  (let ((label-alloc-end (asm-make-label #f (new-sym 'alloc-end))))
+    (x86-sub cgc alloc-ptr (x86-imm-int (* length 8)))
+    (x86-mov cgc (x86-rax) (x86-imm-int (+ (* 5 8) block-addr)))
+    (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
+    (x86-jge cgc label-alloc-end)
+      (x86-mov cgc (x86-rax) (x86-imm-int (* length 8)))
+      (x86-call cgc label-gc-trampoline)
+    (x86-label cgc label-alloc-end)))
 
 ;; Allocate RAX(reg) + length(imm) bytes in heap
 ;; DESTROY RAX !!
-;; DESTROY R15 !!
-;; TODO: MERGE gen-alloc-imm and gen-alloc-regimm
 ;; Rax contains the encoded number of 64bits words to alloc
 ;; Ex. For (make-vector 3) rax contains 12
 (define (gen-alloc-regimm cgc stag length)
-
-;; TODO regalloc
-(x86-push cgc (x86-r15))
-
-    (let ((label-alloc-ok (asm-make-label cgc (new-sym 'alloc-ok)))
-          (label-alloc-end (asm-make-label cgc (new-sym 'alloc-end))))
-
-        ;; shift RAX 1 left
-        (x86-shl cgc (x86-rax) (x86-imm-int 1))
-        (x86-add cgc (x86-rax) (x86-imm-int (* 8 length)))
-        (x86-neg cgc (x86-rax))
-        (x86-add cgc (x86-rax) alloc-ptr) ;; RAX = alloc_ptr-N
-        (x86-mov cgc (x86-r15) (x86-imm-int block-addr)) ;; R15 = block-addr
-        (x86-cmp cgc (x86-rax) (x86-mem (* 5 8) (x86-r15)))
-        (x86-jge cgc label-alloc-ok)
-
-            (x86-sub cgc (x86-rax) alloc-ptr)
-            (x86-neg cgc (x86-rax))
-            (x86-call cgc label-gc-trampoline) ;; This call updates alloc-ptr
-            (x86-jmp cgc label-alloc-end)
-
-        (x86-label cgc label-alloc-ok)
-        (x86-pop cgc (x86-r15))
-        (x86-mov cgc alloc-ptr (x86-rax))
-        (x86-label cgc label-alloc-end)))
-
-;; Generate an heap object header
-;; NOTE : 'life' is fixed as 6 for now.
-;(define (memobj-header length stag life)
-(define (mem-header length stag)
-    ;; => Length (56 bits) | sTag (5 bits) | Life (3 bits)
-    (+ (arithmetic-shift length 8) (arithmetic-shift stag 3) 6))
+  (let ((label-alloc-end (asm-make-label #f (new-sym 'alloc-end))))
+    (x86-push cgc (x86-rax))
+    ;; rax = rax*2 + length*8 (nbbytes in rax + cst nbbytes)
+    (x86-lea cgc (x86-rax) (x86-mem (* length 8) (x86-rax) (x86-rax) 0))
+    (x86-sub cgc alloc-ptr (x86-rax))
+    (x86-mov cgc (x86-rax) (x86-imm-int (+ (* 5 8) block-addr)))
+    (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
+    (x86-jge cgc label-alloc-end)
+      (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+      (x86-lea cgc (x86-rax) (x86-mem (* length 8) (x86-rax) (x86-rax) 0))
+      (x86-call cgc label-gc-trampoline)
+    (x86-label cgc label-alloc-end)
+    (x86-pop cgc (x86-rax))))
 
 ;;-----------------------------------------------------------------------------
 ;; COLLECTOR :

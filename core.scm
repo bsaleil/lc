@@ -728,7 +728,7 @@
 
 (define block #f)
 (define global-offset 15) ;; [Stack addr], [def-out-port-header|def-out-port-fd], [def-in-port-header|def-in-port-fd], [heaplimit] + n empty slot (used for debug)
-(define block-len (* 8 (+ global-offset 10000))) ;; 1 stack addr, 1000 globals
+(define block-len (* 8 (+ global-offset 10000))) ;; 1 stack addr, 10000 globals
 (define block-addr #f)
 (define debug-slots '((calls . 6) (tests . 7) (extests . 8) (closures . 9) (time . 10) (other . 11)))
 

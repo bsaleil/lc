@@ -1817,7 +1817,7 @@
 
                ;; Move result to location
                (let* ((lres   (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-                      (opres  (codegen-loc-to-x86opnd lres)))
+                      (opres  (codegen-loc-to-x86opnd (ctx-fs ctx) lres)))
                  ;; Result is in rax
                  (x86-mov cgc opres (x86-rax)))
                (jump-to-version cgc succ ctx))))

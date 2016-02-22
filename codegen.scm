@@ -43,7 +43,6 @@
          '()
          (build-list (length regalloc-regs) (lambda (l) l))))
 
-(define base-ptr   (x86-rbp))
 (define alloc-ptr  (x86-r9))
 (define global-ptr (x86-r8))
 
