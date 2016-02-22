@@ -1881,9 +1881,6 @@
                                             (ctx (ctx-pop-n ctx (+ (length args) 1))) ;; Remove closure and args from virtual stack
                                             (res (ctx-get-free-reg cgc ctx))
                                             (reg (car res)))
-                                        ; (print "Gen version cont de ")
-                                        ; (pp ast)
-                                        ; (pp ctx)
                                          (gen-version-continuation-cr lazy-continuation
                                                                       (ctx-push ctx type reg)
                                                                       type

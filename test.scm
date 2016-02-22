@@ -1,11 +1,25 @@
 
-(define (run n)
-  (let loop ((i n) (sum 0))
-    (if (< i 0)
-      sum
-      (loop (- i 1) (+ i sum)))))
+;(define run
+;  (lambda (n)
+;    ((letrec ((loop (lambda (i sum) (if (< i 0) sum (loop (- i 1) (+ i sum))))))
+;       loop) n 0)))
+;
+;(run 10000)
 
-(apply run '(10000))
+;(define (run n)
+;  (let loop ((i n) (sum 0))
+;    (if (< i 0)
+;      sum
+;      (loop (- i 1) (+ i sum)))))
+;
+;(run 10000)
+
+(define (foo n)
+  (let ((f (lambda () (pp (+ n 10)))))
+    (set! n #f)
+    (f)))
+
+(foo 12)
 
 ;; Optimisations:
 ;; Ne pas utiliser de booléen dans les conditions du if
