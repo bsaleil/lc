@@ -99,7 +99,6 @@
 (define repl-print-lco #f) ;; main.scm
 ;; TODO regalloc
 (define alloc-ptr #f)
-(define base-ptr #f)
 (define global-ptr #f)
 ;; TODO refactoring
 (define get-entry-points-loc #f)
@@ -912,9 +911,6 @@
     (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
     (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rsp))
 
-    ;; Init base-ptr
-    (x86-mov cgc base-ptr (x86-rsp))
-
     ;; Put heaplimit in heaplimit slot
     ;; TODO: remove cst slots
     (x86-mov cgc (x86-rcx) (x86-imm-int (- from-space space-len)))
@@ -999,7 +995,8 @@
         (x86-r12)
         (x86-r13)
         (x86-r14)
-        (x86-r15)))
+        (x86-r15)
+        (x86-rbp)))
 
 (define nb-c-caller-save-regs
   (length c-caller-save-regs))
