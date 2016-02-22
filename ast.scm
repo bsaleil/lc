@@ -1013,83 +1013,87 @@
             (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))
             (alloc cgc (cdr ids) (ctx-push ctx (car stack-types) reg) (cdr stack-types))))))
 
-  (let* ((ids (map car (cadr ast)))
-         (body (cddr ast))
-         (lazy-out
-           (let ((make-lc (if (member 'ret (lazy-code-flags succ))
-                          make-lazy-code-ret
-                          make-lazy-code)))
-             (make-lc
-               (lambda (cgc ctx)
-                 (let* ((ctx (ctx-unbind ctx ids)) ;; update env
-                        (ctx (ctx-move-lidx ctx 0 (length ids))) ;; mov result slot
-                        (ctx (ctx-pop-n ctx (length ids)))) ;; pop from virtual stack
-                   (jump-to-version cgc succ ctx))))))
-         (lazy-set
-           (make-lazy-code
-             (lambda (cgc ctx)
-               (let loop ((i 0)
-                          (ctx ctx))
-                 (if (= i (length ids))
-                     (let ((ctx (ctx-pop-n ctx (length ids))))
-                       (jump-to-version cgc (gen-ast-l body lazy-out) ctx))
-                     (let ((lfrom (ctx-get-loc ctx (ctx-lidx-to-slot ctx i)))
-                           (lto   (ctx-get-loc ctx (ctx-lidx-to-slot ctx (+ i (length ids)))))
-                           (ctx   (ctx-move-type ctx i (+ i (length ids)))))
-                       (let ((opfrom (codegen-loc-to-x86opnd (ctx-fs ctx) lfrom))
-                             (opto   (codegen-loc-to-x86opnd (ctx-fs ctx) lto))
-                             (regtopop #f))
-                         (cond ((and (ctx-loc-is-memory? lfrom)
-                                     (ctx-loc-is-memory? lto))
-                                  (let* ((regs (list (x86-rbx) (x86-rcx) (x86-rdx)))
-                                         (pr (foldr
-                                               (lambda (el r)
-                                                 (if (and (not (eq? el opfrom))
-                                                          (not (eq? el opto)))
-                                                     el
-                                                     r))
-                                               #f
-                                               regs)))
-                                    (x86-push cgc pr)
-                                    (set! opfrom (codegen-loc-to-x86opnd (+ (ctx-fs ctx) 1) lfrom))
-                                    (set! opto   (codegen-loc-to-x86opnd (+ (ctx-fs ctx) 1) lto))
-                                    (x86-mov cgc (x86-rax) opfrom)
-                                    (x86-mov cgc pr opto)
-                                    (set! opfrom (x86-rax))
-                                    (set! opto pr)
-                                    (set! regtopop pr)))
-                               ((ctx-loc-is-memory? lfrom)
-                                  (x86-mov cgc (x86-rax) opfrom)
-                                  (set! opfrom (x86-rax)))
-                               ((ctx-loc-is-memory? lto)
-                                  (x86-mov cgc (x86-rax) opto)
-                                  (set! opto (x86-rax))))
+  (if (and (not (contains (map cadr (cadr ast)) 'lambda))
+           (not (contains (map cadr (cadr ast)) 'set!)))
+      ;; If letrec bind values do not contain 'lambda symbol, it's a let
+      (gen-ast (cons 'let (cdr ast)) succ)
+      (let* ((ids (map car (cadr ast)))
+             (body (cddr ast))
+             (lazy-out
+               (let ((make-lc (if (member 'ret (lazy-code-flags succ))
+                              make-lazy-code-ret
+                              make-lazy-code)))
+                 (make-lc
+                   (lambda (cgc ctx)
+                     (let* ((ctx (ctx-unbind ctx ids)) ;; update env
+                            (ctx (ctx-move-lidx ctx 0 (length ids))) ;; mov result slot
+                            (ctx (ctx-pop-n ctx (length ids)))) ;; pop from virtual stack
+                       (jump-to-version cgc succ ctx))))))
+             (lazy-set
+               (make-lazy-code
+                 (lambda (cgc ctx)
+                   (let loop ((i 0)
+                              (ctx ctx))
+                     (if (= i (length ids))
+                         (let ((ctx (ctx-pop-n ctx (length ids))))
+                           (jump-to-version cgc (gen-ast-l body lazy-out) ctx))
+                         (let ((lfrom (ctx-get-loc ctx (ctx-lidx-to-slot ctx i)))
+                               (lto   (ctx-get-loc ctx (ctx-lidx-to-slot ctx (+ i (length ids)))))
+                               (ctx   (ctx-move-type ctx i (+ i (length ids)))))
+                           (let ((opfrom (codegen-loc-to-x86opnd (ctx-fs ctx) lfrom))
+                                 (opto   (codegen-loc-to-x86opnd (ctx-fs ctx) lto))
+                                 (regtopop #f))
+                             (cond ((and (ctx-loc-is-memory? lfrom)
+                                         (ctx-loc-is-memory? lto))
+                                      (let* ((regs (list (x86-rbx) (x86-rcx) (x86-rdx)))
+                                             (pr (foldr
+                                                   (lambda (el r)
+                                                     (if (and (not (eq? el opfrom))
+                                                              (not (eq? el opto)))
+                                                         el
+                                                         r))
+                                                   #f
+                                                   regs)))
+                                        (x86-push cgc pr)
+                                        (set! opfrom (codegen-loc-to-x86opnd (+ (ctx-fs ctx) 1) lfrom))
+                                        (set! opto   (codegen-loc-to-x86opnd (+ (ctx-fs ctx) 1) lto))
+                                        (x86-mov cgc (x86-rax) opfrom)
+                                        (x86-mov cgc pr opto)
+                                        (set! opfrom (x86-rax))
+                                        (set! opto pr)
+                                        (set! regtopop pr)))
+                                   ((ctx-loc-is-memory? lfrom)
+                                      (x86-mov cgc (x86-rax) opfrom)
+                                      (set! opfrom (x86-rax)))
+                                   ((ctx-loc-is-memory? lto)
+                                      (x86-mov cgc (x86-rax) opto)
+                                      (set! opto (x86-rax))))
 
-                         (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opto) opfrom)
-                         (if regtopop
-                             (x86-pop cgc regtopop))
-                         (loop (+ i 1) ctx))))))))
-         (lazy-pre
-           (make-lazy-code
-             (lambda (cgc ctx)
-               (let* ((mvars (mutable-vars (cdr ast) ids))
-                      (stack-types
-                        (foldr (lambda (el r)
-                                 (if (and (pair? (cadr el))
-                                          (eq? (caadr el) 'lambda)
-                                          (not (member (car el) mvars)))
-                                     (cons CTX_CLO r)    ;; Non mutable and lambda, keep the type
-                                     (cons CTX_UNK r)))
-                               '()
-                               (cadr ast)))
-                      (ctx (alloc cgc ids ctx stack-types))
-                      (rids (reverse ids))
-                      (bind-lst (build-list (length ids) (lambda (n) (cons (list-ref rids n) n)))))
-                 (jump-to-version
-                   cgc
-                   (gen-ast-l (map cadr (cadr ast)) lazy-set)
-                   (ctx-bind ctx bind-lst ids)))))))
-    lazy-pre))
+                             (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opto) opfrom)
+                             (if regtopop
+                                 (x86-pop cgc regtopop))
+                             (loop (+ i 1) ctx))))))))
+             (lazy-pre
+               (make-lazy-code
+                 (lambda (cgc ctx)
+                   (let* ((mvars (mutable-vars (cdr ast) ids))
+                          (stack-types
+                            (foldr (lambda (el r)
+                                     (if (and (pair? (cadr el))
+                                              (eq? (caadr el) 'lambda)
+                                              (not (member (car el) mvars)))
+                                         (cons CTX_CLO r)    ;; Non mutable and lambda, keep the type
+                                         (cons CTX_UNK r)))
+                                   '()
+                                   (cadr ast)))
+                          (ctx (alloc cgc ids ctx stack-types))
+                          (rids (reverse ids))
+                          (bind-lst (build-list (length ids) (lambda (n) (cons (list-ref rids n) n)))))
+                     (jump-to-version
+                       cgc
+                       (gen-ast-l (map cadr (cadr ast)) lazy-set)
+                       (ctx-bind ctx bind-lst ids)))))))
+        lazy-pre)))
 
 ;;-----------------------------------------------------------------------------
 ;; SPECIAL
