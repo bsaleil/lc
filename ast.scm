@@ -2004,37 +2004,37 @@
   (define (get-op-ii succ)
     (make-lazy-code
       (lambda (cgc ctx)
-        (if inlined-if-cond?
-            (let ((lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-                  (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
-              ;; Inlined if condition, then generate inlined version of cmp operator
-              (codegen-cmp-ii-inline cgc (ctx-fs ctx) op lleft lright label-if label-true label-false))
-            (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-                   (reg (car res))
-                   (ctx (cdr res))
-                   (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-                   (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
-              ;; Not inlined if condition, then generated normal version of cmp operator
-              (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright label-if label-true label-false)
-              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg)))))))
+        (let* ((res (if inlined-if-cond? #f (ctx-get-free-reg cgc ctx)))
+               (reg (if res (car res) #f))
+               (ctx (if res (cdr res) ctx))
+               ;; We need to get locs AFTER ctx-get-free-reg call
+               (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+               (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+          (if inlined-if-cond?
+              ;; Inlined 'if' condition, then generate inlined version of cmp operator
+              (codegen-cmp-ii cgc (ctx-fs ctx) op #f lleft lright label-if label-true label-false)
+              ;; Not inlined 'if' condition, then generated normal version of cmp operator
+              (begin
+                (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright label-if label-true label-false)
+                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg))))))))
 
   ;; TODO regalloc comment
   (define (get-op-ff succ leftint? rightint?)
     (make-lazy-code
       (lambda (cgc ctx)
-        ;; TODO: merge both cases
-        (if inlined-if-cond?
-            (let ((lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-                  (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+        (let* ((res (if inlined-if-cond? #f (ctx-get-free-reg cgc ctx)))
+               (reg (if res (car res) #f))
+               (ctx (if res (cdr res) ctx))
+               ;; We need to get locs AFTER ctx-get-free-reg call
+               (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+               (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+          (if inlined-if-cond?
               ;; Inlined if condition, then generate inlined version of cmp operator
-              (codegen-cmp-ff cgc (ctx-fs ctx) op #f lleft leftint? lright rightint? label-if label-true label-false))
-            (let* ((res (ctx-get-free-reg cgc ctx))
-                   (reg (car res))
-                   (ctx (cdr res))
-                   (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-                   (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
-              (codegen-cmp-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? label-if label-true label-false)
-              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg)))))))
+              (codegen-cmp-ff cgc (ctx-fs ctx) op #f lleft leftint? lright rightint? label-if label-true label-false)
+              ;; Not inlined 'if' condition, then generated normal version of cmp operator
+              (begin
+                (codegen-cmp-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? label-if label-true label-false)
+                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg))))))))
 
   (cond (inlined-if-cond?
            ;; Inlined if condition, operands already are on the stack

@@ -648,23 +648,6 @@
 
   (x86-jo cgc (list-ref labels-overflow 0))))
 
-
-  ;(let ((labels-overflow (add-callback #f 0 (lambda (ret-addr selector)
-  ;                                            (error ERR_ARR_OVERFLOW))))
-  ;      (dest    (codegen-reg-to-x86reg reg))
-  ;      (opleft  (codegen-loc-to-x86opnd lleft))
-  ;      (opright (codegen-loc-to-x86opnd lright)))
-  ;
-  ;  (if (not (eq? dest opleft))
-  ;      (x86-mov cgc dest opleft))
-  ;
-  ;  (cond ((eq? op '+) (x86-add cgc dest opright))
-  ;        ((eq? op '-) (x86-sub cgc dest opright))
-  ;        ((eq? op '*) (x86-sar cgc dest (x86-imm-int 2))
-  ;                     (x86-imul cgc dest opright))
-  ;        (else (error "NYI" op)))
-  ;  (x86-jo cgc (list-ref labels-overflow 0))))
-
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
 (define (codegen-num-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst?)
 
@@ -733,32 +716,20 @@
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
 
-;; TODO: merge codegen-cmp-ii-inline & codegen-cmp-ii
-;; TODO wip
-(define (codegen-cmp-ii-inline cgc fs op lleft lright label-if label-true label-false)
-  (let ((x86-inv-op (cdr (assoc op `((< . ,x86-jge) (> . ,x86-jle) (<= . ,x86-jg) (>= . ,x86-jl) (= . ,x86-jne)))))
-        (opl (codegen-loc-to-x86opnd fs lleft))
-        (opr (codegen-loc-to-x86opnd fs lright)))
-    (if (and (ctx-loc-is-memory? lleft)
-             (ctx-loc-is-memory? lright))
-        (begin (x86-mov cgc (x86-rax) opl)
-        (set! opl (x86-rax))))
-    (x86-cmp cgc opl opr)
-    (x86-label cgc label-if)
-    (x86-inv-op  cgc label-false)
-    (x86-jmp cgc label-true)))
-
-;; TODO: remove inline code
-;; TODO regalloc: on ne DOIT PAS écraser les valeurs des opérandes qui peuvent servir plus tard
 (define (codegen-cmp-ii cgc fs op reg lleft lright label-if label-true label-false)
 
-  (let ((label-end (asm-make-label #f (new-sym 'label-end)))
-        (x86-op (cdr (assoc op `((< . ,x86-jl) (> . ,x86-jg) (<= . ,x86-jle) (>= . ,x86-jge) (= . ,x86-je)))))
-        ;; TODO WIP
-        (x86-iop (cdr (assoc op `((< . ,x86-jge) (> . ,x86-jle) (<= . ,x86-jg) (>= . ,x86-jl) (= . ,x86-jne)))))
-        (dest (codegen-reg-to-x86reg reg))
-        (opl  (codegen-loc-to-x86opnd fs lleft))
-        (opr  (codegen-loc-to-x86opnd fs lright)))
+  (define-macro (if-inline? expr)
+    `(if (and label-if label-true label-false) #f ,expr))
+
+  (let* ((inline? (and label-if label-true label-false))
+         (x86-op
+           (if inline?
+               (cdr (assoc op `((< . ,x86-jge) (> . ,x86-jle) (<= . ,x86-jg) (>= . ,x86-jl) (= . ,x86-jne))))
+               (cdr (assoc op `((< . ,x86-jl) (> . ,x86-jg) (<= . ,x86-jle) (>= . ,x86-jge) (= . ,x86-je))))))
+         (dest      (if-inline? (codegen-reg-to-x86reg reg)))
+         (label-end (if-inline? (asm-make-label #f (new-sym 'label-end))))
+         (opl  (codegen-loc-to-x86opnd fs lleft))
+         (opr  (codegen-loc-to-x86opnd fs lright)))
 
     (if (and (ctx-loc-is-memory? lleft)
              (ctx-loc-is-memory? lright))
@@ -768,14 +739,13 @@
     (x86-cmp cgc opl opr)
     (if (and label-if label-true label-false)
         (begin (x86-label cgc label-if)
-               (x86-iop  cgc label-false)
+               (x86-op  cgc label-false)
                (x86-jmp cgc label-true))
         (begin (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
                (x86-op cgc label-end)
                (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
                (x86-label cgc label-end)))))
 
-;; TODO regalloc: on ne DOIT PAS écraser les valeurs des opérandes qui peuvent servir plus tard
 (define (codegen-cmp-ff cgc fs op reg lleft leftint? lright rightint? label-if label-true label-false)
 
   (define-macro (if-inline? expr)
