@@ -59,10 +59,6 @@
                     (set! args (cdr args)) ;; Remove one more arg
                     args))
 
-  (--enable-ccoverflow-fallback
-    "Enable automatic fallback to generic entry point when cctable overflows, default throws an error"
-    ,(lambda (args) (set! opt-overflow-fallback #t) args))
-
   (--disable-entry-points
     "Disable the use of multiple entry points use only one generic entry point"
     ,(lambda (args) (set! opt-entry-points #f) args))
@@ -70,6 +66,10 @@
   (--disable-return-points
       "Disable the use of multiple return points use only one generic return point"
       ,(lambda (args) (set! opt-return-points #f) args))
+
+  (--enable-ccoverflow-fallback
+    "Enable automatic fallback to generic entry point when cctable overflows, default throws an error"
+    ,(lambda (args) (set! opt-overflow-fallback #t) args))
 
   (--enable-functionid-propagation
     "Disable the propagation of function identities"
@@ -102,6 +102,11 @@
     ,(lambda (args) (set! opt-max-versions (string->number (cadr args)))
                     (set! args (cdr args))
                     args))
+
+  (--nolib
+     "Do not include the standard library"
+     ,(lambda (args) (set! opt-use-lib #f)
+                     args))
 
   (--stats
     "Print stats about execution"
@@ -268,11 +273,14 @@
 
 (define (main . args)
 
-  ;; Get library
-  ;(define lib '())
-  (define lib (expand-tl (read-all (open-input-file "./lib.scm"))))
   ;; Set options and get files from cl args
   (define files (parse-args args))
+
+  ;; Get library
+  (define lib
+    (if opt-use-lib
+        (expand-tl (read-all (open-input-file "./lib.scm")))
+        '()))
 
     (cond ;; If no files specified then start REPL
           ((null? files)

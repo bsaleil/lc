@@ -50,6 +50,7 @@
 (define opt-return-points        #t) ;; Use multiple return points (#t to use cr-tables, #f to use a generic return point)
 (define opt-overflow-fallback    #f) ;; Automatic fallback to generic entry point if cctable overflows
 (define opt-propagate-functionid #f) ;; Propagate function identitie
+(define opt-use-lib              #t) ;; Use scheme std lib (see lib/ folder)
 (define mode-repl                #f) ;; REPL mode ?
 
 ;; TODO Move
