@@ -59,9 +59,9 @@
                     (set! args (cdr args)) ;; Remove one more arg
                     args))
 
-  (--disable-ccoverflow-fallback
-    "Disable automatic fallback to generic entry point when cctable overflows, throw an error instead"
-    ,(lambda (args) (set! opt-overflow-fallback #f) args))
+  (--enable-ccoverflow-fallback
+    "Enable automatic fallback to generic entry point when cctable overflows, default throws an error"
+    ,(lambda (args) (set! opt-overflow-fallback #t) args))
 
   (--disable-entry-points
     "Disable the use of multiple entry points use only one generic entry point"

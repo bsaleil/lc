@@ -1,12 +1,17 @@
+;(declare (standard-bindings))
+;(declare (fixnum) (not safe))
 
-;;; WIP:
-;; Pour l'inlining des conditions de if:
+(define (fib n)
+  (if (< n 2)
+      n
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
+(fib 20)
+;(println (fib 40))
 
 ;; Optimisations:
 ;; Ne pas utiliser de booléen dans les conditions du if
-;;   * Refactoring mlc-op-n-cmp
-;;   * Refactoring des deux codegen-cmp-ii et codegen-cmp-ff
 ;;   * Ajouter la fonctionaliter pour les (if (number?) ...)
 ;; Détecter les constantes en opérandes des opérateurs
 ;;   * A faire pour les comparaisons

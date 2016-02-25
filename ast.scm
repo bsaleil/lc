@@ -1730,7 +1730,7 @@
 (define (mlc-call ast succ)
 
   (let* (;; Tail call if successor's flags set contains 'ret flag
-         (tail (member 'ret (lazy-code-flags succ))) ;; TODO TAIL CALL WITH ARGS REGS
+         (tail (member 'ret (lazy-code-flags succ)))
          ;; Call arguments
          (args (cdr ast))
          ;; Lazy fail
@@ -1810,7 +1810,7 @@
                                                         (x86-mov cgc (x86-mem (* 8 (+ (- fs 1) n)) (x86-rsp)) (x86-r14))
                                                         (loop (- n 1)))))))
 
-                                          ;; TODO update rsp
+                                          ;; Update rsp
                                           (if tail
                                               (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (ctx-fs ctx) 1)))))
 

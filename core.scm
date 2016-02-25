@@ -48,7 +48,7 @@
 (define opt-max-versions         #f) ;; Limit of number of versions (#f=no limit, 0=only generic, ...)
 (define opt-entry-points         #t) ;; Use multiple entry points (#t to use cc-tables, #f to use flat closures)
 (define opt-return-points        #t) ;; Use multiple return points (#t to use cr-tables, #f to use a generic return point)
-(define opt-overflow-fallback    #t) ;; Automatic fallback to generic entry point if cctable overflows
+(define opt-overflow-fallback    #f) ;; Automatic fallback to generic entry point if cctable overflows
 (define opt-propagate-functionid #f) ;; Propagate function identitie
 (define mode-repl                #f) ;; REPL mode ?
 
