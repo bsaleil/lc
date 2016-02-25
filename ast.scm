@@ -1092,7 +1092,7 @@
                      (jump-to-version
                        cgc
                        (gen-ast-l (map cadr (cadr ast)) lazy-set)
-                       (ctx-bind ctx bind-lst ids #t)))))))
+                       (ctx-bind ctx bind-lst mvars #t)))))))
         lazy-pre)))
 
 ;;-----------------------------------------------------------------------------
