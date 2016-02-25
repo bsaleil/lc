@@ -1454,7 +1454,11 @@
 ;; Make lazy code from IF
 ;;
 (define (mlc-if ast succ)
-  (let* ((lazy-code0
+
+  (let* ((inline-condition?
+           (and (pair? (cadr ast))
+                (member (caadr ast) '(< > <= >= =))))
+         (lazy-code0
            (gen-ast (cadddr ast) succ))
          (lazy-code1
            (gen-ast (caddr ast) succ))
@@ -1462,7 +1466,9 @@
            (make-lazy-code
              (lambda (cgc ctx)
                (let* ((ctx0
-                        (ctx-pop ctx))
+                        (if inline-condition?
+                          (ctx-pop-n ctx 2) ;; Pop both condition operands
+                          (ctx-pop ctx)))   ;; Pop condition result
 
                       (ctx1
                         ctx0)
@@ -1495,7 +1501,6 @@
                                       (set! prev-action 'no-swap)
 
                                       (if (= selector 1)
-
                                           ;; overwrite unconditional jump
                                           (gen-version
                                             (+ jump-addr 6)
@@ -1556,12 +1561,31 @@
 
                  (let ((label-false (list-ref stub-labels 0))
                        (label-true  (list-ref stub-labels 1)))
-                   ;; Gen code
-                   (let* ((lcond (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-                     (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond))))))))
-    (gen-ast
-      (cadr ast)
-      lazy-code-test)))
+
+                   (if inline-condition?
+                       (let ((lazy-cmp
+                               (mlc-op-n-cmp
+                                 (cadr ast)  ;; ast
+                                 #f          ;; succ
+                                 (caadr ast) ;; op
+                                 label-jump
+                                 label-true
+                                 label-false)))
+                         (jump-to-version cgc lazy-cmp ctx))
+                       (let* ((lcond (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                         (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond)))))))))
+
+    (if inline-condition?
+        (if (< (length (cadr ast)) 3)
+            ;; if (op) or (op opnd) then inline the true branch
+            (gen-ast (caddr ast) succ)
+            ;; else generate condition operands and jump to lco-test
+            ;; Condition operands are generated here (and not in mlc-op-n-cmp)
+            ;; because stubs entry contexts are created in lco-test
+            (gen-ast-l (cdadr ast) lazy-code-test))
+        (gen-ast
+          (cadr ast)
+          lazy-code-test))))
 
 ;; Create a new lazy code object.
 ;; Takes the value from stack and cmp to #f
@@ -1952,7 +1976,10 @@
 ;; (< 1 2 3) ->
 ;; (let ((a 1) (b 2) (c 3))
 ;;   (and (< a b) (< b c)))
-(define (mlc-op-n-cmp ast succ op)
+;; If ast is an inlined if condition then label-if, label-true, and label-false are set
+(define (mlc-op-n-cmp ast succ op  #!optional (label-if #f) (label-true #f) (label-false #f))
+
+  (define inlined-if-cond? (and label-if label-true label-false))
 
   ;; Gen lazy code objects chain for binary operation (x op y)
   ;; Build a lco for each node of the type checks tree (with int and float)
@@ -1977,27 +2004,42 @@
   (define (get-op-ii succ)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-               (reg (car res))
-               (ctx (cdr res))
-               (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-               (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
-          (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright)
-          (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg))))))
+        (if inlined-if-cond?
+            (let ((lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                  (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+              ;; Inlined if condition, then generate inlined version of cmp operator
+              (codegen-cmp-ii-inline cgc (ctx-fs ctx) op lleft lright label-if label-true label-false))
+            (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
+                   (reg (car res))
+                   (ctx (cdr res))
+                   (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                   (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+              ;; Not inlined if condition, then generated normal version of cmp operator
+              (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright label-if label-true label-false)
+              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg)))))))
 
   ;; TODO regalloc comment
   (define (get-op-ff succ leftint? rightint?)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((res (ctx-get-free-reg cgc ctx))
-               (reg (car res))
-               (ctx (cdr res))
-               (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-               (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
-          (codegen-cmp-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint?)
-          (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg))))))
+        ;; TODO: merge both cases
+        (if inlined-if-cond?
+            (let ((lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                  (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+              ;; Inlined if condition, then generate inlined version of cmp operator
+              (codegen-cmp-ff cgc (ctx-fs ctx) op #f lleft leftint? lright rightint? label-if label-true label-false))
+            (let* ((res (ctx-get-free-reg cgc ctx))
+                   (reg (car res))
+                   (ctx (cdr res))
+                   (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                   (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+              (codegen-cmp-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? label-if label-true label-false)
+              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg)))))))
 
-  (cond ((<= (length (cdr ast)) 1)
+  (cond (inlined-if-cond?
+           ;; Inlined if condition, operands already are on the stack
+           (build-binop succ))
+        ((<= (length (cdr ast)) 1)
            (gen-ast #t succ))
         ((= (length (cdr ast)) 2)
            (gen-ast-l (cdr ast) (build-binop succ)))

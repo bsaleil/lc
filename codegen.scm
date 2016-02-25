@@ -733,10 +733,29 @@
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
 
+;; TODO: merge codegen-cmp-ii-inline & codegen-cmp-ii
+;; TODO wip
+(define (codegen-cmp-ii-inline cgc fs op lleft lright label-if label-true label-false)
+  (let ((x86-inv-op (cdr (assoc op `((< . ,x86-jge) (> . ,x86-jle) (<= . ,x86-jg) (>= . ,x86-jl) (= . ,x86-jne)))))
+        (opl (codegen-loc-to-x86opnd fs lleft))
+        (opr (codegen-loc-to-x86opnd fs lright)))
+    (if (and (ctx-loc-is-memory? lleft)
+             (ctx-loc-is-memory? lright))
+        (begin (x86-mov cgc (x86-rax) opl)
+        (set! opl (x86-rax))))
+    (x86-cmp cgc opl opr)
+    (x86-label cgc label-if)
+    (x86-inv-op  cgc label-false)
+    (x86-jmp cgc label-true)))
+
+;; TODO: remove inline code
 ;; TODO regalloc: on ne DOIT PAS écraser les valeurs des opérandes qui peuvent servir plus tard
-(define (codegen-cmp-ii cgc fs op reg lleft lright)
+(define (codegen-cmp-ii cgc fs op reg lleft lright label-if label-true label-false)
+
   (let ((label-end (asm-make-label #f (new-sym 'label-end)))
         (x86-op (cdr (assoc op `((< . ,x86-jl) (> . ,x86-jg) (<= . ,x86-jle) (>= . ,x86-jge) (= . ,x86-je)))))
+        ;; TODO WIP
+        (x86-iop (cdr (assoc op `((< . ,x86-jge) (> . ,x86-jle) (<= . ,x86-jg) (>= . ,x86-jl) (= . ,x86-jne)))))
         (dest (codegen-reg-to-x86reg reg))
         (opl  (codegen-loc-to-x86opnd fs lleft))
         (opr  (codegen-loc-to-x86opnd fs lright)))
@@ -747,29 +766,36 @@
                (set! opl (x86-rax))))
 
     (x86-cmp cgc opl opr)
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-    (x86-op cgc label-end)
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-    (x86-label cgc label-end)))
+    (if (and label-if label-true label-false)
+        (begin (x86-label cgc label-if)
+               (x86-iop  cgc label-false)
+               (x86-jmp cgc label-true))
+        (begin (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+               (x86-op cgc label-end)
+               (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+               (x86-label cgc label-end)))))
 
 ;; TODO regalloc: on ne DOIT PAS écraser les valeurs des opérandes qui peuvent servir plus tard
-(define (codegen-cmp-ff cgc fs op reg lleft leftint? lright rightint?)
+(define (codegen-cmp-ff cgc fs op reg lleft leftint? lright rightint? label-if label-true label-false)
 
-  (let ((label-end (asm-make-label #f (new-sym 'label-end)))
-        (dest    (codegen-reg-to-x86reg reg))
-        (opleft  (codegen-loc-to-x86opnd fs lleft))
-        (opright (codegen-loc-to-x86opnd fs lright))
-        (x86-op  (cdr (assoc op `((< . ,x86-jae) (> . ,x86-jbe) (<= . ,x86-ja) (>= . ,x86-jb) (= . ,x86-jne))))))
+  (define-macro (if-inline? expr)
+    `(if (and label-if label-true label-false) #f ,expr))
+
+  (let ((label-end (if-inline? (asm-make-label #f (new-sym 'label-end))))
+        (dest      (if-inline? (codegen-reg-to-x86reg reg)))
+        (opleft    (codegen-loc-to-x86opnd fs lleft))
+        (opright   (codegen-loc-to-x86opnd fs lright))
+        (x86-op    (cdr (assoc op `((< . ,x86-jae) (> . ,x86-jbe) (<= . ,x86-ja) (>= . ,x86-jb) (= . ,x86-jne))))))
 
     (if leftint?
         ;; Left is integer, the compiler converts it to double precision FP
-        (begin (x86-mov cgc dest opleft)
-               (x86-sar cgc dest (x86-imm-int 2))  ;; untag integer
-               (x86-cvtsi2sd cgc (x86-xmm0) dest)) ;; convert to double
+        (begin (x86-mov cgc (x86-rax) opleft)
+               (x86-sar cgc (x86-rax) (x86-imm-int 2))  ;; untag integer
+               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
         ;; Left is double precision FP
         (if (ctx-loc-is-memory? opleft)
-            (begin (x86-mov cgc dest opleft)
-                   (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) dest)))
+            (begin (x86-mov cgc (x86-rax) opleft)
+                   (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
             (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opleft))))
 
     (if rightint?
@@ -785,35 +811,14 @@
             (begin (x86-movsd (x86-xmm1) opright)
                    (x86-comisd cgc (x86-xmm0) (x86-xmm1)))))
 
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-    (x86-op cgc label-end)
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-    (x86-label cgc label-end)))
-
-
-
-;  (let ((label-jump (asm-make-label #f (new-sym 'label-jump)))
-;        ;; DO NOT USE jg* and jl* WITH FP VALUES !
-;        (x86-op (cdr (assoc op `((< . ,x86-jae) (> . ,x86-jbe) (<= . ,x86-ja) (>= . ,x86-jb) (= . ,x86-jne))))))
-;
-;    (x86-mov cgc (x86-rax) (x86-mem (* 8 lidx) (x86-rsp)))
-;    (x86-mov cgc (x86-rbx) (x86-mem (* 8 ridx) (x86-rsp)))
-;
-;    (if leftint?
-;        ;; Left is integer, the compiler converts it to double precision FP
-;        (begin (x86-sar cgc (x86-rax) (x86-imm-int 2))  ;; untag integer
-;               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
-;        ;; Left is double precision FP
-;        (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-;    (if rightint?
-;        ;; Right is integer, the compiler converts it to double precision FP
-;        (begin (x86-sar cgc (x86-rbx) (x86-imm-int 2))
-;               (x86-cvtsi2sd cgc (x86-xmm1) (x86-rbx))
-;               (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
-;        ;; Right is double precision FP
-;        (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx))))
-;    (x86-label cgc label-jump)
-;    (x86-op cgc (get-stub-label label-jump ctx))))
+    (if (and label-if label-true label-false)
+        (begin (x86-label cgc label-if)
+               (x86-op cgc label-false)
+               (x86-jmp cgc label-true))
+        (begin (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+               (x86-op cgc label-end)
+               (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+               (x86-label cgc label-end)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Binary operators

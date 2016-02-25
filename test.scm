@@ -1,32 +1,21 @@
 
-;(define run
-;  (lambda (n)
-;    ((letrec ((loop (lambda (i sum) (if (< i 0) sum (loop (- i 1) (+ i sum))))))
-;       loop) n 0)))
-;
-;(run 10000)
+;;; WIP:
+;; Pour l'inlining des conditions de if:
 
-;(define (run n)
-;  (let loop ((i n) (sum 0))
-;    (if (< i 0)
-;      sum
-;      (loop (- i 1) (+ i sum)))))
-;
-;(run 10000)
-
-(define (foo n)
-  (let ((f (lambda () (pp (+ n 10)))))
-    (set! n #f)
-    (f)))
-
-(foo 12)
 
 ;; Optimisations:
 ;; Ne pas utiliser de booléen dans les conditions du if
+;;   * Refactoring mlc-op-n-cmp
+;;   * Refactoring des deux codegen-cmp-ii et codegen-cmp-ff
+;;   * Ajouter la fonctionaliter pour les (if (number?) ...)
 ;; Détecter les constantes en opérandes des opérateurs
+;;   * A faire pour les comparaisons
 ;; Enlever rbp
+;;   * DONE!
 ;; Récupérer directement la valeur de retour dans rax (pareil pour les arguments?)
+;;   * TODO
 ;; Tail call: écraser les valeurs des registres d'argument
+;;   * ?
 
 ;; Avec les arguments par registres, il manque:
 ;; Attention, est-ce que les registres sont bien sauvegardés dans mlc-apply ?
