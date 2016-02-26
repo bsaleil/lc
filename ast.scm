@@ -1455,8 +1455,8 @@
 ;;
 (define (mlc-if ast succ)
 
-  (let* ((inline-condition?
-           (and (pair? (cadr ast))
+  (let* ((inline-condition? ;; TODO WIP
+           (and #f (pair? (cadr ast))
                 (member (caadr ast) '(< > <= >= =))))
          (lazy-code0
            (gen-ast (cadddr ast) succ))
@@ -1964,227 +1964,135 @@
 ;;
 ;; Make lazy code from N-ARY OPERATOR
 ;;
-(define (mlc-op-n ast succ op)
-  (if (member op '(< > <= >= =))
-    (mlc-op-n-cmp ast succ op)
-    (mlc-op-n-num ast succ op)))
+(define (mlc-op-n ast succ op) ;; '(+ - * < > <= >= = /)
 
-;;
-;; Make lazy code from N-ARY COMPARISON OPERATOR
-;;
-;; TODO regalloc:
-;; (< 1 2 3) ->
-;; (let ((a 1) (b 2) (c 3))
-;;   (and (< a b) (< b c)))
-;; If ast is an inlined if condition then label-if, label-true, and label-false are set
-(define (mlc-op-n-cmp ast succ op  #!optional (label-if #f) (label-true #f) (label-false #f))
+  ;; Ast if 0 opnd
+  (define (ast0 op)
+    (case op
+      ((+) 0)
+      ((*) 1)
+      ((< <= > >= =) #t)))
 
-  (define inlined-if-cond? (and label-if label-true label-false))
+  ;; Ast if 1 opnd
+  (define (ast1 op opnd)
+    (case op
+      ((+ *) opnd)
+      ((-)   `(- 0 ,opnd))
+      ((/)   `(/ 1 ,opnd))
+      ((< <= > >= =) #t)))
 
-  ;; Gen lazy code objects chain for binary operation (x op y)
-  ;; Build a lco for each node of the type checks tree (with int and float)
-  (define (build-binop succ)
-    (let* (;; Operations lco
-           (lazy-ii (get-op-ii succ))
-           (lazy-if (get-op-ff succ #t #f)) ;; lco for int float operation
-           (lazy-fi (get-op-ff succ #f #t)) ;; lco for float int operation
-           (lazy-ff (get-op-ff succ #f #f)) ;; lco for float float operation
-           ;; Right branch
-           (lazy-yfloat2 (gen-fatal-type-test CTX_FLO 0 lazy-ff ast))
-           (lazy-yint2   (gen-dyn-type-test CTX_NUM 0 lazy-fi lazy-yfloat2 ast))
-           (lazy-xfloat  (gen-fatal-type-test CTX_FLO 1 lazy-yint2 ast))
-           ;; Left branch
-           (lazy-yfloat  (gen-fatal-type-test CTX_FLO 0 lazy-if ast))
-           (lazy-yint    (gen-dyn-type-test CTX_NUM 0 lazy-ii lazy-yfloat ast))
-           ;; Root node
-           (lazy-xint    (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat ast)))
-      lazy-xint))
+  ;; Transform numeric operator
+  ;; (+ 1 2 3) -> (+ (+ 1 2) 3)
+  (define (trans-num-op ast)
+    `(,(car ast)
+       ,(list (car ast) (cadr ast) (caddr ast))
+       ,@(cdddr ast)))
 
-  ;; Get lazy code object for operation with int and int
-  (define (get-op-ii succ)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (let* ((res (if inlined-if-cond? #f (ctx-get-free-reg cgc ctx)))
-               (reg (if res (car res) #f))
-               (ctx (if res (cdr res) ctx))
-               ;; We need to get locs AFTER ctx-get-free-reg call
-               (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-               (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
-          (if inlined-if-cond?
-              ;; Inlined 'if' condition, then generate inlined version of cmp operator
-              (codegen-cmp-ii cgc (ctx-fs ctx) op #f lleft lright label-if label-true label-false)
-              ;; Not inlined 'if' condition, then generated normal version of cmp operator
-              (begin
-                (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright label-if label-true label-false)
-                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg))))))))
+  (cond
+    ((= (length ast) 1) (gen-ast (ast0 op) succ))
+    ((= (length ast) 2) (gen-ast (ast1 op (cadr ast)) succ))
+    ((> (length ast) 3)
+       (if (member op '(+ - * /))
+           (gen-ast (trans-num-op ast) succ)
+           (error "Internal error"))) ;; comparisons are handled by macro expander
+    (else
+      (let ((lcst (integer? (cadr ast)))
+            (rcst (integer? (caddr ast))))
+        (cond
+          ((and lcst rcst)
+             (gen-ast (eval ast) succ))
+          (lcst
+             (gen-ast (caddr ast)
+                      (get-lazy-n-binop ast op #f (cadr ast) #f succ)))
+          (rcst
+             (gen-ast (cadr ast)
+                      (get-lazy-n-binop ast op #f #f (caddr ast) succ)))
+          (else
+            (gen-ast (cadr ast)
+                     (gen-ast (caddr ast)
+                              (get-lazy-n-binop ast op #f #f #f succ)))))))))
 
-  ;; TODO regalloc comment
-  (define (get-op-ff succ leftint? rightint?)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (let* ((res (if inlined-if-cond? #f (ctx-get-free-reg cgc ctx)))
-               (reg (if res (car res) #f))
-               (ctx (if res (cdr res) ctx))
-               ;; We need to get locs AFTER ctx-get-free-reg call
-               (lright (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-               (lleft  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
-          (if inlined-if-cond?
-              ;; Inlined if condition, then generate inlined version of cmp operator
-              (codegen-cmp-ff cgc (ctx-fs ctx) op #f lleft leftint? lright rightint? label-if label-true label-false)
-              ;; Not inlined 'if' condition, then generated normal version of cmp operator
-              (begin
-                (codegen-cmp-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? label-if label-true label-false)
-                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_BOOL reg))))))))
+(define (get-lazy-n-binop ast op inlined-if-cond? lcst rcst succ)
 
-  (cond (inlined-if-cond?
-           ;; Inlined if condition, operands already are on the stack
-           (build-binop succ))
-        ((<= (length (cdr ast)) 1)
-           (gen-ast #t succ))
-        ((= (length (cdr ast)) 2)
-           (gen-ast-l (cdr ast) (build-binop succ)))
-        (else (error "Internal error (mlc-op-n-cmp)"))))
+  (define num-op? (member op '(+ - * /)))
+  (define codegen-ii (if num-op? codegen-num-ii codegen-cmp-ii))
+  (define codegen-ff (if num-op? codegen-num-ff codegen-cmp-ff))
 
-;;
-;; Make lazy code from N-ARY ARITHMETIC OPERATOR
-;;
-(define (mlc-op-n-num ast succ op)
-
-  ;; Build chain for all operands
-  (define (build-chain opnds)
-    (if (null? opnds)
-        succ
-        (let* ((lazy-bin-op (build-binop (build-chain (cdr opnds))))
-               (lazy-opnd (gen-ast (car opnds) lazy-bin-op)))
-          lazy-opnd)))
-
-  ;; TODO WIP
-  (define (build-binop-lcst succ)
-    (let* (;;
-           (lazy-i
-             (if (integer? (cadr ast))
-                 (if (eq? op '/)
-                     (get-op-ff succ #t #t #t #f)
-                     (get-op-ii succ #t #f))
-                 (get-op-ff succ #f #t #t #f)))
-           (lazy-f
-             (if (integer? (cadr ast))
-                 (get-op-ff succ #t #f #t #f)
-                 (get-op-ff succ #f #f #t #f)))
-           ;; Float check
-           (lazy-float (gen-fatal-type-test CTX_FLO 0 lazy-f ast))
-           ;; Int check
-           (lazy-int (gen-dyn-type-test CTX_NUM 0 lazy-i lazy-float ast)))
+  ;; Build chain to check type of one value (if one of them is a cst)
+  (define (type-check-one)
+    (let* (;; Op
+           (lazy-op-i (get-op-ii))
+           (lazy-op-f (get-op-ff (integer? lcst) (integer? rcst)))
+           ;; Checks
+           (lazy-float (gen-fatal-type-test CTX_FLO 0 lazy-op-f ast))
+           (lazy-int (gen-dyn-type-test CTX_NUM 0 lazy-op-i lazy-float ast)))
       lazy-int))
 
-  ;; Gen lazy code objects chain for binary operation (x op y)
-  ;; Build a lco for each node of the type checks tree (with int and float)
-  (define (build-binop succ)
+  ;; Build chain to check type of two values (no cst)
+  (define (type-check-two)
     (let* (;; Operations lco
-           (lazy-ii
-             (if (eq? op '/)
-                 (get-op-ff succ #t #t #f #f)   ;; If it is the / operator, fall back to float
-                 (get-op-ii succ #f #f)))       ;; lco for int int operation
-           (lazy-if (get-op-ff succ #t #f #f #f)) ;; lco for int float operation
-           (lazy-fi (get-op-ff succ #f #t #f #f)) ;; lco for float int operation
-           (lazy-ff (get-op-ff succ #f #f #f #f)) ;; lco for float float operation
+           (lazy-op-ii (get-op-ii))
+           (lazy-op-if (get-op-ff #t #f))
+           (lazy-op-fi (get-op-ff #f #t))
+           (lazy-op-ff (get-op-ff #f #f))
            ;; Right branch
-           (lazy-yfloat2 (gen-fatal-type-test CTX_FLO 0 lazy-ff ast))
-           (lazy-yint2   (gen-dyn-type-test CTX_NUM 0 lazy-fi lazy-yfloat2 ast))
+           (lazy-yfloat2 (gen-fatal-type-test CTX_FLO 0 lazy-op-ff ast))
+           (lazy-yint2   (gen-dyn-type-test CTX_NUM 0 lazy-op-fi lazy-yfloat2 ast))
            (lazy-xfloat  (gen-fatal-type-test CTX_FLO 1 lazy-yint2 ast))
            ;; Left branch
-           (lazy-yfloat  (gen-fatal-type-test CTX_FLO 0 lazy-if ast))
-           (lazy-yint    (gen-dyn-type-test CTX_NUM 0 lazy-ii lazy-yfloat ast))
+           (lazy-yfloat  (gen-fatal-type-test CTX_FLO 0 lazy-op-if ast))
+           (lazy-yint    (gen-dyn-type-test CTX_NUM 0 lazy-op-ii lazy-yfloat ast))
            ;; Root node
            (lazy-xint    (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat ast)))
-      lazy-xint))
+    lazy-xint))
 
-  ;; Get lazy code object for operation with int and int
-  (define (get-op-ii succ lcst? rcst?)
+  ;;
+  (define (get-op-ii)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-               (reg (car res))
-               (ctx (cdr res))
-               (lright (if rcst? (caddr ast) (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+        (let* ((type (if num-op? CTX_NUM CTX_BOOL))
+               (res (if inlined-if-cond? #f (ctx-get-free-reg cgc ctx)))
+               (reg (if res (car res) #f))
+               (ctx (if res (cdr res) ctx))
+               ;; We need to get locs AFTER ctx-get-free-reg call
+               (lright (or rcst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
                (lleft
-                 (if lcst?
-                     (cadr ast)
-                     (if rcst?
-                         (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))
-                         (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))))
-               (n-pop (count (list lcst? rcst?) not)))
-        (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst? rcst?)
-        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_NUM reg))))))
+                 (if rcst
+                     (or lcst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                     (or lcst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))))
+               (n-pop (count (list lcst rcst) not)))
 
-  ;; Get lazy code object for operation with float and float, float and int, and int and float
-  ;; leftint?  to #t if left operand is an integer
-  ;; rightint? to #t if right operand is an integer
-  (define (get-op-ff succ leftint? rightint? lcst? rcst?)
+          (codegen-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst)
+          (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg))))))
+
+  ;;
+  (define (get-op-ff leftint? rightint?)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((res (ctx-get-free-reg cgc ctx)) ;; Return reg,ctx
-               (reg (car res))
-               (ctx (cdr res))
-               (lright (if rcst? (caddr ast) (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+        (let* ((type (if num-op? CTX_FLO CTX_BOOL))
+               (res (if inlined-if-cond? #f (ctx-get-free-reg cgc ctx)))
+               (reg (if res (car res) #f))
+               (ctx (if res (cdr res) ctx))
+               ;; We need to get locs AFTER ctx-get-free-reg call
+               (lright (or rcst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
                (lleft
-                 (if lcst?
-                     (cadr ast)
-                     (if rcst?
-                         (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))
-                         (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))))
-               (n-pop (count (list lcst? rcst?) not)))
-          (codegen-num-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst? rcst?)
-          (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_FLO reg))))))
+                 (if rcst
+                     (or lcst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                     (or lcst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))))
+               (n-pop (count (list lcst rcst) not)))
 
-  (cond ((= (length ast) 1)
-           (cond ((eq? op '+) (gen-ast 0 succ))
-                 ((eq? op '-) (get-lazy-error ERR_WRONG_NUM_ARGS))
-                 ((eq? op '*) (gen-ast 1 succ))
-                 ((eq? op '/) (get-lazy-error ERR_WRONG_NUM_ARGS))))
-        ((= (length ast) 2)
-           (cond ((eq? op '+) (gen-ast (cadr ast) succ))
-                 ((eq? op '-) (gen-ast (list '* -1 (cadr ast)) succ))
-                 ((eq? op '*) (gen-ast (cadr ast) succ))
-                 ((eq? op '/) (gen-ast (list '/ 1 (cadr ast)) succ))))
-        ((= (length ast) 3)
-           (let ((lcst (integer? (cadr ast)))
-                 (rcst (integer? (caddr ast))))
-             (cond
-               ((and lcst rcst)
-                  (if (eq? op '/)
-                      (gen-ast (exact->inexact (eval ast)) succ)
-                      (gen-ast (eval ast) succ)))
-               (lcst (gen-ast (caddr ast) (build-binop-lcst succ)))
-               (rcst
-                 (cond ((eq? op '+) (gen-ast (list '+ (caddr ast) (cadr ast)) succ))
-                       ((eq? op '-) (gen-ast (list '+ (* -1 (caddr ast)) (cadr ast)) succ))
-                       ((eq? op '*) (gen-ast (list '* (caddr ast) (cadr ast)) succ))
-                       ((eq? op '/) (gen-ast (list '*
-                                                   (exact->inexact (/ 1 (caddr ast)))
-                                                   (cadr ast))
-                                             succ))))
-               (else
-                 (gen-ast (cadr ast)
-                          (gen-ast (caddr ast)
-                                   (build-binop succ)))))))
-        (else
-           (let ((nast
-                   `(,(car ast)
-                     ,(list (car ast) (cadr ast) (caddr ast))
-                     ,@(cdddr ast))))
-            ;(pp nast)
-            ;(error "OK")
-            (gen-ast nast succ)))))
-  ;(cond ((= (length ast) 1)
-  ;         (cond ((eq? op '+) (gen-ast 0 succ))
-  ;               ((eq? op '-) (get-lazy-error ERR_WRONG_NUM_ARGS))
-  ;               ((eq? op '*) (gen-ast 1 succ))
-  ;               (else (error "Unknown operator " op))))
-  ;      ((and (= (length ast) 2) (eq? op '-))
-  ;         (gen-ast (list '* -1 (cadr ast)) succ))
-  ;      (else
-  ;        (gen-ast (cadr ast) (build-chain (cddr ast))))))
+          (codegen-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst)
+          (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg))))))
+
+  (assert
+    (if inlined-if-cond?
+        (member op '(< <= > >= =))
+        #t)
+    "I can't inline if condition with number operator !")
+
+  (if (or lcst rcst)
+      (type-check-one)
+      (type-check-two)))
 
 ;;
 ;; Make lazy code from TYPE TEST

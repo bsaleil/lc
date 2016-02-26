@@ -635,10 +635,11 @@
                          (x86-sub cgc dest opright))
             ((eq? op '*) (x86-imul cgc dest opright (x86-imm-int lleft)))))
     (rcst?
-      (x86-mov cgc dest opleft)
-      (cond ((eq? op '+) (x86-add cgc dest (x86-imm-int (obj-encoding lright))))
-            ((eq? op '-) (x86-sub cgc dest (x86-imm-int (obj-encoding lright))))
-            ((eq? op '*) (x86-imul cgc dest (x86-imm-int lright)))))
+      (cond ((eq? op '+) (x86-mov cgc dest opleft)
+                         (x86-add cgc dest (x86-imm-int (obj-encoding lright))))
+            ((eq? op '-) (x86-mov cgc dest opleft)
+                         (x86-sub cgc dest (x86-imm-int (obj-encoding lright))))
+            ((eq? op '*) (x86-imul cgc dest opleft (x86-imm-int lright)))));(x86-imul cgc dest (x86-imm-int lright) 32))))
     (else
       (x86-mov cgc dest opleft)
       (cond ((eq? op '+) (x86-add cgc dest opright))
@@ -716,79 +717,98 @@
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
 
-(define (codegen-cmp-ii cgc fs op reg lleft lright label-if label-true label-false)
+(define (codegen-cmp-ii cgc fs op reg lleft lright lcst? rcst?)
 
-  (define-macro (if-inline? expr)
-    `(if (and label-if label-true label-false) #f ,expr))
+  ;; TODO: assert (not (and lcst? rcst?))
 
-  (let* ((inline? (and label-if label-true label-false))
-         (x86-op
-           (if inline?
-               (cdr (assoc op `((< . ,x86-jge) (> . ,x86-jle) (<= . ,x86-jg) (>= . ,x86-jl) (= . ,x86-jne))))
-               (cdr (assoc op `((< . ,x86-jl) (> . ,x86-jg) (<= . ,x86-jle) (>= . ,x86-jge) (= . ,x86-je))))))
-         (dest      (if-inline? (codegen-reg-to-x86reg reg)))
-         (label-end (if-inline? (asm-make-label #f (new-sym 'label-end))))
-         (opl  (codegen-loc-to-x86opnd fs lleft))
-         (opr  (codegen-loc-to-x86opnd fs lright)))
+  ;; TODO: this test is in all cmp-ii cmp-ff num-ii num-ff. Use external function in utils
+  ;; Handle cases like 1. 2. etc...
+  (if (and lcst? (flonum? lleft))
+      (set! lleft (##flonum->fixnum lleft)))
+  (if (and rcst? (flonum? lright))
+      (set! lright (##flonum->fixnum lright)))
 
-    (if (and (ctx-loc-is-memory? lleft)
+  (let* ((x86-op  (cdr (assoc op `((< . ,x86-jl) (> . ,x86-jg) (<= . ,x86-jle) (>= . ,x86-jge) (= . ,x86-je)))))
+         (x86-iop (cdr (assoc op `((< . ,x86-jg) (> . ,x86-jl) (<= . ,x86-jge) (>= . ,x86-jle) (= . ,x86-je)))))
+         (dest (codegen-reg-to-x86reg reg))
+         (label-end (asm-make-label #f (new-sym 'label-end)))
+         (opl
+           (if lcst?
+               (x86-imm-int (obj-encoding lleft))
+               (codegen-loc-to-x86opnd fs lleft)))
+         (opr
+           (if rcst?
+               (x86-imm-int (obj-encoding lright))
+               (codegen-loc-to-x86opnd fs lright))))
+
+    (if (and (not lcst?)
+             (not rcst?)
+             (ctx-loc-is-memory? lleft)
              (ctx-loc-is-memory? lright))
         (begin (x86-mov cgc (x86-rax) opl)
                (set! opl (x86-rax))))
 
-    (x86-cmp cgc opl opr)
-    (if (and label-if label-true label-false)
-        (begin (x86-label cgc label-if)
-               (x86-op  cgc label-false)
-               (x86-jmp cgc label-true))
-        (begin (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-               (x86-op cgc label-end)
-               (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-               (x86-label cgc label-end)))))
+    (if lcst?
+        (x86-cmp cgc opr opl)
+        (x86-cmp cgc opl opr))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+    (if lcst?
+        (x86-iop cgc label-end)
+        (x86-op cgc label-end))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+    (x86-label cgc label-end)))
 
-(define (codegen-cmp-ff cgc fs op reg lleft leftint? lright rightint? label-if label-true label-false)
+(define (codegen-cmp-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst?)
 
-  (define-macro (if-inline? expr)
-    `(if (and label-if label-true label-false) #f ,expr))
+  ;; TODO: assert (not (and lcst? rcst?))
 
-  (let ((label-end (if-inline? (asm-make-label #f (new-sym 'label-end))))
-        (dest      (if-inline? (codegen-reg-to-x86reg reg)))
-        (opleft    (codegen-loc-to-x86opnd fs lleft))
-        (opright   (codegen-loc-to-x86opnd fs lright))
-        (x86-op    (cdr (assoc op `((< . ,x86-jae) (> . ,x86-jbe) (<= . ,x86-ja) (>= . ,x86-jb) (= . ,x86-jne))))))
+  (if (and lcst? (flonum? lleft))
+      (set! lleft (##flonum->fixnum lleft)))
+  (if (and rcst? (flonum? lright))
+      (set! lright (##flonum->fixnum lright)))
 
-    (if leftint?
-        ;; Left is integer, the compiler converts it to double precision FP
-        (begin (x86-mov cgc (x86-rax) opleft)
-               (x86-sar cgc (x86-rax) (x86-imm-int 2))  ;; untag integer
-               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
-        ;; Left is double precision FP
-        (if (ctx-loc-is-memory? opleft)
-            (begin (x86-mov cgc (x86-rax) opleft)
-                   (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-            (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opleft))))
+  (let ((label-end (asm-make-label #f (new-sym 'label-end)))
+        (dest (codegen-reg-to-x86reg reg))
+        (opleft  (if lcst? lleft  (codegen-loc-to-x86opnd fs lleft)))
+        (opright (if rcst? lright (codegen-loc-to-x86opnd fs lright)))
+        (x86-op (cdr (assoc op `((< . ,x86-jae) (> . ,x86-jbe) (<= . ,x86-ja) (>= . ,x86-jb) (= . ,x86-jne))))))
 
-    (if rightint?
-        ;; Right is integer, the compiler converts it to double precision FP
-        (begin (x86-mov cgc (x86-rax) opright)
-               (x86-sar cgc (x86-rax) (x86-imm-int 2))
-               (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
-               (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
-        ;; Right is double precision FP
-        (if (ctx-loc-is-memory? opright)
-            (begin (x86-mov cgc (x86-rax) opright)
-                   (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-            (begin (x86-movsd (x86-xmm1) opright)
-                   (x86-comisd cgc (x86-xmm0) (x86-xmm1)))))
+    ;; Left operand
+    (cond
+      (lcst?
+         (x86-mov cgc (x86-rax) (x86-imm-int opleft))
+         (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax)))
+      (leftint?
+         (x86-mov cgc (x86-rax) opleft)
+         (x86-sar cgc (x86-rax) (x86-imm-int 2))
+         (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax)))
+      ((ctx-loc-is-memory? lleft)
+         (x86-mov cgc (x86-rax) opleft)
+         (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+      (else
+         (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opleft))))
 
-    (if (and label-if label-true label-false)
-        (begin (x86-label cgc label-if)
-               (x86-op cgc label-false)
-               (x86-jmp cgc label-true))
-        (begin (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-               (x86-op cgc label-end)
-               (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-               (x86-label cgc label-end)))))
+    ;; Right operand
+    (cond
+      (rcst?
+        (x86-mov cgc (x86-rax) (x86-imm-int opright))
+        (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
+        (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
+      (rightint?
+        (x86-mov cgc (x86-rax) opright)
+        (x86-sar cgc (x86-rax) (x86-imm-int 2))
+        (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
+        (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
+      ((ctx-loc-is-memory? lright)
+        (x86-mov cgc (x86-rax) opright)
+        (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+      (else
+        (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright))))
+
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+    (x86-op cgc label-end)
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+    (x86-label cgc label-end)))
 
 ;;-----------------------------------------------------------------------------
 ;; Binary operators

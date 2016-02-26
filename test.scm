@@ -1,20 +1,17 @@
-;(declare (standard-bindings))
-;(declare (fixnum) (not safe))
 
 (define (fib n)
   (if (< n 2)
-      n
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
+      1
+      (+ (fib (- n 1)) (fib (- n 2)))))
 
-(fib 20)
-;(println (fib 40))
+(fib 40)
 
 ;; Optimisations:
 ;; Ne pas utiliser de booléen dans les conditions du if
-;;   * Ajouter la fonctionaliter pour les (if (number?) ...)
+;;   * Ajouter la fonctionalité pour les (if (number?) ...)
+;;   * Reécrire pour les opérateurs de comparaison avec le nouveau code mlc-op-n
 ;; Détecter les constantes en opérandes des opérateurs
-;;   * A faire pour les comparaisons
+;;   * DONE!
 ;; Enlever rbp
 ;;   * DONE!
 ;; Récupérer directement la valeur de retour dans rax (pareil pour les arguments?)
