@@ -157,8 +157,6 @@
                  ((eq? op 'lambda) (mlc-lambda ast succ #f))
                  ;; Begin
                  ((eq? op 'begin) (mlc-begin ast succ))
-                ; ;; Do
-                ; ((eq? op 'do) (mlc-do ast succ))
                  ;; Binding
                  ((eq? op 'let) (mlc-let ast succ)) ;; Also handles let* (let* is a macro)
                  ((eq? op 'letrec) (mlc-letrec ast succ))
@@ -167,7 +165,7 @@
                    (let ((generic-op (list->symbol (list-tail (symbol->list op) 5))))
                      (gen-ast (cons generic-op (cdr ast))
                               succ)))
-                 ((member op '(+ - * < > <= >= = /))         (mlc-op-n ast succ op))   ;; nary operator
+                 ((member op '(+ - * < > <= >= = /))         (mlc-op-n ast succ op)) ;; nary operator
                  ((member op '(quotient modulo remainder)) (mlc-op-bin ast succ op)) ;; binary operator
                  ;; Type predicate
                  ((type-predicate? op) (mlc-test ast succ))
@@ -563,70 +561,6 @@
 ;; Make lazy code from LAMBDA
 ;;
 
-;; Store the cc table associated to each lambda (ast -> cctable)
-;; cctable is a still vector
-(define cctables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))     ;; eq? on ast
-                                                      (equal? (cdr a) (cdr b)))))) ;; equal? on ctx information
-
-;; Store the cr table associated to each lambda (ast -> crtable)
-;; crtable is a still vector
-(define crtables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))
-                                                      (equal? (cdr a) (cdr b))))))
-
-(define entry-points-locs (make-table test: eq?))
-
-(define (get-entry-points-loc ast stub-addr)
-  (let ((r (table-ref entry-points-locs ast #f)))
-    (if r
-        r
-        (let ((v (alloc-still-vector 1)))
-          (vector-set! v 0 (quotient stub-addr 4)) ;; quotient 4 because vector-set write the encoded value (bug when using put-i64?)
-          (table-set! entry-points-locs ast v)
-          v))))
-
-;; Return cctable from cctable-key
-;; Return the existing table if already created or create one, add entry, and return it
-(define (get-cctable ast cctable-key stub-addr generic-addr)
-  (let ((cctable (table-ref cctables cctable-key #f)))
-    (if cctable
-      cctable
-      (let ((t (make-cc (+ 1 global-cc-table-maxsize) stub-addr generic-addr)))
-        (table-set! cctables cctable-key t)
-        (set! cctables-loc-code (cons (cons (- (obj-encoding t) 1)
-                                            ast)
-                                      cctables-loc-code))
-        t))))
-
-;; Return crtable from crtable-key
-;; Return the existing table if already created or create one, add entry, and return it
-(define (get-crtable ast crtable-key stub-addr)
-  (let ((crtable (table-ref crtables crtable-key #f)))
-    (if crtable
-        crtable
-        (let ((t (make-cr global-cr-table-maxsize stub-addr)))
-          (table-set! crtables crtable-key t)
-          t))))
-
-;; TODO regalloc: Créer de nouvelles entrées dans la table (+ que le type de la valeur de retour)
-;;                avec slot-loc free-regs
-;; Return crtable key from ast and ctx
-;; The key contains ast, stack types, and a list of known identifier with types
-(define (get-crtable-key ast ctx)
-  (cons ast
-        (list (ctx-slot-loc ctx)
-              (ctx-free-regs ctx)
-              (ctx-stack ctx)
-              (ctx-env ctx))))
-              ;; TODO regalloc: need to store sslots of identifiers
-            ;  (map (lambda (el)
-            ;         (cons (car el)
-            ;           (identifier-stype (cdr el))))
-            ;       (ctx-env ctx)))))
-
-;; TODO: change to table, merge with cctables ? (change cctable-key to something better)
-;; Store pairs associating cctable address to the code of the corresponding function
-(define cctables-loc-code '())
-
 (define (mlc-lambda ast succ lib-define)
 
   (let* (;; Lambda free vars
@@ -732,28 +666,6 @@
             (if opt-propagate-functionid
                 (error "NYI - mlc-lambda: Use (CTX_CLOi with cctable or closure id)")
                 (jump-to-version cgc succ (ctx-push ctx CTX_CLO reg)))))))))
-
-;; This is the key used in hash table to find the cc-table for this closure.
-;; The key is (ast . free-vars-inf) with ast the s-expression of the lambda
-;; and free-vars-inf the type information of free vars ex. ((a . number) (b . char))
-;; The hash function uses eq? on ast, and equal? on free-vars-inf.
-;; This allows us to use different cctable if types of free vars are not the same.
-;; (to properly handle type checks)
-(define (get-cctable-key ast ctx fvars)
-  (cons ast
-        (foldr (lambda (n r)
-                 (if (member (car n) fvars) ;; If this id is a free var of future lambda
-                     (cons (cons (car n)
-                                 (if (eq? (identifier-kind (cdr n)) 'local)
-                                     ;; If local, get type from stack
-                                     (let ((type (ctx-identifier-type ctx (cdr n))))
-                                       type)
-                                     ;; If free, get type from env
-                                     (identifier-stype (cdr n))))
-                           r)
-                     r))
-               '()
-               (ctx-env ctx))))
 
 ;; TODO CLEAN raglloc args regs
 (define (get-lazy-generic-prologue ast succ rest-param mvars nb-formal)
@@ -897,25 +809,6 @@
                  (gen-mutable cgc ctx mvars)
                  (jump-to-version cgc succ ctx)))))))
 
-;; Create a new cc table with 'init' as stub value
-(define (make-cc len init generic)
-  (let ((v (alloc-still-vector len)))
-    (put-i64 (+ 8 (- (obj-encoding v) 1)) generic) ;; Write generic after header
-    (let loop ((i 1))
-      (if (< i (vector-length v))
-        (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding v) 1)) init)
-               (loop (+ i 1)))
-        v))))
-
-;; Create a new cr table with 'init' as stub value
-(define (make-cr len init)
-  (let ((v (alloc-still-vector len)))
-    (let loop ((i 0))
-      (if (< i (vector-length v))
-        (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding v) 1)) init)
-               (loop (+ i 1)))
-        v))))
-
 ;;
 ;; Make lazy code from BEGIN
 ;;
@@ -951,12 +844,8 @@
 ;; Make lazy code from LET
 ;;
 
-;; TODO
-
-;; TODO regalloc: factoriser avec mlc-letrec (body lazy-out)
-;; TODO regalloc kind, flags, stype (voir ctx-bind)
-;; TODO + utiliser mlc-binding quand mlc-let* mlc-letrec ajoutés
-;; TODO ajouter un lc après 'bind' pour mettre les variables mutables en mémoire
+;; TODO regalloc: merge with mlc-letrec (body lazy-out)
+;; TODO + use mlc-binding function for mlc-let and mlc-letrec ?
 (define (mlc-let ast succ)
 
   (define (build-id-idx ids l)
@@ -2188,13 +2077,103 @@
 ;; +---------+---------+---------+---------+---------+
 ;;  index  0  index  1  index  2     ...    index  n
 
-;;
-;; VARIABLE SET
-;;
+;; Store the cc table associated to each lambda (ast -> cctable)
+;; cctable is a still vector
+(define cctables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))     ;; eq? on ast
+                                                      (equal? (cdr a) (cdr b)))))) ;; equal? on ctx information
 
-;;
-;; VARIABLE GET
-;;
+;; Store the cr table associated to each lambda (ast -> crtable)
+;; crtable is a still vector
+(define crtables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))
+                                                      (equal? (cdr a) (cdr b))))))
+
+;; Create a new cc table with 'init' as stub value
+(define (make-cc len init generic)
+  (let ((v (alloc-still-vector len)))
+    (put-i64 (+ 8 (- (obj-encoding v) 1)) generic) ;; Write generic after header
+    (let loop ((i 1))
+      (if (< i (vector-length v))
+        (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding v) 1)) init)
+               (loop (+ i 1)))
+        v))))
+
+;; Create a new cr table with 'init' as stub value
+(define (make-cr len init)
+  (let ((v (alloc-still-vector len)))
+    (let loop ((i 0))
+      (if (< i (vector-length v))
+        (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding v) 1)) init)
+               (loop (+ i 1)))
+        v))))
+
+;; Return cctable from cctable-key
+;; Return the existing table if already created or create one, add entry, and return it
+(define (get-cctable ast cctable-key stub-addr generic-addr)
+  (let ((cctable (table-ref cctables cctable-key #f)))
+    (if cctable
+      cctable
+      (let ((t (make-cc (+ 1 global-cc-table-maxsize) stub-addr generic-addr)))
+        (table-set! cctables cctable-key t)
+        (set! cctables-loc-code (cons (cons (- (obj-encoding t) 1)
+                                            ast)
+                                      cctables-loc-code))
+        t))))
+
+;; Return crtable from crtable-key
+;; Return the existing table if already created or create one, add entry, and return it
+(define (get-crtable ast crtable-key stub-addr)
+  (let ((crtable (table-ref crtables crtable-key #f)))
+    (if crtable
+        crtable
+        (let ((t (make-cr global-cr-table-maxsize stub-addr)))
+          (table-set! crtables crtable-key t)
+          t))))
+
+;; This is the key used in hash table to find the cc-table for this closure.
+;; The key is (ast . free-vars-inf) with ast the s-expression of the lambda
+;; and free-vars-inf the type information of free vars ex. ((a . number) (b . char))
+;; The hash function uses eq? on ast, and equal? on free-vars-inf.
+;; This allows us to use different cctable if types of free vars are not the same.
+;; (to properly handle type checks)
+(define (get-cctable-key ast ctx fvars)
+  (cons ast
+        (foldr (lambda (n r)
+                 (if (member (car n) fvars) ;; If this id is a free var of future lambda
+                     (cons (cons (car n)
+                                 (if (eq? (identifier-kind (cdr n)) 'local)
+                                     ;; If local, get type from stack
+                                     (let ((type (ctx-identifier-type ctx (cdr n))))
+                                       type)
+                                     ;; If free, get type from env
+                                     (identifier-stype (cdr n))))
+                           r)
+                     r))
+               '()
+               (ctx-env ctx))))
+
+;; TODO regalloc: Créer de nouvelles entrées dans la table (+ que le type de la valeur de retour)
+;;                avec slot-loc free-regs
+;; Return crtable key from ast and ctx
+;; The key contains ast, stack types, and a list of known identifier with types
+(define (get-crtable-key ast ctx)
+  (cons ast
+        (list (ctx-slot-loc ctx)
+              (ctx-free-regs ctx)
+              (ctx-stack ctx)
+              (ctx-env ctx))))
+
+;; Store pairs associating cctable address to the code of the corresponding function
+(define cctables-loc-code '())
+(define entry-points-locs (make-table test: eq?))
+
+(define (get-entry-points-loc ast stub-addr)
+  (let ((r (table-ref entry-points-locs ast #f)))
+    (if r
+        r
+        (let ((v (alloc-still-vector 1)))
+          (vector-set! v 0 (quotient stub-addr 4)) ;; quotient 4 because vector-set write the encoded value (bug when using put-i64?)
+          (table-set! entry-points-locs ast v)
+          v))))
 
 ;;
 ;; FREE VARS
