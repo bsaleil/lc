@@ -639,7 +639,7 @@
                          (x86-add cgc dest (x86-imm-int (obj-encoding lright))))
             ((eq? op '-) (x86-mov cgc dest opleft)
                          (x86-sub cgc dest (x86-imm-int (obj-encoding lright))))
-            ((eq? op '*) (x86-imul cgc dest opleft (x86-imm-int lright)))));(x86-imul cgc dest (x86-imm-int lright) 32))))
+            ((eq? op '*) (x86-imul cgc dest opleft (x86-imm-int lright)))))
     (else
       (x86-mov cgc dest opleft)
       (cond ((eq? op '+) (x86-add cgc dest opright))
