@@ -1719,15 +1719,12 @@
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
-    (if #f ;; TODO regalloc
-        (if (> (length args) 0)
-            ;; If args, then compile args
-            (gen-ast-l args lazy-tail-operator)
-            ;; Else, compile call
-            lazy-tail-operator)
-        ;; First object of the chain
-        (let ((lazy-operator (check-types (list CTX_CLO) (list (car ast)) (gen-ast-l (cdr ast) lazy-call) ast)))
-          lazy-operator))))
+    ;; Gen and check types of args
+    (check-types
+      (list CTX_CLO)
+      (list (car ast))
+      (gen-ast-l (cdr ast) lazy-call)
+      ast)))
 
 ;; TODO regalloc: merge -rp and -cr + comments
 (define (gen-continuation-rp cgc ast succ ctx saved-regs apply?)
