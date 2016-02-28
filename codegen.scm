@@ -613,6 +613,8 @@
 ;; Gen code for arithmetic operation on int/int
 (define (codegen-num-ii cgc fs op reg lleft lright lcst? rcst?)
 
+  (assert (not (and lcst? rcst?)) "Internal codegen error")
+
   (let ((labels-overflow (add-callback #f 0 (lambda (ret-addr selector)
                                               (error ERR_ARR_OVERFLOW))))
         (dest (codegen-reg-to-x86reg reg))
@@ -651,6 +653,8 @@
 
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
 (define (codegen-num-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst?)
+
+  (assert (not (and lcst? rcst?)) "Internal codegen error")
 
   (let ((dest    (codegen-reg-to-x86reg reg))
         (opleft  (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
@@ -717,9 +721,12 @@
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
 
-(define (codegen-cmp-ii cgc fs op reg lleft lright lcst? rcst?)
+(define (codegen-cmp-ii cgc fs op reg lleft lright lcst? rcst? inline-if-labels)
 
-  ;; TODO: assert (not (and lcst? rcst?))
+  (define-macro (if-inline expr)
+    `(if inline-if-labels #f ,expr))
+
+  (assert (not (and lcst? rcst?)) "Internal codegen error")
 
   ;; TODO: this test is in all cmp-ii cmp-ff num-ii num-ff. Use external function in utils
   ;; Handle cases like 1. 2. etc...
@@ -730,8 +737,10 @@
 
   (let* ((x86-op  (cdr (assoc op `((< . ,x86-jl) (> . ,x86-jg) (<= . ,x86-jle) (>= . ,x86-jge) (= . ,x86-je)))))
          (x86-iop (cdr (assoc op `((< . ,x86-jg) (> . ,x86-jl) (<= . ,x86-jge) (>= . ,x86-jle) (= . ,x86-je)))))
-         (dest (codegen-reg-to-x86reg reg))
-         (label-end (asm-make-label #f (new-sym 'label-end)))
+         (x86-inline-op  (cdr (assoc op `((< . ,x86-jge) (> . ,x86-jle) (<= . ,x86-jg) (>= . ,x86-jl) (= . ,x86-jne)))))
+         (x86-inline-iop (cdr (assoc op `((< . ,x86-jle) (> . ,x86-jge) (<= . ,x86-jl) (>= . ,x86-jg) (= . ,x86-jne)))))
+         (dest      (if-inline (codegen-reg-to-x86reg reg)))
+         (label-end (if-inline (asm-make-label #f (new-sym 'label-end))))
          (opl
            (if lcst?
                (x86-imm-int (obj-encoding lleft))
@@ -751,24 +760,35 @@
     (if lcst?
         (x86-cmp cgc opr opl)
         (x86-cmp cgc opl opr))
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-    (if lcst?
-        (x86-iop cgc label-end)
-        (x86-op cgc label-end))
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-    (x86-label cgc label-end)))
 
-(define (codegen-cmp-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst?)
 
-  ;; TODO: assert (not (and lcst? rcst?))
+   (if inline-if-labels
+       (begin (x86-label cgc (car inline-if-labels)) ;; label-jump
+              (if lcst?                              ;; jcc label-false
+                  (x86-inline-iop cgc (caddr inline-if-labels))
+                  (x86-inline-op  cgc (caddr inline-if-labels)))
+              (x86-jmp cgc (cadr inline-if-labels))) ;; jmp label-true
+       (begin (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+              (if lcst?
+                  (x86-iop cgc label-end)
+                  (x86-op  cgc label-end))
+              (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+              (x86-label cgc label-end)))))
+
+(define (codegen-cmp-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst? inline-if-labels)
+
+  (define-macro (if-inline expr)
+    `(if inline-if-labels #f ,expr))
+
+  (assert (not (and lcst? rcst?)) "Internal codegen error")
 
   (if (and lcst? (flonum? lleft))
       (set! lleft (##flonum->fixnum lleft)))
   (if (and rcst? (flonum? lright))
       (set! lright (##flonum->fixnum lright)))
 
-  (let ((label-end (asm-make-label #f (new-sym 'label-end)))
-        (dest (codegen-reg-to-x86reg reg))
+  (let ((dest (if-inline (codegen-reg-to-x86reg reg)))
+        (label-end (if-inline (asm-make-label #f (new-sym 'label-end))))
         (opleft  (if lcst? lleft  (codegen-loc-to-x86opnd fs lleft)))
         (opright (if rcst? lright (codegen-loc-to-x86opnd fs lright)))
         (x86-op (cdr (assoc op `((< . ,x86-jae) (> . ,x86-jbe) (<= . ,x86-ja) (>= . ,x86-jb) (= . ,x86-jne))))))
@@ -805,10 +825,15 @@
       (else
         (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright))))
 
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-    (x86-op cgc label-end)
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-    (x86-label cgc label-end)))
+    ;; NOTE: check that mlc-if patch is able to patch ieee jcc instructions (ja, jb, etc...)
+    (if inline-if-labels
+        (begin (x86-label cgc (car inline-if-labels))
+               (x86-op cgc (caddr inline-if-labels))
+               (x86-jmp cgc (cadr inline-if-labels)))
+        (begin (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+               (x86-op cgc label-end)
+               (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+               (x86-label cgc label-end)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Binary operators

@@ -2,9 +2,11 @@
 (define (fib n)
   (if (< n 2)
       1
-      (+ (fib (- n 1)) (fib (- n 2)))))
+      (+ (fib (- n 2))
+         (fib (- n 1)))))
 
 (fib 40)
+
 
 ;; Optimisations:
 ;; Ne pas utiliser de booléen dans les conditions du if

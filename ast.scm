@@ -1344,8 +1344,11 @@
 ;;
 (define (mlc-if ast succ)
 
-  (let* ((inline-condition? ;; TODO WIP
-           (and #f (pair? (cadr ast))
+  (let* ((condition (cadr ast))
+         (cleft  (and (pair? condition) (>= (length condition) 3) (cadr condition)))
+         (cright (and (pair? condition) (>= (length condition) 3) (caddr condition)))
+         (inline-condition?
+           (and (pair? condition)
                 (member (caadr ast) '(< > <= >= =))))
          (lazy-code0
            (gen-ast (cadddr ast) succ))
@@ -1354,9 +1357,10 @@
          (lazy-code-test
            (make-lazy-code
              (lambda (cgc ctx)
-               (let* ((ctx0
+               (let* ((n-pop (count (list cleft cright) (lambda (n) (not (integer? n)))))
+                      (ctx0
                         (if inline-condition?
-                          (ctx-pop-n ctx 2) ;; Pop both condition operands
+                          (ctx-pop-n ctx n-pop) ;; Pop both condition operands
                           (ctx-pop ctx)))   ;; Pop condition result
 
                       (ctx1
@@ -1452,26 +1456,33 @@
                        (label-true  (list-ref stub-labels 1)))
 
                    (if inline-condition?
-                       (let ((lazy-cmp
-                               (mlc-op-n-cmp
-                                 (cadr ast)  ;; ast
-                                 #f          ;; succ
-                                 (caadr ast) ;; op
-                                 label-jump
-                                 label-true
-                                 label-false)))
+                       (let* ((lazy-cmp
+                                (get-lazy-n-binop
+                                  condition
+                                  (caadr ast)
+                                  (and (integer? cleft) cleft)
+                                  (and (integer? cright) cright)
+                                  succ
+                                  (list label-jump label-true label-false))))
                          (jump-to-version cgc lazy-cmp ctx))
                        (let* ((lcond (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
                          (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond)))))))))
 
     (if inline-condition?
-        (if (< (length (cadr ast)) 3)
-            ;; if (op) or (op opnd) then inline the true branch
-            (gen-ast (caddr ast) succ)
-            ;; else generate condition operands and jump to lco-test
-            ;; Condition operands are generated here (and not in mlc-op-n-cmp)
-            ;; because stubs entry contexts are created in lco-test
-            (gen-ast-l (cdadr ast) lazy-code-test))
+        (cond ((< (length (cadr ast)) 3)
+                 ;; if (op) or (op opnd) then inline the true branch
+                 (gen-ast (caddr ast) succ))
+              ((and inline-condition? (number? cleft) (number? cright))
+                 ;; operands are constants, inline corresponding branch
+                 (if (eval condition)
+                     (gen-ast (caddr ast)  succ)
+                     (gen-ast (cadddr ast) succ)))
+              ((and inline-condition? (integer? cleft))
+                 (gen-ast cright lazy-code-test))
+              ((and inline-condition? (integer? cright))
+                 (gen-ast cleft lazy-code-test))
+              (else
+                 (gen-ast-l (cdr condition) lazy-code-test)))
         (gen-ast
           (cadr ast)
           lazy-code-test))))
@@ -1892,20 +1903,19 @@
              (gen-ast (eval ast) succ))
           (lcst
              (gen-ast (caddr ast)
-                      (get-lazy-n-binop ast op #f (cadr ast) #f succ)))
+                      (get-lazy-n-binop ast op (cadr ast) #f succ)))
           (rcst
              (gen-ast (cadr ast)
-                      (get-lazy-n-binop ast op #f #f (caddr ast) succ)))
+                      (get-lazy-n-binop ast op #f (caddr ast) succ)))
           (else
             (gen-ast (cadr ast)
                      (gen-ast (caddr ast)
-                              (get-lazy-n-binop ast op #f #f #f succ)))))))))
+                              (get-lazy-n-binop ast op #f #f succ)))))))))
 
-(define (get-lazy-n-binop ast op inlined-if-cond? lcst rcst succ)
+(define (get-lazy-n-binop ast op lcst rcst succ #!optional (inline-if-labels #f))
 
+  (define inlined-if-cond? inline-if-labels)
   (define num-op? (member op '(+ - * /)))
-  (define codegen-ii (if num-op? codegen-num-ii codegen-cmp-ii))
-  (define codegen-ff (if num-op? codegen-num-ff codegen-cmp-ff))
 
   ;; Build chain to check type of one value (if one of them is a cst)
   (define (type-check-one)
@@ -1935,7 +1945,7 @@
            (lazy-xint    (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat ast)))
     lazy-xint))
 
-  ;;
+  ;; TODO: Merge with get-op-ff
   (define (get-op-ii)
     (make-lazy-code
       (lambda (cgc ctx)
@@ -1951,8 +1961,12 @@
                      (or lcst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))))
                (n-pop (count (list lcst rcst) not)))
 
-          (codegen-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst)
-          (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg))))))
+          (if num-op?
+              (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst)
+              (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst inline-if-labels))
+
+          (if (not inlined-if-cond?)
+              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg)))))))
 
   ;;
   (define (get-op-ff leftint? rightint?)
@@ -1970,14 +1984,15 @@
                      (or lcst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))))
                (n-pop (count (list lcst rcst) not)))
 
-          (codegen-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst)
-          (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg))))))
+          (if num-op?
+              (codegen-num-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst)
+              (codegen-cmp-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst inline-if-labels))
 
-  (assert
-    (if inlined-if-cond?
-        (member op '(< <= > >= =))
-        #t)
-    "I can't inline if condition with number operator !")
+          (if (not inlined-if-cond?)
+              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg)))))))
+
+  (assert (not (and inlined-if-cond? (member op '(+ - * /))))
+          "Internal compiler error")
 
   (if (or lcst rcst)
       (type-check-one)

@@ -280,7 +280,7 @@
       (x86-push cgc (x86-rdi))
       (x86-call cgc label-repl) ;; call C function
       (x86-pop cgc (x86-rsp))
-      (x86-mov cgc (x86-rbx) (x86-rax))))) ;; Move version address to rbx
+      (x86-push cgc (x86-rax))))) ;; Push version address
 
 ;;-----------------------------------------------------------------------------
 
@@ -367,7 +367,7 @@
         (begin (println "") (exit 0))
         (let* ((r (car (expand-tl (list r))))
                (lco (gen-ast r repl-print-lco))
-               (addr (gen-version code-alloc lco (make-ctx '() '() -1))))
+               (addr (gen-version code-alloc lco (ctx-init))))
           addr))))
 
 ;;-----------------------------------------------------------------------------
