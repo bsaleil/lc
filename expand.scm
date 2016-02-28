@@ -52,7 +52,7 @@
       ((equal? (car expr) 'if) (expand-if expr))
       ((equal? (car expr) 'begin) (expand-begin expr))
       ((equal? (car expr) 'do) (expand-do expr))
-      ((equal? (car expr) 'list)  (expand-list expr))
+      ;((equal? (car expr) 'list)  (expand-list expr))
       ((equal? (car expr) 'let) (expand-let expr))
       ((equal? (car expr) 'let*) (expand-let* expr))
       ((equal? (car expr) 'letrec) (expand-letrec expr))
@@ -173,14 +173,14 @@
                     (,loopname ,@steps)))))))
 
 ;; LIST
-(define (expand-list expr)
-  (cond ((null? (cdr expr))
-           `(quote ()))
-        ((eq? (length (cdr expr)) 1)
-           (expand `(cons ,(cadr expr) '())))
-        (else
-           (let ((r (cddr expr)))
-             (expand `(cons ,(cadr expr) (list ,@r)))))))
+;(define (expand-list expr)
+;  (cond ((null? (cdr expr))
+;           `(quote ()))
+;        ((eq? (length (cdr expr)) 1)
+;           (expand `(cons ,(cadr expr) '())))
+;        (else
+;           (let ((r (cddr expr)))
+;             (expand `(cons ,(cadr expr) (list ,@r)))))))
 
 ;; LET*
 (define (expand-let* expr)

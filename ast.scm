@@ -111,7 +111,6 @@
    (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT)          ())
    (current-output-port 0  0  ,(prim-types 0 )                            ())
    (current-input-port  0  0  ,(prim-types 0 )                            ())
-   (list                #f) ;; nb-args and types are not fixed
 ))
 
 (define (assert-p-nbargs ast)
@@ -132,6 +131,7 @@
 
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
+  
   (cond ;; String
         ((string? ast)  (mlc-string ast succ))
         ;; Symbol
@@ -1152,10 +1152,6 @@
     (codegen-string-set! cgc (ctx-fs ctx) reg lstr lidx lchr idx-cst chr-cst)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_VOID reg))))
 
-;; primitive list
-(define (prim-list cgc ctx reg succ cst-infos args)
-  (error "NYI"))
-
 ;; primitives set-car! & set-cdr!
 (define (prim-set-cxr! cgc ctx reg succ cst-infos op)
 
@@ -1254,7 +1250,6 @@
                        ((string-ref)     (prim-string-ref     cgc ctx reg succ cst-infos))
                        ((vector-set!)    (prim-vector-set!    cgc ctx reg succ cst-infos))
                        ((string-set!)    (prim-string-set!    cgc ctx reg succ cst-infos))
-                       ((list)           (prim-list cst-infos cgc ctx reg succ (cdr ast)))
                        ((set-car! set-cdr!)                      (prim-set-cxr!       cgc ctx reg succ cst-infos (car ast)))
                        ((current-input-port current-output-port) (prim-current-x-port cgc ctx reg succ cst-infos (car ast)))
                        ((close-input-port close-output-port)     (prim-close-x-port   cgc ctx reg succ cst-infos (car ast)))
