@@ -51,6 +51,7 @@
 (define opt-overflow-fallback    #f) ;; Automatic fallback to generic entry point if cctable overflows
 (define opt-propagate-functionid #f) ;; Propagate function identitie
 (define opt-use-lib              #t) ;; Use scheme std lib (see lib/ folder)
+(define opt-vers-regalloc        #t) ;; Use register allocation for code specialization
 (define mode-repl                #f) ;; REPL mode ?
 
 ;; TODO Move
@@ -1045,38 +1046,63 @@
   generator
   versions
   flags
+  ;; rctx is used when register allocation is not used to specialize code
+  ;; then a rctx (ctx with only slot-loc, free-regs, and fs) is associated to each lazy-code
+  rctx
 )
 
 (define (lazy-code-nb-versions lazy-code)
   (table-length (lazy-code-versions lazy-code)))
 
 (define (make-lazy-code generator)
-  (let ((lc (make-lazy-code* generator (make-table) '())))
+  (let ((lc (make-lazy-code* generator (make-table) '() #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-cont generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(cont))))
+  (let ((lc (make-lazy-code* generator (make-table) '(cont) #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-entry generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(entry))))
+  (let ((lc (make-lazy-code* generator (make-table) '(entry) #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-ret generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(ret))))
+  (let ((lc (make-lazy-code* generator (make-table) '(ret) #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (get-version lazy-code ctx)
   (let ((versions (lazy-code-versions lazy-code)))
-    (table-ref versions ctx #f)))
+    (if opt-vers-regalloc
+        ;; Use all ctx information for code specialization
+        (table-ref versions ctx #f)
+        ;; Remove register allocation related information
+        (let ((ctx (ctx-copy ctx #f '() '() #f #f 0)))
+          (table-ref versions ctx #f)))))
 
 (define (put-version lazy-code ctx v)
+  ;; If we do not use register allocation information to specialize code
+  ;; and there is no register allocation associated to this lazy-code
+  ;; then associate register allocation information of current ctx to this lazy-code
+  (if (and (not opt-vers-regalloc)
+           (not (lazy-code-rctx lazy-code)))
+      (lazy-code-rctx-set!
+        lazy-code
+        (make-regalloc-ctx
+          (ctx-slot-loc ctx)
+          (ctx-free-regs ctx)
+          (ctx-fs ctx))))
+
   (let ((versions (lazy-code-versions lazy-code)))
-    (table-set! versions ctx v)))
+    (if opt-vers-regalloc
+        ;; Use all ctx information for code specialization
+        (table-set! versions ctx v)
+        ;; Remove register allocation related information
+        (let ((ctx (ctx-copy ctx #f '() '() #f #f 0)))
+          (table-set! versions ctx v)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Identifier management
@@ -1685,7 +1711,60 @@
 ;;-----------------------------------------------------------------------------
 ;; Lazy-code generation
 
+;; Generate code before a jump to an existing version of a lazy-code object
+;; (to handle reg alloc of join points)
+(define (gen-merge-code cgc lazy-code-dst ctx)
+  ;; If we do not use register allocation information to specialize code,
+  ;; and if destination lazy-code already has register allocation information,
+  ;; we need to
+  ;; * generate moves to match destination slot-loc value
+  ;; * update rsp to match destination fs value
+  (if (and (lazy-code-rctx lazy-code-dst)
+           (not (equal? (ctx-slot-loc ctx)
+                        (ctx-slot-loc (lazy-code-rctx lazy-code-dst)))))
+      ;; A rctx is already associated to lazy-code, then generate merge code
+      (let* ((rctx (lazy-code-rctx lazy-code-dst))
+             (lc-slot-loc  (ctx-slot-loc rctx))
+             (lc-free-regs (ctx-free-regs rctx))
+             (lc-fs        (ctx-fs rctx))
+             ;;
+             (locs-moves   (reg-alloc-merge (ctx-slot-loc ctx) lc-slot-loc)))
+
+        ;; Generate label for debug
+        (x86-label cgc (asm-make-label #f (new-sym 'regalloc-mergs)))
+
+        ;; Generate merge moves
+        (for-each
+          (lambda (el)
+            (let ((opnd-src (codegen-loc-to-x86opnd (ctx-fs ctx) (car el)))
+                  (opnd-dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr el))))
+              (if (and (ctx-loc-is-memory? (car el))
+                       (ctx-loc-is-memory? (cdr el)))
+                  ;; TODO: we can't use rax ?
+                  ;; if moves are a cycle, we already use rax
+                  ;; use a free register instead !!
+                  (begin (x86-mov cgc (x86-rax) opnd-src)
+                         (set! opnd-src (x86-rax))))
+              (x86-mov cgc opnd-dst opnd-src)))
+          locs-moves)
+
+          ; Update rsp
+          (if (not (= (ctx-fs ctx) lc-fs))
+            (x86-sub cgc
+                     (x86-rsp)
+                     (x86-imm-int (* 8 (- lc-fs (ctx-fs ctx))))))
+
+          ;; Update current ctx
+          (ctx-copy ctx #f lc-slot-loc lc-free-regs #f #f lc-fs))
+      ;; There is no rctx associated to this lazy-code object, nothing to do
+      ctx))
+
 (define (jump-to-version cgc lazy-code ctx #!optional (cleared-ctx #f))
+
+  ;; If we do not use regalloc to specialize code,
+  ;; generate merge code to handle join points
+  (if (not opt-vers-regalloc)
+      (set! ctx (gen-merge-code cgc lazy-code ctx)))
 
   (let ((label-dest (get-version lazy-code ctx)))
     (if label-dest
@@ -1814,22 +1893,22 @@
           ;; Generate that version inline
           (begin
             (cond ((= (+ jump-addr (jump-size jump-addr)) code-alloc)
-                   ;; (fall-through optimization)
-                   ;; the jump is the last instruction previously generated, so
-                   ;; just overwrite the jump
-                   (if opt-verbose-jit (println ">>> fall-through-optimization"))
-                   (set! code-alloc jump-addr))
+                     ;; (fall-through optimization)
+                     ;; the jump is the last instruction previously generated, so
+                     ;; just overwrite the jump
+                     (if opt-verbose-jit (println ">>> fall-through-optimization"))
+                     (set! code-alloc jump-addr))
                   (else
-                   ;; Else we need to patch the jump
-                   (patch-jump jump-addr code-alloc)))
+                     ;; Else we need to patch the jump
+                     (patch-jump jump-addr code-alloc)))
             ;; Generate
             (let ((label-version (asm-make-label #f (new-sym 'version))))
               (put-version lazy-code ctx label-version)
               (code-add
-               (lambda (cgc)
-                 (asm-align cgc 4 0 #x90)
-                 (x86-label cgc label-version)
-                 ((lazy-code-generator lazy-code) cgc ctx)))
+                (lambda (cgc)
+                  (asm-align cgc 4 0 #x90)
+                  (x86-label cgc label-version)
+                  ((lazy-code-generator lazy-code) cgc ctx)))
               (asm-label-pos label-version)))))))
 
 ;;-----------------------------------------------------------------------------

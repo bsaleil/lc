@@ -47,7 +47,7 @@ test:
 
 # Run full unit tests with and without entry and return points
 full-test:
-	./run-ut.scm -lc -lc-nep -lc-nrp -lc-nep-nrp
+	./run-ut.scm -lc -lc-nep -lc-nrp -lc-nep-nrp -lc-n-regalloc
 
 # Clean
 clean:

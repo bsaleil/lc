@@ -1,6 +1,128 @@
 
+;; TODO: pour le tri topologique:
+;; commencer par la aretes qui on une destination libre.
+;; Puis, terminer par les autres
+;; -> permet d'éviter des mouvements inutiles
+;; Exemple avec:
 
-(list 34.)
+;(define (foo n m)
+;  (if (< n 0)
+;      1
+;      (let ((a 1) (b 2) (c 3) (d 4) (e 5) (f 6) (g 7) (h 8))
+;        2))
+;  (+ n m))
+;
+;(pp (foo -10 3))
+;(pp (foo 100 3))
+
+TODO : pb: les mouvements pour la fusion du regalloc ne modifie pas l'ensemble free-regs
+qui DOIT etre modifié
+
+;(write-char #\G)
+
+;; Méthode:
+
+;; *** Généralement
+;;   On ne DOIT PAS spécialiser avec l'info d'allocation de registre.
+;;   donc au moment de récupérer une version, on ne doit pas faire de equal?
+;;   sur tout le contexte, mais sur tout excepté l'ensemble slot-loc
+;;   On doit pouvoir activer ou désactiver la spécialisation en fonction de l'alloc de registre
+
+;; *** MEP
+;;   On doit pouvoir désactiver ou activer la spécialization en fonction de l'alloc pour les deux points
+
+;; *** Dans jump-to-version
+;;   on regarde si le lco de destination à une allocation de registre associée
+;;   Si oui:
+;;     on la récupère
+;;     on merge les deux contexte pour ajouter les mov nécessaire à la fusion
+;;     comportement normal du j-t-v
+;;   Si non:
+;;     On enregistre l'allocation de registre courante comme l'allocation de registre
+;;     associée à ce lco
+;;     comportement normal du j-t-v
+
+
+;(define (reg-alloc-merge ctx-src ctx-dst)
+;
+;  (define (get-required-moves slot-loc-src slot-loc-dst)
+;    (if (null? slot-loc-src)
+;        '()
+;        (let ((slot    (caar slot-loc-src))
+;              (loc-src (cdar slot-loc-src))
+;              (loc-dst
+;              (let ((r (assoc slot slot-loc-dst)))
+;                (if r
+;                    (cdr r)
+;                    (error "Internal error regalloc merge")))))
+;          (if (equal? loc-src loc-dst)
+;              ;; For this slot, loc are the same in src and dst ctx, nothing to do.
+;              (get-required-moves (cdr slot-loc-src) slot-loc-dst)
+;              ;; For this slot, loc are different in src and dst ctx,
+;              ;; add a move src -> dst to the list of moves
+;              (cons (cons loc-src loc-dst)
+;                    (get-required-moves (cdr slot-loc-src) slot-loc-dst))))))
+;
+;  (let loop ((real-moves '())
+;             (req-moves
+;               (get-required-moves
+;                 (ctx-stack ctx-src)
+;                 (ctx-stack ctx-dst))))
+;
+;    (if (null? req-moves)
+;        real-moves
+;        (let ((r (step '() req-moves '())))
+;          (loop (car r) (cdr r))))))
+
+
+
+
+;; Cette fonction prends les mouvements nécessaire à effectuer.
+;; Et retourne la liste des mouvements qui ont pu etre traitée en une étape
+;; ainsi que la liste des mouvement réels à effectuer (en utilisant le registre temporaire)
+;; il est nécessaire d'appeler plusieurs fois step jusqu'a obtenir un ensemble de mouvements vides.
+
+;; visited-locs: tous les noeuds visités (pour chaque mouvement traité, c'est la liste des noeuds source)
+;; moves: la liste des mouvements nécessaires pour la fusion des contextes
+;; pending-moves: les mouvements réels à effectuer jusqu'a maintenant (les mouvemets en attente sont validée en présence du cas 1 ou 2)
+;(define (step visited req-moves pending-moves)
+;
+;  ;; Retour multiple:
+;  ;;  la liste des mouvements effectués
+;  ;;  la nouvelle liste des registres libres / nouveau contexte
+;  ;;  .
+;
+;  ;; Une loc est disponible si elle n'est la source d'aucun mouvement.
+;  ;; On peut donc écraser directement la valeur qui s'y trouve
+;  (define (loc-available loc)
+;    (assoc loc req-moves))
+;
+;  (let ((src (caar req-moves))  ;; ex r1
+;        (dst (cdar req-moves))) ;; ex r5
+;
+;    (cond ;; Cas1: la destination est libre, on applique les mouvements.
+;          ((loc-available? dst)
+;             (let ((moves (cons (car req-moves)
+;                                pending-moves)))
+;               (list moves
+;                     moves)))
+;          ;; Cas2: la destination a déjà été traitée. C'est un cycle.
+;          ;;       donc on applique les mouvements en utilisant un temporaire
+;          ((member dst visited)
+;             (let ((real-moves
+;                     (append (cons (cons src 'tmp)
+;                                   pending-moves)
+;                             (cons 'tmp dst)))
+;                   (moves (cons (car req-moves)
+;                                pending-moves)))
+;               (list real-moves
+;                     moves)))
+;          ;; Cas3: la destination doit aussi être déplacée, on continue le travail
+;          ;;       en ajoutant le mouvement à la liste des mouvements à faire.
+;          (else
+;             (step (cons src visited)
+;                   (cdr req-moves)
+;                   (cons (car req-moves) pending-moves))))))
 
 ;; Optimisations:
 ;; Ne pas utiliser de booléen dans les conditions du if

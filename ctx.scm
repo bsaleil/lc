@@ -45,6 +45,20 @@
   fs        ;; current frame size
 )
 
+(define (make-regalloc-ctx slot-loc free-regs fs)
+  (make-ctx #f slot-loc free-regs #f #f fs))
+
+;; TODO USE IT ! remove all make-ctx which are only copies and use ctx-copy
+(define (ctx-copy ctx #!optional stack slot-loc free-regs env nb-args fs)
+  (make-ctx
+    (or stack     (ctx-stack ctx))
+    (or slot-loc  (ctx-slot-loc ctx))
+    (or free-regs (ctx-free-regs ctx))
+    (or env       (ctx-env ctx))
+    (or nb-args   (ctx-nb-args ctx))
+    (or fs        (ctx-fs ctx))))
+
+
 ;; Generate initial free regs list
 (define (ctx-init-free-regs)
   (build-list (length regalloc-regs) (lambda (i)
@@ -166,6 +180,93 @@
 ;;-----------------------------------------------------------------------------
 ;; Register allocation
 
+;; Return moves needed to merge two register allocation context
+;; ex. ((r0 . r5) (r5 . r3))
+(define (reg-alloc-merge slot-loc-src slot-loc-dst)
+
+  ;; Get needed moves without considering values overwriting
+  (define (get-required-moves slot-loc-src slot-loc-dst)
+    (cond ((null? slot-loc-src)
+             '())
+          ((not (caar slot-loc-src))
+             (get-required-moves
+               (cdr slot-loc-src)
+               slot-loc-dst))
+          (else
+            (let* ((slot    (caar slot-loc-src))
+                   (loc-src (cdar slot-loc-src))
+                   (loc-dst
+                     (let ((r (assoc slot slot-loc-dst)))
+                       (if r
+                           (cdr r)
+                           (error "Internal error regalloc merge")))))
+              (if (equal? loc-src loc-dst)
+                  ;; For this slot, loc are the same in src and dst ctx, nothing to do.
+                  (get-required-moves (cdr slot-loc-src) slot-loc-dst)
+                  ;; For this slot, loc are different in src and dst ctx,
+                  ;; add a move src -> dst to the list of moves
+                  (cons (cons loc-src loc-dst)
+                        (get-required-moves (cdr slot-loc-src) slot-loc-dst)))))))
+
+  ;; Compute real moves (considering values overwriting) from required moves
+  ;; Compute a step with 'step' function until required moves set is empty
+  (let loop ((real-moves '())
+             (req-moves
+               (get-required-moves
+                 slot-loc-src
+                 slot-loc-dst)))
+    (if (null? req-moves)
+        real-moves
+        (let ((r (step '() req-moves '())))
+          (loop (append (car r) real-moves) (cdr r))))))
+
+;; This function takes all required moves (without considering values overwriting)
+;; and returns a list of real moves ex. ((r0 . r4) (r4 . r5)) for one step,
+;; and the list of moves that remain to be processed.
+
+;; visited-locs: list of visited nodes (source node of a move) during the step
+;; moves: list of moves required to merge ctx
+;; pending-moves: list of currently computed real moves
+(define (step visited req-moves pending-moves #!optional src-sym)
+
+  ;; A loc is available if it is not a source of a move in required moves
+  ;; We can then directly overwrite its content
+  (define (loc-available loc)
+    (not (assoc loc req-moves)))
+
+  (let* ((move
+           (cond ((null? req-moves) #f)
+                 (src-sym           (assoc src-sym req-moves))
+                 (else              (car req-moves))))
+         (src (and move (car move)))
+         (dst (and move (cdr move))))
+
+    (cond ;; Case 0: No more move, validate pending moves
+          ((not move)
+             (cons pending-moves
+                   '()))
+          ;; Case 2: dst has already been visited, it's a cycle.
+          ;;         validate pending moves using temporary register
+          ((member dst visited)
+             (let ((real-moves
+                     (append (cons (cons src 'rtmp)
+                                   pending-moves)
+                             (list (cons 'rtmp dst)))))
+               (cons real-moves
+                     (set-sub req-moves (list move) '()))))
+                     ;; Case 1: Destination is free, validate pending moves
+                     ((loc-available dst)
+                        (let ((real-moves (cons move
+                                                pending-moves)))
+                          (cons real-moves
+                                (set-sub req-moves (list move) '()))))
+          ;; Case 3: dst is an src of an other move,
+          ;;         add current move to pending moves and continue with next move
+          (else
+             (step (cons src visited)
+                   (set-sub req-moves (list move) '())
+                   (cons move pending-moves)
+                   dst)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx

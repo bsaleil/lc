@@ -102,6 +102,8 @@
         ((or (equal? mode "lc-nep-nrp")
              (equal? mode "lc-nrp-nep"))
          (run-lc file "--disable-entry-points" "--disable-return-points"))
+        ((equal? mode "lc-n-regalloc")
+         (run-lc file "--disable-regalloc-vers"))
         (else (error "Unknown mode " mode))))
 
 (define (get-expected-output filename)

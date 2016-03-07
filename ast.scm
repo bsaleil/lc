@@ -131,7 +131,7 @@
 
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
-  
+
   (cond ;; String
         ((string? ast)  (mlc-string ast succ))
         ;; Symbol
@@ -330,6 +330,7 @@
 
       (let ((local  (assoc ast (ctx-env ctx)))
             (global (assoc ast globals)))
+
         ;;
         (cond ;; Identifier is a free variable
               ((and local (eq? (identifier-kind (cdr local)) 'free))
@@ -388,6 +389,7 @@
                   (let ((dest (codegen-reg-to-x86reg reg))
                         (opvar (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
                     (x86-mov cgc dest opvar))))
+
           (jump-to-version cgc succ (ctx-push ctx type reg (car local))))))) ;; TODO type
 
 ;; TODO: + utiliser un appel récursif comme pour gen-get-freevar (??)
@@ -431,6 +433,7 @@
                   (let ((dest (codegen-reg-to-x86reg reg))
                         (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
                     (x86-mov cgc dest opnd))))
+
           (jump-to-version cgc succ (ctx-push ctx type reg (car local)))))))
 
 (define (gen-get-globalvar cgc ctx global succ)

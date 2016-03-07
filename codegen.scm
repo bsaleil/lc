@@ -229,8 +229,10 @@
   (x86-mem (* 8 (- fs mem 1)) (x86-rsp)))
 
 (define (codegen-reg-to-x86reg reg)
-  (let ((r (assoc reg codegen-regmap)))
-    (cdr r)))
+  (if (eq? reg 'rtmp)
+      (x86-rax)
+      (let ((r (assoc reg codegen-regmap)))
+        (cdr r))))
 
 ;; TODO regalloc
 ;; TODO regalloc

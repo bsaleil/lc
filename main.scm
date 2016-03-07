@@ -63,6 +63,10 @@
     "Disable the use of multiple entry points use only one generic entry point"
     ,(lambda (args) (set! opt-entry-points #f) args))
 
+  (--disable-regalloc-vers
+    "Do not use register allocation information to specialize generated code"
+    ,(lambda (args) (set! opt-vers-regalloc #f) args))
+
   (--disable-return-points
       "Disable the use of multiple return points use only one generic return point"
       ,(lambda (args) (set! opt-return-points #f) args))
