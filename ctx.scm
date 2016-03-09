@@ -85,6 +85,28 @@
       (ctx-nb-args ctx)
       (ctx-fs ctx))))
 
+;; Clear versioning information
+(define (ctx-clear ctx)
+
+  (define (env-clear env)
+    (if (null? env)
+        '()
+        (let ((ident (car env)))
+          (if (identifier-stype (cdr ident))
+              (cons (cons (car ident)
+                          (make-identifier
+                            (identifier-kind   (cdr ident))
+                            (identifier-sslots (cdr ident))
+                            (identifier-flags  (cdr ident))
+                            CTX_UNK
+                            (identifier-cloc   (cdr ident))))
+                    (env-clear (cdr env)))
+              (cons ident
+                    (env-clear (cdr env)))))))
+  (let ((stack (make-list (length (ctx-stack ctx)) CTX_UNK))
+        (env (env-clear (ctx-env ctx))))
+    (ctx-copy ctx stack #f #f env)))
+
 ;; Convert stack list index to slot
 (define (ctx-lidx-to-slot ctx lidx)
   (- (length (ctx-stack ctx)) lidx 1))

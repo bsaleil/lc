@@ -606,7 +606,7 @@
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
          (lazy-prologue (get-lazy-prologue ast lazy-body rest-param mvars))
          ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
-         (lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param mvars(length params))))
+         (lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param mvars (length params))))
 
     ;; Lazy closure generation
     (make-lazy-code
@@ -620,7 +620,12 @@
                                                           opt-max-versions
                                                           (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
 
-                                                       (error "NYI fn callback mlc-lambda"))
+                                                       (let* ((cctx (ctx-init-fn sctx ctx all-params fvars mvars))
+                                                              (stack
+                                                                (append (make-list (length all-params) CTX_UNK)
+                                                                        (list CTX_CLO CTX_RETAD)))
+                                                              (gctx (ctx-copy cctx stack))) ;; To handle rest param
+                                                         (gen-version-fn ast closure lazy-prologue-gen gctx cctx #f)))
 
                                                     ;; CASE 2 - Do not use multiple entry points
                                                     ((= selector 1)
@@ -725,7 +730,7 @@
               (x86-label cgc label-rest-loop)
               (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (- nb-args 1))))
               (x86-je cgc label-rest-end)
-                (let ((header-word (mem-header 3 STAG_PAIR)))
+              (let ((header-word (mem-header 3 STAG_PAIR)))
                 ;; Alloc
                 (gen-allocation cgc #f STAG_PAIR 3)
                 (x86-mov cgc (x86-rax) (x86-imm-int header-word))
@@ -742,12 +747,8 @@
                     (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-r14)))
                   (x86-push cgc (x86-r14)))))
 
-        (let ((ctx
-                (if rest-param
-                    (ctx-pop-n ctx (- (length (ctx-stack ctx)) 3 nb-formal))
-                    ctx)))
-          (gen-mutable cgc ctx mvars)
-          (jump-to-version cgc succ ctx))))))
+        (gen-mutable cgc ctx mvars)
+        (jump-to-version cgc succ ctx)))))
 
 ;; Create and return a lazy prologue
 (define (get-lazy-prologue ast succ rest-param mvars)

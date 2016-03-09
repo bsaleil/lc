@@ -1,43 +1,7 @@
-(define (fib n)
-  (if (<= n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
 
-(fib 40)
-
-;(define (foo n)
-;  (+ n 1))
-;
-;(let ((a (car (cons 10 20))))
-;  (foo a)
-;  (+ a a))
-;; On transmet le type de la valeur de retour par la table de pt d'entrée de la continuation
-;; -> Il faut transmettre le type des arguments
-
-;(define (bar n)
-;  (let ((f (lambda (a) (+ a n))))
-;    (f
-
-
-;(define sum 0)
-;
-;(define do-loop
-;  (lambda (n)
-;    (begin
-;        (set! sum 0)
-;        ((letrec ((Lg10
-;                    (lambda (i n)
-;                      (if (>= i n)
-;                          sum
-;                          (begin (set! sum (+ sum 1))
-;                                 (Lg10 (+ i 1) n))))))
-;            Lg10)
-;         0 n))))
-;
-;(apply do-loop (list 100000000))
-;;(do-loop 100000000)
-
+;; TODO:
+;; Pour limiter le nombre de version, il manque le cas ou l'allocation de registre provoque
+;; un changement de version. dans ce cas, on doit générer un merge
 
 ;; TODO: pour le tri topologique:
 ;; commencer par la aretes qui ont une destination libre.

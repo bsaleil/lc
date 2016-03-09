@@ -110,7 +110,6 @@
 (define change-stype #f)
 (define codegen-loc-to-x86opnd #f)
 (define codegen-reg-to-x86reg #f)
-(define ctx-clear #f)
 (define identifier #f)
 
 ;;-----------------------------------------------------------------------------
@@ -1862,6 +1861,7 @@
                 ((lazy-code-generator lazy-code) cgc gen-ctx)))
           (put-version lazy-code gen-ctx fn-label)
           (set! label-dest fn-label)))
+
 
     ;; If generic is #t, patch generic slot in closure.
     ;; Else patch cc-table slot for this ctx
