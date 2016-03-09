@@ -264,7 +264,7 @@
                 (set! before (real-time))
                 ;; 10 execs
                 (one-exec) (one-exec) (one-exec)
-                ;(one-exec) (one-exec)
+                (one-exec) (one-exec)
                 ;(one-exec) (one-exec)
                 ;(one-exec) (one-exec)
                 ;(one-exec) (one-exec)
@@ -291,7 +291,7 @@
             (repl lib))
           ;; Can only exec 1 file
           ((= (length files) 1)
-            (let ((content (read-all (open-input-file (car args)))))
+            (let ((content (read-all (open-input-file (car files)))))
                 ;; TODO
                 (define (get-global-type g)
                   (cond ((symbol? (cadr g))
