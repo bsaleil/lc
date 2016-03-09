@@ -1761,16 +1761,16 @@
 
 (define (jump-to-version cgc lazy-code ctx #!optional (cleared-ctx #f))
 
-  ;; If we do not use regalloc to specialize code,
-  ;; generate merge code to handle join points
-  (if (not opt-vers-regalloc)
-      (set! ctx (gen-merge-code cgc lazy-code ctx)))
-
   (let ((label-dest (get-version lazy-code ctx)))
     (if label-dest
 
-        ;; That version has already been generated, so just jump to it
-        (x86-jmp cgc label-dest)
+        (begin
+          ;; If we do not use regalloc to specialize code,
+          ;; generate merge code to handle join points
+          (if (not opt-vers-regalloc)
+              (set! ctx (gen-merge-code cgc lazy-code ctx)))
+          ;; That version has already been generated, so just jump to it
+          (x86-jmp cgc label-dest))
 
         ;; That version is not yet generated, so generate it
         (if (and opt-max-versions
@@ -1783,6 +1783,10 @@
 
           ;; Generate that version inline
           (let ((label-version (asm-make-label cgc (new-sym 'version))))
+            ;; If we do not use regalloc to specialize code,
+            ;; generate merge code to handle join points
+            (if (not opt-vers-regalloc)
+                (set! ctx (gen-merge-code cgc lazy-code ctx)))
             (put-version lazy-code ctx label-version)
             (x86-label cgc label-version)
             ((lazy-code-generator lazy-code) cgc ctx))))))
