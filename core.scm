@@ -1712,25 +1712,24 @@
 
 ;; Generate code before a jump to an existing version of a lazy-code object
 ;; (to handle reg alloc of join points)
-(define (gen-merge-code cgc lazy-code-dst ctx)
+(define (gen-merge-code cgc rctx-dst ctx)
   ;; If we do not use register allocation information to specialize code,
   ;; and if destination lazy-code already has register allocation information,
   ;; we need to
   ;; * generate moves to match destination slot-loc value
   ;; * update rsp to match destination fs value
-  (if (and (lazy-code-rctx lazy-code-dst)
+  (if (and rctx-dst
            (not (equal? (ctx-slot-loc ctx)
-                        (ctx-slot-loc (lazy-code-rctx lazy-code-dst)))))
+                        (ctx-slot-loc rctx-dst))))
       ;; A rctx is already associated to lazy-code, then generate merge code
-      (let* ((rctx (lazy-code-rctx lazy-code-dst))
-             (lc-slot-loc  (ctx-slot-loc rctx))
-             (lc-free-regs (ctx-free-regs rctx))
-             (lc-fs        (ctx-fs rctx))
+      (let* ((lc-slot-loc  (ctx-slot-loc rctx-dst))
+             (lc-free-regs (ctx-free-regs rctx-dst))
+             (lc-fs        (ctx-fs rctx-dst))
              ;;
              (locs-moves   (reg-alloc-merge (ctx-slot-loc ctx) lc-slot-loc)))
 
         ;; Generate label for debug
-        (x86-label cgc (asm-make-label #f (new-sym 'regalloc-mergs)))
+        (x86-label cgc (asm-make-label #f (new-sym 'regalloc-merge)))
 
         ;; Generate merge moves
         (for-each
@@ -1767,7 +1766,7 @@
           ;; If we do not use regalloc to specialize code,
           ;; generate merge code to handle join points
           (if (not opt-vers-regalloc)
-              (set! ctx (gen-merge-code cgc lazy-code ctx)))
+              (set! ctx (gen-merge-code cgc (lazy-code-rctx lazy-code) ctx)))
           ;; That version has already been generated, so just jump to it
           (x86-jmp cgc label-dest))
 
@@ -1780,94 +1779,137 @@
           ;; Recursive call (maybe this version already exists)
           (jump-to-version cgc lazy-code (ctx-clear ctx) #t)
 
-          ;; Generate that version inline
-          (let ((label-version (asm-make-label cgc (new-sym 'version))))
-            ;; If we do not use regalloc to specialize code,
-            ;; generate merge code to handle join points
-            (if (not opt-vers-regalloc)
-                (set! ctx (gen-merge-code cgc lazy-code ctx)))
-            (put-version lazy-code ctx label-version)
-            (x86-label cgc label-version)
-            ((lazy-code-generator lazy-code) cgc ctx))))))
+          ;; Si on utilise l'info de ragalloc pour spécialiser le code:
+          ;; Si la limite est atteinte, et donc qu'on veut générer une version générique:
+          ;; Alors On regarde s'il existe une version avec le meme ctx - l'alloc de registre.
+          ;; Si c'est le cas, on génère un merge, et on saute à cette version
+          ;; Si ce n'est pas le cas, on génère cette version générique
+          ;; Optimisation: quand on sait que c'est une version générique, on peut l'enregistrer.
 
-;; Generate a continuation
-(define (gen-version-continuation load-ret-label lazy-code ctx)
+          (cond ((and opt-vers-regalloc
+                      cleared-ctx
+                      (get-generic-version lazy-code))
+                  (let* ((r (get-generic-version lazy-code))
+                         (generic-ctx (car r))
+                         (label (cdr r))
+                         (rctx
+                           (make-regalloc-ctx
+                             (ctx-slot-loc generic-ctx)
+                             (ctx-free-regs generic-ctx)
+                             (ctx-fs generic-ctx))))
+                    (gen-merge-code cgc rctx ctx) ;; TODO WIP
+                    (x86-jmp cgc label)))
+                (else
+
+                    ;; Generate that version inline
+                    (let ((label-version (asm-make-label cgc (new-sym 'version))))
+                      ;; If we do not use regalloc to specialize code,
+                      ;; generate merge code to handle join points
+                      (if (not opt-vers-regalloc)
+                          (set! ctx (gen-merge-code cgc (lazy-code-rctx lazy-code) ctx)))
+                      (put-version lazy-code ctx label-version)
+                      (x86-label cgc label-version)
+                      ((lazy-code-generator lazy-code) cgc ctx))))))))
+
+;; TODO WIP
+(define (get-generic-version lazy-code)
+  ;; TODO move to ctx
+  ;; TODO is-type-generic?
+  (define (ctx-is-generic? ctx)
+    (define (stack-is-generic)
+      (= (count (ctx-stack ctx) (lambda (el) (eq? el CTX_UNK)))
+         (length (ctx-stack ctx))))
+    (define (env-is-generic env)
+      (if (null? env)
+          #t
+          (and (identifier-is-generic (cdar env))
+               (env-is-generic (cdr env)))))
+    (define (identifier-is-generic identifier)
+      (or (not (identifier-stype identifier))
+          (eq? (identifier-stype identifier) CTX_UNK)))
+    ;;
+    (and (stack-is-generic)
+         (env-is-generic (ctx-env ctx))))
+
+  (define (get-generic versions)
+    (if (null? versions)
+        #f
+        (let ((first (car versions)))
+          (or (and (ctx-is-generic? (car first)) first)
+              (get-generic (cdr versions))))))
+
+  (let ((versions (lazy-code-versions lazy-code)))
+    (get-generic (table->list versions))))
+;; TODO WIP
+
+;; TODO:
+(define (gen-version-* lazy-code ctx label-sym fn-verbose fn-patch)
 
   (if opt-verbose-jit
-      (begin
-        (print "GEN VERSION CONTINUATION (RP)")
-        (print " >>> Patch label ")
-        (pp load-ret-label)
-        (println " with ctx:")
-        (pp ctx)))
-
-  (let ((continuation-label (asm-make-label #f (new-sym 'continuation_)))
-        (load-addr (asm-label-pos load-ret-label)))
-
-    ;; Generate lazy-code
-    (code-add
-      (lambda (cgc)
-        (asm-align cgc 4 0 #x90)
-        (x86-label cgc continuation-label)
-        ((lazy-code-generator lazy-code) cgc ctx)))
-
-    (patch-continuation load-addr continuation-label)))
-
-;; Generate continuation using cr table (patch cr entry)
-(define (gen-version-continuation-cr lazy-code ctx type table)
-
-  (if opt-verbose-jit
-      (begin
-        (print "GEN VERSION CONTINUATION (CR)")
-        (print " >>> Patch table with type ")
-        (print type)
-        (println " and ctx:")
-        (pp ctx)))
+      (fn-verbose))
 
   (let ((label-dest (get-version lazy-code ctx)))
-
     (if (not label-dest)
         ;; That version is not yet generated, so generate it
-        (let ((continuation-label (asm-make-label #f (new-sym 'continuation_))))
+        (let ((version-label (asm-make-label #f (new-sym label-sym))))
           (code-add
             (lambda (cgc)
               (asm-align cgc 4 0 #x90)
-              (x86-label cgc continuation-label)
+              (x86-label cgc version-label)
               ((lazy-code-generator lazy-code) cgc ctx)))
-          (put-version lazy-code ctx continuation-label)
-          (set! label-dest continuation-label)))
+          (put-version lazy-code ctx version-label)
+          (set! label-dest version-label)))
+    (fn-patch label-dest)))
 
-    (patch-continuation-cr label-dest type table)))
+;; #### CONTINUATION
+;; Generate a continuation
+(define (gen-version-continuation load-ret-label lazy-code ctx)
 
+  (define (fn-verbose)
+    (print "GEN VERSION CONTINUATION (RP)")
+    (print " >>> Patch label ")
+    (pp load-ret-label)
+    (println " with ctx:")
+    (pp ctx))
+
+  (define (fn-patch label-dest)
+    (let ((load-addr (asm-label-pos load-ret-label)))
+      (patch-continuation load-addr label-dest)))
+
+  (gen-version-* lazy-code ctx 'continuation_ fn-verbose fn-patch))
+
+;; #### CONTINUATION CR
+;; Generate continuation using cr table (patch cr entry)
+(define (gen-version-continuation-cr lazy-code ctx type table)
+
+  (define (fn-verbose)
+    (print "GEN VERSION CONTINUATION (CR)")
+    (print " >>> Patch table with type ")
+    (print type)
+    (println " and ctx:")
+    (pp ctx))
+
+  (define (fn-patch label-dest)
+    (patch-continuation-cr label-dest type table))
+
+  (gen-version-* lazy-code ctx 'continuation_ fn-verbose fn-patch))
+
+;; #### FUNCTION ENTRY
 ;; Generate an entry point
 (define (gen-version-fn ast closure lazy-code gen-ctx call-ctx generic)
 
-  (if opt-verbose-jit
-      (begin
-        (print "GEN VERSION FN")
-        (print " >>> ")
-        (pp gen-ctx)
-        (pp call-ctx)))
+  (define (fn-verbose)
+    (print "GEN VERSION FN")
+    (print " >>> ")
+    (pp gen-ctx)
+    (pp call-ctx))
 
-  (let ((label-dest (get-version lazy-code gen-ctx)))
-
-    (if (not label-dest)
-       ;; That version is not yet generated, so generate it
-       (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
-          (code-add
-             (lambda (cgc)
-                (asm-align cgc 4 0 #x90)
-                (x86-label cgc fn-label)
-                ((lazy-code-generator lazy-code) cgc gen-ctx)))
-          (put-version lazy-code gen-ctx fn-label)
-          (set! label-dest fn-label)))
-
-
-    ;; If generic is #t, patch generic slot in closure.
-    ;; Else patch cc-table slot for this ctx
+  (define (fn-patch label-dest)
     (if generic
-      (patch-generic ast closure label-dest)
-      (patch-closure closure call-ctx label-dest))))
+        (patch-generic ast closure label-dest)
+        (patch-closure closure call-ctx label-dest)))
+
+  (gen-version-* lazy-code gen-ctx 'fn_entry_ fn-verbose fn-patch))
 
 (define (gen-version jump-addr lazy-code ctx #!optional (cleared-ctx #f))
 

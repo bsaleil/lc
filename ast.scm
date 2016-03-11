@@ -1616,7 +1616,7 @@
                   save)
 
                 (if opt-return-points
-                    (gen-continuation-cr cgc ast succ ctx save)
+                    (gen-continuation-cr cgc ast succ ctx save #t)
                     (gen-continuation-rp cgc ast succ ctx save #t))
                 (jump-to-version cgc lazy-closure ctx))))))
 
@@ -1667,7 +1667,7 @@
                                                 (set! fs (+ fs (length save) 1)) ;; +1 for return address
                                                 ;; Gen continuation
                                                 (if opt-return-points
-                                                    (gen-continuation-cr cgc ast succ ctx save)
+                                                    (gen-continuation-cr cgc ast succ ctx save #f)
                                                     (gen-continuation-rp cgc ast succ ctx save #f))))
 
                                           ;; 4 TODO closure slot
@@ -1729,7 +1729,7 @@
 (define (gen-continuation-rp cgc ast succ ctx saved-regs apply?)
 
   (let* ((lazy-continuation
-           (make-lazy-code
+           (make-lazy-code-cont
              (lambda (cgc ctx)
 
                ;; Restore registers
@@ -1773,12 +1773,11 @@
    (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0))))
 
 ;; TODO regalloc: merge -rp and -cr + comments
-(define (gen-continuation-cr cgc ast succ ctx saved-regs)
+(define (gen-continuation-cr cgc ast succ ctx saved-regs apply?)
 
   (let* ((lazy-continuation
-           (make-lazy-code
+           (make-lazy-code-cont
              (lambda (cgc ctx)
-
                ;; Restore registers
                (for-each
                  (lambda (i)
@@ -1798,7 +1797,10 @@
                               0
                               (lambda (ret-addr selector type table)
                                      (let* ((args (cdr ast))
-                                            (ctx (ctx-pop-n ctx (+ (length args) 1))) ;; Remove closure and args from virtual stack
+                                            (ctx
+                                              (if apply?
+                                                  (ctx-pop-n ctx 2) ;; Pop operator and args
+                                                  (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
                                             (res (ctx-get-free-reg cgc ctx))
                                             (reg (car res)))
                                          (gen-version-continuation-cr lazy-continuation

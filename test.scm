@@ -1,4 +1,20 @@
 
+
+;; TODO WIP:
+
+;* quand on créé rctx, il faut aussi élimier les locs supplémentaires et laisser que les orig loc.
+
+;; TODO
+;; Comparer le contexte avec le contexte associé à la version générique.
+;; Si le contexte diffère seulement sur l'allocation de registre,
+;; Faire un merge, et utiliser la version générique existante.
+;; Sinon,
+;; Comme avant, générer une nouvelle version
+;; -> Au moment de générer une version, il faut enregistrer le contexte
+;;    associé à la version générique.
+
+;; TODO: vérifier que pour chaque lco, toutes les versions ont une pile de la meme taille (sauf pt entrée)
+
 ;; TODO:
 ;; Pour limiter le nombre de version, il manque le cas ou l'allocation de registre provoque
 ;; un changement de version. dans ce cas, on doit générer un merge

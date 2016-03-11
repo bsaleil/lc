@@ -37,7 +37,7 @@
 ;; res is accu
 (define (set-sub lsta lstb res)
   (if (null? lsta)
-    res
+    (reverse res) ;; to keep same order
     (if (member (car lsta) lstb)
       (set-sub (cdr lsta) lstb res)
       (set-sub (cdr lsta) lstb (cons (car lsta) res)))))

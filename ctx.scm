@@ -92,17 +92,21 @@
     (if (null? env)
         '()
         (let ((ident (car env)))
-          (if (identifier-stype (cdr ident))
-              (cons (cons (car ident)
-                          (make-identifier
-                            (identifier-kind   (cdr ident))
-                            (identifier-sslots (cdr ident))
-                            (identifier-flags  (cdr ident))
+          (cons (cons (car ident)
+                      (make-identifier
+                        (identifier-kind (cdr ident))
+                        (if (eq? (identifier-kind (cdr ident)) 'free)
+                            '()
+                            (list-tail
+                              (identifier-sslots (cdr ident))
+                              (- (length (identifier-sslots (cdr ident))) 1)))
+                        (identifier-flags (cdr ident))
+                        (if (identifier-stype (cdr ident))
                             CTX_UNK
-                            (identifier-cloc   (cdr ident))))
-                    (env-clear (cdr env)))
-              (cons ident
-                    (env-clear (cdr env)))))))
+                            #f)
+                        (identifier-cloc (cdr ident))))
+                (env-clear (cdr env))))))
+
   (let ((stack (make-list (length (ctx-stack ctx)) CTX_UNK))
         (env (env-clear (ctx-env ctx))))
     (ctx-copy ctx stack #f #f env)))
