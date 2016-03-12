@@ -235,7 +235,8 @@
                 (x86-jmp cgc (x86-rax))))))
     (set! repl-print-lco lazy-print)
     ;; Global var for print step
-    (set! globals '(($$REPL-RES . 0)))
+    ;;(set! globals '(($$REPL-RES . 0))) TODO NYI
+    (error "NYI")
     ;; Gen
     (gen-version code-alloc lazy-lib (ctx-init)))
 
@@ -308,19 +309,19 @@
                         (else (error "NYI"))))
 
                 ;; TODO
-                (define (get-gids lib base)
+                (define (get-gids lib)
                   (if (null? lib)
-                     base
+                     #t
                      (let ((el (car lib)))
                        (if (and (pair? el)
                                 (eq? (car el) 'define))
                           (if (pair? (cadr el))
-                             (cons (cons (caadr el) (get-global-type el)) (get-gids (cdr lib) base))
-                             (cons (cons (cadr el)  (get-global-type el)) (get-gids (cdr lib) base)))
-                          (get-gids (cdr lib) base)))))
+                              (table-set! gids (caadr el) (get-global-type el))
+                              (table-set! gids (cadr el)  (get-global-type el))))
+                       (get-gids (cdr lib)))))
 
-                (set! gids (get-gids lib '()))
-                (set! gids (get-gids content gids))
+                (get-gids lib)
+                (get-gids content)
 
                 (let ((exp-content (expand-tl content)))
                    ;(pp exp-content))))

@@ -84,9 +84,9 @@
          ((cadddr) `(car (cdr (cdr (cdr ,@opnd))))))))
 
 (define (expand-set! expr)
-  (let ((r (assoc (cadr expr) gids)))
+  (let ((r (table-ref gids (cadr expr) #f)))
      (if r
-        (set-cdr! r #f)))
+         (table-set! gids (cadr expr) #f)))
 
   `(set! ,(cadr expr) ,(expand (caddr expr))))
 

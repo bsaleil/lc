@@ -329,7 +329,7 @@
     (lambda (cgc ctx)
 
       (let ((local  (assoc ast (ctx-env ctx)))
-            (global (assoc ast globals)))
+            (global (table-ref globals ast #f)))
 
         ;;
         (cond ;; Identifier is a free variable
@@ -439,10 +439,8 @@
 (define (gen-get-globalvar cgc ctx global succ)
 
   (let* (;; Get variable type if known
-         (r (assoc (car global) gids))
-         (type (if (and r (cdr r))
-                   (cdr r)
-                   CTX_UNK))
+         (r (table-ref gids (car global) #f))
+         (type (or r CTX_UNK))
          ;; Get free register (dest)
          (res (ctx-get-free-reg cgc ctx))
          (reg (car res))
@@ -464,7 +462,7 @@
          (lazy-set!
            (make-lazy-code
              (lambda (cgc ctx)
-               (let ((gres (assoc id globals)))
+               (let ((gres (table-ref globals id #f)))
                  (if gres
                      (gen-set-globalvar cgc ctx gres succ)
                      (let ((lres (assoc id (ctx-env ctx))))
@@ -542,7 +540,7 @@
   (let* ((identifier (cadr ast))
          (lazy-bind (make-lazy-code
                       (lambda (cgc ctx)
-                        (let* ((res (assoc identifier globals)) ;; Lookup in globals
+                        (let* ((res (table-ref globals identifier)) ;; Lookup in globals
                                (pos (cdr res))                  ;; Get global pos
                                ;;
                                (res (ctx-get-free-reg cgc ctx))     ;; Return reg,ctx
@@ -557,7 +555,8 @@
       (lambda (cgc ctx)
         ;; TODO regalloc: this codegen is useless ? Just update globals set?
         (codegen-define-id cgc)
-        (set! globals (cons (cons identifier (length globals)) globals))
+        (table-set! globals identifier (cons identifier nb-globals))
+        (set! nb-globals (+ nb-globals 1))
         (jump-to-version cgc lazy-val ctx)))))
 
 ;;

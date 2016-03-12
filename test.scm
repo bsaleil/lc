@@ -1,5 +1,11 @@
 
 
+(define a 100)
+(define b 200)
+(define c (lambda () 1))
+
+(println "ok")
+
 ;; TODO WIP:
 
 ;* quand on créé rctx, il faut aussi élimier les locs supplémentaires et laisser que les orig loc.

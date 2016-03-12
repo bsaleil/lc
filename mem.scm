@@ -263,6 +263,7 @@
 ;; globals: globals to read
 ;; current-copy-ptr: current position of copy-ptr in to-space
 (define (copy-global-roots globals current-copy-ptr)
+  (error "NYI globals is now a table")
   (if (null? globals)
       ;; All roots are copied then return new position of copy-ptr
       current-copy-ptr

@@ -117,8 +117,9 @@
 ;; Global ids
 ;; Contains a list of global ids with id,position
 ;; ex. '((foo 1) (bar 2) (fun 3))
-(define globals '())
-(define gids '()) ;; TODO : merge with 'globals'
+(define globals (make-table))
+(define nb-globals 0)
+(define gids (make-table)) ;; TODO : merge with 'globals'
 
 ;;-----------------------------------------------------------------------------
 
