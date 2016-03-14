@@ -1,10 +1,23 @@
 
+'(1 2)
+;(length '(1))
 
-(define a 100)
-(define b 200)
-(define c (lambda () 1))
 
-(println "ok")
+
+;(define (foo a b c d e f g h)
+;  (let ((i 1) (j 2) (k 3) (l 4))
+;    (+ i j k l)))
+;
+;(foo 1 2 3 4 5 6 7 8)
+
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1))
+;         (fib (- n 2)))))
+;
+;(fib 20)
+5
 
 ;; TODO WIP:
 

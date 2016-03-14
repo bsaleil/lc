@@ -1351,15 +1351,28 @@
       (ctx-nb-args ctx)
       (ctx-fs ctx))))
 
+;;
+(define (apply-moves cgc ctx moves)
+  (if (not (null? moves))
+      (let* ((move (car moves))
+             (lloc (car move)))
+        (cond ((ctx-loc-is-register? lloc)
+                (if (eq? (cdr move) 'new)
+                    (x86-push cgc (codegen-loc-to-x86opnd (ctx-fs ctx) lloc))
+                    (x86-mov  cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))
+                                  (codegen-loc-to-x86opnd (ctx-fs ctx) lloc))))
+              (else (error "NYI apply-moves2")))
+        (apply-moves cgc ctx (cdr moves)))))
+
 ;;; TODO: cette fonction peut générer du code (spill), il faut donc faire attention ou on l'appelle, et lui envoyer le cgc
 ;;; TODO: ajouter un argument qui donne le nombre d'éléments sur la pile qui sont consommés pour cette opération (**)
-;;; Retourne un registre vide
+;;; Retourne un registre vide (moves, loc, ctx)
 ;;; Si un registre est vide, on le retourne
 ;;; Sinon, NYI:
 ;;;   * On regarde les n (**) éléments sur la pile virtuelle. Si un est associé à un registre, on peut le retourner car c'est une opérande de l'opération en cours donc il peut etre la destination
 ;;;   * Sinon, on libère un registre selon une certaine stratégie donnée (peu importe laquelle)
 ;;;     puis on le retourne
-(define (ctx-get-free-reg cgc ctx #!optional (fixed-regs '())) ;; TODO : ne pas spiller les registres donnés dans fixed-regs
+(define (ctx-get-free-reg ctx #!optional (fixed-regs '())) ;; TODO : ne pas spiller les registres donnés dans fixed-regs
 
   (define (choose-reg)
     (let ((regs (build-list (length regalloc-regs)
@@ -1432,14 +1445,14 @@
           ;;
           (let ((ropnd (codegen-reg-to-x86reg reg))
                 (mopnd (codegen-loc-to-x86opnd (ctx-fs ctx) (car loc-ctx))))
-            (x86-mov cgc mopnd ropnd)
-            (cons reg
+            (list (list (cons reg (car loc-ctx)))
+                  reg
                   (cdr loc-ctx)))
           ;;
           (let ((loc-ctx (spill-new ctx reg))
                 (ropnd (codegen-reg-to-x86reg reg)))
-            (x86-push cgc ropnd)
-            (cons reg
+            (list (list (cons reg 'new))
+                  reg
                   (cdr loc-ctx))))))
 
 
@@ -1447,10 +1460,10 @@
   (let ((free-regs (ctx-free-regs ctx)))
     (if (null? free-regs)
         ;;
-        (let ((loc-ctx (spill ctx)))
-          loc-ctx)
+        (spill ctx)
         ;;
-        (cons
+        (list
+          '()
           (car free-regs)
           ctx))))
 
