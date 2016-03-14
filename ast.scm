@@ -560,15 +560,9 @@
 (define (gen-set-globalvar cgc ctx global succ)
   (mlet ((pos (cdr global))
          (moves/reg/ctx (ctx-get-free-reg ctx))
-         (dest (codegen-reg-to-x86reg reg))
-         (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-         (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
+         (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
     (apply-moves cgc ctx moves)
-    (if (ctx-loc-is-memory? lval)
-        (begin (x86-mov cgc (x86-rax) opval)
-               (set! opval (x86-rax))))
-    (x86-mov cgc (x86-mem (* 8 pos) global-ptr) opval)
-    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+    (codegen-set-global cgc reg pos lval (ctx-fs ctx))
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))
 
 ;;-----------------------------------------------------------------------------

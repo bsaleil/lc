@@ -132,9 +132,9 @@
 ;;-----------------------------------------------------------------------------
 ;; set
 
-(define (codegen-set-global cgc reg lval pos)
-  (let ((dest  (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd lval)))
+(define (codegen-set-global cgc reg pos lval fs)
+  (let ((dest (codegen-reg-to-x86reg reg))
+        (opval (codegen-loc-to-x86opnd fs lval)))
     (if (ctx-loc-is-memory? lval)
         (begin (x86-mov cgc (x86-rax) opval)
                (set! opval (x86-rax))))
