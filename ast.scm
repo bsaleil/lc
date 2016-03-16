@@ -443,44 +443,11 @@
 ;; TODO: + utiliser un appel récursif comme pour gen-get-freevar (??)
 ;; TODO coment: si mobject? est vrai, c'est qu'on veut le mobject dans le tmp reg (rax)
 (define (gen-get-localvar cgc ctx local succ #!optional (raw? #f))
-  (let ((mutable? (member 'mutable (identifier-flags (cdr local)))))
 
-    (if raw?
-        ;; We want mobject, then write in rax
-        (let* ((loc (ctx-identifier-loc ctx (cdr local) #t))
-               (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-          (x86-mov cgc (x86-rax) opnd))
-        ;; We don't want mobject
-        (mlet ((loc (ctx-identifier-loc ctx (cdr local)))
-               (moves/reg/ctx (ctx-get-free-reg ctx (list loc)))
-               (boxed? (ctx-loc-is-orig-loc ctx (cdr local) loc))
-               (type
-                 (if mutable?
-                     CTX_UNK
-                     (ctx-identifier-type ctx (cdr local)))))
-          (apply-moves cgc ctx moves)
-          (cond ;; Mutable and in memory
-                ((and (ctx-loc-is-memory? loc) mutable?)
-                  (let ((dest (codegen-reg-to-x86reg reg))
-                        (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-                    (x86-mov cgc (x86-rax) opnd)
-                    (if boxed?
-                        (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-                        (x86-mov cgc dest (x86-rax))))) ;; TODO
-                ;; Mutable and in register
-                (mutable?
-                  (let ((dest (codegen-reg-to-x86reg reg))
-                        (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-                    (if boxed?
-                        (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) opnd))
-                        (x86-mov cgc dest opnd)))) ;; TODO
-                ;; Not mutable and in reg or mem
-                (else
-                  (let ((dest (codegen-reg-to-x86reg reg))
-                        (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-                    (x86-mov cgc dest opnd))))
-
-          (jump-to-version cgc succ (ctx-push ctx type reg (car local)))))))
+  (let ((loc (ctx-identifier-loc ctx (cdr local))))
+    (if (ctx-loc-is-register? loc)
+        (jump-to-version cgc succ (ctx-push ctx CTX_UNK loc (car local)))
+        (error "NYI WIP gen-get-localvar"))))
 
 (define (gen-get-globalvar cgc ctx global succ)
 
@@ -580,7 +547,7 @@
                                (pos (cdr res))                  ;; Get global pos
                                ;;
                                (moves/reg/ctx (ctx-get-free-reg ctx))
-                               (lvalue (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                               (lvalue (ctx-get-loc ctx 0)))
                           (apply-moves cgc ctx moves)
                           (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue)
                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))))
@@ -617,10 +584,9 @@
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
                      (lambda (cgc ctx)
-                       ;; TODO regalloc
                        ;; 1 - Get clean stack size (higher mx in ctx)
                        (let* ((clean-nb (- (ctx-fs ctx) 1))
-                              (lres (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                              (lres (ctx-get-loc ctx 0))
                               (opres (codegen-loc-to-x86opnd (ctx-fs ctx) lres)))
                          ;; 2 - Move res in rax
                          (x86-mov cgc (x86-rax) opres)
@@ -668,8 +634,9 @@
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
-                                                      (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
-                                                        (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
+                                                       (let ((ctx (ctx-init-fn sctx all-params)))
+                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
+
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
                (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
 
@@ -900,9 +867,13 @@
                           make-lazy-code)))
              (make-lc
                (lambda (cgc ctx)
-                 (let* ((ctx (ctx-unbind ctx ids)) ;; update env
-                        (ctx (ctx-move-lidx ctx 0 (length ids))) ;; mov result slot
-                        (ctx (ctx-pop-n ctx (length ids)))) ;; pop from virtual stack
+                 (pp "##### LET OUT")
+                 (pp ctx)
+                 (let* ((type (car (ctx-stack ctx)))
+                        (loc  (cdr (assoc (ctx-lidx-to-slot ctx 0) (ctx-slot-loc ctx))))
+                        (ctx  (ctx-unbind ctx ids))
+                        (ctx  (ctx-pop-n ctx (+ (length ids) 1)))
+                        (ctx  (ctx-push ctx type loc)))
                    (jump-to-version cgc succ ctx))))))
          (lazy-body
            (gen-ast (cons 'begin body) lazy-out))
@@ -1092,8 +1063,8 @@
 
 ;; primitive write-char
 (define (prim-write-char cgc ctx reg succ cst-infos)
-  (let ((lchar (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
-        (lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+  (let ((lchar (ctx-get-loc ctx 1))
+        (lport (ctx-get-loc ctx 0)))
     (codegen-write-char cgc (ctx-fs ctx) reg lchar lport)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_VOID reg))))
 
@@ -1230,7 +1201,7 @@
          (lval
           (if cst-arg
               (cdr cst-arg)
-              (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+              (ctx-get-loc ctx 0)))
          (n-pop (if cst-arg 0 1)))
     (codegen-ch<->int cgc (ctx-fs ctx) op reg lval cst-arg)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop)
@@ -1633,9 +1604,7 @@
             (lambda (cgc ctx)
 
               (let* ((free (ctx-free-regs ctx))
-                     (all  (build-list (length regalloc-regs) (lambda (i)
-                                                         (string->symbol
-                                                           (string-append "r" (number->string i))))))
+                     (all  (build-list (length regalloc-regs) (lambda (i) (cons 'r i))))
                      (save (set-sub all free '())))
                 ;; Save used regs
                 (for-each
@@ -1655,6 +1624,7 @@
 ;;
 ;; Make lazy code from CALL EXPR
 ;;
+
 (define (mlc-call ast succ)
 
   (let* (;; Tail call if successor's flags set contains 'ret flag
@@ -1668,39 +1638,43 @@
 
                                         ;; 1 - Build call ctx
                                         (let ((call-ctx
-                                                (ctx-init-with-stack
+                                                (ctx-copy
+                                                  (ctx-init)
                                                   (append (list-head (ctx-stack ctx) (length (cdr ast)))
                                                           (list CTX_CLO CTX_RETAD))))
                                               (fs (ctx-fs ctx)))
 
                                           ;; 2 - push all regs
                                           (if (not tail)
-                                              (let* ((args-clo
-                                                       (let loop ((i (- (length ast) 1))
-                                                                  (regs '()))
-                                                         (if (< i 0)
-                                                             regs
-                                                             (let ((loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx i))))
-                                                               (loop (- i 1) (cons loc regs))))))
-                                                     (free (ctx-free-regs ctx))
-                                                     (all  (build-list (length regalloc-regs) (lambda (i)
-                                                                                         (string->symbol
-                                                                                           (string-append "r" (number->string i))))))
-                                                     (save (set-sub (set-sub all free '()) args-clo '())))
+                                            ;  (let* ((args-clo
+                                            ;           (let loop ((i (- (length ast) 1))
+                                            ;                      (regs '()))
+                                            ;             (if (< i 0)
+                                            ;                 regs
+                                            ;                 (let ((loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx i))))
+                                            ;                   (loop (- i 1) (cons loc regs))))))
+                                            ;         (free (ctx-free-regs ctx))
+                                            ;         (all  (build-list (length regalloc-regs) (lambda (i)
+                                            ;                                             (string->symbol
+                                            ;                                               (string-append "r" (number->string i))))))
+                                            ;         (save (set-sub (set-sub all free '()) args-clo '())))
+                                            ;    (print "### For call ") (pp ast)
+                                            ;    (pp ctx)
+                                            ;    (print "Save regs ") (pp save)
                                                 ;; Save used regs
-                                                (for-each
-                                                  (lambda (i)
-                                                    (let ((opnd (codegen-reg-to-x86reg i)))
-                                                      (x86-push cgc opnd)))
-                                                  save)
-                                                (set! fs (+ fs (length save) 1)) ;; +1 for return address
+                                                ;(for-each
+                                                ;  (lambda (i)
+                                                ;    (let ((opnd (codegen-reg-to-x86reg i)))
+                                                ;      (x86-push cgc opnd)))
+                                                ;  save)
+                                                ;(set! fs (+ fs (length save) 1)) ;; +1 for return address
                                                 ;; Gen continuation
                                                 (if opt-return-points
-                                                    (gen-continuation-cr cgc ast succ ctx save #f)
-                                                    (gen-continuation-rp cgc ast succ ctx save #f))))
+                                                    (gen-continuation-cr cgc ast succ ctx '() #f)
+                                                    (gen-continuation-rp cgc ast succ ctx '() #f)))
 
                                           ;; 4 TODO closure slot
-                                          (let* ((lclo (ctx-get-loc ctx (ctx-lidx-to-slot ctx (length (cdr ast)))))
+                                          (let* ((lclo (ctx-get-loc ctx (length (cdr ast))))
                                                  (opclo (codegen-loc-to-x86opnd fs lclo)))
                                             (x86-mov cgc (x86-rax) opclo) ;; closure need to be in rax for do-callback-fn (TODO: get closure from stack in do-callback-fn and remove this)
                                             (x86-push cgc (x86-rax))
@@ -1815,7 +1789,7 @@
                  (reverse saved-regs))
 
                ;; Move result to location
-               (let* ((lres   (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+               (let* ((lres   (ctx-get-loc ctx 0))
                       (fs (- (ctx-fs ctx) (length saved-regs)))
                       (opres  (codegen-loc-to-x86opnd fs lres)))
                  ;; Result is in rax
@@ -1981,11 +1955,11 @@
                (reg   (if res (cadr res) #f))
                (ctx   (if res (caddr res) ctx))
                ;; We need to get locs AFTER ctx-get-free-reg call
-               (lright (or rcst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+               (lright (or rcst (ctx-get-loc ctx 0)))
                (lleft
                  (if rcst
-                     (or lcst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
-                     (or lcst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))))
+                     (or lcst (ctx-get-loc ctx 0))
+                     (or lcst (ctx-get-loc ctx 1))))
                (n-pop (count (list lcst rcst) not)))
           (apply-moves cgc ctx moves)
           (if num-op?

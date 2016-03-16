@@ -34,10 +34,9 @@
 ;; x86 Registers
 
 ;; x86 registers map associate virtual register to x86-register
-;; ex. ((r0 . (x86-rax)) (r1 . (x86-rbx)) ...)
 (define codegen-regmap
   (foldr (lambda (el r)
-           (cons (cons (string->symbol (string-append "r" (number->string el)))
+           (cons (cons (cons 'r el)
                        (list-ref regalloc-regs el))
                  r))
          '()
@@ -229,13 +228,7 @@
   (x86-mem (* 8 (- fs mem 1)) (x86-rsp)))
 
 (define (codegen-reg-to-x86reg reg)
-  (if (eq? reg 'rtmp)
-      (x86-rax)
-      (let ((r (assoc reg codegen-regmap)))
-        (cdr r))))
-
-;; TODO regalloc
-;; TODO regalloc
+  (cdr (assoc reg codegen-regmap)))
 
 ;;-----------------------------------------------------------------------------
 ;; Literal

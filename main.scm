@@ -164,7 +164,7 @@
           (make-lazy-code
             (lambda (cgc ctx)
               ;; TODO regalloc: opt-time
-              (let ((loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))) ;; Get loc of value in top of stack
+              (let ((loc (ctx-get-loc ctx 0))) ;; Get loc of value in top of stack
                 (if (ctx-loc-is-register? loc)
                     (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc))
                     (error "NYI regalloc")))
@@ -255,7 +255,7 @@
 
   (init)
 
-  (let ((lazy-lib  (lazy-exprs (append lib prog) #f)))
+  (let ((lazy-lib (lazy-exprs (append lib prog) #f)))
     (gen-version code-alloc  lazy-lib (ctx-init)))
 
   (if opt-time

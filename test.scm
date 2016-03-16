@@ -1,7 +1,23 @@
 
-'(1 2)
-;(length '(1))
+(define (fact n)
+  (if (= n 0)
+      1
+      (* n (fact (- n 1)))))
 
+(fact 2)
+
+;(define (foo n)
+;  (if (let ((ZZZ #t)) (if ZZZ ZZZ #t));(or #t #t)
+;      2
+;      #f))
+;
+;(foo 10)
+
+;(define (foo n)
+; (if (> n (+ 1 2))
+;     foo))
+;
+;(foo 2)
 
 
 ;(define (foo a b c d e f g h)
@@ -17,7 +33,7 @@
 ;         (fib (- n 2)))))
 ;
 ;(fib 20)
-5
+
 
 ;; TODO WIP:
 
