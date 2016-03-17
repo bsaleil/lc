@@ -164,6 +164,110 @@
               (ctx-copy ctx #f #f (cdr free-regs))))))
 
 ;;
+;; BIND LOCALS
+(define (ctx-bind-locals ctx id-idx mvars)
+
+  (define (gen-env env id-idx mvars)
+    (if (null? id-idx)
+        env
+        (let ((first (car id-idx)))
+          (cons (cons (car first)
+                      (make-identifier
+                        'local   ;; symbol 'free or 'local
+                        (list (stack-idx-to-slot ctx (cdr first)))
+                        '()
+                        #f
+                        #f))
+                (gen-env env (cdr id-idx) mvars)))))
+
+  (if (not (null? mvars))
+      (error "NYI bind-locals"))
+
+  (ctx-copy ctx #f #f #f #f (gen-env (ctx-env ctx) id-idx mvars)))
+
+;;
+;; UNBIND LOCALS
+(define (ctx-unbind-locals ctx ids)
+
+  (define (gen-env env ids)
+    (if (null? env)
+        (begin (assert (null? ids) "Internal error")
+               '())
+        (let ((ident (car env)))
+          (if (member (car ident) ids)
+              (gen-env (cdr env) (set-sub ids (list (car ident)) '()))
+              (cons ident
+                    (gen-env (cdr env) ids))))))
+
+  (ctx-copy ctx #f #f #f #f (gen-env (ctx-env ctx) ids)))
+
+;;
+;; IDENTIFIER TYPE
+(define (ctx-identifier-type ctx identifier)
+  (if (eq? (identifier-kind identifier) 'free)
+      (error "NYI")
+      (let* ((sslots (identifier-sslots identifier))
+             (sidx (slot-to-stack-idx ctx (car sslots))))
+        (list-ref (ctx-stack ctx) sidx))))
+
+
+;;
+;; SAVE CALL
+;; Called when compiling a call site.
+;; Compute moves required to save registers.
+;; Returns:
+;;  moves: list of moves
+;;  ctx: updated ctx
+(define (ctx-save-call octx idx-start)
+
+  ;; pour chaque slot sur la vstack:
+    ;; Si le slot appartient à une variable, et que cette variable à déjà un emplacement mémoire:
+      ;; on remplace simplement la loc dans le slot loc, aucun mouvement à générer
+    ;; Sinon:
+      ;; on récupère un emplacement mémoire vide
+      ;; on remplace la loc dans slot-loc
+      ;; on retourne le mouvement reg->mem
+
+  (define (save-one curr-idx ctx)
+    (let ((loc (ctx-get-loc ctx curr-idx)))
+      (if (ctx-loc-is-memory? loc)
+          ;; If loc associated to current index is a memory loc, nothing to do
+          (cons '() ctx)
+          ;; Loc is a register, we need to save it
+          (let* ((ident (ctx-ident-at ctx curr-idx))
+                 (mloc  (and ident (ctx-ident-mloc ctx ident))))
+            (if (and ident mloc)
+                ;; Is this slot is associated to a variable, and this variable already have a memory location
+                ;; Then, simply update slot-loc set
+                (cons '()
+                      (ctx-set-loc ctx (stack-idx-to-slot ctx curr-idx) mloc))
+                ;; Else, we need a new memory slot
+                (let* ((r (ctx-get-free-mem ctx))
+                       (moves (car r))
+                       (mem (cadr r))
+                       (ctx (caddr r))
+                       (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx curr-idx) mem)))
+
+                  ;; Remove all 'fs moves
+                  (cons (append (set-sub moves (list (assoc 'fs moves)) '())
+                                (list (cons loc mem)))
+                        ctx)))))))
+
+
+  (define (save-all curr-idx moves ctx)
+    (if (= curr-idx (length (ctx-stack ctx)))
+        (let ((nb-new-slots (- (ctx-fs ctx) (ctx-fs octx))))
+          (list (cons (cons 'fs nb-new-slots) moves)
+                ctx))
+        (let ((r (save-one curr-idx ctx)))
+          (save-all
+            (+ curr-idx 1)
+            (append moves (car r))
+            (cdr r)))))
+
+  (save-all idx-start '() octx))
+
+;;
 ;; PUSH
 (define (ctx-push ctx type loc #!optional id)
 
@@ -389,7 +493,72 @@
  (cons locs moves)))
 
 
+;;
+;;
+;;
+;;
 ;; TODO PRIVATE module
+
+;; Change loc associated to given slot
+(define (ctx-set-loc ctx slot loc)
+
+  (define (get-slot-loc slot-loc)
+    (if (null? slot-loc)
+        '()
+        (let ((sl (car slot-loc)))
+          (if (eq? (car sl) slot)
+              (cons (cons slot loc) (cdr slot-loc))
+              (cons sl (get-slot-loc (cdr slot-loc)))))))
+
+  (define (get-free-* slot-loc curr-free old-loc loc check-loc-type)
+    (let* ((r (assoc old-loc slot-loc))
+           (free-set
+             (if (or (not (check-loc-type old-loc))
+                     r)
+                 curr-free
+                 (cons old-loc curr-free))))
+    (set-sub free-set (list loc) '())))
+
+  (define (get-free-regs slot-loc curr-free old-loc loc)
+    (get-free-* slot-loc curr-free old-loc loc ctx-loc-is-register?))
+  (define (get-free-mems slot-loc curr-free old-loc loc)
+    (get-free-* slot-loc curr-free old-loc loc ctx-loc-is-memory?))
+
+  (let* ((old-loc (cdr (assoc slot (ctx-slot-loc ctx))))
+         (slot-loc (get-slot-loc (ctx-slot-loc ctx)))
+         (free-regs (get-free-regs slot-loc (ctx-free-regs ctx) old-loc loc))
+         (free-mems (get-free-mems slot-loc (ctx-free-mems ctx) old-loc loc)))
+    (ctx-copy ctx #f slot-loc free-regs free-mems)))
+
+;; Return a free memory slot
+;; Return moves, mloc and updated ctx
+;(moves/mem/ctx (ctx-get-free-mem ctx))
+(define (ctx-get-free-mem ctx)
+  (if (not (null? (ctx-free-mems ctx)))
+      ;; An existing memory slot is empty, use it
+      (list '() (car (ctx-free-mems ctx)) ctx)
+      ;; Alloc a new memory slot
+      (let ((mloc (cons 'm (ctx-fs ctx))))
+        (list (list (cons 'fs 1))
+              mloc
+              (ctx-copy ctx #f #f #f (cons mloc (ctx-free-mems ctx)) #f #f (+ (ctx-fs ctx) 1))))))
+
+
+  ;; Si un emplacement mémoire est libre, on le retourne sans rien modifier
+  ;; sinon on en alloue un
+
+;; Return memory location associated to ident or #f if no memory slot
+(define (ctx-ident-mloc ctx ident)
+
+  (define (get-mloc slot-loc sslots)
+    (if (null? sslots)
+        #f
+        (let ((r (assoc (car sslots) slot-loc)))
+          (or (and r (ctx-loc-is-memory? (cdr r)) (cdr r))
+              (get-mloc slot-loc (cdr sslots))))))
+
+  (let ((sslots (identifier-sslots (cdr ident))))
+    (get-mloc (ctx-slot-loc ctx) sslots)))
 
 (define (stack-change-type stack stack-idx type)
   (append (list-head stack stack-idx) (cons type (list-tail stack (+ stack-idx 1)))))

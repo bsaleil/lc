@@ -225,7 +225,7 @@
       (codegen-mem-to-x86mem fs loc)))
 
 (define (codegen-mem-to-x86mem fs mem)
-  (x86-mem (* 8 (- fs mem 1)) (x86-rsp)))
+  (x86-mem (* 8 (- fs (cdr mem) 1)) (x86-rsp)))
 
 (define (codegen-reg-to-x86reg reg)
   (cdr (assoc reg codegen-regmap)))
@@ -1292,7 +1292,7 @@
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
-    (if (ctx-loc-is-memory? opval)
+    (if (ctx-loc-is-memory? lval)
         (begin (x86-mov cgc (x86-rax) opval)
                (set! opval (x86-rax))))
 
@@ -1324,31 +1324,30 @@
 ;;-----------------------------------------------------------------------------
 ;; string-ref
 (define (codegen-string-ref cgc fs reg lstr lidx idx-cst?)
-  (let ((dest  (codegen-reg-to-x86reg reg))
+  (let ((dest (codegen-reg-to-x86reg reg))
         (opstr (codegen-loc-to-x86opnd fs lstr))
         (opidx (and (not idx-cst?) (codegen-loc-to-x86opnd fs lidx))))
 
-  ;; If string is in memory, use rax
-  (if (ctx-loc-is-memory? lstr)
-      (begin (x86-mov cgc (x86-rax) opstr)
-             (set! opstr (x86-rax))))
+   (if (ctx-loc-is-memory? lstr)
+      (begin (x86-mov cgc dest opstr)
+             (set! opstr dest)))
 
-  (cond
-    (idx-cst?
-      (x86-mov cgc (x86-al) (x86-mem (+ (- 16 TAG_MEMOBJ) lidx) opstr)))
-    ((ctx-loc-is-memory? lidx)
-      (x86-mov cgc dest opidx)
-      (x86-shr cgc dest (x86-imm-int 2)) ;; Decode position
-      (x86-mov cgc (x86-al) (x86-mem (- 26 TAG_MEMOBJ) dest opstr)))
-    (else
-      (x86-shr cgc opidx (x86-imm-int 2)) ;; Decode position
-      (x86-mov cgc (x86-al) (x86-mem (- 16 TAG_MEMOBJ) opidx opstr))))
+  ;; Get char in al
+  (if idx-cst?
+      (x86-mov cgc (x86-al) (x86-mem (+ (- 16 TAG_MEMOBJ) lidx) opstr))
+      (begin
+        (x86-mov cgc (x86-rax) opidx)
+        (x86-shr cgc (x86-rax) (x86-imm-int 2)) ;; Decode position
+        (x86-mov cgc (x86-al) (x86-mem (- 16 TAG_MEMOBJ) (x86-rax) opstr))))
 
-  ;; TODO: bug gambit, can't generate lea rax [rax*4+2] ?
-  (x86-and cgc (x86-rax) (x86-imm-int 255)) ;; Clear bits before al
-  ;(x86-lea cgc dest (x86-mem TAG_SPECIAL #f (x86-rax) 2))
+  ;; Clear bits before al
+  (x86-and cgc (x86-rax) (x86-imm-int 255))
+
+  ;; Encode char
+  ;; NOTE: bug Gambit: lea rax, [rax*4+2]
   (x86-shl cgc (x86-rax) (x86-imm-int 2))
   (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
+
   (x86-mov cgc dest (x86-rax))))
 
 ;;-----------------------------------------------------------------------------

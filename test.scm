@@ -1,11 +1,11 @@
 
-(define (fact n)
-  (if (= n 0)
-      1
-      (* n (fact (- n 1)))))
+;(define (foo n) 10)
+;
+;(let ((a 10) (b 20))
+;  (foo #f))
 
-(fact 2)
-
+;(println #f)
+(println (= 7 3))
 ;(define (foo n)
 ;  (if (let ((ZZZ #t)) (if ZZZ ZZZ #t));(or #t #t)
 ;      2

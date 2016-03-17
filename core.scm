@@ -1069,8 +1069,26 @@
 
 
 (define (apply-moves cgc ctx moves)
+
+  (define (apply-move move)
+    (cond ((eq? (car move) 'fs)
+             (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 (cdr move)))))
+          ((and (ctx-loc-is-register? (car move))
+                (ctx-loc-is-memory?   (cdr move)))
+             (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
+                   (dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
+               (x86-mov cgc dst src)))
+          ((and (ctx-loc-is-register? (cdr move))
+                (ctx-loc-is-memory?   (car move)))
+             (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
+                   (dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
+               (x86-mov cgc dst src)))
+          (else (pp move) (error "NYI apply-moves"))))
+
   (if (not (null? moves))
-      (error "NYI")))
+      (begin (apply-move (car moves))
+             (apply-moves cgc ctx (cdr moves)))))
+
 
 
 ;
