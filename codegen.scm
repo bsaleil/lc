@@ -220,9 +220,11 @@
 ;;-----------------------------------------------------------------------------
 
 (define (codegen-loc-to-x86opnd fs loc)
-  (if (ctx-loc-is-register? loc)
-      (codegen-reg-to-x86reg loc)
-      (codegen-mem-to-x86mem fs loc)))
+  (cond ((ctx-loc-is-register? loc)
+           (codegen-reg-to-x86reg loc))
+        ((ctx-loc-is-memory? loc)
+           (codegen-mem-to-x86mem fs loc))
+        (else (error "Internal error"))))
 
 (define (codegen-mem-to-x86mem fs mem)
   (x86-mem (* 8 (- fs (cdr mem) 1)) (x86-rsp)))

@@ -1,9 +1,13 @@
 ;;reverse
 ;;nqueens
 
-(letrec ((a 10) (b 20))
-  (pp a)
-  (pp b))
+
+
+(define (foo x y z)
+  (lambda (a b c d e f g) (- a b x y z)))
+
+(pp ((foo 30 3 4) 2 3 4 5 6 7 8))
+
 
 
 ;(define (foo a b c d e f g h)

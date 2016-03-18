@@ -92,31 +92,19 @@
               (get-best-loc (cdr slot-loc) sslots mloc)))))
 
   (let ((sslots (identifier-sslots identifier)))
-    (get-best-loc (ctx-slot-loc ctx) sslots #f)))
+    (if (null? sslots)
+        ;; Free var
+        (begin
+          (assert (eq? (identifier-kind identifier) 'free) "Internal error")
+          (identifier-cloc identifier))
+        (get-best-loc (ctx-slot-loc ctx) sslots #f))))
 
 ;;
 ;; CTX INIT FN
-(define (ctx-init-fn call-ctx args)
+(define (ctx-init-fn call-ctx args free-vars)
 
-  (define (init-slot-loc avail-regs nb-args curr-arg curr-mem slot-loc-res)
-    (if (> curr-arg nb-args)
-        (append slot-loc-res
-                (list (cons 1 '(m . 1))
-                  (cons 0 '(m . 0))))
-        (if (null? avail-regs)
-            (init-slot-loc '()
-                           nb-args
-                           (+ curr-arg 1)
-                           (+ curr-mem 1)
-                           (cons (cons (+ curr-arg 1) (cons 'm curr-mem))
-                                 slot-loc-res))
-            (init-slot-loc (cdr avail-regs)
-                           nb-args
-                           (+ curr-arg 1)
-                           curr-mem
-                           (cons (cons (+ curr-arg 1) (car avail-regs))
-                                 slot-loc-res)))))
-
+  ;;
+  ;; FREE REGS
   (define (init-free-regs)
     (if (<= (length args) (length args-regs))
         (set-sub (ctx-init-free-regs)
@@ -126,30 +114,71 @@
                  args-regs
                  '())))
 
-  (define (init-env args curr-pos)
-    (if (null? args)
-        '()
-        (let ((identifier
-                (make-identifier
-                  'local
-                  (list curr-pos)
-                  '()
-                  #f
-                  #f)))
-          (cons (cons (car args) identifier)
-                (init-env (cdr args) (+ curr-pos 1))))))
+  ;;
+  ;; ENV
+  (define (init-env)
+    (append (init-env-free)
+            (init-env-local)))
 
+  (define (init-env-* ids slot nvar fn-make)
+    (if (null? ids)
+        '()
+        (let ((id (car ids))
+              (identifier (fn-make slot nvar)))
+          (cons (cons id identifier)
+                (init-env-* (cdr ids) (+ slot 1) (+ nvar 1) fn-make)))))
+
+  (define (init-env-free)
+    (init-env-*
+      free-vars
+      2
+      0
+      (lambda (slot nvar)
+        (make-identifier 'free '() '() CTX_UNK (cons 'f nvar)))))
+
+  (define (init-env-local)
+    (init-env-*
+      args
+      2
+      0
+      (lambda (slot nvar)
+        (make-identifier 'local (list slot) '() #f #f))))
+
+  ;;
+  ;; SLOT-LOC
+  (define (init-slot-loc)
+    (append
+      (reverse (init-slot-loc-local 2 args-regs 2 0)) ;; Reverse for best display for debug purposes
+      (init-slot-loc-base)))
+
+  (define (init-slot-loc-local mem avail-regs slot nvar)
+    (if (= nvar (length args))
+        '()
+        (if (null? avail-regs)
+            (let ((loc (cons 'm mem)))
+              (cons (cons slot loc)
+                    (init-slot-loc-local (+ mem 1) '() (+ slot 1) (+ nvar 1))))
+            (let ((loc (car avail-regs)))
+              (cons (cons slot loc)
+                    (init-slot-loc-local mem (cdr avail-regs) (+ slot 1) (+ nvar 1)))))))
+
+  (define (init-slot-loc-base)
+    '((1 m . 1) (0 m . 0)))
+
+  ;;
+  ;; FS
   (define (init-fs nb-args)
     (if (<= nb-args (length args-regs))
         2
-        (+ (- nb-args (length (args-regs))) 2)))
+        (+ (- nb-args (length args-regs)) 2)))
 
+  ;;
   (make-ctx
-    (ctx-stack call-ctx) ;; stack nothing to do
-    (init-slot-loc args-regs (length args) 1 2 '())
+    (ctx-stack call-ctx)
+    (init-slot-loc)
     (init-free-regs)
     '()
-    (init-env args 2)
+    (init-env)
     (length args)
     (init-fs (length args))))
 
@@ -208,7 +237,7 @@
 ;; IDENTIFIER TYPE
 (define (ctx-identifier-type ctx identifier)
   (if (eq? (identifier-kind identifier) 'free)
-      (error "NYI")
+      (identifier-stype identifier)
       (let* ((sslots (identifier-sslots identifier))
              (sidx (slot-to-stack-idx ctx (car sslots))))
         (list-ref (ctx-stack ctx) sidx))))
@@ -396,6 +425,10 @@
 ;; Is memory ?
 (define (ctx-loc-is-memory? loc)
   (eq? (car loc) 'm))
+
+;; Is free variable loc ?
+(define (ctx-loc-is-freemem? loc)
+  (eq? (car loc) 'f))
 
 ;;
 ;; SET TYPE
