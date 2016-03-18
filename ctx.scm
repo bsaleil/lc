@@ -165,7 +165,7 @@
 
 ;;
 ;; BIND LOCALS
-(define (ctx-bind-locals ctx id-idx mvars)
+(define (ctx-bind-locals ctx id-idx mvars #!optional letrec-bind?)
 
   (define (gen-env env id-idx mvars)
     (if (null? id-idx)
@@ -175,7 +175,10 @@
                       (make-identifier
                         'local   ;; symbol 'free or 'local
                         (list (stack-idx-to-slot ctx (cdr first)))
-                        '()
+                        (if (and letrec-bind?
+                                 (not (member first mvars)))
+                            '(letrec-nm)
+                            '())
                         #f
                         #f))
                 (gen-env env (cdr id-idx) mvars)))))
@@ -266,6 +269,23 @@
             (cdr r)))))
 
   (save-all idx-start '() octx))
+
+;;
+;; STACK PUSH
+;; Add a type on top of stack but do not change other components of ctx
+;; TODO: use ctx-push with reg set to #f (?)
+(define (ctx-stack-push ctx type)
+  (ctx-copy ctx (cons type (ctx-stack ctx))))
+;;
+;; STACK POP
+(define (ctx-stack-pop ctx)
+  (ctx-copy ctx (cdr (ctx-stack ctx))))
+(define (ctx-stack-pop-n ctx n)
+  (if (= n 0)
+      ctx
+      (ctx-stack-pop-n
+        (ctx-stack-pop ctx)
+        (- n 1))))
 
 ;;
 ;; PUSH
@@ -404,7 +424,7 @@
    ;; a next argument (if so, we can't overwrite it)
    (define (is-used-after? loc curr-slot lim-slot)
      (foldr (lambda (el r)
-              (or (and (eq? (cdr el) loc)
+              (or (and (equal? (cdr el) loc)
                        (> (car el) curr-slot)
                        (<= (car el) lim-slot))
                   r))

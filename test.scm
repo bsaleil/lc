@@ -1,23 +1,9 @@
+;;reverse
+;;nqueens
 
-;(define (foo n) 10)
-;
-;(let ((a 10) (b 20))
-;  (foo #f))
-
-;(println #f)
-(println (= 7 3))
-;(define (foo n)
-;  (if (let ((ZZZ #t)) (if ZZZ ZZZ #t));(or #t #t)
-;      2
-;      #f))
-;
-;(foo 10)
-
-;(define (foo n)
-; (if (> n (+ 1 2))
-;     foo))
-;
-;(foo 2)
+(letrec ((a 10) (b 20))
+  (pp a)
+  (pp b))
 
 
 ;(define (foo a b c d e f g h)

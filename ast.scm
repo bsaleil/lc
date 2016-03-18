@@ -760,9 +760,7 @@
   (make-lazy-code-entry
     (lambda (cgc ctx)
       (let* ((nb-actual (- (length (ctx-stack ctx)) 2))
-             (nb-formal (ctx-nb-args ctx))
-             (nstack  (ctx-stack ctx))    ;; New stack  (change if rest-param)
-             (nnbargs (ctx-nb-args ctx))) ;; New nbargs (change if rest-param)
+             (nb-formal (ctx-nb-args ctx)))
         (cond ;; rest AND actual == formal
               ((and rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
                  (set! ctx (ctx-stack-push ctx CTX_NULL))
@@ -777,10 +775,9 @@
               ;; TODO merge > and == (?)
               ((and rest-param (> nb-actual (- nb-formal 1)))
                  (let* ((nb-extra (- nb-actual (- nb-formal 1)))
-                        (nctx (ctx-pop-n ctx (- nb-extra 1)))
-                        (nctx (ctx-change-type nctx 0 CTX_PAI)))
+                        (nctx (ctx-stack-pop-n ctx (- nb-extra 1)))
+                        (nctx (ctx-set-type nctx 0 CTX_PAI)))
                    (set! ctx nctx)
-
                    (let* ((nb-formal-stack
                             (if (> (- nb-formal 1) (length args-regs))
                                 (- nb-formal 1 (length args-regs))
@@ -987,10 +984,11 @@
                           (ctx (alloc cgc ids ctx stack-types))
                           (rids (reverse ids))
                           (bind-lst (build-list (length ids) (lambda (n) (cons (list-ref rids n) n)))))
+                     
                      (jump-to-version
                        cgc
                        (gen-ast-l (map cadr (cadr ast)) lazy-set)
-                       (ctx-bind ctx bind-lst mvars #t)))))))
+                       (ctx-bind-locals ctx bind-lst mvars #t)))))))
         lazy-pre)))
 
 ;;-----------------------------------------------------------------------------
@@ -1026,7 +1024,7 @@
 
 ;; primitive not
 (define (prim-not cgc ctx reg succ cst-infos)
-  (let ((lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+  (let ((lval (ctx-get-loc ctx 0)))
     (codegen-not cgc (ctx-fs ctx) reg lval)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))
 
@@ -1035,7 +1033,7 @@
 
   (let* ((lcst (assoc 0 cst-infos))
          (rcst (assoc 1 cst-infos))
-         (lright (if rcst (cdr rcst) (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+         (lright (if rcst (cdr rcst) (ctx-get-loc ctx 0)))
          (lleft
            (if lcst
                (cdr lcst)
@@ -1048,7 +1046,7 @@
 
 ;; primitives car & cdr
 (define (prim-cxr cgc ctx reg succ cst-infos op)
-  (let ((lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+  (let ((lval (ctx-get-loc ctx 0)))
     (codegen-car/cdr cgc (ctx-fs ctx) op reg lval)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK reg))))
 
@@ -1074,8 +1072,8 @@
 ;; primitive make-string
 (define (prim-make-string cgc ctx reg succ cst-infos args)
   (let* ((init-value? (= (length args) 2))
-         (llen (ctx-get-loc ctx (ctx-lidx-to-slot ctx (if init-value? 1 0))))
-         (lval (if init-value? (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)) #f)))
+         (llen (ctx-get-loc ctx (if init-value? 1 0)))
+         (lval (if init-value? (ctx-get-loc ctx 0) #f)))
     (codegen-make-string cgc (ctx-fs ctx) reg llen lval)
     (jump-to-version cgc succ (ctx-push (if init-value?
                                             (ctx-pop-n ctx 2)
@@ -1148,15 +1146,15 @@
   (let* ((idx-cst (assoc 1 cst-infos))
          (chr-cst (assoc 2 cst-infos))
 
-         (lchr (if chr-cst (cdr chr-cst) (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+         (lchr (if chr-cst (cdr chr-cst) (ctx-get-loc ctx 0)))
          (lidx
            (if idx-cst
                (cdr idx-cst)
                (if chr-cst
-                   (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))
-                   (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))))
+                   (ctx-get-loc ctx 0)
+                   (ctx-get-loc ctx 1))))
          (n-pop (+ (count (list idx-cst chr-cst) not) 1))
-         (lstr (ctx-get-loc ctx (ctx-lidx-to-slot ctx (- n-pop 1)))))
+         (lstr (ctx-get-loc ctx (- n-pop 1))))
     (codegen-string-set! cgc (ctx-fs ctx) reg lstr lidx lchr idx-cst chr-cst)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_VOID reg))))
 
@@ -1164,11 +1162,11 @@
 (define (prim-set-cxr! cgc ctx reg succ cst-infos op)
 
   (let* ((valcst (assoc 1 cst-infos))
-         (lval  (if valcst (cdr valcst) (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+         (lval  (if valcst (cdr valcst) (ctx-get-loc ctx 0)))
          (lpair
            (if valcst
-               (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))
-               (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1))))
+               (ctx-get-loc ctx 0)
+               (ctx-get-loc ctx 1)))
          (n-pop (if valcst 1 2)))
     (codegen-scar/scdr cgc (ctx-fs ctx) op reg lpair lval valcst)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_VOID reg))))
@@ -2019,13 +2017,13 @@
       (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
              (car-cst (assoc 0 cst-infos))
              (cdr-cst (assoc 1 cst-infos))
-             (lcdr (if cdr-cst (cdr cdr-cst) (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+             (lcdr (if cdr-cst (cdr cdr-cst) (ctx-get-loc ctx 0)))
              (lcar
                (if car-cst
                    (cdr car-cst)
                    (if cdr-cst
-                       (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))
-                       (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))))
+                       (ctx-get-loc ctx 0)
+                       (ctx-get-loc ctx 1))))
              (n-pop (count (list car-cst cdr-cst) not)))
       (apply-moves cgc ctx moves)
       (codegen-pair cgc (ctx-fs ctx) reg lcar lcdr car-cst cdr-cst)
