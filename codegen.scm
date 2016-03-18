@@ -294,7 +294,8 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Pair
-(define (codegen-pair cgc fs reg lcar lcdr car-cst? cdr-cst?)
+(define (codegen-pair cgc fs reg lcar lcdr car-cst? cdr-cst? mut-car? mut-cdr?)
+(x86-mov cgc (x86-rax) (x86-imm-int 100000))
   (let ((header-word (mem-header 3 STAG_PAIR))
         (dest  (codegen-reg-to-x86reg reg))
         (opcar (and (not car-cst?) (codegen-loc-to-x86opnd fs lcar)))
@@ -310,18 +311,22 @@
         (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-imm-int (obj-encoding lcar)) 64))
       ((ctx-loc-is-memory? lcar)
         (x86-mov cgc (x86-rax) opcar)
+        (if mut-car? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
         (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
       (else
-        (x86-mov cgc (x86-mem 8 alloc-ptr) opcar)))
+        (if mut-car? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opcar)))
+        (x86-mov cgc (x86-mem 8 alloc-ptr) (if mut-car? (x86-rax) opcar))))
     ;; Write cdr
     (cond
       (cdr-cst?
         (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-imm-int (obj-encoding lcdr)) 64))
       ((ctx-loc-is-memory? lcdr)
         (x86-mov cgc (x86-rax) opcdr)
+        (if mut-cdr? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
         (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax)))
       (else
-        (x86-mov cgc (x86-mem 16 alloc-ptr) opcdr)))
+        (if mut-cdr? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opcdr)))
+        (x86-mov cgc (x86-mem 16 alloc-ptr) (if mut-cdr? (x86-rax) opcdr))))
     (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
 
 ;;-----------------------------------------------------------------------------
@@ -1068,7 +1073,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; write-char
-(define (codegen-write-char cgc fs reg lchar lport)
+(define (codegen-write-char cgc fs reg lchar lport mut-char? mut-port?)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opport (codegen-loc-to-x86opnd (+ fs 1) lport))
         (opchar (codegen-loc-to-x86opnd fs lchar)))
@@ -1077,9 +1082,13 @@
     (if (ctx-loc-is-memory? lchar)
         (begin (x86-mov cgc (x86-rax) opchar)
                (set! opchar (x86-rax))))
+    (if mut-char?
+        (x86-mov cgc opchar (x86-mem (- 8 TAG_MEMOBJ) opchar)))
     (x86-push cgc opchar)
     ;; Mov port to rax for syscall
     (x86-mov cgc (x86-rax) opport)
+    (if mut-port?
+        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
     ;; Gen 'read' syscall, encoded value (char or eof) in rax
     (gen-syscall-write-char cgc)
     (x86-pop cgc (x86-rax)) ;; Pop char

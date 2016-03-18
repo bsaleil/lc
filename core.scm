@@ -1967,8 +1967,14 @@
        (if opt-stats
         (gen-inc-slot cgc 'tests))
 
-       (let* ((lval (ctx-get-loc ctx stack-idx))
+       ;; TODO: utiliser un registre si la variable est mutable
+       (let* ((mutable? (ctx-is-mutable? ctx stack-idx))
+              (lval (ctx-get-loc ctx stack-idx))
               (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
+         
+         (if mutable?
+             (begin (x86-push cgc opval)
+                    (x86-mov cgc opval (x86-mem (- 8 TAG_MEMOBJ) opval))))
 
          (cond ;; Number type check
                ((eq? type CTX_NUM)
@@ -2012,6 +2018,9 @@
                                                                  ((eq? type CTX_PAI)  STAG_PAIR))))))
                ;; Other
                (else (error "Unknown type " type)))
+
+         (if mutable?
+             (x86-pop cgc opval))
 
          (x86-label cgc label-jump)
          (x86-je cgc (list-ref stub-labels 0))

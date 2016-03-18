@@ -100,8 +100,17 @@
         (get-best-loc (ctx-slot-loc ctx) sslots #f))))
 
 ;;
+;; IS MUTABLE ?
+;; is this stack-idx mutable?
+(define (ctx-is-mutable? ctx stack-idx)
+  (let ((ident (ctx-ident-at ctx stack-idx)))
+    (and
+      ident
+      (member 'mutable (identifier-flags (cdr ident))))))
+
+;;
 ;; CTX INIT FN
-(define (ctx-init-fn call-ctx args free-vars)
+(define (ctx-init-fn call-ctx enclosing-ctx args free-vars mutable-vars)
 
   ;;
   ;; FREE REGS
@@ -123,8 +132,8 @@
   (define (init-env-* ids slot nvar fn-make)
     (if (null? ids)
         '()
-        (let ((id (car ids))
-              (identifier (fn-make slot nvar)))
+        (let* ((id (car ids))
+               (identifier (fn-make id slot nvar)))
           (cons (cons id identifier)
                 (init-env-* (cdr ids) (+ slot 1) (+ nvar 1) fn-make)))))
 
@@ -133,16 +142,27 @@
       free-vars
       2
       0
-      (lambda (slot nvar)
-        (make-identifier 'free '() '() CTX_UNK (cons 'f nvar)))))
+      (lambda (id slot nvar)
+        (make-identifier
+          'free
+          '()
+          (let ((ident (ctx-ident enclosing-ctx id)))
+            (identifier-flags (cdr ident)))
+          CTX_UNK
+          (cons 'f nvar)))))
 
   (define (init-env-local)
     (init-env-*
       args
       2
       0
-      (lambda (slot nvar)
-        (make-identifier 'local (list slot) '() #f #f))))
+      (lambda (id slot nvar)
+        (make-identifier
+          'local
+          (list slot)
+          (if (member (car args) mutable-vars) '(mutable) '())
+          #f
+          #f))))
 
   ;;
   ;; SLOT-LOC
@@ -206,7 +226,7 @@
                         (list (stack-idx-to-slot ctx (cdr first)))
                         (if (and letrec-bind?
                                  (not (member first mvars)))
-                            '(letrec-nm)
+                            '(mutable letrec-nm)
                             '())
                         #f
                         #f))
@@ -315,6 +335,13 @@
       (ctx-stack-pop-n
         (ctx-stack-pop ctx)
         (- n 1))))
+;;
+;; STACK MOVE
+(define (ctx-stack-move ctx idx-from idx-to)
+  (ctx-copy
+    ctx
+    (let ((old (ctx-stack ctx)))
+      (append (list-head old idx-to) (cons (list-ref old idx-from) (list-tail old (+ idx-to 1)))))))
 
 ;;
 ;; PUSH
@@ -551,6 +578,12 @@
 ;;
 ;;
 ;; TODO PRIVATE module
+
+;;
+;; Return ident object from id
+(define (ctx-ident ctx id)
+ (let ((env (ctx-env ctx)))
+   (assoc id env)))
 
 ;; Change loc associated to given slot
 (define (ctx-set-loc ctx slot loc)
@@ -994,6 +1027,9 @@
   stype  ;; ctx type (copied to virtual stack)
   cloc   ;; closure slot if free variable
 )
+
+(define (identifier-mutable? identifier)
+  (member 'mutable (identifier-flags identifier)))
 
 ;; TODO USE IT ! remove all make-ctx which are only copies and use ctx-copy
 (define (identifier-copy identifier #!optional kind sslots flags stype cloc)

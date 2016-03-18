@@ -573,16 +573,18 @@
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
                      (lambda (cgc ctx)
+
                        ;; 1 - Get clean stack size (higher mx in ctx)
                        (let* ((clean-nb (- (ctx-fs ctx) 1))
                               (lres (ctx-get-loc ctx 0))
                               (opres (codegen-loc-to-x86opnd (ctx-fs ctx) lres)))
+
                          ;; 2 - Move res in rax
                          (x86-mov cgc (x86-rax) opres)
 
                          ;; 3 - Clean stack
                          (x86-add cgc (x86-rsp) (x86-imm-int (* 8 clean-nb)))
-                         ;;
+
                          (if opt-return-points
                              (let* ((ret-type (car (ctx-stack ctx)))
                                     (crtable-offset (type-to-cridx ret-type)))
@@ -623,7 +625,7 @@
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
-                                                       (let ((ctx (ctx-init-fn sctx all-params fvars)))
+                                                       (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
                                                          (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
 
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
@@ -858,6 +860,7 @@
                         (ctx  (ctx-unbind-locals ctx ids))
                         (ctx  (ctx-pop-n ctx (+ (length ids) 1)))
                         (ctx  (ctx-push ctx type loc)))
+                   ;; TODO: if res is mutable, extract value (see lazy-out in mlc-letrec)
                    (jump-to-version cgc succ ctx))))))
          (lazy-body
            (gen-ast (cons 'begin body) lazy-out))
@@ -904,9 +907,21 @@
                               make-lazy-code)))
                  (make-lc
                    (lambda (cgc ctx)
-                     (let* ((ctx (ctx-unbind ctx ids)) ;; update env
-                            (ctx (ctx-move-lidx ctx 0 (length ids))) ;; mov result slot
-                            (ctx (ctx-pop-n ctx (length ids)))) ;; pop from virtual stack
+                     (let* ((type (car (ctx-stack ctx)))
+                            (loc  (ctx-get-loc ctx 0))
+                            (mutable? (ctx-is-mutable? ctx 0))
+                            (ctx  (ctx-unbind-locals ctx ids))
+                            (ctx  (ctx-pop-n ctx (+ (length ids) 1)))
+                            (ctx  (ctx-push ctx type loc)))
+                       ;; NOTE: if we now that res value is a variable, we lost this information
+                       ;; because we return non mutable object
+                       ;; TODO: lost information only if mutable?
+                       (if mutable?
+                           (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
+                           (if (ctx-loc-is-memory? loc)
+                               (begin (x86-mov cgc (x86-rax) opnd)
+                                      (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                               (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
                        (jump-to-version cgc succ ctx))))))
              (lazy-set
                (make-lazy-code
@@ -918,7 +933,7 @@
                            (jump-to-version cgc (gen-ast-l body lazy-out) ctx))
                          (let ((lfrom (ctx-get-loc ctx i))
                                (lto   (ctx-get-loc ctx (+ i (length ids))))
-                               (ctx   (ctx-move-type ctx i (+ i (length ids)))))
+                               (ctx   (ctx-stack-move ctx i (+ i (length ids)))))
                            (let ((opfrom (codegen-loc-to-x86opnd (ctx-fs ctx) lfrom))
                                  (opto   (codegen-loc-to-x86opnd (ctx-fs ctx) lto))
                                  (regtopop #f))
@@ -1049,8 +1064,10 @@
 ;; primitive write-char
 (define (prim-write-char cgc ctx reg succ cst-infos)
   (let ((lchar (ctx-get-loc ctx 1))
-        (lport (ctx-get-loc ctx 0)))
-    (codegen-write-char cgc (ctx-fs ctx) reg lchar lport)
+        (lport (ctx-get-loc ctx 0))
+        (mut-char? (ctx-is-mutable? ctx 1))
+        (mut-port? (ctx-is-mutable? ctx 0)))
+    (codegen-write-char cgc (ctx-fs ctx) reg lchar lport mut-char? mut-port?)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_VOID reg))))
 
 ;; primitive make-string
@@ -1620,7 +1637,6 @@
          (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
-
                                         ;; 1 - Build call ctx
                                         (let ((call-ctx
                                                 (ctx-copy
@@ -1645,7 +1661,15 @@
                                             ;; 4 TODO closure slot
                                             (let* ((fs (+ (ctx-fs ctx) 1)) ;; +1 for return address
                                                    (lclo (ctx-get-loc ctx (length (cdr ast))))
+                                                   (mut-clo? (ctx-is-mutable? ctx (length (cdr ast))))
                                                    (opclo (codegen-loc-to-x86opnd fs lclo)))
+                                              (if mut-clo?
+                                                  (begin
+                                                    (if (ctx-loc-is-memory? lclo)
+                                                        (begin (x86-mov cgc (x86-rax) opclo)
+                                                               (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                                                        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opclo)))
+                                                    (set! opclo (x86-rax))))
                                               (x86-mov cgc (x86-rax) opclo) ;; closure need to be in rax for do-callback-fn (TODO: get closure from stack in do-callback-fn and remove this)
                                               (x86-push cgc (x86-rax)))
 
@@ -2002,15 +2026,16 @@
              (car-cst (assoc 0 cst-infos))
              (cdr-cst (assoc 1 cst-infos))
              (lcdr (if cdr-cst (cdr cdr-cst) (ctx-get-loc ctx 0)))
+             (mut-cdr? (and (not cdr-cst) (ctx-is-mutable? ctx 0)))
+             (car-idx (if cdr-cst 0 1))
              (lcar
                (if car-cst
                    (cdr car-cst)
-                   (if cdr-cst
-                       (ctx-get-loc ctx 0)
-                       (ctx-get-loc ctx 1))))
+                   (ctx-get-loc ctx car-idx)))
+             (mut-car? (and (not car-cst) (ctx-is-mutable? ctx car-idx)))
              (n-pop (count (list car-cst cdr-cst) not)))
       (apply-moves cgc ctx moves)
-      (codegen-pair cgc (ctx-fs ctx) reg lcar lcdr car-cst cdr-cst)
+      (codegen-pair cgc (ctx-fs ctx) reg lcar lcdr car-cst cdr-cst mut-car? mut-cdr?)
       (jump-to-version cgc
                        succ
                        (ctx-push (ctx-pop-n ctx n-pop) CTX_PAI reg))))))

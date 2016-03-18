@@ -1,20 +1,14 @@
 ;;reverse
 ;;nqueens
 
-
-
-(define (foo x y z)
-  (lambda (a b c d e f g) (- a b x y z)))
-
-(pp ((foo 30 3 4) 2 3 4 5 6 7 8))
-
-
-
-;(define (foo a b c d e f g h)
-;  (let ((i 1) (j 2) (k 3) (l 4))
-;    (+ i j k l)))
+;(define (foo g)
+;  (letrec ((f (lambda () 12)))
+;    f))
 ;
-;(foo 1 2 3 4 5 6 7 8)
+;(pp ((foo 1)))
+
+;(append '() '(1))
+
 
 ;(define (fib n)
 ;  (if (< n 2)
@@ -22,12 +16,12 @@
 ;      (+ (fib (- n 1))
 ;         (fib (- n 2)))))
 ;
-;(fib 20)
+;(fib 40)
 
 
 ;; TODO WIP:
 
-;* quand on créé rctx, il faut aussi élimier les locs supplémentaires et laisser que les orig loc.
+;; A presque tous les ctx-get-loc, il faut vérifier si elle est mutable et l'envoyer à codegen
 
 ;; TODO
 ;; Comparer le contexte avec le contexte associé à la version générique.
