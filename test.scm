@@ -1,14 +1,7 @@
-;;reverse
-;;nqueens
 
-;(define (foo g)
-;  (letrec ((f (lambda () 12)))
-;    f))
-;
-;(pp ((foo 1)))
 
-;(append '() '(1))
-
+(define sym 'test)
+(println sym)
 
 ;(define (fib n)
 ;  (if (< n 2)

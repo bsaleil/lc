@@ -205,9 +205,20 @@
 ;;
 ;; GET FREE REG
 (define (ctx-get-free-reg ctx)
+
   (let ((free-regs (ctx-free-regs ctx)))
     (if (null? free-regs)
-        (error "NYI get free-reg")
+        (let* ((moves/mloc/ctx (ctx-get-free-mem ctx))
+               (moves (car moves/mloc/ctx))
+               (mloc  (cadr moves/mloc/ctx))
+               (ctx   (caddr moves/mloc/ctx))
+               (spill-reg (cons 'r 0)) ;; TODO: better strat
+               (reg-slots (ctx-get-slots ctx spill-reg)))
+          ;; 1: changer tous les slots pour r -> m
+          (let ((ctx (ctx-set-loc-n ctx reg-slots mloc))
+                (moves (append moves
+                               (list (cons spill-reg mloc)))))
+            (list moves spill-reg ctx)))
         (list '()
               (car free-regs)
               (ctx-copy ctx #f #f (cdr free-regs))))))
@@ -405,8 +416,9 @@
         '()
         (let ((ident (car env)))
           (if (member slot (identifier-sslots (cdr ident)))
-              (if (= (length (identifier-sslots (cdr ident))) 1)
-                  ;; It id the only position of the identifier, then remove identifier from env
+              (if (and (= (length (identifier-sslots (cdr ident))) 1)
+                       (not (eq? (identifier-kind (cdr ident)) 'free)))
+                  ;; It is the only position of the identifier, then remove identifier from env
                   (env-remove-slot (cdr env) slot)
                   ;; Else, just remove this slot
                   (cons (cons (car ident)
@@ -580,10 +592,27 @@
 ;; TODO PRIVATE module
 
 ;;
+;; Return all slots associated to loc
+(define (ctx-get-slots ctx loc)
+  (foldr (lambda (sl r)
+           (if (equal? (cdr sl) loc)
+               (cons (car sl) r)
+               r))
+         '()
+         (ctx-slot-loc ctx)))
+
+;;
 ;; Return ident object from id
 (define (ctx-ident ctx id)
  (let ((env (ctx-env ctx)))
    (assoc id env)))
+
+;;
+(define (ctx-set-loc-n ctx slots loc)
+  (foldr (lambda (slot ctx)
+           (ctx-set-loc ctx slot loc))
+         ctx
+         slots))
 
 ;; Change loc associated to given slot
 (define (ctx-set-loc ctx slot loc)
