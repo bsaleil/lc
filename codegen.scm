@@ -1085,11 +1085,11 @@
     (if mut-char?
         (x86-mov cgc opchar (x86-mem (- 8 TAG_MEMOBJ) opchar)))
     (x86-push cgc opchar)
-    ;; Mov port to rax for syscall
+    ;;; Mov port to rax for syscall
     (x86-mov cgc (x86-rax) opport)
     (if mut-port?
         (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-    ;; Gen 'read' syscall, encoded value (char or eof) in rax
+    ;;; Gen 'read' syscall, encoded value (char or eof) in rax
     (gen-syscall-write-char cgc)
     (x86-pop cgc (x86-rax)) ;; Pop char
     ;; Put encoded result
@@ -1363,48 +1363,89 @@
 
 ;;-----------------------------------------------------------------------------
 ;; vector-set!
+;; TODO: rewrite
 (define (codegen-vector-set! cgc fs reg lvec lidx lval)
-  (let ((dest (codegen-reg-to-x86reg reg))
-        (opvec (codegen-loc-to-x86opnd fs lvec))
-        (opidx (codegen-loc-to-x86opnd fs lidx))
-        (opval (codegen-loc-to-x86opnd fs lval))
-        (regsaved #f))
+  (let* ((dest (codegen-reg-to-x86reg reg))
+         (opvec (codegen-loc-to-x86opnd fs lvec))
+         (opidx (codegen-loc-to-x86opnd fs lidx))
+         (opval (codegen-loc-to-x86opnd fs lval))
+         (regsaved #f)
+         (REG1
+           (foldr (lambda (curr res)
+                    (if (not (member curr (list opvec opidx opvec)))
+                        curr
+                        res))
+                  #f
+                  regalloc-regs)))
 
-  (if (ctx-loc-is-memory? lvec)
-      (begin (x86-mov cgc (x86-rax) opvec)
-             (set! opvec (x86-rax))))
+  (assert (not (or (eq? dest opvec)
+                   (eq? dest opval)))
+          "Internal error")
 
-  (if (ctx-loc-is-memory? lidx)
-      (begin (x86-mov cgc dest opidx)
-             (set! opidx dest)))
+  (cond ((and (ctx-loc-is-memory? lvec)
+              (ctx-loc-is-memory? lval))
+           (set! regsaved REG1)
+           (x86-mov cgc dest opvec)
+           (x86-mov cgc REG1 opval)
+           (set! opvec dest)
+           (set! opval REG1))
+        ((ctx-loc-is-memory? lvec)
+           (x86-mov cgc dest opvec)
+           (set! opvec dest))
+        ((ctx-loc-is-memory? lval)
+           (x86-mov cgc dest opval)
+           (set! opval dest)))
 
-  (if (ctx-loc-is-memory? lval)
-      (if (and (eq? opvec (x86-rax))
-               (eq? opidx dest))
-          ;; both tmp regs are already used
-          (let ((reg (if (eq? dest (x86-rbx)) (x86-rcx) (x86-rbx))))
-            (x86-push cgc reg)
-            (set! opval (codegen-loc-to-x86opnd (+ fs 1) lval))
-            (x86-mov cgc reg opval)
-            (set! opval reg)
-            (set! regsaved reg))
-          ;; At least one is free, use it
-          (if (eq? opvec (x86-rax))
-              (begin (x86-mov cgc dest opval)
-                     (set! opval dest))
-              (begin (x86-mov cgc (x86-rax) opval)
-                     (set! opval (x86-rax))))))
-
-  (x86-shl cgc opidx (x86-imm-int 1))
-  (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) opvec opidx) opval)
+  (x86-mov cgc (x86-rax) opidx)
+  (x86-shl cgc (x86-rax) (x86-imm-int 1))
+  (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) opvec (x86-rax)) opval)
   (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
 
   (if regsaved
       (x86-pop cgc regsaved))))
 
+
+  ;(x86-shl cgc opidx (x86-imm-int 1))
+  ;(x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) opvec opidx) opval)
+  ;(x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+
+
+  ;(if (ctx-loc-is-memory? lvec)
+  ;    (begin (x86-mov cgc (x86-rax) opvec)
+  ;           (set! opvec (x86-rax))))
+  ;
+  ;(if (ctx-loc-is-memory? lidx)
+  ;    (begin (x86-mov cgc dest opidx)
+  ;           (set! opidx dest)))
+  ;
+  ;(if (ctx-loc-is-memory? lval)
+  ;    (if (and (eq? opvec (x86-rax))
+  ;             (eq? opidx dest))
+  ;        ;; both tmp regs are already used
+  ;        (let ((reg (if (eq? dest (x86-rbx)) (x86-rcx) (x86-rbx))))
+  ;          (x86-push cgc reg)
+  ;          (set! opval (codegen-loc-to-x86opnd (+ fs 1) lval))
+  ;          (x86-mov cgc reg opval)
+  ;          (set! opval reg)
+  ;          (set! regsaved reg))
+  ;        ;; At least one is free, use it
+  ;        (if (eq? opvec (x86-rax))
+  ;            (begin (x86-mov cgc dest opval)
+  ;                   (set! opval dest))
+  ;            (begin (x86-mov cgc (x86-rax) opval)
+  ;                   (set! opval (x86-rax))))))
+
+  ;(x86-shl cgc opidx (x86-imm-int 1))
+  ;(x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) opvec opidx) opval)
+  ;(x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+  ;
+  ;(if regsaved
+  ;    (x86-pop cgc regsaved))))
+
 ;;-----------------------------------------------------------------------------
 ;; string-set!
 (define (codegen-string-set! cgc fs reg lstr lidx lchr idx-cst? chr-cst?)
+
 
   (let ((dest (codegen-reg-to-x86reg reg))
         (opstr (codegen-loc-to-x86opnd fs lstr))
@@ -1415,7 +1456,7 @@
     (if (or (eq? dest opidx) (eq? dest opchr)) (error "CODEGEN error string-set!"))
     (if (ctx-loc-is-memory? lstr)
         (begin (x86-mov cgc dest opstr)
-               (set! dest (x86-rax))))
+               (set! opstr dest)))
 
     (cond
       ((and idx-cst? chr-cst?)
@@ -1438,59 +1479,17 @@
          ;; Move decoded char in rax
          (x86-mov cgc (x86-rax) opchr)
          (x86-shr cgc (x86-rax) (x86-imm-int 2))
-         ;; If idx is in memory, use opchr (because char is in rax)
-         (if (ctx-loc-is-memory? lidx)
-             (begin (x86-mov cgc opchr opidx)
-                    (set! opidx opchr)))
+         (if (and (ctx-loc-is-memory? lidx)
+                  (ctx-loc-is-memory? lstr))
+               (error "NYI we need to save a register")
+               (begin (x86-mov cgc dest opidx)
+                      (set! opidx dest)))
          (x86-shr cgc opidx (x86-imm-int 2))
          (x86-mov cgc
            (x86-mem (- 16 TAG_MEMOBJ) opstr opidx)
            (x86-al))))
 
     (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
-
-  ;(let ((dest  (codegen-reg-to-x86reg reg))
-  ;      (opstr (codegen-loc-to-x86opnd lstr))
-  ;      (opidx (codegen-loc-to-x86opnd lidx))
-  ;      (opchr (codegen-loc-to-x86opnd lchr))
-  ;      (regsaved #f))
-  ;
-  ;(x86-mov cgc (x86-rax) (x86-imm-int 1000000000))
-  ;
-  ;;; Move idx to dest register if in memory
-  ;(if (ctx-loc-is-memory? lidx)
-  ;    (begin (x86-mov cgc dest opidx)
-  ;           (set! opidx dest)))
-  ;
-  ;;; Char must be in rax
-  ;(x86-mov cgc (x86-rax) opchr)
-  ;
-  ;;; Move str in a register if in memory
-  ;(if (ctx-loc-is-memory? lstr)
-  ;    (if (ctx-loc-is-memory? lidx)
-  ;        ;; dest register is already used
-  ;        (let ((reg (if (eq? opidx (x86-rbx)) (x86-rdx) (x86-rbx))))
-  ;          (x86-push cgc reg)
-  ;          (x86-mov cgc reg opstr)
-  ;          (set! opstr reg)
-  ;          (set! regsaved reg))
-  ;        ;; use dest register
-  ;        (begin (x86-mov cgc dest opstr)
-  ;               (set! opstr dest))))
-  ;
-  ;(x86-shr cgc (x86-rax) (x86-imm-int 2)) ;; char
-  ;(x86-shr cgc opidx (x86-imm-int 2)) ;; get idx bytes
-  ;(x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) opstr opidx) (x86-al))
-  ;(x86-shl cgc opidx (x86-imm-int 2)) ;; Restore idx
-  ;
-  ;(x86-mov cgc dest (x86-imm-int ENCODING_VOID))
-  ;
-  ;(if regsaved
-  ;    (x86-pop cgc regsaved))))
-
-
-
-
 
 ;;-----------------------------------------------------------------------------
 ;; list

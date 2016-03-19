@@ -176,16 +176,17 @@
   (x86-push cgc (x86-r11)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
+  (x86-push cgc (x86-rdx))
 
   ;; file descriptor (rdi)
   (x86-mov cgc (x86-rdi) (x86-rax)) ;; Port object in rdi (port is in rax)
   (x86-mov cgc (x86-rdi) (x86-mem (- 8 TAG_MEMOBJ) (x86-rdi)))
 
   ;; buffer (rsi)
-  (x86-mov cgc (x86-rax) (x86-mem 32 (x86-rsp)))
+  (x86-mov cgc (x86-rax) (x86-mem 40 (x86-rsp)))
   (x86-shr cgc (x86-rax) (x86-imm-int 2))
-  (x86-mov cgc (x86-mem 32 (x86-rsp)) (x86-rax))
-  (x86-lea cgc (x86-rsi) (x86-mem 32 (x86-rsp)))
+  (x86-mov cgc (x86-mem 40 (x86-rsp)) (x86-rax))
+  (x86-lea cgc (x86-rsi) (x86-mem 40 (x86-rsp)))
   ;; count (rdx)
   (x86-mov cgc (x86-rdx) (x86-imm-int 1)) ;; Read only one byte
   ;; syscall number (rax)
@@ -203,6 +204,7 @@
     (x86-label cgc label-syscall-ok))
 
   ;; Restore destroyed regs
+  (x86-pop cgc (x86-rdx))
   (x86-pop cgc (x86-rsi))
   (x86-pop cgc (x86-rdi))
   (x86-pop cgc (x86-r11))

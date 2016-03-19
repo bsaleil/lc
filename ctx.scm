@@ -235,16 +235,16 @@
                       (make-identifier
                         'local   ;; symbol 'free or 'local
                         (list (stack-idx-to-slot ctx (cdr first)))
-                        (if (and letrec-bind?
-                                 (not (member first mvars)))
-                            '(mutable letrec-nm)
-                            '())
+                        (cond ((and letrec-bind?
+                                    (not (member first mvars)))
+                                 '(mutable letrec-nm))
+                              ((member (car id-idx) mvars)
+                                 '(mutable))
+                              (else
+                                 '()))
                         #f
                         #f))
                 (gen-env env (cdr id-idx) mvars)))))
-
-  (if (not (null? mvars))
-      (error "NYI bind-locals"))
 
   (ctx-copy ctx #f #f #f #f (gen-env (ctx-env ctx) id-idx mvars)))
 
@@ -471,13 +471,18 @@
 
 ;;
 ;; SET TYPE
-(define (ctx-set-type ctx stack-idx type)
-  (let ((ident (ctx-ident-at ctx stack-idx)))
+;; Set type of data to 'type'
+;; data could be a stack index
+;; or an ident (id . identifier) object
+(define (ctx-set-type ctx data type)
+
+  (let ((ident (or (and (pair? data) (symbol? (car data)) (identifier? (cdr data)) data)
+                   (ctx-ident-at ctx data))))
     (if ident
         ;; Change for each identifier slot
         (set-ident-type ctx ident type)
         ;; Change only this slot
-        (ctx-copy ctx (stack-change-type (ctx-stack ctx) stack-idx type)))))
+        (ctx-copy ctx (stack-change-type (ctx-stack ctx) data type)))))
 
 ;;
 ;; GET CAL ARGS MOVES

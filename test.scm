@@ -1,7 +1,8 @@
 
 
-(define sym 'test)
-(println sym)
+(let ((a 100))
+  (set! a 900))
+  ;(pp a))
 
 ;(define (fib n)
 ;  (if (< n 2)

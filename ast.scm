@@ -386,7 +386,7 @@
                 (gen-get-freevar cgc ctx local succ))
               ;; Identifier is a local variable
               (local
-                (gen-get-localvar cgc ctx local succ))
+                (gen-get-localvar cgc ctx local succ #f))
               ;; Identifier is a global variable
               (global
                 (gen-get-globalvar cgc ctx global succ))
@@ -426,17 +426,20 @@
 
 ;; TODO: + utiliser un appel récursif comme pour gen-get-freevar (??)
 ;; TODO coment: si mobject? est vrai, c'est qu'on veut le mobject dans le tmp reg (rax)
-(define (gen-get-localvar cgc ctx local succ #!optional (raw? #f))
+(define (gen-get-localvar cgc ctx local succ for-set?)
 
   (let ((loc (ctx-identifier-loc ctx (cdr local)))
         (type (ctx-identifier-type ctx (cdr local))))
-    (if (ctx-loc-is-register? loc)
-        ;;
-        (jump-to-version cgc succ (ctx-push ctx type loc (car local)))
-        ;;
-        (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
-          (apply-moves cgc nctx (list (cons loc reg)))
-          (jump-to-version cgc succ (ctx-push nctx type reg (car local)))))))
+
+    (if for-set?
+        (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
+        (if (ctx-loc-is-register? loc)
+            ;;
+            (jump-to-version cgc succ (ctx-push ctx type loc (car local)))
+            ;;
+            (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
+              (apply-moves cgc nctx (list (cons loc reg)))
+              (jump-to-version cgc succ (ctx-push nctx type reg (car local))))))))
 
 (define (gen-get-globalvar cgc ctx global succ)
 
@@ -482,7 +485,7 @@
 
   ;;
   (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
-         (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+         (lval (ctx-get-loc ctx 0)))
     (apply-moves cgc ctx moves)
     (let ((dest (codegen-reg-to-x86reg reg))
           (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
@@ -492,7 +495,7 @@
       (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
       (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
       (let* ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg))
-             (ctx (ctx-identifier-change-type ctx (cdr local) CTX_UNK))) ;; TODO regalloc unk
+             (ctx (ctx-set-type ctx local CTX_UNK))) ;; TODO regalloc unk
         (jump-to-version cgc succ ctx)))))
 
 (define (gen-set-freevar cgc ctx local succ)
@@ -1130,6 +1133,7 @@
                (ctx-get-loc ctx 0)
                (ctx-get-loc ctx 1)))
          (n-pop (if poscst 1 2)))
+    (x86-label cgc (asm-make-label #f (new-sym 'LABEL_STRING_REF_)))
     (codegen-string-ref cgc (ctx-fs ctx) reg lstr lidx poscst)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_CHAR reg))))
 
