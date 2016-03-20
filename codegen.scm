@@ -908,12 +908,20 @@
 
 ;;-----------------------------------------------------------------------------
 ;; not
-(define (codegen-not cgc fs reg lval)
+(define (codegen-not cgc fs reg lval mut-val?)
   (let ((label-done
           (asm-make-label cgc (new-sym 'done)))
         (dest (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
+
     (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+    (cond ((and (ctx-loc-is-memory? lval) mut-val?)
+             (x86-mov cgc (x86-rax) opval) ;; move mem to reg
+             (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; unbox mutable
+             (set! opval (x86-rax)))
+          (mut-val?
+             (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opval))
+             (set! opval (x86-rax))))
     (x86-cmp cgc opval dest)
     (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
     (x86-je  cgc label-done)
@@ -959,7 +967,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; car/cdr
-(define (codegen-car/cdr cgc fs op reg lval)
+(define (codegen-car/cdr cgc fs op reg lval mut-val?)
   (let ((offset
           (if (eq? op 'car)
               (-  8 TAG_MEMOBJ)
@@ -969,6 +977,9 @@
 
     (if (ctx-loc-is-memory? lval)
         (begin (x86-mov cgc (x86-rax) opval)
+               (set! opval (x86-rax))))
+    (if mut-val?
+        (begin (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opval))
                (set! opval (x86-rax))))
 
     (x86-mov cgc dest (x86-mem offset opval))))
@@ -1083,7 +1094,8 @@
         (begin (x86-mov cgc (x86-rax) opchar)
                (set! opchar (x86-rax))))
     (if mut-char?
-        (x86-mov cgc opchar (x86-mem (- 8 TAG_MEMOBJ) opchar)))
+        (begin (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opchar))
+               (set! opchar (x86-rax))))
     (x86-push cgc opchar)
     ;;; Mov port to rax for syscall
     (x86-mov cgc (x86-rax) opport)

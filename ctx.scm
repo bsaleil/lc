@@ -160,7 +160,7 @@
         (make-identifier
           'local
           (list slot)
-          (if (member (car args) mutable-vars) '(mutable) '())
+          (if (member id mutable-vars) '(mutable) '())
           #f
           #f))))
 
@@ -227,7 +227,7 @@
 ;; BIND LOCALS
 (define (ctx-bind-locals ctx id-idx mvars #!optional letrec-bind?)
 
-  (define (gen-env env id-idx mvars)
+  (define (gen-env env id-idx)
     (if (null? id-idx)
         env
         (let ((first (car id-idx)))
@@ -236,17 +236,17 @@
                         'local   ;; symbol 'free or 'local
                         (list (stack-idx-to-slot ctx (cdr first)))
                         (cond ((and letrec-bind?
-                                    (not (member first mvars)))
+                                    (not (member (car first) mvars)))
                                  '(mutable letrec-nm))
-                              ((member (car id-idx) mvars)
+                              ((member (car first) mvars)
                                  '(mutable))
                               (else
                                  '()))
                         #f
                         #f))
-                (gen-env env (cdr id-idx) mvars)))))
+                (gen-env env (cdr id-idx))))))
 
-  (ctx-copy ctx #f #f #f #f (gen-env (ctx-env ctx) id-idx mvars)))
+  (ctx-copy ctx #f #f #f #f (gen-env (ctx-env ctx) id-idx)))
 
 ;;
 ;; UNBIND LOCALS
@@ -468,6 +468,11 @@
 ;; Is free variable loc ?
 (define (ctx-loc-is-freemem? loc)
   (eq? (car loc) 'f))
+
+;;
+;; GET TYPE
+(define (ctx-get-type ctx stack-idx)
+  (list-ref (ctx-stack ctx) stack-idx))
 
 ;;
 ;; SET TYPE

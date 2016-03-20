@@ -1,8 +1,18 @@
 
+;; TODO: call with arg mutable
+;; let returning mutable
+;; letrec returning mutable
+;; function returning mutable
+;; begin returning mutable
 
-(let ((a 100))
-  (set! a 900))
-  ;(pp a))
+(define (foo3 a b)
+	(pp a)
+	(set! a 100)
+	(pp a)
+	(pp b))
+
+(foo3 1 2)
+;(foo3 1 2)
 
 ;(define (fib n)
 ;  (if (< n 2)

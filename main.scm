@@ -101,6 +101,11 @@
       (newline)
       (exit 0)))
 
+  (--dump-binary
+    "Dump machine code block"
+    ,(lambda (args) (set! opt-dump-bin #t)
+                    args))
+
   (--max-versions
     "Set a limit on the number of versions of lazy code objects"
     ,(lambda (args) (set! opt-max-versions (string->number (cadr args)))
@@ -219,7 +224,7 @@
            ;; Lazy print
            (lazy-print (make-lazy-code
               (lambda (cgc ctx)
-                 (let* ((resloc  (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                 (let* ((resloc  (ctx-get-loc ctx 0))
                         (resopnd (codegen-loc-to-x86opnd ctx resloc)))
                    (x86-mov cgc (x86-rax) resopnd)
                    (x86-mov cgc (x86-mem 0 global-ptr) (x86-rax))
@@ -386,7 +391,20 @@
 
 (define (print-opts)
   (if opt-stats
-     (print-stats)))
+      (print-stats))
+  (if opt-dump-bin
+      (print-mcb)))
+
+(define (print-mcb)
+  (define (print-mcb-h pos lim)
+    (if (= pos lim)
+        (newline)
+        (let ((byte (get-u8 pos)))
+          (if (< byte #x10)
+              (print "0" (number->string (get-u8 pos) 16) " ")
+              (print (number->string (get-u8 pos) 16) " "))
+          (print-mcb-h (+ pos 1) lim))))
+  (print-mcb-h code-addr code-alloc))
 
 (define (print-stats)
   ;; Print stats report

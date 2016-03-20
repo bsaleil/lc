@@ -485,7 +485,8 @@
 
   ;;
   (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
-         (lval (ctx-get-loc ctx 0)))
+         (lval (ctx-get-loc ctx 0))
+         (type (ctx-get-type ctx 0)))
     (apply-moves cgc ctx moves)
     (let ((dest (codegen-reg-to-x86reg reg))
           (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
@@ -495,26 +496,27 @@
       (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
       (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
       (let* ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg))
-             (ctx (ctx-set-type ctx local CTX_UNK))) ;; TODO regalloc unk
+             (ctx (ctx-set-type ctx local type))) ;; TODO regalloc unk
         (jump-to-version cgc succ ctx)))))
 
 (define (gen-set-freevar cgc ctx local succ)
-  ;; Get mobject in tmp register
-  (gen-get-freevar cgc ctx local #f #t)
-  ;;
-  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
-         (lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
-    (apply-moves cgc ctx moves)
-    (let ((dest (codegen-reg-to-x86reg reg))
-          (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
-      (if (ctx-loc-is-memory? lval)
-          (begin (x86-mov cgc dest opval)
-                 (set! opval dest)))
-      (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
-      (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
-      (let* ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg))
-             (ctx (ctx-identifier-change-type ctx (cdr local) CTX_UNK))) ;; TODO unk
-        (jump-to-version cgc succ ctx)))))
+  (error "NYI set freevar"))
+  ;;; Get mobject in tmp register
+  ;(gen-get-freevar cgc ctx local #f #t)
+  ;;;
+  ;(mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
+  ;       (lval (ctx-get-loc ctx 0)))
+  ;  (apply-moves cgc ctx moves)
+  ;  (let ((dest (codegen-reg-to-x86reg reg))
+  ;        (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
+  ;    (if (ctx-loc-is-memory? lval)
+  ;        (begin (x86-mov cgc dest opval)
+  ;               (set! opval dest)))
+  ;    (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
+  ;    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+  ;    (let* ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg))
+  ;           (ctx (ctx-identifier-change-type ctx (cdr local) CTX_UNK))) ;; TODO unk
+  ;      (jump-to-version cgc succ ctx)))))
 
 (define (gen-set-globalvar cgc ctx global succ)
   (mlet ((pos (cdr global))
@@ -860,10 +862,17 @@
                (lambda (cgc ctx)
                  (let* ((type (car (ctx-stack ctx)))
                         (loc  (ctx-get-loc ctx 0))
+                        (mutable? (ctx-is-mutable? ctx 0))
                         (ctx  (ctx-unbind-locals ctx ids))
                         (ctx  (ctx-pop-n ctx (+ (length ids) 1)))
                         (ctx  (ctx-push ctx type loc)))
-                   ;; TODO: if res is mutable, extract value (see lazy-out in mlc-letrec)
+                   ;; NOTE see lazy-out comment in mlc-letrec
+                   (if mutable?
+                       (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
+                       (if (ctx-loc-is-memory? loc)
+                           (begin (x86-mov cgc (x86-rax) opnd)
+                                  (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                           (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
                    (jump-to-version cgc succ ctx))))))
          (lazy-body
            (gen-ast (cons 'begin body) lazy-out))
@@ -1004,7 +1013,7 @@
           (make-lazy-code
             (lambda (cgc ctx)
               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
-                     (loc (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+                     (loc (ctx-get-loc ctx 0)))
                 (apply-moves cgc ctx moves)
                 (codegen-print-flonum cgc (ctx-fs ctx) reg loc)
                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg)))))))
@@ -1026,8 +1035,9 @@
 
 ;; primitive not
 (define (prim-not cgc ctx reg succ cst-infos)
-  (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-not cgc (ctx-fs ctx) reg lval)
+  (let ((lval (ctx-get-loc ctx 0))
+        (mut-val? (ctx-is-mutable? ctx 0)))
+    (codegen-not cgc (ctx-fs ctx) reg lval mut-val?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))
 
 ;; primitive eq?
@@ -1048,8 +1058,9 @@
 
 ;; primitives car & cdr
 (define (prim-cxr cgc ctx reg succ cst-infos op)
-  (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-car/cdr cgc (ctx-fs ctx) op reg lval)
+  (let ((lval (ctx-get-loc ctx 0))
+        (mut-val? (ctx-is-mutable? ctx 0)))
+    (codegen-car/cdr cgc (ctx-fs ctx) op reg lval mut-val?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK reg))))
 
 ;; primitive eof-object?
@@ -1060,7 +1071,7 @@
 
 ;; primitive read-char
 (define (prim-read-char cgc ctx reg succ cst-infos)
-  (let* ((lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+  (let* ((lport (ctx-get-loc ctx 0)))
     (codegen-read-char cgc (ctx-fs ctx) reg lport)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_CHAR reg))))
 
@@ -1187,13 +1198,13 @@
 
 ;; primitive close-input-port & close-output-port
 (define (prim-close-x-port cgc ctx reg succ cst-infos op)
-  (let ((lport (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+  (let ((lport (ctx-get-loc ctx 0)))
     (codegen-close-io-port cgc (ctx-fs ctx) reg lport)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))
 
 ;; primitives open-input-file & open-output-file
 (define (prim-open-x-file cgc ctx reg succ cst-infos op)
-  (let ((lval (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0))))
+  (let ((lval (ctx-get-loc ctx 0)))
     (codegen-open-io-file cgc (ctx-fs ctx) op reg lval)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
                                         (if (eq? op 'open-input-file)
@@ -1570,7 +1581,7 @@
           (make-lazy-code
             (lambda (cgc ctx)
               (let* ((label-end (asm-make-label #f (new-sym 'apply-end-args)))
-                     (llst (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+                     (llst (ctx-get-loc ctx 0))
                      (oplst (codegen-loc-to-x86opnd (ctx-fs ctx) llst)))
                 ;; r11, r14 & r15 are used as tmp registers
                 ;; It is safe because they are not used for parameters.
@@ -1600,7 +1611,7 @@
         (lazy-closure
           (make-lazy-code
             (lambda (cgc ctx)
-              (let* ((lclo (ctx-get-loc ctx (ctx-lidx-to-slot ctx 1)))
+              (let* ((lclo (ctx-get-loc ctx 1))
                      (opclo (codegen-loc-to-x86opnd (ctx-fs ctx) lclo)))
                 (x86-mov cgc (x86-rax) opclo) ;; closure need to be in rax for do-callback-fn (TODO: get closure from stack in do-callback-fn and remove this)
                 (x86-push cgc (x86-rax))
@@ -1648,13 +1659,12 @@
                                                   (append (list-head (ctx-stack ctx) (length (cdr ast)))
                                                           (list CTX_CLO CTX_RETAD)))))
 
-                                          ;; 2 - push all regs
-                                          ;(if (not tail)
-
                                           ;; TODO tail call
                                           (if tail (error "NYI"))
 
                                           (mlet ((moves/ctx (ctx-save-call ctx (+ (length args) 1))))
+
+                                            ;; Save used registers
                                             (apply-moves cgc ctx moves)
 
                                             ;; Gen continuation
@@ -1695,24 +1705,24 @@
                                                     (let ((opnddst (codegen-loc-to-x86opnd fs (car el)))
                                                           (opndsrc (codegen-loc-to-x86opnd fs (cdr el))))
                                                       (x86-mov cgc opnddst opndsrc)))
-                                                  moves))
+                                                  moves)
 
-                                            ;;; Shift args and closure for tail call
-                                            ;;; 0 -> (length args) COMPARISON
-                                            ;;; Use r14 because it is not an args reg
-                                            ;(if tail
-                                            ;    (let ((r (- (length args) (length args-regs)))
-                                            ;          (fs (ctx-fs ctx)))
-                                            ;      (let loop ((n (if (> r 0) r 0)))
-                                            ;        (if (>= n 0) ;;  >= 0 for closure
-                                            ;            (begin
-                                            ;              (x86-mov cgc (x86-r14) (x86-mem (* 8 n) (x86-rsp)))
-                                            ;              (x86-mov cgc (x86-mem (* 8 (+ (- fs 1) n)) (x86-rsp)) (x86-r14))
-                                            ;              (loop (- n 1)))))))
-
-                                        ;  ;; Update rsp
-                                        ;  (if tail
-                                        ;      (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (ctx-fs ctx) 1)))))
+                                              ;;
+                                              ;; TODO
+                                              ;; TODO
+                                              ;; Il faut déboxer les arugment boxés
+                                              (let loop ((narg 0)
+                                                         (stack-idx (- (length args) 1)))
+                                                (if (< narg (length args))
+                                                    (begin
+                                                      (if (ctx-is-mutable? ctx stack-idx)
+                                                          (let* ((loc
+                                                                   (if (< narg (length args-regs))
+                                                                       (list-ref args-regs narg)
+                                                                       "NYI"))
+                                                                 (opnd (codegen-loc-to-x86opnd fs loc)))
+                                                            (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd))))
+                                                      (loop (+ narg 1) (- stack-idx 1))))))
 
                                           ;; 6 - Gen call sequence
                                           (gen-call-sequence ast cgc call-ctx (length (cdr ast))))))))
@@ -1741,7 +1751,7 @@
                  (reverse saved-regs))
 
                ;; Move result to location
-               (let* ((lres   (ctx-get-loc ctx (ctx-lidx-to-slot ctx 0)))
+               (let* ((lres   (ctx-get-loc ctx 0))
                       (opres  (codegen-loc-to-x86opnd (ctx-fs ctx) lres)))
                  ;; Result is in rax
                  (x86-mov cgc opres (x86-rax)))

@@ -52,6 +52,7 @@
 (define opt-propagate-functionid #f) ;; Propagate function identitie
 (define opt-use-lib              #t) ;; Use scheme std lib (see lib/ folder)
 (define opt-vers-regalloc        #t) ;; Use register allocation for code specialization
+(define opt-dump-bin             #f) ;; Print generated binary bytes to stdout
 (define mode-repl                #f) ;; REPL mode ?
 
 ;; TODO Move
@@ -1971,7 +1972,7 @@
        (let* ((mutable? (ctx-is-mutable? ctx stack-idx))
               (lval (ctx-get-loc ctx stack-idx))
               (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
-         
+
          (if mutable?
              (begin (x86-push cgc opval)
                     (x86-mov cgc opval (x86-mem (- 8 TAG_MEMOBJ) opval))))
