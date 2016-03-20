@@ -501,22 +501,6 @@
 
 (define (gen-set-freevar cgc ctx local succ)
   (error "NYI set freevar"))
-  ;;; Get mobject in tmp register
-  ;(gen-get-freevar cgc ctx local #f #t)
-  ;;;
-  ;(mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
-  ;       (lval (ctx-get-loc ctx 0)))
-  ;  (apply-moves cgc ctx moves)
-  ;  (let ((dest (codegen-reg-to-x86reg reg))
-  ;        (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
-  ;    (if (ctx-loc-is-memory? lval)
-  ;        (begin (x86-mov cgc dest opval)
-  ;               (set! opval dest)))
-  ;    (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
-  ;    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
-  ;    (let* ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg))
-  ;           (ctx (ctx-identifier-change-type ctx (cdr local) CTX_UNK))) ;; TODO unk
-  ;      (jump-to-version cgc succ ctx)))))
 
 (define (gen-set-globalvar cgc ctx global succ)
   (mlet ((pos (cdr global))
@@ -1229,8 +1213,9 @@
 
 ;; primitives vector-length & string-length
 (define (prim-x-length cgc ctx reg succ cst-infos op)
-  (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-vec/str-length cgc (ctx-fs ctx) reg lval)
+  (let ((lval (ctx-get-loc ctx 0))
+        (mut-val? (ctx-is-mutable? ctx 0)))
+    (codegen-vec/str-length cgc (ctx-fs ctx) reg lval mut-val?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM reg))))
 
 ;;

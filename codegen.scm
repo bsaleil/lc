@@ -1311,12 +1311,16 @@
 
 ;;-----------------------------------------------------------------------------
 ;; vector/string-length
-(define (codegen-vec/str-length cgc fs reg lval)
+(define (codegen-vec/str-length cgc fs reg lval mut-val?)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
     (if (ctx-loc-is-memory? lval)
         (begin (x86-mov cgc (x86-rax) opval)
+               (set! opval (x86-rax))))
+
+    (if mut-val?
+        (begin (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opval))
                (set! opval (x86-rax))))
 
     (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) opval))))

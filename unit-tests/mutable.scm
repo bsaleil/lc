@@ -15,6 +15,18 @@
   (print (not a))
   (newline))
 
+;; vector-length primitive
+(let ((a (make-vector 10 #\A)))
+  (println (vector-length a))
+  (set! a (make-vector 15 #\B))
+  (println (vector-length a)))
+
+;; string-length primitive
+(let ((a "Hello World"))
+  (println (string-length a))
+  (set! a "Goodbye World")
+  (println (string-length a)))
+
 ;; write-char primitive
 (let ((a #\A))
   (write-char a)
