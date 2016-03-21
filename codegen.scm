@@ -896,6 +896,7 @@
 ;;-----------------------------------------------------------------------------
 
 ;;-----------------------------------------------------------------------------
+(define gen-print-msg #f) ;; TODO rewrtie
 ;; SPECIAL $$print-flonum: call gambit at the moment. TODO: write print flonum asm code
 (define (codegen-print-flonum cgc fs reg loc)
   (let ((dest (codegen-reg-to-x86reg reg))
@@ -1109,7 +1110,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; char->integer/integer->char
-(define (codegen-ch<->int cgc fs op reg lval cst?)
+(define (codegen-ch<->int cgc fs op reg lval cst? mut-val?)
 
   (let ((dest (codegen-reg-to-x86reg reg)))
 
@@ -1123,6 +1124,9 @@
 
          (if (not (eq? dest opval))
              (x86-mov cgc dest opval))
+
+         (if mut-val?
+             (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) dest)))
 
          (if (eq? op 'char->integer)
              (x86-xor cgc dest (x86-imm-int TAG_SPECIAL))

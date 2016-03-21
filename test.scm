@@ -1,14 +1,22 @@
-;; string-length primitive
-(let ((a "Hello World"))
-  (println (string-length a))
-  (set! a "Goodbye World")
-  (println (string-length a)))
+
 
 ;; TODO: call with arg mutable
 ;; let returning mutable
 ;; letrec returning mutable
 ;; function returning mutable
 ;; begin returning mutable
+
+;; char->integer primitive
+(let ((a #\*))
+  (println (char->integer a))
+  (set! a #\0)
+  (println (+ (char->integer a) 2)))
+
+;; integr->char primitive
+(let ((a 68))
+  (println (integer->char a))
+  (set! a 86)
+  (println (integer->char a)))
 
 ;(define (fib n)
 ;  (if (< n 2)

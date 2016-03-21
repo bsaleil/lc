@@ -1774,25 +1774,74 @@
 
 ;; ### LAZY CODE OBJECT
 ;; Generate a normal lazy code object
-(define (gen-version jump-addr lazy-code ctx)
+;(define (gen-version jump-addr lazy-code ctx)
+;
+;  (define (fn-verbose)
+;    (print "GEN VERSION")
+;    (print " >>> ")
+;    (pp ctx))
+;
+;  (define fall-through? (= jump-addr code-alloc))
+;
+;  (define (fn-patch label-dest new-version?)
+;    (let ((addr-dest (asm-label-pos label-dest)))
+;      (if (not fall-through?)
+;          (patch-jump jump-addr addr-dest))
+;      addr-dest))
+;
+;  (if fall-through?
+;      (set! code-alloc jump-addr)) ;; TODO (?)
+;
+;  (gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch))
 
-  (define (fn-verbose)
-    (print "GEN VERSION")
-    (print " >>> ")
-    (pp ctx))
+;; TODO: use gen-version-*
+;; code above is not working because it does not correctly patch jumps
+(define ctx-clear #f)
+(define (gen-version jump-addr lazy-code ctx #!optional (cleared-ctx #f))
 
-  (define fall-through? (= jump-addr code-alloc))
+  (if opt-verbose-jit
+      (begin
+        (print "GEN VERSION")
+        (print " >>> ")
+        (pp ctx)))
 
-  (define (fn-patch label-dest new-version?)
-    (let ((addr-dest (asm-label-pos label-dest)))
-      (if (not fall-through?)
-          (patch-jump jump-addr addr-dest))
-      addr-dest))
+  (let ((label-dest (get-version lazy-code ctx)))
+    (if label-dest
 
-  (if fall-through?
-      (set! code-alloc jump-addr))
+        ;; That version has already been generated, so just patch jump
+        (let ((dest-addr (asm-label-pos label-dest)))
+          (patch-jump jump-addr dest-addr)
+          dest-addr)
 
-  (gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch))
+        ;; That version is not yet generated, so generate it
+        (if (and opt-max-versions
+                 (not cleared-ctx)
+                 (>= (lazy-code-nb-versions lazy-code) opt-max-versions))
+          ;; Maxversions is not #f and limit is reached, then remove
+          ;; type information to generate a generic version
+          ;; Recursive call (maybe this version already exists)
+          (gen-version jump-addr lazy-code (ctx-clear ctx) #t)
+
+          ;; Generate that version inline
+          (begin
+            (cond ((= (+ jump-addr (jump-size jump-addr)) code-alloc)
+                   ;; (fall-through optimization)
+                   ;; the jump is the last instruction previously generated, so
+                   ;; just overwrite the jump
+                   (if opt-verbose-jit (println ">>> fall-through-optimization"))
+                   (set! code-alloc jump-addr))
+                  (else
+                   ;; Else we need to patch the jump
+                   (patch-jump jump-addr code-alloc)))
+            ;; Generate
+            (let ((label-version (asm-make-label #f (new-sym 'version))))
+              (put-version lazy-code ctx label-version)
+              (code-add
+               (lambda (cgc)
+                 (asm-align cgc 4 0 #x90)
+                 (x86-label cgc label-version)
+                 ((lazy-code-generator lazy-code) cgc ctx)))
+              (asm-label-pos label-version)))))))
 
 ;;-----------------------------------------------------------------------------
 

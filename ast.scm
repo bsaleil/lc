@@ -1203,8 +1203,9 @@
           (if cst-arg
               (cdr cst-arg)
               (ctx-get-loc ctx 0)))
+         (mut-val? (if cst-arg #f (ctx-is-mutable? ctx 0)))
          (n-pop (if cst-arg 0 1)))
-    (codegen-ch<->int cgc (ctx-fs ctx) op reg lval cst-arg)
+    (codegen-ch<->int cgc (ctx-fs ctx) op reg lval cst-arg mut-val?)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop)
                                         (if (eq? op 'char->integer)
                                             CTX_NUM
