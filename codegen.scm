@@ -630,9 +630,7 @@
       (set! lright (##flonum->fixnum lright)))
 
   (cond
-    ((and lcst? rcst?) (error "Internal error")) ;; This case already is handled
     (lcst?
-
       (cond ((eq? op '+) (x86-mov cgc dest opright)
                          (x86-add cgc dest (x86-imm-int (obj-encoding lleft))))
             ((eq? op '-) (x86-mov cgc dest (x86-imm-int (obj-encoding lleft)))
@@ -931,40 +929,143 @@
 
 ;;-----------------------------------------------------------------------------
 ;; eq?
-(define (codegen-eq? cgc fs reg lleft lright lcst? rcst?)
 
-  (let ((dest  (codegen-reg-to-x86reg reg)))
+;; TODO
+(define (codegen-unbox cgc dst src)
+  (if (x86-mem? src)
+      (begin (x86-mov cgc dst src)
+             (x86-mov cgc dst (x86-mem (- 8 TAG_MEMOBJ) dst)))
+      (x86-mov cgc dst (x86-mem (- 8 TAG_MEMOBJ) src))))
 
-    (if (and lcst? rcst?)
+(define (codegen-eq? cgc fs reg lleft lright lcst? rcst? mutl? mutr?)
 
-        ;; Two cst, generate only a mov
-        (x86-mov cgc dest (x86-imm-int (obj-encoding (eq? lleft lright))))
+  (define (cmp cgc opl opr)
+    (cond ((x86-reg? opl)
+             (x86-cmp cgc opl opr))
+          ((x86-reg? opr)
+             (x86-cmp cgc opr opl))
+          ((x86-mem? opl)
+             (x86-mov cgc (x86-rax) opl)
+             (x86-cmp cgc (x86-rax) opr))
+          ((x86-mem? opr)
+             (x86-mov cgc (x86-rax) opr)
+             (x86-cmp cgc (x86-rax) opl))
+          (else
+             (error "Internal error"))))
 
-        ;; Else
-        (let ((label-done (asm-make-label cgc (new-sym 'done)))
-              (opleft  (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
-              (opright (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
+  (let ((dest (codegen-reg-to-x86reg reg))
+        (label-done (asm-make-label #f (new-sym 'eq?_end_)))
+        (lopnd (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
+        (ropnd (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
 
-          (cond
-            ;; Left only is a cst
-            (lcst?
-              (x86-cmp cgc opright (x86-imm-int (obj-encoding lleft))))
-            ;; Right only is a cst
-            (rcst?
-              (x86-cmp cgc opleft  (x86-imm-int (obj-encoding lright))))
-            ;; Left and Right are not cst but are both in memory
-            ((and (ctx-loc-is-memory? lleft)
-                  (ctx-loc-is-memory? lright))
-              (x86-mov cgc (x86-rax) opleft)
-              (x86-cmp cgc (x86-rax) opright))
-            ;; Left and Right are not cst and at least one is in a register
-            (else
-              (x86-cmp cgc opleft opright)))
+  (cond ((and lcst? rcst?)
+           (x86-mov cgc dest (x86-imm-int (obj-encoding (eq? lleft lright)))))
+        (lcst?
+           (if mutr?
+               (begin (codegen-unbox cgc (x86-rax) ropnd)
+                      (cmp cgc (x86-imm-int (obj-encoding lleft)) (x86-rax)))
+               (cmp cgc (x86-imm-int (obj-encoding lleft)) ropnd)))
+        (rcst?
+           (if mutl?
+               (begin (codegen-unbox cgc (x86-rax) lopnd)
+                      (cmp cgc (x86-rax) (x86-imm-int (obj-encoding lright))))
+               (cmp cgc lopnd (x86-imm-int (obj-encoding lright)))))
+        (else
+           (cond ((and mutl? mutr?)
+                    (if (or (eq? dest lopnd)
+                            (eq? dest ropnd))
+                        (error "Internal NYI error"))
+                    (codegen-unbox cgc (x86-rax) lopnd)
+                    (codegen-unbox cgc dest ropnd)
+                    (cmp cgc (x86-rax) dest))
+                 (mutl?
+                   (codegen-unbox cgc (x86-rax) lopnd)
+                   (cmp cgc (x86-rax) ropnd))
+                 (mutr?
+                   (codegen-unbox cgc (x86-rax) ropnd)
+                   (cmp cgc (x86-rax) lopnd))
+                 (else
+                   (cmp cgc lopnd ropnd)))))
 
-          (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-          (x86-je  cgc label-done)
-          (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-          (x86-label cgc label-done)))))
+  (if (not (and lcst? rcst?))
+      (begin
+        (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+        (x86-je  cgc label-done)
+        (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+        (x86-label cgc label-done)))))
+
+  ;
+  ;  (cond ;; Both cst
+  ;        ((and lcst? rcst?)
+  ;           (x86-mov cgc dest (x86-imm-int (obj-encoding (eq? lleft lright)))))
+  ;        ;; Only one cst
+  ;        ((or lcst? rcst?)
+  ;           (let ((mut-ncst? (if lcst? mutr? mutl?))
+  ;                 (loc-ncst  (if lcst? lright lleft))
+  ;                 (opnd-ncst (if lcst? ropnd lopnd))
+  ;                 (cst  (if lcst? lleft lright)))
+  ;             (if mut-ncst?
+  ;                 (codegen-unbox cgc (x86-rax) opnd-ncst (ctx-loc-is-memory? ctx loc-ncst)))
+  ;             (x86-cmp cgc opnd-ncst (x86-imm-int cst))))
+  ;        ;; Both are not cst
+  ;        (else
+  ;          (if mutl?
+  ;              (codegen-unbox (x86-rax) lopnd (ctx-loc-is-memory?
+    ;; Cas 1: 2 cst
+      ;; mov dest, res
+    ;; Cas 2: 1 cst
+      ;; si ncst Mutable
+      ;;   unbox rax ncst
+      ;; cmp CST, ncst
+    ;; Cas 3: 0 cst
+      ;;
+
+
+    ;(x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+    ;(x86-je  cgc label-done)
+    ;(x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+    ;(x86-label cgc label-done))
+
+  ;(let ((dest  (codegen-reg-to-x86reg reg)))
+  ;
+  ;  (if (and lcst? rcst?)
+  ;
+  ;      ;; Two cst, generate only a mov
+  ;      (x86-mov cgc dest (x86-imm-int (obj-encoding (eq? lleft lright))))
+  ;
+  ;      ;; Else
+  ;      (let ((label-done (asm-make-label cgc (new-sym 'done)))
+  ;            (opleft  (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
+  ;            (opright (and (not rcst?) (codegen-loc-to-x86opnd fs lright)))
+  ;
+  ;        (if mutr?
+  ;            (codegen-unbox cgc dest ropnd (ctx-loc-is-memory? lright)))
+  ;        (if mutl?
+  ;            (codegen-unbox cgc (x86-rax) lopnd (ctx-loc-is-memory? lleft)))
+  ;
+  ;        (cond
+  ;          ;; Left only is a cst
+  ;          (lcst?
+  ;            (let ((opnd (if mutr? (x86-rax) opright)))
+  ;              (x86-cmp cgc opnd (x86-imm-int (obj-encoding lleft)))))
+  ;          ;; Right only is a cst
+  ;          (rcst?
+  ;            (let ((opnd (if mutr? dest opleft)))
+  ;              (x86-cmp cgc opleft  (x86-imm-int (obj-encoding lright)))))
+  ;          ;; Left and Right are not cst but are both in memory
+  ;          ((and (ctx-loc-is-memory? lleft)
+  ;                (ctx-loc-is-memory? lright))
+  ;
+  ;            (x86-mov cgc (x86-rax) opleft)
+  ;            (x86-cmp cgc (x86-rax) opright))
+  ;          ;; Left and Right are not cst and at least one is in a register
+  ;          (else
+  ;            (x86-cmp cgc opleft opright)))
+  ;
+  ;        (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+  ;        (x86-je  cgc label-done)
+  ;        (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+  ;        (x86-label cgc label-done)))))
 
 ;;-----------------------------------------------------------------------------
 ;; car/cdr
@@ -1257,9 +1358,14 @@
 
 ;;-----------------------------------------------------------------------------
 ;; string->symbol
-(define (codegen-str->sym cgc fs reg lstr)
+(define (codegen-str->sym cgc fs reg lstr mut-str?)
   (let ((dest (codegen-reg-to-x86reg reg))
         (opstr (codegen-loc-to-x86opnd fs lstr)))
+
+    (if mut-str?
+        (begin (x86-mov cgc (x86-rax) opstr)
+               (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+               (set! opstr (x86-rax))))
 
     (x86-push cgc opstr)
     (gen-interned-symbol cgc)
@@ -1267,16 +1373,20 @@
 
 ;;-----------------------------------------------------------------------------
 ;; symbol->string
-(define (codegen-sym->str cgc fs reg lsym)
+(define (codegen-sym->str cgc fs reg lsym mut-sym?)
+
+  ;; TODO: if mut-sym? is not #t, save a register and us it
+  ;;       to reduce memory moves
 
   (let ((dest (codegen-reg-to-x86reg reg))
         (opsym (codegen-loc-to-x86opnd fs lsym)))
 
-    (if (not (ctx-loc-is-register? lsym))
-        (error "NYI codegen"))
+    (x86-label cgc (asm-make-label #f (new-sym 'SYM_TO_STR_)))
 
     ;; Alloc string
     (x86-mov cgc dest opsym)
+    (if mut-sym?
+        (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) dest)))
     (x86-sub cgc dest (x86-imm-int TAG_MEMOBJ))
     (x86-mov cgc dest (x86-mem 0 dest))
     (x86-shr cgc dest (x86-imm-int 8))
@@ -1285,11 +1395,17 @@
     (gen-allocation cgc #f STAG_STRING 0 #t)
 
     ;; Write len
-    (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opsym))
+    (if mut-sym?
+        (begin (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opsym))
+               (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opsym)))
     (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
 
     ;; Write header
-    (x86-mov cgc (x86-rax) (x86-mem (- 0 TAG_MEMOBJ) opsym))
+    (if mut-sym?
+        (begin (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opsym))
+               (x86-mov cgc (x86-rax) (x86-mem (- 0 TAG_MEMOBJ) (x86-rax))))
+        (x86-mov cgc (x86-rax) (x86-mem (- 0 TAG_MEMOBJ) opsym)))
     (x86-add cgc (x86-rax) (x86-imm-int (arithmetic-shift (- STAG_STRING STAG_SYMBOL) 3)))
     (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
 
@@ -1304,7 +1420,10 @@
       (x86-jle cgc label-end)
 
         ;; Copy qword
-        (x86-mov cgc (x86-rax) (x86-mem (* -1 (+ 8 TAG_MEMOBJ)) opsym dest))
+        (if mut-sym?
+            (begin (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opsym))
+                   (x86-mov cgc (x86-rax) (x86-mem (* -1 (+ 8 TAG_MEMOBJ)) (x86-rax) dest)))
+            (x86-mov cgc (x86-rax) (x86-mem (* -1 (+ 8 TAG_MEMOBJ)) opsym dest)))
         (x86-mov cgc (x86-mem -8 alloc-ptr dest) (x86-rax))
         (x86-sub cgc dest (x86-imm-int 8))
         (x86-jmp cgc label-loop)

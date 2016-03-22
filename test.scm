@@ -1,4 +1,9 @@
 
+(let ((a 100)
+	  (b 200))
+   (set! a 3)
+   (set! b 2)
+   (println (+ a b)))
 
 ;; TODO: call with arg mutable
 ;; let returning mutable
@@ -6,29 +11,7 @@
 ;; function returning mutable
 ;; begin returning mutable
 
-;; char->integer primitive
-(let ((a #\*))
-  (println (char->integer a))
-  (set! a #\0)
-  (println (+ (char->integer a) 2)))
-
-;; integr->char primitive
-(let ((a 68))
-  (println (integer->char a))
-  (set! a 86)
-  (println (integer->char a)))
-
-;(define (fib n)
-;  (if (< n 2)
-;      1
-;      (+ (fib (- n 1))
-;         (fib (- n 2)))))
-;
-;(fib 40)
-
-
-;; TODO WIP:
-
+;; WIP:
 ;; A presque tous les ctx-get-loc, il faut vérifier si elle est mutable et l'envoyer à codegen
 
 ;; TODO

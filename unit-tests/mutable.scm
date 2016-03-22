@@ -8,6 +8,18 @@
   (write-char (cdr a))
   (newline))
 
+;; eq? primitive
+(let ((a 10)
+      (b 20)
+      (c 21))
+  (print (eq? a b))
+  (set! a 21)
+  (print (eq? a b))
+  (print (eq? a c))
+  (print (eq? c b))
+  (set! b 21)
+  (println (eq? a b)))
+
 ;; not primitive
 (let ((a 10))
   (print (not a))
@@ -29,12 +41,24 @@
   (print (+ (char->integer a) 2))
   (newline))
 
-;; integr->char primitive
+;; integer->char primitive
 (let ((a 68))
   (print (integer->char a))
   (set! a 86)
   (print (integer->char a))
   (newline))
+
+;; symbol->string primitive
+(let ((a 'hello))
+  (pp a)
+  (set! a (symbol->string a))
+  (pp a))
+
+;; string->symbol primitive
+(let ((a "world"))
+  (pp a)
+  (set! a (string->symbol a))
+  (pp a))
 
 ;; string-length primitive
 (let ((a "Hello World"))
@@ -50,11 +74,15 @@
   (write-char a)
   (newline))
 
-
 ;1o2t
+;#f#f#t#f#t
 ;#f#t
 ;1015
 ;4250
 ;DV
+;hello
+;"hello"
+;"world"
+;world
 ;1113
 ;AB

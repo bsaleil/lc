@@ -383,7 +383,7 @@
         ;;
         (cond ;; Identifier is a free variable
               ((and local (eq? (identifier-kind (cdr local)) 'free))
-                (gen-get-freevar cgc ctx local succ))
+                (gen-get-freevar cgc ctx local succ #f))
               ;; Identifier is a local variable
               (local
                 (gen-get-localvar cgc ctx local succ #f))
@@ -401,28 +401,36 @@
               (else (gen-error cgc (ERR_UNKNOWN_VAR ast))))))))
 
 ;; TODO: merge with gen-get-localvar, it's now the same code!
-(define (gen-get-freevar cgc ctx local succ #!optional (raw? #f))
+(define (gen-get-freevar cgc ctx local succ for-set?)
 
   (let ((loc (ctx-identifier-loc ctx (cdr local)))
         (type (ctx-identifier-type ctx (cdr local))))
 
     (cond ((ctx-loc-is-register? loc)
-             (jump-to-version cgc succ (ctx-push ctx type loc (car local))))
+             (if for-set?
+                 (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd loc))
+                 (jump-to-version cgc succ (ctx-push ctx type loc (car local)))))
           ((ctx-loc-is-memory? loc)
-             (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
-               (apply-moves cgc nctx moves)
-               (apply-moves cgc nctx (list (cons loc reg)))
-               (jump-to-version cgc succ (ctx-push nctx type reg (car local)))))
+             (if for-set?
+                 (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd loc))
+                 (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
+                   (apply-moves cgc nctx moves)
+                   (apply-moves cgc nctx (list (cons loc reg)))
+                   (jump-to-version cgc succ (ctx-push nctx type reg (car local))))))
           ((ctx-loc-is-freemem? loc)
-             (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
-               (apply-moves cgc nctx moves)
-               (let ((fs (ctx-fs nctx)))
-                 (x86-mov cgc (x86-rax) (x86-mem (* 8 (- fs 2)) (x86-rsp))) ;; Get closure
-                 (x86-mov
-                   cgc
-                   (codegen-reg-to-x86reg reg)
-                   (x86-mem (- (* 8 (+ (cdr loc) 2)) TAG_MEMOBJ) (x86-rax))))
-               (jump-to-version cgc succ (ctx-push nctx type reg (car local))))))))
+             (if for-set?
+                 (let ((fs (ctx-fs ctx)))
+                   (x86-mov cgc (x86-rax) (x86-mem (* 8 (- fs 2)) (x86-rsp)))
+                   (x86-mov cgc (x86-rax) (x86-mem (- (* 8 (+ (cdr loc) 2)) TAG_MEMOBJ) (x86-rax))))
+                 (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
+                   (apply-moves cgc nctx moves)
+                   (let ((fs (ctx-fs nctx)))
+                     (x86-mov cgc (x86-rax) (x86-mem (* 8 (- fs 2)) (x86-rsp))) ;; Get closure
+                     (x86-mov
+                       cgc
+                       (codegen-reg-to-x86reg reg)
+                       (x86-mem (- (* 8 (+ (cdr loc) 2)) TAG_MEMOBJ) (x86-rax))))
+                   (jump-to-version cgc succ (ctx-push nctx type reg (car local)))))))))
 
 ;; TODO: + utiliser un appel récursif comme pour gen-get-freevar (??)
 ;; TODO coment: si mobject? est vrai, c'est qu'on veut le mobject dans le tmp reg (rax)
@@ -499,8 +507,27 @@
              (ctx (ctx-set-type ctx local type))) ;; TODO regalloc unk
         (jump-to-version cgc succ ctx)))))
 
+;; TODO Merge with gen-set-localvar
 (define (gen-set-freevar cgc ctx local succ)
-  (error "NYI set freevar"))
+
+  ;; Get mobject in tmp register
+  (gen-get-freevar cgc ctx local #f #t)
+
+  ;;
+  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
+         (lval (ctx-get-loc ctx 0))
+         (type (ctx-get-type ctx 0)))
+    (apply-moves cgc ctx moves)
+    (let ((dest (codegen-reg-to-x86reg reg))
+          (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
+      (if (ctx-loc-is-memory? lval)
+          (begin (x86-mov cgc dest opval)
+                 (set! opval dest)))
+      (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
+      (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+      (let* ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg))
+             (ctx (ctx-set-type ctx local type))) ;; TODO regalloc unk
+        (jump-to-version cgc succ ctx)))))
 
 (define (gen-set-globalvar cgc ctx global succ)
   (mlet ((pos (cdr global))
@@ -566,10 +593,17 @@
                        ;; 1 - Get clean stack size (higher mx in ctx)
                        (let* ((clean-nb (- (ctx-fs ctx) 1))
                               (lres (ctx-get-loc ctx 0))
-                              (opres (codegen-loc-to-x86opnd (ctx-fs ctx) lres)))
+                              (opres (codegen-loc-to-x86opnd (ctx-fs ctx) lres))
+                              (mutable? (ctx-is-mutable? ctx 0)))
 
                          ;; 2 - Move res in rax
-                         (x86-mov cgc (x86-rax) opres)
+                         ;; TODO regalloc2
+                         (if mutable?
+                             (if (ctx-loc-is-memory? lres)
+                                 (begin (x86-mov cgc (x86-rax) opres)
+                                        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                                 (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opres)))
+                             (x86-mov cgc (x86-rax) opres))
 
                          ;; 3 - Clean stack
                          (x86-add cgc (x86-rsp) (x86-imm-int (* 8 clean-nb)))
@@ -851,6 +885,7 @@
                         (ctx  (ctx-pop-n ctx (+ (length ids) 1)))
                         (ctx  (ctx-push ctx type loc)))
                    ;; NOTE see lazy-out comment in mlc-letrec
+                   ;; Merge all code returning a boxed value
                    (if mutable?
                        (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
                        (if (ctx-loc-is-memory? loc)
@@ -1036,8 +1071,10 @@
                (if rcst
                    (ctx-get-loc ctx 0)
                    (ctx-get-loc ctx 1))))
+         (mutl? (and (not lcst) (ctx-is-mutable? ctx (if rcst 0 1))))
+         (mutr? (and (not rcst) (ctx-is-mutable? ctx 0)))
          (n-pop (count (list lcst rcst) not)))
-    (codegen-eq? cgc (ctx-fs ctx) reg lleft lright lcst rcst)
+    (codegen-eq? cgc (ctx-fs ctx) reg lleft lright lcst rcst mutl? mutr?)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_BOOL reg))))
 
 ;; primitives car & cdr
@@ -1094,14 +1131,16 @@
 
 ;; primitive symbol->string
 (define (prim-symbol->string cgc ctx reg succ cst-infos)
-  (let ((lsym (ctx-get-loc ctx 0)))
-    (codegen-sym->str cgc (ctx-fs ctx) reg lsym)
+  (let ((lsym (ctx-get-loc ctx 0))
+        (mut-sym? (ctx-is-mutable? ctx 0)))
+    (codegen-sym->str cgc (ctx-fs ctx) reg lsym mut-sym?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR reg))))
 
 ;; primitive string->symbol
 (define (prim-string->symbol cgc ctx reg succ cst-infos)
-  (let ((lstr (ctx-get-loc ctx 0)))
-    (codegen-str->sym cgc (ctx-fs ctx) reg lstr)
+  (let ((lstr (ctx-get-loc ctx 0))
+        (mut-str? (ctx-is-mutable? ctx 0)))
+    (codegen-str->sym cgc (ctx-fs ctx) reg lstr mut-str?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM reg))))
 
 ;; primitive vector-ref
