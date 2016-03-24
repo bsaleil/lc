@@ -96,6 +96,18 @@
   (set! a (symbol->string a))
   (pp a))
 
+;; close-input/output-port, write-char, read-char primitives
+(let ((file "./unit-tests/mutable-out")
+      (port #f))
+  (set! port (open-output-file file))
+  (write-char #\X port)
+  (write-char #\Y port)
+  (close-output-port port)
+  (set! port (open-input-file file))
+  (print (read-char port)) (print #\,)
+  (print (read-char port))
+  (println #\.))
+
 ;; open-input/output-file primitives
 (let ((file "./unit-tests/mutable"))
   (set! file "./unit-tests/mutable-out")
@@ -113,6 +125,16 @@
   (set! a "Goodbye World")
   (print (string-length a))
   (newline))
+
+;; eof-object? primitive
+(let ((out (open-output-file "./unit-tests/mutable-out")))
+  (write-char #\O out)
+  (close-output-port out)
+  (let* ((in (open-input-file "./unit-tests/mutable-out"))
+         (ch (read-char in)))
+    (print (eof-object? ch))
+    (set! ch (read-char in))
+    (println (eof-object? ch))))
 
 ;; write-char primitive
 (let ((a #\A))
@@ -135,6 +157,8 @@
 ;world
 ;hello
 ;"hello"
+;X,Y.
 ;A,B
 ;1113
+;#f#t
 ;AB

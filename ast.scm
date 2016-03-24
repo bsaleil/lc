@@ -1086,14 +1086,16 @@
 
 ;; primitive eof-object?
 (define (prim-eof-object? cgc ctx reg succ cst-infos)
-  (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-eof? cgc (ctx-fs ctx) reg lval)
+  (let ((lval (ctx-get-loc ctx 0))
+        (mut-val? (ctx-is-mutable? ctx 0)))
+    (codegen-eof? cgc (ctx-fs ctx) reg lval mut-val?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))
 
 ;; primitive read-char
 (define (prim-read-char cgc ctx reg succ cst-infos)
-  (let* ((lport (ctx-get-loc ctx 0)))
-    (codegen-read-char cgc (ctx-fs ctx) reg lport)
+  (let* ((lport (ctx-get-loc ctx 0))
+         (mut-port? (ctx-is-mutable? ctx 0)))
+    (codegen-read-char cgc (ctx-fs ctx) reg lport mut-port?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_CHAR reg))))
 
 ;; primitive write-char
@@ -1226,8 +1228,9 @@
 
 ;; primitive close-input-port & close-output-port
 (define (prim-close-x-port cgc ctx reg succ cst-infos op)
-  (let ((lport (ctx-get-loc ctx 0)))
-    (codegen-close-io-port cgc (ctx-fs ctx) reg lport)
+  (let ((lport (ctx-get-loc ctx 0))
+        (mut-port? (ctx-is-mutable? ctx 0)))
+    (codegen-close-io-port cgc (ctx-fs ctx) reg lport mut-port?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))
 
 ;; primitives open-input-file & open-output-file

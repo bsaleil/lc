@@ -1207,13 +1207,21 @@
 
 ;;-----------------------------------------------------------------------------
 ;; close-input/output-port
-(define (codegen-close-io-port cgc fs reg lport)
+(define (codegen-close-io-port cgc fs reg lport mut-port?)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opport (codegen-loc-to-x86opnd fs lport)))
-    ;; Mov port to rax for syscall
-    (x86-mov cgc (x86-rax) opport)
-    (gen-syscall-close cgc)
-    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
+
+    (begin-with-cg-macro
+      ;;
+      ;; Unmem/ Unbox code
+      ;; Mov port to rax for syscall
+      (unmem! (x86-rax) opport)
+      (chk-unmem-unbox! (x86-rax) opport mut-port?)
+
+      ;;
+      ;; Primitive code
+      (gen-syscall-close cgc)
+      (x86-mov cgc dest (x86-imm-int ENCODING_VOID)))))
 
 ;;-----------------------------------------------------------------------------
 ;; open-input/output-port
@@ -1229,11 +1237,8 @@
       ;;
       ;; Unmem / Unbox code
       ;; Move operand to rax for syscall
-      (x86-mov cgc (x86-rax) opval)
-      (if mut-str?
-          (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-      ;(unmem! (x86-rax) opval)
-      ;(chk-unmem-unbox! (x86-rax) opval mut-str?)
+      (unmem! (x86-rax) opval)
+      (chk-unmem-unbox! (x86-rax) opval mut-str?)
 
       ;;
       ;; Primitive code
@@ -1255,32 +1260,45 @@
 
 ;;-----------------------------------------------------------------------------
 ;; eof-object?
-(define (codegen-eof? cgc fs reg lval)
+(define (codegen-eof? cgc fs reg lval mut-val?)
   (let ((label-end (asm-make-label #f (new-sym 'label-end)))
         (dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
-    ;; If value is in memory, move it to rax (can't compare m64 and imm64)
-    (if (ctx-loc-is-memory? lval)
-        (begin (x86-mov cgc (x86-rax) opval)
-               (set! opval (x86-rax))))
-    (x86-cmp cgc opval (x86-imm-int ENCODING_EOF))
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-    (x86-jne cgc label-end)
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-    (x86-label cgc label-end)))
+    (begin-with-cg-macro
+
+      ;;
+      ;; Unmem / Unbox code
+      ;; Move operand to rax for syscall
+      (chk-unmem-unbox! (x86-rax) opval mut-val?)
+
+      ;;
+      ;; Primitive code
+      (x86-cmp cgc opval (x86-imm-int ENCODING_EOF))
+      (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+      (x86-jne cgc label-end)
+      (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+      (x86-label cgc label-end))))
 
 ;;-----------------------------------------------------------------------------
 ;; read-char
-(define (codegen-read-char cgc fs reg lport)
+(define (codegen-read-char cgc fs reg lport mut-port?)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opport (codegen-loc-to-x86opnd fs lport)))
-    ;; Mov port to rax for syscall
-    (x86-mov cgc (x86-rax) opport)
-    ;; Gen 'read' syscall (read 1 byte), encoded value (char or eof) in rax
-    (gen-syscall-read-char cgc)
-    ;; Push encoded result
-    (x86-mov cgc dest (x86-rax))))
+
+    (begin-with-cg-macro
+      ;;
+      ;; Unmem / Unbox code
+      ;; Mov port to rax for syscall
+      (unmem! (x86-rax) opport)
+      (chk-unmem-unbox! (x86-rax) opport mut-port?)
+
+      ;;
+      ;; Primitive code
+      ;; Gen 'read' syscall (read 1 byte), encoded value (char or eof) in rax
+      (gen-syscall-read-char cgc)
+      ;; Push encoded result
+      (x86-mov cgc dest (x86-rax)))))
 
 ;;-----------------------------------------------------------------------------
 ;; write-char

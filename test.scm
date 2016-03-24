@@ -3,17 +3,14 @@
 
 
 
-(let ((file "./unit-tests/mutable"))
-  (set! file "./unit-tests/mutable-out")
-  (let ((out (open-output-file file)))
-    (write-char #\A out)
-    (write-char #\B out)
-    (close-output-port out))
-  (let ((in (open-input-file file)))
-    (print (read-char in)) (print #\,)
-    (println (read-char in))))
-
-
+(let ((out (open-output-file "./unit-tests/mutable-out")))
+  (write-char #\O out)
+  (close-output-port out)
+  (let* ((in (open-input-file "./unit-tests/mutable-out"))
+         (ch (read-char in)))
+    (print (eof-object? ch))
+    (set! ch (read-char in))
+    (println (eof-object? ch))))
 
 
 ;; TODO: call with arg mutable
