@@ -1,14 +1,16 @@
 ;; Close output ports
 ;; Close input ports
 
-
-
-(let ((len 9)
-      (init #\V))
-  (print (make-vector len init)) (print #\,)
-  (set! len 12)
-  (set! init #\M)
-  (println (make-vector len init)))
+;; integer numeric operator
+(let ((a 100)
+      (b 200)
+      (c 5)
+      (d 6))
+   (set! a 48)
+   (set! b 4)
+   (print (+ a b)) (print #\,)
+   (print (* a c)) (print #\,)
+   (println (- d a)))
 
 ;; TODO: call with arg mutable
 ;; let returning mutable

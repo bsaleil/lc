@@ -2006,11 +2006,13 @@
                  (if rcst
                      (or lcst (ctx-get-loc ctx 0))
                      (or lcst (ctx-get-loc ctx 1))))
+               (mut-right? (and (not rcst) (ctx-is-mutable? ctx 0)))
+               (mut-left?  (and (not lcst) (ctx-is-mutable? ctx (if rcst 0 1))))
                (n-pop (count (list lcst rcst) not)))
           (apply-moves cgc ctx moves)
 
           (if num-op?
-              (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst)
+              (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst mut-left? mut-right?)
               (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst inline-if-labels))
 
           (if (not inlined-if-cond?)
@@ -2031,6 +2033,8 @@
                  (if rcst
                      (or lcst (ctx-get-loc ctx 0))
                      (or lcst (ctx-get-loc ctx 1))))
+               (mut-right? (and (not rcst) (ctx-is-mutable? ctx 0)))
+               (mut-left?  (and (not lcst) (ctx-is-mutable? ctx (if rcst 0 1))))
                (n-pop (count (list lcst rcst) not)))
           (apply-moves cgc ctx moves)
           (if num-op?

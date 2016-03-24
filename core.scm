@@ -244,7 +244,7 @@
 ;; This function print the error message in rax
 (c-define (exec-error sp) (long) void "exec_error" ""
   (let* ((err-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
-        (err (encoding-obj err-enc)))
+         (err (encoding-obj err-enc)))
     (print "!!! ERROR : ")
     (println err)))
 
@@ -265,8 +265,8 @@
        (x86-push cgc (x86-rdi))
        (x86-call cgc label-gc) ;; call C function
        (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-       (x86-mov cgc alloc-ptr (x86-rax)) ;; TODO : Update alloc-ptr
-       )))
+       (x86-mov cgc alloc-ptr (x86-rax))))) ;; TODO : Update alloc-ptr
+
 
 ;;-----------------------------------------------------------------------------
 
@@ -303,8 +303,8 @@
          (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
          (x86-push cgc (x86-rdi))
          (x86-call cgc label-print-msg-val) ;; call C function
-         (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-         ))
+         (x86-pop  cgc (x86-rsp)))) ;; restore unaligned stack-pointer
+
 
   (x86-pop cgc (x86-rcx))
   (x86-pop cgc (x86-rax)))
@@ -530,8 +530,8 @@
        (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
        (x86-push cgc (x86-rdi))
        (x86-call cgc label-interned-symbol) ;; call C function
-       (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-       )))
+       (x86-pop  cgc (x86-rsp))))) ;; restore unaligned stack-pointer
+
 
 
 ;;-----------------------------------------------------------------------------
@@ -814,8 +814,8 @@
        (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
        (x86-push cgc (x86-rdi))
        (x86-call cgc label) ;; call C function
-       (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-       ))
+       (x86-pop  cgc (x86-rsp)))) ;; restore unaligned stack-pointer
+
 
     (x86-ret cgc)
 
@@ -916,8 +916,8 @@
         (x86-r9)  ;; 6th argument
         (x86-r10)
         (x86-r11)
-        (x86-rax) ;; return register ;; TODO
-        ))
+        (x86-rax))) ;; return register ;; TODO
+
 
 (define all-regs
   (list (x86-rsp)
@@ -998,8 +998,8 @@
   flags
   ;; rctx is used when register allocation is not used to specialize code
   ;; then a rctx (ctx with only slot-loc, free-regs, and fs) is associated to each lazy-code
-  rctx
-)
+  rctx)
+
 
 (define (lazy-code-nb-versions lazy-code)
   (table-length (lazy-code-versions lazy-code)))
@@ -1073,17 +1073,17 @@
 
   (define (apply-move move)
     (cond ((eq? (car move) 'fs)
-             (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 (cdr move)))))
+           (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 (cdr move)))))
           ((and (ctx-loc-is-register? (car move))
                 (ctx-loc-is-memory?   (cdr move)))
-             (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
-                   (dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
-               (x86-mov cgc dst src)))
+           (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
+                 (dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
+             (x86-mov cgc dst src)))
           ((and (ctx-loc-is-memory?   (car move))
                 (ctx-loc-is-register? (cdr move)))
-             (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
-                   (dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
-               (x86-mov cgc dst src)))
+           (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
+                 (dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
+             (x86-mov cgc dst src)))
           (else (pp move) (error "NYI apply-moves"))))
 
   (if (not (null? moves))
@@ -1884,21 +1884,21 @@
   (let ((label-addr (asm-label-pos  label))
         (label-name (asm-label-name label)))
 
-  (if opt-verbose-jit
-      (println ">>> patching generic slot of closure " (number->string closure 16)
-               ": now contains label "
-               label-name
-               " (" (number->string label-addr 16) ")"))
+   (if opt-verbose-jit
+       (println ">>> patching generic slot of closure " (number->string closure 16)
+                ": now contains label "
+                label-name
+                " (" (number->string label-addr 16) ")"))
 
-  (if opt-entry-points
-      (let ((table-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ))))
-        (put-i64 (+ table-addr 8) label-addr))
-      (let ((eploc (get-entry-points-loc ast #f)))
-        (put-i64 (- (+ closure 8) TAG_MEMOBJ) label-addr)       ;; Patch closure
-        (put-i64 (+ 8 (- (obj-encoding eploc) 1)) label-addr))) ;; Patch still vector containing code addr
+   (if opt-entry-points
+       (let ((table-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ))))
+         (put-i64 (+ table-addr 8) label-addr))
+       (let ((eploc (get-entry-points-loc ast #f)))
+         (put-i64 (- (+ closure 8) TAG_MEMOBJ) label-addr)       ;; Patch closure
+         (put-i64 (+ 8 (- (obj-encoding eploc) 1)) label-addr))) ;; Patch still vector containing code addr
 
 
-  label-addr))
+   label-addr))
 
 ;; Patch closure
 (define (patch-closure closure ctx label)
@@ -1930,13 +1930,13 @@
 ;; fatal means that if type test fails, it stops execution
 ;; Check type 'type' for stack slot at 'stack-idx' and jump to 'succ' if succeess
 (define (gen-fatal-type-test type stack-idx succ #!optional ast)
-(let ((lazy-error
-         (make-lazy-code
-            (lambda (cgc ctx)
-               (if (or (eq? type CTX_FLO) (eq? type CTX_NUM))
-                 (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM))
-                 (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
-  (gen-dyn-type-test type stack-idx succ lazy-error ast)))
+ (let ((lazy-error
+          (make-lazy-code
+             (lambda (cgc ctx)
+                (if (or (eq? type CTX_FLO) (eq? type CTX_NUM))
+                  (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM))
+                  (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
+   (gen-dyn-type-test type stack-idx succ lazy-error ast)))
 
 ;; Create lazy code for type test of stack slot (stack-idx)
 ;; jump to lazy-success if test succeeds
@@ -1957,10 +1957,10 @@
          (cond ;; known == expected
                ((or (eq? known-type type)
                     (and (pair? known-type) (eq? (car known-type) type)))
-                  (jump-to-version cgc lazy-success ctx-success-known))
+                (jump-to-version cgc lazy-success ctx-success-known))
                ;; known != expected && known != unknown
                ((not (eq? known-type CTX_UNK))
-                  (jump-to-version cgc lazy-fail ctx-fail))
+                (jump-to-version cgc lazy-fail ctx-fail))
                ;; known == unknown
                (else
                  (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
@@ -1995,9 +1995,9 @@
                                                              (patch-jump jump-addr stub-addr)
                                                              ;; overwrite unconditional jump
                                                              (gen-version
-                                                             (+ jump-addr 6)
-                                                             lazy-success
-                                                             ctx-success))
+                                                              (+ jump-addr 6)
+                                                              lazy-success
+                                                              ctx-success))
 
                                                       ;; make conditional jump to new version
                                                       (gen-version jump-addr lazy-success ctx-success))))
@@ -2010,71 +2010,71 @@
                                                     (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-success)
                                                     (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-fail))))))))))
 
-       (if opt-verbose-jit
-           (println ">>> Gen dynamic type test at index " stack-idx))
+                  (if opt-verbose-jit
+                      (println ">>> Gen dynamic type test at index " stack-idx))
 
-       ;; If 'opt-stats' option, then inc tests slot
-       (if opt-stats
-        (gen-inc-slot cgc 'tests))
+                  ;; If 'opt-stats' option, then inc tests slot
+                  (if opt-stats
+                   (gen-inc-slot cgc 'tests))
 
-       ;; TODO: utiliser un registre si la variable est mutable
-       (let* ((mutable? (ctx-is-mutable? ctx stack-idx))
-              (lval (ctx-get-loc ctx stack-idx))
-              (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
+                  ;; TODO: utiliser un registre si la variable est mutable
+                  (let* ((mutable? (ctx-is-mutable? ctx stack-idx))
+                         (lval (ctx-get-loc ctx stack-idx))
+                         (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
 
-         (if mutable?
-             (begin (x86-push cgc opval)
-                    (x86-mov cgc opval (x86-mem (- 8 TAG_MEMOBJ) opval))))
+                    (if mutable?
+                        (begin (x86-push cgc opval)
+                               (x86-mov cgc opval (x86-mem (- 8 TAG_MEMOBJ) opval))))
 
-         (cond ;; Number type check
-               ((eq? type CTX_NUM)
-                 (x86-mov cgc (x86-rax) (x86-imm-int 3))
-                 (x86-and cgc (x86-rax) opval))
-               ;; Null type test
-               ((eq? type CTX_NULL)
-                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                 (x86-cmp cgc (x86-rax) opval))
-               ;; Char type check
-               ((eq? type CTX_CHAR)
-                  (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
-                  (x86-and cgc (x86-rax) opval)
-                  (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL))) ;; TODO: not enough ? TAG_SPECIAL is uses by other types ?
-               ;; Procedure type test
-               ((member type (list CTX_FLO CTX_CLO CTX_PAI CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))
-                  ;; Vérifier le tag memobj
-                  ;; extraire le tag du header
-                  ;; Vérifier le tag stag
+                    (cond ;; Number type check
+                          ((eq? type CTX_NUM)
+                           (x86-mov cgc (x86-rax) (x86-imm-int 3))
+                           (x86-and cgc (x86-rax) opval))
+                          ;; Null type test
+                          ((eq? type CTX_NULL)
+                           (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+                           (x86-cmp cgc (x86-rax) opval))
+                          ;; Char type check
+                          ((eq? type CTX_CHAR)
+                           (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
+                           (x86-and cgc (x86-rax) opval)
+                           (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL))) ;; TODO: not enough ? TAG_SPECIAL is uses by other types ?
+                          ;; Procedure type test
+                          ((member type (list CTX_FLO CTX_CLO CTX_PAI CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))
+                           ;; Vérifier le tag memobj
+                           ;; extraire le tag du header
+                           ;; Vérifier le tag stag
 
-                  ;; Check tag
-                  (x86-mov cgc (x86-rax) opval)
-                  (x86-and cgc (x86-rax) (x86-imm-int 3))
-                  (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-                  (x86-jne cgc label-jump)
-                  ;; Check stag
-                  (if (ctx-loc-is-memory? lval)
-                      (begin
-                        (x86-mov cgc (x86-rax) opval)
-                        (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rax))))
-                      (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) opval)))
-                  (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
-                  ;; stag xxx << 3
-                  (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_FLO)  STAG_FLONUM)
-                                                                 ((eq? type CTX_CLO)  STAG_PROCEDURE)
-                                                                 ((eq? type CTX_SYM)  STAG_SYMBOL)
-                                                                 ((eq? type CTX_STR)  STAG_STRING)
-                                                                 ((eq? type CTX_IPORT) STAG_IPORT)
-                                                                 ((eq? type CTX_OPORT) STAG_OPORT)
-                                                                 ((eq? type CTX_VECT) STAG_VECTOR)
-                                                                 ((eq? type CTX_PAI)  STAG_PAIR))))))
-               ;; Other
-               (else (error "Unknown type " type)))
+                           ;; Check tag
+                           (x86-mov cgc (x86-rax) opval)
+                           (x86-and cgc (x86-rax) (x86-imm-int 3))
+                           (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                           (x86-jne cgc label-jump)
+                           ;; Check stag
+                           (if (ctx-loc-is-memory? lval)
+                               (begin
+                                 (x86-mov cgc (x86-rax) opval)
+                                 (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rax))))
+                               (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) opval)))
+                           (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
+                           ;; stag xxx << 3
+                           (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_FLO)  STAG_FLONUM)
+                                                                          ((eq? type CTX_CLO)  STAG_PROCEDURE)
+                                                                          ((eq? type CTX_SYM)  STAG_SYMBOL)
+                                                                          ((eq? type CTX_STR)  STAG_STRING)
+                                                                          ((eq? type CTX_IPORT) STAG_IPORT)
+                                                                          ((eq? type CTX_OPORT) STAG_OPORT)
+                                                                          ((eq? type CTX_VECT) STAG_VECTOR)
+                                                                          ((eq? type CTX_PAI)  STAG_PAIR))))))
+                          ;; Other
+                          (else (error "Unknown type " type)))
 
-         (if mutable?
-             (x86-pop cgc opval))
+                    (if mutable?
+                        (x86-pop cgc opval))
 
-         (x86-label cgc label-jump)
-         (x86-je cgc (list-ref stub-labels 0))
-         (x86-jmp cgc (list-ref stub-labels 1))))))))))
+                    (x86-label cgc label-jump)
+                    (x86-je cgc (list-ref stub-labels 0))
+                    (x86-jmp cgc (list-ref stub-labels 1))))))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Global cc table

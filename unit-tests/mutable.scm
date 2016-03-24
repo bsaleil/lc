@@ -159,6 +159,21 @@
   (write-char a)
   (newline))
 
+;;
+;;
+;;
+
+;; integer numeric operator
+(let ((a 100)
+      (b 200)
+      (c 5)
+      (d 6))
+   (set! a 48)
+   (set! b 4)
+   (print (+ a b)) (print #\,)
+   (print (* a c)) (print #\,)
+   (println (- d a)))
+
 ;1o2t
 ;#f#f#t#f#t
 ;#f#t
@@ -180,3 +195,4 @@
 ;LLLLLLLLLL,MMMMM
 ;#f#t
 ;AB
+;52,240,-42

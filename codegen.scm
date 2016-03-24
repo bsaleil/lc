@@ -145,9 +145,17 @@
      (if ,mut?
          (unbox! ,dst ,src))))
 
+;; Check if src is in memory AND mutable. If so, unmem and unbox
+;; Else, if src is mutable but not in memory, unbox directly
+;; (Same as chk-unmem-unbox! no moves are generated if src is in memory and not mutable)
+(define-macro (chk-unmem&unbox! dst src mut?)
+  `(cond ((and (x86-mem? ,src) ,mut?)
+          (chk-unmem-unbox! ,dst ,src ,mut?))
+         (,mut?
+            (unbox! ,dst ,src))))
 
 ;; Check if src is in memory. If so, pick-unmem (unmem in an available reg)
-;; then, check if src is mutablt. If so, unbox in register used by pick-unmem
+;; then, check if src is mutable. If so, unbox in register used by pick-unmem
 ;; or pick-unbox (unbox in an available reg)
 (define-macro (chk-pick-unmem-unbox! src mut? used-regs)
   `(begin
@@ -157,6 +165,12 @@
         (if (x86-mem? ,src)
             (unbox! ,src ,src)
             (pick-unbox! ,src (append ,used-regs ##registers-saved##))))))
+
+(define-macro (chk-pick-unmem&unbox! src mut? used-regs)
+  `(cond ((and (x86-mem? ,src) ,mut?)
+          (chk-pick-unmem-unbox! ,src ,mut? ,used-regs))
+         (,mut?
+          (pick-unbox! ,src (append ,used-regs ##registers-saved##)))))
 
 ;;
 (define-macro (restore-saved)
@@ -693,7 +707,7 @@
 ;; N-ary arithmetic operators
 
 ;; Gen code for arithmetic operation on int/int
-(define (codegen-num-ii cgc fs op reg lleft lright lcst? rcst?)
+(define (codegen-num-ii cgc fs op reg lleft lright lcst? rcst? mut-left? mut-right?)
 
   (assert (not (and lcst? rcst?)) "Internal codegen error")
 
@@ -703,33 +717,49 @@
         (opleft  (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
         (opright (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
 
-  ;; Handle cases like 1. 2. etc...
-   (if (and lcst? (flonum? lleft))
-       (set! lleft (##flonum->fixnum lleft)))
-   (if (and rcst? (flonum? lright))
-       (set! lright (##flonum->fixnum lright)))
+   (begin-with-cg-macro
 
-   (cond
-     (lcst?
-       (cond ((eq? op '+) (x86-mov cgc dest opright)
-                          (x86-add cgc dest (x86-imm-int (obj-encoding lleft))))
-             ((eq? op '-) (x86-mov cgc dest (x86-imm-int (obj-encoding lleft)))
-                          (x86-sub cgc dest opright))
-             ((eq? op '*) (x86-imul cgc dest opright (x86-imm-int lleft)))))
-     (rcst?
-       (cond ((eq? op '+) (x86-mov cgc dest opleft)
-                          (x86-add cgc dest (x86-imm-int (obj-encoding lright))))
-             ((eq? op '-) (x86-mov cgc dest opleft)
-                          (x86-sub cgc dest (x86-imm-int (obj-encoding lright))))
-             ((eq? op '*) (x86-imul cgc dest opleft (x86-imm-int lright)))))
-     (else
-       (x86-mov cgc dest opleft)
-       (cond ((eq? op '+) (x86-add cgc dest opright))
-             ((eq? op '-) (x86-sub cgc dest opright))
-             ((eq? op '*) (x86-sar cgc dest (x86-imm-int 2))
-                          (x86-imul cgc dest opright)))))
+     ;;
+     ;; Unmem / Unbox code
+     (if (not lcst?)
+         ;; if (in memory?) unmem,unbox else unbox only
+         (chk-unmem&unbox! (x86-rax) opleft mut-left?))
+     (if (not rcst?)
+         ;; if (in memory?) unmem,unbox else unbox only
+         (if (eq? opleft (x86-rax))
+             (chk-pick-unmem&unbox! opright mut-right? (list dest opleft opright))
+             (chk-unmem&unbox! (x86-rax) opright mut-right?)))
 
-   (x86-jo cgc (list-ref labels-overflow 0))))
+     ;;
+     ;; Primitive code
+
+     ;; Handle cases like 1. 2. etc...
+     (if (and lcst? (flonum? lleft))
+         (set! lleft (##flonum->fixnum lleft)))
+     (if (and rcst? (flonum? lright))
+         (set! lright (##flonum->fixnum lright)))
+
+     (cond
+       (lcst?
+         (cond ((eq? op '+) (x86-mov cgc dest opright)
+                            (x86-add cgc dest (x86-imm-int (obj-encoding lleft))))
+               ((eq? op '-) (x86-mov cgc dest (x86-imm-int (obj-encoding lleft)))
+                            (x86-sub cgc dest opright))
+               ((eq? op '*) (x86-imul cgc dest opright (x86-imm-int lleft)))))
+       (rcst?
+         (cond ((eq? op '+) (x86-mov cgc dest opleft)
+                            (x86-add cgc dest (x86-imm-int (obj-encoding lright))))
+               ((eq? op '-) (x86-mov cgc dest opleft)
+                            (x86-sub cgc dest (x86-imm-int (obj-encoding lright))))
+               ((eq? op '*) (x86-imul cgc dest opleft (x86-imm-int lright)))))
+       (else
+         (x86-mov cgc dest opleft)
+         (cond ((eq? op '+) (x86-add cgc dest opright))
+               ((eq? op '-) (x86-sub cgc dest opright))
+               ((eq? op '*) (x86-sar cgc dest (x86-imm-int 2))
+                            (x86-imul cgc dest opright)))))
+
+     (x86-jo cgc (list-ref labels-overflow 0)))))
 
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
 (define (codegen-num-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst?)
@@ -807,6 +837,7 @@
     `(if inline-if-labels #f ,expr))
 
   (assert (not (and lcst? rcst?)) "Internal codegen error")
+
 
   ;; TODO: this test is in all cmp-ii cmp-ff num-ii num-ff. Use external function in utils
   ;; Handle cases like 1. 2. etc...
