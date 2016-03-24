@@ -3,15 +3,12 @@
 
 
 
-(let ((out (open-output-file "./unit-tests/mutable-out")))
-  (write-char #\O out)
-  (close-output-port out)
-  (let* ((in (open-input-file "./unit-tests/mutable-out"))
-         (ch (read-char in)))
-    (print (eof-object? ch))
-    (set! ch (read-char in))
-    (println (eof-object? ch))))
-
+(let ((len 10)
+      (init #\L))
+  (print (make-string len init)) (print #\,)
+  (set! len 5)
+  (set! init #\M)
+  (println (make-string len init)))
 
 ;; TODO: call with arg mutable
 ;; let returning mutable

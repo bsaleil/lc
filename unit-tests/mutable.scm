@@ -126,6 +126,14 @@
   (print (string-length a))
   (newline))
 
+;; make-string primitive
+(let ((len 10)
+      (init #\L))
+  (print (make-string len init)) (print #\,)
+  (set! len 5)
+  (set! init #\M)
+  (println (make-string len init)))
+
 ;; eof-object? primitive
 (let ((out (open-output-file "./unit-tests/mutable-out")))
   (write-char #\O out)
@@ -160,5 +168,6 @@
 ;X,Y.
 ;A,B
 ;1113
+;LLLLLLLLLL,MMMMM
 ;#f#t
 ;AB

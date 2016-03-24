@@ -1351,7 +1351,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; make-string
-(define (codegen-make-string cgc fs reg llen lval)
+(define (codegen-make-string cgc fs reg llen lval mut-len? mut-val?)
   (let* ((header-word (mem-header 3 STAG_STRING))
          (dest  (codegen-reg-to-x86reg reg))
          (oplen (codegen-loc-to-x86opnd fs llen))
@@ -1359,57 +1359,64 @@
          (label-loop (asm-make-label #f (new-sym 'make-string-loop)))
          (label-end  (asm-make-label #f (new-sym 'make-string-end))))
 
-    ;; Len is encoded in rax (if (make-vector 3) rax=12)
-    ;; Nb chars to byte size
-    (x86-mov cgc (x86-rax) oplen)
-    (x86-shr cgc (x86-rax) (x86-imm-int 2))
-    (x86-and cgc (x86-rax) (x86-imm-int (bitwise-not 7)))
-    (x86-shr cgc (x86-rax) (x86-imm-int 1))
+    (begin-with-cg-macro
 
-    ;; Alloc
-    (gen-allocation cgc #f STAG_STRING 3 #t)
+      ;;
+      ;; Unmem / Unbox code
+      (chk-pick-unmem-unbox! oplen mut-len? (list opval oplen dest))
 
-    ;; Dest reg = len
-    (x86-mov cgc dest oplen)
-    (x86-shr cgc dest (x86-imm-int 2)) ;; decode length
+      ;; Len is encoded in rax (if (make-vector 3) rax=12)
+      ;; Nb chars to byte size
+      (x86-mov cgc (x86-rax) oplen)
+      (x86-shr cgc (x86-rax) (x86-imm-int 2))
+      (x86-and cgc (x86-rax) (x86-imm-int (bitwise-not 7)))
+      (x86-shr cgc (x86-rax) (x86-imm-int 1))
 
-    ;; Move init val to register
-    (if opval
-        (begin (x86-mov cgc (x86-rax) opval)
-               (x86-shr cgc (x86-rax) (x86-imm-int 2)))
-        (x86-mov cgc (x86-rax) (x86-imm-int (quotient (obj-encoding #\0) 4))))
+      ;; Alloc
+      (gen-allocation cgc #f STAG_STRING 3 #t)
 
-    (x86-label cgc label-loop)
-    ;; if dest == 0 then jump to end
-    (x86-cmp cgc dest (x86-imm-int 0))
-    (x86-je cgc label-end)
+      ;; Dest reg = len
+      (x86-mov cgc dest oplen)
+      (x86-shr cgc dest (x86-imm-int 2)) ;; decode length
 
-    (x86-mov cgc (x86-mem 15 alloc-ptr dest) (x86-al))
-    (x86-dec cgc dest)
-    (x86-jmp cgc label-loop)
+      ;; Move init val to register
+      (if opval
+          (begin (unmem! (x86-rax) opval)
+                 (chk-unmem-unbox! (x86-rax) opval mut-val?)
+                 (x86-shr cgc (x86-rax) (x86-imm-int 2)))
+          (x86-mov cgc (x86-rax) (x86-imm-int (quotient (obj-encoding #\0) 4))))
 
-    ;; END:
-    (x86-label cgc label-end)
+      (x86-label cgc label-loop)
+      ;; if dest == 0 then jump to end
+      (x86-cmp cgc dest (x86-imm-int 0))
+      (x86-je cgc label-end)
 
-    ;; Write length
-    (if (ctx-loc-is-memory? llen)
-        (begin (x86-mov cgc (x86-rax) oplen)
-               (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
-        (x86-mov cgc (x86-mem 8 alloc-ptr) oplen))
+      (x86-mov cgc (x86-mem 15 alloc-ptr dest) (x86-al))
+      (x86-dec cgc dest)
+      (x86-jmp cgc label-loop)
 
-    ;; Len is encoded in rax (if (make-vector 3) rax=12)
-    ;; Nb chars to byte size
-    (x86-mov cgc (x86-rax) oplen)
-    (x86-shr cgc (x86-rax) (x86-imm-int 2))
-    (x86-and cgc (x86-rax) (x86-imm-int (bitwise-not 7)))
-    (x86-shr cgc (x86-rax) (x86-imm-int 1))
-    ;; Write header
-    (x86-shl cgc (x86-rax) (x86-imm-int 6))
-    (x86-add cgc (x86-rax) (x86-imm-int header-word))
-    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+      ;; END:
+      (x86-label cgc label-end)
 
-    ;; Put str
-    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
+      ;; Write length
+      (if (ctx-loc-is-memory? llen)
+          (begin (x86-mov cgc (x86-rax) oplen)
+                 (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
+          (x86-mov cgc (x86-mem 8 alloc-ptr) oplen))
+
+      ;; Len is encoded in rax (if (make-vector 3) rax=12)
+      ;; Nb chars to byte size
+      (x86-mov cgc (x86-rax) oplen)
+      (x86-shr cgc (x86-rax) (x86-imm-int 2))
+      (x86-and cgc (x86-rax) (x86-imm-int (bitwise-not 7)))
+      (x86-shr cgc (x86-rax) (x86-imm-int 1))
+      ;; Write header
+      (x86-shl cgc (x86-rax) (x86-imm-int 6))
+      (x86-add cgc (x86-rax) (x86-imm-int header-word))
+      (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+
+      ;; Put str
+      (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr)))))
 
 ;;-----------------------------------------------------------------------------
 ;; make-vector
