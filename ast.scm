@@ -1125,8 +1125,10 @@
 (define (prim-make-vector cgc ctx reg succ cst-infos args)
   (let* ((init-value? (= (length args) 2))
          (llen (ctx-get-loc ctx (if init-value? 1 0)))
-         (lval (if init-value? (ctx-get-loc ctx 0) #f)))
-    (codegen-make-vector cgc (ctx-fs ctx) reg llen lval)
+         (lval (if init-value? (ctx-get-loc ctx 0) #f))
+         (mut-len? (ctx-is-mutable? ctx (if init-value? 1 0)))
+         (mut-val? (and init-value? (ctx-is-mutable? ctx 0))))
+    (codegen-make-vector cgc (ctx-fs ctx) reg llen lval mut-len? mut-val?)
     (jump-to-version cgc succ (ctx-push (if init-value?
                                             (ctx-pop-n ctx 2)
                                             (ctx-pop ctx))

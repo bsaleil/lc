@@ -126,6 +126,14 @@
   (print (string-length a))
   (newline))
 
+;; make-vector primitive
+(let ((len 9)
+      (init #\V))
+  (print (make-vector len init)) (print #\,)
+  (set! len 12)
+  (set! init #\M)
+  (println (make-vector len init)))
+
 ;; make-string primitive
 (let ((len 10)
       (init #\L))
@@ -168,6 +176,7 @@
 ;X,Y.
 ;A,B
 ;1113
+;VVVVVVVVV,MMMMMMMMMMMM
 ;LLLLLLLLLL,MMMMM
 ;#f#t
 ;AB

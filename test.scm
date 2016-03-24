@@ -3,12 +3,12 @@
 
 
 
-(let ((len 10)
-      (init #\L))
-  (print (make-string len init)) (print #\,)
-  (set! len 5)
+(let ((len 9)
+      (init #\V))
+  (print (make-vector len init)) (print #\,)
+  (set! len 12)
   (set! init #\M)
-  (println (make-string len init)))
+  (println (make-vector len init)))
 
 ;; TODO: call with arg mutable
 ;; let returning mutable
