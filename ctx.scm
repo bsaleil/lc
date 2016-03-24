@@ -461,15 +461,18 @@
 
 ;; Is register?
 (define (ctx-loc-is-register? loc)
-  (eq? (car loc) 'r))
+  (and (pair? loc)
+       (eq? (car loc) 'r)))
 
 ;; Is memory ?
 (define (ctx-loc-is-memory? loc)
-  (eq? (car loc) 'm))
+  (and (pair? loc)
+       (eq? (car loc) 'm)))
 
 ;; Is free variable loc ?
 (define (ctx-loc-is-freemem? loc)
-  (eq? (car loc) 'f))
+  (and (pair? loc)
+       (eq? (car loc) 'f)))
 
 ;;
 ;; GET TYPE

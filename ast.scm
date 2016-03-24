@@ -1152,9 +1152,11 @@
            (if poscst
                (ctx-get-loc ctx 0)
                (ctx-get-loc ctx 1)))
+         (idx-mut? (and (not poscst) (ctx-is-mutable? ctx 0)))
+         (vec-mut? (ctx-is-mutable? ctx (if poscst 0 1)))
          (n-pop (if poscst 1 2)))
 
-    (codegen-vector-ref cgc (ctx-fs ctx) reg lvec lidx poscst)
+    (codegen-vector-ref cgc (ctx-fs ctx) reg lvec lidx poscst idx-mut? vec-mut?)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_UNK reg))))
 
 ;; primitive string-ref
@@ -1166,9 +1168,10 @@
            (if poscst
                (ctx-get-loc ctx 0)
                (ctx-get-loc ctx 1)))
+          (idx-mut? (and (not poscst) (ctx-is-mutable? ctx 0)))
+          (str-mut? (ctx-is-mutable? ctx (if poscst 0 1)))
          (n-pop (if poscst 1 2)))
-    (x86-label cgc (asm-make-label #f (new-sym 'LABEL_STRING_REF_)))
-    (codegen-string-ref cgc (ctx-fs ctx) reg lstr lidx poscst)
+    (codegen-string-ref cgc (ctx-fs ctx) reg lstr lidx poscst idx-mut? str-mut?)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_CHAR reg))))
 
 ;; primitive vector-set!
@@ -1206,8 +1209,10 @@
            (if valcst
                (ctx-get-loc ctx 0)
                (ctx-get-loc ctx 1)))
+         (mut-val?  (and (not valcst) (ctx-is-mutable? ctx 0)))
+         (mut-pair? (ctx-is-mutable? ctx (if valcst 0 1)))
          (n-pop (if valcst 1 2)))
-    (codegen-scar/scdr cgc (ctx-fs ctx) op reg lpair lval valcst)
+    (codegen-scar/scdr cgc (ctx-fs ctx) op reg lpair lval valcst mut-val? mut-pair?)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_VOID reg))))
 
 ;; primitives current-input-port & current-output-port

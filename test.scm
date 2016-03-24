@@ -1,9 +1,11 @@
+;; Close output ports
+;; Close input ports
 
-(let ((a 100)
-	  (b 200))
-   (set! a 3)
-   (set! b 2)
-   (println (+ a b)))
+
+
+;(let ((ip (open-input-file "./mutable-in")))
+
+
 
 ;; TODO: call with arg mutable
 ;; let returning mutable
