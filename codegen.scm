@@ -301,9 +301,9 @@
 
 (define (codegen-loc-to-x86opnd fs loc)
   (cond ((ctx-loc-is-register? loc)
-           (codegen-reg-to-x86reg loc))
+         (codegen-reg-to-x86reg loc))
         ((ctx-loc-is-memory? loc)
-           (codegen-mem-to-x86mem fs loc))
+         (codegen-mem-to-x86mem fs loc))
         (else (error "Internal error"))))
 
 (define (codegen-mem-to-x86mem fs mem)
@@ -375,39 +375,39 @@
 ;;-----------------------------------------------------------------------------
 ;; Pair
 (define (codegen-pair cgc fs reg lcar lcdr car-cst? cdr-cst? mut-car? mut-cdr?)
-(x86-mov cgc (x86-rax) (x86-imm-int 100000))
-  (let ((header-word (mem-header 3 STAG_PAIR))
-        (dest  (codegen-reg-to-x86reg reg))
-        (opcar (and (not car-cst?) (codegen-loc-to-x86opnd fs lcar)))
-        (opcdr (and (not cdr-cst?) (codegen-loc-to-x86opnd fs lcdr))))
+ (x86-mov cgc (x86-rax) (x86-imm-int 100000))
+ (let ((header-word (mem-header 3 STAG_PAIR))
+       (dest  (codegen-reg-to-x86reg reg))
+       (opcar (and (not car-cst?) (codegen-loc-to-x86opnd fs lcar)))
+       (opcdr (and (not cdr-cst?) (codegen-loc-to-x86opnd fs lcdr))))
     ;; Alloc
-    (gen-allocation cgc #f STAG_PAIR 3)
+   (gen-allocation cgc #f STAG_PAIR 3)
     ;; Write object header
-    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+   (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+   (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
     ;; Write car
-    (cond
-      (car-cst?
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-imm-int (obj-encoding lcar)) 64))
-      ((ctx-loc-is-memory? lcar)
-        (x86-mov cgc (x86-rax) opcar)
-        (if mut-car? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
-      (else
-        (if mut-car? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opcar)))
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (if mut-car? (x86-rax) opcar))))
+   (cond
+     (car-cst?
+       (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-imm-int (obj-encoding lcar)) 64))
+     ((ctx-loc-is-memory? lcar)
+      (x86-mov cgc (x86-rax) opcar)
+      (if mut-car? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+      (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
+     (else
+       (if mut-car? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opcar)))
+       (x86-mov cgc (x86-mem 8 alloc-ptr) (if mut-car? (x86-rax) opcar))))
     ;; Write cdr
-    (cond
-      (cdr-cst?
-        (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-imm-int (obj-encoding lcdr)) 64))
-      ((ctx-loc-is-memory? lcdr)
-        (x86-mov cgc (x86-rax) opcdr)
-        (if mut-cdr? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-        (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax)))
-      (else
-        (if mut-cdr? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opcdr)))
-        (x86-mov cgc (x86-mem 16 alloc-ptr) (if mut-cdr? (x86-rax) opcdr))))
-    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
+   (cond
+     (cdr-cst?
+       (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-imm-int (obj-encoding lcdr)) 64))
+     ((ctx-loc-is-memory? lcdr)
+      (x86-mov cgc (x86-rax) opcdr)
+      (if mut-cdr? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+      (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax)))
+     (else
+       (if mut-cdr? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opcdr)))
+       (x86-mov cgc (x86-mem 16 alloc-ptr) (if mut-cdr? (x86-rax) opcdr))))
+   (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
 
 ;;-----------------------------------------------------------------------------
 ;; Vector (all elements are pushed on the stack in reverse order: first at [RSP+0], second at [RSP+8], ...)
@@ -430,10 +430,10 @@
    (x86-je cgc label-end)
 
      ;; Get val
-     (x86-pop cgc (x86-rbx))
-     (x86-mov cgc (x86-mem 16 (x86-rax) alloc-ptr) (x86-rbx))
-     (x86-add cgc (x86-rax) (x86-imm-int 8))
-     (x86-jmp cgc label-loop)
+   (x86-pop cgc (x86-rbx))
+   (x86-mov cgc (x86-mem 16 (x86-rax) alloc-ptr) (x86-rbx))
+   (x86-add cgc (x86-rax) (x86-imm-int 8))
+   (x86-jmp cgc label-loop)
 
    (x86-label cgc label-end)
    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
@@ -456,7 +456,7 @@
 
   (let ((regs
           (map (lambda (el) (codegen-loc-to-x86opnd fs el))
-                rest-regs))
+               rest-regs))
         (dest
           (and destreg (codegen-loc-to-x86opnd fs destreg)))
         (header-word     (mem-header 3 STAG_PAIR))
@@ -471,15 +471,15 @@
     (x86-label cgc label-loop)
     (x86-cmp cgc (x86-r15) (x86-imm-int 0))
     (x86-je cgc label-loop-end)
-        (gen-allocation cgc #f STAG_PAIR 3)
-        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-        (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
-        (x86-pop cgc (x86-rax))
-        (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rax))
-        (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-r14))
-        (x86-lea cgc (x86-r14) (x86-mem TAG_MEMOBJ alloc-ptr))
-        (x86-sub cgc (x86-r15) (x86-imm-int (obj-encoding 1)))
-        (x86-jmp cgc label-loop)
+    (gen-allocation cgc #f STAG_PAIR 3)
+    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+    (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
+    (x86-pop cgc (x86-rax))
+    (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rax))
+    (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-r14))
+    (x86-lea cgc (x86-r14) (x86-mem TAG_MEMOBJ alloc-ptr))
+    (x86-sub cgc (x86-r15) (x86-imm-int (obj-encoding 1)))
+    (x86-jmp cgc label-loop)
     (x86-label cgc label-loop-end)
     ;; Regs
     (for-each
@@ -529,18 +529,18 @@
         (x86-cmp cgc (x86-rdi) (x86-imm-int (* nb-formal 4)))
         (x86-je cgc label-loop-end)
           ;; Loop-body
-          (x86-push cgc (x86-rax)) ;; TODO
-          (gen-allocation cgc #f STAG_PAIR 3)                    ;; alloc pair p
-          (x86-pop cgc (x86-rax))                                 ;;
-          (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))          ;; p.cdr = rax (last pair)
-          (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp) (x86-rbx))) ;; p.car = stack[arg-offset]
-          (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))         ;;
-          (x86-mov cgc (x86-rax) (x86-imm-int header-word))       ;; p.header = header-word
-          (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))         ;;
-          (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))   ;; rax = p (tagged)
-          (x86-add cgc (x86-rbx) (x86-imm-int 8))                 ;; offset += 8 (to next arg)
-          (x86-sub cgc (x86-rdi) (x86-imm-int 4))                 ;; rdi    -= 4 (update nb args to copy)
-          (x86-jmp cgc label-loop)                                ;; goto loop
+        (x86-push cgc (x86-rax)) ;; TODO
+        (gen-allocation cgc #f STAG_PAIR 3)                    ;; alloc pair p
+        (x86-pop cgc (x86-rax))                                 ;;
+        (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))          ;; p.cdr = rax (last pair)
+        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp) (x86-rbx))) ;; p.car = stack[arg-offset]
+        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))         ;;
+        (x86-mov cgc (x86-rax) (x86-imm-int header-word))       ;; p.header = header-word
+        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))         ;;
+        (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))   ;; rax = p (tagged)
+        (x86-add cgc (x86-rbx) (x86-imm-int 8))                 ;; offset += 8 (to next arg)
+        (x86-sub cgc (x86-rdi) (x86-imm-int 4))                 ;; rdi    -= 4 (update nb args to copy)
+        (x86-jmp cgc label-loop)                                ;; goto loop
         ;; Loop-end
         (x86-label cgc label-loop-end)
         (x86-mov cgc (x86-mem (* -8 nb-formal) (x86-rsp) (x86-rdx) 1) (x86-rax)) ;; Mov rest list to stack
@@ -620,10 +620,10 @@
     (x86-cmp cgc (x86-rbx) (x86-imm-int (obj-encoding '())))
     (x86-je cgc label-end)
       ;; Else, push arg and update RDI
-      (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))           ;; Push car
-      (x86-mov cgc (x86-rbx) (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx))) ;; Get cdr for next iteration
-      (x86-inc cgc (x86-rdi))  ;; inc args number
-      (x86-jmp cgc label-loop) ;; next iteration
+    (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))           ;; Push car
+    (x86-mov cgc (x86-rbx) (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx))) ;; Get cdr for next iteration
+    (x86-inc cgc (x86-rdi))  ;; inc args number
+    (x86-jmp cgc label-loop) ;; next iteration
     ;; All args are pushed
     (x86-label cgc label-end))
   ;; Encode nb args
@@ -704,32 +704,32 @@
         (opright (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
 
   ;; Handle cases like 1. 2. etc...
-  (if (and lcst? (flonum? lleft))
-      (set! lleft (##flonum->fixnum lleft)))
-  (if (and rcst? (flonum? lright))
-      (set! lright (##flonum->fixnum lright)))
+   (if (and lcst? (flonum? lleft))
+       (set! lleft (##flonum->fixnum lleft)))
+   (if (and rcst? (flonum? lright))
+       (set! lright (##flonum->fixnum lright)))
 
-  (cond
-    (lcst?
-      (cond ((eq? op '+) (x86-mov cgc dest opright)
-                         (x86-add cgc dest (x86-imm-int (obj-encoding lleft))))
-            ((eq? op '-) (x86-mov cgc dest (x86-imm-int (obj-encoding lleft)))
-                         (x86-sub cgc dest opright))
-            ((eq? op '*) (x86-imul cgc dest opright (x86-imm-int lleft)))))
-    (rcst?
-      (cond ((eq? op '+) (x86-mov cgc dest opleft)
-                         (x86-add cgc dest (x86-imm-int (obj-encoding lright))))
-            ((eq? op '-) (x86-mov cgc dest opleft)
-                         (x86-sub cgc dest (x86-imm-int (obj-encoding lright))))
-            ((eq? op '*) (x86-imul cgc dest opleft (x86-imm-int lright)))))
-    (else
-      (x86-mov cgc dest opleft)
-      (cond ((eq? op '+) (x86-add cgc dest opright))
-            ((eq? op '-) (x86-sub cgc dest opright))
-            ((eq? op '*) (x86-sar cgc dest (x86-imm-int 2))
-                         (x86-imul cgc dest opright)))))
+   (cond
+     (lcst?
+       (cond ((eq? op '+) (x86-mov cgc dest opright)
+                          (x86-add cgc dest (x86-imm-int (obj-encoding lleft))))
+             ((eq? op '-) (x86-mov cgc dest (x86-imm-int (obj-encoding lleft)))
+                          (x86-sub cgc dest opright))
+             ((eq? op '*) (x86-imul cgc dest opright (x86-imm-int lleft)))))
+     (rcst?
+       (cond ((eq? op '+) (x86-mov cgc dest opleft)
+                          (x86-add cgc dest (x86-imm-int (obj-encoding lright))))
+             ((eq? op '-) (x86-mov cgc dest opleft)
+                          (x86-sub cgc dest (x86-imm-int (obj-encoding lright))))
+             ((eq? op '*) (x86-imul cgc dest opleft (x86-imm-int lright)))))
+     (else
+       (x86-mov cgc dest opleft)
+       (cond ((eq? op '+) (x86-add cgc dest opright))
+             ((eq? op '-) (x86-sub cgc dest opright))
+             ((eq? op '*) (x86-sar cgc dest (x86-imm-int 2))
+                          (x86-imul cgc dest opright)))))
 
-  (x86-jo cgc (list-ref labels-overflow 0))))
+   (x86-jo cgc (list-ref labels-overflow 0))))
 
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
 (define (codegen-num-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst?)
@@ -752,51 +752,51 @@
     (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd) (/ . ,x86-divsd))))))
 
     ;; Right operand
-    (if rightint?
+     (if rightint?
         ;; Right is register or mem or cst and integer
-        (begin
-          (if rcst?
-              (x86-mov cgc (x86-rax) (x86-imm-int lright))
-              (begin (x86-mov cgc (x86-rax) opright)
-                     (x86-sar cgc (x86-rax) (x86-imm-int 2)))) ;; untag integer
-          (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
-        (if (ctx-loc-is-register? lright)
+         (begin
+           (if rcst?
+               (x86-mov cgc (x86-rax) (x86-imm-int lright))
+               (begin (x86-mov cgc (x86-rax) opright)
+                      (x86-sar cgc (x86-rax) (x86-imm-int 2)))) ;; untag integer
+           (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
+         (if (ctx-loc-is-register? lright)
             ;; Right is register and not integer, then get float value in xmm0
-            (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright))
+             (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright))
             ;; Right is memory and not integer, then get float value in xmm0
-            (begin (x86-mov cgc (x86-rax) opright)
-                   (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))))
-    (set! opright (x86-xmm0))
+             (begin (x86-mov cgc (x86-rax) opright)
+                    (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))))
+     (set! opright (x86-xmm0))
 
     ;; Left operand
-    (if leftint?
+     (if leftint?
         ;; Left is register or mem or cst and integer
-        (begin
-          (if lcst?
-              (x86-mov cgc (x86-rax) (x86-imm-int lleft))
-              (begin (x86-mov cgc (x86-rax) opleft)
-                     (x86-sar cgc (x86-rax) (x86-imm-int 2)))) ;; untag integer
-          (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))) ;; convert to double
-        (if (ctx-loc-is-register? lleft)
+         (begin
+           (if lcst?
+               (x86-mov cgc (x86-rax) (x86-imm-int lleft))
+               (begin (x86-mov cgc (x86-rax) opleft)
+                      (x86-sar cgc (x86-rax) (x86-imm-int 2)))) ;; untag integer
+           (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))) ;; convert to double
+         (if (ctx-loc-is-register? lleft)
             ;; Left is register and not integer, then get float value in xmm1
-            (x86-movsd cgc (x86-xmm1) (x86-mem (- 8 TAG_MEMOBJ) opleft))
+             (x86-movsd cgc (x86-xmm1) (x86-mem (- 8 TAG_MEMOBJ) opleft))
             ;; Left is memory and not integer, then get float value in xmm1
-            (begin (x86-mov cgc (x86-rax) opleft)
-                   (x86-movsd cgc (x86-xmm1) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))))
-    (set! opleft (x86-xmm1))
+             (begin (x86-mov cgc (x86-rax) opleft)
+                    (x86-movsd cgc (x86-xmm1) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))))
+     (set! opleft (x86-xmm1))
 
     ;; Operator, result in opleft
-    (x86-op cgc opleft opright)
+     (x86-op cgc opleft opright)
 
     ;; Write header
-    (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 2 STAG_FLONUM)))
-    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+     (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 2 STAG_FLONUM)))
+     (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
 
     ;; Write number
-    (x86-movsd cgc (x86-mem 8 alloc-ptr) opleft)
+     (x86-movsd cgc (x86-mem 8 alloc-ptr) opleft)
 
     ;; Put
-    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr)))))
+     (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr)))))
 
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
@@ -883,8 +883,8 @@
          (x86-sar cgc (x86-rax) (x86-imm-int 2))
          (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax)))
       ((ctx-loc-is-memory? lleft)
-         (x86-mov cgc (x86-rax) opleft)
-         (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+       (x86-mov cgc (x86-rax) opleft)
+       (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
       (else
          (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opleft))))
 
@@ -900,8 +900,8 @@
         (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
         (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
       ((ctx-loc-is-memory? lright)
-        (x86-mov cgc (x86-rax) opright)
-        (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+       (x86-mov cgc (x86-rax) opright)
+       (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
       (else
         (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright))))
 
@@ -951,18 +951,18 @@
     (x86-idiv cgc ropnd)
 
     (cond ((eq? op 'quotient)
-             (x86-shl cgc (x86-rax) (x86-imm-int 2))
-             (x86-mov cgc dest (x86-rax)))
+           (x86-shl cgc (x86-rax) (x86-imm-int 2))
+           (x86-mov cgc dest (x86-rax)))
           ((eq? op 'remainder)
-             (x86-shl cgc (x86-rdx) (x86-imm-int 2))
-             (x86-mov cgc dest (x86-rdx)))
+           (x86-shl cgc (x86-rdx) (x86-imm-int 2))
+           (x86-mov cgc dest (x86-rdx)))
           ((eq? op 'modulo)
-             (x86-mov cgc (x86-rax) (x86-rdx))
-             (x86-add cgc (x86-rax) ropnd)
-             (x86-cqo cgc)
-             (x86-idiv cgc ropnd)
-             (x86-shl cgc (x86-rdx) (x86-imm-int 2))
-             (x86-mov cgc dest (x86-rdx))))
+           (x86-mov cgc (x86-rax) (x86-rdx))
+           (x86-add cgc (x86-rax) ropnd)
+           (x86-cqo cgc)
+           (x86-idiv cgc ropnd)
+           (x86-shl cgc (x86-rdx) (x86-imm-int 2))
+           (x86-mov cgc dest (x86-rdx))))
 
     (if (and (neq? ordest  (x86-rdx))
              (neq? orlopnd (x86-rdx))
@@ -995,9 +995,9 @@
 
     (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
     (cond ((and (ctx-loc-is-memory? lval) mut-val?)
-             (x86-mov cgc (x86-rax) opval) ;; move mem to reg
-             (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; unbox mutable
-             (set! opval (x86-rax)))
+           (x86-mov cgc (x86-rax) opval) ;; move mem to reg
+           (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; unbox mutable
+           (set! opval (x86-rax)))
           (mut-val?
              (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opval))
              (set! opval (x86-rax))))
@@ -1021,15 +1021,15 @@
 
   (define (cmp cgc opl opr)
     (cond ((x86-reg? opl)
-             (x86-cmp cgc opl opr))
+           (x86-cmp cgc opl opr))
           ((x86-reg? opr)
-             (x86-cmp cgc opr opl))
+           (x86-cmp cgc opr opl))
           ((x86-mem? opl)
-             (x86-mov cgc (x86-rax) opl)
-             (x86-cmp cgc (x86-rax) opr))
+           (x86-mov cgc (x86-rax) opl)
+           (x86-cmp cgc (x86-rax) opr))
           ((x86-mem? opr)
-             (x86-mov cgc (x86-rax) opr)
-             (x86-cmp cgc (x86-rax) opl))
+           (x86-mov cgc (x86-rax) opr)
+           (x86-cmp cgc (x86-rax) opl))
           (else
              (error "Internal error"))))
 
@@ -1038,41 +1038,41 @@
         (lopnd (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
         (ropnd (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
 
-  (cond ((and lcst? rcst?)
-           (x86-mov cgc dest (x86-imm-int (obj-encoding (eq? lleft lright)))))
-        (lcst?
-           (if mutr?
-               (begin (codegen-unbox cgc (x86-rax) ropnd)
-                      (cmp cgc (x86-imm-int (obj-encoding lleft)) (x86-rax)))
-               (cmp cgc (x86-imm-int (obj-encoding lleft)) ropnd)))
-        (rcst?
-           (if mutl?
-               (begin (codegen-unbox cgc (x86-rax) lopnd)
-                      (cmp cgc (x86-rax) (x86-imm-int (obj-encoding lright))))
-               (cmp cgc lopnd (x86-imm-int (obj-encoding lright)))))
-        (else
-           (cond ((and mutl? mutr?)
-                    (if (or (eq? dest lopnd)
-                            (eq? dest ropnd))
-                        (error "Internal NYI error"))
-                    (codegen-unbox cgc (x86-rax) lopnd)
-                    (codegen-unbox cgc dest ropnd)
-                    (cmp cgc (x86-rax) dest))
-                 (mutl?
+   (cond ((and lcst? rcst?)
+          (x86-mov cgc dest (x86-imm-int (obj-encoding (eq? lleft lright)))))
+         (lcst?
+            (if mutr?
+                (begin (codegen-unbox cgc (x86-rax) ropnd)
+                       (cmp cgc (x86-imm-int (obj-encoding lleft)) (x86-rax)))
+                (cmp cgc (x86-imm-int (obj-encoding lleft)) ropnd)))
+         (rcst?
+            (if mutl?
+                (begin (codegen-unbox cgc (x86-rax) lopnd)
+                       (cmp cgc (x86-rax) (x86-imm-int (obj-encoding lright))))
+                (cmp cgc lopnd (x86-imm-int (obj-encoding lright)))))
+         (else
+            (cond ((and mutl? mutr?)
+                   (if (or (eq? dest lopnd)
+                           (eq? dest ropnd))
+                       (error "Internal NYI error"))
                    (codegen-unbox cgc (x86-rax) lopnd)
-                   (cmp cgc (x86-rax) ropnd))
-                 (mutr?
-                   (codegen-unbox cgc (x86-rax) ropnd)
-                   (cmp cgc (x86-rax) lopnd))
-                 (else
-                   (cmp cgc lopnd ropnd)))))
+                   (codegen-unbox cgc dest ropnd)
+                   (cmp cgc (x86-rax) dest))
+                  (mutl?
+                    (codegen-unbox cgc (x86-rax) lopnd)
+                    (cmp cgc (x86-rax) ropnd))
+                  (mutr?
+                    (codegen-unbox cgc (x86-rax) ropnd)
+                    (cmp cgc (x86-rax) lopnd))
+                  (else
+                    (cmp cgc lopnd ropnd)))))
 
-  (if (not (and lcst? rcst?))
-      (begin
-        (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-        (x86-je  cgc label-done)
-        (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-        (x86-label cgc label-done)))))
+   (if (not (and lcst? rcst?))
+       (begin
+         (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+         (x86-je  cgc label-done)
+         (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+         (x86-label cgc label-done)))))
 
   ;
   ;  (cond ;; Both cst
@@ -1191,8 +1191,8 @@
       (val-cst?
         (x86-mov cgc (x86-mem offset oppair) (x86-imm-int (obj-encoding lval)) 64))
       ((ctx-loc-is-memory? lval)
-        (x86-mov cgc dest opval)
-        (x86-mov cgc (x86-mem offset oppair) dest))
+       (x86-mov cgc dest opval)
+       (x86-mov cgc (x86-mem offset oppair) dest))
       (else
         (x86-mov cgc (x86-mem offset oppair) opval)))
 
@@ -1217,29 +1217,41 @@
 
 ;;-----------------------------------------------------------------------------
 ;; open-input/output-port
-(define (codegen-open-io-file cgc fs op reg lval)
+(define (codegen-open-io-file cgc fs op reg lstr mut-str?)
   (let* ((direction   (if (eq? op 'open-output-file) 'out 'in))
          (stag        (if (eq? direction 'in) STAG_IPORT STAG_OPORT))
          (header-word (mem-header 2 stag))
          (dest  (codegen-reg-to-x86reg reg))
-         (opval (codegen-loc-to-x86opnd fs lval)))
-    ;; Move operand to rax for syscall
-    (x86-mov cgc (x86-rax) opval)
-    ;; Gen 'open' syscall, file descriptor in rax
-    (gen-syscall-open cgc direction)
-    ;; Allocate port object
-    (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode descriptor (in case gen-alloc triggers GC)
-    (x86-push cgc (x86-rax))
-    (gen-allocation cgc #f stag 2)
-    ;; Mov header
-    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-    ;; Mov descriptor
-    (x86-pop cgc (x86-rax))
-    (x86-shr cgc (x86-rax) (x86-imm-int 2)) ;; Decode descriptor
-    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-    ;;; Tag & push
-    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
+         (opval (codegen-loc-to-x86opnd fs lstr)))
+
+    (begin-with-cg-macro
+
+      ;;
+      ;; Unmem / Unbox code
+      ;; Move operand to rax for syscall
+      (x86-mov cgc (x86-rax) opval)
+      (if mut-str?
+          (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+      ;(unmem! (x86-rax) opval)
+      ;(chk-unmem-unbox! (x86-rax) opval mut-str?)
+
+      ;;
+      ;; Primitive code
+      ;; Gen 'open' syscall, file descriptor in rax
+      (gen-syscall-open cgc direction)
+      ;; Allocate port object
+      (x86-shl cgc (x86-rax) (x86-imm-int 2)) ;; Encode descriptor (in case gen-alloc triggers GC)
+      (x86-push cgc (x86-rax))
+      (gen-allocation cgc #f stag 2)
+      ;; Mov header
+      (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+      (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+      ;; Mov descriptor
+      (x86-pop cgc (x86-rax))
+      (x86-shr cgc (x86-rax) (x86-imm-int 2)) ;; Decode descriptor
+      (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+      ;;; Tag & push
+      (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr)))))
 
 ;;-----------------------------------------------------------------------------
 ;; eof-object?
@@ -1301,23 +1313,23 @@
 
   (let ((dest (codegen-reg-to-x86reg reg)))
 
-  (cond
-    ((and cst? (eq? op 'integer->char))
-       (x86-mov cgc dest (x86-imm-int (obj-encoding (integer->char lval)))))
-    ((and cst? (eq? op 'char->integer))
-       (x86-mov cgc dest (x86-imm-int (obj-encoding (char->integer lval)))))
-    (else
-       (let ((opval (codegen-loc-to-x86opnd fs lval)))
+   (cond
+     ((and cst? (eq? op 'integer->char))
+      (x86-mov cgc dest (x86-imm-int (obj-encoding (integer->char lval)))))
+     ((and cst? (eq? op 'char->integer))
+      (x86-mov cgc dest (x86-imm-int (obj-encoding (char->integer lval)))))
+     (else
+        (let ((opval (codegen-loc-to-x86opnd fs lval)))
 
-         (if (neq? dest opval)
-             (x86-mov cgc dest opval))
+          (if (neq? dest opval)
+              (x86-mov cgc dest opval))
 
-         (if mut-val?
-             (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) dest)))
+          (if mut-val?
+              (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) dest)))
 
-         (if (eq? op 'char->integer)
-             (x86-xor cgc dest (x86-imm-int TAG_SPECIAL))
-             (x86-or  cgc dest (x86-imm-int TAG_SPECIAL))))))))
+          (if (eq? op 'char->integer)
+              (x86-xor cgc dest (x86-imm-int TAG_SPECIAL))
+              (x86-or  cgc dest (x86-imm-int TAG_SPECIAL))))))))
 
 ;;-----------------------------------------------------------------------------
 ;; make-string
@@ -1354,9 +1366,9 @@
     (x86-cmp cgc dest (x86-imm-int 0))
     (x86-je cgc label-end)
 
-      (x86-mov cgc (x86-mem 15 alloc-ptr dest) (x86-al))
-      (x86-dec cgc dest)
-      (x86-jmp cgc label-loop)
+    (x86-mov cgc (x86-mem 15 alloc-ptr dest) (x86-al))
+    (x86-dec cgc dest)
+    (x86-jmp cgc label-loop)
 
     ;; END:
     (x86-label cgc label-end)
@@ -1402,24 +1414,24 @@
     ;; If opval not in register, save rbx and use it
     (cond ((not lval)
              ;; No init val given, then use rbx with value 0
-             (x86-push cgc (x86-rbx))
-             (x86-mov cgc (x86-rbx) (x86-imm-int 0))
-             (set! oplen (codegen-loc-to-x86opnd (+ fs 1) llen))
-             (set! opval (x86-rbx)))
+           (x86-push cgc (x86-rbx))
+           (x86-mov cgc (x86-rbx) (x86-imm-int 0))
+           (set! oplen (codegen-loc-to-x86opnd (+ fs 1) llen))
+           (set! opval (x86-rbx)))
           ((not (ctx-loc-is-register? lval))
              ;; Init value id in memory, then use rbx with given init value
-             (x86-push cgc (x86-rbx))
-             (x86-mov cgc (x86-rbx) opval)
-             (set! oplen (codegen-loc-to-x86opnd (+ fs 1) llen))
-             (set! opval (x86-rbx))))
+           (x86-push cgc (x86-rbx))
+           (x86-mov cgc (x86-rbx) opval)
+           (set! oplen (codegen-loc-to-x86opnd (+ fs 1) llen))
+           (set! opval (x86-rbx))))
 
     (x86-label cgc label-loop)
     (x86-cmp cgc (x86-rax) (x86-imm-int 0))
     (x86-je cgc label-end)
 
-      (x86-mov cgc (x86-mem 8 alloc-ptr (x86-rax)) opval)
-      (x86-sub cgc (x86-rax) (x86-imm-int 8))
-      (x86-jmp cgc label-loop)
+    (x86-mov cgc (x86-mem 8 alloc-ptr (x86-rax)) opval)
+    (x86-sub cgc (x86-rax) (x86-imm-int 8))
+    (x86-jmp cgc label-loop)
 
     (x86-label cgc label-end)
 
@@ -1506,13 +1518,13 @@
       (x86-jle cgc label-end)
 
         ;; Copy qword
-        (if mut-sym?
-            (begin (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opsym))
-                   (x86-mov cgc (x86-rax) (x86-mem (* -1 (+ 8 TAG_MEMOBJ)) (x86-rax) dest)))
-            (x86-mov cgc (x86-rax) (x86-mem (* -1 (+ 8 TAG_MEMOBJ)) opsym dest)))
-        (x86-mov cgc (x86-mem -8 alloc-ptr dest) (x86-rax))
-        (x86-sub cgc dest (x86-imm-int 8))
-        (x86-jmp cgc label-loop)
+      (if mut-sym?
+          (begin (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opsym))
+                 (x86-mov cgc (x86-rax) (x86-mem (* -1 (+ 8 TAG_MEMOBJ)) (x86-rax) dest)))
+          (x86-mov cgc (x86-rax) (x86-mem (* -1 (+ 8 TAG_MEMOBJ)) opsym dest)))
+      (x86-mov cgc (x86-mem -8 alloc-ptr dest) (x86-rax))
+      (x86-sub cgc dest (x86-imm-int 8))
+      (x86-jmp cgc label-loop)
 
       (x86-label cgc label-end))
 
@@ -1615,31 +1627,31 @@
                   #f
                   regalloc-regs)))
 
-  (assert (not (or (eq? dest opvec)
-                   (eq? dest opval)))
-          "Internal error")
+   (assert (not (or (eq? dest opvec)
+                    (eq? dest opval)))
+           "Internal error")
 
-  (cond ((and (ctx-loc-is-memory? lvec)
-              (ctx-loc-is-memory? lval))
-           (set! regsaved REG1)
-           (x86-mov cgc dest opvec)
-           (x86-mov cgc REG1 opval)
-           (set! opvec dest)
-           (set! opval REG1))
-        ((ctx-loc-is-memory? lvec)
-           (x86-mov cgc dest opvec)
-           (set! opvec dest))
-        ((ctx-loc-is-memory? lval)
-           (x86-mov cgc dest opval)
-           (set! opval dest)))
+   (cond ((and (ctx-loc-is-memory? lvec)
+               (ctx-loc-is-memory? lval))
+          (set! regsaved REG1)
+          (x86-mov cgc dest opvec)
+          (x86-mov cgc REG1 opval)
+          (set! opvec dest)
+          (set! opval REG1))
+         ((ctx-loc-is-memory? lvec)
+          (x86-mov cgc dest opvec)
+          (set! opvec dest))
+         ((ctx-loc-is-memory? lval)
+          (x86-mov cgc dest opval)
+          (set! opval dest)))
 
-  (x86-mov cgc (x86-rax) opidx)
-  (x86-shl cgc (x86-rax) (x86-imm-int 1))
-  (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) opvec (x86-rax)) opval)
-  (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+   (x86-mov cgc (x86-rax) opidx)
+   (x86-shl cgc (x86-rax) (x86-imm-int 1))
+   (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) opvec (x86-rax)) opval)
+   (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
 
-  (if regsaved
-      (x86-pop cgc regsaved))))
+   (if regsaved
+       (x86-pop cgc regsaved))))
 
 
   ;(x86-shl cgc opidx (x86-imm-int 1))
@@ -1697,10 +1709,10 @@
 
     (cond
       ((and idx-cst? chr-cst?)
-         (x86-mov cgc
-           (x86-mem (+ (- 16 TAG_MEMOBJ) lidx) opstr)
-           (x86-imm-int (char->integer lchr))
-           8))
+       (x86-mov cgc
+         (x86-mem (+ (- 16 TAG_MEMOBJ) lidx) opstr)
+         (x86-imm-int (char->integer lchr))
+         8))
       (idx-cst?
          (x86-mov cgc (x86-rax) opchr)
          (x86-shr cgc (x86-rax) (x86-imm-int 2))
@@ -1718,9 +1730,9 @@
          (x86-shr cgc (x86-rax) (x86-imm-int 2))
          (if (and (ctx-loc-is-memory? lidx)
                   (ctx-loc-is-memory? lstr))
-               (error "NYI we need to save a register")
-               (begin (x86-mov cgc dest opidx)
-                      (set! opidx dest)))
+             (error "NYI we need to save a register")
+             (begin (x86-mov cgc dest opidx)
+                    (set! opidx dest)))
          (x86-shr cgc opidx (x86-imm-int 2))
          (x86-mov cgc
            (x86-mem (- 16 TAG_MEMOBJ) opstr opidx)
@@ -1742,17 +1754,17 @@
     (x86-cmp cgc (x86-rdi) (x86-imm-int 0))
     (x86-je cgc label-list-end)
 
-      (gen-allocation cgc #f STAG_PAIR 3)
-      (x86-pop cgc (x86-rbx)) ;; pop cdr
-      (x86-pop cgc (x86-rdx)) ;; pop car
-      (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rdx))
-      (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
-      (x86-mov cgc (x86-rbx) (x86-imm-int (mem-header 3 STAG_PAIR)))
-      (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rbx))
-      (x86-lea cgc (x86-rbx) (x86-mem TAG_MEMOBJ alloc-ptr))
-      (x86-push cgc (x86-rbx))
-      (x86-sub cgc (x86-rdi) (x86-imm-int 1))
-      (x86-jmp cgc label-list-loop)
+    (gen-allocation cgc #f STAG_PAIR 3)
+    (x86-pop cgc (x86-rbx)) ;; pop cdr
+    (x86-pop cgc (x86-rdx)) ;; pop car
+    (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rdx))
+    (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
+    (x86-mov cgc (x86-rbx) (x86-imm-int (mem-header 3 STAG_PAIR)))
+    (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rbx))
+    (x86-lea cgc (x86-rbx) (x86-mem TAG_MEMOBJ alloc-ptr))
+    (x86-push cgc (x86-rbx))
+    (x86-sub cgc (x86-rdi) (x86-imm-int 1))
+    (x86-jmp cgc label-list-loop)
 
     (x86-label cgc label-list-end)))
 

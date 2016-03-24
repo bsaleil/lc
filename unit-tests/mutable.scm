@@ -96,6 +96,17 @@
   (set! a (symbol->string a))
   (pp a))
 
+;; open-input/output-file primitives
+(let ((file "./unit-tests/mutable"))
+  (set! file "./unit-tests/mutable-out")
+  (let ((out (open-output-file file)))
+    (write-char #\A out)
+    (write-char #\B out)
+    (close-output-port out))
+  (let ((in (open-input-file file)))
+    (print (read-char in)) (print #\,)
+    (println (read-char in))))
+
 ;; string-length primitive
 (let ((a "Hello World"))
   (print (string-length a))
@@ -124,5 +135,6 @@
 ;world
 ;hello
 ;"hello"
+;A,B
 ;1113
 ;AB

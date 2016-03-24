@@ -51,11 +51,15 @@
                 ERR_OPEN_INPUT_FILE
                 ERR_OPEN_OUTPUT_FILE))
 
-  ;; Save destroyed regs
+  (x86-label cgc (asm-make-label #f (new-sym 'syscall_open_)))
+
+  ;; Save destroyed regs)
   (x86-push cgc (x86-rcx)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
   (x86-push cgc (x86-r11)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
+  (x86-push cgc (x86-rbx))
+  (x86-push cgc (x86-rdx))
 
   ;; c-string argument (rdi)
   (x86-mov cgc (x86-rdi) (x86-rax)) ;; Str in rdi (Str is in rax)
@@ -80,9 +84,12 @@
     ;; Result is >= then syscall is ok
     (x86-jge cgc label-syscall-ok)
       ;; Else syscall failed
-      (gen-error cgc err)
+    (gen-error cgc err)
     (x86-label cgc label-syscall-ok))
+
   ;; Restore destroyed regs
+  (x86-pop cgc (x86-rdx))
+  (x86-pop cgc (x86-rbx))
   (x86-pop cgc (x86-rsi))
   (x86-pop cgc (x86-rdi))
   (x86-pop cgc (x86-r11))
@@ -94,6 +101,8 @@
 (define (gen-syscall-close cgc)
 
   ;; Port is in rax
+
+  (x86-label cgc (asm-make-label #f (new-sym 'syscall_close_)))
 
   ;; Save destroyed regs
   (x86-push cgc (x86-rcx)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
@@ -121,11 +130,14 @@
 
 (define (gen-syscall-read-char cgc)
 
+  (x86-label cgc (asm-make-label #f (new-sym 'syscall_read-char_)))
+
   ;; Save destroyed regs
   (x86-push cgc (x86-rcx)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
   (x86-push cgc (x86-r11)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
+  (x86-push cgc (x86-rdx))
 
   ;; file descriptor (rdi)
   (x86-mov cgc (x86-rdi) (x86-rax)) ;; Port object in rdi (port is in rax)
@@ -144,23 +156,25 @@
   ;; Returned value
   (let ((label-read-eof (asm-make-label #f (new-sym 'label-read-eof)))
         (label-read-ch  (asm-make-label #f (new-sym 'label-read-ch))))
-  (x86-cmp cgc (x86-rax) (x86-imm-int 0))
-  (x86-pop cgc (x86-rax)) ;; Pop buffer
+   (x86-cmp cgc (x86-rax) (x86-imm-int 0))
+   (x86-pop cgc (x86-rax)) ;; Pop buffer
   ;; if res = 0, EOF is read
-  (x86-je cgc label-read-eof) ;; = 0, EOF
+   (x86-je cgc label-read-eof) ;; = 0, EOF
   ;; if res > 0, a CHAR is read
-  (x86-jg cgc label-read-ch)  ;; > 0, CHAR
+   (x86-jg cgc label-read-ch)  ;; > 0, CHAR
   ;; else, it's an error
-  (gen-error cgc ERR_READ_CHAR)
+   (gen-error cgc ERR_READ_CHAR)
 
   ;; EOF : mov non encoded EOF value
-  (x86-label cgc label-read-eof)
-  (x86-mov cgc (x86-rax) (x86-imm-int NENCODING_EOF))
+   (x86-label cgc label-read-eof)
+   (x86-mov cgc (x86-rax) (x86-imm-int NENCODING_EOF))
   ;; Encode special (char or eof)
-  (x86-label cgc label-read-ch)
-  (x86-shl cgc (x86-rax) (x86-imm-int 2))
-  (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
+   (x86-label cgc label-read-ch)
+   (x86-shl cgc (x86-rax) (x86-imm-int 2))
+   (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
+
   ;; Restore destroyed regs
+  (x86-pop cgc (x86-rdx))
   (x86-pop cgc (x86-rsi))
   (x86-pop cgc (x86-rdi))
   (x86-pop cgc (x86-r11))
@@ -170,6 +184,8 @@
 ;; WRITE-CHAR
 ;; TODO: stdout ??
 (define (gen-syscall-write-char cgc)
+
+  (x86-label cgc (asm-make-label #f (new-sym 'syscall_write-char_)))
 
   ;; Save destroyed regs
   (x86-push cgc (x86-rcx)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
@@ -200,7 +216,7 @@
     ;; Result is >= then syscall is ok
     (x86-je cgc label-syscall-ok)
       ;; Else syscall failed
-      (gen-error cgc ERR_WRITE_CHAR)
+    (gen-error cgc ERR_WRITE_CHAR)
     (x86-label cgc label-syscall-ok))
 
   ;; Restore destroyed regs

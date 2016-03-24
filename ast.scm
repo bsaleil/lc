@@ -1232,8 +1232,9 @@
 
 ;; primitives open-input-file & open-output-file
 (define (prim-open-x-file cgc ctx reg succ cst-infos op)
-  (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-open-io-file cgc (ctx-fs ctx) op reg lval)
+  (let ((lstr (ctx-get-loc ctx 0))
+        (mut-str? (ctx-is-mutable? ctx 0)))
+    (codegen-open-io-file cgc (ctx-fs ctx) op reg lstr mut-str?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
                                         (if (eq? op 'open-input-file)
                                             CTX_IPORT

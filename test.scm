@@ -3,7 +3,16 @@
 
 
 
-;(let ((ip (open-input-file "./mutable-in")))
+(let ((file "./unit-tests/mutable"))
+  (set! file "./unit-tests/mutable-out")
+  (let ((out (open-output-file file)))
+    (write-char #\A out)
+    (write-char #\B out)
+    (close-output-port out))
+  (let ((in (open-input-file file)))
+    (print (read-char in)) (print #\,)
+    (println (read-char in))))
+
 
 
 
