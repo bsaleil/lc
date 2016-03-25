@@ -174,6 +174,28 @@
    (print (* a c)) (print #\,)
    (println (- d a)))
 
+; integer comparison operator
+(let ((a 100)
+      (b 200)
+      (c 5)
+      (d 6))
+   (set! a 5)
+   (set! b 4)
+   (print (< a b)) (print #\,)
+   (print (= a c)) (print #\,)
+   (print (> a b)) (print #\,)
+   (print (<= c a)) (print #\,)
+   (print (< a d)) (print #\,)
+   (print (> d a)) (print #\,)
+   ;; inlined condition
+   (if (< a b)
+       (print #\a)
+       (print #\b))
+   (print #\,)
+   (if (>= d c)
+       (println #\c)
+       (println #\d)))
+
 ;1o2t
 ;#f#f#t#f#t
 ;#f#t
@@ -196,3 +218,4 @@
 ;#f#t
 ;AB
 ;52,240,-42
+;#f,#t,#t,#t,#t,#t,b,c

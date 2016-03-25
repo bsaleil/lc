@@ -2013,7 +2013,7 @@
 
           (if num-op?
               (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst mut-left? mut-right?)
-              (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst inline-if-labels))
+              (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst mut-left? mut-right? inline-if-labels))
 
           (if (not inlined-if-cond?)
               (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg)))))))

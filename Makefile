@@ -43,12 +43,12 @@ expand.o1: expand.scm
 
 # Run unit tests
 test:
-	rm ./unit-tests/mutable-out
+	rm ./unit-tests/mutable-out -rf
 	./run-ut.scm -lc
 
 # Run full unit tests with and without entry and return points
 full-test:
-	rm ./unit-tests/mutable-out
+	rm ./unit-tests/mutable-out -rf
 	./run-ut.scm -lc -lc-nep -lc-nrp -lc-nep-nrp -lc-n-regalloc
 
 # Clean

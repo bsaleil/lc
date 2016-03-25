@@ -1,16 +1,29 @@
 ;; Close output ports
 ;; Close input ports
 
-;; integer numeric operator
+; integer comparison operator
 (let ((a 100)
       (b 200)
       (c 5)
       (d 6))
-   (set! a 48)
+   (set! a 5)
    (set! b 4)
-   (print (+ a b)) (print #\,)
-   (print (* a c)) (print #\,)
-   (println (- d a)))
+   (print (< a b)) (print #\,)
+   (print (= a c)) (print #\,)
+   (print (> a b)) (print #\,)
+   (print (<= c a)) (print #\,)
+   (print (< a d)) (print #\,)
+   (print (> d a)) (print #\,)
+   ;; inlined condition
+   (if (< a b)
+       (print #\a)
+       (print #\b))
+   (print #\,)
+   (if (>= d c)
+       (println #\c)
+       (println #\d)))
+
+
 
 ;; TODO: call with arg mutable
 ;; let returning mutable

@@ -831,20 +831,12 @@
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
 
-(define (codegen-cmp-ii cgc fs op reg lleft lright lcst? rcst? inline-if-labels)
+(define (codegen-cmp-ii cgc fs op reg lleft lright lcst? rcst? mut-left? mut-right? inline-if-labels)
 
   (define-macro (if-inline expr)
     `(if inline-if-labels #f ,expr))
 
   (assert (not (and lcst? rcst?)) "Internal codegen error")
-
-
-  ;; TODO: this test is in all cmp-ii cmp-ff num-ii num-ff. Use external function in utils
-  ;; Handle cases like 1. 2. etc...
-  (if (and lcst? (flonum? lleft))
-      (set! lleft (##flonum->fixnum lleft)))
-  (if (and rcst? (flonum? lright))
-      (set! lright (##flonum->fixnum lright)))
 
   (let* ((x86-op  (cdr (assoc op `((< . ,x86-jl) (> . ,x86-jg) (<= . ,x86-jle) (>= . ,x86-jge) (= . ,x86-je)))))
          (x86-iop (cdr (assoc op `((< . ,x86-jg) (> . ,x86-jl) (<= . ,x86-jge) (>= . ,x86-jle) (= . ,x86-je)))))
@@ -852,39 +844,55 @@
          (x86-inline-iop (cdr (assoc op `((< . ,x86-jle) (> . ,x86-jge) (<= . ,x86-jl) (>= . ,x86-jg) (= . ,x86-jne)))))
          (dest      (if-inline (codegen-reg-to-x86reg reg)))
          (label-end (if-inline (asm-make-label #f (new-sym 'label-end))))
-         (opl
-           (if lcst?
-               (x86-imm-int (obj-encoding lleft))
-               (codegen-loc-to-x86opnd fs lleft)))
-         (opr
-           (if rcst?
-               (x86-imm-int (obj-encoding lright))
-               (codegen-loc-to-x86opnd fs lright))))
+         (opl (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
+         (opr (and (not rcst?) (codegen-loc-to-x86opnd fs lright)))
+         (selop x86-op)
+         (selinop x86-inline-op))
 
-    (if (and (not lcst?)
-             (not rcst?)
-             (ctx-loc-is-memory? lleft)
-             (ctx-loc-is-memory? lright))
-        (begin (x86-mov cgc (x86-rax) opl)
-               (set! opl (x86-rax))))
+    (begin-with-cg-macro
 
-    (if lcst?
-        (x86-cmp cgc opr opl)
-        (x86-cmp cgc opl opr))
+      ;;
+      ;; Unmem / Unbox code
+      (chk-unmem&unbox! (x86-rax) opl mut-left?)
 
+      (if (eq? opl (x86-rax))
+          (chk-pick-unmem&unbox! opr mut-right? (list dest opl opr))
+          (chk-unmem&unbox! (x86-rax) opr mut-right?))
 
-   (if inline-if-labels
-       (begin (x86-label cgc (car inline-if-labels)) ;; label-jump
-              (if lcst?                              ;; jcc label-false
-                  (x86-inline-iop cgc (caddr inline-if-labels))
-                  (x86-inline-op  cgc (caddr inline-if-labels)))
-              (x86-jmp cgc (cadr inline-if-labels))) ;; jmp label-true
-       (begin (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-              (if lcst?
-                  (x86-iop cgc label-end)
-                  (x86-op  cgc label-end))
-              (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-              (x86-label cgc label-end)))))
+      ;; if the operands are both not mutable and both in memory, use rax
+      (if (and (ctx-loc-is-memory? lleft)
+               (ctx-loc-is-memory? lright))
+          (unmem! (x86-rax) opl))
+
+      ;;
+      ;; Primitive code
+
+      ;; If left is a cst, swap operands and use iop
+      (if lcst?
+          (begin
+            (set! opl opr)
+            (set! opr (x86-imm-int (obj-encoding lleft)))
+            (set! selop x86-iop)
+            (set! selinop x86-inline-iop)))
+      (if rcst?
+          (set! opr (x86-imm-int (obj-encoding lright))))
+
+      ;; Handle cases like 1. 2. etc...
+      (if (and lcst? (flonum? lleft))
+          (set! lleft (##flonum->fixnum lleft)))
+      (if (and rcst? (flonum? lright))
+          (set! lright (##flonum->fixnum lright)))
+
+      (x86-cmp cgc opl opr))
+
+    (if inline-if-labels
+        (begin (x86-label cgc (car inline-if-labels)) ;; label-jump
+               (selinop cgc (caddr inline-if-labels))
+               (x86-jmp cgc (cadr inline-if-labels))) ;; jmp label-true
+        (begin (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+               (selop cgc label-end)
+               (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+               (x86-label cgc label-end)))))
 
 (define (codegen-cmp-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst? inline-if-labels)
 
