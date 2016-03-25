@@ -1,11 +1,14 @@
 ;; Close output ports
 ;; Close input ports
 
-(define (setlet1 n)
- (let ((n (begin (set! n 7) n)))
-   (+ n 1)))
+(make-vector 10)
 
-(pp (setlet1 11))
+
+;(define (setlet1 n)
+; (let ((n (begin (set! n 7) n)))
+;   (+ n 1)))
+;
+;(pp (setlet1 11))
 
 
 
