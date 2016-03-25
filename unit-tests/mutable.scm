@@ -119,6 +119,25 @@
     (print (read-char in)) (print #\,)
     (println (read-char in))))
 
+;; string-set! primitive
+(let ((str "Hello World")
+      (idx 2)
+      (chr #\L)
+      (idxs 4)
+      (chrs #\B))
+  (string-set! str idx #\P)
+  (set! idx 4)
+  (string-set! str idx chr)
+  (set! chr #\O)
+  (string-set! str idx chr)
+  (print str) (print #\,)
+  (set! str "Other test")
+  (string-set! str idx chr)
+  (print str) (print #\,)
+  (string-set! str idxs chr)
+  (string-set! str idxs chrs)
+  (pp str))
+
 ;; string-length primitive
 (let ((a "Hello World"))
   (print (string-length a))
@@ -212,6 +231,7 @@
 ;"hello"
 ;X,Y.
 ;A,B
+;HePlO World,OtheO test,"OtheB test"
 ;1113
 ;VVVVVVVVV,MMMMMMMMMMMM
 ;LLLLLLLLLL,MMMMM

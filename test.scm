@@ -1,12 +1,23 @@
 ;; Close output ports
 ;; Close input ports
 
-(define (setletrec1 n)
- (letrec ((m 1000)
-          (n (begin (set! n 10) 11)))
-   (+ n m)))
-
-(pp (setletrec1 11))
+(let ((str "Hello World")
+      (idx 2)
+      (chr #\L)
+      (idxs 4)
+      (chrs #\B))
+  (string-set! str idx #\P)
+  (set! idx 4)
+  (string-set! str idx chr)
+  (set! chr #\O)
+  (string-set! str idx chr)
+  (print str) (print #\,)
+  (set! str "Other test")
+  (string-set! str idx chr)
+  (print str) (print #\,)
+  (string-set! str idxs chr)
+  (string-set! str idxs chrs)
+  (pp str))
 
 ;(define (setlet1 n)
 ; (let ((n (begin (set! n 7) n)))

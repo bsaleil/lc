@@ -120,6 +120,11 @@
   `(begin (x86-mov cgc ,dst (x86-mem (- 8 TAG_MEMOBJ) ,src))
           (set! ,(car src) ,(car dst))))
 
+;;
+(define-macro (chk-unbox! dst src mut?)
+  `(if ,mut?
+       (unbox! ,dst ,src)))
+
 ;; Find an unused register, save it, unmem from src to this register
 ;; update saved set
 (define-macro (pick-unmem! src used-regs)
@@ -1785,52 +1790,61 @@
 
 ;;-----------------------------------------------------------------------------
 ;; string-set!
-(define (codegen-string-set! cgc fs reg lstr lidx lchr idx-cst? chr-cst?)
-
+(define (codegen-string-set! cgc fs reg lstr lidx lchr idx-cst? chr-cst? mut-str? mut-idx? mut-chr?)
 
   (let ((dest (codegen-reg-to-x86reg reg))
-        (opstr (codegen-loc-to-x86opnd fs lstr))
-        (opidx (and (not idx-cst?) (codegen-loc-to-x86opnd fs lidx)))
-        (opchr (and (not chr-cst?) (codegen-loc-to-x86opnd fs lchr))))
+        (opstr (lambda () (codegen-loc-to-x86opnd fs lstr)))
+        (opidx (lambda () (and (not idx-cst?) (codegen-loc-to-x86opnd fs lidx))))
+        (opchr (lambda () (and (not chr-cst?) (codegen-loc-to-x86opnd fs lchr))))
+        (oprax (lambda () (x86-rax))))
 
-    ;; If string is in memory, use dest register
-    (if (or (eq? dest opidx) (eq? dest opchr)) (error "CODEGEN error string-set!"))
-    (if (ctx-loc-is-memory? lstr)
-        (begin (x86-mov cgc dest opstr)
-               (set! opstr dest)))
+    (begin-with-cg-macro
 
-    (cond
-      ((and idx-cst? chr-cst?)
-       (x86-mov cgc
-         (x86-mem (+ (- 16 TAG_MEMOBJ) lidx) opstr)
-         (x86-imm-int (char->integer lchr))
-         8))
-      (idx-cst?
-         (x86-mov cgc (x86-rax) opchr)
-         (x86-shr cgc (x86-rax) (x86-imm-int 2))
-         (x86-mov cgc (x86-mem (+ (- 16 TAG_MEMOBJ) lidx) opstr) (x86-al)))
-      (chr-cst?
-         (x86-mov cgc (x86-rax) opidx)
-         (x86-shr cgc (x86-rax) (x86-imm-int 2))
-         (x86-mov cgc
-           (x86-mem (- 16 TAG_MEMOBJ) opstr (x86-rax))
-           (x86-imm-int (char->integer lchr))
-           8))
-      (else
-         ;; Move decoded char in rax
-         (x86-mov cgc (x86-rax) opchr)
-         (x86-shr cgc (x86-rax) (x86-imm-int 2))
-         (if (and (ctx-loc-is-memory? lidx)
-                  (ctx-loc-is-memory? lstr))
-             (error "NYI we need to save a register")
-             (begin (x86-mov cgc dest opidx)
-                    (set! opidx dest)))
-         (x86-shr cgc opidx (x86-imm-int 2))
-         (x86-mov cgc
-           (x86-mem (- 16 TAG_MEMOBJ) opstr opidx)
-           (x86-al))))
+      ;;
+      ;; Unmem / Unbox code
+      (if (not chr-cst?)
+          (begin (unmem! (oprax) (opchr)) ;; If not a cst, we want char in rax
+                 (chk-unbox! (oprax) (opchr) mut-chr?)))
 
-    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
+      (if (not idx-cst?)
+          (if (eq? (opchr) (x86-rax))
+              (begin (pick-unmem! (opidx) (list (opstr) (opidx) (opchr)))
+                     (chk-unbox! (opidx) (opidx) mut-idx?))
+              (begin (unmem! (oprax) (opidx))
+                     (chk-unbox! (oprax) (opidx) mut-idx?))))
+
+      (if (or (eq? (opidx) (x86-rax))
+              (eq? (opchr) (x86-rax)))
+          (chk-pick-unmem-unbox! (opstr) mut-str? (list (opstr) (opidx) (opchr)))
+          (chk-unmem-unbox! (oprax) (opstr) mut-str?))
+
+      ;;
+      ;; Primitive code
+      (if (not chr-cst?)
+          (x86-shr cgc (opchr) (x86-imm-int 2)))
+      (if (not idx-cst?)
+          (x86-shr cgc (opidx) (x86-imm-int 2)))
+
+      (cond ((and idx-cst? chr-cst?)
+             (x86-mov cgc
+                      (x86-mem (+ (- 16 TAG_MEMOBJ) lidx) (opstr))
+                      (x86-imm-int (char->integer lchr))
+                      8))
+            (idx-cst?
+               (x86-mov cgc
+                        (x86-mem (+ (- 16 TAG_MEMOBJ) lidx) (opstr))
+                        (x86-al)))
+            (chr-cst?
+              (x86-mov cgc
+                       (x86-mem (- 16 TAG_MEMOBJ) (opstr) (opidx))
+                       (x86-imm-int (char->integer lchr))
+                       8))
+            (else
+              (x86-mov cgc
+                       (x86-mem (- 16 TAG_MEMOBJ) (opstr) (opidx))
+                       (x86-al)))) ;; If char is not a cst, it is in rax
+
+      (x86-mov cgc dest (x86-imm-int ENCODING_VOID)))))
 
 ;;-----------------------------------------------------------------------------
 ;; list
@@ -1872,13 +1886,18 @@
         (opfrom (lambda () (codegen-loc-to-x86opnd fs lfrom)))
         (oprax  (lambda () (x86-rax))))
 
-    (x86-label cgc (asm-make-label #f (new-sym 'LETREC_SET_)))
     (begin-with-cg-macro
+
+      ;;
+      ;; Unmem / Unbox code
 
       (chk-unmem! (oprax) (opto))
       (if (eq? (opto) (x86-rax))
           (chk-pick-unmem-unbox! (opfrom) mut-from? (list (opto) (opfrom)))
           (chk-unmem-unbox! (oprax) (opfrom) mut-from?))
+
+      ;;
+      ;;
 
       (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (opto)) (opfrom)))))
 

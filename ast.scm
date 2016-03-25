@@ -35,8 +35,8 @@
 (define-macro (assert c err)
   `(if (not ,c)
        (begin (pp ast)
-	      (println "!!! ERROR : " ,err)
-	      (exit 1))))
+        (println "!!! ERROR : " ,err)
+        (exit 1))))
 
 ;; Generate primitive types lists from types pattern (used in 'primitives' set)
 (define-macro (prim-types . args)
@@ -137,37 +137,37 @@
 
 ;; Primitives: name, nb args min, nb args max, args types, cst positions to check
 (define primitives `(
-   (car                 1  1  ,(prim-types 1 CTX_PAI)                     ())
-   (cdr                 1  1  ,(prim-types 1 CTX_PAI)                     ())
-   (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
-   (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR)        (0 1))
-   (not                 1  1  ,(prim-types 1 CTX_ALL)                     ()) ;; + efficace cst TODO
-   (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1))
-   (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1))
-   (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
-   (vector-length       1  1  ,(prim-types 1 CTX_VECT)                    ())
-   (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM)           (1))
-   (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                   (0))
-   (integer->char       1  1  ,(prim-types 1 CTX_NUM)                    (0))
-   (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM)            (1))
-   (string->symbol      1  1  ,(prim-types 1 CTX_STR)                     ())
-   (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ())
-   (close-output-port   1  1  ,(prim-types 1 CTX_OPORT)                   ())
-   (close-input-port    1  1  ,(prim-types 1 CTX_IPORT)                   ())
-   (open-output-file    1  1  ,(prim-types 1 CTX_STR)                     ())
-   (open-input-file     1  1  ,(prim-types 1 CTX_STR)                     ())
-   (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_NUM CTX_CHAR) (1 2))
-   (vector-set!         3  3  ,(prim-types 3 CTX_VECT CTX_NUM CTX_ALL)    ()) ;; + efficace cst TODO
-   (string-length       1  1  ,(prim-types 1 CTX_STR)                     ())
-   (read-char           1  1  ,(prim-types 1 CTX_IPORT)                   ())
-   (exit                0  0  ,(prim-types 0 )                            ())
-   (make-vector         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_ALL)   ())
-   (make-string         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_CHAR)  ())
-   (eof-object?         1  1  ,(prim-types 1 CTX_ALL)                     ())
-   (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT)          ())
-   (current-output-port 0  0  ,(prim-types 0 )                            ())
-   (current-input-port  0  0  ,(prim-types 0 )                            ())
-))
+                     (car                 1  1  ,(prim-types 1 CTX_PAI)                     ())
+                     (cdr                 1  1  ,(prim-types 1 CTX_PAI)                     ())
+                     (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
+                     (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR)        (0 1))
+                     (not                 1  1  ,(prim-types 1 CTX_ALL)                     ()) ;; + efficace cst TODO
+                     (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1))
+                     (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1))
+                     (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
+                     (vector-length       1  1  ,(prim-types 1 CTX_VECT)                    ())
+                     (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM)           (1))
+                     (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                   (0))
+                     (integer->char       1  1  ,(prim-types 1 CTX_NUM)                    (0))
+                     (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM)            (1))
+                     (string->symbol      1  1  ,(prim-types 1 CTX_STR)                     ())
+                     (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ())
+                     (close-output-port   1  1  ,(prim-types 1 CTX_OPORT)                   ())
+                     (close-input-port    1  1  ,(prim-types 1 CTX_IPORT)                   ())
+                     (open-output-file    1  1  ,(prim-types 1 CTX_STR)                     ())
+                     (open-input-file     1  1  ,(prim-types 1 CTX_STR)                     ())
+                     (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_NUM CTX_CHAR) (1 2))
+                     (vector-set!         3  3  ,(prim-types 3 CTX_VECT CTX_NUM CTX_ALL)    ()) ;; + efficace cst TODO
+                     (string-length       1  1  ,(prim-types 1 CTX_STR)                     ())
+                     (read-char           1  1  ,(prim-types 1 CTX_IPORT)                   ())
+                     (exit                0  0  ,(prim-types 0 )                            ())
+                     (make-vector         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_ALL)   ())
+                     (make-string         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_CHAR)  ())
+                     (eof-object?         1  1  ,(prim-types 1 CTX_ALL)                     ())
+                     (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT)          ())
+                     (current-output-port 0  0  ,(prim-types 0 )                            ())
+                     (current-input-port  0  0  ,(prim-types 0 )                            ())))
+
 
 (define (assert-p-nbargs ast)
   (let ((infos (cdr (assoc (car ast) primitives))))
@@ -1030,11 +1030,11 @@
 ;;
 (define (mlc-special ast succ)
   (cond ((eq? (car ast) 'breakpoint)
-           (make-lazy-code
-             (lambda (cgc ctx)
-               (gen-breakpoint cgc)
-               (codegen-void cgc)
-               (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))))
+         (make-lazy-code
+           (lambda (cgc ctx)
+             (gen-breakpoint cgc)
+             (codegen-void cgc)
+             (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))))
 
 ;;-----------------------------------------------------------------------------
 ;; PRIMITIVES
@@ -1161,8 +1161,8 @@
            (if poscst
                (ctx-get-loc ctx 0)
                (ctx-get-loc ctx 1)))
-          (idx-mut? (and (not poscst) (ctx-is-mutable? ctx 0)))
-          (str-mut? (ctx-is-mutable? ctx (if poscst 0 1)))
+         (idx-mut? (and (not poscst) (ctx-is-mutable? ctx 0)))
+         (str-mut? (ctx-is-mutable? ctx (if poscst 0 1)))
          (n-pop (if poscst 1 2)))
     (codegen-string-ref cgc (ctx-fs ctx) reg lstr lidx poscst idx-mut? str-mut?)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_CHAR reg))))
@@ -1180,7 +1180,6 @@
 
   (let* ((idx-cst (assoc 1 cst-infos))
          (chr-cst (assoc 2 cst-infos))
-
          (lchr (if chr-cst (cdr chr-cst) (ctx-get-loc ctx 0)))
          (lidx
            (if idx-cst
@@ -1188,9 +1187,12 @@
                (if chr-cst
                    (ctx-get-loc ctx 0)
                    (ctx-get-loc ctx 1))))
+         (mut-chr? (and (not chr-cst) (ctx-is-mutable? ctx 0)))
+         (mut-idx? (and (not idx-cst) (ctx-is-mutable? ctx (if chr-cst 0 1))))
          (n-pop (+ (count (list idx-cst chr-cst) not) 1))
-         (lstr (ctx-get-loc ctx (- n-pop 1))))
-    (codegen-string-set! cgc (ctx-fs ctx) reg lstr lidx lchr idx-cst chr-cst)
+         (lstr (ctx-get-loc ctx (- n-pop 1)))
+         (mut-str? (ctx-is-mutable? ctx (- n-pop 1))))
+    (codegen-string-set! cgc (ctx-fs ctx) reg lstr lidx lchr idx-cst chr-cst mut-str? mut-idx? mut-chr?)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_VOID reg))))
 
 ;; primitives set-car! & set-cdr!
