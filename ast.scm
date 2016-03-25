@@ -218,9 +218,9 @@
                  ((eq? op 'letrec) (mlc-letrec ast succ))
                  ;; Operator num
                  ((member op '(FLOAT+ FLOAT- FLOAT* FLOAT/ FLOAT< FLOAT> FLOAT<= FLOAT>= FLOAT=))
-                   (let ((generic-op (list->symbol (list-tail (symbol->list op) 5))))
-                     (gen-ast (cons generic-op (cdr ast))
-                              succ)))
+                  (let ((generic-op (list->symbol (list-tail (symbol->list op) 5))))
+                    (gen-ast (cons generic-op (cdr ast))
+                             succ)))
                  ((member op '(+ - * < > <= >= = /))         (mlc-op-n ast succ op)) ;; nary operator
                  ((member op '(quotient modulo remainder)) (mlc-op-bin ast succ op)) ;; binary operator
                  ;; Type predicate
@@ -831,10 +831,10 @@
 
   (define (build-chain exprs succ)
     (cond ((null? exprs)
-             succ)
+           succ)
           ;; Last expr
           ((eq? (length exprs) 1)
-             (gen-ast (car exprs) succ))
+           (gen-ast (car exprs) succ))
           ;; Not last expr, eval then free loc
           (else
              (let ((next (build-chain (cdr exprs) succ)))
@@ -845,10 +845,10 @@
 
   (cond ;; There is no body
         ((null? (cdr ast))
-           (error ERR_BEGIN))
+         (error ERR_BEGIN))
         ;; Only one body
         ((= (length (cdr ast)) 1)
-           (gen-ast (cadr ast) succ))
+         (gen-ast (cadr ast) succ))
         ;; >1 body
         (else (build-chain (cdr ast) succ))))
 
@@ -874,8 +874,8 @@
          (body   (cddr ast))
          (lazy-out
            (let ((make-lc (if (member 'ret (lazy-code-flags succ))
-                          make-lazy-code-ret
-                          make-lazy-code)))
+                           make-lazy-code-ret
+                           make-lazy-code)))
              (make-lc
                (lambda (cgc ctx)
                  (let* ((type (car (ctx-stack ctx)))
@@ -888,22 +888,37 @@
                    ;; Merge all code returning a boxed value
                    (if mutable?
                        (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-                       (if (ctx-loc-is-memory? loc)
-                           (begin (x86-mov cgc (x86-rax) opnd)
-                                  (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                           (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
+                        (if (ctx-loc-is-memory? loc)
+                            (begin (x86-mov cgc (x86-rax) opnd)
+                                   (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                            (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
                    (jump-to-version cgc succ ctx))))))
          (lazy-body
            (gen-ast (cons 'begin body) lazy-out))
          (lazy-binds
            (make-lazy-code
              (lambda (cgc ctx)
+               (unbox-mutable cgc ctx 0 (length ids))
                (let* ((id-idx (build-id-idx ids (- (length ids) 1)))
                       (mvars (mutable-vars (cddr ast) ids)) ;; Get mutable vars
                       (ctx (ctx-bind-locals ctx id-idx mvars)))
                  (gen-mutable cgc ctx mvars)
                  (jump-to-version cgc lazy-body ctx))))))
-    (gen-ast-l values lazy-binds)))
+   (gen-ast-l values lazy-binds)))
+
+;; TODO
+(define (unbox-mutable cgc ctx idx-start idx-lim)
+  (if (< idx-start idx-lim)
+      (if (ctx-is-mutable? ctx idx-start)
+          (let* ((loc (ctx-get-loc ctx idx-start))
+                 (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
+            (if (ctx-loc-is-memory? loc)
+                (begin (x86-mov cgc (x86-rax) opnd)
+                       (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+                       (x86-mov cgc opnd (x86-rax)))
+                (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd))))
+          (unbox-mutable cgc ctx (+ idx-start 1) idx-lim))))
+;; TODO
 
 (define (mlc-letrec ast succ)
 
@@ -934,8 +949,8 @@
              (body (cddr ast))
              (lazy-out
                (let ((make-lc (if (member 'ret (lazy-code-flags succ))
-                              make-lazy-code-ret
-                              make-lazy-code)))
+                               make-lazy-code-ret
+                               make-lazy-code)))
                  (make-lc
                    (lambda (cgc ctx)
                      (let* ((type (car (ctx-stack ctx)))
@@ -949,10 +964,10 @@
                        ;; TODO: lost information only if mutable?
                        (if mutable?
                            (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-                           (if (ctx-loc-is-memory? loc)
-                               (begin (x86-mov cgc (x86-rax) opnd)
-                                      (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                               (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
+                            (if (ctx-loc-is-memory? loc)
+                                (begin (x86-mov cgc (x86-rax) opnd)
+                                       (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                                (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
                        (jump-to-version cgc succ ctx))))))
              (lazy-set
                (make-lazy-code
@@ -970,29 +985,29 @@
                                  (regtopop #f))
                              (cond ((and (ctx-loc-is-memory? lfrom)
                                          (ctx-loc-is-memory? lto))
-                                      (let* ((regs (list (x86-rbx) (x86-rcx) (x86-rdx)))
-                                             (pr (foldr
-                                                   (lambda (el r)
-                                                     (if (and (not (eq? el opfrom))
-                                                              (not (eq? el opto)))
-                                                         el
-                                                         r))
-                                                   #f
-                                                   regs)))
-                                        (x86-push cgc pr)
-                                        (set! opfrom (codegen-loc-to-x86opnd (+ (ctx-fs ctx) 1) lfrom))
-                                        (set! opto   (codegen-loc-to-x86opnd (+ (ctx-fs ctx) 1) lto))
-                                        (x86-mov cgc (x86-rax) opfrom)
-                                        (x86-mov cgc pr opto)
-                                        (set! opfrom (x86-rax))
-                                        (set! opto pr)
-                                        (set! regtopop pr)))
-                                   ((ctx-loc-is-memory? lfrom)
+                                    (let* ((regs (list (x86-rbx) (x86-rcx) (x86-rdx)))
+                                           (pr (foldr
+                                                 (lambda (el r)
+                                                   (if (and (not (eq? el opfrom))
+                                                            (not (eq? el opto)))
+                                                       el
+                                                       r))
+                                                 #f
+                                                 regs)))
+                                      (x86-push cgc pr)
+                                      (set! opfrom (codegen-loc-to-x86opnd (+ (ctx-fs ctx) 1) lfrom))
+                                      (set! opto   (codegen-loc-to-x86opnd (+ (ctx-fs ctx) 1) lto))
                                       (x86-mov cgc (x86-rax) opfrom)
-                                      (set! opfrom (x86-rax)))
+                                      (x86-mov cgc pr opto)
+                                      (set! opfrom (x86-rax))
+                                      (set! opto pr)
+                                      (set! regtopop pr)))
+                                   ((ctx-loc-is-memory? lfrom)
+                                    (x86-mov cgc (x86-rax) opfrom)
+                                    (set! opfrom (x86-rax)))
                                    ((ctx-loc-is-memory? lto)
-                                      (x86-mov cgc (x86-rax) opto)
-                                      (set! opto (x86-rax))))
+                                    (x86-mov cgc (x86-rax) opto)
+                                    (set! opto (x86-rax))))
 
                              (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opto) opfrom)
                              (if regtopop

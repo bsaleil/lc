@@ -1,27 +1,11 @@
 ;; Close output ports
 ;; Close input ports
 
-; integer comparison operator
-(let ((a 100)
-      (b 200)
-      (c 5)
-      (d 6))
-   (set! a 5)
-   (set! b 4)
-   (print (< a b)) (print #\,)
-   (print (= a c)) (print #\,)
-   (print (> a b)) (print #\,)
-   (print (<= c a)) (print #\,)
-   (print (< a d)) (print #\,)
-   (print (> d a)) (print #\,)
-   ;; inlined condition
-   (if (< a b)
-       (print #\a)
-       (print #\b))
-   (print #\,)
-   (if (>= d c)
-       (println #\c)
-       (println #\d)))
+(define (setlet1 n)
+ (let ((n (begin (set! n 7) n)))
+   (+ n 1)))
+
+(pp (setlet1 11))
 
 
 
