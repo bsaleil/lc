@@ -1,8 +1,12 @@
 ;; Close output ports
 ;; Close input ports
 
-(make-vector 10)
+(define (setletrec1 n)
+ (letrec ((m 1000)
+          (n (begin (set! n 10) 11)))
+   (+ n m)))
 
+(pp (setletrec1 11))
 
 ;(define (setlet1 n)
 ; (let ((n (begin (set! n 7) n)))

@@ -109,6 +109,11 @@
   `(begin (x86-mov cgc ,dst ,src)
           (set! ,(car src) ,(car dst))))
 
+;;
+(define-macro (chk-unmem! dst src)
+  `(if (x86-mem? ,src)
+       (unmem! ,dst ,src)))
+
 ;; Unbox a value in src register to dst register
 ;; update operand
 (define-macro (unbox! dst src)
@@ -1861,7 +1866,21 @@
 
 ;;-----------------------------------------------------------------------------
 ;; letrec set!
+(define (codegen-letrec-set! cgc fs lto lfrom mut-from?)
 
+  (let ((opto   (lambda () (codegen-loc-to-x86opnd fs lto)))
+        (opfrom (lambda () (codegen-loc-to-x86opnd fs lfrom)))
+        (oprax  (lambda () (x86-rax))))
+
+    (x86-label cgc (asm-make-label #f (new-sym 'LETREC_SET_)))
+    (begin-with-cg-macro
+
+      (chk-unmem! (oprax) (opto))
+      (if (eq? (opto) (x86-rax))
+          (chk-pick-unmem-unbox! (opfrom) mut-from? (list (opto) (opfrom)))
+          (chk-unmem-unbox! (oprax) (opfrom) mut-from?))
+
+      (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (opto)) (opfrom)))))
 
 ;;-----------------------------------------------------------------------------
 ;; TCO
