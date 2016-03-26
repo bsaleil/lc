@@ -772,53 +772,53 @@
              (nb-formal (ctx-nb-args ctx)))
         (cond ;; rest AND actual == formal
               ((and rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
-                 (set! ctx (ctx-stack-push ctx CTX_NULL))
-                 (let ((reg
-                         (if (<= nb-formal (length args-regs))
-                             (list-ref args-regs (- nb-formal 1))
-                             #f)))
-                   (codegen-prologue-rest= cgc reg)
-                   (gen-mutable cgc ctx mvars)
-                   (jump-to-version cgc succ ctx)))
+               (set! ctx (ctx-stack-push ctx CTX_NULL))
+               (let ((reg
+                       (if (<= nb-formal (length args-regs))
+                           (list-ref args-regs (- nb-formal 1))
+                           #f)))
+                 (codegen-prologue-rest= cgc reg)
+                 (gen-mutable cgc ctx mvars)
+                 (jump-to-version cgc succ ctx)))
               ;; rest AND actual > formal
               ;; TODO merge > and == (?)
               ((and rest-param (> nb-actual (- nb-formal 1)))
-                 (let* ((nb-extra (- nb-actual (- nb-formal 1)))
-                        (nctx (ctx-stack-pop-n ctx (- nb-extra 1)))
-                        (nctx (ctx-set-type nctx 0 CTX_PAI)))
-                   (set! ctx nctx)
-                   (let* ((nb-formal-stack
-                            (if (> (- nb-formal 1) (length args-regs))
-                                (- nb-formal 1 (length args-regs))
-                                0))
-                          (r
-                            (if (<= nb-actual (length args-regs))
-                                0
-                                (- nb-actual (length args-regs))))
-                          (nb-rest-stack (- r nb-formal-stack))
-                          (rest-regs
-                            (if (>= (- nb-formal 1) (length args-regs))
-                                '()
-                                (list-head
-                                  (list-tail args-regs (- nb-formal 1))
-                                  (- nb-actual nb-rest-stack nb-formal -1))))
-                          (reg
-                            (if (<= nb-formal (length args-regs))
-                                (list-ref args-regs (- nb-formal 1))
-                                #f)))
+               (let* ((nb-extra (- nb-actual (- nb-formal 1)))
+                      (nctx (ctx-stack-pop-n ctx (- nb-extra 1)))
+                      (nctx (ctx-set-type nctx 0 CTX_PAI)))
+                 (set! ctx nctx)
+                 (let* ((nb-formal-stack
+                          (if (> (- nb-formal 1) (length args-regs))
+                              (- nb-formal 1 (length args-regs))
+                              0))
+                        (r
+                          (if (<= nb-actual (length args-regs))
+                              0
+                              (- nb-actual (length args-regs))))
+                        (nb-rest-stack (- r nb-formal-stack))
+                        (rest-regs
+                          (if (>= (- nb-formal 1) (length args-regs))
+                              '()
+                              (list-head
+                                (list-tail args-regs (- nb-formal 1))
+                                (- nb-actual nb-rest-stack nb-formal -1))))
+                        (reg
+                          (if (<= nb-formal (length args-regs))
+                              (list-ref args-regs (- nb-formal 1))
+                              #f)))
 
-                     (codegen-prologue-rest>
-                       cgc
-                       (ctx-fs ctx)
-                       nb-rest-stack
-                       (reverse rest-regs)
-                       reg))
+                   (codegen-prologue-rest>
+                     cgc
+                     (ctx-fs ctx)
+                     nb-rest-stack
+                     (reverse rest-regs)
+                     reg))
 
-                   (gen-mutable cgc ctx mvars)
-                   (jump-to-version cgc succ ctx)))
+                 (gen-mutable cgc ctx mvars)
+                 (jump-to-version cgc succ ctx)))
               ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
               ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
-                 (gen-error cgc ERR_WRONG_NUM_ARGS))
+               (gen-error cgc ERR_WRONG_NUM_ARGS))
               ;; Else, nothing to do
               (else
                  (gen-mutable cgc ctx mvars)
@@ -1672,7 +1672,7 @@
 (define (mlc-call ast succ)
 
   (let* (;; Tail call if successor's flags set contains 'ret flag
-         (tail #f) ;; TODO ;(member 'ret (lazy-code-flags succ)))
+         (tail (member 'ret (lazy-code-flags succ)))
          ;; Call arguments
          (args (cdr ast))
          ;; Lazy fail
@@ -1686,82 +1686,99 @@
                                                   (append (list-head (ctx-stack ctx) (length (cdr ast)))
                                                           (list CTX_CLO CTX_RETAD)))))
 
-                                          ;; TODO tail call
-                                          (if tail (error "NYI"))
+                                          (if (not tail)
+                                              (mlet ((moves/nctx (ctx-save-call ctx (+ (length args) 1))))
 
-                                          (mlet ((moves/ctx (ctx-save-call ctx (+ (length args) 1))))
+                                                ;; Save used registers
+                                                (apply-moves cgc nctx moves)
+                                                (set! ctx nctx)
 
-                                            ;; Save used registers
-                                            (apply-moves cgc ctx moves)
+                                                ;; Gen continuation
+                                                (if opt-return-points
+                                                    (gen-continuation-cr cgc ast succ ctx '() #f)
+                                                    (gen-continuation-rp cgc ast succ ctx '() #f))))
 
-                                            ;; Gen continuation
-                                            (if opt-return-points
-                                                (gen-continuation-cr cgc ast succ ctx '() #f)
-                                                (gen-continuation-rp cgc ast succ ctx '() #f))
+                                          ;; 4 TODO closure slot
+                                          (let* ((fs (+ (ctx-fs ctx) (if tail 0 1))) ;; +1 for return address
+                                                 (lclo (ctx-get-loc ctx (length (cdr ast))))
+                                                 (mut-clo? (ctx-is-mutable? ctx (length (cdr ast))))
+                                                 (opclo (codegen-loc-to-x86opnd fs lclo)))
+                                            (if mut-clo?
+                                                (begin
+                                                  (if (ctx-loc-is-memory? lclo)
+                                                      (begin (x86-mov cgc (x86-rax) opclo)
+                                                             (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                                                      (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opclo)))
+                                                  (set! opclo (x86-rax))))
+                                            (x86-mov cgc (x86-rax) opclo) ;; closure need to be in rax for do-callback-fn (TODO: get closure from stack in do-callback-fn and remove this)
+                                            (x86-push cgc (x86-rax)))
 
-                                            ;; 4 TODO closure slot
-                                            (let* ((fs (+ (ctx-fs ctx) 1)) ;; +1 for return address
-                                                   (lclo (ctx-get-loc ctx (length (cdr ast))))
-                                                   (mut-clo? (ctx-is-mutable? ctx (length (cdr ast))))
-                                                   (opclo (codegen-loc-to-x86opnd fs lclo)))
-                                              (if mut-clo?
+                                          ;; 5 - Move args to regs or stack following calling convention
+                                          (let* ((stackp/moves (ctx-get-call-args-moves ctx (length args)))
+                                                 (stackp (car stackp/moves))
+                                                 (moves (cdr stackp/moves))
+                                                 (fs (+ (ctx-fs ctx) (if tail 1 2)))) ;; retaddr, closure
+                                            (if (not (null? stackp))
+                                                (let loop ((cfs fs)
+                                                           (stackp stackp))
+                                                  (if (null? stackp)
+                                                      (set! fs cfs)
+                                                      (let ((opnd (codegen-loc-to-x86opnd cfs (car stackp))))
+                                                        (x86-push cgc opnd)
+                                                        (loop (+ cfs 1) (cdr stackp))))))
+                                            (for-each
+                                                (lambda (el)
+                                                  (let ((opnddst (codegen-loc-to-x86opnd fs (car el)))
+                                                        (opndsrc (codegen-loc-to-x86opnd fs (cdr el))))
+                                                    (x86-mov cgc opnddst opndsrc)))
+                                                moves)
+
+                                            ;;
+                                            ;; TODO
+                                            ;; TODO
+                                            ;; Il faut déboxer les arugment boxés
+                                            (let loop ((narg 0)
+                                                       (stack-idx (- (length args) 1)))
+                                              (if (< narg (length args))
                                                   (begin
-                                                    (if (ctx-loc-is-memory? lclo)
-                                                        (begin (x86-mov cgc (x86-rax) opclo)
-                                                               (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                                                        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opclo)))
-                                                    (set! opclo (x86-rax))))
-                                              (x86-mov cgc (x86-rax) opclo) ;; closure need to be in rax for do-callback-fn (TODO: get closure from stack in do-callback-fn and remove this)
-                                              (x86-push cgc (x86-rax)))
+                                                    (if (ctx-is-mutable? ctx stack-idx)
+                                                        (let* ((loc
+                                                                 (if (< narg (length args-regs))
+                                                                     (list-ref args-regs narg)
+                                                                     "NYI"))
+                                                               (opnd (codegen-loc-to-x86opnd fs loc)))
+                                                          (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd))))
+                                                    (loop (+ narg 1) (- stack-idx 1)))))
 
-                                            ;; 5 - Move args to regs or stack following calling convention
-                                            (let* ((stackp/moves (ctx-get-call-args-moves ctx (length args)))
-                                                   (stackp (car stackp/moves))
-                                                   (moves (cdr stackp/moves))
-                                                   (fs (+ (ctx-fs ctx) 2))) ;; retaddr, closure
-                                              (if (not (null? stackp))
-                                                  (let loop ((cfs fs)
-                                                             (stackp stackp))
-                                                    (if (null? stackp)
-                                                        (set! fs cfs)
-                                                        (let ((opnd (codegen-loc-to-x86opnd cfs (car stackp))))
-                                                          (x86-push cgc opnd)
-                                                          (loop (+ cfs 1) (cdr stackp))))))
-                                              (for-each
-                                                  (lambda (el)
-                                                    (let ((opnddst (codegen-loc-to-x86opnd fs (car el)))
-                                                          (opndsrc (codegen-loc-to-x86opnd fs (cdr el))))
-                                                      (x86-mov cgc opnddst opndsrc)))
-                                                  moves)
+                                           ;; Shift args and closure for tail call
+                                           ;; 0 -> (length args) COMPARISON
+                                           ;; Use r14 because it is not an args reg
+                                           (if tail
+                                               (let ((r (- (length args) (length args-regs))))
+                                                     ;(fs (ctx-fs ctx)))
+                                                 (let loop ((n (if (> r 0) r 0)))
+                                                   (if (>= n 0) ;;  >= 0 for closure
+                                                       (begin
+                                                         (x86-mov cgc (x86-r14) (x86-mem (* 8 n) (x86-rsp)))
+                                                         (x86-mov cgc (x86-mem (* 8 (+ (- fs 2) n)) (x86-rsp)) (x86-r14))
+                                                         (loop (- n 1)))))))
 
-                                              ;;
-                                              ;; TODO
-                                              ;; TODO
-                                              ;; Il faut déboxer les arugment boxés
-                                              (let loop ((narg 0)
-                                                         (stack-idx (- (length args) 1)))
-                                                (if (< narg (length args))
-                                                    (begin
-                                                      (if (ctx-is-mutable? ctx stack-idx)
-                                                          (let* ((loc
-                                                                   (if (< narg (length args-regs))
-                                                                       (list-ref args-regs narg)
-                                                                       "NYI"))
-                                                                 (opnd (codegen-loc-to-x86opnd fs loc)))
-                                                            (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd))))
-                                                      (loop (+ narg 1) (- stack-idx 1))))))
+                                           (if tail
+                                               (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (ctx-fs ctx) 1))))))
+
+                                           ;(if tail (error "NYI")))
 
                                           ;; 6 - Gen call sequence
-                                          (gen-call-sequence ast cgc call-ctx (length (cdr ast))))))))
+                                          (gen-call-sequence ast cgc call-ctx (length (cdr ast)))))))
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
     ;; Gen and check types of args
-    (check-types
-      (list CTX_CLO)
-      (list (car ast))
-      (gen-ast-l (cdr ast) lazy-call)
-      ast)))
+   (check-types
+     (list CTX_CLO)
+     (list (car ast))
+     (gen-ast-l (cdr ast) lazy-call)
+     ast)))
 
 ;; TODO regalloc: merge -rp and -cr + comments
 (define (gen-continuation-rp cgc ast succ ctx saved-regs apply?)
