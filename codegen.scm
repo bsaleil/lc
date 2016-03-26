@@ -975,54 +975,85 @@
 
 (define (codegen-binop cgc fs op label-div0 reg lleft lright)
 
+  ;; TODO: rewrite with mutable support
   (let* ((dest (codegen-reg-to-x86reg reg))
-         (lopnd (codegen-loc-to-x86opnd fs lleft))
-         (ropnd (codegen-loc-to-x86opnd fs lright))
+         (mod (if (eq? dest (x86-rdx)) 1 2))
+         (lopnd (codegen-loc-to-x86opnd (+ fs mod) lleft))
+         (ropnd (codegen-loc-to-x86opnd (+ fs mod) lright))
          ;; TODO: save original opnd to restore rdx if needed
          (ordest dest)
          (orlopnd lopnd)
          (orropnd ropnd))
 
-    (if (and (neq? ordest  (x86-rdx))
-             (neq? orlopnd (x86-rdx))
-             (neq? orropnd (x86-rdx)))
-        (begin (x86-push cgc (x86-rdx))
-               ;; Update loc with updated fs
-               (set! lopnd (codegen-loc-to-x86opnd (+ fs 1) lleft))
-               (set! ropnd (codegen-loc-to-x86opnd (+ fs 1) lright))))
+    (if (and (neq? ordest  (x86-rdx)))
+        (x86-push cgc (x86-rdx)))
 
-    (x86-mov cgc (x86-rax) lopnd)
+    (let ((REG (pick-reg (list (x86-rax) (x86-rdx) lopnd ropnd dest))))
+      (x86-push cgc REG)
 
-    (if (or (eq? ropnd (x86-rdx))
-            (ctx-loc-is-memory? lright))
-        (begin (x86-mov cgc dest (x86-rdx))
-               (set! ropnd dest)))
+      (x86-mov cgc (x86-rax) lopnd)
+      (x86-mov cgc REG ropnd)
 
-    (x86-sar cgc (x86-rax) (x86-imm-int 2))
-    (x86-sar cgc ropnd (x86-imm-int 2))
-    (x86-cmp cgc ropnd (x86-imm-int 0)) ;; Check '/0'
-    (x86-je  cgc label-div0)
-    (x86-cqo cgc)
-    (x86-idiv cgc ropnd)
+      (x86-sar cgc (x86-rax) (x86-imm-int 2))
+      (x86-sar cgc REG (x86-imm-int 2))
+      (x86-cmp cgc REG (x86-imm-int 0)) ;; Check '/0'
+      (x86-je  cgc label-div0)
+      (x86-cqo cgc)
+      (x86-idiv cgc REG)
 
-    (cond ((eq? op 'quotient)
-           (x86-shl cgc (x86-rax) (x86-imm-int 2))
-           (x86-mov cgc dest (x86-rax)))
-          ((eq? op 'remainder)
-           (x86-shl cgc (x86-rdx) (x86-imm-int 2))
-           (x86-mov cgc dest (x86-rdx)))
-          ((eq? op 'modulo)
-           (x86-mov cgc (x86-rax) (x86-rdx))
-           (x86-add cgc (x86-rax) ropnd)
-           (x86-cqo cgc)
-           (x86-idiv cgc ropnd)
-           (x86-shl cgc (x86-rdx) (x86-imm-int 2))
-           (x86-mov cgc dest (x86-rdx))))
+      (cond ((eq? op 'quotient)
+             (x86-shl cgc (x86-rax) (x86-imm-int 2))
+             (x86-mov cgc dest (x86-rax)))
+            ((eq? op 'remainder)
+             (x86-shl cgc (x86-rdx) (x86-imm-int 2))
+             (x86-mov cgc dest (x86-rdx)))
+            ((eq? op 'modulo)
+             (x86-mov cgc (x86-rax) (x86-rdx))
+             (x86-add cgc (x86-rax) REG)
+             (x86-cqo cgc)
+             (x86-idiv cgc REG)
+             (x86-shl cgc (x86-rdx) (x86-imm-int 2))
+             (x86-mov cgc dest (x86-rdx))))
 
-    (if (and (neq? ordest  (x86-rdx))
-             (neq? orlopnd (x86-rdx))
-             (neq? orropnd (x86-rdx)))
-        (x86-pop cgc (x86-rdx)))))
+      (x86-pop cgc REG)
+
+      (if (and (neq? ordest  (x86-rdx)))
+          (x86-pop cgc (x86-rdx))))))
+
+    ;(if (and (neq? ordest  (x86-rdx)))
+    ;    (begin (x86-push cgc (x86-rdx))
+    ;           ;; Update loc with updated fs
+    ;           (set! lopnd (codegen-loc-to-x86opnd (+ fs 1) lleft))
+    ;           (set! ropnd (codegen-loc-to-x86opnd (+ fs 1) lright))))
+    ;
+    ;(x86-mov cgc (x86-rax) lopnd)
+    ;
+    ;(begin (x86-mov cgc dest (x86-rdx))
+    ;       (set! ropnd dest))
+    ;
+    ;(x86-sar cgc (x86-rax) (x86-imm-int 2))
+    ;(x86-sar cgc ropnd (x86-imm-int 2))
+    ;(x86-cmp cgc ropnd (x86-imm-int 0)) ;; Check '/0'
+    ;(x86-je  cgc label-div0)
+    ;(x86-cqo cgc)
+    ;(x86-idiv cgc ropnd)
+    ;
+    ;(cond ((eq? op 'quotient)
+    ;       (x86-shl cgc (x86-rax) (x86-imm-int 2))
+    ;       (x86-mov cgc dest (x86-rax)))
+    ;      ((eq? op 'remainder)
+    ;       (x86-shl cgc (x86-rdx) (x86-imm-int 2))
+    ;       (x86-mov cgc dest (x86-rdx)))
+    ;      ((eq? op 'modulo)
+    ;       (x86-mov cgc (x86-rax) (x86-rdx))
+    ;       (x86-add cgc (x86-rax) ropnd)
+    ;       (x86-cqo cgc)
+    ;       (x86-idiv cgc ropnd)
+    ;       (x86-shl cgc (x86-rdx) (x86-imm-int 2))
+    ;       (x86-mov cgc dest (x86-rdx))))
+    ;
+    ;(if (and (neq? ordest  (x86-rdx)))
+    ;    (x86-pop cgc (x86-rdx)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Primitives

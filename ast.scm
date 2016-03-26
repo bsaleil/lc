@@ -633,7 +633,7 @@
                                                     ((and (= selector 0)
                                                           opt-max-versions
                                                           (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
-
+                                                       (error "NYI")
                                                        (let* ((cctx (ctx-init-fn sctx ctx all-params fvars mvars))
                                                               (stack
                                                                 (append (make-list (length all-params) CTX_UNK)
@@ -643,6 +643,7 @@
 
                                                     ;; CASE 2 - Do not use multiple entry points
                                                     ((= selector 1)
+                                                        (error "NYI")
                                                         (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
                                                           (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t)))
 
@@ -1172,6 +1173,10 @@
   (let ((lval (ctx-get-loc ctx 0))
         (lidx (ctx-get-loc ctx 1))
         (lvec (ctx-get-loc ctx 2)))
+    (if (or (ctx-is-mutable? ctx 0)
+            (ctx-is-mutable? ctx 1)
+            (ctx-is-mutable? ctx 2))
+        (error "NYI"))
     (codegen-vector-set! cgc (ctx-fs ctx) reg lvec lidx lval)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) CTX_VOID reg))))
 
@@ -1901,7 +1906,11 @@
                    (mlet ((label-div0 (get-label-error ERR_DIVIDE_ZERO))
                           (moves/reg/ctx (ctx-get-free-reg ctx))
                           (lleft (ctx-get-loc ctx 1))
-                          (lright (ctx-get-loc ctx 0)))
+                          (lright (ctx-get-loc ctx 0))
+                          (mut-left? (ctx-is-mutable? ctx 1))
+                          (mut-right? (ctx-is-mutable? ctx 0)))
+                     (if (or mut-left? mut-right?)
+                         (error "NYI"))
                      (apply-moves cgc ctx moves)
                      (codegen-binop cgc (ctx-fs ctx) op label-div0 reg lleft lright)
                      (jump-to-version cgc

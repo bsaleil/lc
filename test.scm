@@ -1,14 +1,13 @@
-(define (length)
-  0)
 
-(define (foo l)
-  (bar (length)))
+(define (remove-multiples n l)
+  (if (null? l)
+    '()
+    (if (= (modulo (car l) n) 0)
+      (remove-multiples n (cdr l))
+      (remove-multiples n (cdr l)))))
 
-(define (bar n)
-  10000)
+(remove-multiples 2 '(3 4))
 
-
-(foo '())
 
 
 
