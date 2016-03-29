@@ -408,7 +408,7 @@
 
     (cond ((ctx-loc-is-register? loc)
              (if for-set?
-                 (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd loc))
+                 (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
                  (jump-to-version cgc succ (ctx-push ctx type loc (car local)))))
           ((ctx-loc-is-memory? loc)
              (if for-set?
@@ -633,7 +633,7 @@
                                                     ((and (= selector 0)
                                                           opt-max-versions
                                                           (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
-                                                       (error "NYI")
+                                                       (error "NYI1")
                                                        (let* ((cctx (ctx-init-fn sctx ctx all-params fvars mvars))
                                                               (stack
                                                                 (append (make-list (length all-params) CTX_UNK)
@@ -643,7 +643,7 @@
 
                                                     ;; CASE 2 - Do not use multiple entry points
                                                     ((= selector 1)
-                                                        (error "NYI")
+                                                        (error "NYI2")
                                                         (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
                                                           (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t)))
 
@@ -1020,7 +1020,10 @@
           (make-lazy-code
             (lambda (cgc ctx)
               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
-                     (loc (ctx-get-loc ctx 0)))
+                     (loc  (ctx-get-loc ctx 0))
+                     (mut? (ctx-is-mutable? ctx 0)))
+                (if mut?
+                    (error "NYI mutable print-flonum"))
                 (apply-moves cgc ctx moves)
                 (codegen-print-flonum cgc (ctx-fs ctx) reg loc)
                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg)))))))
@@ -1513,8 +1516,9 @@
                                   succ
                                   (list label-jump label-true label-false))))
                          (jump-to-version cgc lazy-cmp ctx))
-                       (let* ((lcond (ctx-get-loc ctx 0)))
-                         (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond)))))))))
+                       (let* ((lcond (ctx-get-loc ctx 0))
+                              (mut-cond? (ctx-is-mutable? ctx 0)))
+                         (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond mut-cond?)))))))))
 
     (if inline-condition?
         (cond ((< (length (cadr ast)) 3)
@@ -1684,6 +1688,7 @@
          (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
+
                                         ;; 1 - Build call ctx
                                         (let ((call-ctx
                                                 (ctx-copy
@@ -1759,22 +1764,36 @@
                                            ;; 0 -> (length args) COMPARISON
                                            ;; Use r14 because it is not an args reg
                                            (if tail
-                                               (let ((r (- (length args) (length args-regs))))
-                                                     ;(fs (ctx-fs ctx)))
-                                                 (let loop ((n (if (> r 0) r 0)))
-                                                   (if (>= n 0) ;;  >= 0 for closure
+                                               (let ((nshift
+                                                       (if (> (- (length args) (length args-regs)) 0)
+                                                           (+ (- (length args) (length args-regs)) 1)
+                                                           1)))
+                                                 (let loop ((curr (- nshift 1)))
+                                                   (if (>= curr 0)
                                                        (begin
-                                                         (x86-mov cgc (x86-r14) (x86-mem (* 8 n) (x86-rsp)))
-                                                         (x86-mov cgc (x86-mem (* 8 (+ (- fs 2) n)) (x86-rsp)) (x86-r14))
-                                                         (loop (- n 1)))))))
+                                                         (x86-mov cgc (x86-r14) (x86-mem (* 8 curr) (x86-rsp)))
+                                                         (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift 1) curr)) (x86-rsp)) (x86-r14))
+                                                         (loop (- curr 1)))))
 
-                                           (if tail
-                                               (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (ctx-fs ctx) 1))))))
+                                                 (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- fs nshift 1))))))
+                                          ; (if tail
+                                          ;     (let ((r (- (length args) (length args-regs))))
+                                          ;           ;(fs (ctx-fs ctx)))
+                                          ;       (let loop ((n (if (> r 0) r 0))
+                                          ;         (if (>= n 0) ;;  >= 0 for closure
+                                          ;             (begin
+                                          ;               (x86-mov cgc (x86-r14) (x86-mem (* 8 n) (x86-rsp)))
+                                          ;               ;(x86-mov cgc (x86-mem (* 8 (+ (- fs 2) n)) (x86-rsp)) (x86-r14))
+                                          ;               ()
+                                          ;               (loop (- n 1))))))
+
+                                          ; (if tail
+                                          ;     (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (ctx-fs ctx) 1)))))))
 
                                            ;(if tail (error "NYI")))
 
                                           ;; 6 - Gen call sequence
-                                          (gen-call-sequence ast cgc call-ctx (length (cdr ast)))))))
+                                          (gen-call-sequence ast cgc call-ctx (length (cdr ast))))))))
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
@@ -2052,6 +2071,8 @@
                (mut-left?  (and (not lcst) (ctx-is-mutable? ctx (if rcst 0 1))))
                (n-pop (count (list lcst rcst) not)))
           (apply-moves cgc ctx moves)
+          (if (or mut-left? mut-right?)
+              (error "NYI mutable float op"))
           (if num-op?
               (codegen-num-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst)
               (codegen-cmp-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst inline-if-labels))

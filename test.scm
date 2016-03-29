@@ -1,12 +1,19 @@
+(define (foo)
 
-(define (remove-multiples n l)
-  (if (null? l)
-    '()
-    (if (= (modulo (car l) n) 0)
-      (remove-multiples n (cdr l))
-      (remove-multiples n (cdr l)))))
+  (let ((changed? #f))
 
-(remove-multiples 2 '(3 4))
+    (set! changed? #f)
+    (if changed? (write-char #\L) 1)))
+
+(foo)
+
+
+
+
+
+
+
+
 
 
 

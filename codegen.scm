@@ -276,12 +276,22 @@
 
 ;;-----------------------------------------------------------------------------
 ;; If
-(define (codegen-if cgc fs label-jump label-false label-true lcond)
-  (let ((opcond (codegen-loc-to-x86opnd fs lcond)))
-    (x86-cmp cgc opcond (x86-imm-int (obj-encoding #f)))
-    (x86-label cgc label-jump)
-    (x86-je  cgc label-false)
-    (x86-jmp cgc label-true)))
+(define (codegen-if cgc fs label-jump label-false label-true lcond mut-cond?)
+  (let ((opcond (lambda () (codegen-loc-to-x86opnd fs lcond)))
+        (oprax  (lambda () (x86-rax))))
+
+    (begin-with-cg-macro
+
+      ;;
+      ;; Unmem / Unbox code
+      (chk-unmem&unbox! (oprax) (opcond) mut-cond?)
+
+      ;;
+      ;;
+      (x86-cmp cgc (opcond) (x86-imm-int (obj-encoding #f)))
+      (x86-label cgc label-jump)
+      (x86-je  cgc label-false)
+      (x86-jmp cgc label-true))))
 
 ;;-----------------------------------------------------------------------------
 ;; Begin
