@@ -590,7 +590,7 @@
 
 (define (run n)
   (fold-over-rdg n
-    2 
+    2
     cons
     '()))
 

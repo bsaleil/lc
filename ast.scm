@@ -446,6 +446,7 @@
             (jump-to-version cgc succ (ctx-push ctx type loc (car local)))
             ;;
             (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
+              (apply-moves cgc nctx moves)
               (apply-moves cgc nctx (list (cons loc reg)))
               (jump-to-version cgc succ (ctx-push nctx type reg (car local))))))))
 
@@ -1687,7 +1688,6 @@
          (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
          ;; Lazy call
          (lazy-call (make-lazy-code (lambda (cgc ctx)
-
                                         ;; 1 - Build call ctx
                                         (let ((call-ctx
                                                 (ctx-copy
@@ -1775,21 +1775,6 @@
                                                          (loop (- curr 1)))))
 
                                                  (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- fs nshift 1))))))
-                                          ; (if tail
-                                          ;     (let ((r (- (length args) (length args-regs))))
-                                          ;           ;(fs (ctx-fs ctx)))
-                                          ;       (let loop ((n (if (> r 0) r 0))
-                                          ;         (if (>= n 0) ;;  >= 0 for closure
-                                          ;             (begin
-                                          ;               (x86-mov cgc (x86-r14) (x86-mem (* 8 n) (x86-rsp)))
-                                          ;               ;(x86-mov cgc (x86-mem (* 8 (+ (- fs 2) n)) (x86-rsp)) (x86-r14))
-                                          ;               ()
-                                          ;               (loop (- n 1))))))
-
-                                          ; (if tail
-                                          ;     (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- (ctx-fs ctx) 1)))))))
-
-                                           ;(if tail (error "NYI")))
 
                                           ;; 6 - Gen call sequence
                                           (gen-call-sequence ast cgc call-ctx (length (cdr ast))))))))

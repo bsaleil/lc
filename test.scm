@@ -1,5 +1,13 @@
+(define (bar a b c d e f) 1)
 
-(apply vector '(1 2 3))
+(define (foo a b c d e f)
+  (bar 1 2 3 4 5 f))
+
+(foo 100 200 300 400 500 600)
+
+
+
+
 
 ;; TODO: call with arg mutable
 ;; let returning mutable
