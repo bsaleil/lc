@@ -1,22 +1,5 @@
-(define (foo)
 
-  (let ((changed? #f))
-
-    (set! changed? #f)
-    (if changed? (write-char #\L) 1)))
-
-(foo)
-
-
-
-
-
-
-
-
-
-
-
+(apply vector '(1 2 3))
 
 ;; TODO: call with arg mutable
 ;; let returning mutable

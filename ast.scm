@@ -643,7 +643,6 @@
 
                                                     ;; CASE 2 - Do not use multiple entry points
                                                     ((= selector 1)
-                                                        (error "NYI2")
                                                         (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
                                                           (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t)))
 

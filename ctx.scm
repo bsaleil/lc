@@ -29,6 +29,8 @@
 
 (define mem-header #f)
 (define CTX_UNK #f)
+(define CTX_CLO #f)
+(define CTX_RETAD #f)
 (define regalloc-regs #f)
 
 ;;-----------------------------------------------------------------------------
@@ -196,7 +198,9 @@
 
   ;;
   (make-ctx
-    (ctx-stack call-ctx)
+    (if call-ctx
+                (ctx-stack call-ctx)
+                (append (make-list (length args) CTX_UNK) (list CTX_CLO CTX_RETAD)))
     (init-slot-loc)
     (init-free-regs)
     '()
