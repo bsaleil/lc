@@ -1,9 +1,13 @@
-(define (bar a b c d e f) 1)
 
-(define (foo a b c d e f)
-  (bar 1 2 3 4 5 f))
+(define (bar) '())
 
-(foo 100 200 300 400 500 600)
+(define (mapply fn)
+ 10000
+ ($apply fn (bar)))
+
+(define (foo) 10)
+
+(mapply foo)
 
 
 

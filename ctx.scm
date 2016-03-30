@@ -104,6 +104,13 @@
         (get-best-loc (ctx-slot-loc ctx) sslots #f))))
 
 ;;
+(define (ctx-fs-inc ctx)
+  (ctx-copy ctx #f #f #f #f #f #f (+ (ctx-fs ctx) 1)))
+
+(define (ctx-fs-update ctx fs)
+  (ctx-copy ctx #f #f #f #f #f #f fs))
+
+;;
 ;; IS MUTABLE ?
 ;; is this stack-idx mutable?
 (define (ctx-is-mutable? ctx stack-idx)
