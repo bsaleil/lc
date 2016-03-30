@@ -240,6 +240,15 @@
 ;; BIND LOCALS
 (define (ctx-bind-locals ctx id-idx mvars #!optional letrec-bind?)
 
+  (define (clean-env env bound-slots)
+    (if (null? env)
+        '()
+        (let* ((ident (car env))
+               (idslots (identifier-sslots (cdr ident))))
+          (cons (cons (car ident)
+                      (identifier-copy (cdr ident) #f (set-sub idslots bound-slots '())))
+                (clean-env (cdr env) bound-slots)))))
+
   (define (gen-env env id-idx)
     (if (null? id-idx)
         env
@@ -259,7 +268,14 @@
                         #f))
                 (gen-env env (cdr id-idx))))))
 
-  (ctx-copy ctx #f #f #f #f (gen-env (ctx-env ctx) id-idx)))
+  (let* ((env
+           (clean-env (ctx-env ctx)
+                      (map (lambda (el) (stack-idx-to-slot ctx el))
+                           (map cdr id-idx))))
+         (env
+           (gen-env env id-idx)))
+
+    (ctx-copy ctx #f #f #f #f env)))
 
 ;;
 ;; UNBIND LOCALS

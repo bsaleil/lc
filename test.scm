@@ -1,11 +1,12 @@
 
-(define (foo a b c d)
-  (pp a)
-  (pp b)
-  (pp c)
-  (pp d))
+(define (foo a)
+  (lambda ()
+    (let ((z a))
+      (set! a 10))))
 
-(apply foo 100 200 '(300 400))
+((foo 1))
+
+
 
 
 
