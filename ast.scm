@@ -1611,7 +1611,6 @@
           (make-lazy-code
             (lambda (cgc ctx)
               (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
-              (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (length args-regs))))
               (gen-call-sequence ast cgc #f #f))))
         (lazy-args
           (make-lazy-code
@@ -1644,35 +1643,20 @@
                         (loop (cdr args-regs)))))
                 (x86-label cgc label-end)
                 (jump-to-version cgc lazy-call ctx)))))
-        (lazy-closure
+        (lazy-pre
           (make-lazy-code
             (lambda (cgc ctx)
-              (let* ((lclo (ctx-get-loc ctx 1))
-                     (opclo (codegen-loc-to-x86opnd (ctx-fs ctx) lclo)))
-                (x86-mov cgc (x86-rax) opclo) ;; closure need to be in rax for do-callback-fn (TODO: get closure from stack in do-callback-fn and remove this)
-                (x86-push cgc (x86-rax))
-                (jump-to-version cgc lazy-args ctx)))))
-        (lazy-retaddr
-          (make-lazy-code
-            (lambda (cgc ctx)
-              (x86-label cgc (asm-make-label #f (new-sym 'APPLY_RA)))
+              ;; Save used registers and update ctx
+              (set! ctx (call-save-registers cgc ctx #f 2))
 
-              (let* ((free (ctx-free-regs ctx))
-                     (all  (build-list (length regalloc-regs) (lambda (i) (cons 'r i))))
-                     (save (set-sub all free '())))
-                ;; Save used regs
-                (for-each
-                  (lambda (i)
-                    (let ((opnd (codegen-reg-to-x86reg i)))
-                      (x86-push cgc opnd)))
-                  save)
+              ;; Generate continuation stub and push return address
+              (set! ctx (call-gen-continuation cgc ctx #f ast succ #t))
 
-                (if opt-return-points
-                    (gen-continuation-cr cgc ast succ ctx save #t)
-                    (gen-continuation-rp cgc ast succ ctx save #t))
-                (jump-to-version cgc lazy-closure ctx))))))
+              ;; Push closure
+              (set! ctx (call-get-closure cgc ctx 1))
+              (jump-to-version cgc lazy-args ctx)))))
 
-    (let ((lazy-lst (gen-ast (caddr ast) lazy-retaddr)))
+    (let ((lazy-lst (gen-ast (caddr ast) lazy-pre)))
       (gen-ast (cadr ast) lazy-lst))))
 
 ;;
@@ -1680,28 +1664,28 @@
 ;;
 
 ;; Save used registers and return updated ctx
-(define (call-save-registers cgc ctx tail? nbargs)
+(define (call-save-registers cgc ctx tail? idx-offset)
   (if tail?
       ctx
-      (mlet ((moves/nctx (ctx-save-call ctx (+ nbargs 1))))
+      (mlet ((moves/nctx (ctx-save-call ctx idx-offset)))
         (apply-moves cgc nctx moves)
         nctx)))
 
 ;; Gen continuation stub, push return address, and return updated ctx
-(define (call-gen-continuation cgc ctx tail? ast succ)
+(define (call-gen-continuation cgc ctx tail? ast succ apply?)
   (if tail?
       ctx
       (begin
         (if opt-return-points
-            (gen-continuation-cr cgc ast succ ctx '() #f)
-            (gen-continuation-rp cgc ast succ ctx '() #f))
+            (gen-continuation-cr cgc ast succ ctx '() apply?) ;; TODO: remove '() arg
+            (gen-continuation-rp cgc ast succ ctx '() apply?))
         (ctx-fs-inc ctx))))
 
 ;; Push closure, put it in rax, and return updated ctx
-(define (call-get-closure cgc ctx nbargs)
+(define (call-get-closure cgc ctx closure-idx)
   (let* ((fs (ctx-fs ctx))
-         (lclo (ctx-get-loc ctx nbargs))
-         (mut-clo? (ctx-is-mutable? ctx nbargs))
+         (lclo (ctx-get-loc ctx closure-idx))
+         (mut-clo? (ctx-is-mutable? ctx closure-idx))
          (opclo (codegen-loc-to-x86opnd fs lclo)))
     (if mut-clo?
         (begin
@@ -1786,10 +1770,10 @@
              (lambda (cgc ctx)
 
                ;; Save used registers and update ctx
-               (set! ctx (call-save-registers cgc ctx tail? (length args)))
+               (set! ctx (call-save-registers cgc ctx tail? (+ (length args) 1)))
 
                ;; Generate continuation stub and push return address
-               (set! ctx (call-gen-continuation cgc ctx tail? ast succ))
+               (set! ctx (call-gen-continuation cgc ctx tail? ast succ #f))
 
                ;; Push closure
                (set! ctx (call-get-closure cgc ctx (length args)))

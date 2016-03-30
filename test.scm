@@ -1,14 +1,11 @@
 
-(define (bar) '())
+(define (foo a b c d)
+  (pp a)
+  (pp b)
+  (pp c)
+  (pp d))
 
-(define (mapply fn)
- 10000
- ($apply fn (bar)))
-
-(define (foo) 10)
-
-(mapply foo)
-
+(apply foo 100 200 '(300 400))
 
 
 
