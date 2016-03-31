@@ -1734,12 +1734,15 @@
     (if (< narg nbargs)
         (begin
           (if (ctx-is-mutable? ctx stack-idx)
-              (let* ((loc
-                       (if (< narg (length args-regs))
-                           (list-ref args-regs narg)
-                           "NYI"))
-                     (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-                (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd))))
+              (if (< narg (length args-regs))
+                  (let* ((rloc (list-ref args-regs narg))
+                         (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) rloc)))
+                    (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))
+                  (let ((memopnd
+                          (x86-mem (* stack-idx 8) (x86-rsp))))
+                    (x86-mov cgc (x86-r14) memopnd)
+                    (x86-mov cgc (x86-r14) (x86-mem (- 8 TAG_MEMOBJ) (x86-r14)))
+                    (x86-mov cgc memopnd (x86-r14)))))
           (loop (+ narg 1) (- stack-idx 1))))))
 
 ;; Shift args and closure for tail call
