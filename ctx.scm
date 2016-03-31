@@ -522,109 +522,127 @@
         (ctx-copy ctx (stack-change-type (ctx-stack ctx) data type)))))
 
 ;;
-;; GET CAL ARGS MOVES
+;; GET CALL ARGS MOVES
 ;; TODO nettoyer
 ;;; TODO: uniformiser et placer
 ;; TODO: not 3 & 5 because rdi and R11 are used for ctx, nb-args
 (define args-regs '((r . 0) (r . 1) (r . 2) (r . 4) (r . 6))) ;; TODO
 (define (ctx-get-call-args-moves ctx nb-args)
 
-   (define slot-loc (ctx-slot-loc ctx))
-   (define len-stack (length (ctx-stack ctx)))
-   (define all-reg
-     (build-list (length regalloc-regs) (lambda (i) (cons 'r i))))
+  (define (get-req-moves curr-idx rem-regs moves pushed)
+    (if (< curr-idx 0)
+        (cons (reverse pushed) moves)
+        (let ((loc (ctx-get-loc ctx curr-idx)))
+          (if (null? rem-regs)
+              (get-req-moves (- curr-idx 1) '() moves (cons loc pushed))
+              (get-req-moves
+                (- curr-idx 1)
+                (cdr rem-regs)
+                (cons (cons loc (car rem-regs))
+                      moves)
+                pushed)))))
 
-   ;; Check if value in location 'loc' is used for
-   ;; a next argument (if so, we can't overwrite it)
-   (define (is-used-after? loc curr-slot lim-slot)
-     (foldr (lambda (el r)
-              (or (and (equal? (cdr el) loc)
-                       (> (car el) curr-slot)
-                       (<= (car el) lim-slot))
-                  r))
-            #f
-            slot-loc))
+  (let ((pushed/moves (get-req-moves (- nb-args 1) args-regs '() '())))
+    (cons (car pushed/moves)
+          (steps (cdr pushed/moves)))))
 
-   ;; Return the ordered locations
-   (define (pushed-locs)
-     (define (pushed-locs-h lidx)
-       (if (< lidx 0)
-           '()
-           (let ((r (pushed-locs-h (- lidx 1))))
-             (cons
-               (ctx-get-loc ctx lidx)
-               r))))
-     (pushed-locs-h (- nb-args (length args-regs) 1)))
+  ; (define slot-loc (ctx-slot-loc ctx))
+  ; (define len-stack (length (ctx-stack ctx)))
+  ; (define all-reg
+  ;   (build-list (length regalloc-regs) (lambda (i) (cons 'r i))))
+   ;
+  ; ;; Check if value in location 'loc' is used for
+  ; ;; a next argument (if so, we can't overwrite it)
+  ; (define (is-used-after? loc curr-slot lim-slot)
+  ;   (foldr (lambda (el r)
+  ;            (or (and (equal? (cdr el) loc)
+  ;                     (> (car el) curr-slot)
+  ;                     (<= (car el) lim-slot))
+  ;                r))
+  ;          #f
+  ;          slot-loc))
+   ;
+  ; ;; Return the ordered locations
+  ; (define (pushed-locs)
+  ;   (define (pushed-locs-h lidx)
+  ;     (if (< lidx 0)
+  ;         '()
+  ;         (let ((r (pushed-locs-h (- lidx 1))))
+  ;           (cons
+  ;             (ctx-get-loc ctx lidx)
+  ;             r))))
+  ;   (pushed-locs-h (- nb-args (length args-regs) 1)))
+   ;
+  ; ;; Return the registers unused for the function call
+  ; ;; A register is unused if it is free or associated to
+  ; ;; a value which is not an argument
+  ; (define (get-unused-regs)
+  ;   (let* ((slot-start (- len-stack nb-args))
+  ;          (slot-end   (+ slot-start (length args-regs) -1)))
+  ;     (foldr (lambda (el r)
+  ;              (if (or (not (car el))
+  ;                      (and (>= (car el) slot-start)
+  ;                           (<= (car el) slot-end)))
+  ;                  r
+  ;                  (if (ctx-loc-is-register? (cdr el))
+  ;                      (cons (cdr el) r)
+  ;                      r)))
+  ;            '()
+  ;            slot-loc)))
+   ;
+  ; ;; Compute and return all moves needed to put the arguments in the
+  ; ;; calling convention registers
+  ; ;; Return a pair with:
+  ; ;; moves in car
+  ; ;; moves needed to retrieve saved values in unused registers
+  ; (define (move-regs unregs)
+  ;   (define (rec-loop rem lidx args-regs unregs)
+  ;     (if (= rem 0)
+  ;         (cons '() '())
+  ;         (let* ((src (ctx-get-loc ctx lidx))
+  ;                (dst (car args-regs)))
+  ;           (cond ((eq? src dst)
+  ;                    (let* ((moves/save (rec-loop (- rem 1) (- lidx 1) (cdr args-regs) unregs))
+  ;                           (moves (car moves/save))
+  ;                           (save  (cdr moves/save)))
+  ;                      moves/save))
+  ;                 ((is-used-after? dst (stack-idx-to-slot ctx lidx) (stack-idx-to-slot ctx (- lidx rem -1)))
+  ;                    (let* ((moves/save (rec-loop (- rem 1) (- lidx 1) (cdr args-regs) (cdr unregs)))
+  ;                           (moves (car moves/save))
+  ;                           (save  (cdr moves/save)))
+  ;                      (cons
+  ;                        (cons (cons (car unregs) src) moves)
+  ;                        (cons (cons dst (car unregs)) save))))
+  ;                 (else
+  ;                      (let* ((moves/save (rec-loop (- rem 1) (- lidx 1) (cdr args-regs) unregs))
+  ;                             (moves (car moves/save))
+  ;                             (save  (cdr moves/save)))
+  ;                        (cons
+  ;                          (cons (cons dst src) moves)
+  ;                          save)))))))
+   ;
+  ;   (let ((moves/save
+  ;           (rec-loop
+  ;             (min nb-args (length args-regs))
+  ;             (- nb-args 1)
+  ;             args-regs
+  ;             unregs)))
+  ;     (append (car moves/save) (cdr moves/save))))
 
-   ;; Return the registers unused for the function call
-   ;; A register is unused if it is free or associated to
-   ;; a value which is not an argument
-   (define (get-unused-regs)
-     (let* ((slot-start (- len-stack nb-args))
-            (slot-end   (+ slot-start (length args-regs) -1)))
-       (foldr (lambda (el r)
-                (if (or (not (car el))
-                        (and (>= (car el) slot-start)
-                             (<= (car el) slot-end)))
-                    r
-                    (if (ctx-loc-is-register? (cdr el))
-                        (cons (cdr el) r)
-                        r)))
-              '()
-              slot-loc)))
-
-   ;; Compute and return all moves needed to put the arguments in the
-   ;; calling convention registers
-   ;; Return a pair with:
-   ;; moves in car
-   ;; moves needed to retrieve saved values in unused registers
-   (define (move-regs unregs)
-     (define (rec-loop rem lidx args-regs unregs)
-       (if (= rem 0)
-           (cons '() '())
-           (let* ((src (ctx-get-loc ctx lidx))
-                  (dst (car args-regs)))
-             (cond ((eq? src dst)
-                      (let* ((moves/save (rec-loop (- rem 1) (- lidx 1) (cdr args-regs) unregs))
-                             (moves (car moves/save))
-                             (save  (cdr moves/save)))
-                        moves/save))
-                   ((is-used-after? dst (stack-idx-to-slot ctx lidx) (stack-idx-to-slot ctx (- lidx rem -1)))
-                      (let* ((moves/save (rec-loop (- rem 1) (- lidx 1) (cdr args-regs) (cdr unregs)))
-                             (moves (car moves/save))
-                             (save  (cdr moves/save)))
-                        (cons
-                          (cons (cons (car unregs) src) moves)
-                          (cons (cons dst (car unregs)) save))))
-                   (else
-                        (let* ((moves/save (rec-loop (- rem 1) (- lidx 1) (cdr args-regs) unregs))
-                               (moves (car moves/save))
-                               (save  (cdr moves/save)))
-                          (cons
-                            (cons (cons dst src) moves)
-                            save)))))))
-
-     (let ((moves/save
-             (rec-loop
-               (min nb-args (length args-regs))
-               (- nb-args 1)
-               args-regs
-               unregs)))
-       (append (car moves/save) (cdr moves/save))))
-
- ;;; GO
- (let* (;; 1 - Get unused registers
-        (unregs
-          (set-sub (append (ctx-free-regs ctx)
-                           (get-unused-regs))
-                   args-regs
-                   '()))
-        ;; 2 - Get needed moves
-        (moves  (move-regs unregs))
-        ;; 3 - Get locs to push
-        (locs   (pushed-locs)))
-
- (cons locs moves)))
+ ;;;; GO
+ ;(let* (;; 1 - Get unused registers
+ ;       (unregs
+ ;         (set-sub (append (ctx-free-regs ctx)
+ ;                          (get-unused-regs))
+ ;                  args-regs
+ ;                  '()))
+ ;       (rrr (begin (print "UNUSED ARE = ") (pp unregs)))
+ ;       ;; 2 - Get needed moves
+ ;       (moves  (move-regs unregs))
+ ;       ;; 3 - Get locs to push
+ ;       (locs   (pushed-locs)))
+ ;
+ ;(cons locs moves)))
 
 
 ;;
@@ -918,54 +936,69 @@
 ;        (let ((r (step '() req-moves '())))
 ;          (loop (append (car r) real-moves) (cdr r))))))
 ;
-;;; This function takes all required moves (without considering values overwriting)
-;;; and returns a list of real moves ex. ((r0 . r4) (r4 . r5)) for one step,
-;;; and the list of moves that remain to be processed.
-;
-;;; visited-locs: list of visited nodes (source node of a move) during the step
-;;; moves: list of moves required to merge ctx
-;;; pending-moves: list of currently computed real moves
-;(define (step visited req-moves pending-moves #!optional src-sym)
-;
-;  ;; A loc is available if it is not a source of a move in required moves
-;  ;; We can then directly overwrite its content
-;  (define (loc-available loc)
-;    (not (assoc loc req-moves)))
-;
-;  (let* ((move
-;           (cond ((null? req-moves) #f)
-;                 (src-sym           (assoc src-sym req-moves))
-;                 (else              (car req-moves))))
-;         (src (and move (car move)))
-;         (dst (and move (cdr move))))
-;
-;    (cond ;; Case 0: No more move, validate pending moves
-;          ((not move)
-;             (cons pending-moves
-;                   '()))
-;          ;; Case 2: dst has already been visited, it's a cycle.
-;          ;;         validate pending moves using temporary register
-;          ((member dst visited)
-;             (let ((real-moves
-;                     (append (cons (cons src 'rtmp)
-;                                   pending-moves)
-;                             (list (cons 'rtmp dst)))))
-;               (cons real-moves
-;                     (set-sub req-moves (list move) '()))))
-;                     ;; Case 1: Destination is free, validate pending moves
-;                     ((loc-available dst)
-;                        (let ((real-moves (cons move
-;                                                pending-moves)))
-;                          (cons real-moves
-;                                (set-sub req-moves (list move) '()))))
-;          ;; Case 3: dst is an src of an other move,
-;          ;;         add current move to pending moves and continue with next move
-;          (else
-;             (step (cons src visited)
-;                   (set-sub req-moves (list move) '())
-;                   (cons move pending-moves)
-;                   dst)))))
-;
+
+(define (steps required-moves)
+  (let loop ((real-moves '())
+             (req-moves required-moves))
+    (if (null? req-moves)
+        real-moves
+        (let ((r (step '() req-moves '())))
+          (loop (append real-moves (car r)) (cdr r))))))
+
+;; This function takes all required moves (without considering values overwriting)
+;; and returns a list of real moves ex. ((r0 . r4) (r4 . r5)) for one step,
+;; and the list of moves that remain to be processed.
+
+;; visited-locs: list of visited nodes (source node of a move) during the step
+;; moves: list of moves required to merge ctx
+;; pending-moves: list of currently computed real moves
+;; TODO
+(define (step visited req-moves pending-moves #!optional src-sym)
+
+  ;; A loc is available if it is not a source of a move in required moves
+  ;; We can then directly overwrite its content
+  (define (loc-available loc)
+    (not (assoc loc req-moves)))
+
+  (let* ((move
+           (cond ((null? req-moves) #f)
+                 (src-sym           (assoc src-sym req-moves))
+                 (else              (car req-moves))))
+         (src (and move (car move)))
+         (dst (and move (cdr move))))
+
+    (cond ;; Case 0: No more move, validate pending moves
+          ((not move)
+             (cons pending-moves
+                   '()))
+          ;; Case 2: dst has already been visited, it's a cycle.
+          ;;         validate pending moves using temporary register
+          ((member dst visited)
+             (let ((real-moves
+                     (append (cons (cons src 'rtmp)
+                                   pending-moves)
+                             (list (cons 'rtmp dst)))))
+               (cons real-moves
+                     (set-sub req-moves (list move) '()))))
+          ;; Case 1: Destination is free, validate pending moves
+          ((loc-available dst)
+             (let ((real-moves (cons move
+                                     pending-moves)))
+               (cons real-moves
+                     (set-sub req-moves (list move) '()))))
+          ;; Case X: src is dst
+          ((equal? src dst)
+             (step (cons src visited)
+                   (set-sub req-moves (list move) '())
+                   (cons move pending-moves)))
+          ;; Case 3: dst is an src of an other move,
+          ;;         add current move to pending moves and continue with next move
+          (else
+             (step (cons src visited)
+                   (set-sub req-moves (list move) '())
+                   (cons move pending-moves)
+                   dst)))))
+
 ;;;-----------------------------------------------------------------------------
 ;;; Call register save
 ;

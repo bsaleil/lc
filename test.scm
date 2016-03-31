@@ -1,10 +1,16 @@
 
-(define (foo a)
-  (lambda ()
-    (let ((z a))
-      (set! a 10))))
 
-((foo 1))
+(define (foo8 a b c d e f . g)
+	(write-char a)
+	(write-char f))
+
+
+(foo8 #\A #\B #\C #\D #\E #\F #\G)
+
+
+
+
+
 
 
 

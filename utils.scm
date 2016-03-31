@@ -75,6 +75,9 @@
          (else (append (flatten (car x))
                        (flatten (cdr x))))))
 
+(define (keep fn lst)
+  (foldr (lambda (el r) (if (fn el) (cons el r) r)) '() lst))
+
 (define (count lst fn)
   (foldr (lambda (n r) (if (fn n) (+ 1 r) r)) 0 lst))
 

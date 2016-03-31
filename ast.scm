@@ -1699,26 +1699,33 @@
   (ctx-fs-inc ctx))
 
 ;; Move args in regs or mem following calling convention
-(define (call-prep-args cgc ctx nbargs)
+(define (call-prep-args cgc ctx ast nbargs)
+
   (let* ((stackp/moves (ctx-get-call-args-moves ctx nbargs))
          (stackp (car stackp/moves))
-         (moves (cdr stackp/moves))
-         (fs (ctx-fs ctx)))
-    (if (not (null? stackp))
-        (let loop ((cfs fs)
-                   (stackp stackp))
-          (if (null? stackp)
-              (set! fs cfs)
-              (let ((opnd (codegen-loc-to-x86opnd cfs (car stackp))))
-                (x86-push cgc opnd)
-                (loop (+ cfs 1) (cdr stackp))))))
-    (for-each
-        (lambda (el)
-          (let ((opnddst (codegen-loc-to-x86opnd fs (car el)))
-                (opndsrc (codegen-loc-to-x86opnd fs (cdr el))))
-            (x86-mov cgc opnddst opndsrc)))
-        moves)
-    (ctx-fs-update ctx fs)))
+         (moves (cdr stackp/moves)))
+
+    (let loop ((fs (ctx-fs ctx))
+               (locs stackp))
+      (if (null? locs)
+          (set! ctx (ctx-fs-update ctx fs))
+          (let ((opnd (codegen-loc-to-x86opnd fs (car locs))))
+            (x86-push cgc opnd)
+            (loop (+ fs 1) (cdr locs)))))
+
+    (let* ((used-regs
+             (foldr (lambda (el r)
+                      (define regs '())
+                      (if (ctx-loc-is-register? (car el)) (set! regs (cons (car el) regs)))
+                      (if (ctx-loc-is-register? (cdr el)) (set! regs (cons (cdr el) regs)))
+                      (append regs r))
+                    '()
+                    moves))
+             (unused-regs (set-sub (ctx-init-free-regs) used-regs '())))
+      (assert (not (null? unused-regs)) "Internal error")
+      (apply-moves cgc ctx moves (car unused-regs))
+
+      ctx)))
 
 ;; Unbox mutable args
 (define (call-unbox-args cgc ctx nbargs)
@@ -1779,7 +1786,7 @@
                (set! ctx (call-get-closure cgc ctx (length args)))
 
                ;; Move args to regs or stack following calling convention
-               (set! ctx (call-prep-args cgc ctx (length args)))
+               (set! ctx (call-prep-args cgc ctx ast (length args)))
 
                ;; Unbox mutable args
                (call-unbox-args cgc ctx (length args))

@@ -1068,8 +1068,8 @@
 ;;-----------------------------------------------------------------------------
 ;; Ctx TODO regalloc
 
-
-(define (apply-moves cgc ctx moves)
+;; TODO: merge cases EB
+(define (apply-moves cgc ctx moves #!optional tmpreg)
 
   (define (apply-move move)
     (cond ((eq? (car move) 'fs)
@@ -1084,11 +1084,30 @@
            (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
                  (dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
              (x86-mov cgc dst src)))
+          ((and (ctx-loc-is-register? (car move))
+                (ctx-loc-is-register? (cdr move)))
+           (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
+                 (dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
+             (x86-mov cgc dst src)))
+          ((and (ctx-loc-is-register? (car move))
+                (eq? 'rtmp (cdr move)))
+           (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
+                 (dst (if tmpreg
+                          (codegen-loc-to-x86opnd (ctx-fs ctx) tmpreg)
+                          (x86-rax))))
+             (x86-mov cgc dst src)))
+          ((and (ctx-loc-is-register? (cdr move))
+                (eq? 'rtmp (car move)))
+           (let ((dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move)))
+                 (src (if tmpreg
+                          (codegen-loc-to-x86opnd (ctx-fs ctx) tmpreg)
+                          (x86-rax))))
+             (x86-mov cgc dst src)))
           (else (pp move) (error "NYI apply-moves"))))
 
   (if (not (null? moves))
       (begin (apply-move (car moves))
-             (apply-moves cgc ctx (cdr moves)))))
+             (apply-moves cgc ctx (cdr moves) tmpreg))))
 
 
 
