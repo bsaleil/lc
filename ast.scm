@@ -437,7 +437,9 @@
 (define (gen-get-localvar cgc ctx local succ for-set?)
 
   (let ((loc (ctx-identifier-loc ctx (cdr local)))
-        (type (ctx-identifier-type ctx (cdr local))))
+        (type (if (ctx-identifier-mutable? ctx (cdr local))
+                  CTX_UNK
+                  (ctx-identifier-type ctx (cdr local)))))
 
     (if for-set?
         (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))

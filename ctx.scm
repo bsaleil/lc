@@ -81,6 +81,9 @@
 ;; L'api ne doit fonctionner qu'avec un index de pile. Les slots sont propre à l'implantation.
 ;;
 
+(define (ctx-identifier-mutable? ctx identifier)
+  (member 'mutable (identifier-flags identifier)))
+
 ;; CTX IDENTIFIER LOC
 ;; Return best loc for identifier. (Register if available, memory otherwise)
 (define (ctx-identifier-loc ctx identifier)
