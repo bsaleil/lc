@@ -413,7 +413,7 @@
 ;;-----------------------------------------------------------------------------
 ;; Pair
 (define (codegen-pair cgc fs reg lcar lcdr car-cst? cdr-cst? mut-car? mut-cdr?)
- (x86-mov cgc (x86-rax) (x86-imm-int 100000))
+
  (let ((header-word (mem-header 3 STAG_PAIR))
        (dest  (codegen-reg-to-x86reg reg))
        (opcar (and (not car-cst?) (codegen-loc-to-x86opnd fs lcar)))

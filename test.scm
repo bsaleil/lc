@@ -1,7 +1,37 @@
+;;---------------------------------------------------------------------------
+;;
 
+(define (myrr l) #f)
 
+(define (cst? a)
+  (let ((b (car (cons (cons 100 100) 10))))
+    (= (car a) 100)))
 
+(define (tst? x) #t)
 
+(define (foob l)
+  (cadr l))
+
+;;---------------------------------------------------------------------------
+;;
+
+(define ID4 (list 1000 '()))
+(define ID2 (list 100 (list ID4)))
+
+;;---------------------------------------------------------------------------
+;;
+
+(define (foo ptree)
+
+  (if (or (cst? ptree)
+	        (myrr 1)
+					(myrr ptree)
+					(tst? ptree))
+			(for-each
+			  (lambda (child) (foo child))
+				(foob ptree))))
+
+(foo ID2)
 
 
 ;; TODO: call with arg mutable

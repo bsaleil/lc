@@ -1746,7 +1746,8 @@
           (loop (+ narg 1) (- stack-idx 1))))))
 
 ;; Shift args and closure for tail call
-(define (call-tail-shift cgc ctx tail? nbargs)
+(define (call-tail-shift cgc ctx ast tail? nbargs)
+
   ;; Use r14 because it is not an args reg
   (if tail?
       (let ((fs (ctx-fs ctx))
@@ -1795,7 +1796,7 @@
                (call-unbox-args cgc ctx (length args))
 
                ;; Shift args and closure for tail call
-               (call-tail-shift cgc ctx tail? (length args))
+               (call-tail-shift cgc ctx ast tail? (length args))
 
                ;; Generate call sequence
                ;; Build call ctx
@@ -1850,7 +1851,7 @@
                                              (if apply?
                                                  (ctx-pop-n ctx 2) ;; Pop operator and args
                                                  (ctx-pop-n ctx (+ (length args) 1))))
-                                           (moves/reg/wctx (ctx-get-free-reg ctx)))
+                                           (moves/reg/ctx (ctx-get-free-reg ctx)))
 
                                       (apply-moves cgc ctx moves)
                                       (set! gen-flag
@@ -1891,7 +1892,7 @@
                                               (if apply?
                                                   (ctx-pop-n ctx 2) ;; Pop operator and args
                                                   (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
-                                            (moves/reg (ctx-get-free-reg ctx)))
+                                            (moves/reg/ctx (ctx-get-free-reg ctx)))
                                          (apply-moves cgc ctx moves)
                                          (gen-version-continuation-cr lazy-continuation
                                                                       (ctx-push ctx type reg)
@@ -2272,6 +2273,7 @@
   (cons ast
         (list (ctx-slot-loc ctx)
               (ctx-free-regs ctx)
+              (ctx-free-mems ctx)
               (ctx-stack ctx)
               (ctx-env ctx))))
 
