@@ -299,28 +299,25 @@
 (define (mlc-vector ast succ)
 
   (define (gen-set cgc ctx lidx)
-    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
-           (lval (ctx-get-loc ctx lidx))
+    (let* ((lval (ctx-get-loc ctx lidx))
            (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
-      (apply-moves cgc ctx moves)
       (if (ctx-loc-is-memory? lval)
           (begin (x86-mov cgc (x86-rax) opval)
                  (set! opval (x86-rax))))
-
-      (x86-mov cgc (x86-mem (+ (* lidx 8) 16) alloc-ptr) opval)
-      ctx))
+      (x86-mov cgc (x86-mem (+ (* lidx 8) 16) alloc-ptr) opval)))
 
   (define lazy-vector
     (make-lazy-code
       (lambda (cgc ctx)
-        (let loop ((pos 0) (ctx ctx))
+        (let loop ((pos 0))
           (if (= pos (vector-length ast))
               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
                 (apply-moves cgc ctx moves)
                 (x86-lea cgc (codegen-reg-to-x86reg reg) (x86-mem TAG_MEMOBJ alloc-ptr))
                 (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx (vector-length ast)) CTX_VECT reg)))
-              (let ((ctx (gen-set cgc ctx pos)))
-                (loop (+ pos 1) ctx)))))))
+              (begin
+                (gen-set cgc ctx pos)
+                (loop (+ pos 1))))))))
 
 
   (define lazy-alloc
@@ -658,7 +655,10 @@
                (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
 
           ;; Get free vars from ast
-          (set! fvars (free-vars (caddr ast) all-params ctx))
+          (set! fvars (free-vars
+                        (caddr ast)
+                        all-params
+                        (map car (ctx-env ctx))))
 
           ;; If 'stats' option, then inc closures slot
           (if opt-stats
@@ -2327,38 +2327,39 @@
         (gen-free-vars cgc (cdr ids) ctx (+ offset 1)))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
-(define (free-vars-l lst clo-env ctx)
+(define (free-vars-l lst params enc-ids)
   (if (null? lst)
       '()
-      (set-union (free-vars (car lst) clo-env ctx) (free-vars-l (cdr lst) clo-env ctx))))
+      (set-union (free-vars   (car lst) params enc-ids)
+                 (free-vars-l (cdr lst) params enc-ids))))
 
 ;; Return all free vars used by ast knowing env 'clo-env'
-(define (free-vars ast clo-env ctx)
+(define (free-vars body params enc-ids)
   (cond ;; Symbol
-        ((symbol? ast)
-          (if (and (assoc ast (ctx-env ctx))
-                   (not (member ast clo-env)))
-              (list ast)
+        ((symbol? body)
+          (if (and (member body enc-ids)
+                   (not (member body params)))
+              (list body)
               '()))
         ;; Literal
-        ((literal? ast) '())
+        ((literal? body) '())
         ;; Pair
-        ((pair? ast)
-          (let ((op (car ast)))
+        ((pair? body)
+          (let ((op (car body)))
             (cond ;; If
-                  ((eq? op 'if) (set-union (free-vars (cadr ast)   clo-env ctx)   ; cond
-                                           (set-union (free-vars (caddr ast)  clo-env ctx)    ; then
-                                                      (free-vars (cadddr ast) clo-env ctx)))) ; else
+                  ((eq? op 'if) (set-union (free-vars (cadr body) params enc-ids)   ; cond
+                                           (set-union (free-vars  (caddr body) params enc-ids)    ; then
+                                                      (free-vars (cadddr body) params enc-ids)))) ; else
                   ;; Quote
                   ((eq? op 'quote) '())
                   ;; Lambda
-                  ((eq? op 'lambda) (free-vars (caddr ast)
-                                               (if (list? (cadr ast))
-                                                  (append (cadr ast) clo-env)
-                                                  (cons (cadr ast) clo-env))
-                                               ctx))
+                  ((eq? op 'lambda) (free-vars (caddr body)
+                                               (if (list? (cadr body))
+                                                  (append (cadr body) params)
+                                                  (cons (cadr body) params))
+                                               enc-ids))
                   ;; Call
-                  (else (free-vars-l ast clo-env ctx)))))))
+                  (else (free-vars-l body params enc-ids)))))))
 
 ;;
 ;; MUTABLE VARS

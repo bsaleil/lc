@@ -1,16 +1,12 @@
-(define (foo)
-
-  (letrec ((t 11)
-           (bar (lambda () (set! t #\P)))
-           (baz (lambda () (set! t 34))))
-
-    (bar)
-    (write-char t)
-    (baz)
-    (write-char t)))
 
 
-(foo)
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
+
+(fib 40)
 
 
 
@@ -23,14 +19,24 @@
 
 
 
-;; TODO: call with arg mutable
-;; let returning mutable
-;; letrec returning mutable
-;; function returning mutable
-;; begin returning mutable
 
-;; WIP:
-;; A presque tous les ctx-get-loc, il faut vérifier si elle est mutable et l'envoyer à codegen
+
+
+
+
+
+
+
+;; TODO: Détecter appel fonction globale
+;; TODO: Analyse pour détecter les variables mutables qui ne deviennent pas libres
+;; TODO: Réduire les cache misses avec appel pour le paramètre rest + appels système
+;; TODO: Enlever mov stub
+;; TODO: allouer la valeur de retour au registre de retour
+;; TODO: adresse de retour + fermeture dans des registres. Si on doit spill, on prend en priorité un des deux
+
+;; TODO: réfléchir BBV AOT
+
+
 
 ;; TODO
 ;; Comparer le contexte avec le contexte associé à la version générique.

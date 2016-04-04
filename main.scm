@@ -269,8 +269,8 @@
                    (after  #f))
                 (set! before (real-time))
                 ;; 10 execs
-                (one-exec) (one-exec) (one-exec)
-                (one-exec) (one-exec)
+                (one-exec) ;(one-exec) (one-exec)
+                ;(one-exec) (one-exec)
                 ;(one-exec) (one-exec)
                 ;(one-exec) (one-exec)
                 ;(one-exec) (one-exec)

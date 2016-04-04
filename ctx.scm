@@ -222,13 +222,25 @@
 ;; GET FREE REG
 (define (ctx-get-free-reg ctx)
 
+  (define (get-spilled-reg)
+    (let ((sl
+            (foldr (lambda (el r)
+                     (if (and (or (not r) (< (car el) (car r)))
+                              (ctx-loc-is-register? (cdr el)))
+                         el
+                         r))
+                   #f
+                   (ctx-slot-loc ctx))))
+      (assert sl "Internal error l")
+      (cdr sl)))
+
   (let ((free-regs (ctx-free-regs ctx)))
     (if (null? free-regs)
         (let* ((moves/mloc/ctx (ctx-get-free-mem ctx))
                (moves (car moves/mloc/ctx))
                (mloc  (cadr moves/mloc/ctx))
                (ctx   (caddr moves/mloc/ctx))
-               (spill-reg (cons 'r 0)) ;; TODO: better strat
+               (spill-reg (get-spilled-reg))
                (reg-slots (ctx-get-slots ctx spill-reg)))
           ;; 1: changer tous les slots pour r -> m
           (let ((ctx (ctx-set-loc-n ctx reg-slots mloc))
