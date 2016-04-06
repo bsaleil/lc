@@ -311,18 +311,18 @@
 
 ;; Nettoyer optimisation variables globales
 
-;; TODO : convention pour les noms de fonctions :
+;; convention pour les noms de fonctions :
 ;;   lazy-fn représente un block
 ;;   get-lazy-fn, fonction qui créé un block
 ;;   gen-... pour la génération du code machine
 
-;; TODO : ATTENTION, pour l'instant l'optimisation du type de retour fait que par ex si
+;; ATTENTION, pour l'instant l'optimisation du type de retour fait que par ex si
 ;; la fonction 'length' est appellée, la valeur de retour est un nombre. MAIS, l'opti
 ;; est bien désactivée si la globale est modifiée (set! length ...) mais pas si elle est
 ;; redéfinie. ex (define length ...) dans le programme.
 ;; Il faut donc passer à faux ces redéfinitions dans gids
 
-;; TODO: unit tests fp operations (se baser sur le test comparison.scm)
+;; unit tests fp operations (se baser sur le test comparison.scm)
 
 ;(pp (+ 1 (length '(1 2 3))))
 

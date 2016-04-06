@@ -31,9 +31,7 @@
 (include "~~lib/_x86#.scm")
 (include "./extern/Sort.scm")
 
-;; TODO regalloc for unit tests
 (define pp pretty-print)
-;(define pp (lambda (n) #f))
 (define repl-print-lco #f)
 
 (define-macro (string-bold str)
@@ -158,7 +156,6 @@
 
 ;;-----------------------------------------------------------------------------
 
-;; TODO regalloc
 (define (lazy-exprs exprs succ)
 
   (let ((lazy-final
@@ -257,7 +254,7 @@
   (init)
 
   (let ((lazy-lib (lazy-exprs (append lib prog) #f)))
-    (gen-version code-alloc lazy-lib (ctx-init)))
+    (gen-version-first lazy-lib (ctx-init)))
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)

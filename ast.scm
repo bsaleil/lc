@@ -295,7 +295,6 @@
 ;;
 ;; Make lazy code from vector literal
 ;;
-;; TODO regalloc: comment
 (define (mlc-vector ast succ)
 
   (define (gen-set cgc ctx lidx)
@@ -504,7 +503,7 @@
       (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
       (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
       (let* ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg))
-             (ctx (ctx-set-type ctx local type))) ;; TODO regalloc unk
+             (ctx (ctx-set-type ctx local type)))
         (jump-to-version cgc succ ctx)))))
 
 ;; TODO Merge with gen-set-localvar
@@ -526,7 +525,7 @@
       (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
       (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
       (let* ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg))
-             (ctx (ctx-set-type ctx local type))) ;; TODO regalloc unk
+             (ctx (ctx-set-type ctx local type)))
         (jump-to-version cgc succ ctx)))))
 
 (define (gen-set-globalvar cgc ctx global succ)
@@ -597,7 +596,6 @@
                               (mutable? (ctx-is-mutable? ctx 0)))
 
                          ;; 2 - Move res in rax
-                         ;; TODO regalloc2
                          (if mutable?
                              (if (ctx-loc-is-memory? lres)
                                  (begin (x86-mov cgc (x86-rax) opres)
@@ -2452,8 +2450,6 @@
      '()
      (cons (car l) (formal-params (cdr l)))))
 
-
-;; TODO regalloc
 (define (gen-mutable cgc ctx mvars)
   (if (null? mvars)
       ctx

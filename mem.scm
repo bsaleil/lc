@@ -63,11 +63,11 @@
 ;; ALLOCATOR
 
 ;; Generate an heap object header
-;; NOTE : 'life' is fixed as 6 for now.
-;(define (memobj-header length stag life)
+;; using layout used by Gambit.
+;; NOTE : 'life' field is not used and set to 0.
 (define (mem-header length stag)
     ;; => Length (56 bits) | sTag (5 bits) | Life (3 bits)
-    (+ (arithmetic-shift length 8) (arithmetic-shift stag 3) 6))
+    (+ (arithmetic-shift length 8) (arithmetic-shift stag 3) 0))
 
 ;; Generate allocation code
 ;; use-rax to #t to allocate from register (with optional imm length)

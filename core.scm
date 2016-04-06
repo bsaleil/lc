@@ -372,7 +372,6 @@
                (- (length (ctx-stack ctx)) 2)))
 
          (closure
-          ;; TODO regalloc: closure offset is computed from nb args on stack only
           (let ((stack-offset
                   (let ((r (- nb-args (length args-regs))))
                     (if (< r 0) 0 r))))
@@ -1058,53 +1057,6 @@
 ;;-----------------------------------------------------------------------------
 ;; JIT
 
-
-;; TODO: use gen-version-*
-;; code above is not working because it does not correctly patch jumps
-;; TODO: init call: (gen-version code-alloc lazy-code ctx)
-(define (gen-version jump-addr lazy-code ctx #!optional (cleared-ctx #f))
-
-  (define (fn-verbose) (println 100))
-
-  (define (fn-codepos)
-    (if (= (+ jump-addr (jump-size jump-addr)) code-alloc)
-        (begin ;; (fall-through optimization)
-               ;; the jump is the last instruction previously generated, so
-               ;; just overwrite the jump
-               (if opt-verbose-jit (println ">>> fall-through-optimization"))
-               jump-addr)
-        code-alloc))
-
-  (define (fn-patch label-dest new-version?)
-    (let ((dest-addr (asm-label-pos label-dest)))
-      (patch-jump jump-addr (asm-label-pos label-dest)))
-    (asm-label-pos label-dest))
-
-  ;(gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
-
-  ;;------------------------------------------------------------
-
-  (if opt-verbose-jit
-      (fn-verbose))
-
-  (let* ((label-dest (get-version lazy-code ctx))
-         (new-version? (not label-dest)))
-    (if (not label-dest)
-        ;; That
-        (let ((label-version (asm-make-label #f (new-sym 'version))))
-          (set! code-alloc (fn-codepos))
-          (code-add
-           (lambda (cgc)
-             ;(asm-align cgc 4 0 #x90)
-             (x86-label cgc label-version)
-             ((lazy-code-generator lazy-code) cgc ctx)))
-          (put-version lazy-code ctx label-version)
-          (set! label-dest label-version)))
-
-
-    ;; That version has already been generated, so just patch jump
-    (fn-patch label-dest #f)))
-
 (define (gen-version-* cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos)
 
   (if opt-verbose-jit
@@ -1129,6 +1081,48 @@
           (put-version lazy-code ctx version-label)
           (set! label-dest version-label)))
     (fn-patch label-dest new-version?)))
+
+;; #### FIRST LAZY CODE OBJECT
+;; This is a special gen-version used to generate the first lco of the program
+(define (gen-version-first lazy-code ctx)
+
+  (define (fn-verbose) #f)
+
+  (define (fn-codepos) code-alloc)
+
+  (define (fn-patch label-dest new-version?)
+    (asm-label-pos label-dest))
+
+  (gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
+
+;; #### LAZY CODE OBJECT
+;; Generate a lco. Handle fall-through optimization
+(define (gen-version jump-addr lazy-code ctx #!optional (cleared-ctx #f))
+
+  (define (fn-verbose)
+    (print "GEN VERSION")
+    (print " >>> ")
+    (pp lazy-code)
+    (pp ctx))
+
+  (define fall-through? #f)
+
+  (define (fn-codepos)
+    (if (= (+ jump-addr (jump-size jump-addr)) code-alloc)
+        (begin ;; (fall-through optimization)
+               ;; the jump is the last instruction previously generated, so
+               ;; just overwrite the jump
+               (set! fall-through? #t)
+               (if opt-verbose-jit (println ">>> fall-through-optimization"))
+               jump-addr)
+        code-alloc))
+
+  (define (fn-patch label-dest new-version?)
+    (if (not fall-through?)
+        (patch-jump jump-addr (asm-label-pos label-dest)))
+    (asm-label-pos label-dest))
+
+  (gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
 
 ;; #### CONTINUATION
 ;; Generate a continuation
@@ -1305,8 +1299,6 @@
 ;; jump to lazy-fail if test fails
 (define (gen-dyn-type-test type stack-idx lazy-success lazy-fail #!optional ast)
 
-
-
   (make-lazy-code
      (lambda (cgc ctx)
 
@@ -1439,14 +1431,13 @@
                     (x86-jmp cgc (list-ref stub-labels 1))))))))))
 
 ;;-----------------------------------------------------------------------------
-;; Global cc table
+;; Interprocedural BBV (cr/cc-tables)
 
 ;; Current fixed global-cc-table max size
 (define global-cc-table-maxsize 500)
-;; Current shape of the global cc table
+(define global-cr-table-maxsize (length type-cridx)) ;; TODO number of types
+;; Holds the current shape of the global cc table
 (define global-cc-table (make-table))
-
-(define global-cr-table-maxsize 16) ;; TODO number of types
 
 ;; Get closure index associated to ctx. If ctx is not in the
 ;; global cc table, then this function adds it and returns
