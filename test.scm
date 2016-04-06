@@ -25,8 +25,6 @@
 
 
 
-
-
 ;; TODO: Détecter appel fonction globale
 ;; TODO: Analyse pour détecter les variables mutables qui ne deviennent pas libres
 ;; TODO: Réduire les cache misses avec appel pour le paramètre rest + appels système
