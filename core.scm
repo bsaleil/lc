@@ -34,7 +34,6 @@
 ;;-----------------------------------------------------------------------------
 
 (include "x86-debug.scm")
-(include "extern/Sort.scm")
 
 ;;--------------------------------------------------------------------------------
 ;; Compiler options
@@ -54,44 +53,6 @@
 (define opt-vers-regalloc        #t) ;; Use register allocation for code specialization
 (define opt-dump-bin             #f) ;; Print generated binary bytes to stdout
 (define mode-repl                #f) ;; REPL mode ?
-
-;; TODO Move
-(define (type-to-cridx type)
-  (cond ((eq? type CTX_INT)    8) ;; Start from 8 because of header
-        ((eq? type CTX_CHAR)  16)
-        ((eq? type CTX_BOOL)  24)
-        ((eq? type CTX_CLO)   32)
-        ((eq? type CTX_PAI)   40)
-        ((eq? type CTX_VOID)  48)
-        ((eq? type CTX_NULL)  56)
-        ((eq? type CTX_VECT)  64)
-        ((eq? type CTX_STR)   72)
-        ((eq? type CTX_SYM)   80)
-        ((eq? type CTX_IPORT) 88)
-        ((eq? type CTX_OPORT) 96)
-        ((eq? type CTX_FLO)   104)
-        ((eq? type CTX_UNK)   112)
-        ((eq? type CTX_MOBJ)  120)
-        (else (pp type) (error ERR_INTERNAL))))
-
-;; TODO Move
-(define (cridx-to-type cridx)
-  (cond ((= cridx  8)  CTX_INT)
-        ((= cridx 16)  CTX_CHAR)
-        ((= cridx 24)  CTX_BOOL)
-        ((= cridx 32)  CTX_CLO)
-        ((= cridx 40)  CTX_PAI)
-        ((= cridx 48)  CTX_VOID)
-        ((= cridx 56)  CTX_NULL)
-        ((= cridx 64)  CTX_VECT)
-        ((= cridx 72)  CTX_STR)
-        ((= cridx 80)  CTX_SYM)
-        ((= cridx 88)  CTX_IPORT)
-        ((= cridx 96)  CTX_OPORT)
-        ((= cridx 104) CTX_FLO)
-        ((= cridx 112) CTX_UNK)
-        ((= cridx 120) CTX_MOBJ)
-        (else (pp cridx) (error ERR_INTERNAL))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -157,13 +118,36 @@
 (define CTX_SYM   'symbol)
 (define CTX_IPORT 'inport)
 (define CTX_OPORT 'outport)
-(define CTX_MOBJ  'mobject)
 (define CTX_FLO   'float)
 
 (define (CTX_CLOi cctable)
   (if opt-propagate-functionid
       (cons CTX_CLO cctable)
       CTX_CLO))
+
+
+(define type-cridx
+  `((,CTX_INT  .  8) ;; Start from 8 because of header
+    (,CTX_CHAR . 16)
+    (,CTX_BOOL . 24)
+    (,CTX_CLO  . 32)
+    (,CTX_PAI  . 40)
+    (,CTX_VOID . 48)
+    (,CTX_NULL . 56)
+    (,CTX_VECT . 64)
+    (,CTX_STR  . 72)
+    (,CTX_SYM  . 80)
+    (,CTX_IPORT . 88)
+    (,CTX_OPORT . 96)
+    (,CTX_FLO   . 104)
+    (,CTX_UNK   . 112)))
+
+(define (type-to-cridx type)
+  (cdr (assoc type type-cridx)))
+
+(define (cridx-to-type cridx)
+  (car (find (lambda (el) (= (cdr el) cridx))
+             type-cridx)))
 
 ;;-----------------------------------------------------------------------------
 

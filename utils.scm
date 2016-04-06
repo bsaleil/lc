@@ -81,6 +81,12 @@
 (define (count lst fn)
   (foldr (lambda (n r) (if (fn n) (+ 1 r) r)) 0 lst))
 
+(define (find fn lst)
+  (if (null? lst)
+      #f
+      (or (and (fn (car lst)) (car lst))
+          (find fn (cdr lst)))))
+
 ;; Return n firsts elements of lst
 (define (list-head lst n)
   (cond ((= n 0) '())
