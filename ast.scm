@@ -116,7 +116,7 @@
   (string?      . ,CTX_STR)
   (char?        . ,CTX_CHAR)
   (vector?      . ,CTX_VECT)
-  (fixnum?      . ,CTX_NUM)
+  (fixnum?      . ,CTX_INT)
   (flonum?      . ,CTX_FLO)
   (procedure?   . ,CTX_CLO)
   (pair?        . ,CTX_PAI)
@@ -146,23 +146,23 @@
                      (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1))
                      (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
                      (vector-length       1  1  ,(prim-types 1 CTX_VECT)                    ())
-                     (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM)           (1))
+                     (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_INT)           (1))
                      (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                   (0))
-                     (integer->char       1  1  ,(prim-types 1 CTX_NUM)                    (0))
-                     (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM)            (1))
+                     (integer->char       1  1  ,(prim-types 1 CTX_INT)                    (0))
+                     (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_INT)            (1))
                      (string->symbol      1  1  ,(prim-types 1 CTX_STR)                     ())
                      (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ())
                      (close-output-port   1  1  ,(prim-types 1 CTX_OPORT)                   ())
                      (close-input-port    1  1  ,(prim-types 1 CTX_IPORT)                   ())
                      (open-output-file    1  1  ,(prim-types 1 CTX_STR)                     ())
                      (open-input-file     1  1  ,(prim-types 1 CTX_STR)                     ())
-                     (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_NUM CTX_CHAR) (1 2))
-                     (vector-set!         3  3  ,(prim-types 3 CTX_VECT CTX_NUM CTX_ALL)    ()) ;; + efficace cst TODO
+                     (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_INT CTX_CHAR) (1 2))
+                     (vector-set!         3  3  ,(prim-types 3 CTX_VECT CTX_INT CTX_ALL)    ()) ;; + efficace cst TODO
                      (string-length       1  1  ,(prim-types 1 CTX_STR)                     ())
                      (read-char           1  1  ,(prim-types 1 CTX_IPORT)                   ())
                      (exit                0  0  ,(prim-types 0 )                            ())
-                     (make-vector         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_ALL)   ())
-                     (make-string         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_CHAR)  ())
+                     (make-vector         1  2  ,(prim-types 1 CTX_INT 2 CTX_INT CTX_ALL)   ())
+                     (make-string         1  2  ,(prim-types 1 CTX_INT 2 CTX_INT CTX_CHAR)  ())
                      (eof-object?         1  1  ,(prim-types 1 CTX_ALL)                     ())
                      (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT)          ())
                      (current-output-port 0  0  ,(prim-types 0 )                            ())
@@ -256,7 +256,7 @@
           (jump-to-version cgc
                            succ
                            (ctx-push ctx
-                                     (cond ((integer? ast) CTX_NUM)
+                                     (cond ((integer? ast) CTX_INT)
                                            ((boolean? ast) CTX_BOOL)
                                            ((char? ast)    CTX_CHAR)
                                            ((null? ast)    CTX_NULL)
@@ -1259,7 +1259,7 @@
     (codegen-ch<->int cgc (ctx-fs ctx) op reg lval cst-arg mut-val?)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop)
                                         (if (eq? op 'char->integer)
-                                            CTX_NUM
+                                            CTX_INT
                                             CTX_CHAR)
                                         reg))))
 
@@ -1268,7 +1268,7 @@
   (let ((lval (ctx-get-loc ctx 0))
         (mut-val? (ctx-is-mutable? ctx 0)))
     (codegen-vec/str-length cgc (ctx-fs ctx) reg lval mut-val?)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_INT reg))))
 
 ;;
 (define (mlc-primitive ast succ)
@@ -1359,7 +1359,7 @@
 
   (define (check-cst-type type cst)
     (cond
-      ((eq? type CTX_NUM) (integer? cst))
+      ((eq? type CTX_INT) (integer? cst))
       ((eq? type CTX_FLO) (flonum? cst))
       ((eq? type CTX_NULL) (null? cst))
       ((eq? type CTX_BOOL) (boolean? cst))
@@ -1948,9 +1948,9 @@
                      (codegen-binop cgc (ctx-fs ctx) op label-div0 reg lleft lright)
                      (jump-to-version cgc
                                       succ
-                                      (ctx-push (ctx-pop-n ctx 2) CTX_NUM reg)))))))
+                                      (ctx-push (ctx-pop-n ctx 2) CTX_INT reg)))))))
          ;; Check operands type
-         (check-types (list CTX_NUM CTX_NUM)
+         (check-types (list CTX_INT CTX_INT)
                       (list (car opnds) (cadr opnds))
                       lazy-op
                       ast)))))
@@ -2018,7 +2018,7 @@
            (lazy-op-f (get-op-ff (integer? lcst) (integer? rcst)))
            ;; Checks
            (lazy-float (gen-fatal-type-test CTX_FLO 0 lazy-op-f ast))
-           (lazy-int (gen-dyn-type-test CTX_NUM 0 lazy-op-i lazy-float ast)))
+           (lazy-int (gen-dyn-type-test CTX_INT 0 lazy-op-i lazy-float ast)))
       lazy-int))
 
   ;; Build chain to check type of two values (no cst)
@@ -2030,20 +2030,20 @@
            (lazy-op-ff (get-op-ff #f #f))
            ;; Right branch
            (lazy-yfloat2 (gen-fatal-type-test CTX_FLO 0 lazy-op-ff ast))
-           (lazy-yint2   (gen-dyn-type-test CTX_NUM 0 lazy-op-fi lazy-yfloat2 ast))
+           (lazy-yint2   (gen-dyn-type-test CTX_INT 0 lazy-op-fi lazy-yfloat2 ast))
            (lazy-xfloat  (gen-fatal-type-test CTX_FLO 1 lazy-yint2 ast))
            ;; Left branch
            (lazy-yfloat  (gen-fatal-type-test CTX_FLO 0 lazy-op-if ast))
-           (lazy-yint    (gen-dyn-type-test CTX_NUM 0 lazy-op-ii lazy-yfloat ast))
+           (lazy-yint    (gen-dyn-type-test CTX_INT 0 lazy-op-ii lazy-yfloat ast))
            ;; Root node
-           (lazy-xint    (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat ast)))
+           (lazy-xint    (gen-dyn-type-test CTX_INT 1 lazy-yint lazy-xfloat ast)))
     lazy-xint))
 
   ;; TODO: Merge with get-op-ff
   (define (get-op-ii)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((type (if num-op? CTX_NUM CTX_BOOL))
+        (let* ((type (if num-op? CTX_INT CTX_BOOL))
                (res (if inlined-if-cond? #f (ctx-get-free-reg ctx)))
                (moves (if res (car res) '()))
                (reg   (if res (cadr res) #f))

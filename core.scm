@@ -57,7 +57,7 @@
 
 ;; TODO Move
 (define (type-to-cridx type)
-  (cond ((eq? type CTX_NUM)    8) ;; Start from 8 because of header
+  (cond ((eq? type CTX_INT)    8) ;; Start from 8 because of header
         ((eq? type CTX_CHAR)  16)
         ((eq? type CTX_BOOL)  24)
         ((eq? type CTX_CLO)   32)
@@ -76,7 +76,7 @@
 
 ;; TODO Move
 (define (cridx-to-type cridx)
-  (cond ((= cridx  8)  CTX_NUM)
+  (cond ((= cridx  8)  CTX_INT)
         ((= cridx 16)  CTX_CHAR)
         ((= cridx 24)  CTX_BOOL)
         ((= cridx 32)  CTX_CLO)
@@ -144,7 +144,7 @@
 ;; Context types
 (define CTX_UNK   'unknown)
 (define CTX_ALL   '*) ;;Represents all ctx types
-(define CTX_NUM   'number)
+(define CTX_INT   'integer)
 (define CTX_CHAR  'char)
 (define CTX_BOOL  'boolean)
 (define CTX_CLO   'procedure)
@@ -1945,8 +1945,8 @@
  (let ((lazy-error
           (make-lazy-code
              (lambda (cgc ctx)
-                (if (or (eq? type CTX_FLO) (eq? type CTX_NUM))
-                  (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM))
+                (if (or (eq? type CTX_FLO) (eq? type CTX_INT))
+                  (gen-error cgc (ERR_TYPE_EXPECTED CTX_INT))
                   (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
    (gen-dyn-type-test type stack-idx succ lazy-error ast)))
 
@@ -2039,7 +2039,7 @@
                                (x86-mov cgc opval (x86-mem (- 8 TAG_MEMOBJ) opval))))
 
                     (cond ;; Number type check
-                          ((eq? type CTX_NUM)
+                          ((eq? type CTX_INT)
                            (x86-mov cgc (x86-rax) (x86-imm-int 3))
                            (x86-and cgc (x86-rax) opval))
                           ;; Null type test
