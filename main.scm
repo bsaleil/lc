@@ -75,10 +75,6 @@
     "Enable automatic fallback to generic entry point when cctable overflows, default throws an error"
     ,(lambda (args) (set! opt-overflow-fallback #t) args))
 
-  (--enable-functionid-propagation
-    "Disable the propagation of function identities"
-    ,(lambda (args) (set! opt-propagate-functionid #t) args))
-
   (--heap-max
     "Set maximum heap size in kilobytes"
     ,(lambda (args) (set! space-len (* 1000 (string->number (cadr args)))) (cdr args))) ;; TODO: use a variable opt-space-len
@@ -261,7 +257,7 @@
   (init)
 
   (let ((lazy-lib (lazy-exprs (append lib prog) #f)))
-    (gen-version code-alloc  lazy-lib (ctx-init)))
+    (gen-version code-alloc lazy-lib (ctx-init)))
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)

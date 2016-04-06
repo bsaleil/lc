@@ -48,7 +48,6 @@
 (define opt-entry-points         #t) ;; Use multiple entry points (#t to use cc-tables, #f to use flat closures)
 (define opt-return-points        #t) ;; Use multiple return points (#t to use cr-tables, #f to use a generic return point)
 (define opt-overflow-fallback    #f) ;; Automatic fallback to generic entry point if cctable overflows
-(define opt-propagate-functionid #f) ;; Propagate function identitie
 (define opt-use-lib              #t) ;; Use scheme std lib (see lib/ folder)
 (define opt-vers-regalloc        #t) ;; Use register allocation for code specialization
 (define opt-dump-bin             #f) ;; Print generated binary bytes to stdout
@@ -61,18 +60,10 @@
 (define expand-tl #f)      ;; expand.scm
 (define gen-ast #f)        ;; ast.scm
 (define repl-print-lco #f) ;; main.scm
-;; TODO regalloc
 (define alloc-ptr #f)
 (define global-ptr #f)
-;; TODO refactoring
 (define get-entry-points-loc #f)
-(define mem-header #f)
-
-;;
-(define change-stype #f)
 (define codegen-loc-to-x86opnd #f)
-(define codegen-reg-to-x86reg #f)
-(define identifier #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -90,21 +81,21 @@
 (define TAG_MEMOBJ  1)
 (define TAG_SPECIAL 2)
 
-;; Sub tags
-(define STAG_PROCEDURE 14)
+;; STags
+(define STAG_VECTOR     0)
 (define STAG_PAIR       1)
 (define STAG_MOBJECT    2)
-(define STAG_VECTOR     0)
-(define STAG_STRING    19)
-(define STAG_CCTABLE   16)
 (define STAG_SYMBOL     8)
+(define STAG_PROCEDURE 14)
+(define STAG_CCTABLE   16)
 (define STAG_IPORT     17)
 (define STAG_OPORT     18)
+(define STAG_STRING    19)
 (define STAG_FLONUM    30)
 
 ;; Context types
+(define CTX_ALL   '*) ; Represents all ctx types
 (define CTX_UNK   'unknown)
-(define CTX_ALL   '*) ;;Represents all ctx types
 (define CTX_INT   'integer)
 (define CTX_CHAR  'char)
 (define CTX_BOOL  'boolean)
@@ -119,12 +110,6 @@
 (define CTX_IPORT 'inport)
 (define CTX_OPORT 'outport)
 (define CTX_FLO   'float)
-
-(define (CTX_CLOi cctable)
-  (if opt-propagate-functionid
-      (cons CTX_CLO cctable)
-      CTX_CLO))
-
 
 (define type-cridx
   `((,CTX_INT  .  8) ;; Start from 8 because of header
@@ -968,10 +953,6 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define extremely-lazy? #f)
-
-;;-----------------------------------------------------------------------------
-
 ;; List of all lazy code objects (for debug/measure purposes)
 (define all-lazy-code '())
 
@@ -1015,39 +996,6 @@
 (define (put-version lazy-code ctx v)
   (let ((versions (lazy-code-versions lazy-code)))
     (table-set! versions ctx v)))
-
-;(define (get-version lazy-code ctx)
-;  (let ((versions (lazy-code-versions lazy-code)))
-;    (if opt-vers-regalloc
-;        ;; Use all ctx information for code specialization
-;        (table-ref versions ctx #f)
-;        ;; Remove register allocation related information
-;        (let ((ctx (ctx-copy ctx #f '() '() #f #f 0)))
-;          (table-ref versions ctx #f)))))
-
-;(define (put-version lazy-code ctx v)
-;  ;; If we do not use register allocation information to specialize code
-;  ;; and there is no register allocation associated to this lazy-code
-;  ;; then associate register allocation information of current ctx to this lazy-code
-;  (if (and (not opt-vers-regalloc)
-;           (not (lazy-code-rctx lazy-code)))
-;      (lazy-code-rctx-set!
-;        lazy-code
-;        (make-regalloc-ctx
-;          (ctx-slot-loc ctx)
-;          (ctx-free-regs ctx)
-;          (ctx-fs ctx))))
-;
-;  (let ((versions (lazy-code-versions lazy-code)))
-;    (if opt-vers-regalloc
-;        ;; Use all ctx information for code specialization
-;        (table-set! versions ctx v)
-;        ;; Remove register allocation related information
-;        (let ((ctx (ctx-copy ctx #f '() '() #f #f 0)))
-;          (table-set! versions ctx v)))))
-
-;;-----------------------------------------------------------------------------
-;; Identifier management
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx TODO regalloc
@@ -1093,505 +1041,6 @@
       (begin (apply-move (car moves))
              (apply-moves cgc ctx (cdr moves) tmpreg))))
 
-
-
-;
-;
-;;; TODO regalloc: uniformiser id, identifier et ident
-;(define (ctx-init-fn call-ctx enclosing-ctx args free-vars mutable-vars)
-;
-;  ;; Construit le slot-loc initial pour une fonction
-;  ;; Pour le moment, les arguments sont passés sur la pile
-;  ;; donc chaque slot de pile est associé à l'emplacement mémoire
-;  (define (slot-loc-init-fn nb-args curr regs r)
-;    (cond ((= curr nb-args)
-;             (let* ((all (build-list (length regalloc-regs) (lambda (i)
-;                                                              (string->symbol
-;                                                                (string-append "r" (number->string i))))))
-;                    (free (set-sub all (set-sub args-regs regs '()) '())))
-;             (cons free
-;                   (append r '((1 . 1) (0 . 0))))))
-;          ((null? regs)
-;            (let ((next (cons (cons (+ 2 curr) (+ 2 (- curr (length args-regs)))) r)))
-;              (slot-loc-init-fn nb-args (+ curr 1) regs next)))
-;          (else
-;            (let ((next (cons (cons (+ 2 curr) (car regs)) r)))
-;              (slot-loc-init-fn nb-args (+ curr 1) (cdr regs) next)))))
-;
-;  (define (env-init-fn args slot free-vars mutable-vars enclosing-ctx)
-;
-;    (define (init-free free-vars enclosing-env i)
-;      (if (null? free-vars)
-;          '()
-;          (let* ((ident (cdr (assoc (car free-vars) enclosing-env)))
-;                 (type (ctx-identifier-type enclosing-ctx ident)))
-;            (cons (cons (car free-vars)
-;                        (make-identifier 'free
-;                                         '()
-;                                         (identifier-flags ident)
-;                                         (if (and (member 'mutable (identifier-flags ident))
-;                                                  (not (member 'letrec-nm (identifier-flags ident))))
-;                                             CTX_UNK
-;                                             type)
-;                                         (string->symbol (string-append "f" (number->string i)))))
-;                  (init-free (cdr free-vars) enclosing-env (+ i 1))))))
-;
-;    (define (init-local args slot)
-;      (if (null? args)
-;          '()
-;          (cons (cons (car args)
-;                      (make-identifier 'local
-;                                       (list slot)
-;                                       (if (member (car args) mutable-vars)
-;                                           '(mutable)
-;                                           '())
-;                                       #f
-;                                       #f))
-;                (init-local (cdr args) (+ slot 1)))))
-;
-;    (append (init-free free-vars (ctx-env enclosing-ctx) 1)
-;            (init-local args slot)))
-;
-;  (define fs
-;    (let ((r (- (length args) (length args-regs))))
-;      (if (>= r 0)
-;          (+ r 2)
-;          2)))
-;
-;  (define free/slot-loc
-;      (slot-loc-init-fn
-;        (length args)
-;        0
-;        args-regs
-;        '()))
-;
-;  ;;
-;  (make-ctx (if call-ctx
-;                (ctx-stack call-ctx)
-;                (append (make-list (length args) CTX_UNK) (list CTX_CLO CTX_RETAD)))
-;            (cdr free/slot-loc)
-;            (car free/slot-loc)
-;            (env-init-fn args 2 free-vars mutable-vars enclosing-ctx)
-;            (length args)
-;            fs))
-;
-;(define (ctx-push ctx type loc #!optional (id #f)) ;; can only push reg ?
-;
-;  (define (env-push-id env slot)
-;    (if (null? env)
-;        '()
-;        (let ((ident (car env)))
-;          (if (eq? (car ident) id)
-;              (cons
-;                (cons (car ident)
-;                      (make-identifier
-;                        (identifier-kind (cdr ident))
-;                        (cons slot (identifier-sslots (cdr ident)))
-;                        (identifier-flags (cdr ident))
-;                        (identifier-stype (cdr ident))
-;                        (identifier-cloc  (cdr ident))))
-;                (cdr env))
-;              (cons ident (env-push-id (cdr env) slot))))))
-;
-;  (make-ctx
-;    ;; Stack
-;    (cons type (ctx-stack ctx))
-;    ;; Slot-loc
-;    (cons
-;      (cons (+ (ctx-lidx-to-slot ctx 0) 1) loc)
-;      (ctx-slot-loc ctx))
-;    ;; Free regs
-;    (set-sub (ctx-free-regs ctx) (list loc) '())
-;    ;; env
-;    (if id
-;        (env-push-id (ctx-env ctx) (length (ctx-stack ctx)))
-;        (ctx-env ctx))
-;    ;; nb-args
-;    (ctx-nb-args ctx)
-;    ;;
-;    (ctx-fs ctx)))
-;
-;;;; TODO : remplacer les (ctx-pop (ctx-pop ...)) par ça
-;(define (ctx-pop-n ctx n)
-;  (if (= n 0)
-;      ctx
-;      (ctx-pop (ctx-pop-n ctx (- n 1)))))
-;
-;(define (ctx-pop ctx)
-;
-;  (define (loc-is-used? loc slot-loc)
-;    (if (null? slot-loc)
-;        #f
-;        (let ((first (car slot-loc)))
-;          (or (eq? loc (cdr first))
-;              (loc-is-used? loc (cdr slot-loc))))))
-;
-;  (let* ((stack (cdr (ctx-stack ctx)))
-;         (sl/slot-loc (assoc-remove (ctx-lidx-to-slot ctx 0) (ctx-slot-loc ctx)))
-;         (sl (car sl/slot-loc))
-;         (slot-loc (cdr sl/slot-loc))
-;         (slot-loc
-;           (if (or (ctx-loc-is-register? (cdr sl))
-;                   (loc-is-used? (cdr sl) slot-loc))
-;               ;; Loc is a register, or a memory used elsewhere
-;               ;; simply remove from slot-loc list
-;               slot-loc
-;               ;; Loc is a memory and is only used in this slot, set it free
-;               (cons (cons #f (cdr sl))
-;                     slot-loc)))
-;         (free-regs
-;           (if (and (ctx-loc-is-register? (cdr sl))
-;                    (not (loc-is-used? (cdr sl) slot-loc)))
-;               (cons (cdr sl) (ctx-free-regs ctx))
-;               (ctx-free-regs ctx)))
-;         (env
-;           (foldr (lambda (el r)
-;                    (if (member (car sl) (identifier-sslots (cdr el)))
-;                        (cons (cons (car el)
-;                                    (identifier-copy (cdr el) #f (set-sub (identifier-sslots (cdr el)) (list (car sl)) '())))
-;                              r)
-;                        (cons el r)))
-;                  '()
-;                  (ctx-env ctx))))
-;  (ctx-copy ctx stack slot-loc free-regs env)))
-;
-;
-;;; TODO
-;(define (ctx-identifier-change-type ctx identifier type)
-;
-;  (define (change-stack stack lidx)
-;    (append (list-head stack lidx)
-;            (cons type
-;                  (list-tail stack (+ lidx 1)))))
-;
-;  (define (change-stack-n-slots stack slots)
-;    (if (null? slots)
-;        stack
-;        (change-stack-n-slots
-;          (change-stack stack (ctx-slot-to-lidx ctx (car slots)))
-;          (cdr slots))))
-;
-;  (define (change-stype env identifier)
-;    (if (null? env)
-;        '()
-;        (let ((first (car env)))
-;          (if (eq? (cdr first) identifier)
-;              (cons (cons (car first)
-;                          (make-identifier
-;                            (identifier-kind identifier)
-;                            (identifier-sslots identifier)
-;                            (identifier-flags identifier)
-;                            type
-;                            (identifier-cloc identifier)))
-;                    (cdr env))
-;              (cons first
-;                    (change-stype (cdr env) identifier))))))
-;
-;
-;  (let* ((free? (eq? (identifier-kind identifier) 'free))
-;         (env
-;           (if free?
-;               (change-stype (ctx-env ctx) identifier)
-;               (ctx-env ctx))))
-;
-;    (make-ctx
-;      (change-stack-n-slots (ctx-stack ctx) (identifier-sslots identifier))
-;      (ctx-slot-loc ctx)
-;      (ctx-free-regs ctx)
-;      env
-;      (ctx-nb-args ctx)
-;      (ctx-fs ctx))))
-;
-;;; TODO lidx
-;;; TODO: utiliser ctx-identifier-change-type
-;(define (ctx-change-type ctx stack-idx type)
-;
-;  (define (change-stack stack lidx)
-;    (append (list-head stack lidx)
-;            (cons type
-;                  (list-tail stack (+ lidx 1)))))
-;
-;  (define (change-stype env identifier)
-;    (if (null? env)
-;        '()
-;        (let ((first (car env)))
-;          (if (eq? (cdr first) identifier)
-;              (error "NYI change-stype")
-;              (cons first (change-stype (cdr env) identifier))))))
-;
-;  (define (change-stack-n-slots stack slots)
-;    (if (null? slots)
-;        stack
-;        (change-stack-n-slots
-;          (change-stack stack (ctx-slot-to-lidx ctx (car slots)))
-;          (cdr slots))))
-;
-;  (let* ((slot (ctx-lidx-to-slot ctx stack-idx))
-;         (ident (ctx-ident-at ctx slot))
-;         (stack
-;           (if ident
-;               (change-stack-n-slots (ctx-stack ctx) (identifier-sslots (cdr ident)))
-;               (change-stack (ctx-stack ctx) stack-idx)))
-;         (env
-;           (if (and ident
-;                    (eq? (identifier-kind (cdr ident)) 'free))
-;               (change-stype (ctx-env ctx) identifier) ;; TODO: NYI change-stype
-;               (ctx-env ctx))))
-;
-;    (make-ctx
-;      stack
-;      (ctx-slot-loc ctx)
-;      (ctx-free-regs ctx)
-;      env
-;      (ctx-nb-args ctx)
-;      (ctx-fs ctx))))
-;
-;;;
-;(define (apply-moves cgc ctx moves)
-;  (if (not (null? moves))
-;      (let* ((move (car moves))
-;             (lloc (car move)))
-;        (cond ((ctx-loc-is-register? lloc)
-;                (if (eq? (cdr move) 'new)
-;                    (x86-push cgc (codegen-loc-to-x86opnd (ctx-fs ctx) lloc))
-;                    (x86-mov  cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))
-;                                  (codegen-loc-to-x86opnd (ctx-fs ctx) lloc))))
-;              (else (error "NYI apply-moves2")))
-;        (apply-moves cgc ctx (cdr moves)))))
-;
-;;;; TODO: cette fonction peut générer du code (spill), il faut donc faire attention ou on l'appelle, et lui envoyer le cgc
-;;;; TODO: ajouter un argument qui donne le nombre d'éléments sur la pile qui sont consommés pour cette opération (**)
-;;;; Retourne un registre vide (moves, loc, ctx)
-;;;; Si un registre est vide, on le retourne
-;;;; Sinon, NYI:
-;;;;   * On regarde les n (**) éléments sur la pile virtuelle. Si un est associé à un registre, on peut le retourner car c'est une opérande de l'opération en cours donc il peut etre la destination
-;;;;   * Sinon, on libère un registre selon une certaine stratégie donnée (peu importe laquelle)
-;;;;     puis on le retourne
-;(define (ctx-get-free-reg ctx #!optional (fixed-regs '())) ;; TODO : ne pas spiller les registres donnés dans fixed-regs
-;
-;  (define (choose-reg)
-;    (let ((regs (build-list (length regalloc-regs)
-;                            (lambda (i)
-;                               (string->symbol
-;                               (string-append "r" (number->string i)))))))
-;      (car regs)))
-;
-;  ;; Spill du registre reg vers un nouvel emplacement mémoire
-;  ;; TODO: fusionner code avec spill-free
-;  (define (spill-new ctx reg)
-;    (let ((loc (ctx-fs ctx)))
-;      (let* ((slot-loc
-;               (foldr (lambda (el r)
-;                        (if (eq? (cdr el) reg)
-;                            (cons (cons (car el) loc)
-;                                  r)
-;                            (cons el r)))
-;                      '()
-;                      (ctx-slot-loc ctx)))
-;             (free-regs (cons reg (ctx-free-regs ctx))))
-;        (cons loc
-;              (make-ctx
-;                (ctx-stack ctx)
-;                slot-loc
-;                free-regs
-;                (ctx-env ctx)
-;                (ctx-nb-args ctx)
-;                (+ (ctx-fs ctx) 1))))))
-;
-;  ;; Spill du registre reg vers un emplacement mémoire libre existant
-;  (define (spill-free ctx reg)
-;
-;    ;; Récupère une emplacement mémoire libre
-;    (define (get-free-mem-h slot-loc)
-;      (if (null? slot-loc)
-;          #f
-;          (if (not (caar slot-loc))
-;              (begin (assert (ctx-loc-is-memory? (cdar slot-loc)) "INTERNAL ERROR") (cdar slot-loc))
-;              (get-free-mem-h (cdr slot-loc)))))
-;
-;    (let ((loc (get-free-mem-h (ctx-slot-loc ctx))))
-;      (if (not loc)
-;          #f
-;          (let* ((slot-loc
-;                   (foldr (lambda (el r)
-;                            (cond ((eq? (cdr el) reg)
-;                                     (cons (cons (car el) loc) r))
-;                                  ((eq? (cdr el) loc)
-;                                     r)
-;                                  (else
-;                                     (cons el r))))
-;                          '()
-;                          (ctx-slot-loc ctx)))
-;                 (free-regs (cons reg (ctx-free-regs ctx))))
-;            (cons loc
-;                  (make-ctx
-;                    (ctx-stack ctx)
-;                    slot-loc
-;                    free-regs
-;                    (ctx-env ctx)
-;                    (ctx-nb-args ctx)
-;                    (ctx-fs ctx)))))))
-;
-;  ;; Retourne reg, mem, ctx
-;  (define (spill ctx)
-;    (let* ((reg (choose-reg))
-;           (loc-ctx (spill-free ctx reg)))
-;      (if loc-ctx
-;          ;;
-;          (let ((ropnd (codegen-reg-to-x86reg reg))
-;                (mopnd (codegen-loc-to-x86opnd (ctx-fs ctx) (car loc-ctx))))
-;            (list (list (cons reg (car loc-ctx)))
-;                  reg
-;                  (cdr loc-ctx)))
-;          ;;
-;          (let ((loc-ctx (spill-new ctx reg))
-;                (ropnd (codegen-reg-to-x86reg reg)))
-;            (list (list (cons reg 'new))
-;                  reg
-;                  (cdr loc-ctx))))))
-;
-;
-;
-;  (let ((free-regs (ctx-free-regs ctx)))
-;    (if (null? free-regs)
-;        ;;
-;        (spill ctx)
-;        ;;
-;        (list
-;          '()
-;          (car free-regs)
-;          ctx))))
-;
-;;;
-;;; id-ctx est une liste qui contient des couples (id . lidx)
-;;; Cette fonction modifie tous les éléments du contexte pour associer l'identifiant de variable à l'index de la pile virtuelle
-;(define (ctx-bind ctx id-idx mvars #!optional (letrec-bind? #f))
-;
-;  (define (remove-sslot slot env)
-;    (if (null? env)
-;        '()
-;        (let ((ident (car env)))
-;          (if (member slot (identifier-sslots (cdr ident)))
-;              (cons (cons (car ident)
-;                          (make-identifier
-;                            (identifier-kind (cdr ident))
-;                            (set-sub (identifier-sslots (cdr ident)) (list slot) '())
-;                            (identifier-flags (cdr ident))
-;                            (identifier-stype (cdr ident))
-;                            (identifier-cloc (cdr ident))))
-;                    (remove-sslot slot (cdr env)))
-;              (cons ident (remove-sslot slot (cdr env)))))))
-;
-;  (define (bind-one ctx id-idx)
-;    (let ((identifier
-;            (make-identifier
-;              'local
-;              (list (ctx-lidx-to-slot ctx (cdr id-idx)))
-;              (cond
-;                ((and letrec-bind? (not (member (car id-idx) mvars)))
-;                   '(mutable letrec-nm))
-;                ((member (car id-idx) mvars)
-;                   '(mutable))
-;                (else
-;                   '()))
-;              #f
-;              #f)))
-;      (make-ctx
-;        (ctx-stack ctx)
-;        (ctx-slot-loc ctx)
-;        (ctx-free-regs ctx)
-;        (cons (cons (car id-idx) identifier)
-;              (remove-sslot (ctx-lidx-to-slot ctx (cdr id-idx))
-;                            (ctx-env ctx)))
-;        (ctx-nb-args ctx)
-;        (ctx-fs ctx))))
-;
-;  (foldr (lambda (el ctx) (bind-one ctx el))
-;         ctx
-;         id-idx))
-;
-;;; TODO: utilisé que dans le letrec(?) faire ça autrement
-;(define (ctx-move-type ctx lfrom lto)
-;  (make-ctx
-;    (let ((old (ctx-stack ctx)))
-;      (append (list-head old lto) (cons (list-ref old lfrom) (list-tail old (+ lto 1)))))
-;    (ctx-slot-loc ctx)
-;    (ctx-free-regs ctx)
-;    (ctx-env ctx)
-;    (ctx-nb-args ctx)
-;    (ctx-fs ctx)))
-;
-;(define (ctx-stack-push ctx type)
-;  (make-ctx (cons type (ctx-stack ctx))
-;            (ctx-slot-loc ctx)
-;            (ctx-free-regs ctx)
-;            (ctx-env ctx)
-;            (ctx-nb-args ctx)
-;            (ctx-fs ctx)))
-;
-;;; ids est une liste de symboles qui correspond aux identifiants
-;;; Cette fonction supprime les liaisons du contexte (libere registres/memoire et enleve les identifiers)
-;(define (ctx-unbind ctx ids)
-;  (define (env-remove-id env id)
-;    (if (null? env)
-;        '()
-;        (if (eq? (car (car env)) id)
-;            (cdr env)
-;            (cons (car env) (env-remove-id (cdr env) id)))))
-;  (define (remove-id ctx id)
-;    (make-ctx (ctx-stack ctx)
-;              (ctx-slot-loc ctx)
-;              (ctx-free-regs ctx)
-;              (env-remove-id (ctx-env ctx) id)
-;              (ctx-nb-args ctx)
-;              (ctx-fs ctx)))
-;  (foldr (lambda (el ctx) (remove-id ctx el))
-;         ctx
-;         ids))
-;
-;;; TODO comment + mov?
-;;; TODO: l'environnement n'est pas modifié et est géré séparément TODO uniformiser ca dans les fonctions ctx-...
-;(define (ctx-move-lidx ctx lfrom lto)
-;
-;  (define (get-loc slot-loc slot)
-;    (if (null? slot-loc)
-;        (error "NYD error")
-;        (if (eq? (caar slot-loc) slot)
-;            (cdar slot-loc)
-;            (get-loc (cdr slot-loc) slot))))
-;
-;  (define (slot-loc-move slot-loc sfrom sto)
-;    (foldr (lambda (el r)
-;             (cond ;; Si on trouve le slot from, on remplace par le slot to
-;                   ((eq? (car el) sfrom)
-;                     (cons (cons sto (cdr el))
-;                           r))
-;                   ;; Si on trouve le slot to, on libere
-;                   ((eq? (car el) sto)
-;                     (if (ctx-loc-is-register? (cdr el))
-;                         r
-;                         (cons (cons #f (cdr el)) r)))
-;                   ;;
-;                   (else (cons el r))))
-;           '()
-;           slot-loc))
-;  (let* ((stack
-;           (let ((old (ctx-stack ctx)))
-;             (append (list-head old lto) (cons (list-ref old lfrom) (list-tail old (+ lto 1))))))
-;         (loc (get-loc (ctx-slot-loc ctx) (ctx-lidx-to-slot ctx lto)))
-;         (slot-loc
-;           (slot-loc-move (ctx-slot-loc ctx) (ctx-lidx-to-slot ctx lfrom) (ctx-lidx-to-slot ctx lto)))
-;         (free-regs
-;           (if (ctx-loc-is-register? loc)
-;               (cons loc (ctx-free-regs ctx))
-;               (ctx-free-regs ctx)))
-;         (env
-;           (ctx-env ctx))
-;         (nb-args (ctx-nb-args ctx))
-;         (fs (ctx-fs ctx)))
-;
-;  (make-ctx stack slot-loc free-regs env nb-args fs)))
-
 ;;-----------------------------------------------------------------------------
 
 ;; Add callback
@@ -1609,95 +1058,64 @@
 ;;-----------------------------------------------------------------------------
 ;; JIT
 
-;;; Generate code before a jump to an existing version of a lazy-code object
-;;; (to handle reg alloc of join points)
-;(define (gen-merge-code cgc rctx-dst ctx)
-;  ;; If we do not use register allocation information to specialize code,
-;  ;; and if destination lazy-code already has register allocation information,
-;  ;; we need to
-;  ;; * generate moves to match destination slot-loc value
-;  ;; * update rsp to match destination fs value
-;  (if (and rctx-dst
-;           (not (equal? (ctx-slot-loc ctx)
-;                        (ctx-slot-loc rctx-dst))))
-;      ;; A rctx is already associated to lazy-code, then generate merge code
-;      (let* ((lc-slot-loc  (ctx-slot-loc rctx-dst))
-;             (lc-free-regs (ctx-free-regs rctx-dst))
-;             (lc-fs        (ctx-fs rctx-dst))
-;             ;;
-;             (locs-moves   (reg-alloc-merge (ctx-slot-loc ctx) lc-slot-loc)))
-;
-;        ;; Generate label for debug
-;        (x86-label cgc (asm-make-label #f (new-sym 'regalloc-merge)))
-;
-;        ;; Generate merge moves
-;        (for-each
-;          (lambda (el)
-;            (let ((opnd-src (codegen-loc-to-x86opnd (ctx-fs ctx) (car el)))
-;                  (opnd-dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr el))))
-;              (if (and (ctx-loc-is-memory? (car el))
-;                       (ctx-loc-is-memory? (cdr el)))
-;                  ;; TODO: we can't use rax ?
-;                  ;; if moves are a cycle, we already use rax
-;                  ;; use a free register instead !!
-;                  (begin (x86-mov cgc (x86-rax) opnd-src)
-;                         (set! opnd-src (x86-rax))))
-;              (x86-mov cgc opnd-dst opnd-src)))
-;          locs-moves)
-;
-;          ; Update rsp
-;          (if (not (= (ctx-fs ctx) lc-fs))
-;            (x86-sub cgc
-;                     (x86-rsp)
-;                     (x86-imm-int (* 8 (- lc-fs (ctx-fs ctx))))))
-;
-;          ;; Update current ctx
-;          (ctx-copy ctx #f lc-slot-loc lc-free-regs #f #f lc-fs))
-;      ;; There is no rctx associated to this lazy-code object, nothing to do
-;      ctx))
-;
-;;; TODO WIP
-;(define (get-generic-version lazy-code)
-;  ;; TODO move to ctx
-;  ;; TODO is-type-generic?
-;  (define (ctx-is-generic? ctx)
-;    (define (stack-is-generic)
-;      (= (count (ctx-stack ctx) (lambda (el) (eq? el CTX_UNK)))
-;         (length (ctx-stack ctx))))
-;    (define (env-is-generic env)
-;      (if (null? env)
-;          #t
-;          (and (identifier-is-generic (cdar env))
-;               (env-is-generic (cdr env)))))
-;    (define (identifier-is-generic identifier)
-;      (or (not (identifier-stype identifier))
-;          (eq? (identifier-stype identifier) CTX_UNK)))
-;    ;;
-;    (and (stack-is-generic)
-;         (env-is-generic (ctx-env ctx))))
-;
-;  (define (get-generic versions)
-;    (if (null? versions)
-;        #f
-;        (let ((first (car versions)))
-;          (or (and (ctx-is-generic? (car first)) first)
-;              (get-generic (cdr versions))))))
-;
-;  (let ((versions (lazy-code-versions lazy-code)))
-;    (get-generic (table->list versions))))
-;;; TODO WIP
 
-(define (gen-version-* cgc lazy-code ctx label-sym fn-verbose fn-patch)
+;; TODO: use gen-version-*
+;; code above is not working because it does not correctly patch jumps
+;; TODO: init call: (gen-version code-alloc lazy-code ctx)
+(define (gen-version jump-addr lazy-code ctx #!optional (cleared-ctx #f))
+
+  (define (fn-verbose) (println 100))
+
+  (define (fn-codepos)
+    (if (= (+ jump-addr (jump-size jump-addr)) code-alloc)
+        (begin ;; (fall-through optimization)
+               ;; the jump is the last instruction previously generated, so
+               ;; just overwrite the jump
+               (if opt-verbose-jit (println ">>> fall-through-optimization"))
+               jump-addr)
+        code-alloc))
+
+  (define (fn-patch label-dest new-version?)
+    (let ((dest-addr (asm-label-pos label-dest)))
+      (patch-jump jump-addr (asm-label-pos label-dest)))
+    (asm-label-pos label-dest))
+
+  ;(gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
+
+  ;;------------------------------------------------------------
 
   (if opt-verbose-jit
       (fn-verbose))
 
+  (let* ((label-dest (get-version lazy-code ctx))
+         (new-version? (not label-dest)))
+    (if (not label-dest)
+        ;; That
+        (let ((label-version (asm-make-label #f (new-sym 'version))))
+          (set! code-alloc (fn-codepos))
+          (code-add
+           (lambda (cgc)
+             ;(asm-align cgc 4 0 #x90)
+             (x86-label cgc label-version)
+             ((lazy-code-generator lazy-code) cgc ctx)))
+          (put-version lazy-code ctx label-version)
+          (set! label-dest label-version)))
+
+
+    ;; That version has already been generated, so just patch jump
+    (fn-patch label-dest #f)))
+
+(define (gen-version-* cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos)
+
+  (if opt-verbose-jit
+      (fn-verbose))
 
   (let* ((label-dest (get-version lazy-code ctx))
          (new-version? (not label-dest)))
     (if (not label-dest)
         ;; That version is not yet generated, so generate it
         (let ((version-label (asm-make-label #f (new-sym label-sym))))
+          (set! code-alloc (fn-codepos))
           (if cgc
               ;; we already have cgc, generate code
               (begin (x86-label cgc version-label)
@@ -1727,7 +1145,10 @@
     (let ((load-addr (asm-label-pos load-ret-label)))
       (patch-continuation load-addr label-dest)))
 
-  (gen-version-* #f lazy-code ctx 'continuation_ fn-verbose fn-patch))
+  (define (fn-codepos)
+    code-alloc)
+
+  (gen-version-* #f lazy-code ctx 'continuation_ fn-verbose fn-patch fn-codepos))
 
 ;; #### CONTINUATION CR
 ;; Generate continuation using cr table (patch cr entry)
@@ -1743,7 +1164,10 @@
   (define (fn-patch label-dest new-version?)
     (patch-continuation-cr label-dest type table))
 
-  (gen-version-* #f lazy-code ctx 'continuation_ fn-verbose fn-patch))
+  (define (fn-codepos)
+    code-alloc)
+
+  (gen-version-* #f lazy-code ctx 'continuation_ fn-verbose fn-patch fn-codepos))
 
 ;; #### FUNCTION ENTRY
 ;; Generate an entry point
@@ -1760,7 +1184,10 @@
         (patch-generic ast closure label-dest)
         (patch-closure closure call-ctx label-dest)))
 
-  (gen-version-* #f lazy-code gen-ctx 'fn_entry_ fn-verbose fn-patch))
+  (define (fn-codepos)
+    code-alloc)
+
+  (gen-version-* #f lazy-code gen-ctx 'fn_entry_ fn-verbose fn-patch fn-codepos))
 
 
 ;; #### LAZY CODE OBJECT
@@ -1773,71 +1200,10 @@
     (if (not new-version?)
         (x86-jmp cgc label-dest)))
 
-  (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch))
-
-;; ### LAZY CODE OBJECT
-;; Generate a normal lazy code object
-;(define (gen-version jump-addr lazy-code ctx)
-;
-;  (define (fn-verbose)
-;    (print "GEN VERSION")
-;    (print " >>> ")
-;    (pp ctx))
-;
-;  (define fall-through? (= jump-addr code-alloc))
-;
-;  (define (fn-patch label-dest new-version?)
-;    (let ((addr-dest (asm-label-pos label-dest)))
-;      (if (not fall-through?)
-;          (patch-jump jump-addr addr-dest))
-;      addr-dest))
-;
-;  (if fall-through?
-;      (set! code-alloc jump-addr)) ;; TODO (?)
-;
-;  (gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch))
-
-;; TODO: use gen-version-*
-;; code above is not working because it does not correctly patch jumps
-(define (gen-version jump-addr lazy-code ctx #!optional (cleared-ctx #f))
-
-  (define (fn-verbose) (println 100))
-
   (define (fn-codepos)
-    (if (= (+ jump-addr (jump-size jump-addr)) code-alloc)
-        (begin ;; (fall-through optimization)
-               ;; the jump is the last instruction previously generated, so
-               ;; just overwrite the jump
-               (if opt-verbose-jit (println ">>> fall-through-optimization"))
-               jump-addr)
-        code-alloc))
+    code-alloc)
 
-  (define (fn-patch label-dest new-version?)
-    (let ((dest-addr (asm-label-pos label-dest)))
-      (patch-jump jump-addr (asm-label-pos label-dest))
-      dest-addr))
-
-  ;;------------------------------------------------------------
-
-  (if opt-verbose-jit
-      (fn-verbose))
-
-  (let* ((label-dest (get-version lazy-code ctx))
-         (new-version? (not label-dest)))
-    (if (not label-dest)
-        ;; That
-        (let ((label-version (asm-make-label #f (new-sym 'version))))
-          (set! code-alloc (fn-codepos))
-          (code-add
-           (lambda (cgc)
-             (x86-label cgc label-version)
-             ((lazy-code-generator lazy-code) cgc ctx)))
-          (put-version lazy-code ctx label-version)
-          (set! label-dest label-version)))
-
-
-    ;; That version has already been generated, so just patch jump
-    (fn-patch label-dest #f)))
+  (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
 
 ;;-----------------------------------------------------------------------------
 

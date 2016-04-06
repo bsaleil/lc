@@ -1,4 +1,5 @@
 
+;100
 
 (define (fib n)
   (if (< n 2)

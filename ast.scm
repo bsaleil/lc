@@ -688,9 +688,7 @@
             (codegen-closure-put cgc reg)
 
             ;; Trigger the next object
-            (if opt-propagate-functionid
-                (error "NYI - mlc-lambda: Use (CTX_CLOi with cctable or closure id)")
-                (jump-to-version cgc succ (ctx-push ctx CTX_CLO reg)))))))))
+            (jump-to-version cgc succ (ctx-push ctx CTX_CLO reg))))))))
 
 ;; TODO CLEAN raglloc args regs
 (define (get-lazy-generic-prologue ast succ rest-param mvars nb-formal)
