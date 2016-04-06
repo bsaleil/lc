@@ -700,7 +700,7 @@
             (begin
               (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args)))
               (x86-je cgc label-end)
-              (gen-error cgc "TODO ERR1")
+              (gen-error cgc ERR_WRONG_NUM_ARGS)
               (x86-label cgc label-end))
             ;; If rest, check args number then build rest list from regs and stack
             (let ((nb-args-regs (length args-regs))
@@ -712,7 +712,7 @@
                   (label-next-arg-end (asm-make-label #f (new-sym 'prologue-next-arg-end))))
               (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (- nb-args 1))))
               (x86-jge cgc label-rest)
-                (gen-error cgc "TODO ERR2")
+                (gen-error cgc ERR_WRONG_NUM_ARGS)
               ;; GET NEXT ARG PART
               (x86-label cgc label-next-arg)
                 (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (length args-regs))))

@@ -1,13 +1,12 @@
 
-;100
+(define (foo a b c . d) 10)
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
+($apply foo '(1 2))
 
-(fib 40)
+
+
+
+
 
 
 
@@ -27,9 +26,9 @@
 
 
 ;; TODO: Détecter appel fonction globale
-;; TODO: Analyse pour détecter les variables mutables qui ne deviennent pas libres
+;; TODO: Analyse pour détecter les variables mutables qui ne deviennent pas libres (paresseux?)
 ;; TODO: Réduire les cache misses avec appel pour le paramètre rest + appels système
-;; TODO: Enlever mov stub
+;; TODO: Enlever mov ctx
 ;; TODO: allouer la valeur de retour au registre de retour
 ;; TODO: adresse de retour + fermeture dans des registres. Si on doit spill, on prend en priorité un des deux
 

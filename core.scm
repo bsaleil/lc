@@ -137,9 +137,9 @@
 ;;-----------------------------------------------------------------------------
 
 ;; Errors
-(define ERR_MSG             "EXEC ERROR")
-(define ERR_ARR_OVERFLOW    "ARITHMETIC OVERFLOW")
-(define ERR_WRONG_NUM_ARGS  "WRONG NUMBER OF ARGUMENTS")
+(define ERR_MSG              "EXEC ERROR")
+(define ERR_ARR_OVERFLOW     "ARITHMETIC OVERFLOW")
+(define ERR_WRONG_NUM_ARGS   "WRONG NUMBER OF ARGUMENTS")
 (define ERR_OPEN_INPUT_FILE  "CAN'T OPEN INPUT FILE")
 (define ERR_OPEN_OUTPUT_FILE "CAN'T OPEN OUTPUT FILE")
 (define ERR_READ_CHAR        "CAN'T READ CHAR")
@@ -176,38 +176,32 @@
       (gen-error cgc msg))))
 
 
-;; Gen code for error
-;; stop-exec? to #f to continue after error
 (define (gen-error cgc err #!optional (stop-exec? #t))
-
   ;; Put error msg in RAX
   (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding err)))
+  (x86-call cgc label-rt-error))
+  ;; TODO: handle repl mode
 
-  ;; If no msg print nothing
-  (if (not (string=? err ""))
-    ;; Call exec-error
-    (push-pop-regs cgc
-                   c-caller-save-regs ;; preserve regs for C call
-                   (lambda (cgc)
-                     (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-                     (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-                     (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-                     (x86-push cgc (x86-rdi))
-                     (x86-call cgc label-exec-error) ;; call C function
-                     (x86-pop  cgc (x86-rsp))))) ;; restore unaligned stack-pointer
+;; Gen code for error
+;; stop-exec? to #f to continue after error
+(define (gen-rt-error cgc)
 
-  (if mode-repl
-      (begin
-        (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-        (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
-        (gen-repl-call cgc)
-        (x86-jmp cgc (x86-rbx)))
-      (begin
-        (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-        (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
-        (x86-mov cgc (x86-rax) (x86-imm-int -1))
-        (pop-regs-reverse cgc all-regs)
-        (x86-ret cgc))))
+  ;; Call exec-error
+  (push-pop-regs cgc
+                 c-caller-save-regs ;; preserve regs for C call
+                 (lambda (cgc)
+                   (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
+                   (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+                   (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+                   (x86-push cgc (x86-rdi))
+                   (x86-call cgc label-exec-error) ;; call C function
+                   (x86-pop  cgc (x86-rsp)))) ;; restore unaligned stack-pointer
+
+  (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
+  (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
+  (x86-mov cgc (x86-rax) (x86-imm-int -1))
+  (pop-regs-reverse cgc all-regs)
+  (x86-ret cgc))
 
 ;; The procedure exec-error is callable from generated machine code.
 ;; This function print the error message in rax
@@ -803,11 +797,16 @@
     (set! label-do-callback-cont-handler
           (gen-handler cgc 'do_callback_cont_handler label-do-callback-cont))
 
+    ;; Runtime GC call
     (set! label-gc-trampoline (asm-make-label cgc 'gc_trampoline))
-
     (x86-label cgc label-gc-trampoline)
     (gen-gc-call cgc)
     (x86-ret cgc)
+
+    ;; Runtime error
+    (set! label-rt-error (asm-make-label cgc 'rt_error))
+    (x86-label cgc label-rt-error)
+    (gen-rt-error cgc)
 
     (x86-label cgc label-rtlib-skip)
 
