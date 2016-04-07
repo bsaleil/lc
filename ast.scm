@@ -168,7 +168,6 @@
                      (current-output-port 0  0  ,(prim-types 0 )                            ())
                      (current-input-port  0  0  ,(prim-types 0 )                            ())))
 
-
 (define (assert-p-nbargs ast)
   (let ((infos (cdr (assoc (car ast) primitives))))
     (assert (or (not (car infos)) ;; nb args and types are not fixed
@@ -857,9 +856,6 @@
 ;;
 ;; Make lazy code from LET
 ;;
-
-;; TODO regalloc: merge with mlc-letrec (body lazy-out)
-;; TODO + use mlc-binding function for mlc-let and mlc-letrec ?
 (define (mlc-let ast succ)
 
   (define (build-id-idx ids l)
@@ -897,7 +893,7 @@
          (lazy-binds
            (make-lazy-code
              (lambda (cgc ctx)
-               (unbox-mutable cgc ctx 0 (length ids))
+               (unbox-mutables cgc ctx 0 (length ids))
                (let* ((id-idx (build-id-idx ids (- (length ids) 1)))
                       (mvars (mutable-vars (cddr ast) ids)) ;; Get mutable vars
                       (ctx (ctx-bind-locals ctx id-idx mvars)))
@@ -905,19 +901,12 @@
                  (jump-to-version cgc lazy-body ctx))))))
    (gen-ast-l values lazy-binds)))
 
-;; TODO
-(define (unbox-mutable cgc ctx idx-start idx-lim)
+(define (unbox-mutables cgc ctx idx-start idx-lim)
   (if (< idx-start idx-lim)
-      (if (ctx-is-mutable? ctx idx-start)
-          (let* ((loc (ctx-get-loc ctx idx-start))
-                 (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-            (if (ctx-loc-is-memory? loc)
-                (begin (x86-mov cgc (x86-rax) opnd)
-                       (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-                       (x86-mov cgc opnd (x86-rax)))
-                (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd))))
-          (unbox-mutable cgc ctx (+ idx-start 1) idx-lim))))
-;; TODO
+      (begin
+        (if (ctx-is-mutable? ctx idx-start)
+            (codegen-nunbox cgc (ctx-fs ctx) (ctx-get-loc ctx idx-start)))
+        (unbox-mutables cgc ctx (+ idx-start 1) idx-lim))))
 
 (define (mlc-letrec ast succ)
 

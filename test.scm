@@ -1,25 +1,9 @@
-
-(define (foo a b c . d) 10)
-
-($apply foo '(1 2))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
+(fib 40)
 
 
 

@@ -498,108 +498,29 @@
 
 ;;-----------------------------------------------------------------------------
 
+;; Create label used by generated machine code to call c-define functions
+(define-macro (set-cdef-label! label sym c-code)
+  `(set! ,label
+         (asm-make-label
+           cgc
+           ,sym
+           (##foreign-address
+            ((c-lambda ()
+                       (pointer void)
+                       ,c-code))))))
+
 (define (init-labels cgc)
-
-  (set! label-exec-error
-        (asm-make-label
-         cgc
-         'exec-error
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,exec_error);")))))
-
-  (set! label-print-msg-val
-        (asm-make-label
-         cgc
-         'print-msg-val
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,print_msg_val);")))))
-
-  (set! label-repl
-        (asm-make-label
-         cgc
-         'repl
-         (##foreign-address
-           ((c-lambda ()
-                      (pointer void)
-                      "___result = ___CAST(void*,repl);")))))
-
-  (set! label-gc
-        (asm-make-label
-         cgc
-         'gc
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,gc);")))))
-
-  (set! label-do-callback
-        (asm-make-label
-         cgc
-         'do_callback
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,do_callback);")))))
-
-  (set! label-do-callback-fn
-        (asm-make-label
-         cgc
-         'do_callback_fn
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,do_callback_fn);")))))
-
-  (set! label-do-callback-cont
-        (asm-make-label
-         cgc
-         'do_callback_cont
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,do_callback_cont);")))))
-
-  (set! label-interned-symbol
-        (asm-make-label
-         cgc
-         'interned_symbol
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,interned_symbol);")))))
-
-  (set! label-dump-regs
-          (asm-make-label
-           cgc
-           'dump-regs
-           (##foreign-address
-            ((c-lambda ()
-                       (pointer void)
-                       "___result = ___CAST(void*,dump_regs);")))))
-
-  (set! label-dump-stack
-          (asm-make-label
-           cgc
-           'dump-stack
-           (##foreign-address
-            ((c-lambda ()
-                       (pointer void)
-                       "___result = ___CAST(void*,dump_stack);")))))
-
-  (set! label-breakpoint
-        (asm-make-label
-         cgc
-         'break_point
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,break_point);"))))))
-
-
+  (set-cdef-label! label-exec-error       'exec-error      "___result = ___CAST(void*,exec_error);")
+  (set-cdef-label! label-print-msg-val    'print-msg-val   "___result = ___CAST(void*,print_msg_val);")
+  (set-cdef-label! label-repl             'repl            "___result = ___CAST(void*,repl);")
+  (set-cdef-label! label-gc               'gc              "___result = ___CAST(void*,gc);")
+  (set-cdef-label! label-do-callback      'do_callback     "___result = ___CAST(void*,do_callback);")
+  (set-cdef-label! label-do-callback-fn   'do_callback     "___result = ___CAST(void*,do_callback_fn);")
+  (set-cdef-label! label-do-callback-cont 'do_callback     "___result = ___CAST(void*,do_callback_cont);")
+  (set-cdef-label! label-interned-symbol  'interned_symbol "___result = ___CAST(void*,interned_symbol);")
+  (set-cdef-label! label-dump-regs        'dump-regs       "___result = ___CAST(void*,dump_regs);")
+  (set-cdef-label! label-dump-stack       'dump-stack      "___result = ___CAST(void*,dump_stack);")
+  (set-cdef-label! label-breakpoint       'break_point     "___result = ___CAST(void*,break_point);"))
 
 ;;-----------------------------------------------------------------------------
 
