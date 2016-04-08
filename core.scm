@@ -353,6 +353,9 @@
          (selector
           (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
 
+         (closure
+          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
+
          ;; Get ctx from still-box address
          (ctx
            (if (= selector 1) ;; If called from generic ptr
@@ -364,12 +367,6 @@
                (let ((encoded (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8)))))
                  (/ encoded 4))
                (- (length (ctx-stack ctx)) 2)))
-
-         (closure
-          (let ((stack-offset
-                  (let ((r (- nb-args (length args-regs))))
-                    (if (< r 0) 0 r))))
-            (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8 (* 8 stack-offset)))))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
@@ -665,8 +662,8 @@
            (lambda (cgc)
              (call-handler cgc label-handler obj)))))
     (subvector-move! (list->vector args) 0 len obj 0)
-    (if opt-verbose-jit
-        (pp (list 'obj= obj)))
+    ;(if opt-verbose-jit
+    ;    (pp (list 'obj= obj)))
     stub-labels))
 
 (define (call-handler cgc label-handler obj)
@@ -1184,14 +1181,14 @@
          (index (or (get-closure-index ctx) -1)) ;; -1 TODO to patch generic
          (offset (+ 16 (* index 8)))) ;; +16 (header & generic)
 
-    (if opt-verbose-jit
-        (println ">>> patching closure " (number->string closure 16) " at "
-                 (number->string (+ closure offset) 16)
-                 " : slot contains now label "
-                 label-name
-                 " ("
-                 (number->string label-addr 16)
-                 ")"))
+    ;(if opt-verbose-jit
+    ;    (println ">>> patching cctable " (number->string cctable 16) " at "
+    ;             (number->string (+ cctable offset) 16)
+    ;             " : slot contains now label "
+    ;             label-name
+    ;             " ("
+    ;             (number->string label-addr 16)
+    ;             ")"))
 
     (let ((cctable-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ)))) ;; +8(header) - 1(tag)
       (put-i64 (+ cctable-addr offset) label-addr))

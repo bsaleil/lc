@@ -1,13 +1,15 @@
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
-(fib 40)
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1))
+;         (fib (- n 2)))))
+;(fib 20)
+
+(define (foo) 10000)
+(foo)
 
 
-
-
+;; TODO: diviser mlc-lambda en 2 selon le cas ep ou non
 
 ;; TODO: Détecter appel fonction globale
 ;; TODO: Analyse pour détecter les variables mutables qui ne deviennent pas libres (paresseux?)

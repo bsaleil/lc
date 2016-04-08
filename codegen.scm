@@ -665,18 +665,14 @@
   ;; TODO: use call/ret if opt-entry-points opt-return-points are #f
   (if nb-args ;; If nb-args given, move encoded in rdi, else nb-args is already encoded in rdi (apply)
       (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args))))
-  (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-  (x86-jmp cgc (x86-rax)))
+  (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+  (x86-jmp cgc (x86-rbp)))
 
 ;;; Generate function call using a cctable and generic entry point
 (define (codegen-call-cc-gen cgc)
-  (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; Get table
-  (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax))) ;; Get generic entry point
-  (x86-jmp cgc (x86-rax)))
-  ;(x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Get closure
-  ;(x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-  ;(x86-mov cgc (x86-rax) (x86-mem 8 (x86-rax)))
-  ;(x86-jmp cgc (x86-rax)))
+  (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; Get table
+  (x86-mov cgc (x86-rbp) (x86-mem 8 (x86-rbp))) ;; Get generic entry point
+  (x86-jmp cgc (x86-rbp)))
 
 ;; Generate function call using a cctable and specialized entry point
 (define (codegen-call-cc-spe cgc idx ctx-imm nb-args)
@@ -685,14 +681,14 @@
       ;; 1 - Put ctx in r11
       (x86-mov cgc (x86-r11) (x86-imm-int ctx-imm))
       ;; 2- Get cc-table
-      (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+      (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
       ;; 3 - If opt-max-versions is not #f, a generic version could be called. So we need to give nb-args
       (if opt-max-versions ;; TODO(?)
           (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
       ;; 4 - Get entry point in cc-table
-      (x86-mov cgc (x86-rax) (x86-mem cct-offset (x86-rax)))
+      (x86-mov cgc (x86-rbp) (x86-mem cct-offset (x86-rbp)))
       ;; 5 - Jump to entry point
-      (x86-jmp cgc (x86-rax))))
+      (x86-jmp cgc (x86-rbp))))
 
 ;;-----------------------------------------------------------------------------
 ;; Call continuation

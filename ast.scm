@@ -622,7 +622,22 @@
     ;; Lazy closure generation
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* (;; Lambda stub
+
+        ;; Get free vars from ast
+        (set! fvars (free-vars
+                      (caddr ast)
+                      all-params
+                      (map car (ctx-env ctx))))
+
+        (let* (;; WIP
+               (cctable-new? #f)
+               (cctable-key (and opt-entry-points (get-cctable-key ast ctx fvars)))
+               (cctable     (and opt-entry-points
+                                 (let ((table (cctable-get cctable-key)))
+                                   (or table
+                                       (begin (set! cctable-new? #t) (cctable-make cctable-key))))))
+               (cctable-loc (and opt-entry-points (- (obj-encoding cctable) 1)))
+               ;; Lambda stub
                (stub-labels (add-fn-callback cgc
                                              1
                                              (lambda (sp sctx ret-addr selector closure)
@@ -651,15 +666,13 @@
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
                (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
 
-          ;; Get free vars from ast
-          (set! fvars (free-vars
-                        (caddr ast)
-                        all-params
-                        (map car (ctx-env ctx))))
-
           ;; If 'stats' option, then inc closures slot
           (if opt-stats
             (gen-inc-slot cgc 'closures))
+
+          ;; WIP
+          (if cctable-new?
+              (cctable-fill cctable stub-addr generic-addr))
 
           ;; Create closure
           (codegen-closure-create cgc (length fvars))
@@ -667,10 +680,7 @@
           ;; Write entry point or cctable location
           (if opt-entry-points
               ;; If opt-entry-points generate a closure using cctable
-              (let* ((cctable-key (get-cctable-key ast ctx fvars))
-                     (cctable     (get-cctable ast cctable-key stub-addr generic-addr))
-                     (cctable-loc (- (obj-encoding cctable) 1)))
-                (codegen-closure-cc cgc cctable-loc))
+              (codegen-closure-cc cgc cctable-loc)
               ;; Else, generate a closure using a single entry point
               (let ((ep-loc (get-entry-points-loc ast stub-addr)))
                 (codegen-closure-ep cgc ep-loc)))
@@ -2188,16 +2198,6 @@
 (define crtables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))
                                                       (equal? (cdr a) (cdr b))))))
 
-;; Create a new cc table with 'init' as stub value
-(define (make-cc len init generic)
-  (let ((v (alloc-still-vector len)))
-    (put-i64 (+ 8 (- (obj-encoding v) 1)) generic) ;; Write generic after header
-    (let loop ((i 1))
-      (if (< i (vector-length v))
-        (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding v) 1)) init)
-               (loop (+ i 1)))
-        v))))
-
 ;; Create a new cr table with 'init' as stub value
 (define (make-cr len init)
   (let ((v (alloc-still-vector len)))
@@ -2207,18 +2207,26 @@
                (loop (+ i 1)))
         v))))
 
-;; Return cctable from cctable-key
-;; Return the existing table if already created or create one, add entry, and return it
-(define (get-cctable ast cctable-key stub-addr generic-addr)
-  (let ((cctable (table-ref cctables cctable-key #f)))
-    (if cctable
-      cctable
-      (let ((t (make-cc (+ 1 global-cc-table-maxsize) stub-addr generic-addr)))
-        (table-set! cctables cctable-key t)
-        (set! cctables-loc-code (cons (cons (- (obj-encoding t) 1)
-                                            ast)
-                                      cctables-loc-code))
-        t))))
+;; Return cctable associated to key or #f if not yet created
+(define (cctable-get cctable-key)
+  (table-ref cctables cctable-key #f))
+
+;; Create a new cctable associated to key
+;; !! cctable is not filled. Not even with dummy value (0)
+(define (cctable-make cctable-key)
+  (let* ((len     (+ 1 global-cc-table-maxsize))
+         (cctable (alloc-still-vector len)))
+    (table-set! cctables cctable-key cctable)
+    cctable))
+
+;; Fill cctable with stub and generic addresses
+(define (cctable-fill cctable stub-addr generic-addr)
+  (put-i64 (+ 8 (- (obj-encoding cctable) 1)) generic-addr) ;; Write generic after header
+  (let loop ((i 1))
+    (if (< i (vector-length cctable))
+      (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding cctable) 1)) stub-addr)
+             (loop (+ i 1)))
+      cctable)))
 
 ;; Return crtable from crtable-key
 ;; Return the existing table if already created or create one, add entry, and return it
