@@ -591,7 +591,6 @@
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
                      (lambda (cgc ctx)
-                       (x86-label cgc (asm-make-label #f (new-sym 'RETURN)))
 
                        ;; 1 - Get clean stack size (higher mx in ctx)
                        (let* ((clean-nb (- (ctx-fs ctx) 1))
