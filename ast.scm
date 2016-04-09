@@ -414,13 +414,17 @@
                    (jump-to-version cgc succ (ctx-push nctx type reg (car local))))))
           ((ctx-loc-is-freemem? loc)
              (if for-set?
-                 (let ((fs (ctx-fs ctx)))
-                   (x86-mov cgc (x86-rax) (x86-mem (* 8 (- fs 2)) (x86-rsp)))
+                 (let* ((fs (ctx-fs ctx))
+                        (cloc (ctx-get-loc ctx (- (length (ctx-stack ctx)) 2)))
+                        (copnd (codegen-loc-to-x86opnd fs cloc)))
+                   (x86-mov cgc (x86-rax) copnd)
                    (x86-mov cgc (x86-rax) (x86-mem (- (* 8 (+ (cdr loc) 2)) TAG_MEMOBJ) (x86-rax))))
                  (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
                    (apply-moves cgc nctx moves)
-                   (let ((fs (ctx-fs nctx)))
-                     (x86-mov cgc (x86-rax) (x86-mem (* 8 (- fs 2)) (x86-rsp))) ;; Get closure
+                   (let* ((fs (ctx-fs nctx))
+                          (cloc (ctx-get-loc ctx (- (length (ctx-stack ctx)) 2)))
+                          (copnd (codegen-loc-to-x86opnd fs cloc)))
+                     (x86-mov cgc (x86-rax) copnd) ;; Get closure
                      (x86-mov
                        cgc
                        (codegen-reg-to-x86reg reg)
