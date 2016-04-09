@@ -591,6 +591,7 @@
          ;; Lazy lambda return
          (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
                      (lambda (cgc ctx)
+                       (x86-label cgc (asm-make-label #f (new-sym 'RETURN)))
 
                        ;; 1 - Get clean stack size (higher mx in ctx)
                        (let* ((clean-nb (- (ctx-fs ctx) 1))
@@ -741,10 +742,10 @@
                 (x86-jmp cgc label-next-arg-end)
                 (x86-label cgc label-from-stack)
                 (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
-                (x86-mov cgc (x86-rsi) (x86-mem 0 (x86-rsp)))
+                (x86-mov cgc (x86-r15) (x86-mem 0 (x86-rsp)))
                 (x86-add cgc (x86-rsp) (x86-imm-int 16))
                 (x86-sub cgc (x86-rdi) (x86-imm-int (obj-encoding 1)))
-                (x86-jmp cgc (x86-rsi))
+                (x86-jmp cgc (x86-r15))
                 (x86-label cgc label-next-arg-end)
                 (x86-sub cgc (x86-rdi) (x86-imm-int (obj-encoding 1)))
                 (x86-ret cgc)
@@ -1696,8 +1697,7 @@
               (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opclo)))
           (set! opclo (x86-rax))))
     (x86-mov cgc (x86-rax) opclo) ;; closure need to be in rax for do-callback-fn (TODO: get closure from stack in do-callback-fn and remove this)
-    (x86-push cgc (x86-rax)))
-  (ctx-fs-inc ctx))
+  ctx))
 
 ;; Move args in regs or mem following calling convention
 (define (call-prep-args cgc ctx ast nbargs)
@@ -1754,8 +1754,8 @@
       (let ((fs (ctx-fs ctx))
             (nshift
               (if (> (- nbargs (length args-regs)) 0)
-                  (+ (- nbargs (length args-regs)) 1)
-                  1)))
+                  (- nbargs (length args-regs))
+                  0)))
         (let loop ((curr (- nshift 1)))
           (if (>= curr 0)
               (begin
@@ -1771,7 +1771,7 @@
 (define (mlc-call ast succ)
 
   (let* (;; Tail call if successor's flags set contains 'ret flag
-         (tail? (member 'ret (lazy-code-flags succ)))
+         (tail? #f);(member 'ret (lazy-code-flags succ)))
          ;; Call arguments
          (args (cdr ast))
          ;; Lazy fail

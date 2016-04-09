@@ -129,13 +129,14 @@
   ;;
   ;; FREE REGS
   (define (init-free-regs)
-    (if (<= (length args) (length args-regs))
-        (set-sub (ctx-init-free-regs)
-                 (list-head args-regs (length args))
-                 '())
-        (set-sub (ctx-init-free-regs)
-                 args-regs
-                 '())))
+    (let ((all (ctx-init-free-regs)))
+      (if (<= (length args) (length args-regs))
+          (set-sub (ctx-init-free-regs)
+                   (cons '(r . 2) (list-head args-regs (length args)))
+                   '())
+          (set-sub (ctx-init-free-regs)
+                   (cons '(r . 2) args-regs)
+                   '()))))
 
   ;;
   ;; ENV
@@ -182,7 +183,7 @@
   ;; SLOT-LOC
   (define (init-slot-loc)
     (append
-      (reverse (init-slot-loc-local 2 args-regs 2 0)) ;; Reverse for best display for debug purposes
+      (reverse (init-slot-loc-local 1 args-regs 2 0)) ;; Reverse for best display for debug purposes
       (init-slot-loc-base)))
 
   (define (init-slot-loc-local mem avail-regs slot nvar)
@@ -197,14 +198,14 @@
                     (init-slot-loc-local mem (cdr avail-regs) (+ slot 1) (+ nvar 1)))))))
 
   (define (init-slot-loc-base)
-    '((1 m . 1) (0 m . 0)))
+    '((1 r . 2) (0 m . 0)))
 
   ;;
   ;; FS
   (define (init-fs nb-args)
     (if (<= nb-args (length args-regs))
-        2
-        (+ (- nb-args (length args-regs)) 2)))
+        1
+        (+ (- nb-args (length args-regs)) 1)))
 
   ;;
   (make-ctx

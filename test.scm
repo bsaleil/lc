@@ -1,9 +1,19 @@
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
-(fib 20)
+
+(define (vector . l)
+  l)
+
+(let ((a '(1 2 3 4 5 6)))
+  1000000
+  ($apply vector a))
+;($apply vector '(1 2 3 4 5 6))
+
+
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1))
+;         (fib (- n 2)))))
+;(fib 20)
 
 
 ;; Appel à une fonction:
