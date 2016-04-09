@@ -1,12 +1,15 @@
-;(define (fib n)
-;  (if (< n 2)
-;      1
-;      (+ (fib (- n 1))
-;         (fib (- n 2)))))
-;(fib 20)
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
+(fib 20)
 
-(define (foo) 10000)
-(foo)
+
+;; Appel à une fonction:
+  ;; Protocole:
+      ;; mov rax, clo
+      ;; mov rbp, [rbp+cct-offset]
 
 
 ;; TODO: diviser mlc-lambda en 2 selon le cas ep ou non

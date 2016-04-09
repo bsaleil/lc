@@ -354,7 +354,7 @@
           (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
 
          (closure
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
+          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rsi-pos) 1) 8))))
 
          ;; Get ctx from still-box address
          (ctx
@@ -857,6 +857,10 @@
 (define rax-pos
   (- nb-c-caller-save-regs
      (length (member (x86-rax) c-caller-save-regs))))
+
+(define rsi-pos
+  (- nb-c-caller-save-regs
+     (length (member (x86-rsi) c-caller-save-regs))))
 
 ;;-----------------------------------------------------------------------------
 
