@@ -1,10 +1,15 @@
 
+;; ATTENTION: on voudrait un seul appel à do_callback_fn pour ce code: (--nolib)
+(define (foo) 10)
 
-(define (foo n) (+ n 1))
+(let ((rr foo))
+  (foo)
 
+  (foo))
 
-(foo 1000)
-;(foo 2000)
+;(define (foo) 10)
+;
+;(foo)
 
 
 ;; Vérifier et améliorer implantation appel avec point d'entrée. (stub ?)

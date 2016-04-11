@@ -64,6 +64,7 @@
 (define global-ptr #f)
 (define get-entry-points-loc #f)
 (define codegen-loc-to-x86opnd #f)
+(define cctable-global-opt-get #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -298,6 +299,7 @@
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
 (c-define (do-callback sp) (long) void "do_callback" ""
+
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
 
@@ -924,7 +926,8 @@
 (define (apply-moves cgc ctx moves #!optional tmpreg)
 
   (define (apply-move move)
-    (cond ((eq? (car move) 'fs)
+    (cond ((eq? (car move) (cdr move)) #f)
+          ((eq? (car move) 'fs)
            (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 (cdr move)))))
           ((and (ctx-loc-is-register? (car move))
                 (ctx-loc-is-memory?   (cdr move)))
@@ -957,9 +960,15 @@
              (x86-mov cgc dst src)))
           (else (pp move) (error "NYI apply-moves"))))
 
-  (if (not (null? moves))
-      (begin (apply-move (car moves))
-             (apply-moves cgc ctx (cdr moves) tmpreg))))
+  (if (and (= (length moves) 2)       ;; Only two moves
+           (equal? (car moves) '(fs . 1)) ;; First is fs = fs + 1
+           (equal? (cdadr moves)
+                   (cons 'm (- (ctx-fs ctx) 1)))) ;; Second is a move to new cell
+      (let ((loc (caadr moves)))
+        (x86-push cgc (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
+      (if (not (null? moves))
+          (begin (apply-move (car moves))
+                 (apply-moves cgc ctx (cdr moves) tmpreg)))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -1086,7 +1095,11 @@
 
 ;; #### FUNCTION ENTRY
 ;; Generate an entry point
-(define (gen-version-fn ast closure lazy-code gen-ctx call-ctx generic)
+(define (gen-version-fn ast closure lazy-code gen-ctx call-ctx generic global-opt-sym)
+
+  (define ep-loc
+    (and global-opt-sym
+         (cctable-global-opt-get global-opt-sym)))
 
   (define (fn-verbose)
     (print "GEN VERSION FN")
@@ -1096,8 +1109,8 @@
 
   (define (fn-patch label-dest new-version?)
     (if generic
-        (patch-generic ast closure label-dest)
-        (patch-closure closure call-ctx label-dest)))
+        (patch-generic ast closure label-dest ep-loc)
+        (patch-closure closure call-ctx label-dest ep-loc)))
 
   (define (fn-codepos)
     code-alloc)
@@ -1156,7 +1169,7 @@
                  (- dest-addr (+ jump-addr size))))))
 
 ;; Patch generic slot in closure
-(define (patch-generic ast closure label)
+(define (patch-generic ast closure label ep-loc)
 
   (let ((label-addr (asm-label-pos  label))
         (label-name (asm-label-name label)))
@@ -1168,17 +1181,23 @@
                 " (" (number->string label-addr 16) ")"))
 
    (if opt-entry-points
-       (let ((table-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ))))
+       (let ((table-addr
+               (or ep-loc
+                   (get-i64 (- (+ closure 8) TAG_MEMOBJ)))))
          (put-i64 (+ table-addr 8) label-addr))
-       (let ((eploc (get-entry-points-loc ast #f)))
-         (put-i64 (- (+ closure 8) TAG_MEMOBJ) label-addr)       ;; Patch closure
-         (put-i64 (+ 8 (- (obj-encoding eploc) 1)) label-addr))) ;; Patch still vector containing code addr
+       (let ((loc
+               (or ep-loc
+                   (get-entry-points-loc ast #f))))
+         (if (not ep-loc)
+             (put-i64 (- (+ closure 8) TAG_MEMOBJ) label-addr))     ;; Patch closure
+         (put-i64 (+ 8 (- (obj-encoding loc) 1)) label-addr))) ;; Patch still vector containing code addr
 
 
    label-addr))
 
 ;; Patch closure
-(define (patch-closure closure ctx label)
+;; TODO WIP Move ep-loc arg next to closure
+(define (patch-closure closure ctx label ep-loc)
 
   (let* ((label-addr (asm-label-pos  label))
          (label-name (asm-label-name label))
@@ -1194,7 +1213,9 @@
     ;             (number->string label-addr 16)
     ;             ")"))
 
-    (let ((cctable-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ)))) ;; +8(header) - 1(tag)
+    (let ((cctable-addr
+            (or ep-loc
+                (get-i64 (- (+ closure 8) TAG_MEMOBJ))))) ;; +8(header) - 1(tag)
       (put-i64 (+ cctable-addr offset) label-addr))
 
     label-addr))

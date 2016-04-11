@@ -653,22 +653,22 @@
                                                           opt-max-versions
                                                           (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
                                                        (error "NYI1")
-                                                       (let* ((cctx (ctx-init-fn sctx ctx all-params fvars mvars))
+                                                       (let* ((cctx (ctx-init-fn sctx ctx all-params fvars mvars global-opt))
                                                               (stack
                                                                 (append (make-list (length all-params) CTX_UNK)
                                                                         (list CTX_CLO CTX_RETAD)))
                                                               (gctx (ctx-copy cctx stack))) ;; To handle rest param
-                                                         (gen-version-fn ast closure lazy-prologue-gen gctx cctx #f)))
+                                                         (gen-version-fn ast closure lazy-prologue-gen gctx cctx #f global-opt)))
 
                                                     ;; CASE 2 - Do not use multiple entry points
                                                     ((= selector 1)
-                                                        (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
-                                                          (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t)))
+                                                        (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars global-opt)))
+                                                          (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t global-opt)))
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
-                                                       (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars)))
-                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
+                                                       (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars global-opt)))
+                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f global-opt)))))))
 
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
                (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
@@ -1781,7 +1781,9 @@
 ;;
 (define (mlc-call ast succ)
 
-  (let* (;; Tail call if successor's flags set contains 'ret flag
+  (let* (;; TODO wip change to global-opt-sym or global-opt? (?)
+         (global-opt #f)
+         ;; Tail call if successor's flags set contains 'ret flag
          (tail? #f);(member 'ret (lazy-code-flags succ)))
          ;; Call arguments
          (args (cdr ast))
@@ -1792,47 +1794,56 @@
            (make-lazy-code
              (lambda (cgc ctx)
 
-               ;; TODO: add test not in local env
-               (let ((global-opt
-                       (and (symbol? (car ast))
-                            (not (assoc (car ast) (ctx-env ctx)))
-                            (eq? (table-ref gids (car ast) #f) CTX_CLO))))
+               ;; Save used registers and update ctx
+               (set! ctx (call-save-registers cgc ctx tail? (+ (length args) 1)))
 
-                 ;; Save used registers and update ctx
-                 (set! ctx (call-save-registers cgc ctx tail? (+ (length args) 1)))
+               ;; Generate continuation stub and push return address
+               (set! ctx (call-gen-continuation cgc ctx tail? ast succ #f))
 
-                 ;; Generate continuation stub and push return address
-                 (set! ctx (call-gen-continuation cgc ctx tail? ast succ #f))
+               ;; Push closure
+               (if (not global-opt)
+                   (set! ctx (call-get-closure cgc ctx (length args))))
 
-                 ;; Push closure
-                 (set! ctx (call-get-closure cgc ctx (length args)))
+               ;; Move args to regs or stack following calling convention
+               (set! ctx (call-prep-args cgc ctx ast (length args)))
 
-                 ;; Move args to regs or stack following calling convention
-                 (set! ctx (call-prep-args cgc ctx ast (length args)))
+               ;; Unbox mutable args
+               (call-unbox-args cgc ctx (length args))
 
-                 ;; Unbox mutable args
-                 (call-unbox-args cgc ctx (length args))
+               ;; Shift args and closure for tail call
+               (call-tail-shift cgc ctx ast tail? (length args))
 
-                 ;; Shift args and closure for tail call
-                 (call-tail-shift cgc ctx ast tail? (length args))
-
-                 ;; Generate call sequence
-                 ;; Build call ctx
-                 (let ((call-ctx
-                         (ctx-copy
-                           (ctx-init)
-                             (append (list-head (ctx-stack ctx) (length (cdr ast)))
-                                     (list CTX_CLO CTX_RETAD)))))
-                   (gen-call-sequence ast cgc call-ctx (length args) (and global-opt (car ast))))))))
+               ;; Generate call sequence
+               ;; Build call ctx
+               (let ((call-ctx
+                       (ctx-copy
+                         (ctx-init)
+                           (append (list-head (ctx-stack ctx) (length (cdr ast)))
+                                   (list CTX_CLO CTX_RETAD)))))
+                 (gen-call-sequence ast cgc call-ctx (length args) (and global-opt (car ast)))))))
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
     ;; Gen and check types of args
-    (check-types
-      (list CTX_CLO)
-      (list (car ast))
-      (gen-ast-l (cdr ast) lazy-call)
-      ast)))
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (set! global-opt
+              (and (symbol? (car ast))
+                   (not (assoc (car ast) (ctx-env ctx)))
+                   (eq? (table-ref gids (car ast) #f) CTX_CLO)))
+        (if global-opt
+            (jump-to-version
+              cgc
+              (gen-ast-l (cdr ast) lazy-call)
+              (ctx-push ctx CTX_CLO #f))
+            (jump-to-version
+              cgc
+              (check-types
+                (list CTX_CLO)
+                (list (car ast))
+                (gen-ast-l (cdr ast) lazy-call)
+                ast)
+              ctx))))))
 
 ;; TODO regalloc: merge -rp and -cr + comments
 (define (gen-continuation-rp cgc ast succ ctx saved-regs apply?)

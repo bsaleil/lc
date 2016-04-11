@@ -124,19 +124,21 @@
 
 ;;
 ;; CTX INIT FN
-(define (ctx-init-fn call-ctx enclosing-ctx args free-vars mutable-vars)
+(define (ctx-init-fn call-ctx enclosing-ctx args free-vars mutable-vars global-opt?)
 
   ;;
   ;; FREE REGS
   (define (init-free-regs)
-    (let ((all (ctx-init-free-regs)))
-      (if (<= (length args) (length args-regs))
-          (set-sub (ctx-init-free-regs)
-                   (cons '(r . 2) (list-head args-regs (length args)))
-                   '())
-          (set-sub (ctx-init-free-regs)
-                   (cons '(r . 2) args-regs)
-                   '()))))
+    (let* ((all (ctx-init-free-regs))
+           (used-args
+             (if (<= (length args) (length args-regs))
+                 (list-head args-regs (length args))
+                 args-regs))
+           (used
+             (if global-opt?
+                 used-args
+                 (cons '(r . 2) used-args))))
+      (set-sub all used '())))
 
   ;;
   ;; ENV
@@ -198,7 +200,10 @@
                     (init-slot-loc-local mem (cdr avail-regs) (+ slot 1) (+ nvar 1)))))))
 
   (define (init-slot-loc-base)
-    '((1 r . 2) (0 m . 0)))
+    (if global-opt?
+        ;; If global optimized call, closure is still on vstack but loc is #f
+        '((1 . #f) (0 m . 0))
+        '((1 r . 2) (0 m . 0))))
 
   ;;
   ;; FS
@@ -338,7 +343,8 @@
 
   (define (save-one curr-idx ctx)
     (let ((loc (ctx-get-loc ctx curr-idx)))
-      (if (ctx-loc-is-memory? loc)
+      (if (or (not loc)
+              (ctx-loc-is-memory? loc))
           ;; If loc associated to current index is a memory loc, nothing to do
           (cons '() ctx)
           ;; Loc is a register, we need to save it
