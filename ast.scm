@@ -601,16 +601,19 @@
                               (opres (codegen-loc-to-x86opnd (ctx-fs ctx) lres))
                               (mutable? (ctx-is-mutable? ctx 0)))
 
-                         ;; 2 - Move res in rax
-                         (if mutable?
-                             (if (ctx-loc-is-memory? lres)
-                                 (begin (x86-mov cgc (x86-rax) opres)
-                                        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                                 (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opres)))
-                             (x86-mov cgc (x86-rax) opres))
+                         ;; 2 - Move res in result reg
+                         (let* ((lret (car (ctx-init-free-regs))) ;; TODO: use result-reg variable
+                                (oret (codegen-reg-to-x86reg lret)))
+                           (if mutable?
+                               (if (ctx-loc-is-memory? lres)
+                                   (begin (x86-mov cgc oret opres)
+                                          (x86-mov cgc oret (x86-mem (- 8 TAG_MEMOBJ) oret)))
+                                   (x86-mov cgc oret (x86-mem (- 8 TAG_MEMOBJ) opres)))
+                               (x86-mov cgc oret opres)))
 
                          ;; 3 - Clean stack
-                         (x86-add cgc (x86-rsp) (x86-imm-int (* 8 clean-nb)))
+                         (if (> clean-nb 0)
+                             (x86-add cgc (x86-rsp) (x86-imm-int (* 8 clean-nb))))
 
                          (if opt-return-points
                              (let* ((ret-type (car (ctx-stack ctx)))
@@ -1859,11 +1862,6 @@
                      (x86-pop cgc opnd)))
                  (reverse saved-regs))
 
-               ;; Move result to location
-               (let* ((lres   (ctx-get-loc ctx 0))
-                      (opres  (codegen-loc-to-x86opnd (ctx-fs ctx) lres)))
-                 ;; Result is in rax
-                 (x86-mov cgc opres (x86-rax)))
                (jump-to-version cgc succ ctx))))
          ;; Label for return address loading
          (load-ret-label (asm-make-label #f (new-sym 'load-ret-addr)))
@@ -1898,6 +1896,7 @@
   (let* ((lazy-continuation
            (make-lazy-code-cont
              (lambda (cgc ctx)
+
                ;; Restore registers
                (for-each
                  (lambda (i)
@@ -1905,12 +1904,6 @@
                      (x86-pop cgc opnd)))
                  (reverse saved-regs))
 
-               ;; Move result to location
-               (let* ((lres   (ctx-get-loc ctx 0))
-                      (fs (- (ctx-fs ctx) (length saved-regs)))
-                      (opres  (codegen-loc-to-x86opnd fs lres)))
-                 ;; Result is in rax
-                 (x86-mov cgc opres (x86-rax)))
                (jump-to-version cgc succ ctx))))
          (stub-labels
            (add-cont-callback cgc
@@ -1920,13 +1913,12 @@
                                             (ctx
                                               (if apply?
                                                   (ctx-pop-n ctx 2) ;; Pop operator and args
-                                                  (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
-                                            (moves/reg/ctx (ctx-get-free-reg ctx)))
-                                         (apply-moves cgc ctx moves)
-                                         (gen-version-continuation-cr lazy-continuation
-                                                                      (ctx-push ctx type reg)
-                                                                      type
-                                                                      table)))))
+                                                  (ctx-pop-n ctx (+ (length args) 1))))) ;; Remove closure and args from virtual stack
+                                         (let ((reg (car (ctx-init-free-regs))))
+                                           (gen-version-continuation-cr lazy-continuation
+                                                                        (ctx-push ctx type reg)
+                                                                        type
+                                                                        table))))))
          ;; CRtable
          (crtable-key (get-crtable-key ast ctx))
          (stub-addr (vector-ref (list-ref stub-labels 0) 1))

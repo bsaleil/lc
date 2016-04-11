@@ -268,7 +268,7 @@
                 ;(one-exec) (one-exec)
                 ;(one-exec) (one-exec)
                 (set! after (real-time))
-                (println "Time: " (* (- after before) 100000))))
+                (println "Time: " (* (- after before) 1000))))
       (##machine-code-block-exec mcb)))
 
 ;;-----------------------------------------------------------------------------

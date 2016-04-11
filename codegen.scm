@@ -616,9 +616,9 @@
 (define (codegen-return-cr cgc crtable-offset)
   ;; rax contains ret val
   (x86-pop cgc (x86-rdx)) ;; Table must be in rdx
-  (x86-mov cgc (x86-rbx) (x86-mem crtable-offset (x86-rdx)))
+  (x86-mov cgc (x86-rax) (x86-mem crtable-offset (x86-rdx)))
   (x86-mov cgc (x86-r11) (x86-imm-int crtable-offset)) ;; TODO (?)
-  (x86-jmp cgc (x86-rbx)))
+  (x86-jmp cgc (x86-rax)))
 
 ;;-----------------------------------------------------------------------------
 ;; Function calls

@@ -1,16 +1,18 @@
 
 ;; ATTENTION: on voudrait un seul appel à do_callback_fn pour ce code: (--nolib)
-(define (foo) 10)
-
-(let ((rr foo))
-  (foo)
-
-  (foo))
-
 ;(define (foo) 10)
 ;
-;(foo)
+;(let ((rr foo))
+;  (foo)
+;
+;  (foo))
 
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
+(fib 40)
 
 ;; Vérifier et améliorer implantation appel avec point d'entrée. (stub ?)
 ;; + global opt pour implantation appel avec point d'entrée
