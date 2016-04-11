@@ -558,7 +558,10 @@
                           (apply-moves cgc ctx moves)
                           (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue)
                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))))
-         (lazy-val (gen-ast (caddr ast) lazy-bind)))
+         (lazy-val
+           (if (eq? (table-ref gids (cadr ast) #f) CTX_CLO)
+               (mlc-lambda (caddr ast) lazy-bind (cadr ast))
+               (gen-ast (caddr ast) lazy-bind))))
 
     (make-lazy-code
       (lambda (cgc ctx)
@@ -572,7 +575,7 @@
 ;; Make lazy code from LAMBDA
 ;;
 
-(define (mlc-lambda ast succ lib-define)
+(define (mlc-lambda ast succ global-opt)
 
   (let* (;; Lambda free vars
          (fvars #f)
@@ -669,6 +672,9 @@
 
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
                (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
+
+          (if global-opt
+              (cctable-global-opt-set! global-opt cctable-loc))
 
           ;; If 'stats' option, then inc closures slot
           (if opt-stats
@@ -1611,8 +1617,12 @@
   (let* ((lazy-call
           (make-lazy-code
             (lambda (cgc ctx)
-              (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
-              (gen-call-sequence ast cgc #f #f))))
+              (let ((global-opt
+                      (and (symbol? (cadr ast))
+                           (not (assoc (cadr ast) (ctx-env ctx)))
+                           (eq? (table-ref gids (cadr ast) #f) CTX_CLO))))
+                (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
+                (gen-call-sequence ast cgc #f #f (and global-opt (cadr ast)))))))
         (lazy-args
           (make-lazy-code
             (lambda (cgc ctx)
@@ -1780,32 +1790,38 @@
            (make-lazy-code
              (lambda (cgc ctx)
 
-               ;; Save used registers and update ctx
-               (set! ctx (call-save-registers cgc ctx tail? (+ (length args) 1)))
+               ;; TODO: add test not in local env
+               (let ((global-opt
+                       (and (symbol? (car ast))
+                            (not (assoc (car ast) (ctx-env ctx)))
+                            (eq? (table-ref gids (car ast) #f) CTX_CLO))))
 
-               ;; Generate continuation stub and push return address
-               (set! ctx (call-gen-continuation cgc ctx tail? ast succ #f))
+                 ;; Save used registers and update ctx
+                 (set! ctx (call-save-registers cgc ctx tail? (+ (length args) 1)))
 
-               ;; Push closure
-               (set! ctx (call-get-closure cgc ctx (length args)))
+                 ;; Generate continuation stub and push return address
+                 (set! ctx (call-gen-continuation cgc ctx tail? ast succ #f))
 
-               ;; Move args to regs or stack following calling convention
-               (set! ctx (call-prep-args cgc ctx ast (length args)))
+                 ;; Push closure
+                 (set! ctx (call-get-closure cgc ctx (length args)))
 
-               ;; Unbox mutable args
-               (call-unbox-args cgc ctx (length args))
+                 ;; Move args to regs or stack following calling convention
+                 (set! ctx (call-prep-args cgc ctx ast (length args)))
 
-               ;; Shift args and closure for tail call
-               (call-tail-shift cgc ctx ast tail? (length args))
+                 ;; Unbox mutable args
+                 (call-unbox-args cgc ctx (length args))
 
-               ;; Generate call sequence
-               ;; Build call ctx
-               (let ((call-ctx
-                       (ctx-copy
-                         (ctx-init)
-                           (append (list-head (ctx-stack ctx) (length (cdr ast)))
-                                   (list CTX_CLO CTX_RETAD)))))
-                 (gen-call-sequence ast cgc call-ctx (length args))))))
+                 ;; Shift args and closure for tail call
+                 (call-tail-shift cgc ctx ast tail? (length args))
+
+                 ;; Generate call sequence
+                 ;; Build call ctx
+                 (let ((call-ctx
+                         (ctx-copy
+                           (ctx-init)
+                             (append (list-head (ctx-stack ctx) (length (cdr ast)))
+                                     (list CTX_CLO CTX_RETAD)))))
+                   (gen-call-sequence ast cgc call-ctx (length args) (and global-opt (car ast))))))))
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
@@ -1908,14 +1924,22 @@
     (codegen-load-cont-cr cgc crtable-loc)))
 
 ;; Gen call sequence (call instructions)
-(define (gen-call-sequence ast cgc call-ctx nb-args)
+;; Global-id contains global identifier if it is an optimized global call
+;; (compile time lookup)
+(define (gen-call-sequence ast cgc call-ctx nb-args global-id)
+
+    (define cctable-loc (cctable-global-opt-get global-id))
+
+    (if global-id
+        (assert (if opt-entry-points cctable-loc #t) "Internal error"))
+
     (cond ((and opt-entry-points nb-args)
              (let* ((idx (get-closure-index call-ctx)))
                (if idx
-                   (codegen-call-cc-spe cgc idx (ctx->still-ref call-ctx) nb-args)
-                   (codegen-call-cc-gen cgc))))
+                   (codegen-call-cc-spe cgc idx (ctx->still-ref call-ctx) nb-args cctable-loc)
+                   (codegen-call-cc-gen cgc cctable-loc))))
           ((and opt-entry-points (not nb-args))
-             (codegen-call-cc-gen cgc))
+             (codegen-call-cc-gen cgc cctable-loc))
           (else
              (codegen-call-ep cgc nb-args))))
 
@@ -2230,6 +2254,13 @@
       (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding cctable) 1)) stub-addr)
              (loop (+ i 1)))
       cctable)))
+
+;; TODO WIP
+(define cctable-global-opt (make-table))
+(define (cctable-global-opt-set! id loc)
+  (table-set! cctable-global-opt id loc))
+(define (cctable-global-opt-get id)
+  (table-ref cctable-global-opt id #f))
 
 ;; Return crtable from crtable-key
 ;; Return the existing table if already created or create one, add entry, and return it

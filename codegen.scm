@@ -670,21 +670,25 @@
   (x86-jmp cgc (x86-rbp)))
 
 ;;; Generate function call using a cctable and generic entry point
-(define (codegen-call-cc-gen cgc)
+(define (codegen-call-cc-gen cgc cctable-loc)
   (x86-mov cgc (x86-rsi) (x86-rax))
-  (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi))) ;; Get table
+  (if cctable-loc
+      (x86-mov cgc (x86-rbp) (x86-imm-int cctable-loc))
+      (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))) ;; Get table
   (x86-mov cgc (x86-rbp) (x86-mem 8 (x86-rbp))) ;; Get generic entry point
   (x86-jmp cgc (x86-rbp)))
 
 ;; Generate function call using a cctable and specialized entry point
-(define (codegen-call-cc-spe cgc idx ctx-imm nb-args)
+(define (codegen-call-cc-spe cgc idx ctx-imm nb-args cctable-loc)
     ;; Closure is in rax
     (let ((cct-offset (* 8 (+ 2 idx))))
       ;; 1 - Put ctx in r11
       (x86-mov cgc (x86-r11) (x86-imm-int ctx-imm))
       ;; 2- Get cc-table
       (x86-mov cgc (x86-rsi) (x86-rax))
-      (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
+      (if cctable-loc
+          (x86-mov cgc (x86-rbp) (x86-imm-int cctable-loc))
+          (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi))))
       ;; 3 - If opt-max-versions is not #f, a generic version could be called. So we need to give nb-args
       (if opt-max-versions ;; TODO(?)
           (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))

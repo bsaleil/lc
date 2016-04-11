@@ -1,4 +1,5 @@
 
+
 (define (fib n)
   (if (< n 2)
       1
@@ -7,10 +8,16 @@
 (fib 40)
 
 
+;; Vérifier et améliorer implantation appel avec point d'entrée. (stub ?)
+;; + global opt pour implantation appel avec point d'entrée
 
-;; TODO: diviser mlc-lambda en 2 selon le cas ep ou non
 
-;; TODO: Détecter appel fonction globale
+;; WIP: Détecter appel fonction globale
+  ;; * Détecter dans le stub, qu'on veut patcher une globale.
+  ;;   -> dans ce cas, ne pas récupérer la fermeture par le registre, et patcher directement la cctable
+  ;; * A l'appel, si global-opt, plus besoin de passer la fermeture
+  ;; * Regalloc: on a un registre supplémentaire dispo, car pas de fermeture si global-opt
+
 ;; TODO: Analyse pour détecter les variables mutables qui ne deviennent pas libres (paresseux?)
 ;; TODO: Réduire les cache misses avec appel pour le paramètre rest + appels système
 ;; TODO: Enlever mov ctx
