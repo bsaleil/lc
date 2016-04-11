@@ -674,7 +674,9 @@
                (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
 
           (if global-opt
-              (cctable-global-opt-set! global-opt cctable-loc))
+              (if opt-entry-points
+                  (cctable-global-opt-set! global-opt cctable-loc)
+                  (cctable-global-opt-set! global-opt (get-entry-points-loc ast stub-addr))))
 
           ;; If 'stats' option, then inc closures slot
           (if opt-stats
@@ -1928,20 +1930,20 @@
 ;; (compile time lookup)
 (define (gen-call-sequence ast cgc call-ctx nb-args global-id)
 
-    (define cctable-loc (cctable-global-opt-get global-id))
+    (define entry-loc (cctable-global-opt-get global-id))
 
     (if global-id
-        (assert (if opt-entry-points cctable-loc #t) "Internal error"))
+        (assert (if opt-entry-points entry-loc #t) "Internal error"))
 
     (cond ((and opt-entry-points nb-args)
              (let* ((idx (get-closure-index call-ctx)))
                (if idx
-                   (codegen-call-cc-spe cgc idx (ctx->still-ref call-ctx) nb-args cctable-loc)
-                   (codegen-call-cc-gen cgc cctable-loc))))
+                   (codegen-call-cc-spe cgc idx (ctx->still-ref call-ctx) nb-args entry-loc)
+                   (codegen-call-cc-gen cgc entry-loc))))
           ((and opt-entry-points (not nb-args))
-             (codegen-call-cc-gen cgc cctable-loc))
+             (codegen-call-cc-gen cgc entry-loc))
           (else
-             (codegen-call-ep cgc nb-args))))
+             (codegen-call-ep cgc nb-args entry-loc))))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators

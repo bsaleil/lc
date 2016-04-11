@@ -1,11 +1,10 @@
 
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
-(fib 40)
+(define (foo n) (+ n 1))
+
+
+(foo 1000)
+;(foo 2000)
 
 
 ;; Vérifier et améliorer implantation appel avec point d'entrée. (stub ?)

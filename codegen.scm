@@ -661,13 +661,15 @@
   (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb))))
 
 ;; Generate function call using a single entry point
-(define (codegen-call-ep cgc nb-args)
+(define (codegen-call-ep cgc nb-args ep-loc)
   ;; TODO: use call/ret if opt-entry-points opt-return-points are #f
   (if nb-args ;; If nb-args given, move encoded in rdi, else nb-args is already encoded in rdi (apply)
       (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args))))
   (x86-mov cgc (x86-rsi) (x86-rax))
-  (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
-  (x86-jmp cgc (x86-rbp)))
+  (if ep-loc
+      (x86-jmp cgc (x86-mem (+ (obj-encoding ep-loc) 7) #f))
+      (begin (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
+             (x86-jmp cgc (x86-rbp)))))
 
 ;;; Generate function call using a cctable and generic entry point
 (define (codegen-call-cc-gen cgc cctable-loc)
