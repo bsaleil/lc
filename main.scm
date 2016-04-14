@@ -258,17 +258,19 @@
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)
-             (let ((before #f)
-                   (after  #f))
-                (set! before (real-time))
-                ;; 10 execs
-                (one-exec) ;(one-exec) (one-exec)
-                ;(one-exec) (one-exec)
-                ;(one-exec) (one-exec)
-                ;(one-exec) (one-exec)
-                ;(one-exec) (one-exec)
-                (set! after (real-time))
-                (println "Time: " (* (- after before) 1000))))
+             (time (##machine-code-block-exec mcb)
+                   (current-output-port)))
+            ; (let ((before #f)
+            ;       (after  #f))
+            ;    (set! before (real-time))
+            ;    ;; 10 execs
+            ;    (one-exec) ;(one-exec) (one-exec)
+            ;    ;(one-exec) (one-exec)
+            ;    ;(one-exec) (one-exec)
+            ;    ;(one-exec) (one-exec)
+            ;    ;(one-exec) (one-exec)
+            ;    (set! after (real-time))
+            ;    (println "Time: " (* (- after before) 1000))))
       (##machine-code-block-exec mcb)))
 
 ;;-----------------------------------------------------------------------------
@@ -327,7 +329,8 @@
           (else (error "NYI")))
 
     (rt-print-opts)
-    (print-opts))
+    (print-opts)
+    0)
 
 ;; TODO
 (define (get-versions-info lazy-codes)
