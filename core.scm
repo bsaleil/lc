@@ -250,6 +250,34 @@
 
 ;;-----------------------------------------------------------------------------
 
+(define (gen-print-msg cgc msg newline? #!optional (literal? #t))
+
+  (x86-push cgc (x86-rax))
+  (x86-push cgc (x86-rcx))
+  (x86-push cgc (x86-rdi))
+
+  (if literal?
+     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding msg)))
+     (x86-mov cgc (x86-rax) msg))
+
+  (x86-mov cgc (x86-rdi) (x86-imm-int (if newline? (obj-encoding 1) (obj-encoding 0))))
+
+  (push-pop-regs
+       cgc
+       c-caller-save-regs ;; preserve regs for C call
+       (lambda (cgc)
+         (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
+         (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+         (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+         (x86-push cgc (x86-rdi))
+         (x86-call cgc label-print-msg) ;; call C function
+         (x86-pop  cgc (x86-rsp)))) ;; restore unaligned stack-pointer
+
+
+  (x86-pop cgc (x86-rdi))
+  (x86-pop cgc (x86-rcx))
+  (x86-pop cgc (x86-rax)))
+
 (define (gen-print-reg cgc msg reg)
 
   (x86-push cgc (x86-rax))
@@ -281,6 +309,14 @@
 
     (print msg " ")
     (println val)))
+
+;; TODO
+(c-define (print-msg sp) (long) void "print_msg" ""
+  (let* ((msg-enc  (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
+         (newline? (encoding-obj (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8)))))
+         (msg      (encoding-obj msg-enc)))
+
+    (and (print msg) (= newline? 1) (newline))))
 
 ;; Repl function.
 ;; Get sexpr from stdin, gen-version for empty context and returns version address
@@ -510,6 +546,7 @@
 
 (define (init-labels cgc)
   (set-cdef-label! label-exec-error       'exec-error      "___result = ___CAST(void*,exec_error);")
+  (set-cdef-label! label-print-msg        'print-msg       "___result = ___CAST(void*,print_msg);")
   (set-cdef-label! label-print-msg-val    'print-msg-val   "___result = ___CAST(void*,print_msg_val);")
   (set-cdef-label! label-repl             'repl            "___result = ___CAST(void*,repl);")
   (set-cdef-label! label-gc               'gc              "___result = ___CAST(void*,gc);")

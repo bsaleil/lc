@@ -2,7 +2,7 @@ import os
 import shutil
 import glob
 import subprocess
-
+import sys
 import re
 
 #---------------------------------------------------------------------------
@@ -27,7 +27,13 @@ class System:
         self.regexms = regexms # regex to extract ms time
         self.times = {}
 
-    def printState(self,str):
+        self.green = 2
+        self.yellow = 3
+        self.blue = 4
+
+
+    def printState(self,color,str):
+        print("\033[1;3{0}m*\033[0m ".format(color),end='')
         print(str + ' ' + self.name + '...')
 
     def compileError(self,benchmark):
@@ -35,16 +41,15 @@ class System:
         raise Exception(msg)
 
     def execError(self,benchmark):
-        msg = 'Error when execution ' + benchmark + ' with system ' + self.name
+        msg = 'Error when executing ' + benchmark + ' with system ' + self.name
         raise Exception(msg)
 
     def prep(self,config):
 
         # Print prep task
-        self.printState("Prepare system")
+        self.printState(self.blue,"Prepare system")
 
         # Copy benchmarks in system tmp dir
-        self.tmpDir = config.resPath + '/' + self.name
         os.makedirs(self.tmpDir)
         prefixPath = config.prefixPath + '/' + self.name + '.scm'
         suffixPath = config.suffixPath + '/' + self.name + '.scm'
@@ -61,49 +66,57 @@ class System:
                 with open(benchmark, 'r') as srcfile, \
                      open(dst,'w') as dstfile:
                     src = srcfile.read()
-                    c = config.numitersContent + '\n' + prefix + '\n' + src + '\n' + suffix;
+                    c = prefix + '\n' + config.numitersContent + '\n' + src + '\n' + suffix;
                     dstfile.write(c)
 
     def compile(self,config):
 
         # Print compile task
-        self.printState("Compile benchmarks for system")
+        self.printState(self.yellow,"Compile benchmarks for system")
 
         files = glob.glob(self.tmpDir + '/*.scm')
         assert (len(files) == len(config.benchmarks))
         if self.ccmd == '':
             # No compiler cmd, add .scm extension
             for infile in files:
+                # TODO
+                filename = os.path.splitext(os.path.basename(infile))[0]
+                print('   ' + filename + '...')
                 os.rename(infile, infile + '.scm')
         else:
             # Else, compile files
             for infile in files:
+                # TODO
+                filename = os.path.splitext(os.path.basename(infile))[0]
+                print('   ' + filename + '...')
                 cmd = self.ccmd.format(infile)
                 # compile file
                 code = subprocess.call(cmd,shell=True)
                 if code != 0:
-                    compileError(benchmark)
+                    self.compileError(infile)
                 # remove source
                 os.remove(infile)
 
     def execute(self,config):
 
         # Print execute task
-        self.printState("Execute benchmarks for system")
+        self.printState(self.green,"Execute benchmarks with system")
 
-        files = glob.glob(self.tmpDir + '/*' + self.eext)
+        files = sorted(glob.glob(self.tmpDir + '/*' + self.eext))
         assert (len(files) == len(config.benchmarks))
 
         for file in files:
+            filename = os.path.splitext(os.path.basename(file))[0]
+            print('   ' + filename + '...')
             def f (x): return x.format(file)
             cmd = list(map(f,self.ecmd))
             pipe = subprocess.PIPE
             p = subprocess.Popen(cmd, universal_newlines=True, stdin=pipe, stdout=pipe, stderr=pipe)
             sout, serr = p.communicate()
             rc = p.returncode
-            print(rc)
-            print(serr)
-            print(sout)
+            # print(rc)
+            # print(serr)
+            # print(sout)
             if (rc != 0) or (serr != '') or ("***" in sout):
                 self.execError(file)
 
@@ -120,24 +133,31 @@ class Runner:
     def __init__(self,config,systems):
         self.config = config
         self.systems = systems
+        for system in systems:
+            system.tmpDir = config.resPath + '/' + system.name
 
     def prep(self):
         for system in self.systems:
-            system.prep(config)
+            system.prep(self.config)
 
     def compile(self):
         for system in self.systems:
-            system.compile(config)
+            system.compile(self.config)
 
     def execute(self):
         for system in self.systems:
-            system.execute(config)
+            system.execute(self.config)
 
 #---------------------------------------------------------------------------
 
+
+def userWants(str):
+    r = input(str + ' (y/N) ')
+    return r == 'y'
+
 systems = []
-systems.append(System("GambitC","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n"))
-systems.append(System("GambitI","",".scm",["gsi","{0}"],"(\d+) ms real time\\n"))
+#systems.append(System("GambitC","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n"))
+#systems.append(System("GambitI","",".scm",["gsi","{0}"],"(\d+) ms real time\\n"))
 systems.append(System("LC-all","",".scm",["lazy-comp","{0}","--time"],"(\d+) ms real time\\n"))
 
 config = Config()
@@ -145,7 +165,7 @@ scriptPath = os.path.dirname(os.path.realpath(__file__))
 
 config.benchPath = scriptPath + '/bench/'
 config.resPath = scriptPath + '/result/'
-config.benchmarks = glob.glob(config.benchPath + '*.scm')
+config.benchmarks = sorted(glob.glob(config.benchPath + '*.scm'))
 
 config.prefixPath = scriptPath + '/prefix'
 config.suffixPath = scriptPath + '/suffix'
@@ -153,23 +173,21 @@ config.suffixPath = scriptPath + '/suffix'
 with open(scriptPath + '/num-iters.scm', 'r') as itersfile:
     config.numitersContent = itersfile.read()
 
-if os.path.exists(config.resPath):
-    print('Result dir ' + config.resPath + ' exists.')
-    r = input('Delete content ? (y/N) ')
-    if r == 'y':
-        shutil.rmtree(config.resPath)
-        os.makedirs(config.resPath)
-    else:
-        print("Execution aborted.")
-else:
-    os.makedirs(config.resPath)
-
 #---------------------------------------------------------------------------
 
 runner = Runner(config,systems)
-runner.prep()
-runner.compile()
-runner.execute()
+
+if userWants('Execute only?'):
+    runner.execute()
+else:
+    if os.path.exists(config.resPath):
+        print('ERROR - Result dir ' + config.resPath + ' exists.')
+        sys.exit(0)
+    os.makedirs(config.resPath);
+
+    runner.prep()
+    runner.compile()
+    runner.execute()
 
 for system in systems:
     print('SYSTEM ' + system.name)

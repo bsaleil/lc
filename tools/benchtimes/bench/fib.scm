@@ -10,6 +10,6 @@
   (run-benchmark
     "fib"
     fib-iters
-    (lambda (result) (equal? result 55))
+    (lambda (result) (equal? result 9227465))
     (lambda (n) (lambda () (fib n)))
-    10))
+    35))

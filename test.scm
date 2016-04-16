@@ -7,12 +7,46 @@
 ;
 ;  (foo))
 
+;(define (time . expr))
+;
+;(pp ($$sys-clock-gettime-s))
+;(pp ($$sys-clock-gettime-s))
+;(time (println 10))
+
 (define (fib n)
   (if (< n 2)
       1
       (+ (fib (- n 1))
          (fib (- n 2)))))
+
+(define time-before 0)
+(define time-after  0)
+
+(set! time-before ($$sys-clock-gettime-ns))
 (fib 40)
+(set! time-after  ($$sys-clock-gettime-ns))
+
+(println (/ (- time-after time-before) (expt 10 6)))
+
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1))
+;         (fib (- n 2)))))
+;
+;(define (time)
+;  (let ((SYM1 ($$sys-clock-gettime-s)))
+;    (fib 30)
+;    (let ((SYM2 ($$sys-clock-gettime-s)))
+;      (let ((ms (/ (- SYM2 SYM1) 1000000)))
+;        (print ms)
+;        (println " ms real time")))))
+;
+;(time)
+
+
+
+;; ATTENTION: apply-moves: il faut faire attention au contexte utilisé ici!!
 
 ;; Vérifier et améliorer implantation appel avec point d'entrée. (stub ?)
 ;; + global opt pour implantation appel avec point d'entrée

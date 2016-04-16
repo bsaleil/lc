@@ -1,3 +1,21 @@
+(define (run-bench name count ok? run)
+  (let loop ((i count) (result '(undefined)))
+    (if (< 0 i)
+      (loop (- i 1) (run))
+      result)))
+
+(define (run-benchmark name count ok? run-maker . args)
+  (newline)
+  (let* ((run (apply run-maker args))
+         (result (run-bench name count ok? run)))
+    (if (not (ok? result))
+      (begin
+        (display "*** wrong result ***")
+        (newline)
+        (display "*** got: ")
+        (write result)
+        (newline)))))
+
 ; Gabriel benchmarks
 (define boyer-iters        20)
 (define browse-iters      600)
@@ -61,26 +79,6 @@
 (define gcbench-iters       1)
 (define compiler-iters    300)
 
-(define (run-bench name count ok? run)
-  (let loop ((i count) (result '(undefined)))
-    (if (< 0 i)
-      (loop (- i 1) (run))
-      result)))
-
-(define (run-benchmark name count ok? run-maker . args)
-  (newline)
-  (let* ((run (apply run-maker args))
-         (result (run-bench name count ok? run) (current-output-port)))
-    (if (not (ok? result))
-      (begin
-        (display "*** wrong result ***")
-        (newline)
-        (display "*** got: ")
-        (write result)
-        (newline)))))
-
-(main)
-
 ;;; PRIMES -- Compute primes less than 100, written by Eric Mohr.
 
 (define  (interval-list m n)
@@ -111,8 +109,9 @@
    primes-iters
    (lambda (result)
      (equal? result
-             '(2 3 5 7 11 13 17 19)))
+             '(2 3 5 7 11 13 17 19 23 29 31 37 41
+                 43 47 53 59 61 67 71 73 79 83 89 97)))
    (lambda (n) (lambda () (primes<= n)))
-   20))
+   100))
 
 (main)

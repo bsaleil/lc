@@ -1058,7 +1058,7 @@
 ;;-----------------------------------------------------------------------------
 
 ;;-----------------------------------------------------------------------------
-(define gen-print-msg #f) ;; TODO rewrtie
+
 ;; SPECIAL $$print-flonum: call gambit at the moment. TODO: write print flonum asm code
 (define (codegen-print-flonum cgc fs reg loc)
   (let ((dest (codegen-reg-to-x86reg reg))
@@ -1894,3 +1894,14 @@
         (begin (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
                (x86-mov cgc opval (x86-rax)))
         (x86-lea cgc opval (x86-mem TAG_MEMOBJ alloc-ptr)))))
+
+;;-----------------------------------------------------------------------------
+;; Time
+
+(define (codegen-sys-clock-gettime-ns cgc reg)
+  (let ((opnd (codegen-reg-to-x86reg reg)))
+
+    ;; Get monotonic time in rax
+    (gen-syscall-clock-gettime cgc)
+    (x86-mov cgc opnd (x86-rax))
+    (x86-shl cgc opnd (x86-imm-int 2))))

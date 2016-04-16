@@ -7,7 +7,7 @@
 (define (run-benchmark name count ok? run-maker . args)
   (newline)
   (let* ((run (apply run-maker args))
-         (result (run-bench name count ok? run) (current-output-port)))
+         (result (run-bench name count ok? run)))
     (if (not (ok? result))
       (begin
         (display "*** wrong result ***")
@@ -15,5 +15,3 @@
         (display "*** got: ")
         (write result)
         (newline)))))
-
-(main)

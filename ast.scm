@@ -199,7 +199,7 @@
         ((pair? ast)
          (let ((op (car ast)))
            (cond ;; Special
-                 ((member op '(breakpoint)) (mlc-special ast succ))
+                 ((member op '(breakpoint $$sys-clock-gettime-ns)) (mlc-special ast succ))
                  ;; TODO special function
                  ((eq? op '$$print-flonum) (mlc-printflonum ast succ))
                  ;; Inlined primitive
@@ -1050,7 +1050,15 @@
            (lambda (cgc ctx)
              (gen-breakpoint cgc)
              (codegen-void cgc)
-             (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))))
+             (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))
+        ((eq? (car ast) '$$sys-clock-gettime-ns)
+         (make-lazy-code
+           (lambda (cgc ctx)
+             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+               (apply-moves cgc ctx moves)
+               (codegen-sys-clock-gettime-ns cgc reg)
+               (jump-to-version cgc succ (ctx-push ctx CTX_INT reg))))))
+        (else (error "NYI"))))
 
 ;;-----------------------------------------------------------------------------
 ;; PRIMITIVES
@@ -2021,7 +2029,9 @@
             (rcst (integer? (caddr ast))))
         (cond
           ((and lcst rcst)
-             (gen-ast (eval ast) succ))
+             (if (eq? op '/)
+                 (gen-ast (exact->inexact (eval ast)) succ)
+                 (gen-ast (eval ast) succ)))
           (lcst
              (gen-ast (caddr ast)
                       (get-lazy-n-binop ast op (cadr ast) #f succ)))
@@ -2041,7 +2051,10 @@
   ;; Build chain to check type of one value (if one of them is a cst)
   (define (type-check-one)
     (let* (;; Op
-           (lazy-op-i (get-op-ii))
+           (lazy-op-i
+             (if (eq? op '/)
+                 (get-op-ff #t #t)
+                 (get-op-ii)))
            (lazy-op-f (get-op-ff (integer? lcst) (integer? rcst)))
            ;; Checks
            (lazy-float (gen-fatal-type-test CTX_FLO 0 lazy-op-f ast))
@@ -2051,7 +2064,10 @@
   ;; Build chain to check type of two values (no cst)
   (define (type-check-two)
     (let* (;; Operations lco
-           (lazy-op-ii (get-op-ii))
+           (lazy-op-ii
+             (if (eq? op '/)
+                 (get-op-ff #t #t)
+                 (get-op-ii)))
            (lazy-op-if (get-op-ff #t #f))
            (lazy-op-fi (get-op-ff #f #t))
            (lazy-op-ff (get-op-ff #f #f))

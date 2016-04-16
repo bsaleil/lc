@@ -30,11 +30,17 @@
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
+(define C_CLOCK_MONOTONIC 1)
+(define C_SIZEOF_TIMESPEC 16)
+(define C_TIMESPEC_SEC_OFFSET 0)
+(define C_TIMESPEC_NSEC_OFFSET 8)
+
 (define LINUX_SYSCALL
   '((close . 3)
     (open  . 2)
     (write . 1)
-    (read  . 0)))
+    (read  . 0)
+    (clock_gettime . 228)))
 
 ;;-----------------------------------------------------------------------------
 ;; OPEN
@@ -221,6 +227,43 @@
 
   ;; Restore destroyed regs
   (x86-pop cgc (x86-rdx))
+  (x86-pop cgc (x86-rsi))
+  (x86-pop cgc (x86-rdi))
+  (x86-pop cgc (x86-r11))
+  (x86-pop cgc (x86-rcx)))
+
+;;-----------------------------------------------------------------------------
+;; WRITE-CHAR
+(define (gen-syscall-clock-gettime cgc)
+
+  (x86-label cgc (asm-make-label #f (new-sym 'syscall_clock-gettime_)))
+
+  ;; Save destroyed regs
+  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
+  (x86-push cgc (x86-r11)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
+  (x86-push cgc (x86-rdi))
+  (x86-push cgc (x86-rsi))
+
+  ;; Clock in rdi
+  (x86-mov cgc (x86-rdi) (x86-imm-int C_CLOCK_MONOTONIC))
+
+  ;; timespect struct address in rsi
+  (x86-sub cgc (x86-rsp) (x86-imm-int C_SIZEOF_TIMESPEC))
+  (x86-mov cgc (x86-rsi) (x86-rsp))
+
+  ;; syscall number (rax)
+  (x86-mov cgc (x86-rax) (x86-imm-int (cdr (assoc 'clock_gettime LINUX_SYSCALL))))
+
+  (x86-syscall cgc)
+
+  ;;
+  (x86-mov cgc (x86-rax) (x86-mem C_TIMESPEC_SEC_OFFSET (x86-rsp)))
+  (x86-mov cgc (x86-rcx) (x86-imm-int (expt 10 9)))
+  (x86-imul cgc (x86-rax) (x86-rcx))
+  (x86-add cgc (x86-rax) (x86-mem C_TIMESPEC_NSEC_OFFSET (x86-rsp)))
+
+  (x86-add cgc (x86-rsp) (x86-imm-int C_SIZEOF_TIMESPEC))
+
   (x86-pop cgc (x86-rsi))
   (x86-pop cgc (x86-rdi))
   (x86-pop cgc (x86-r11))
