@@ -1,3 +1,6 @@
+(define ###TIME_BEFORE### 0)
+(define ###TIME_AFTER###  0)
+
 (define (run-bench name count ok? run)
   (let loop ((i count) (result '(undefined)))
     (if (< 0 i)
@@ -5,17 +8,23 @@
       result)))
 
 (define (run-benchmark name count ok? run-maker . args)
-  (newline)
-  (let* ((run (apply run-maker args))
-         (result (run-bench name count ok? run)))
-    (if (not (ok? result))
-      (begin
-        (display "*** wrong result ***")
-        (newline)
-        (display "*** got: ")
-        (write result)
-        (newline)))))
+  (let ((run (apply run-maker args)))
+    (set! ###TIME_BEFORE### ($$sys-clock-gettime-ns))
+    (let ((result (run-bench name count ok? run)))
+      (set! ###TIME_AFTER### ($$sys-clock-gettime-ns))
+      (let ((ms (/ (- ###TIME_AFTER### ###TIME_BEFORE###) 1000000)))
+        (print ms)
+        (println " ms real time")
+        (if (not (ok? result))
+          (begin
+            (display "*** wrong result ***")
+            (newline)
+            (display "*** got: ")
+            (write result)
+            (newline)))))))
 
+(define BENCH_IN_FILE_PATH "/home/bapt/Bureau/these/lazy-comp/tools/benchtimes/bench/")
+(define BENCH_IN_FILE_PATH "/home/bapt/Bureau/these/lazy-comp/tools/benchtimes/bench/")
 ; Gabriel benchmarks
 (define boyer-iters        20)
 (define browse-iters      600)
@@ -107,7 +116,7 @@
           (wcport port)))))
 
 (define (go)
-  (set! inport (open-input-file "./bench/bib"))
+  (set! inport (open-input-file (string-append BENCH_IN_FILE_PATH "/bib")))
   (set! nl 0)
   (set! nw 0)
   (set! nc 0)
@@ -115,7 +124,7 @@
   (let ((result (wcport inport)))
     (close-input-port inport)
     result))
- 
+
 (define (main . args)
   (run-benchmark
    "wc"

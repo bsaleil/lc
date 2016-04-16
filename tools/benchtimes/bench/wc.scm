@@ -26,7 +26,7 @@
           (wcport port)))))
 
 (define (go)
-  (set! inport (open-input-file "./bench/bib"))
+  (set! inport (open-input-file (string-append BENCH_IN_FILE_PATH "/bib")))
   (set! nl 0)
   (set! nw 0)
   (set! nc 0)
@@ -34,7 +34,7 @@
   (let ((result (wcport inport)))
     (close-input-port inport)
     result))
- 
+
 (define (main . args)
   (run-benchmark
    "wc"

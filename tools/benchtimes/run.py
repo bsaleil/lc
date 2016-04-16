@@ -61,6 +61,9 @@ class System:
             # For each benchmark,
             for benchmark in config.benchmarks:
                 basename = os.path.basename(benchmark)
+                if basename == "cat.scm" or basename == "wc.scm":
+                    infilepath = scriptPath + '/bench/'
+                    prefix = prefix + "\n(define BENCH_IN_FILE_PATH \"{0}\")".format(infilepath)
                 dst = self.tmpDir + '/' + basename
                 # Read source & write prefix + source
                 with open(benchmark, 'r') as srcfile, \
@@ -114,13 +117,10 @@ class System:
             p = subprocess.Popen(cmd, universal_newlines=True, stdin=pipe, stdout=pipe, stderr=pipe)
             sout, serr = p.communicate()
             rc = p.returncode
-            # print(rc)
-            # print(serr)
-            # print(sout)
+
             if (rc != 0) or (serr != '') or ("***" in sout):
                 self.execError(file)
 
-            user = sout.split('\n')
             res = re.findall(self.regexms, sout)
             assert (len(res) == 1)
             timems = res[0]
@@ -158,7 +158,7 @@ def userWants(str):
 systems = []
 #systems.append(System("GambitC","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n"))
 #systems.append(System("GambitI","",".scm",["gsi","{0}"],"(\d+) ms real time\\n"))
-systems.append(System("LC-all","",".scm",["lazy-comp","{0}","--time"],"(\d+) ms real time\\n"))
+systems.append(System("LC-all","",".scm",["lazy-comp","{0}","--time"],"(\d+.\d+) ms real time\\n\("))
 
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))

@@ -12,7 +12,7 @@
           (catport port)))))
 
 (define (go)
-  (set! inport (open-input-file "./bench/bib"))
+  (set! inport (open-input-file (string-append BENCH_IN_FILE_PATH "/bib")))
   (set! outport (open-output-file "foo"))
   (catport inport)
   (close-input-port inport))
