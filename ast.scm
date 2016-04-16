@@ -1795,7 +1795,7 @@
   (let* (;; TODO wip change to global-opt-sym or global-opt? (?)
          (global-opt #f)
          ;; Tail call if successor's flags set contains 'ret flag
-         (tail? #f);(member 'ret (lazy-code-flags succ)))
+         (tail? (member 'ret (lazy-code-flags succ)))
          ;; Call arguments
          (args (cdr ast))
          ;; Lazy fail

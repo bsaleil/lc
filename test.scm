@@ -1,4 +1,21 @@
 
+
+(define (foo count)
+  (letrec ((loop
+             (lambda (i)
+               (if (> i 0)
+                   (loop (- i 1))
+                   1))))
+    (loop count)))
+
+
+(foo 1000000)
+
+
+
+
+
+
 ;; ATTENTION: on voudrait un seul appel à do_callback_fn pour ce code: (--nolib)
 ;(define (foo) 10)
 ;
@@ -13,20 +30,20 @@
 ;(pp ($$sys-clock-gettime-s))
 ;(time (println 10))
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
-
-(define time-before 0)
-(define time-after  0)
-
-(set! time-before ($$sys-clock-gettime-ns))
-(fib 40)
-(set! time-after  ($$sys-clock-gettime-ns))
-
-(println (/ (- time-after time-before) (expt 10 6)))
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1))
+;         (fib (- n 2)))))
+;
+;(define time-before 0)
+;(define time-after  0)
+;
+;(set! time-before ($$sys-clock-gettime-ns))
+;(fib 40)
+;(set! time-after  ($$sys-clock-gettime-ns))
+;
+;(println (/ (- time-after time-before) (expt 10 6)))
 
 ;(define (fib n)
 ;  (if (< n 2)

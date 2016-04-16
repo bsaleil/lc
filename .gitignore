@@ -12,3 +12,4 @@ unit-tests/mutable-out
 __pycache__/
 CPS/
 script.sh
+foo

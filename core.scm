@@ -316,7 +316,7 @@
          (newline? (encoding-obj (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8)))))
          (msg      (encoding-obj msg-enc)))
 
-    (and (print msg) (= newline? 1) (newline))))
+    (and (print msg) (force-output) (= newline? 1) (newline))))
 
 ;; Repl function.
 ;; Get sexpr from stdin, gen-version for empty context and returns version address
