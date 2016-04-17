@@ -1,9 +1,6 @@
 
-(println #f)
 
-
-
-
+;;;; S'OCCUPER DU TODO DES PATCH GENERIC DANS core.scm (patch-generic)
 
 
 ;; ATTENTION: on voudrait un seul appel à do_callback_fn pour ce code: (--nolib)

@@ -1146,7 +1146,7 @@
 
   (define (fn-patch label-dest new-version?)
     (if generic
-        (patch-generic ast closure label-dest ep-loc)
+        (patch-generic ast closure label-dest ep-loc global-opt-sym)
         (patch-closure closure call-ctx label-dest ep-loc)))
 
   (define (fn-codepos)
@@ -1206,16 +1206,29 @@
                  (- dest-addr (+ jump-addr size))))))
 
 ;; Patch generic slot in closure
-(define (patch-generic ast closure label ep-loc)
+(define (patch-generic ast closure label ep-loc global-opt-sym)
 
   (let ((label-addr (asm-label-pos  label))
         (label-name (asm-label-name label)))
 
    (if opt-verbose-jit
-       (println ">>> patching generic slot of closure " (number->string closure 16)
-                ": now contains label "
-                label-name
-                " (" (number->string label-addr 16) ")"))
+       (let ((closure-id
+               (if ep-loc
+                   "#f"
+                   (number->string closure 16))))
+         (println ">>> patching generic slot of closure " closure-id
+                  ": now contains label "
+                  label-name
+                  " (" (number->string label-addr 16) ")")))
+
+   ;; TODO
+   ;(print "generic: ") ;; (+ block-addr (* 8 global-offset))
+   (if global-opt-sym
+       (let* ((r (table-ref globals global-opt-sym #f))
+              (addr (+ block-addr (* 8 global-offset) (* 8 (cdr r))))
+              (curr-closure (get-i64 addr)))
+         (set! closure curr-closure)))
+   ;;TODO
 
    (if opt-entry-points
        (let ((table-addr
@@ -1225,8 +1238,7 @@
        (let ((loc
                (or ep-loc
                    (get-entry-points-loc ast #f))))
-         (if (not ep-loc)
-             (put-i64 (- (+ closure 8) TAG_MEMOBJ) label-addr))     ;; Patch closure
+         (put-i64 (- (+ closure 8) TAG_MEMOBJ) label-addr)     ;; Patch closure
          (put-i64 (+ 8 (- (obj-encoding loc) 1)) label-addr))) ;; Patch still vector containing code addr
 
 
