@@ -597,6 +597,7 @@
          ctx
          slots))
 
+;; TODO: use stack idx to match public api
 ;; Change loc associated to given slot
 (define (ctx-set-loc ctx slot loc)
 

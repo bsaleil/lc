@@ -779,7 +779,7 @@
                 (x86-jmp cgc label-rest-loop))
               ;
               (x86-label cgc label-rest-end)
-              (if (< nb-args (length args-regs))
+              (if (<= nb-args (length args-regs))
                   (let ((reg (list-ref args-regs (- nb-args 1))))
                     (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-r14)))
                   (x86-push cgc (x86-r14)))))

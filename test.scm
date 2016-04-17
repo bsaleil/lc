@@ -1,15 +1,10 @@
 
 
-(define (foo count)
-  (letrec ((loop
-             (lambda (i)
-               (if (> i 0)
-                   (loop (- i 1))
-                   1))))
-    (loop count)))
+(define (foo a b c d . z)
+  z)
 
 
-(foo 1000000)
+(foo 1 2 3 4 5 6 7)
 
 
 
