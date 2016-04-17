@@ -1885,15 +1885,13 @@
                                            (ctx
                                              (if apply?
                                                  (ctx-pop-n ctx 2) ;; Pop operator and args
-                                                 (ctx-pop-n ctx (+ (length args) 1))))
-                                           (moves/reg/ctx (ctx-get-free-reg ctx)))
-
-                                      (apply-moves cgc ctx moves)
-                                      (set! gen-flag
-                                            (gen-version-continuation
-                                              load-ret-label
-                                              lazy-continuation
-                                              (ctx-push ctx CTX_UNK reg)))))
+                                                 (ctx-pop-n ctx (+ (length args) 1)))))
+                                      (let ((reg (car (ctx-init-free-regs))))
+                                        (set! gen-flag
+                                              (gen-version-continuation
+                                                load-ret-label
+                                                lazy-continuation
+                                                (ctx-push ctx CTX_UNK reg))))))
                                 gen-flag))))
    ;; Generate code
    (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0))))
