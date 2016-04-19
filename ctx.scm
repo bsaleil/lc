@@ -84,6 +84,9 @@
 (define (ctx-identifier-mutable? ctx identifier)
   (member 'mutable (identifier-flags identifier)))
 
+(define (ctx-identifier-letrec-nm? ctx identifier)
+  (member 'letrec-nm (identifier-flags identifier)))
+
 ;; CTX IDENTIFIER LOC
 ;; Return best loc for identifier. (Register if available, memory otherwise)
 (define (ctx-identifier-loc ctx identifier)
@@ -160,13 +163,17 @@
       2
       0
       (lambda (id slot nvar)
-        (make-identifier
-          'free
-          '()
-          (let ((ident (ctx-ident enclosing-ctx id)))
-            (identifier-flags (cdr ident)))
-          CTX_UNK
-          (cons 'f nvar)))))
+        (let ((ident (ctx-ident enclosing-ctx id)))
+
+          (make-identifier
+            'free
+            '()
+            (identifier-flags (cdr ident))
+            (if (and (ctx-identifier-mutable? enclosing-ctx (cdr ident))
+                     (not (ctx-identifier-letrec-nm? enclosing-ctx (cdr ident))))
+                CTX_UNK
+                (ctx-identifier-type enclosing-ctx (cdr ident)))
+            (cons 'f nvar))))))
 
   (define (init-env-local)
     (init-env-*

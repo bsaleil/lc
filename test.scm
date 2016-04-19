@@ -1,4 +1,34 @@
 
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
+(fib 40)
+
+
+
+;; Rewrite mlc-set! with get-setter
+;; Check exec time of compiler.scm using cg-macros
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ;;;; S'OCCUPER DU TODO DES PATCH GENERIC DANS core.scm (patch-generic)
 

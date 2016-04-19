@@ -240,39 +240,21 @@
 ;; set
 
 (define (codegen-set-global cgc reg pos lval fs)
-  (let ((dest (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd fs lval)))
-    (if (ctx-loc-is-memory? lval)
-        (begin (x86-mov cgc (x86-rax) opval)
-               (set! opval (x86-rax))))
-    (x86-mov cgc (x86-mem (* 8 pos) global-ptr) opval)
-    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opval (lambda () (codegen-loc-to-x86opnd fs lval)))
+        (oprax (lambda () (x86-rax))))
+    (begin-with-cg-macro
+      (chk-unmem! (oprax) (opval))
+      (x86-mov cgc (x86-mem (* 8 pos) global-ptr) (opval))
+      (x86-mov cgc dest (x86-imm-int ENCODING_VOID)))))
 
-;; mutable object (local or free) already is in rax
-(define (codegen-set-not-global cgc reg lvar lval)
-  (let ((opvar (codegen-loc-to-x86opnd lvar))
-        (opval (codegen-loc-to-x86opnd lval))
-        (dest  (codegen-reg-to-x86reg reg)))
-
-    (if (ctx-loc-is-memory? lvar)
-        (begin (x86-mov cgc (x86-rax) opvar)
-               (set! opvar (x86-rax))))
-
-    (if (ctx-loc-is-memory? lval)
-        (begin (x86-push cgc (x86-rbx))
-               (x86-mov cgc (x86-rbx) opval)
-               (set! opval (x86-rbx))))
-
-    (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opvar) opval)
-
-    (if (ctx-loc-is-memory? lval)
-        (x86-pop cgc (x86-rbx)))
-
-    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
-
-;;-----------------------------------------------------------------------------
-;; Special forms
-;;-----------------------------------------------------------------------------
+(define (codegen-set-non-global cgc reg lval fs)
+  (let ((dest  (lambda () (codegen-reg-to-x86reg reg)))
+        (opval (lambda () (codegen-loc-to-x86opnd fs lval))))
+    (begin-with-cg-macro
+      (chk-unmem! (dest) (opval))
+      (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (opval))
+      (x86-mov cgc (dest) (x86-imm-int ENCODING_VOID)))))
 
 ;;-----------------------------------------------------------------------------
 ;; If

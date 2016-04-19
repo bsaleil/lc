@@ -436,7 +436,8 @@
 (define (gen-get-localvar cgc ctx local succ for-set?)
 
   (let ((loc (ctx-identifier-loc ctx (cdr local)))
-        (type (if (ctx-identifier-mutable? ctx (cdr local))
+        (type (if (and (ctx-identifier-mutable? ctx (cdr local))
+                       (not (ctx-identifier-letrec-nm? ctx (cdr local))))
                   CTX_UNK
                   (ctx-identifier-type ctx (cdr local)))))
 
@@ -488,48 +489,22 @@
 
     (gen-ast (caddr ast) lazy-set!)))
 
-(define (gen-set-localvar cgc ctx local succ)
+(define (get-non-global-setter get-function)
+  (lambda (cgc ctx local succ)
 
-  ;; Get mobject in tmp register
-  (gen-get-localvar cgc ctx local #f #t)
+    ;; Get mobject in tmp register
+    (get-function cgc ctx local #f #t)
 
-  ;;
-  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
-         (lval (ctx-get-loc ctx 0))
-         (type (ctx-get-type ctx 0)))
-    (apply-moves cgc ctx moves)
-    (let ((dest (codegen-reg-to-x86reg reg))
-          (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
-      (if (ctx-loc-is-memory? lval)
-          (begin (x86-mov cgc dest opval)
-                 (set! opval dest)))
-      (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
-      (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
-      (let* ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg))
-             (ctx (ctx-set-type ctx local type)))
-        (jump-to-version cgc succ ctx)))))
+    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
+           (lval (ctx-get-loc ctx 0))
+           (type (ctx-get-type ctx 0)))
+      (apply-moves cgc ctx moves)
+      (codegen-set-non-global cgc reg lval (ctx-fs ctx))
+      (let ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg)))
+        (jump-to-version cgc succ (ctx-set-type ctx local type))))))
 
-;; TODO Merge with gen-set-localvar
-(define (gen-set-freevar cgc ctx local succ)
-
-  ;; Get mobject in tmp register
-  (gen-get-freevar cgc ctx local #f #t)
-
-  ;;
-  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
-         (lval (ctx-get-loc ctx 0))
-         (type (ctx-get-type ctx 0)))
-    (apply-moves cgc ctx moves)
-    (let ((dest (codegen-reg-to-x86reg reg))
-          (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
-      (if (ctx-loc-is-memory? lval)
-          (begin (x86-mov cgc dest opval)
-                 (set! opval dest)))
-      (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
-      (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
-      (let* ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg))
-             (ctx (ctx-set-type ctx local type)))
-        (jump-to-version cgc succ ctx)))))
+(define gen-set-localvar (get-non-global-setter gen-get-localvar))
+(define gen-set-freevar  (get-non-global-setter gen-get-freevar))
 
 (define (gen-set-globalvar cgc ctx global succ)
   (mlet ((pos (cdr global))
@@ -712,7 +687,7 @@
             ;; Trigger the next object
             (jump-to-version cgc succ (ctx-push ctx CTX_CLO reg))))))))
 
-;; TODO CLEAN raglloc args regs
+;; Create and return a lazy generic prologue
 (define (get-lazy-generic-prologue ast succ rest-param mvars nb-formal)
   (make-lazy-code-entry
     (lambda (cgc ctx)
