@@ -403,11 +403,11 @@
 
     (cond ((ctx-loc-is-register? loc)
              (if for-set?
-                 (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
+                 (codegen-load-loc cgc (ctx-fs ctx) loc)
                  (jump-to-version cgc succ (ctx-push ctx type loc (car local)))))
           ((ctx-loc-is-memory? loc)
              (if for-set?
-                 (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd loc))
+                 (codegen-load-loc cgc (ctx-fs ctx) loc)
                  (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
                    (apply-moves cgc nctx moves)
                    (apply-moves cgc nctx (list (cons loc reg)))
@@ -442,7 +442,7 @@
                   (ctx-identifier-type ctx (cdr local)))))
 
     (if for-set?
-        (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
+        (codegen-load-loc cgc (ctx-fs ctx) loc)
         (if (ctx-loc-is-register? loc)
             ;;
             (jump-to-version cgc succ (ctx-push ctx type loc (car local)))
@@ -1652,7 +1652,7 @@
               (set! ctx (call-gen-continuation cgc ctx #f ast succ #t))
 
               ;; Push closure
-              (set! ctx (call-get-closure cgc ctx 1))
+              (call-get-closure cgc ctx 1)
               (jump-to-version cgc lazy-args ctx)))))
 
     (let ((lazy-lst (gen-ast (caddr ast) lazy-pre)))
@@ -1683,18 +1683,9 @@
 ;; Push closure, put it in rax, and return updated ctx
 (define (call-get-closure cgc ctx closure-idx)
   (let* ((fs (ctx-fs ctx))
-         (lclo (ctx-get-loc ctx closure-idx))
-         (mut-clo? (ctx-is-mutable? ctx closure-idx))
-         (opclo (codegen-loc-to-x86opnd fs lclo)))
-    (if mut-clo?
-        (begin
-          (if (ctx-loc-is-memory? lclo)
-              (begin (x86-mov cgc (x86-rax) opclo)
-                     (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-              (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opclo)))
-          (set! opclo (x86-rax))))
-    (x86-mov cgc (x86-rax) opclo) ;; closure need to be in rax for do-callback-fn (TODO: get closure from stack in do-callback-fn and remove this)
-  ctx))
+         (loc  (ctx-get-loc     ctx closure-idx))
+         (mut? (ctx-is-mutable? ctx closure-idx)))
+    (codegen-load-closure cgc fs loc mut?)))
 
 ;; Move args in regs or mem following calling convention
 (define (call-prep-args cgc ctx ast nbargs)
@@ -1788,7 +1779,7 @@
 
                ;; Push closure
                (if (not global-opt)
-                   (set! ctx (call-get-closure cgc ctx (length args))))
+                   (call-get-closure cgc ctx (length args)))
 
                ;; Move args to regs or stack following calling convention
                (set! ctx (call-prep-args cgc ctx ast (length args)))

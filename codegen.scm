@@ -83,6 +83,10 @@
   (x86-je cgc label-true)
   (x86-jmp cgc label-false))
 
+(define (codegen-load-loc cgc fs loc)
+  (let ((opnd (codegen-loc-to-x86opnd fs loc)))
+    (x86-mov cgc (x86-rax) opnd)))
+
 ;; TODO rename
 (define (pick-reg used-regs)
   (define (pick-reg-h regs used)
@@ -224,17 +228,19 @@
         (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
               ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))))))
 
-(define (codegen-get-free cgc dest pos raw? mutable? closure-pos)
-  (let ((offset (+ (- 16 TAG_MEMOBJ) (* 8 pos))))
-    ;; Get closure in rax
-    (x86-mov cgc (x86-rax) (x86-mem (* 8 closure-pos) (x86-rsp)))
-    (if (or raw? (not mutable?))
-        (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem offset (x86-rax))))
-              ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))))
-        ;; Real value required and variable is mutable
-        (begin (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
-               (cond ((eq? dest 'stack) (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                     ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))))))))
+
+
+;(define (codegen-get-free cgc dest pos raw? mutable? closure-pos)
+;  (let ((offset (+ (- 16 TAG_MEMOBJ) (* 8 pos))))
+;    ;; Get closure in rax
+;    (x86-mov cgc (x86-rax) (x86-mem (* 8 closure-pos) (x86-rsp)))
+;    (if (or raw? (not mutable?))
+;        (cond ((eq? dest 'stack)   (x86-push cgc (x86-mem offset (x86-rax))))
+;              ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))))
+;        ;; Real value required and variable is mutable
+;        (begin (x86-mov cgc (x86-rax) (x86-mem offset (x86-rax)))
+;               (cond ((eq? dest 'stack) (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+;                     ((eq? dest 'gen-reg) (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))))))))
 
 ;;-----------------------------------------------------------------------------
 ;; set
@@ -584,7 +590,18 @@
   (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
   (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
 
-;; Push closure
+;; Load closure in tmp register
+(define (codegen-load-closure cgc fs loc mut?)
+
+  (let ((opnd  (lambda () (codegen-loc-to-x86opnd fs loc)))
+        (oprax (lambda () (x86-rax))))
+
+    (begin-with-cg-macro
+      (chk-unmem&unbox! (oprax) (opnd) mut?)
+      (if (not (eq? opnd oprax))
+          (x86-mov cgc (x86-rax)  (opnd))))))
+
+;;; Push closure
 (define (codegen-closure-put cgc reg)
   (let ((dest  (codegen-reg-to-x86reg reg)))
     (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
