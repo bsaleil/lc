@@ -1,10 +1,41 @@
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
-(fib 40)
+
+;(define (foo)
+;  (let loop ((a 10))
+;    (if (> a 0)
+;        (begin (write-char #\R)
+;               (loop (- a 1))))))
+;
+;(foo)
+
+(println
+
+  (let fact ((n 4))
+     (if (= n 0)
+        1
+        (* n (fact (- n 1))))))
+
+
+
+  ;(letrec ((loop
+  ;           (lambda (a)
+  ;             (if (> a 0)
+  ;                 (begin (write-char #\C)
+  ;                        (loop (- a 1)))))))
+  ;  (loop 10))
+
+;(letrec ((loop
+;           (lambda (a)
+;             (if (> a 0)
+;                 (loop (- a 1))))))
+;  (loop 10))
+
+
+;; Quand on créé un identifiant:
+  ;; le mettre dans une boite si il est mutable
+
+;; Cas spécial du letrec:
+  ;; ne PAS le mettre dans une boite s'il n'a pas de set! explicite
 
 
 

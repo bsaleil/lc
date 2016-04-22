@@ -209,7 +209,7 @@
                  ;; Set!
                  ((eq? 'set! (car ast)) (mlc-set! ast succ))
                  ;; Lambda
-                 ((eq? op 'lambda) (mlc-lambda ast succ #f))
+                 ((eq? op 'lambda) (mlc-lambda ast succ #f #f))
                  ;; Begin
                  ((eq? op 'begin) (mlc-begin ast succ))
                  ;; Binding
@@ -535,7 +535,7 @@
                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))))
          (lazy-val
            (if (eq? (table-ref gids (cadr ast) #f) CTX_CLO)
-               (mlc-lambda (caddr ast) lazy-bind (cadr ast))
+               (mlc-lambda (caddr ast) lazy-bind (cadr ast) #f)
                (gen-ast (caddr ast) lazy-bind))))
 
     (make-lazy-code
@@ -550,7 +550,7 @@
 ;; Make lazy code from LAMBDA
 ;;
 
-(define (mlc-lambda ast succ global-opt)
+(define (mlc-lambda ast succ global-opt lambda-opt)
 
   (let* (;; Lambda free vars
          (fvars #f)
@@ -594,9 +594,9 @@
                              (let* ((ret-type (car (ctx-stack ctx)))
                                     (crtable-offset (type-to-cridx ret-type)))
                                (codegen-return-cr cgc crtable-offset))
-                             (codegen-return-rp cgc)))
+                             (codegen-return-rp cgc))))))
                        ;; 4 - ret seq
-                       )))
+
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
          ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
@@ -630,22 +630,22 @@
                                                     ((and (= selector 0)
                                                           opt-max-versions
                                                           (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
-                                                       (error "NYI1")
-                                                       (let* ((cctx (ctx-init-fn sctx ctx all-params fvars mvars global-opt))
-                                                              (stack
-                                                                (append (make-list (length all-params) CTX_UNK)
-                                                                        (list CTX_CLO CTX_RETAD)))
-                                                              (gctx (ctx-copy cctx stack))) ;; To handle rest param
-                                                         (gen-version-fn ast closure lazy-prologue-gen gctx cctx #f global-opt)))
+                                                     (error "NYI1")
+                                                     (let* ((cctx (ctx-init-fn sctx ctx all-params fvars mvars global-opt lambda-opt))
+                                                            (stack
+                                                              (append (make-list (length all-params) CTX_UNK)
+                                                                      (list CTX_CLO CTX_RETAD)))
+                                                            (gctx (ctx-copy cctx stack))) ;; To handle rest param
+                                                       (gen-version-fn ast closure lazy-prologue-gen gctx cctx #f global-opt)))
 
                                                     ;; CASE 2 - Do not use multiple entry points
                                                     ((= selector 1)
-                                                        (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars global-opt)))
-                                                          (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t global-opt)))
+                                                     (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars global-opt lambda-opt)))
+                                                       (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t global-opt)))
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
-                                                       (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars global-opt)))
+                                                       (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars global-opt lambda-opt)))
                                                          (gen-version-fn ast closure lazy-prologue ctx ctx #f global-opt)))))))
 
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
@@ -665,7 +665,11 @@
               (cctable-fill cctable stub-addr generic-addr))
 
           ;; Create closure
-          (codegen-closure-create cgc (length fvars))
+          (codegen-closure-create
+            cgc
+            (if lambda-opt
+                (+ (length fvars) 1)
+                (length fvars)))
 
           ;; Write entry point or cctable location
           (if opt-entry-points
@@ -676,7 +680,7 @@
                 (codegen-closure-ep cgc ep-loc)))
 
           ;; Write free variables
-          (gen-free-vars cgc fvars ctx 0)
+          (gen-free-vars cgc fvars ctx 0 lambda-opt)
 
           (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
             (apply-moves cgc ctx moves)
@@ -908,7 +912,70 @@
             (codegen-nunbox cgc (ctx-fs ctx) (ctx-get-loc ctx idx-start)))
         (unbox-mutables cgc ctx (+ idx-start 1) idx-lim))))
 
+;; TODO WIP
 (define (mlc-letrec ast succ)
+  ;; Si un binding et 'lambda
+  (let ((bindings (cadr ast)))
+    (if (and (eq?   (length (cadr ast)) 1)
+             (pair? (cadar bindings))
+             (eq?   (caadar bindings) 'lambda))
+        (mlc-letrec-lamopt ast succ)
+        (mlc-letrec-mult ast succ))))
+
+;; TODO WIP: extraire le code de mlc-lambda en sous fonctions, et créer des versions de mlc-lambda spécialisées:
+;; mlc-lambda
+;; mlc-lambda-globalopt
+;; mlc-lambda-lambdaopt
+;; ... ?
+;; TODO: voir si le type de la fermeture va bien dans le systeme de spécialisation des cc en fonction du type des free
+;; TODO Check there is no set! !!!!
+(define (mlc-letrec-lamopt ast succ)
+  (let* ((id (caaadr ast))
+         (lazy-out
+          ;; TODO: from mlc-let, factoriser
+          (let ((make-lc (if (member 'ret (lazy-code-flags succ))
+                          make-lazy-code-ret
+                          make-lazy-code)))
+            (make-lc
+              (lambda (cgc ctx)
+                (let* ((type (car (ctx-stack ctx)))
+                       (loc  (ctx-get-loc ctx 0))
+                       (mutable? (ctx-is-mutable? ctx 0))
+                       (ctx  (ctx-unbind-locals ctx (list id)))
+                       (ctx  (ctx-pop-n ctx (+ (length (list id)) 1)))
+                       (ctx  (ctx-push ctx type loc)))
+                  ;; NOTE see lazy-out comment in mlc-letrec
+                  ;; Merge all code returning a boxed value
+                  (if mutable?
+                      (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
+                       (if (ctx-loc-is-memory? loc)
+                           (begin (x86-mov cgc (x86-rax) opnd)
+                                  (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                           (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
+                  (jump-to-version cgc succ ctx))))))
+          ;; TODO END from mlc-let, factoriser
+          ; (make-lazy-code
+          ;   (lambda (cgc ctx)
+          ;     ;; TODO: bind out
+          ;     (error "BIND OUT")
+          ;     (jump-to succ))))
+         (lazy-body
+           (let ((body (cddr ast)))
+             (gen-ast (cons 'begin body) lazy-out)))
+         (lazy-bind
+           (make-lazy-code
+             (lambda (cgc ctx)
+               (jump-to-version
+                 cgc
+                 lazy-body
+                 (ctx-bind-locals ctx (list (cons id 0)) '())))))
+         (lazy-lambda
+           (let ((fn (car (cdaadr ast))))
+             ;; TODO: write special case in mlc-lambda
+             (mlc-lambda fn lazy-bind #f id))))
+    lazy-lambda))
+
+(define (mlc-letrec-mult ast succ)
 
   (define (alloc cgc ids ctx stack-types)
     (if (null? ids)
@@ -1770,7 +1837,7 @@
          (lazy-call
            (make-lazy-code
              (lambda (cgc ctx)
-
+             (x86-mov cgc (x86-rax) (x86-imm-int 1111111))
                ;; Save used registers and update ctx
                (set! ctx (call-save-registers cgc ctx tail? (+ (length args) 1)))
 
@@ -1795,8 +1862,8 @@
                (let ((call-ctx
                        (ctx-copy
                          (ctx-init)
-                           (append (list-head (ctx-stack ctx) (length (cdr ast)))
-                                   (list CTX_CLO CTX_RETAD)))))
+                         (append (list-head (ctx-stack ctx) (length (cdr ast)))
+                                 (list CTX_CLO CTX_RETAD)))))
                  (gen-call-sequence ast cgc call-ctx (length args) (and global-opt (car ast)))))))
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
@@ -2308,9 +2375,11 @@
 ;; FREE VARS
 ;;
 
-(define (gen-free-vars cgc ids ctx offset)
+(define (gen-free-vars cgc ids ctx offset lambda-opt)
   (if (null? ids)
-      '()
+      (if lambda-opt
+          (begin (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+                 (x86-mov cgc (x86-mem (+ 16 (* offset 8)) alloc-ptr) (x86-rax))))
       (let* ((identifier (cdr (assoc (car ids) (ctx-env ctx))))
              (loc (ctx-identifier-loc ctx identifier))
              (opn
@@ -2336,7 +2405,7 @@
                      (else
                        (codegen-reg-to-x86reg loc)))))
         (x86-mov cgc (x86-mem (+ 16 (* offset 8)) alloc-ptr) opn)
-        (gen-free-vars cgc (cdr ids) ctx (+ offset 1)))))
+        (gen-free-vars cgc (cdr ids) ctx (+ offset 1) lambda-opt))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst params enc-ids)

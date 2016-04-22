@@ -127,7 +127,7 @@
 
 ;;
 ;; CTX INIT FN
-(define (ctx-init-fn call-ctx enclosing-ctx args free-vars mutable-vars global-opt?)
+(define (ctx-init-fn call-ctx enclosing-ctx args free-vars mutable-vars global-opt? lambda-opt)
 
   ;;
   ;; FREE REGS
@@ -158,22 +158,28 @@
                 (init-env-* (cdr ids) (+ slot 1) (+ nvar 1) fn-make)))))
 
   (define (init-env-free)
-    (init-env-*
-      free-vars
-      2
-      0
-      (lambda (id slot nvar)
-        (let ((ident (ctx-ident enclosing-ctx id)))
-
-          (make-identifier
-            'free
-            '()
-            (identifier-flags (cdr ident))
-            (if (and (ctx-identifier-mutable? enclosing-ctx (cdr ident))
-                     (not (ctx-identifier-letrec-nm? enclosing-ctx (cdr ident))))
-                CTX_UNK
-                (ctx-identifier-type enclosing-ctx (cdr ident)))
-            (cons 'f nvar))))))
+    (define lambda-opt-e
+      (if lambda-opt
+          (cons lambda-opt (make-identifier 'free '() '() CTX_CLO (cons 'f (length free-vars))))))
+    (define env
+      (init-env-*
+        free-vars
+        2
+        0
+        (lambda (id slot nvar)
+          (let ((ident (ctx-ident enclosing-ctx id)))
+            (make-identifier
+              'free
+              '()
+              (identifier-flags (cdr ident))
+              (if (and (ctx-identifier-mutable? enclosing-ctx (cdr ident))
+                       (not (ctx-identifier-letrec-nm? enclosing-ctx (cdr ident))))
+                  CTX_UNK
+                  (ctx-identifier-type enclosing-ctx (cdr ident)))
+              (cons 'f nvar))))))
+    (if lambda-opt
+        (cons lambda-opt-e env)
+        env))
 
   (define (init-env-local)
     (init-env-*
