@@ -158,9 +158,11 @@
                 (init-env-* (cdr ids) (+ slot 1) (+ nvar 1) fn-make)))))
 
   (define (init-env-free)
-    (define lambda-opt-e
+    ;; Create environment entry if lambda-opt
+    (define lambda-opt-entry
       (if lambda-opt
           (cons lambda-opt (make-identifier 'free '() '() CTX_CLO (cons 'f (length free-vars))))))
+    ;; Create environment entries for free variables
     (define env
       (init-env-*
         free-vars
@@ -178,7 +180,7 @@
                   (ctx-identifier-type enclosing-ctx (cdr ident)))
               (cons 'f nvar))))))
     (if lambda-opt
-        (cons lambda-opt-e env)
+        (cons lambda-opt-entry env)
         env))
 
   (define (init-env-local)

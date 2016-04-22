@@ -1,64 +1,13 @@
 
-
-;(define (foo)
-;  (let loop ((a 10))
-;    (if (> a 0)
-;        (begin (write-char #\R)
-;               (loop (- a 1))))))
-;
-;(foo)
-
-(println
-
-  (let fact ((n 4))
-     (if (= n 0)
-        1
-        (* n (fact (- n 1))))))
-
-
-
-  ;(letrec ((loop
-  ;           (lambda (a)
-  ;             (if (> a 0)
-  ;                 (begin (write-char #\C)
-  ;                        (loop (- a 1)))))))
-  ;  (loop 10))
-
-;(letrec ((loop
-;           (lambda (a)
-;             (if (> a 0)
-;                 (loop (- a 1))))))
-;  (loop 10))
-
-
-;; Quand on créé un identifiant:
-  ;; le mettre dans une boite si il est mutable
-
-;; Cas spécial du letrec:
-  ;; ne PAS le mettre dans une boite s'il n'a pas de set! explicite
-
-
+;; TODO WIP: extraire le code de mlc-lambda en sous fonctions, et créer des versions de mlc-lambda spécialisées:
+;; mlc-lambda
+;; mlc-lambda-globalopt
+;; mlc-lambda-lambdaopt
+;; TODO: voir si le type de la fermeture va bien dans le systeme de spécialisation des cc en fonction du type des free
+;; TODO Check there is no set! !!!!
 
 ;; Rewrite mlc-set! with get-setter
 ;; Check exec time of compiler.scm using cg-macros
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 ;;;; S'OCCUPER DU TODO DES PATCH GENERIC DANS core.scm (patch-generic)

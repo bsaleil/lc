@@ -665,11 +665,10 @@
               (cctable-fill cctable stub-addr generic-addr))
 
           ;; Create closure
+          ;; Closure size = lenght of free variables + 1 if lambda-opt
           (codegen-closure-create
             cgc
-            (if lambda-opt
-                (+ (length fvars) 1)
-                (length fvars)))
+            (+ (length fvars) (if lambda-opt 1 0)))
 
           ;; Write entry point or cctable location
           (if opt-entry-points
@@ -868,53 +867,26 @@
         (cons (cons (car ids) l)
               (build-id-idx (cdr ids) (- l 1)))))
 
-  (let* ((ids (map car (cadr ast)))
-         (values (map cadr (cadr ast)))
-         (body   (cddr ast))
-         (lazy-out
-           (let ((make-lc (if (member 'ret (lazy-code-flags succ))
-                           make-lazy-code-ret
-                           make-lazy-code)))
-             (make-lc
-               (lambda (cgc ctx)
-                 (let* ((type (car (ctx-stack ctx)))
-                        (loc  (ctx-get-loc ctx 0))
-                        (mutable? (ctx-is-mutable? ctx 0))
-                        (ctx  (ctx-unbind-locals ctx ids))
-                        (ctx  (ctx-pop-n ctx (+ (length ids) 1)))
-                        (ctx  (ctx-push ctx type loc)))
-                   ;; NOTE see lazy-out comment in mlc-letrec
-                   ;; Merge all code returning a boxed value
-                   (if mutable?
-                       (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-                        (if (ctx-loc-is-memory? loc)
-                            (begin (x86-mov cgc (x86-rax) opnd)
-                                   (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                            (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
-                   (jump-to-version cgc succ ctx))))))
-         (lazy-body
-           (gen-ast (cons 'begin body) lazy-out))
+  (let* ((ids       (map car (cadr ast)))
+         (values    (map cadr (cadr ast)))
+         (body      (cddr ast))
+         (lazy-out  (get-lazy-lets-out ids succ))
+         (lazy-body (gen-ast (cons 'begin body) lazy-out))
          (lazy-binds
            (make-lazy-code
              (lambda (cgc ctx)
                (unbox-mutables cgc ctx 0 (length ids))
                (let* ((id-idx (build-id-idx ids (- (length ids) 1)))
-                      (mvars (mutable-vars (cddr ast) ids)) ;; Get mutable vars
+                      (mvars (mutable-vars (cddr ast) ids))
                       (ctx (ctx-bind-locals ctx id-idx mvars)))
                  (gen-mutable cgc ctx mvars)
                  (jump-to-version cgc lazy-body ctx))))))
    (gen-ast-l values lazy-binds)))
 
-(define (unbox-mutables cgc ctx idx-start idx-lim)
-  (if (< idx-start idx-lim)
-      (begin
-        (if (ctx-is-mutable? ctx idx-start)
-            (codegen-nunbox cgc (ctx-fs ctx) (ctx-get-loc ctx idx-start)))
-        (unbox-mutables cgc ctx (+ idx-start 1) idx-lim))))
-
-;; TODO WIP
+;;
+;; Make lazy code from LETREC
+;;
 (define (mlc-letrec ast succ)
-  ;; Si un binding et 'lambda
   (let ((bindings (cadr ast)))
     (if (and (eq?   (length (cadr ast)) 1)
              (pair? (cadar bindings))
@@ -922,46 +894,15 @@
         (mlc-letrec-lamopt ast succ)
         (mlc-letrec-mult ast succ))))
 
-;; TODO WIP: extraire le code de mlc-lambda en sous fonctions, et créer des versions de mlc-lambda spécialisées:
-;; mlc-lambda
-;; mlc-lambda-globalopt
-;; mlc-lambda-lambdaopt
-;; ... ?
-;; TODO: voir si le type de la fermeture va bien dans le systeme de spécialisation des cc en fonction du type des free
-;; TODO Check there is no set! !!!!
+;; SPECIAL LETREC
+;; Special case: letrect with only one binding wich is a lambda expr
+;; (to handle loops efficiently)
 (define (mlc-letrec-lamopt ast succ)
-  (let* ((id (caaadr ast))
-         (lazy-out
-          ;; TODO: from mlc-let, factoriser
-          (let ((make-lc (if (member 'ret (lazy-code-flags succ))
-                          make-lazy-code-ret
-                          make-lazy-code)))
-            (make-lc
-              (lambda (cgc ctx)
-                (let* ((type (car (ctx-stack ctx)))
-                       (loc  (ctx-get-loc ctx 0))
-                       (mutable? (ctx-is-mutable? ctx 0))
-                       (ctx  (ctx-unbind-locals ctx (list id)))
-                       (ctx  (ctx-pop-n ctx (+ (length (list id)) 1)))
-                       (ctx  (ctx-push ctx type loc)))
-                  ;; NOTE see lazy-out comment in mlc-letrec
-                  ;; Merge all code returning a boxed value
-                  (if mutable?
-                      (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-                       (if (ctx-loc-is-memory? loc)
-                           (begin (x86-mov cgc (x86-rax) opnd)
-                                  (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                           (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
-                  (jump-to-version cgc succ ctx))))))
-          ;; TODO END from mlc-let, factoriser
-          ; (make-lazy-code
-          ;   (lambda (cgc ctx)
-          ;     ;; TODO: bind out
-          ;     (error "BIND OUT")
-          ;     (jump-to succ))))
-         (lazy-body
-           (let ((body (cddr ast)))
-             (gen-ast (cons 'begin body) lazy-out)))
+  (let* ((id    (caaadr ast))
+         (lexpr (car (cdaadr ast)))
+         (body  (cddr ast))
+         (lazy-out  (get-lazy-lets-out (list id) succ))
+         (lazy-body (gen-ast (cons 'begin body) lazy-out))
          (lazy-bind
            (make-lazy-code
              (lambda (cgc ctx)
@@ -969,12 +910,11 @@
                  cgc
                  lazy-body
                  (ctx-bind-locals ctx (list (cons id 0)) '())))))
-         (lazy-lambda
-           (let ((fn (car (cdaadr ast))))
-             ;; TODO: write special case in mlc-lambda
-             (mlc-lambda fn lazy-bind #f id))))
+         (lazy-lambda (mlc-lambda lexpr lazy-bind #f id)))
     lazy-lambda))
 
+;; GENERIC LETREC
+;; Letrec with no special case
 (define (mlc-letrec-mult ast succ)
 
   (define (alloc cgc ids ctx stack-types)
@@ -1003,27 +943,7 @@
       (let* ((ids (map car (cadr ast)))
              (body (cddr ast))
              (lazy-out
-               (let ((make-lc (if (member 'ret (lazy-code-flags succ))
-                               make-lazy-code-ret
-                               make-lazy-code)))
-                 (make-lc
-                   (lambda (cgc ctx)
-                     (let* ((type (car (ctx-stack ctx)))
-                            (loc  (ctx-get-loc ctx 0))
-                            (mutable? (ctx-is-mutable? ctx 0))
-                            (ctx  (ctx-unbind-locals ctx ids))
-                            (ctx  (ctx-pop-n ctx (+ (length ids) 1)))
-                            (ctx  (ctx-push ctx type loc)))
-                       ;; NOTE: if we now that res value is a variable, we lost this information
-                       ;; because we return non mutable object
-                       ;; TODO: lost information only if mutable?
-                       (if mutable?
-                           (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-                            (if (ctx-loc-is-memory? loc)
-                                (begin (x86-mov cgc (x86-rax) opnd)
-                                       (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                                (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
-                       (jump-to-version cgc succ ctx))))))
+               (get-lazy-lets-out ids succ))
              (lazy-set
                (make-lazy-code
                  (lambda (cgc ctx)
@@ -1062,6 +982,35 @@
                        (gen-ast-l (map cadr (cadr ast)) lazy-set)
                        (ctx-bind-locals ctx bind-lst mvars #t)))))))
        lazy-pre)))
+
+;; Create and return out lazy code object of let/letrec
+;; Unbind locals, unbox result, and update ctx
+(define (get-lazy-lets-out ids succ)
+  (let ((make-lc (if (member 'ret (lazy-code-flags succ))
+                     make-lazy-code-ret
+                     make-lazy-code)))
+    (make-lc
+      (lambda (cgc ctx)
+        (let* ((type (car (ctx-stack ctx)))
+               (loc  (ctx-get-loc ctx 0))
+               (mutable? (ctx-is-mutable? ctx 0))
+               (ctx  (ctx-unbind-locals ctx ids))
+               (ctx  (ctx-pop-n ctx (+ (length ids) 1)))
+               (ctx  (ctx-push ctx type loc)))
+          (if mutable?
+              (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
+               (if (ctx-loc-is-memory? loc)
+                   (begin (x86-mov cgc (x86-rax) opnd)
+                          (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                   (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
+          (jump-to-version cgc succ ctx))))))
+
+(define (unbox-mutables cgc ctx idx-start idx-lim)
+  (if (< idx-start idx-lim)
+      (begin
+        (if (ctx-is-mutable? ctx idx-start)
+            (codegen-nunbox cgc (ctx-fs ctx) (ctx-get-loc ctx idx-start)))
+        (unbox-mutables cgc ctx (+ idx-start 1) idx-lim))))
 
 ;;-----------------------------------------------------------------------------
 ;; SPECIAL
