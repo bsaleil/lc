@@ -27,6 +27,8 @@
 ;;
 ;;---------------------------------------------------------------------------
 
+(c-declare "#include \"string.h\"") ;; for memcpy
+
 ;; Utils functions
 
 ;;-----------------------------------------------------------------------------
@@ -245,5 +247,12 @@
   ((c-lambda (int64 scheme-object) void "*___CAST(___SCMOBJ*,___arg1) = ___arg2;")
    addr
    val))
+
+(define (memcpy dst src num)
+ ((c-lambda
+    (int64 int64 int64)
+    int64
+    "___result = ___CAST(___S64,memcpy(___CAST(void*,___arg1),___CAST(void*,___arg2),___CAST(size_t,___arg3)));")
+  dst src num))
 
 ;;-----------------------------------------------------------------------------

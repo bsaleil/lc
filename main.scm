@@ -194,52 +194,55 @@
 ;; Interactive mode (REPL)
 (define (repl lib)
 
-  (println "  _     ____       ")
-  (println " | |   / ___|      ")
-  (println " | |  | |          ")
-  (println " | |__| |___       ")
-  (println " |_____\\____| REPL")
-  (println "                   ")
+  (error "NYI"))
 
-  (set! mode-repl #t)
+  ;(println "  _     ____       ")
+  ;(println " | |   / ___|      ")
+  ;(println " | |  | |          ")
+  ;(println " | |__| |___       ")
+  ;(println " |_____\\____| REPL")
+  ;(println "                   ")
 
-  (init)
-
-  (letrec (;; Lazy return
-           (lazy-ret (make-lazy-code
-                        (lambda (cgc ctx)
-                           (x86-pop cgc (x86-rax))
-                           (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
-                           (pop-regs-reverse cgc all-regs)
-                           (x86-ret cgc))))
-           ;; Lazy lib
-           (lazy-lib (lazy-exprs lib lazy-read-eval))
-           ;; Lazy print
-           (lazy-print (make-lazy-code
-              (lambda (cgc ctx)
-                 (let* ((resloc  (ctx-get-loc ctx 0))
-                        (resopnd (codegen-loc-to-x86opnd ctx resloc)))
-                   (x86-mov cgc (x86-rax) resopnd)
-                   (x86-mov cgc (x86-mem 0 global-ptr) (x86-rax))
-                   (gen-error cgc "JJ")))))
-                   ;(jump-to-version cgc (gen-ast '(pp $$REPL-RES) lazy-read-eval) (ctx-pop ctx))))))
-           ;; Lazy read-eval
-           (lazy-read-eval (make-lazy-code
-              (lambda (cgc ctx)
-                (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-                (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
-                (gen-repl-call cgc)
-                (x86-pop cgc (x86-rax))
-                (x86-jmp cgc (x86-rax))))))
-    (set! repl-print-lco lazy-print)
-    ;; Global var for print step
-    ;;(set! globals '(($$REPL-RES . 0))) TODO NYI
-    (error "NYI")
-    ;; Gen
-    (gen-version code-alloc lazy-lib (ctx-init)))
-
-  ;; Execute mcb
-  (##machine-code-block-exec mcb))
+  ;
+  ;(set! mode-repl #t)
+  ;
+  ;(init)
+  ;
+  ;(letrec (;; Lazy return
+  ;         (lazy-ret (make-lazy-code
+  ;                      (lambda (cgc ctx)
+  ;                         (x86-pop cgc (x86-rax))
+  ;                         (x86-add cgc (x86-rsp) (x86-imm-int (* (- (length (ctx-stack ctx)) 1) 8)))
+  ;                         (pop-regs-reverse cgc all-regs)
+  ;                         (x86-ret cgc))))
+  ;         ;; Lazy lib
+  ;         (lazy-lib (lazy-exprs lib lazy-read-eval))
+  ;         ;; Lazy print
+  ;         (lazy-print (make-lazy-code
+  ;            (lambda (cgc ctx)
+  ;               (let* ((resloc  (ctx-get-loc ctx 0))
+  ;                      (resopnd (codegen-loc-to-x86opnd ctx resloc)))
+  ;                 (x86-mov cgc (x86-rax) resopnd)
+  ;                 (x86-mov cgc (x86-mem 0 global-ptr) (x86-rax))
+  ;                 (gen-error cgc "JJ")))))
+  ;                 ;(jump-to-version cgc (gen-ast '(pp $$REPL-RES) lazy-read-eval) (ctx-pop ctx))))))
+  ;         ;; Lazy read-eval
+  ;         (lazy-read-eval (make-lazy-code
+  ;            (lambda (cgc ctx)
+  ;              (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
+  ;              (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
+  ;              (gen-repl-call cgc)
+  ;              (x86-pop cgc (x86-rax))
+  ;              (x86-jmp cgc (x86-rax))))))
+  ;  (set! repl-print-lco lazy-print)
+  ;  ;; Global var for print step
+  ;  ;;(set! globals '(($$REPL-RES . 0))) TODO NYI
+  ;  (error "NYI")
+  ;  ;; Gen
+  ;  (gen-version code-alloc lazy-lib (ctx-init)))
+  ;
+  ;;; Execute mcb
+  ;(##machine-code-block-exec mcb))
 
 ;;-----------------------------------------------------------------------------
 ;; Bash mode

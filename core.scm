@@ -219,17 +219,24 @@
       (run-gc sp alloc-size)))
 
 (define (gen-gc-call cgc)
+
+  ;; Move all regalloc regs (register roots) to stack
+  ;; then, we have only global and stack roots
   (push-pop-regs
      cgc
-     c-caller-save-regs ;; preserve regs for C call
+     regalloc-regs
      (lambda (cgc)
-       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-       (x86-push cgc (x86-rdi))
-       (x86-call cgc label-gc) ;; call C function
-       (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-       (x86-mov cgc alloc-ptr (x86-rax))))) ;; TODO : Update alloc-ptr
+       (push-pop-regs
+          cgc
+          (set-sub c-caller-save-regs (list alloc-ptr) '()) ;; preserve regs for C call
+          (lambda (cgc)
+            (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
+            (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+            (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+            (x86-push cgc (x86-rdi))
+            (x86-call cgc label-gc) ;; call C function
+            (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
+            (x86-mov cgc alloc-ptr (x86-rax))))))) ;; TODO : Update alloc-ptr
 
 
 ;;-----------------------------------------------------------------------------
@@ -386,7 +393,8 @@
 
          ;; R11 is the still-box containing call-ctx
          (still-encoding
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8))))
+          (let ((encoded (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8)))))
+            (arithmetic-shift encoded -2)))
 
          (selector
           (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
@@ -403,7 +411,7 @@
          (nb-args
            (if (= selector 1)
                (let ((encoded (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8)))))
-                 (/ encoded 4))
+                 (arithmetic-shift encoded -2))
                (- (length (ctx-stack ctx)) 2)))
 
          (callback-fn
@@ -433,7 +441,8 @@
           (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
 
          (type-idx
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8))))
+          (let ((encoded (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8)))))
+            (arithmetic-shift encoded -2)))
 
          (table
           (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdx-pos) 1) 8))))
@@ -567,7 +576,9 @@
 (define to-space   #f)
 ;; Set to 2gb (2000000000) to exec all benchmarks without GC (except lattice.scm)
 ;; Set to 7gb (7000000000) to exec all benchmarks without GC
-(define space-len 7000000000)
+;(define space-len 7000000000)
+;(define space-len 4000000000)
+(define space-len 100000000)
 
 (assert (= (modulo space-len 8) 0) ERR_HEAP_NOT_8)
 
@@ -586,6 +597,9 @@
         (fspace (make-mcb space-len)))
     (set! init-from-space (+ (##foreign-address fspace) space-len))
     (set! init-to-space   (+ (##foreign-address tspace) space-len)))
+    ;(println "### Code segment: " code-addr " -> " (+ code-addr code-len))
+    ;(println "### Initial from space: " (##foreign-address fspace) " -> " (+ (##foreign-address fspace) space-len))
+    ;(println "### Initial to space  : " (##foreign-address tspace) " -> " (+ (##foreign-address tspace) space-len)))
   (set! from-space init-from-space)
   (set! to-space init-to-space))
 
@@ -795,6 +809,11 @@
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
     (x86-mov cgc alloc-ptr (x86-imm-int from-space))       ;; Heap addr in alloc-ptr
     (x86-mov cgc global-ptr (x86-imm-int (+ block-addr (* 8 global-offset)))) ;; Globals addr in r10
+
+    ;; Set all registers used for regalloc to 0
+    (for-each (lambda (el)
+                (x86-mov cgc el (x86-imm-int 0)))
+              regalloc-regs)
 
     (let ((label (asm-make-label #f (new-sym 'prog_begin))))
       (x86-label cgc label))))

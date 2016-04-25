@@ -6,8 +6,12 @@
 ;; TODO: voir si le type de la fermeture va bien dans le systeme de spécialisation des cc en fonction du type des free
 ;; TODO Check there is no set! !!!!
 
+;; TODO GC: Enlever rax de c-caller-save-regs
+
 ;; Rewrite mlc-set! with get-setter
 ;; Check exec time of compiler.scm using cg-macros
+
+
 
 
 ;;;; S'OCCUPER DU TODO DES PATCH GENERIC DANS core.scm (patch-generic)

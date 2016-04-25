@@ -616,7 +616,7 @@
   ;; rax contains ret val
   (x86-pop cgc (x86-rdx)) ;; Table must be in rdx
   (x86-mov cgc (x86-rax) (x86-mem crtable-offset (x86-rdx)))
-  (x86-mov cgc (x86-r11) (x86-imm-int crtable-offset)) ;; TODO (?)
+  (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding crtable-offset))) ;; TODO (?)
   (x86-jmp cgc (x86-rax)))
 
 ;;-----------------------------------------------------------------------------
@@ -684,7 +684,7 @@
     ;; Closure is in rax
     (let ((cct-offset (* 8 (+ 2 idx))))
       ;; 1 - Put ctx in r11
-      (x86-mov cgc (x86-r11) (x86-imm-int ctx-imm))
+      (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding ctx-imm)))
       ;; 2- Get cc-table
       (if cctable-loc
           (x86-mov cgc (x86-rbp) (x86-imm-int cctable-loc))
@@ -1468,7 +1468,6 @@
       (x86-mov cgc (x86-rax) (oplen))
       ;; Alloc
       (gen-allocation cgc #f STAG_VECTOR 2 #t)
-
       (x86-mov cgc (x86-rax) (oplen))
       (x86-shl cgc (x86-rax) (x86-imm-int 1))
       ;; If opval not in register, save rbx and use it
@@ -1506,6 +1505,7 @@
           (begin (x86-mov cgc (x86-rax) (oplen))
                  (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
           (x86-mov cgc (x86-mem 8 alloc-ptr) (oplen)))
+
       ;; Write header
       (x86-mov cgc (x86-rax) (oplen))
       (x86-shl cgc (x86-rax) (x86-imm-int 6))

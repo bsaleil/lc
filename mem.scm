@@ -59,6 +59,11 @@
           #t)
         (else #f)))
 
+;; Is the address 'addr' in code block ?
+(define (addr-in-code? addr)
+  (and (>= addr code-addr)
+       (<  addr (+ code-addr code-len))))
+
 ;;-----------------------------------------------------------------------------
 ;; ALLOCATOR
 
@@ -169,21 +174,13 @@
 ;;; Copy 'len' bytes from address 'from' to copy-ptr
 (define (copy-bytes from copy-ptr len)
 
-  ;; Copy len bytes from left to right
-  (define (copy-bytes-h from to len)
-    (if (> len 0)
-        (begin (put-i64 to (get-i64 from))
-               (copy-bytes-h (+ from 8) (+ to 8) (- len 1)))
-        to))
-
   ;; 'copy-ptr' points to the header of the previously copied object
   (set! copy-ptr (- copy-ptr (* 8 len)))
   ;; Check for available space
   (if (< copy-ptr (- to-space space-len))
       (out-of-memory))
   ;; Copy from new copy-ptr position
-  (copy-bytes-h from copy-ptr len)
-  copy-ptr)
+  (memcpy copy-ptr from (* len 8)))
 
 ;;-----------------------------------------------------------------------------
 ;; COLLECTOR - Copy phase
@@ -194,6 +191,7 @@
 ;; If it's a copied root then update slot from forwarding pointer
 ;; If it's not a root do nothing
 ;; Return new position of copy-ptr
+
 (define (copy-root slot-addr current-copy-ptr)
 
    (let* ((value (get-i64 slot-addr))
@@ -201,10 +199,12 @@
 
      (assert (or (= tag TAG_MEMOBJ)
                  (= tag TAG_NUMBER)
-                 (= tag TAG_SPECIAL))
+                 (= tag TAG_SPECIAL)
+                 (addr-in-code? value))
              "Internal error")
 
-     (if (= tag TAG_MEMOBJ)
+     (if (and (= tag TAG_MEMOBJ)
+              (not (addr-in-code? value)))
          (let* (;; Object address in heap
                 (obj-addr (- value tag))
                 ;; Object header
@@ -263,7 +263,6 @@
 ;; globals: globals to read
 ;; current-copy-ptr: current position of copy-ptr in to-space
 (define (copy-global-roots globals current-copy-ptr)
-  (error "NYI globals is now a table")
   (if (null? globals)
       ;; All roots are copied then return new position of copy-ptr
       current-copy-ptr
@@ -271,7 +270,7 @@
       (let* (;; Get global info
              (global (car globals))
              ;; Get global address
-             (global-addr (+ (* 8 global-offset) (* 8 (cdr global)) block-addr))
+             (global-addr (+ (* 8 global-offset) (* 8 (cddr global)) block-addr))
              ;; Copy global if it's a heap obj
              (c (copy-root global-addr current-copy-ptr)))
 
@@ -318,6 +317,7 @@
 ;; copy: address of copy ptr
 ;; Returns a pair: (new-scan . new-copy)
 (define (scan-object scan copy)
+
   (let* ((header (read-header scan))
          (h (car header))
          (s (cadr header))
@@ -405,6 +405,7 @@
          (length (/ (get-i64 (+ scan 8)) 4))
          ;; Scan vector and get new copy-ptr position
          (c (scan-vector-h (+ scan 16) length copy)))
+
       (cons ;; New scan position
             (+ scan (* 8 (+ length 2)))
             ;; New copy position
@@ -427,7 +428,7 @@
 
   (define copy-ptr    to-space)
   (define stack-begin (- (get-i64 block-addr) 8))
-  (define stack-end   (+ sp (* 8 (length c-caller-save-regs)) 8)) ;; +8 for return address of gc trampoline
+  (define stack-end (+ sp (* 8 (length c-caller-save-regs))))
 
   (log-gc "GC BEGIN")
 
@@ -441,7 +442,7 @@
   (log-gc "---------------")
   (log-gc "-- GLOBAL ROOTS")
   (log-gc "---------------")
-  (set! copy-ptr (copy-global-roots globals copy-ptr))
+  (set! copy-ptr (copy-global-roots (table->list globals) copy-ptr))
 
   ;; 3 - Copy referenced objects until scan == copy
   (log-gc "--------------")
