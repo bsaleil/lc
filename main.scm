@@ -261,6 +261,9 @@
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)
+             ;; TODO: this is (one-exec)
+             (set! from-space init-from-space)
+             (set! to-space   init-to-space)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
             ; (let ((before #f)
