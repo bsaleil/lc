@@ -49,6 +49,10 @@
 ;; NOTE: selector is always rcx
 ;; NOTE: stack pointer is always rsp
 
+;; TODO: other offsets
+(define OFFSET_CAR 16)
+(define OFFSET_CDR  8)
+
 ;;-----------------------------------------------------------------------------
 ;; x86 Codegen utils
 
@@ -398,25 +402,25 @@
     ;; Write car
    (cond
      (car-cst?
-       (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-imm-int (obj-encoding lcar)) 64))
+       (x86-mov cgc (x86-mem OFFSET_CAR alloc-ptr) (x86-imm-int (obj-encoding lcar)) 64))
      ((ctx-loc-is-memory? lcar)
       (x86-mov cgc (x86-rax) opcar)
       (if mut-car? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-      (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
+      (x86-mov cgc (x86-mem OFFSET_CAR alloc-ptr) (x86-rax)))
      (else
        (if mut-car? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opcar)))
-       (x86-mov cgc (x86-mem 8 alloc-ptr) (if mut-car? (x86-rax) opcar))))
+       (x86-mov cgc (x86-mem OFFSET_CAR alloc-ptr) (if mut-car? (x86-rax) opcar))))
     ;; Write cdr
    (cond
      (cdr-cst?
-       (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-imm-int (obj-encoding lcdr)) 64))
+       (x86-mov cgc (x86-mem OFFSET_CDR alloc-ptr) (x86-imm-int (obj-encoding lcdr)) 64))
      ((ctx-loc-is-memory? lcdr)
       (x86-mov cgc (x86-rax) opcdr)
       (if mut-cdr? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-      (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax)))
+      (x86-mov cgc (x86-mem OFFSET_CDR alloc-ptr) (x86-rax)))
      (else
        (if mut-cdr? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opcdr)))
-       (x86-mov cgc (x86-mem 16 alloc-ptr) (if mut-cdr? (x86-rax) opcdr))))
+       (x86-mov cgc (x86-mem OFFSET_CDR alloc-ptr) (if mut-cdr? (x86-rax) opcdr))))
    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
 
 ;;-----------------------------------------------------------------------------
@@ -485,8 +489,8 @@
     (x86-mov cgc (x86-rax) (x86-imm-int header-word))
     (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
     (x86-pop cgc (x86-rax))
-    (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rax))
-    (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-r14))
+    (x86-mov cgc (x86-mem OFFSET_CAR alloc-ptr) (x86-rax))
+    (x86-mov cgc (x86-mem OFFSET_CDR alloc-ptr) (x86-r14))
     (x86-lea cgc (x86-r14) (x86-mem TAG_MEMOBJ alloc-ptr))
     (x86-sub cgc (x86-r15) (x86-imm-int (obj-encoding 1)))
     (x86-jmp cgc label-loop)
@@ -497,8 +501,8 @@
         (gen-allocation cgc #f STAG_PAIR 3)
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
         (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
-        (x86-mov cgc (x86-mem  8 alloc-ptr) src)
-        (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-r14))
+        (x86-mov cgc (x86-mem OFFSET_CAR alloc-ptr) src)
+        (x86-mov cgc (x86-mem OFFSET_CDR alloc-ptr) (x86-r14))
         (x86-lea cgc (x86-r14) (x86-mem TAG_MEMOBJ alloc-ptr)))
       regs)
     ;; Dest
@@ -507,67 +511,67 @@
         (x86-push cgc (x86-r14)))))
 
 
-;; Generate generic function prologue
-(define (codegen-prologue-gen cgc rest? nb-formal err-label)
-  (if (not rest?)
-      ;; If there is no rest param
-      ;; Then we only have to check the number of arguments
-      (begin
-        (x86-cmp cgc (x86-rdi) (x86-imm-int (* nb-formal 4)))
-        (x86-jne cgc err-label))
-      ;; If there is a rest param
-      ;; Then we have to handle 3 cases: actual>formal, actual=formal, actual<formal
-      (let ((label-loop-end  (asm-make-label #f (new-sym 'rest-param-loop-end)))
-            (label-end       (asm-make-label #f (new-sym 'rest-param-end)))
-            (label-loop      (asm-make-label #f (new-sym 'rest-param-loop)))
-            (label-eq        (asm-make-label #f (new-sym 'rest-param-eq)))
-            (header-word     (mem-header 3 STAG_PAIR)))
-
-        ;; Compare actual and formal
-        (x86-cmp cgc (x86-rdi) (x86-imm-int (* nb-formal 4)))
-        (x86-jl cgc err-label) ;; actual<formal, ERROR
-        (x86-je cgc label-eq)                ;; actual=formal, jump to label-eq
-                                             ;; actual>formal, continue
-
-        ;; Case1: Actual > Formal
-        ;; Loop-init
-        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-        (x86-mov cgc (x86-rbx) (x86-imm-int 8)) ;; rbx = arg-offset (first arg to copy is at [rsp+8])
-        (x86-mov cgc (x86-rdx) (x86-rdi))       ;; Save args number in rdx
-        ;; Loop-cond (if there is at least 1 arg to copy)
-        (x86-label cgc label-loop)
-        (x86-cmp cgc (x86-rdi) (x86-imm-int (* nb-formal 4)))
-        (x86-je cgc label-loop-end)
-          ;; Loop-body
-        (x86-push cgc (x86-rax)) ;; TODO
-        (gen-allocation cgc #f STAG_PAIR 3)                    ;; alloc pair p
-        (x86-pop cgc (x86-rax))                                 ;;
-        (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))          ;; p.cdr = rax (last pair)
-        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp) (x86-rbx))) ;; p.car = stack[arg-offset]
-        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))         ;;
-        (x86-mov cgc (x86-rax) (x86-imm-int header-word))       ;; p.header = header-word
-        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))         ;;
-        (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))   ;; rax = p (tagged)
-        (x86-add cgc (x86-rbx) (x86-imm-int 8))                 ;; offset += 8 (to next arg)
-        (x86-sub cgc (x86-rdi) (x86-imm-int 4))                 ;; rdi    -= 4 (update nb args to copy)
-        (x86-jmp cgc label-loop)                                ;; goto loop
-        ;; Loop-end
-        (x86-label cgc label-loop-end)
-        (x86-mov cgc (x86-mem (* -8 nb-formal) (x86-rsp) (x86-rdx) 1) (x86-rax)) ;; Mov rest list to stack
-        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Update closure position
-        (x86-mov cgc (x86-mem (* -8 (+ nb-formal 1)) (x86-rsp) (x86-rdx) 1) (x86-rax))
-        (x86-lea cgc (x86-rsp) (x86-mem (* -8 (+ nb-formal 1)) (x86-rsp) (x86-rdx) 1)) ;; Update rsp
-        (x86-jmp cgc label-end) ;; goto end
-
-        ;; Case2: Actual == Formal
-        (x86-label cgc label-eq)
-        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Update closure position
-        (x86-push cgc (x86-rax))
-        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '()))) ;; Insert rest list (null) in stack
-        (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
-
-        ;; END
-        (x86-label cgc label-end))))
+;;; Generate generic function prologue
+;(define (codegen-prologue-gen cgc rest? nb-formal err-label)
+;  (if (not rest?)
+;      ;; If there is no rest param
+;      ;; Then we only have to check the number of arguments
+;      (begin
+;        (x86-cmp cgc (x86-rdi) (x86-imm-int (* nb-formal 4)))
+;        (x86-jne cgc err-label))
+;      ;; If there is a rest param
+;      ;; Then we have to handle 3 cases: actual>formal, actual=formal, actual<formal
+;      (let ((label-loop-end  (asm-make-label #f (new-sym 'rest-param-loop-end)))
+;            (label-end       (asm-make-label #f (new-sym 'rest-param-end)))
+;            (label-loop      (asm-make-label #f (new-sym 'rest-param-loop)))
+;            (label-eq        (asm-make-label #f (new-sym 'rest-param-eq)))
+;            (header-word     (mem-header 3 STAG_PAIR)))
+;
+;        ;; Compare actual and formal
+;        (x86-cmp cgc (x86-rdi) (x86-imm-int (* nb-formal 4)))
+;        (x86-jl cgc err-label) ;; actual<formal, ERROR
+;        (x86-je cgc label-eq)                ;; actual=formal, jump to label-eq
+;                                             ;; actual>formal, continue
+;
+;        ;; Case1: Actual > Formal
+;        ;; Loop-init
+;        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+;        (x86-mov cgc (x86-rbx) (x86-imm-int 8)) ;; rbx = arg-offset (first arg to copy is at [rsp+8])
+;        (x86-mov cgc (x86-rdx) (x86-rdi))       ;; Save args number in rdx
+;        ;; Loop-cond (if there is at least 1 arg to copy)
+;        (x86-label cgc label-loop)
+;        (x86-cmp cgc (x86-rdi) (x86-imm-int (* nb-formal 4)))
+;        (x86-je cgc label-loop-end)
+;          ;; Loop-body
+;        (x86-push cgc (x86-rax)) ;; TODO
+;        (gen-allocation cgc #f STAG_PAIR 3)                    ;; alloc pair p
+;        (x86-pop cgc (x86-rax))                                 ;;
+;        (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rax))          ;; p.cdr = rax (last pair)
+;        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp) (x86-rbx))) ;; p.car = stack[arg-offset]
+;        (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))         ;;
+;        (x86-mov cgc (x86-rax) (x86-imm-int header-word))       ;; p.header = header-word
+;        (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))         ;;
+;        (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))   ;; rax = p (tagged)
+;        (x86-add cgc (x86-rbx) (x86-imm-int 8))                 ;; offset += 8 (to next arg)
+;        (x86-sub cgc (x86-rdi) (x86-imm-int 4))                 ;; rdi    -= 4 (update nb args to copy)
+;        (x86-jmp cgc label-loop)                                ;; goto loop
+;        ;; Loop-end
+;        (x86-label cgc label-loop-end)
+;        (x86-mov cgc (x86-mem (* -8 nb-formal) (x86-rsp) (x86-rdx) 1) (x86-rax)) ;; Mov rest list to stack
+;        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Update closure position
+;        (x86-mov cgc (x86-mem (* -8 (+ nb-formal 1)) (x86-rsp) (x86-rdx) 1) (x86-rax))
+;        (x86-lea cgc (x86-rsp) (x86-mem (* -8 (+ nb-formal 1)) (x86-rsp) (x86-rdx) 1)) ;; Update rsp
+;        (x86-jmp cgc label-end) ;; goto end
+;
+;        ;; Case2: Actual == Formal
+;        (x86-label cgc label-eq)
+;        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rsp))) ;; Update closure position
+;        (x86-push cgc (x86-rax))
+;        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '()))) ;; Insert rest list (null) in stack
+;        (x86-mov cgc (x86-mem 8 (x86-rsp)) (x86-rax))
+;
+;        ;; END
+;        (x86-label cgc label-end))))
 
 ;; Alloc closure and write header
 (define (codegen-closure-create cgc nb-free)
@@ -626,31 +630,31 @@
 ;;-----------------------------------------------------------------------------
 ;; Apply
 
-;; Gen code for lco before apply (Prepare arguments from list)
-(define (codegen-pre-apply cgc)
-  ;; Remove lst and op from stack
-  (x86-pop cgc (x86-rbx)) ;; lst
-  (x86-pop cgc (x86-rax)) ;; op
-  ;; Read and push all args from lst until we reach '()
-  (let ((label-end  (asm-make-label #f (new-sym 'apply-args-end)))
-        (label-loop (asm-make-label #f (new-sym 'apply-args-loop))))
-    ;; RDI contains the number of arguments
-    (x86-mov cgc (x86-rdi) (x86-imm-int 0))
-    (x86-label cgc label-loop)
-    ;; If current el is null, then jump to end
-    (x86-cmp cgc (x86-rbx) (x86-imm-int (obj-encoding '())))
-    (x86-je cgc label-end)
-      ;; Else, push arg and update RDI
-    (x86-push cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rbx)))           ;; Push car
-    (x86-mov cgc (x86-rbx) (x86-mem (- 16 TAG_MEMOBJ) (x86-rbx))) ;; Get cdr for next iteration
-    (x86-inc cgc (x86-rdi))  ;; inc args number
-    (x86-jmp cgc label-loop) ;; next iteration
-    ;; All args are pushed
-    (x86-label cgc label-end))
-  ;; Encode nb args
-  (x86-shl cgc (x86-rdi) (x86-imm-int 2))
-  ;; Push closure
-  (x86-push cgc (x86-rax)))
+;;; Gen code for lco before apply (Prepare arguments from list)
+;(define (codegen-pre-apply cgc)
+;  ;; Remove lst and op from stack
+;  (x86-pop cgc (x86-rbx)) ;; lst
+;  (x86-pop cgc (x86-rax)) ;; op
+;  ;; Read and push all args from lst until we reach '()
+;  (let ((label-end  (asm-make-label #f (new-sym 'apply-args-end)))
+;        (label-loop (asm-make-label #f (new-sym 'apply-args-loop))))
+;    ;; RDI contains the number of arguments
+;    (x86-mov cgc (x86-rdi) (x86-imm-int 0))
+;    (x86-label cgc label-loop)
+;    ;; If current el is null, then jump to end
+;    (x86-cmp cgc (x86-rbx) (x86-imm-int (obj-encoding '())))
+;    (x86-je cgc label-end)
+;      ;; Else, push arg and update RDI
+;    (x86-push cgc (x86-mem (- OFFSET_CAR TAG_MEMOBJ) (x86-rbx)))           ;; Push car
+;    (x86-mov cgc (x86-rbx) (x86-mem (- OFFSET_CDR TAG_MEMOBJ) (x86-rbx))) ;; Get cdr for next iteration
+;    (x86-inc cgc (x86-rdi))  ;; inc args number
+;    (x86-jmp cgc label-loop) ;; next iteration
+;    ;; All args are pushed
+;    (x86-label cgc label-end))
+;  ;; Encode nb args
+;  (x86-shl cgc (x86-rdi) (x86-imm-int 2))
+;  ;; Push closure
+;  (x86-push cgc (x86-rax)))
 
 ;;-----------------------------------------------------------------------------
 ;; Call sequence
@@ -1172,8 +1176,8 @@
 (define (codegen-car/cdr cgc fs op reg lval mut-val?)
   (let ((offset
           (if (eq? op 'car)
-              (-  8 TAG_MEMOBJ)
-              (- 16 TAG_MEMOBJ)))
+              (- OFFSET_CAR TAG_MEMOBJ)
+              (- OFFSET_CDR TAG_MEMOBJ)))
         (dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
@@ -1191,8 +1195,8 @@
 (define (codegen-scar/scdr cgc fs op reg lpair lval val-cst? mut-val? mut-pair?)
   (let ((offset
           (if (eq? op 'set-car!)
-              (-  8 TAG_MEMOBJ)
-              (- 16 TAG_MEMOBJ)))
+              (- OFFSET_CAR TAG_MEMOBJ)
+              (- OFFSET_CDR TAG_MEMOBJ)))
         (dest (codegen-reg-to-x86reg reg))
         (oppair (codegen-loc-to-x86opnd fs lpair))
         (opval (and (not val-cst?) (codegen-loc-to-x86opnd fs lval))))
