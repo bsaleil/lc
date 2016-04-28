@@ -653,8 +653,8 @@
 
           (if global-opt
               (if opt-entry-points
-                  (cctable-global-opt-set! global-opt cctable-loc)
-                  (cctable-global-opt-set! global-opt (get-entry-points-loc ast stub-addr))))
+                  (ctime-entries-set global-opt cctable-loc)
+                  (ctime-entries-set global-opt (get-entry-points-loc ast stub-addr))))
 
           ;; If 'stats' option, then inc closures slot
           (if opt-stats
@@ -1921,7 +1921,7 @@
 ;; (compile time lookup)
 (define (gen-call-sequence ast cgc call-ctx nb-args global-id)
 
-    (define entry-loc (cctable-global-opt-get global-id))
+    (define entry-loc (ctime-entries-get global-id))
 
     (if global-id
         (assert (if opt-entry-points entry-loc #t) "Internal error"))
@@ -2256,12 +2256,22 @@
              (loop (+ i 1)))
       cctable)))
 
-;; TODO WIP
-(define cctable-global-opt (make-table))
-(define (cctable-global-opt-set! id loc)
-  (table-set! cctable-global-opt id loc))
-(define (cctable-global-opt-get id)
-  (table-ref cctable-global-opt id #f))
+;;-----------------------------------------------------------------------------
+;; Compile time lookup optimization
+
+;; This table associates an entry point to each symbol representing a global
+;; immutable function.
+;; The entry point is the stub address or the machine code address if opt-entry-points is #f
+;; The entry point is the cc-table if opt-entry-points is #t
+(define ctime-entries (make-table))
+;; Set the entry point for given id
+(define (ctime-entries-set id entry)
+  (table-set! ctime-entries id entry))
+;; Get currently known entry point from given id
+(define (ctime-entries-get id)
+  (table-ref ctime-entries id #f))
+
+;-----------------------------------------------------------------------------
 
 ;; Return crtable from crtable-key
 ;; Return the existing table if already created or create one, add entry, and return it

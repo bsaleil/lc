@@ -64,7 +64,7 @@
 (define global-ptr #f)
 (define get-entry-points-loc #f)
 (define codegen-loc-to-x86opnd #f)
-(define cctable-global-opt-get #f)
+(define ctime-entries-get #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -1155,7 +1155,7 @@
 
   (define ep-loc
     (and global-opt-sym
-         (cctable-global-opt-get global-opt-sym)))
+         (ctime-entries-get global-opt-sym)))
 
   (define (fn-verbose)
     (print "GEN VERSION FN")

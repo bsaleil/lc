@@ -1,8 +1,17 @@
 
-(define (foo a)
-  100)
+;; Optimisation appel:
+;;   * Pour chaque vriable globale non redéfinie et fonction:
+;;      - Stocker sa cc table (son pt entrée)
+;;      - pour chaque entrée de la table, garder si une version existe (ou juste un booleen si pt entree)
+;;      - pour chaque entrée de la table, garder une liste des adresses ou ona écrit le stub en dur (ou juste une liste si pt entree)
+;; Optimisation retour:
 
-($apply foo '(1))
+
+(define (foo n)
+  (fixnum? n))
+
+(foo 10)
+(foo #t)
 
 ;; TODO WIP: extraire le code de mlc-lambda en sous fonctions, et créer des versions de mlc-lambda spécialisées:
 ;; mlc-lambda
