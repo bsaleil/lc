@@ -1926,15 +1926,15 @@
     (if global-id
         (assert (if opt-entry-points entry-loc #t) "Internal error"))
 
-    (cond ((and opt-entry-points nb-args)
+    (cond ((not opt-entry-points)
+             (codegen-call-ep cgc nb-args entry-loc))
+          ((not nb-args) ;; apply
+             (codegen-call-cc-gen cgc #f entry-loc))
+          (else
              (let* ((idx (get-closure-index call-ctx)))
                (if idx
                    (codegen-call-cc-spe cgc idx (ctx->still-ref call-ctx) nb-args entry-loc)
-                   (codegen-call-cc-gen cgc entry-loc))))
-          ((and opt-entry-points (not nb-args))
-             (codegen-call-cc-gen cgc entry-loc))
-          (else
-             (codegen-call-ep cgc nb-args entry-loc))))
+                   (codegen-call-cc-gen cgc nb-args entry-loc))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators

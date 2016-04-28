@@ -675,7 +675,9 @@
              (x86-jmp cgc (x86-rbp)))))
 
 ;;; Generate function call using a cctable and generic entry point
-(define (codegen-call-cc-gen cgc cctable-loc)
+(define (codegen-call-cc-gen cgc nb-args cctable-loc)
+  (if nb-args
+      (x86-mov cgc (x86-rdi) (x86-imul (obj-encoding nb-args))))
   (if cctable-loc
       (x86-mov cgc (x86-rbp) (x86-imm-int cctable-loc))
       (begin
@@ -695,8 +697,9 @@
           (begin
             (x86-mov cgc (x86-rsi) (x86-rax))
             (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))))
-      ;; 3 - If opt-max-versions is not #f, a generic version could be called. So we need to give nb-args
-      (if opt-max-versions ;; TODO(?)
+      ;; 3 - If opt-max-versions is not #f, a generic version could be called.
+      ;;     (if entry point lco reached max), then give nb-args
+      (if opt-max-versions
           (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
       ;; 4 - Jump to entry point from ctable
       (x86-jmp cgc (x86-mem cct-offset (x86-rbp)))))
