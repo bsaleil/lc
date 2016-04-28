@@ -1,4 +1,18 @@
 
+
+;* . Créer un vecteur scheme qui servira de pile
+;* . Stocker son adresse, et conserver une variable globale qui pointe vers la pile (gambit root)
+;* . init-rtlib: stocker tous les registres sur la pile C
+;* . init-rtlib: faire pointer rsp sur la nouvelle pile
+;* A chaque callback: on fait pointer rsp sur la pile C
+;*                    les registres sont sauvegardés sur la pile C (après avoir maj rsp parce que les stubs utilisent rsp avec offset pour modifier les registres (selecteur par ex.))
+;*                    gambit va "polluer" la pile c, aucun soucis
+;*                    puis, après la callback, on restaure les registres
+;*                    puis on refait pointer rsp sur la pile vecteur
+;* . NOTE: on peut commencer par utiliser une pile créée comme chaine de caractère pour faire fonctionner la pile
+;*         sans que Gambit ne la scanne lors d'une phase GC
+;* NOTE: en attendant, pour faire fonctionner le GC de LC, il faut stocker dans block le bottom de la pile V aussi
+
 ;; Optimisation appel:
 ;;   * Pour chaque vriable globale non redéfinie et fonction:
 ;;      - Stocker sa cc table (son pt entrée)
@@ -6,12 +20,12 @@
 ;;      - pour chaque entrée de la table, garder une liste des adresses ou ona écrit le stub en dur (ou juste une liste si pt entree)
 ;; Optimisation retour:
 
+(define (foo 10) 1)
 
-(define (foo n)
-  (fixnum? n))
+(let ((a 10) (b 20))
+  (+ a b))
 
-(foo 10)
-(foo #t)
+(println 10)
 
 ;; TODO WIP: extraire le code de mlc-lambda en sous fonctions, et créer des versions de mlc-lambda spécialisées:
 ;; mlc-lambda

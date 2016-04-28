@@ -429,7 +429,7 @@
   (define copy-ptr    to-space)
   (define stack-begin (- (get-i64 block-addr) 8))
   (define stack-end (+ sp (* 8 (length c-caller-save-regs))))
-
+  (error "NYI: working on new GC")
   (log-gc "GC BEGIN")
 
   ;; 1 - Copy roots from stack

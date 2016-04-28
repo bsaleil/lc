@@ -576,9 +576,9 @@
 (define to-space   #f)
 ;; Set to 2gb (2000000000) to exec all benchmarks without GC (except lattice.scm)
 ;; Set to 7gb (7000000000) to exec all benchmarks without GC
-;(define space-len 7000000000)
+(define space-len 7000000000)
 ;(define space-len 4000000000)
-(define space-len 1000000000)
+;(define space-len 1000000000)
 
 (assert (= (modulo space-len 8) 0) ERR_HEAP_NOT_8)
 
@@ -589,6 +589,14 @@
 (define code-len 12000000)
 (define code-addr #f)
 (define mcb #f)
+
+;; User stack (ustack) is the used by generated machine code
+;; This stack is a scheme object. This allows the Gambit GC to scan the stack
+;; to find roots.
+;; Process stack (pstack) is still used for each call to c code (stubs and others)
+(define ustack #f)
+(define ustack-init #f) ;; initial rsp value (right of the stack)
+(define ustack-len 500000) ;; 500ko
 
 (define (init-mcb)
   (set! mcb (make-mcb code-len))
@@ -601,7 +609,13 @@
     ;(println "### Initial from space: " (##foreign-address fspace) " -> " (+ (##foreign-address fspace) space-len))
     ;(println "### Initial to space  : " (##foreign-address tspace) " -> " (+ (##foreign-address tspace) space-len)))
   (set! from-space init-from-space)
-  (set! to-space init-to-space))
+  (set! to-space init-to-space)
+  ;; stack
+  (set! ustack (make-u8vector ustack-len))
+  (set! ustack-init (+ (- (obj-encoding ustack) 1) 8 ustack-len))
+  ;; Align initial stack pointer value to avoid weird segfault
+  (let ((extra (modulo ustack-init 8)))
+    (set! ustack-init (- ustack-init extra))))
 
 ;; BLOCK :
 ;; 0          8                       (nb-globals * 8 + 8)
@@ -781,7 +795,15 @@
 
     (x86-label cgc label-rtlib-skip)
 
+    ;; Save all regs to pstack (because the GC must *not* scan these values)
     (push-regs cgc all-regs)
+
+    ;; Put bottom of the pstack (after saving registers) at "block-addr + 0"
+    (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
+    (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rsp))
+
+    ;; Set rsp to ustack init
+    (x86-mov cgc (x86-rsp) (x86-imm-int ustack-init))
 
     ;; Init debug slots
     (for-each (lambda (s)
@@ -796,10 +818,6 @@
           (x86-shl   cgc (x86-rdx) (x86-imm-int 32))        ;; rdx = rdx << 32
           (x86-or    cgc (x86-rax) (x86-rdx))               ;; rax = lo | hi
           (x86-mov   cgc (x86-mem 0 (x86-rbx)) (x86-rax)))) ;; Mov time in time slot
-
-    ;; Put bottom of the stack (after saving registers) at "block-addr + 0"
-    (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-    (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rsp))
 
     ;; Put heaplimit in heaplimit slot
     ;; TODO: remove cst slots

@@ -167,13 +167,13 @@
                     (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc))
                     (error "NYI regalloc")))
 
+              ;; Set rsp to pstack top (rsp points to the last saved registers)
+              (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
+              (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
 
-              ;;
-              (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (ctx-fs ctx))))
-              ;(gen-breakpoint cgc)
-
-              ;;
+              ;; Restore registers values from pstack
               (pop-regs-reverse cgc all-regs)
+
               (x86-ret cgc)))))
 
 
