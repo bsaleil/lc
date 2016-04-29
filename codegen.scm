@@ -1072,8 +1072,7 @@
         (opnd (codegen-loc-to-x86opnd fs loc)))
 
     (x86-mov cgc (x86-rax) opnd)
-    ;; NOTE: This uses Gambit function to print a flonum (because LC uses the same flonum encoding)
-    (gen-print-msg cgc (x86-rax) #f #f)
+    (gen-print-obj cgc (x86-rax) #f)
     (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
 
 ;;-----------------------------------------------------------------------------

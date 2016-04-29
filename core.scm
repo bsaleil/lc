@@ -216,48 +216,33 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define (gen-print-msg cgc msg newline? #!optional (literal? #t))
-
+(define (gen-print-* cgc label-handler p1 p2)
+  ;; Save rax & rcx.
+  ;; We want this function not modify any register
   (x86-push cgc (x86-rax))
   (x86-push cgc (x86-rcx))
-  (x86-push cgc (x86-rdi))
 
-  (if literal?
-     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding msg)))
-     (x86-mov cgc (x86-rax) msg))
+  (x86-mov cgc (x86-rax) p1)
+  (x86-mov cgc (x86-rcx) p2)
 
-  (x86-mov cgc (x86-rdi) (x86-imm-int (if newline? (obj-encoding 1) (obj-encoding 0))))
+  (x86-call cgc label-handler)
 
-  (push-pop-regs
-       cgc
-       c-caller-save-regs ;; preserve regs for C call
-       (lambda (cgc)
-         (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-         (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-         (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-         (x86-push cgc (x86-rdi))
-         (x86-call cgc label-print-msg) ;; call C function
-         (x86-pop  cgc (x86-rsp)))) ;; restore unaligned stack-pointer
-
-
-  (x86-pop cgc (x86-rdi))
   (x86-pop cgc (x86-rcx))
   (x86-pop cgc (x86-rax)))
+
+(define (gen-print-obj cgc reg newline?)
+  (gen-print-*
+    cgc
+    label-print-msg-handler
+    reg
+    (x86-imm-int (obj-encoding newline?))))
 
 (define (gen-print-reg cgc msg reg)
-
-  ;; Save rax & rcx
-  ;; We want that gen-print-reg does not change the value of any register
-  (x86-push cgc (x86-rax))
-  (x86-push cgc (x86-rcx))
-  ;; Move msg & val to print
-  (x86-mov cgc (x86-rcx) reg)
-  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding msg)))
-
-  (x86-call cgc label-print-msg-val-handler)
-
-  (x86-pop cgc (x86-rcx))
-  (x86-pop cgc (x86-rax)))
+  (gen-print-*
+    cgc
+    label-print-msg-val-handler
+    (x86-imm-int (obj-encoding msg))
+    reg))
 
 ;; Print msg which is encoded in rax
 ;; Print val which is in rcx
@@ -269,13 +254,13 @@
     (print msg " ")
     (println val)))
 
-;; TODO
+;; Print msg which is encoded in rax
+;; if rcx contains #t, print a newline too
 (c-define (print-msg sp) (long) void "print_msg" ""
-  (let* ((msg-enc  (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
-         (newline? (encoding-obj (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8)))))
-         (msg      (encoding-obj msg-enc)))
+  (let* ((msg      (encoding-obj (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8)))))
+         (newline? (encoding-obj (get-u64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))))
 
-    (and (print msg) (force-output) (= newline? 1) (newline))))
+    (and (print msg) (force-output) newline? (newline))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -478,10 +463,10 @@
                        ,c-code))))))
 
 (define (init-labels cgc)
-  (set-cdef-label! label-print-msg        'print-msg        "___result = ___CAST(void*,print_msg);")
-
+  ;; TODO WIP
   (set-cdef-label! label-gc               'gc               "___result = ___CAST(void*,gc);")
 
+  (set-cdef-label! label-print-msg        'print-msg        "___result = ___CAST(void*,print_msg);")
   (set-cdef-label! label-print-msg-val    'print-msg-val    "___result = ___CAST(void*,print_msg_val);")
   (set-cdef-label! label-rt-error         'rt_error         "___result = ___CAST(void*,rt_error);")
   (set-cdef-label! label-interned-symbol  'interned_symbol  "___result = ___CAST(void*,interned_symbol);")
@@ -666,12 +651,14 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define label-do-callback-handler #f)
-(define label-do-callback-fn-handler #f)
+(define label-do-callback-handler      #f)
+(define label-do-callback-fn-handler   #f)
 (define label-do-callback-cont-handler #f)
-(define label-breakpoint-handler #f)
-(define label-interned-symbol-handler #f)
-(define label-rt-error-handler #f)
+(define label-breakpoint-handler       #f)
+(define label-interned-symbol-handler  #f)
+(define label-rt-error-handler         #f)
+(define label-print-msg-handler        #f)
+(define label-print-msg-val-handler    #f)
 
 ;; Default save regs is c-caller-save-regs set
 (define (gen-handler cgc id label saved-regs)
@@ -731,6 +718,11 @@
     (pop-regs-reverse cgc all-regs)
     (x86-ret cgc)
 
+    ;; Print msg
+    (set! label-print-msg-handler
+          (gen-handler cgc 'print_msg label-print-msg c-caller-save-regs))
+    (x86-ret cgc)
+
     ;; Print msg val
     (set! label-print-msg-val-handler
           (gen-handler cgc 'print_msg_val_handler label-print-msg-val c-caller-save-regs))
@@ -743,8 +735,6 @@
     (x86-label cgc label-gc-trampoline)
     (gen-gc-call cgc)
     (x86-ret cgc)
-
-
 
     (x86-label cgc label-rtlib-skip)
 

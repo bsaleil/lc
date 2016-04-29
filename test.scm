@@ -22,8 +22,7 @@
 ;
 ;(string->symbol "jjj")
 
-
-200
+800
 
 ;; TODO WIP: extraire le code de mlc-lambda en sous fonctions, et créer des versions de mlc-lambda spécialisées:
 ;; mlc-lambda

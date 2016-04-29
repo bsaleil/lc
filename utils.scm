@@ -212,6 +212,10 @@
              "___EXT(___release_scmobj) (___arg1);")
    vect))
 
+(define (get-u64 addr)
+  ((c-lambda (int64) unsigned-long "___result = *___CAST(___U64*,___arg1);")
+   addr))
+
 (define (get-i64 addr)
   ((c-lambda (int64) long "___result = *___CAST(___S64*,___arg1);")
    addr))
