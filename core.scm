@@ -687,25 +687,6 @@
 
     label-handler))
 
-;; Default save regs is c-caller-save-regs set
-;(define (gen-handler cgc id label saved-regs)
-;  (let ((label-handler (asm-make-label cgc id)))
-;
-;    (x86-label cgc label-handler)
-;
-;    (push-pop-regs
-;     cgc
-;     saved-regs
-;     (lambda (cgc)
-;       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-;       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-;       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-;       (x86-push cgc (x86-rdi))
-;       (x86-call cgc label) ;; call C function
-;       (x86-pop  cgc (x86-rsp)))) ;; restore unaligned stack-pointer
-;
-;    label-handler))
-
 (define (init-rtlib cgc)
   (let ((label-rtlib-skip (asm-make-label cgc 'rtlib_skip)))
 
