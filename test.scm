@@ -19,9 +19,15 @@
 ;;      - pour chaque entrée de la table, garder si une version existe (ou juste un booleen si pt entree)
 ;;      - pour chaque entrée de la table, garder une liste des adresses ou ona écrit le stub en dur (ou juste une liste si pt entree)
 ;; Optimisation retour:
-
-(let ((a 10) (b 20) (c 30) (d 40) (e 50) (f 60) (g 70) (h 80) (i 90) (j 100) (k 110))
-  (breakpoint))
+;
+;(string->symbol "jjj")
+(let ((ss "Bonjour")
+      (tt "Bonjour")
+      (uu 'Bonjour))
+  (pp (eq? ss tt))
+  (pp (eq? (string->symbol tt) uu))
+  (pp ss)
+  (pp (string->symbol ss)))
 
 ;; TODO WIP: extraire le code de mlc-lambda en sous fonctions, et créer des versions de mlc-lambda spécialisées:
 ;; mlc-lambda

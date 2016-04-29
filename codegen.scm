@@ -1534,7 +1534,7 @@
                (set! opstr (x86-rax))))
 
     (x86-push cgc opstr)
-    (gen-interned-symbol cgc)
+    (x86-call cgc label-interned-symbol-handler)
     (x86-pop cgc dest)))
 
 ;;-----------------------------------------------------------------------------

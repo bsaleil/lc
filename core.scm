@@ -477,7 +477,7 @@
 ;; Entry point to create symbol from string at runtime
 (c-define (interned-symbol sp) (long) void "interned_symbol" ""
 
-  (let* ((str (get-i64 (+ sp (* (length all-regs) 8)))) ;; Get str from top of runtime stack
+  (let* ((str (get-i64 (+ sp (* (+ (length c-caller-save-regs) 1) 8)))) ;; Get str from top of runtime stack
          (len (quotient (get-i64 (+ (- str TAG_MEMOBJ) 8)) 4)))
 
     ;; Get gambit symbol from lc string
@@ -490,23 +490,7 @@
     (let* ((sym   (lcstr->gsym (+ (- str TAG_MEMOBJ) 16) len 0 (make-string len)))
            (qword (get-symbol-qword sym)))
       ;; Write symbol qword at top on runtime stack
-      (put-i64 (+ sp (* (length all-regs) 8)) qword))))
-
-;; Gen code to call interner-symbol at runtime
-(define (gen-interned-symbol cgc)
-  (push-pop-regs
-     cgc
-     ;;c-caller-save-regs ;; preserve regs for C call
-     all-regs
-     (lambda (cgc)
-       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-       (x86-push cgc (x86-rdi))
-       (x86-call cgc label-interned-symbol) ;; call C function
-       (x86-pop  cgc (x86-rsp))))) ;; restore unaligned stack-pointer
-
-
+      (put-i64 (+ sp (* (+ (length c-caller-save-regs) 1) 8)) qword))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -526,10 +510,11 @@
   (set-cdef-label! label-print-msg        'print-msg        "___result = ___CAST(void*,print_msg);")
   (set-cdef-label! label-print-msg-val    'print-msg-val    "___result = ___CAST(void*,print_msg_val);")
   (set-cdef-label! label-gc               'gc               "___result = ___CAST(void*,gc);")
+
+  (set-cdef-label! label-interned-symbol  'interned_symbol  "___result = ___CAST(void*,interned_symbol);")
   (set-cdef-label! label-do-callback      'do_callback      "___result = ___CAST(void*,do_callback);")
   (set-cdef-label! label-do-callback-fn   'do_callback_fn   "___result = ___CAST(void*,do_callback_fn);")
   (set-cdef-label! label-do-callback-cont 'do_callback_cont "___result = ___CAST(void*,do_callback_cont);")
-  (set-cdef-label! label-interned-symbol  'interned_symbol  "___result = ___CAST(void*,interned_symbol);")
   (set-cdef-label! label-breakpoint       'break_point      "___result = ___CAST(void*,break_point);"))
 
 ;;-----------------------------------------------------------------------------
@@ -751,7 +736,10 @@
           (gen-handler cgc 'do_callback_cont_handler label-do-callback-cont))
 
     (set! label-breakpoint-handler
-          (gen-handler cgc 'do_breakpoint label-breakpoint all-regs))
+          (gen-handler cgc 'breakpoint_handler label-breakpoint all-regs))
+
+    (set! label-interned-symbol-handler
+          (gen-handler cgc 'interned_symbol_handler label-interned-symbol))
 
     ;; Runtime GC call
     (set! label-gc-trampoline (asm-make-label cgc 'gc_trampoline))
