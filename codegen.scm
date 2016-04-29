@@ -60,8 +60,9 @@
   `(not (eq? ,l ,r)))
 
 ;; TODO: use (codegen-push-n?)
-(define (codegen-void cgc)
-  (x86-push cgc (x86-imm-int ENCODING_VOID)))
+(define (codegen-void cgc reg)
+  (let ((opnd (codegen-reg-to-x86reg reg)))
+    (x86-mov cgc opnd (x86-imm-int ENCODING_VOID))))
 
 (define (codegen-set-bool cgc b reg)
   (let ((dest (codegen-reg-to-x86reg reg)))

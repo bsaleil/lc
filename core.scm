@@ -554,18 +554,16 @@
                        ,c-code))))))
 
 (define (init-labels cgc)
-  (set-cdef-label! label-exec-error       'exec-error      "___result = ___CAST(void*,exec_error);")
-  (set-cdef-label! label-print-msg        'print-msg       "___result = ___CAST(void*,print_msg);")
-  (set-cdef-label! label-print-msg-val    'print-msg-val   "___result = ___CAST(void*,print_msg_val);")
-  (set-cdef-label! label-repl             'repl            "___result = ___CAST(void*,repl);")
-  (set-cdef-label! label-gc               'gc              "___result = ___CAST(void*,gc);")
-  (set-cdef-label! label-do-callback      'do_callback     "___result = ___CAST(void*,do_callback);")
-  (set-cdef-label! label-do-callback-fn   'do_callback     "___result = ___CAST(void*,do_callback_fn);")
-  (set-cdef-label! label-do-callback-cont 'do_callback     "___result = ___CAST(void*,do_callback_cont);")
-  (set-cdef-label! label-interned-symbol  'interned_symbol "___result = ___CAST(void*,interned_symbol);")
-  (set-cdef-label! label-dump-regs        'dump-regs       "___result = ___CAST(void*,dump_regs);")
-  (set-cdef-label! label-dump-stack       'dump-stack      "___result = ___CAST(void*,dump_stack);")
-  (set-cdef-label! label-breakpoint       'break_point     "___result = ___CAST(void*,break_point);"))
+  (set-cdef-label! label-exec-error       'exec-error       "___result = ___CAST(void*,exec_error);")
+  (set-cdef-label! label-print-msg        'print-msg        "___result = ___CAST(void*,print_msg);")
+  (set-cdef-label! label-print-msg-val    'print-msg-val    "___result = ___CAST(void*,print_msg_val);")
+  (set-cdef-label! label-repl             'repl             "___result = ___CAST(void*,repl);")
+  (set-cdef-label! label-gc               'gc               "___result = ___CAST(void*,gc);")
+  (set-cdef-label! label-do-callback      'do_callback      "___result = ___CAST(void*,do_callback);")
+  (set-cdef-label! label-do-callback-fn   'do_callback_fn   "___result = ___CAST(void*,do_callback_fn);")
+  (set-cdef-label! label-do-callback-cont 'do_callback_cont "___result = ___CAST(void*,do_callback_cont);")
+  (set-cdef-label! label-interned-symbol  'interned_symbol  "___result = ___CAST(void*,interned_symbol);")
+  (set-cdef-label! label-breakpoint       'break_point      "___result = ___CAST(void*,break_point);"))
 
 ;;-----------------------------------------------------------------------------
 

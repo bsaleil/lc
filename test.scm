@@ -20,12 +20,8 @@
 ;;      - pour chaque entrée de la table, garder une liste des adresses ou ona écrit le stub en dur (ou juste une liste si pt entree)
 ;; Optimisation retour:
 
-(define (foo 10) 1)
-
-(let ((a 10) (b 20))
-  (+ a b))
-
-(println 10)
+100
+(breakpoint)
 
 ;; TODO WIP: extraire le code de mlc-lambda en sous fonctions, et créer des versions de mlc-lambda spécialisées:
 ;; mlc-lambda

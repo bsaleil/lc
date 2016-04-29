@@ -1039,9 +1039,11 @@
   (cond ((eq? (car ast) 'breakpoint)
          (make-lazy-code
            (lambda (cgc ctx)
-             (gen-breakpoint cgc)
-             (codegen-void cgc)
-             (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))
+             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+               (apply-moves cgc ctx moves)
+               (gen-breakpoint cgc)
+               (codegen-void cgc reg)
+               (jump-to-version cgc succ (ctx-push ctx CTX_VOID reg))))))
         ((eq? (car ast) '$$sys-clock-gettime-ns)
          (make-lazy-code
            (lambda (cgc ctx)
