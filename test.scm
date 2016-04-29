@@ -22,7 +22,8 @@
 ;
 ;(string->symbol "jjj")
 
-800
+(let ((a 10) (b 20) (c 30) (d 40) (e 50) (f 60) (g 70) (h 80) (i 90) (j 100) (k 300) (l 400) (m 500))
+  (breakpoint))
 
 ;; TODO WIP: extraire le code de mlc-lambda en sous fonctions, et créer des versions de mlc-lambda spécialisées:
 ;; mlc-lambda

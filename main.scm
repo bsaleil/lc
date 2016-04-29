@@ -212,23 +212,11 @@
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)
-             ;; TODO: this is (one-exec)
              (set! from-space init-from-space)
              (set! to-space   init-to-space)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
-            ; (let ((before #f)
-            ;       (after  #f))
-            ;    (set! before (real-time))
-            ;    ;; 10 execs
-            ;    (one-exec) ;(one-exec) (one-exec)
-            ;    ;(one-exec) (one-exec)
-            ;    ;(one-exec) (one-exec)
-            ;    ;(one-exec) (one-exec)
-            ;    ;(one-exec) (one-exec)
-            ;    (set! after (real-time))
-            ;    (println "Time: " (* (- after before) 1000))))
-      (##machine-code-block-exec mcb)))
+      (begin (##machine-code-block-exec mcb))))
 
 ;;-----------------------------------------------------------------------------
 ;; Main

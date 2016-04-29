@@ -267,7 +267,6 @@
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
 (c-define (do-callback sp) (long) void "do_callback" ""
-
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
 
@@ -313,6 +312,7 @@
 ;; | Call arg 1    |
 ;; +---------------+
 (c-define (do-callback-fn sp) (long) void "do_callback_fn" ""
+
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
 
@@ -506,6 +506,11 @@
 (define ustack-init #f) ;; initial rsp value (right of the stack)
 (define ustack-len 500000) ;; 500ko
 
+;; TODO: use real pstack
+(define pstack #f)
+(define pstack-init #f)
+(define pstack-len 500000) ;; 500ko
+
 (define (init-mcb)
   (set! mcb (make-mcb code-len))
   (set! code-addr (##foreign-address mcb))
@@ -523,7 +528,12 @@
   (set! ustack-init (+ (- (obj-encoding ustack) 1) 8 ustack-len))
   ;; Align initial stack pointer value to avoid weird segfault
   (let ((extra (modulo ustack-init 8)))
-    (set! ustack-init (- ustack-init extra))))
+    (set! ustack-init (- ustack-init extra)))
+  ;; TODO: use real pstack
+  (set! pstack (make-u8vector pstack-len))
+  (set! pstack-init (+ (- (obj-encoding pstack) 1) 8 pstack-len))
+  (let ((extra (modulo pstack-init 8)))
+    (set! pstack-init (- pstack-init extra))))
 
 ;; BLOCK :
 ;; 0          8                       (nb-globals * 8 + 8)
@@ -660,24 +670,41 @@
 (define label-print-msg-handler        #f)
 (define label-print-msg-val-handler    #f)
 
-;; Default save regs is c-caller-save-regs set
 (define (gen-handler cgc id label saved-regs)
   (let ((label-handler (asm-make-label cgc id)))
 
     (x86-label cgc label-handler)
 
     (push-pop-regs
-     cgc
-     saved-regs
-     (lambda (cgc)
-       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-       (x86-push cgc (x86-rdi))
-       (x86-call cgc label) ;; call C function
-       (x86-pop  cgc (x86-rsp)))) ;; restore unaligned stack-pointer
+      cgc
+      saved-regs
+      (lambda (cgc)
+        (x86-mov cgc (x86-rdi) (x86-rsp)) ;; vstack in rdi
+        (x86-mov cgc (x86-rsp) (x86-imm-int pstack-init))
+        (x86-push cgc (x86-rdi)) ;; save vstack addr to c stack
+        (x86-call cgc label)
+        (x86-pop cgc (x86-rsp)))) ;; restore rsp (points to vstack)
 
     label-handler))
+
+;; Default save regs is c-caller-save-regs set
+;(define (gen-handler cgc id label saved-regs)
+;  (let ((label-handler (asm-make-label cgc id)))
+;
+;    (x86-label cgc label-handler)
+;
+;    (push-pop-regs
+;     cgc
+;     saved-regs
+;     (lambda (cgc)
+;       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
+;       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+;       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+;       (x86-push cgc (x86-rdi))
+;       (x86-call cgc label) ;; call C function
+;       (x86-pop  cgc (x86-rsp)))) ;; restore unaligned stack-pointer
+;
+;    label-handler))
 
 (define (init-rtlib cgc)
   (let ((label-rtlib-skip (asm-make-label cgc 'rtlib_skip)))
@@ -752,15 +779,6 @@
     (for-each (lambda (s)
                 (gen-set-slot cgc (car s) 0))
               debug-slots)
-
-    ;; Get RDTSC value if --time option is #t
-    (if opt-time
-       (begin
-          (x86-mov   cgc (x86-rbx) (x86-imm-int (+ block-addr (* 9 8)))) ;; Get slot addr in rbx
-          (x86-rdtsc cgc)                                   ;; rdx = hi, rax = lo
-          (x86-shl   cgc (x86-rdx) (x86-imm-int 32))        ;; rdx = rdx << 32
-          (x86-or    cgc (x86-rax) (x86-rdx))               ;; rax = lo | hi
-          (x86-mov   cgc (x86-mem 0 (x86-rbx)) (x86-rax)))) ;; Mov time in time slot
 
     ;; Put heaplimit in heaplimit slot
     ;; TODO: remove cst slots
