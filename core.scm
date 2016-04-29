@@ -51,7 +51,6 @@
 (define opt-use-lib              #t) ;; Use scheme std lib (see lib/ folder)
 (define opt-vers-regalloc        #t) ;; Use register allocation for code specialization
 (define opt-dump-bin             #f) ;; Print generated binary bytes to stdout
-(define mode-repl                #f) ;; REPL mode ?
 
 ;;-----------------------------------------------------------------------------
 
@@ -59,7 +58,6 @@
 (define run-gc #f)         ;; mem.scm
 (define expand-tl #f)      ;; expand.scm
 (define gen-ast #f)        ;; ast.scm
-(define repl-print-lco #f) ;; main.scm
 (define alloc-ptr #f)
 (define global-ptr #f)
 (define get-entry-points-loc #f)
@@ -181,7 +179,6 @@
   ;; Put error msg in RAX
   (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding err)))
   (x86-call cgc label-rt-error))
-  ;; TODO: handle repl mode
 
 ;; Gen code for error
 ;; stop-exec? to #f to continue after error
@@ -237,23 +234,6 @@
             (x86-call cgc label-gc) ;; call C function
             (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
             (x86-mov cgc alloc-ptr (x86-rax))))))) ;; TODO : Update alloc-ptr
-
-
-;;-----------------------------------------------------------------------------
-
-;; TODO: remove rax from c-caller-save-regs, then use gen-handler for this function
-(define (gen-repl-call cgc)
-  (push-pop-regs
-    cgc
-    c-caller-save-regs ;; preserve regs for C call
-    (lambda (cgc)
-      (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-      (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-      (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-      (x86-push cgc (x86-rdi))
-      (x86-call cgc label-repl) ;; call C function
-      (x86-pop cgc (x86-rsp))
-      (x86-push cgc (x86-rax))))) ;; Push version address
 
 ;;-----------------------------------------------------------------------------
 
@@ -324,18 +304,6 @@
          (msg      (encoding-obj msg-enc)))
 
     (and (print msg) (force-output) (= newline? 1) (newline))))
-
-;; Repl function.
-;; Get sexpr from stdin, gen-version for empty context and returns version address
-(c-define (repl sp) (long) long "repl" ""
-  (print "lc> ")
-  (let ((r (read)))
-    (if (or (eq? r 'quit) (eof-object? r))
-        (begin (println "") (exit 0))
-        (let* ((r (car (expand-tl (list r))))
-               (lco (gen-ast r repl-print-lco))
-               (addr (gen-version code-alloc lco (ctx-init))))
-          addr))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -557,7 +525,6 @@
   (set-cdef-label! label-exec-error       'exec-error       "___result = ___CAST(void*,exec_error);")
   (set-cdef-label! label-print-msg        'print-msg        "___result = ___CAST(void*,print_msg);")
   (set-cdef-label! label-print-msg-val    'print-msg-val    "___result = ___CAST(void*,print_msg_val);")
-  (set-cdef-label! label-repl             'repl             "___result = ___CAST(void*,repl);")
   (set-cdef-label! label-gc               'gc               "___result = ___CAST(void*,gc);")
   (set-cdef-label! label-do-callback      'do_callback      "___result = ___CAST(void*,do_callback);")
   (set-cdef-label! label-do-callback-fn   'do_callback_fn   "___result = ___CAST(void*,do_callback_fn);")
@@ -744,15 +711,18 @@
 (define label-do-callback-handler #f)
 (define label-do-callback-fn-handler #f)
 (define label-do-callback-cont-handler #f)
+(define label-breakpoint-handler #f)
 
-(define (gen-handler cgc id label)
+;; Default save regs is c-caller-save-regs set
+(define (gen-handler cgc id label #!optional saved-regs)
   (let ((label-handler (asm-make-label cgc id)))
 
     (x86-label cgc label-handler)
 
     (push-pop-regs
      cgc
-     c-caller-save-regs ;; preserve regs for C call
+     (or saved-regs
+         c-caller-save-regs) ;; preserve regs for C call
      (lambda (cgc)
        (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
        (x86-and  cgc (x86-rsp) (x86-imm-int -16))
@@ -779,6 +749,9 @@
 
     (set! label-do-callback-cont-handler
           (gen-handler cgc 'do_callback_cont_handler label-do-callback-cont))
+
+    (set! label-breakpoint-handler
+          (gen-handler cgc 'do_breakpoint label-breakpoint all-regs))
 
     ;; Runtime GC call
     (set! label-gc-trampoline (asm-make-label cgc 'gc_trampoline))

@@ -32,21 +32,6 @@
 ;;-----------------------------------------------------------------------------
 ;; BREAKPOINT
 
-;; Gen call to breakpoint label
-(define (gen-breakpoint cgc)
-
-  (push-pop-regs
-     cgc
-     all-regs
-     (lambda (cgc)
-       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-       (x86-push cgc (x86-rdi))
-       (x86-call cgc label-breakpoint) ;; call C function
-       (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-       )))
-
 ;; Give a cmd to user to print registers or stack
 (c-define (break_point sp) (long) void "break_point" ""
 
@@ -75,11 +60,11 @@
     (cond ((= n 0))
           ((= n 1)
              (println "       +--------------------+--------------------+")
-             (print   "RSP -> | ") (println-slot (get-i64 (+ (* 8 (- n 1)) (cdr (assoc "RSP" regs)))))
+             (print   "RSP -> | ") (println-slot (get-i64 (+ (* 8 n) (cdr (assoc "RSP" regs)))))
              (println "       +--------------------+--------------------+"))
           (else
              (print-stack (- n 1) regs)
-             (print   "       | ") (println-slot (get-i64 (+ (* 8 (- n 1)) (cdr (assoc "RSP" regs)))))
+             (print   "       | ") (println-slot (get-i64 (+ (* 8 n) (cdr (assoc "RSP" regs)))))
              (println "       +--------------------+--------------------+"))))
 
   (define (print-regs regs)
@@ -95,6 +80,8 @@
     (define (run)
       (print ">")
       (let ((r (read-line)))
+        (if (eof-object? r)
+            (set! r "NEXT"))
         (set! r (string-upcase r))
         (let ((reg (assoc r regs)))
           (cond ;; Print help
