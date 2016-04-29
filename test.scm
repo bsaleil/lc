@@ -21,13 +21,9 @@
 ;; Optimisation retour:
 ;
 ;(string->symbol "jjj")
-(let ((ss "Bonjour")
-      (tt "Bonjour")
-      (uu 'Bonjour))
-  (pp (eq? ss tt))
-  (pp (eq? (string->symbol tt) uu))
-  (pp ss)
-  (pp (string->symbol ss)))
+(define (foo a b) (+ a b))
+
+(foo 1 #f 3)
 
 ;; TODO WIP: extraire le code de mlc-lambda en sous fonctions, et créer des versions de mlc-lambda spécialisées:
 ;; mlc-lambda

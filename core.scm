@@ -167,6 +167,7 @@
 (define NENCODING_EOF  -4) ;; non encoded EOF
 
 ;;--------------------------------------------------------------------------------
+;; Runtime error
 
 ;; Return lazy code object which generates an error with 'msg'
 (define (get-lazy-error msg)
@@ -174,36 +175,14 @@
     (lambda (cgc ctx)
       (gen-error cgc msg))))
 
-
 (define (gen-error cgc err #!optional (stop-exec? #t))
   ;; Put error msg in RAX
   (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding err)))
-  (x86-call cgc label-rt-error))
-
-;; Gen code for error
-;; stop-exec? to #f to continue after error
-(define (gen-rt-error cgc)
-
-  ;; Call exec-error
-  (push-pop-regs cgc
-                 c-caller-save-regs ;; preserve regs for C call
-                 (lambda (cgc)
-                   (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-                   (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-                   (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-                   (x86-push cgc (x86-rdi))
-                   (x86-call cgc label-exec-error) ;; call C function
-                   (x86-pop  cgc (x86-rsp)))) ;; restore unaligned stack-pointer
-
-  (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-  (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
-  (x86-mov cgc (x86-rax) (x86-imm-int -1))
-  (pop-regs-reverse cgc all-regs)
-  (x86-ret cgc))
+  (x86-call cgc label-rt-error-handler))
 
 ;; The procedure exec-error is callable from generated machine code.
 ;; This function print the error message in rax
-(c-define (exec-error sp) (long) void "exec_error" ""
+(c-define (rt-error sp) (long) void "rt_error" ""
   (let* ((err-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
          (err (encoding-obj err-enc)))
     (print "!!! ERROR : ")
@@ -506,11 +485,11 @@
                        ,c-code))))))
 
 (define (init-labels cgc)
-  (set-cdef-label! label-exec-error       'exec-error       "___result = ___CAST(void*,exec_error);")
   (set-cdef-label! label-print-msg        'print-msg        "___result = ___CAST(void*,print_msg);")
   (set-cdef-label! label-print-msg-val    'print-msg-val    "___result = ___CAST(void*,print_msg_val);")
   (set-cdef-label! label-gc               'gc               "___result = ___CAST(void*,gc);")
 
+  (set-cdef-label! label-rt-error         'rt_error         "___result = ___CAST(void*,rt_error);")
   (set-cdef-label! label-interned-symbol  'interned_symbol  "___result = ___CAST(void*,interned_symbol);")
   (set-cdef-label! label-do-callback      'do_callback      "___result = ___CAST(void*,do_callback);")
   (set-cdef-label! label-do-callback-fn   'do_callback_fn   "___result = ___CAST(void*,do_callback_fn);")
@@ -697,17 +676,18 @@
 (define label-do-callback-fn-handler #f)
 (define label-do-callback-cont-handler #f)
 (define label-breakpoint-handler #f)
+(define label-interned-symbol-handler #f)
+(define label-rt-error-handler #f)
 
 ;; Default save regs is c-caller-save-regs set
-(define (gen-handler cgc id label #!optional saved-regs)
+(define (gen-handler cgc id label saved-regs)
   (let ((label-handler (asm-make-label cgc id)))
 
     (x86-label cgc label-handler)
 
     (push-pop-regs
      cgc
-     (or saved-regs
-         c-caller-save-regs) ;; preserve regs for C call
+     saved-regs
      (lambda (cgc)
        (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
        (x86-and  cgc (x86-rsp) (x86-imm-int -16))
@@ -716,9 +696,6 @@
        (x86-call cgc label) ;; call C function
        (x86-pop  cgc (x86-rsp)))) ;; restore unaligned stack-pointer
 
-
-    (x86-ret cgc)
-
     label-handler))
 
 (define (init-rtlib cgc)
@@ -726,20 +703,41 @@
 
     (x86-jmp cgc label-rtlib-skip)
 
+    ;; do_callback
     (set! label-do-callback-handler
-          (gen-handler cgc 'do_callback_handler label-do-callback))
+          (gen-handler cgc 'do_callback_handler label-do-callback c-caller-save-regs))
+    (x86-ret cgc)
 
+    ;; do_callback_fn
     (set! label-do-callback-fn-handler
-          (gen-handler cgc 'do_callback_fn_handler label-do-callback-fn))
+          (gen-handler cgc 'do_callback_fn_handler label-do-callback-fn c-caller-save-regs))
+    (x86-ret cgc)
 
+    ;; do_callback_cont
     (set! label-do-callback-cont-handler
-          (gen-handler cgc 'do_callback_cont_handler label-do-callback-cont))
+          (gen-handler cgc 'do_callback_cont_handler label-do-callback-cont c-caller-save-regs))
+    (x86-ret cgc)
 
+    ;; breakpoint
     (set! label-breakpoint-handler
           (gen-handler cgc 'breakpoint_handler label-breakpoint all-regs))
+    (x86-ret cgc)
 
+    ;; interned_symbol
     (set! label-interned-symbol-handler
-          (gen-handler cgc 'interned_symbol_handler label-interned-symbol))
+          (gen-handler cgc 'interned_symbol_handler label-interned-symbol c-caller-save-regs))
+    (x86-ret cgc)
+
+    ;; Runtime error
+    (set! label-rt-error-handler
+          (gen-handler cgc 'rt_error_handler label-rt-error c-caller-save-regs))
+    (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
+    (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
+    (x86-mov cgc (x86-rax) (x86-imm-int -1))
+    (pop-regs-reverse cgc all-regs)
+    (x86-ret cgc)
+
+    ;; -------------------------
 
     ;; Runtime GC call
     (set! label-gc-trampoline (asm-make-label cgc 'gc_trampoline))
@@ -747,10 +745,7 @@
     (gen-gc-call cgc)
     (x86-ret cgc)
 
-    ;; Runtime error
-    (set! label-rt-error (asm-make-label cgc 'rt_error))
-    (x86-label cgc label-rt-error)
-    (gen-rt-error cgc)
+
 
     (x86-label cgc label-rtlib-skip)
 
