@@ -246,28 +246,21 @@
 
 (define (gen-print-reg cgc msg reg)
 
+  ;; Save rax & rcx
+  ;; We want that gen-print-reg does not change the value of any register
   (x86-push cgc (x86-rax))
   (x86-push cgc (x86-rcx))
-
+  ;; Move msg & val to print
   (x86-mov cgc (x86-rcx) reg)
   (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding msg)))
 
-  (push-pop-regs
-       cgc
-       c-caller-save-regs ;; preserve regs for C call
-       (lambda (cgc)
-         (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-         (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-         (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-         (x86-push cgc (x86-rdi))
-         (x86-call cgc label-print-msg-val) ;; call C function
-         (x86-pop  cgc (x86-rsp)))) ;; restore unaligned stack-pointer
-
+  (x86-call cgc label-print-msg-val-handler)
 
   (x86-pop cgc (x86-rcx))
   (x86-pop cgc (x86-rax)))
 
-;; TODO
+;; Print msg which is encoded in rax
+;; Print val which is in rcx
 (c-define (print-msg-val sp) (long) void "print_msg_val" ""
   (let* ((msg-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
          (val     (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
@@ -486,9 +479,10 @@
 
 (define (init-labels cgc)
   (set-cdef-label! label-print-msg        'print-msg        "___result = ___CAST(void*,print_msg);")
-  (set-cdef-label! label-print-msg-val    'print-msg-val    "___result = ___CAST(void*,print_msg_val);")
+
   (set-cdef-label! label-gc               'gc               "___result = ___CAST(void*,gc);")
 
+  (set-cdef-label! label-print-msg-val    'print-msg-val    "___result = ___CAST(void*,print_msg_val);")
   (set-cdef-label! label-rt-error         'rt_error         "___result = ___CAST(void*,rt_error);")
   (set-cdef-label! label-interned-symbol  'interned_symbol  "___result = ___CAST(void*,interned_symbol);")
   (set-cdef-label! label-do-callback      'do_callback      "___result = ___CAST(void*,do_callback);")
@@ -735,6 +729,11 @@
     (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
     (x86-mov cgc (x86-rax) (x86-imm-int -1))
     (pop-regs-reverse cgc all-regs)
+    (x86-ret cgc)
+
+    ;; Print msg val
+    (set! label-print-msg-val-handler
+          (gen-handler cgc 'print_msg_val_handler label-print-msg-val c-caller-save-regs))
     (x86-ret cgc)
 
     ;; -------------------------

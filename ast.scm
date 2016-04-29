@@ -249,6 +249,7 @@
     (mlc-flonum ast succ)
     (make-lazy-code
       (lambda (cgc ctx)
+
         (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
           (apply-moves cgc ctx moves)
           (codegen-literal cgc ast reg)

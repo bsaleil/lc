@@ -21,9 +21,9 @@
 ;; Optimisation retour:
 ;
 ;(string->symbol "jjj")
-(define (foo a b) (+ a b))
 
-(foo 1 #f 3)
+
+200
 
 ;; TODO WIP: extraire le code de mlc-lambda en sous fonctions, et créer des versions de mlc-lambda spécialisées:
 ;; mlc-lambda
