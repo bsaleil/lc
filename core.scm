@@ -504,12 +504,12 @@
 ;; Process stack (pstack) is still used for each call to c code (stubs and others)
 (define ustack #f)
 (define ustack-init #f) ;; initial rsp value (right of the stack)
-(define ustack-len 500000) ;; 500ko
+(define ustack-len 512000) ;; 500ko
 
 ;; TODO: use real pstack
 (define pstack #f)
 (define pstack-init #f)
-(define pstack-len 500000) ;; 500ko
+(define pstack-len 500000) ;; 512ko
 
 (define (init-mcb)
   (set! mcb (make-mcb code-len))
@@ -523,12 +523,15 @@
     ;(println "### Initial to space  : " (##foreign-address tspace) " -> " (+ (##foreign-address tspace) space-len)))
   (set! from-space init-from-space)
   (set! to-space init-to-space)
-  ;; stack
-  (set! ustack (make-u8vector ustack-len))
+  (set! ustack (make-vector (/ ustack-len 8)))
   (set! ustack-init (+ (- (obj-encoding ustack) 1) 8 ustack-len))
-  ;; Align initial stack pointer value to avoid weird segfault
-  (let ((extra (modulo ustack-init 8)))
-    (set! ustack-init (- ustack-init extra)))
+
+  ;;; stack
+  ;(set! ustack (make-u8vector ustack-len))
+  ;(set! ustack-init (+ (- (obj-encoding ustack) 1) 8 ustack-len))
+  ;;; Align initial stack pointer value to avoid weird segfault
+  ;(let ((extra (modulo ustack-init 8)))
+  ;  (set! ustack-init (- ustack-init extra)))
   ;; TODO: use real pstack
   (set! pstack (make-u8vector pstack-len))
   (set! pstack-init (+ (- (obj-encoding pstack) 1) 8 pstack-len))
@@ -763,11 +766,11 @@
 
     ;; Put heaplimit in heaplimit slot
     ;; TODO: remove cst slots
-    (x86-mov cgc (x86-rcx) (x86-imm-int (- from-space space-len)))
+    (x86-mov cgc (x86-rcx) (x86-imm-int (get-heap_limit)))
     (x86-mov cgc (x86-mem (* 8 5) (x86-rax)) (x86-rcx))
 
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-    (x86-mov cgc alloc-ptr (x86-imm-int from-space))       ;; Heap addr in alloc-ptr
+    (x86-mov cgc alloc-ptr (x86-imm-int (get-hp)))       ;; Heap addr in alloc-ptr
     (x86-mov cgc global-ptr (x86-imm-int (+ block-addr (* 8 global-offset)))) ;; Globals addr in r10
 
     ;; Set all registers used for regalloc to 0
@@ -782,15 +785,15 @@
 
   (init-code-allocator)
 
-  ;; Create default ports in 'block'
-  (let ((output-header (mem-header 2 STAG_OPORT))
-        (input-header  (mem-header 2 STAG_IPORT)))
-    ;; output
-    (put-i64 (+ block-addr 8) output-header)
-    (put-i64 (+ block-addr 16) 1)
-    ;; input
-    (put-i64 (+ block-addr 24) input-header)
-    (put-i64 (+ block-addr 32) 0))
+  ;;; Create default ports in 'block'
+  ;(let ((output-header (mem-header 2 STAG_OPORT))
+  ;      (input-header  (mem-header 2 STAG_IPORT)))
+  ;  ;; output
+  ;  (put-i64 (+ block-addr 8) output-header)
+  ;  (put-i64 (+ block-addr 16) 1)
+  ;  ;; input
+  ;  (put-i64 (+ block-addr 24) input-header)
+  ;  (put-i64 (+ block-addr 32) 0))
 
   (code-add
    (lambda (cgc)
