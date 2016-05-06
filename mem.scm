@@ -48,16 +48,20 @@ ___WORD get_hp_addr()
   ___WORD* ptr = (___WORD*)___PSTATE+word_offset;
   return (___WORD)ptr;
 }
+
+___WORD get_heap_limit_addr()
+{
+  int word_offset = offsetof(___processor_state_struct,heap_limit) / sizeof(___WORD);
+  ___WORD* ptr = (___WORD*)___PSTATE+word_offset;
+  return (___WORD)ptr;
+}
 ")
+
+(define (get-heap_limit-addr)
+  ((c-lambda () long "get_heap_limit_addr")))
 
 (define (get-hp-addr)
   ((c-lambda () long "get_hp_addr")))
-
-(define (get-hp)
-  ((c-lambda () long "___result = ___CAST(___S64,___PSTATE->hp);")))
-
-(define (get-heap_limit)
-  ((c-lambda () long "___result = ___CAST(___S64,___PSTATE->heap_limit);")))
 
 (define (get-words-from-byte bytes)
   (let ((words (quotient bytes 8))
@@ -73,7 +77,7 @@ ___WORD get_hp_addr()
 
   (let ((label-alloc-end (asm-make-label #f (new-sym 'label-alloc-ok))))
 
-    (x86-add cgc alloc-ptr (x86-imm-int (get-words-from-byte length)))
+    (x86-add cgc alloc-ptr (x86-imm-int (* 8 (get-words-from-byte length))))
     (x86-mov cgc (x86-rax) (x86-imm-int (+ (* 5 8) block-addr)))
     (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
 

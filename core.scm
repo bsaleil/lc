@@ -178,7 +178,7 @@
 (define (gen-error cgc err #!optional (stop-exec? #t))
   ;; Put error msg in RAX
   (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding err)))
-  (x86-call cgc label-rt-error-handler))
+  (x86-call-label-aligned-ret cgc label-rt-error-handler))
 
 ;; The procedure exec-error is callable from generated machine code.
 ;; This function print the error message in rax
@@ -225,7 +225,7 @@
   (x86-mov cgc (x86-rax) p1)
   (x86-mov cgc (x86-rcx) p2)
 
-  (x86-call cgc label-handler)
+  (x86-call-label-unaligned-ret cgc label-handler)
 
   (x86-pop cgc (x86-rcx))
   (x86-pop cgc (x86-rax)))
@@ -504,7 +504,7 @@
 ;; Process stack (pstack) is still used for each call to c code (stubs and others)
 (define ustack #f)
 (define ustack-init #f) ;; initial rsp value (right of the stack)
-(define ustack-len 512000) ;; 500ko
+(define ustack-len 8000)
 
 ;; TODO: use real pstack
 (define pstack #f)
@@ -655,7 +655,7 @@
     stub-labels))
 
 (define (call-handler cgc label-handler obj)
-  (x86-call cgc label-handler)
+  (x86-call-label-unaligned-ret cgc label-handler)
   (asm-64   cgc (obj-encoding obj)))
 
 (define (stub-reclaim stub-addr)
@@ -685,7 +685,7 @@
         (x86-mov cgc (x86-rdi) (x86-rsp)) ;; vstack in rdi
         (x86-mov cgc (x86-rsp) (x86-imm-int pstack-init))
         (x86-push cgc (x86-rdi)) ;; save vstack addr to c stack
-        (x86-call cgc label)
+        (x86-call-label-unaligned-ret cgc label)
         (x86-pop cgc (x86-rsp)))) ;; restore rsp (points to vstack)
 
     label-handler))
@@ -731,7 +731,7 @@
 
     ;; Print msg
     (set! label-print-msg-handler
-          (gen-handler cgc 'print_msg label-print-msg c-caller-save-regs))
+          (gen-handler cgc 'print_msg_handler label-print-msg c-caller-save-regs))
     (x86-ret cgc)
 
     ;; Print msg val
@@ -742,10 +742,10 @@
     ;; -------------------------
 
     ;; Runtime GC call
-    (set! label-gc-trampoline (asm-make-label cgc 'gc_trampoline))
-    (x86-label cgc label-gc-trampoline)
-    (gen-gc-call cgc)
-    (x86-ret cgc)
+    ;(set! label-gc-trampoline (asm-make-label cgc 'gc_trampoline))
+    ;(x86-label cgc label-gc-trampoline)
+    ;(gen-gc-call cgc)
+    ;(x86-ret cgc)
 
     (x86-label cgc label-rtlib-skip)
 
@@ -760,17 +760,17 @@
     (x86-mov cgc (x86-rsp) (x86-imm-int ustack-init))
 
     ;; Init debug slots
-    (for-each (lambda (s)
-                (gen-set-slot cgc (car s) 0))
-              debug-slots)
+    ;(for-each (lambda (s)
+    ;            (gen-set-slot cgc (car s) 0))
+    ;          debug-slots)
 
     ;; Put heaplimit in heaplimit slot
     ;; TODO: remove cst slots
-    (x86-mov cgc (x86-rcx) (x86-imm-int (get-heap_limit)))
+    (x86-mov cgc (x86-rcx) (x86-mem (get-heap_limit-addr)))
     (x86-mov cgc (x86-mem (* 8 5) (x86-rax)) (x86-rcx))
 
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-    (x86-mov cgc alloc-ptr (x86-imm-int (get-hp)))       ;; Heap addr in alloc-ptr
+    (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr)))       ;; Heap addr in alloc-ptr
     (x86-mov cgc global-ptr (x86-imm-int (+ block-addr (* 8 global-offset)))) ;; Globals addr in r10
 
     ;; Set all registers used for regalloc to 0

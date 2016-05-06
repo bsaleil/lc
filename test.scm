@@ -22,8 +22,9 @@
 ;
 ;(string->symbol "jjj")
 
-(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)(cons 1 2)
-
+(let ((p1 (cons #\u #\J))
+      (p2 (cons #\I #\p)))
+  100)
 ;(cons 1 2)
 
 ;; TODO WIP: extraire le code de mlc-lambda en sous fonctions, et créer des versions de mlc-lambda spécialisées:

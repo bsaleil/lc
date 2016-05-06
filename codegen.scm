@@ -30,6 +30,53 @@
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
+;; x86-call function produce an error.
+;; x86-call could generate a call with a non aligned return address
+;; which may cause trouble to the gc
+;; Use specialized *x86-call-label-unaligned-ret* and *x86-call-label-aligned-ret* instead
+
+;; Generate a call to a label with a return address not necessarily aligned to 4
+(define x86-call-label-unaligned-ret #f)
+
+(define (gen-x86-error-call)
+  (lambda (cgc opnd)
+    (error "Internal error, do *NOT* directly use x86-call function.")))
+
+;; Generate a call to a label with a return address aligned to 4
+;; (end with 00 which is the integer tag)
+(define (gen-x86-aligned-call call-fn)
+  (lambda (cgc label)
+
+    (define align-mult 4) ;; tag 00 (int tag)
+    (define call-size 5)  ;; Call to a label is a *CALL rel32* which is a 5 bytes instruction on x86_64
+    (define opnop #x90)   ;; NOP opcode
+
+    (define nop-needed 0) ;; Number of NOP needed to align return address
+
+    (asm-at-assembly
+
+     cgc
+
+     (lambda (cb self)
+       (let ((ex (modulo (+ self call-size) align-mult)))
+         (if (> ex 0)
+             (set! nop-needed (- align-mult ex)))
+         nop-needed))
+
+     (lambda (cb self)
+       (let loop ((i nop-needed))
+         (if (> i 0)
+           (begin (asm-8 cb opnop)
+                  (loop (- i 1)))))))
+
+    (call-fn cgc label)))
+
+;; Redefine calls
+(let ((gambit-call x86-call))
+  (set! x86-call (gen-x86-error-call))
+  (set! x86-call-label-unaligned-ret gambit-call)
+  (set! x86-call-label-aligned-ret (gen-x86-aligned-call gambit-call)))
+
 ;;-----------------------------------------------------------------------------
 ;; x86 Registers
 
