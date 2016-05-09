@@ -91,6 +91,7 @@
 
 (define alloc-ptr  (x86-r9))
 (define global-ptr (x86-r8))
+(define selector-reg (x86-rcx))
 
 ;; NOTE: temporary register is always rax
 ;; NOTE: selector is always rcx
@@ -438,7 +439,7 @@
 ;; Pair
 (define (codegen-pair cgc fs reg lcar lcdr car-cst? cdr-cst? mut-car? mut-cdr?)
 
-  (let ((header-word (mem-header 3 STAG_PAIR))
+  (let ((header-word (mem-header 2 STAG_PAIR))
         (dest  (codegen-reg-to-x86reg reg))
         (opcar (and (not car-cst?) (codegen-loc-to-x86opnd fs lcar)))
         (opcdr (and (not cdr-cst?) (codegen-loc-to-x86opnd fs lcdr))))

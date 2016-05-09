@@ -14,7 +14,7 @@
 ;* NOTE: en attendant, pour faire fonctionner le GC de LC, il faut stocker dans block le bottom de la pile V aussi
 
 ;; Optimisation appel:
-;;   * Pour chaque vriable globale non redéfinie et fonction:
+;;   * Pour chaque variable globale non redéfinie et fonction:
 ;;      - Stocker sa cc table (son pt entrée)
 ;;      - pour chaque entrée de la table, garder si une version existe (ou juste un booleen si pt entree)
 ;;      - pour chaque entrée de la table, garder une liste des adresses ou ona écrit le stub en dur (ou juste une liste si pt entree)
@@ -22,9 +22,24 @@
 ;
 ;(string->symbol "jjj")
 
-(let ((p1 (cons #\u #\J))
-      (p2 (cons #\I #\p)))
-  100)
+;100
+
+(let ((a (cons 1 2))
+      (b (cons 20 30)))
+
+  (if (= (+ (car a) (cdr b)) 31)
+      (write-char #\E)
+      (write-char #\N))
+  (write-char #\newline))
+
+;(let ((p1 (cons #\t #\e))
+;      (p2 (cons #\s #\t)))
+;  100
+;  (write-char (car p1))
+;  (write-char (cdr p1))
+;  (write-char (car p2))
+;  (write-char (cdr p2))
+;  (write-char #\newline))
 ;(cons 1 2)
 
 ;; TODO WIP: extraire le code de mlc-lambda en sous fonctions, et créer des versions de mlc-lambda spécialisées:

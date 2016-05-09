@@ -177,13 +177,16 @@
 
 (define (gen-error cgc err #!optional (stop-exec? #t))
   ;; Put error msg in RAX
-  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding err)))
-  (x86-call-label-aligned-ret cgc label-rt-error-handler))
+  (let ((r1 (car regalloc-regs)))
+    (x86-push cgc r1)
+    (x86-mov cgc r1 (x86-imm-int (obj-encoding err)))
+    (x86-call-label-aligned-ret cgc label-rt-error-handler)
+    (x86-pop cgc r1)))
 
 ;; The procedure exec-error is callable from generated machine code.
 ;; This function print the error message in rax
 (c-define (rt-error sp) (long) void "rt_error" ""
-  (let* ((err-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
+  (let* ((err-enc (get-i64 (+ sp (reg-sp-offset 0))))
          (err (encoding-obj err-enc)))
     (print "!!! ERROR : ")
     (println err)))
@@ -219,16 +222,29 @@
 (define (gen-print-* cgc label-handler p1 p2)
   ;; Save rax & rcx.
   ;; We want this function not modify any register
-  (x86-push cgc (x86-rax))
-  (x86-push cgc (x86-rcx))
+  (let ((r1 (car regalloc-regs))
+        (r2 (cadr regalloc-regs)))
 
-  (x86-mov cgc (x86-rax) p1)
-  (x86-mov cgc (x86-rcx) p2)
+    (x86-push cgc r1)
+    (x86-push cgc r2)
 
-  (x86-call-label-unaligned-ret cgc label-handler)
+    (x86-mov cgc r1 p1)
+    (x86-mov cgc r2 p2)
 
-  (x86-pop cgc (x86-rcx))
-  (x86-pop cgc (x86-rax)))
+    (x86-call-label-aligned-ret cgc label-handler)
+
+    (x86-pop cgc r2)
+    (x86-pop cgc r1)))
+  ;(x86-push cgc (x86-rax))
+  ;(x86-push cgc (x86-rcx))
+  ;
+  ;(x86-mov cgc (x86-rax) p1)
+  ;(x86-mov cgc (x86-rcx) p2)
+  ;
+  ;(x86-call-label-unaligned-ret cgc label-handler)
+  ;
+  ;(x86-pop cgc (x86-rcx))
+  ;(x86-pop cgc (x86-rax)))
 
 (define (gen-print-obj cgc reg newline?)
   (gen-print-*
@@ -247,10 +263,9 @@
 ;; Print msg which is encoded in rax
 ;; Print val which is in rcx
 (c-define (print-msg-val sp) (long) void "print_msg_val" ""
-  (let* ((msg-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
-         (val     (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
+  (let* ((msg-enc (get-i64 (+ sp (reg-sp-offset 0))))
+         (val     (get-i64 (+ sp (reg-sp-offset 1))))
          (msg     (encoding-obj msg-enc)))
-
     (print msg " ")
     (println val)))
 
@@ -260,7 +275,9 @@
   (let* ((msg      (encoding-obj (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8)))))
          (newline? (encoding-obj (get-u64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))))
 
-    (and (print msg) (force-output) newline? (newline))))
+    (println "FROM STUB")
+    (##gc)))
+    ;(and (print msg) (force-output) newline? (newline))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -268,23 +285,23 @@
 ;; RCX holds selector (CL)
 (c-define (do-callback sp) (long) void "do_callback" ""
   (let* ((ret-addr
-          (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
+          (get-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
 
          (selector
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
+          (encoding-obj (get-i64 (+ sp (selector-sp-offset)))))
 
          (new-ret-addr
           (callback-fn ret-addr selector)))
 
     ;; replace return address
-    (put-i64 (+ sp (* nb-c-caller-save-regs 8))
+    (put-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))
              new-ret-addr)
 
     ;; reset selector
-    (put-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))
+    (put-i64 (+ sp (selector-sp-offset))
              0)))
 
 ;; Same behavior as 'do-callback' but calls callback with call site addr
@@ -634,7 +651,7 @@
            (x86-label cgc label)
            (if (> i 0)
                (begin
-                 (x86-inc cgc (x86-cl)) ;; increment selector
+                 (x86-add cgc (x86-cl) (x86-imm-int (obj-encoding 1))) ;; increment selector (selector is encoded)
                  (loop (- i 1))))))
        (gen cgc)))
     stub-labels))
@@ -673,20 +690,44 @@
 (define label-print-msg-handler        #f)
 (define label-print-msg-val-handler    #f)
 
-(define (gen-handler cgc id label saved-regs)
+(define (gen-handler cgc id label)
   (let ((label-handler (asm-make-label cgc id)))
 
     (x86-label cgc label-handler)
 
+    ;; Save regalloc-regs to ustack because stub could trigger GC,
+    ;; then registers are treated as stack roots
+    ;; Save selector to allow stub to access its value
     (push-pop-regs
       cgc
-      saved-regs
+      (cons selector-reg regalloc-regs)
       (lambda (cgc)
-        (x86-mov cgc (x86-rdi) (x86-rsp)) ;; vstack in rdi
+        ;; Update gambit heap ptr from LC heap ptr
+        (x86-mov cgc (x86-mem (get-hp-addr)) alloc-ptr)
+        ;; Move ustack in c first arg register
+        (x86-mov cgc (x86-rdi) (x86-rsp))
+        ;; Set rsp to pstack
         (x86-mov cgc (x86-rsp) (x86-imm-int pstack-init))
-        (x86-push cgc (x86-rdi)) ;; save vstack addr to c stack
-        (x86-call-label-unaligned-ret cgc label)
-        (x86-pop cgc (x86-rsp)))) ;; restore rsp (points to vstack)
+        ;; Save ustack ptr to pstack
+        (x86-push cgc (x86-rdi))
+        ;; Save c caller save registers
+        (push-pop-regs
+          cgc
+          (set-sub c-caller-save-regs (cons selector-reg (cons alloc-ptr regalloc-regs)) '())
+          (lambda (cgc)
+            ;; Aligned call to label
+            (x86-call-label-unaligned-ret cgc label)))
+        ;; Update LC heap ptr and heap limit from Gambit heap ptr and heap limit
+        (let ((r1 selector-reg)
+              (r2 alloc-ptr))
+          ;; heap limit
+          (x86-mov cgc r1 (x86-mem (get-heap_limit-addr)))
+          (x86-mov cgc r2 (x86-imm-int block-addr))
+          (x86-mov cgc (x86-mem (* 8 5) r2) r1)
+          ;; hp
+          (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr))))
+        ;; Set rsp to saved ustack sp
+        (x86-pop cgc (x86-rsp))))
 
     label-handler))
 
@@ -697,32 +738,32 @@
 
     ;; do_callback
     (set! label-do-callback-handler
-          (gen-handler cgc 'do_callback_handler label-do-callback c-caller-save-regs))
+          (gen-handler cgc 'do_callback_handler label-do-callback))
     (x86-ret cgc)
 
     ;; do_callback_fn
     (set! label-do-callback-fn-handler
-          (gen-handler cgc 'do_callback_fn_handler label-do-callback-fn c-caller-save-regs))
+          (gen-handler cgc 'do_callback_fn_handler label-do-callback-fn))
     (x86-ret cgc)
 
     ;; do_callback_cont
     (set! label-do-callback-cont-handler
-          (gen-handler cgc 'do_callback_cont_handler label-do-callback-cont c-caller-save-regs))
+          (gen-handler cgc 'do_callback_cont_handler label-do-callback-cont))
     (x86-ret cgc)
 
     ;; breakpoint
     (set! label-breakpoint-handler
-          (gen-handler cgc 'breakpoint_handler label-breakpoint all-regs))
+          (gen-handler cgc 'breakpoint_handler label-breakpoint))
     (x86-ret cgc)
 
     ;; interned_symbol
     (set! label-interned-symbol-handler
-          (gen-handler cgc 'interned_symbol_handler label-interned-symbol c-caller-save-regs))
+          (gen-handler cgc 'interned_symbol_handler label-interned-symbol))
     (x86-ret cgc)
 
     ;; Runtime error
     (set! label-rt-error-handler
-          (gen-handler cgc 'rt_error_handler label-rt-error c-caller-save-regs))
+          (gen-handler cgc 'rt_error_handler label-rt-error))
     (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
     (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
     (x86-mov cgc (x86-rax) (x86-imm-int -1))
@@ -731,12 +772,12 @@
 
     ;; Print msg
     (set! label-print-msg-handler
-          (gen-handler cgc 'print_msg_handler label-print-msg c-caller-save-regs))
+          (gen-handler cgc 'print_msg_handler label-print-msg))
     (x86-ret cgc)
 
     ;; Print msg val
     (set! label-print-msg-val-handler
-          (gen-handler cgc 'print_msg_val_handler label-print-msg-val c-caller-save-regs))
+          (gen-handler cgc 'print_msg_val_handler label-print-msg-val))
     (x86-ret cgc)
 
     ;; -------------------------
@@ -858,6 +899,13 @@
 
 (define nb-c-caller-save-regs
   (length c-caller-save-regs))
+
+(define (reg-sp-offset idx)
+  (assert (< idx (length regalloc-regs)) "Internal error")
+  (* 8 (- (length regalloc-regs) idx 1)))
+
+(define (selector-sp-offset)
+  (* 8 (length regalloc-regs)))
 
 (define rdx-pos
   (- nb-c-caller-save-regs

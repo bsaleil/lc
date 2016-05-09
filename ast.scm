@@ -253,6 +253,7 @@
         (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
           (apply-moves cgc ctx moves)
           (codegen-literal cgc ast reg)
+          (x86-mov cgc (x86-rax) (x86-imm-int 800))
           (jump-to-version cgc
                            succ
                            (ctx-push ctx
