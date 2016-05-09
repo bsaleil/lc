@@ -98,8 +98,10 @@
 ;; NOTE: stack pointer is always rsp
 
 ;; TODO: other offsets
-(define OFFSET_CAR 16)
-(define OFFSET_CDR  8)
+(define OFFSET_PAIR_CAR 16)
+(define OFFSET_PAIR_CDR  8)
+(define OFFSET_PROC_EP 8)
+(define (OFFSET_PROC_FREE i) (+ 16 (* 8 i)))
 
 ;;-----------------------------------------------------------------------------
 ;; x86 Codegen utils
@@ -454,61 +456,28 @@
     ;; Write car
     (cond
       (car-cst?
-        (x86-mov cgc (x86-mem (+ -24 OFFSET_CAR) alloc-ptr) (x86-imm-int (obj-encoding lcar)) 64))
+        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-imm-int (obj-encoding lcar)) 64))
       ((ctx-loc-is-memory? lcar)
         (x86-mov cgc (x86-rax) opcar)
         (if mut-car? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-        (x86-mov cgc (x86-mem (+ -24 OFFSET_CAR) alloc-ptr) (x86-rax)))
+        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax)))
       (else
         (if mut-car? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opcar)))
-        (x86-mov cgc (x86-mem (+ -24 OFFSET_CAR) alloc-ptr) (if mut-car? (x86-rax) opcar))))
+        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (if mut-car? (x86-rax) opcar))))
 
     ;; Write cdr
     (cond
       (cdr-cst?
-        (x86-mov cgc (x86-mem (+ -24 OFFSET_CDR) alloc-ptr) (x86-imm-int (obj-encoding lcdr)) 64))
+        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-imm-int (obj-encoding lcdr)) 64))
       ((ctx-loc-is-memory? lcdr)
         (x86-mov cgc (x86-rax) opcdr)
         (if mut-cdr? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-        (x86-mov cgc (x86-mem (+ -24 OFFSET_CDR) alloc-ptr) (x86-rax)))
+        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-rax)))
       (else
         (if mut-cdr? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opcdr)))
-        (x86-mov cgc (x86-mem (+ -24 OFFSET_CDR) alloc-ptr) (if mut-cdr? (x86-rax) opcdr))))
+        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (if mut-cdr? (x86-rax) opcdr))))
 
     (x86-lea cgc dest (x86-mem (+ -24 TAG_MEMOBJ) alloc-ptr))))
-
- ;(let ((header-word (mem-header 3 STAG_PAIR))
- ;      (dest  (codegen-reg-to-x86reg reg))
- ;      (opcar (and (not car-cst?) (codegen-loc-to-x86opnd fs lcar)))
- ;      (opcdr (and (not cdr-cst?) (codegen-loc-to-x86opnd fs lcdr))))
- ;   ;; Alloc
- ;  (gen-allocation cgc #f STAG_PAIR 3)
- ;   ;; Write object header
- ;  (x86-mov cgc (x86-rax) (x86-imm-int header-word))
- ;  (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
- ;   ;; Write car
- ;  (cond
- ;    (car-cst?
- ;      (x86-mov cgc (x86-mem OFFSET_CAR alloc-ptr) (x86-imm-int (obj-encoding lcar)) 64))
- ;    ((ctx-loc-is-memory? lcar)
- ;     (x86-mov cgc (x86-rax) opcar)
- ;     (if mut-car? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
- ;     (x86-mov cgc (x86-mem OFFSET_CAR alloc-ptr) (x86-rax)))
- ;    (else
- ;      (if mut-car? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opcar)))
- ;      (x86-mov cgc (x86-mem OFFSET_CAR alloc-ptr) (if mut-car? (x86-rax) opcar))))
- ;   ;; Write cdr
- ;  (cond
- ;    (cdr-cst?
- ;      (x86-mov cgc (x86-mem OFFSET_CDR alloc-ptr) (x86-imm-int (obj-encoding lcdr)) 64))
- ;    ((ctx-loc-is-memory? lcdr)
- ;     (x86-mov cgc (x86-rax) opcdr)
- ;     (if mut-cdr? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
- ;     (x86-mov cgc (x86-mem OFFSET_CDR alloc-ptr) (x86-rax)))
- ;    (else
- ;      (if mut-cdr? (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opcdr)))
- ;      (x86-mov cgc (x86-mem OFFSET_CDR alloc-ptr) (if mut-cdr? (x86-rax) opcdr))))
- ;  (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
 
 ;;-----------------------------------------------------------------------------
 ;; Vector (all elements are pushed on the stack in reverse order: first at [RSP+0], second at [RSP+8], ...)
@@ -576,8 +545,8 @@
     (x86-mov cgc (x86-rax) (x86-imm-int header-word))
     (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
     (x86-pop cgc (x86-rax))
-    (x86-mov cgc (x86-mem OFFSET_CAR alloc-ptr) (x86-rax))
-    (x86-mov cgc (x86-mem OFFSET_CDR alloc-ptr) (x86-r14))
+    (x86-mov cgc (x86-mem OFFSET_PAIR_CAR alloc-ptr) (x86-rax))
+    (x86-mov cgc (x86-mem OFFSET_PAIR_CDR alloc-ptr) (x86-r14))
     (x86-lea cgc (x86-r14) (x86-mem TAG_MEMOBJ alloc-ptr))
     (x86-sub cgc (x86-r15) (x86-imm-int (obj-encoding 1)))
     (x86-jmp cgc label-loop)
@@ -588,8 +557,8 @@
         (gen-allocation cgc #f STAG_PAIR 3)
         (x86-mov cgc (x86-rax) (x86-imm-int header-word))
         (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
-        (x86-mov cgc (x86-mem OFFSET_CAR alloc-ptr) src)
-        (x86-mov cgc (x86-mem OFFSET_CDR alloc-ptr) (x86-r14))
+        (x86-mov cgc (x86-mem OFFSET_PAIR_CAR alloc-ptr) src)
+        (x86-mov cgc (x86-mem OFFSET_PAIR_CDR alloc-ptr) (x86-r14))
         (x86-lea cgc (x86-r14) (x86-mem TAG_MEMOBJ alloc-ptr)))
       regs)
     ;; Dest
@@ -662,24 +631,25 @@
 
 ;; Alloc closure and write header
 (define (codegen-closure-create cgc nb-free)
-  (let* ((closure-size  (+ 2 nb-free)) ;; header, entry point
+  (let* ((closure-size  (+ 1 nb-free)) ;; entry point & free vars
          (header-word (mem-header closure-size STAG_PROCEDURE)))
     ;; 1 - Alloc closure
-    (gen-allocation cgc #f STAG_PROCEDURE closure-size)
+    (gen-allocation cgc #f STAG_PROCEDURE (* 8 (+ 1 closure-size)))
     ;; 2 - Write closure header
     (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))))
+    (x86-mov cgc (x86-mem (* -8 (+ closure-size 1)) alloc-ptr) (x86-rax))))
 
 ;; Write entry point in closure (do not use cctable)
-(define (codegen-closure-ep cgc ep-loc)
-  ;; Write entry point in closure
-  (x86-mov cgc (x86-rax) (x86-mem (+ 8 (- (obj-encoding ep-loc) 1))))
-  (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
+(define (codegen-closure-ep cgc ep-loc nb-free)
+  (let ((offset (+ OFFSET_PROC_EP (* -8 (+ nb-free 2)))))
+    (x86-mov cgc (x86-rax) (x86-mem (+ 8 (- (obj-encoding ep-loc) 1))))
+    (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))))
 
 ;; Write cctable ptr in closure (use multiple entry points)
-(define (codegen-closure-cc cgc cctable-loc)
-  (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
-  (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
+(define (codegen-closure-cc cgc cctable-loc nb-free)
+  (let ((offset (+ OFFSET_PROC_EP (* -8 (+ nb-free 2)))))
+    (x86-mov cgc (x86-rax) (x86-imm-int cctable-loc))
+    (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))))
 
 ;; Load closure in tmp register
 (define (codegen-load-closure cgc fs loc mut?)
@@ -693,9 +663,10 @@
           (x86-mov cgc (x86-rax)  (opnd))))))
 
 ;;; Push closure
-(define (codegen-closure-put cgc reg)
-  (let ((dest  (codegen-reg-to-x86reg reg)))
-    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
+(define (codegen-closure-put cgc reg nb-free)
+  (let ((dest   (codegen-reg-to-x86reg reg))
+        (offset (+ (* -8 (+ nb-free 2)) TAG_MEMOBJ)))
+    (x86-lea cgc dest (x86-mem offset alloc-ptr))))
 
 ;; Generate function return using a return address
 (define (codegen-return-rp cgc)
@@ -732,8 +703,8 @@
 ;    (x86-cmp cgc (x86-rbx) (x86-imm-int (obj-encoding '())))
 ;    (x86-je cgc label-end)
 ;      ;; Else, push arg and update RDI
-;    (x86-push cgc (x86-mem (- OFFSET_CAR TAG_MEMOBJ) (x86-rbx)))           ;; Push car
-;    (x86-mov cgc (x86-rbx) (x86-mem (- OFFSET_CDR TAG_MEMOBJ) (x86-rbx))) ;; Get cdr for next iteration
+;    (x86-push cgc (x86-mem (- OFFSET_PAIR_CAR TAG_MEMOBJ) (x86-rbx)))           ;; Push car
+;    (x86-mov cgc (x86-rbx) (x86-mem (- OFFSET_PAIR_CDR TAG_MEMOBJ) (x86-rbx))) ;; Get cdr for next iteration
 ;    (x86-inc cgc (x86-rdi))  ;; inc args number
 ;    (x86-jmp cgc label-loop) ;; next iteration
 ;    ;; All args are pushed
@@ -1265,8 +1236,8 @@
 (define (codegen-car/cdr cgc fs op reg lval mut-val?)
   (let ((offset
           (if (eq? op 'car)
-              (- OFFSET_CAR TAG_MEMOBJ)
-              (- OFFSET_CDR TAG_MEMOBJ)))
+              (- OFFSET_PAIR_CAR TAG_MEMOBJ)
+              (- OFFSET_PAIR_CDR TAG_MEMOBJ)))
         (dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
@@ -1284,8 +1255,8 @@
 (define (codegen-scar/scdr cgc fs op reg lpair lval val-cst? mut-val? mut-pair?)
   (let ((offset
           (if (eq? op 'set-car!)
-              (- OFFSET_CAR TAG_MEMOBJ)
-              (- OFFSET_CDR TAG_MEMOBJ)))
+              (- OFFSET_PAIR_CAR TAG_MEMOBJ)
+              (- OFFSET_PAIR_CDR TAG_MEMOBJ)))
         (dest (codegen-reg-to-x86reg reg))
         (oppair (codegen-loc-to-x86opnd fs lpair))
         (opval (and (not val-cst?) (codegen-loc-to-x86opnd fs lval))))

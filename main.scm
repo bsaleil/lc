@@ -160,6 +160,10 @@
   (let ((lazy-final
           (make-lazy-code
             (lambda (cgc ctx)
+
+              ;; Update gambit heap ptr from LC heap ptr
+              (x86-mov cgc (x86-mem (get-hp-addr)) alloc-ptr)
+
               ;; TODO regalloc: opt-time
               (let ((loc (ctx-get-loc ctx 0))) ;; Get loc of value in top of stack
                 (if (ctx-loc-is-register? loc)
@@ -167,12 +171,11 @@
                     (error "NYI regalloc")))
 
               ;; Set rsp to pstack top (rsp points to the last saved registers)
-              (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-              (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
+              (x86-mov cgc (x86-rbx) (x86-imm-int block-addr))
+              (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rbx)))
 
               ;; Restore registers values from pstack
               (pop-regs-reverse cgc all-regs)
-
               (x86-ret cgc)))))
 
 

@@ -249,11 +249,9 @@
     (mlc-flonum ast succ)
     (make-lazy-code
       (lambda (cgc ctx)
-
         (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
           (apply-moves cgc ctx moves)
           (codegen-literal cgc ast reg)
-          (x86-mov cgc (x86-rax) (x86-imm-int 800))
           (jump-to-version cgc
                            succ
                            (ctx-push ctx
@@ -666,31 +664,31 @@
           (if cctable-new?
               (cctable-fill cctable stub-addr generic-addr))
 
-          ;; Create closure
-          ;; Closure size = lenght of free variables + 1 if lambda-opt
-          (codegen-closure-create
-            cgc
-            (+ (length fvars) (if lambda-opt 1 0)))
+          (let ((close-length (+ (length fvars) (if lambda-opt 1 0))))
 
-          ;; Write entry point or cctable location
-          (if opt-entry-points
-              ;; If opt-entry-points generate a closure using cctable
-              (codegen-closure-cc cgc cctable-loc)
-              ;; Else, generate a closure using a single entry point
-              (let ((ep-loc (get-entry-points-loc ast stub-addr)))
-                (codegen-closure-ep cgc ep-loc)))
+            ;; Create closure
+            ;; Closure size = lenght of free variables + 1 if lambda-opt
+            (codegen-closure-create cgc close-length)
 
-          ;; Write free variables
-          (gen-free-vars cgc fvars ctx 0 lambda-opt)
+            ;; Write entry point or cctable location
+            (if opt-entry-points
+                ;; If opt-entry-points generate a closure using cctable
+                (codegen-closure-cc cgc cctable-loc close-length)
+                ;; Else, generate a closure using a single entry point
+                (let ((ep-loc (get-entry-points-loc ast stub-addr)))
+                  (codegen-closure-ep cgc ep-loc close-length)))
 
-          (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
-            (apply-moves cgc ctx moves)
+            ;; Write free variables
+            (gen-free-vars cgc fvars ctx 0 lambda-opt)
 
-            ;; Put closure
-            (codegen-closure-put cgc reg)
+            (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+              (apply-moves cgc ctx moves)
 
-            ;; Trigger the next object
-            (jump-to-version cgc succ (ctx-push ctx CTX_CLO reg))))))))
+              ;; Put closure
+              (codegen-closure-put cgc reg close-length)
+
+              ;; Trigger the next object
+              (jump-to-version cgc succ (ctx-push ctx CTX_CLO reg)))))))))
 
 ;; Create and return a lazy generic prologue
 (define (get-lazy-generic-prologue ast succ rest-param mvars nb-formal)
@@ -753,8 +751,8 @@
                 (x86-mov cgc (x86-rax) (x86-imm-int header-word))
                 (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
                 (x86-call cgc label-next-arg)
-                (x86-mov cgc (x86-mem OFFSET_CAR alloc-ptr) (x86-rax))
-                (x86-mov cgc (x86-mem OFFSET_CDR alloc-ptr) (x86-r14))
+                (x86-mov cgc (x86-mem OFFSET_PAIR_CAR alloc-ptr) (x86-rax))
+                (x86-mov cgc (x86-mem OFFSET_PAIR_CDR alloc-ptr) (x86-r14))
                 (x86-lea cgc (x86-r14) (x86-mem TAG_MEMOBJ alloc-ptr))
                 (x86-jmp cgc label-rest-loop))
               ;
@@ -1650,16 +1648,16 @@
                         (x86-cmp cgc (x86-r15) (x86-imm-int (obj-encoding '())))
                         (x86-je cgc label-end)
                           (x86-add cgc (x86-r11) (x86-imm-int 4))
-                          (x86-mov cgc (x86-r14) (x86-mem (- OFFSET_CAR TAG_MEMOBJ) (x86-r15)))
+                          (x86-mov cgc (x86-r14) (x86-mem (- OFFSET_PAIR_CAR TAG_MEMOBJ) (x86-r15)))
                           (x86-push cgc (x86-r14))
-                          (x86-mov cgc (x86-r15) (x86-mem (- OFFSET_CDR TAG_MEMOBJ) (x86-r15)))
+                          (x86-mov cgc (x86-r15) (x86-mem (- OFFSET_PAIR_CDR TAG_MEMOBJ) (x86-r15)))
                           (x86-jmp cgc label-loop))
                       (begin
                         (x86-cmp cgc (x86-r15) (x86-imm-int (obj-encoding '())))
                         (x86-je cgc label-end)
                           (x86-add cgc (x86-r11) (x86-imm-int 4))
-                          (x86-mov cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (car args-regs)) (x86-mem (- OFFSET_CAR TAG_MEMOBJ) (x86-r15)))
-                          (x86-mov cgc (x86-r15) (x86-mem (- OFFSET_CDR TAG_MEMOBJ) (x86-r15)))
+                          (x86-mov cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (car args-regs)) (x86-mem (- OFFSET_PAIR_CAR TAG_MEMOBJ) (x86-r15)))
+                          (x86-mov cgc (x86-r15) (x86-mem (- OFFSET_PAIR_CDR TAG_MEMOBJ) (x86-r15)))
                         (loop (cdr args-regs)))))
                 (x86-label cgc label-end)
                 (jump-to-version cgc lazy-call ctx)))))

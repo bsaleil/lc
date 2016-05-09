@@ -1,3 +1,26 @@
+;; TODO: allocation:
+;; - Vérifier, pour chaque stub potentiel, qu'on ne manipule pas une donnée
+;; - Qui peut être déplacée (patch-closure?)
+;; TODO: allocation:
+;; - flonum : codegen-flonum
+;; - string : codegen-string codegen-make-string codegen-sym->str
+;; - pairs  : codegen-pair codegen-list
+;; - vector : codegen-vector codegen-make-vector
+;; - closure: codegen-closure-create
+;; - others: codegen-prologue-rest> codegen-num-ff codegen-open-io-file codegen-mutable (?)
+
+;(cons 1 1)
+
+(define (foo)
+  #\P)
+
+(define (newline)
+ (write-char #\newline))
+
+(write-char (foo))
+(write-char (foo))
+(write-char (foo))
+(newline)
 
 
 ;* . Créer un vecteur scheme qui servira de pile
@@ -23,14 +46,6 @@
 ;(string->symbol "jjj")
 
 ;100
-
-(let ((a (cons 1 2))
-      (b (cons 20 30)))
-
-  (if (= (+ (car a) (cdr b)) 31)
-      (write-char #\E)
-      (write-char #\N))
-  (write-char #\newline))
 
 ;(let ((p1 (cons #\t #\e))
 ;      (p2 (cons #\s #\t)))

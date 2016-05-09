@@ -70,6 +70,7 @@ ___WORD get_heap_limit_addr()
         (+ words 1)
         words)))
 
+;; Length (bytes)
 (define (gen-allocation cgc ctx stag length)
 
   (if (> length MSECTION_BIGGEST)

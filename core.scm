@@ -329,20 +329,20 @@
 ;; | Call arg 1    |
 ;; +---------------+
 (c-define (do-callback-fn sp) (long) void "do_callback_fn" ""
-
+  (println "WARNING: do-callback-fn: we patch the closure but maybe the GC moved it !!")
   (let* ((ret-addr
-          (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
+          (get-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))))
 
          ;; R11 is the still-box containing call-ctx
          (still-encoding
-          (let ((encoded (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8)))))
-            (arithmetic-shift encoded -2)))
+           (let ((encoded (get-i64 (+ sp (reg-sp-offset-r (x86-r11))))))
+             (encoding-obj encoded)))
 
          (selector
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
+          (encoding-obj (get-i64 (+ sp (selector-sp-offset)))))
 
          (closure
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rsi-pos) 1) 8))))
+          (get-i64 (+ sp (reg-sp-offset-r (x86-rsi)))))
 
          ;; Get ctx from still-box address
          (ctx
@@ -352,7 +352,7 @@
 
          (nb-args
            (if (= selector 1)
-               (let ((encoded (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8)))))
+               (let ((encoded (get-i64 (+ sp (reg-sp-offset-r (x86-di))))))
                  (arithmetic-shift encoded -2))
                (- (length (ctx-stack ctx)) 2)))
 
@@ -363,11 +363,11 @@
           (callback-fn sp ctx ret-addr selector closure)))
 
     ;; replace return address
-    (put-i64 (+ sp (* nb-c-caller-save-regs 8))
+    (put-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))
              new-ret-addr)
 
     ;; reset selector
-    (put-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))
+    (put-i64 (+ sp (selector-sp-offset))
              0)))
 
 ;; The procedures do-callback* are callable from generated machine code.
@@ -627,7 +627,7 @@
   (let* ((alloc
           (if (= stub-freelist 0)
               (begin
-                (set! stub-alloc (- stub-alloc 16))
+                (set! stub-alloc (- stub-alloc 24))
                 stub-alloc)
               (let ((a stub-freelist))
                 (set! stub-freelist (get-i64 a))
@@ -641,7 +641,7 @@
        (let loop ((i max-selector))
          (let ((label
                 (asm-make-label
-                 cgc
+                 #f
                  (string->symbol
                   (string-append "stub_"
                                  (number->string alloc 16)
@@ -651,7 +651,9 @@
            (x86-label cgc label)
            (if (> i 0)
                (begin
-                 (x86-add cgc (x86-cl) (x86-imm-int (obj-encoding 1))) ;; increment selector (selector is encoded)
+                 ;(x86-inc cgc (x86-cl))
+                 (x86-add cgc (x86-ecx) (x86-imm-int (obj-encoding 1))) ;; increment selector
+                 (asm-align cgc 4 #x90)
                  (loop (- i 1))))))
        (gen cgc)))
     stub-labels))
@@ -903,6 +905,10 @@
 (define (reg-sp-offset idx)
   (assert (< idx (length regalloc-regs)) "Internal error")
   (* 8 (- (length regalloc-regs) idx 1)))
+
+(define (reg-sp-offset-r reg)
+  (assert (member reg regalloc-regs) "Internal error")
+  (* 8 (- (length (member reg regalloc-regs)) 1)))
 
 (define (selector-sp-offset)
   (* 8 (length regalloc-regs)))
