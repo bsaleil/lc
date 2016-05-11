@@ -127,7 +127,7 @@
 
 ;;
 ;; CTX INIT FN
-(define (ctx-init-fn call-ctx enclosing-ctx args free-vars mutable-vars global-opt? lambda-opt)
+(define (ctx-init-fn stack enclosing-ctx args free-vars mutable-vars global-opt? lambda-opt)
 
   ;;
   ;; FREE REGS
@@ -229,9 +229,8 @@
 
   ;;
   (make-ctx
-    (if call-ctx
-                (ctx-stack call-ctx)
-                (append (make-list (length args) CTX_UNK) (list CTX_CLO CTX_RETAD)))
+    (or stack
+        (append (make-list (length args) CTX_UNK) (list CTX_CLO CTX_RETAD)))
     (init-slot-loc)
     (init-free-regs)
     '()

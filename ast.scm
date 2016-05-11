@@ -625,13 +625,13 @@
                ;; Lambda stub
                (stub-labels (add-fn-callback cgc
                                              1
-                                             (lambda (sp sctx ret-addr selector closure)
+                                             (lambda (sp stack ret-addr selector closure)
                                               (cond ;; CASE 1 - Use multiple entry points AND use max-versions limit AND this limit is reached
                                                     ((and (= selector 0)
                                                           opt-max-versions
                                                           (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
                                                      (error "NYI1")
-                                                     (let* ((cctx (ctx-init-fn sctx ctx all-params fvars mvars global-opt lambda-opt))
+                                                     (let* ((cctx (ctx-init-fn stack ctx all-params fvars mvars global-opt lambda-opt))
                                                             (stack
                                                               (append (make-list (length all-params) CTX_UNK)
                                                                       (list CTX_CLO CTX_RETAD)))
@@ -640,12 +640,12 @@
 
                                                     ;; CASE 2 - Do not use multiple entry points
                                                     ((= selector 1)
-                                                     (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars global-opt lambda-opt)))
+                                                     (let ((ctx (ctx-init-fn stack ctx all-params fvars mvars global-opt lambda-opt)))
                                                        (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t global-opt)))
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
-                                                       (let ((ctx (ctx-init-fn sctx ctx all-params fvars mvars global-opt lambda-opt)))
+                                                       (let ((ctx (ctx-init-fn stack ctx all-params fvars mvars global-opt lambda-opt)))
                                                          (gen-version-fn ast closure lazy-prologue ctx ctx #f global-opt)))))))
 
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
@@ -1936,7 +1936,7 @@
           (else
              (let* ((idx (get-closure-index call-ctx)))
                (if idx
-                   (codegen-call-cc-spe cgc idx (ctx->still-ref call-ctx) nb-args entry-loc)
+                   (codegen-call-cc-spe cgc idx nb-args entry-loc)
                    (codegen-call-cc-gen cgc nb-args entry-loc))))))
 
 ;;-----------------------------------------------------------------------------

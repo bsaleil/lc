@@ -735,7 +735,7 @@
 ;;; Generate function call using a cctable and generic entry point
 (define (codegen-call-cc-gen cgc nb-args cctable-loc)
   (if nb-args
-      (x86-mov cgc (x86-rdi) (x86-imul (obj-encoding nb-args))))
+      (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args))))
   (if cctable-loc
       (x86-mov cgc (x86-rbp) (x86-imm-int cctable-loc))
       (begin
@@ -744,11 +744,11 @@
   (x86-jmp cgc (x86-mem 8 (x86-rbp)))) ;; Jump to generic entry point
 
 ;; Generate function call using a cctable and specialized entry point
-(define (codegen-call-cc-spe cgc idx ctx-imm nb-args cctable-loc)
+(define (codegen-call-cc-spe cgc idx nb-args cctable-loc)
     ;; Closure is in rax
     (let ((cct-offset (* 8 (+ 2 idx))))
       ;; 1 - Put ctx in r11
-      (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding ctx-imm)))
+      (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding idx)))
       ;; 2- Get cc-table
       (if cctable-loc
           (x86-mov cgc (x86-rbp) (x86-imm-int cctable-loc))

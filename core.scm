@@ -333,34 +333,31 @@
   (let* ((ret-addr
           (get-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))))
 
-         ;; R11 is the still-box containing call-ctx
-         (still-encoding
-           (let ((encoded (get-i64 (+ sp (reg-sp-offset-r (x86-r11))))))
-             (encoding-obj encoded)))
-
          (selector
           (encoding-obj (get-i64 (+ sp (selector-sp-offset)))))
+
+         (ctx-idx
+          (encoding-obj (get-i64 (+ sp (reg-sp-offset-r (x86-r11))))))
+
+         (stack
+           (if (= selector 1)
+               #f
+               (global-cc-get-ctx ctx-idx)))
 
          (closure
           (get-i64 (+ sp (reg-sp-offset-r (x86-rsi)))))
 
-         ;; Get ctx from still-box address
-         (ctx
-           (if (= selector 1) ;; If called from generic ptr
-             #f
-             (still-ref->ctx still-encoding)))
-
          (nb-args
            (if (= selector 1)
-               (let ((encoded (get-i64 (+ sp (reg-sp-offset-r (x86-di))))))
+               (let ((encoded (get-i64 (+ sp (reg-sp-offset-r (x86-rdi))))))
                  (arithmetic-shift encoded -2))
-               (- (length (ctx-stack ctx)) 2)))
+               (- (length stack) 2)))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
 
          (new-ret-addr
-          (callback-fn sp ctx ret-addr selector closure)))
+          (callback-fn sp stack ret-addr selector closure)))
 
     ;; replace return address
     (put-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))
@@ -1487,26 +1484,12 @@
           (table-set! global-cc-table (ctx-stack ctx) value)
           value)))))
 
-;; Associates a ctx to the address of a still-vector of length 1 containing only this ctx.
-;; This table keep a reference to all ctx of call-sites because these ctx must
-;; NOT be collected by scheme GC.
-;; This table also keep the address of the still-box associated to the ctx because we can't release
-;; this box when version is generated in case of the same call site is used with a
-;; non yet generated procedure.
-(define ctx-boxes (make-table))
-
-;; Get ctx object from still-vector address
-(define (still-ref->ctx addr)
-  (let ((v (encoding-obj addr)))
-    (vector-ref v 0)))
-
-;; Get still-vector address from ctx
-;; This still vector of length 1 contains only ctx
-(define (ctx->still-ref ctx)
-  (let ((r (table-ref ctx-boxes ctx #f)))
-    (if r
-      r
-      (let ((v (alloc-still-vector 1)))
-        (vector-set! v 0 ctx)
-        (table-set! ctx-boxes ctx (obj-encoding v))
-        (obj-encoding v)))))
+(define (global-cc-get-ctx ctx-idx)
+  (define (get lst)
+    (if (null? lst)
+        (error "Internal error")
+        (let ((first (car lst)))
+          (if (eq? (cdr first) ctx-idx)
+              (car first)
+              (get (cdr lst))))))
+  (get (table->list global-cc-table)))
