@@ -11,8 +11,7 @@
 
 ;(cons 1 1)
 
-(println 10)
-
+(println 100)
 
 ;* . Créer un vecteur scheme qui servira de pile
 ;* . Stocker son adresse, et conserver une variable globale qui pointe vers la pile (gambit root)

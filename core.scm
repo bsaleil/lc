@@ -373,20 +373,19 @@
 (c-define (do-callback-cont sp) (long) void "do_callback_cont" ""
 
   (let* ((ret-addr
-          (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
+          (get-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
 
          (selector
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
+          (encoding-obj (get-i64 (+ sp (selector-sp-offset)))))
 
          (type-idx
-          (let ((encoded (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8)))))
-            (arithmetic-shift encoded -2)))
+          (encoding-obj (get-i64 (+ sp (reg-sp-offset-r (x86-r11))))))
 
          (table
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdx-pos) 1) 8))))
+          (get-i64 (+ sp (reg-sp-offset-r (x86-rdx)))))
 
          (type (cridx-to-type type-idx))
 
@@ -394,10 +393,12 @@
            (callback-fn ret-addr selector type table)))
 
     ;; replace return address
-    (put-i64 (+ sp (* nb-c-caller-save-regs 8)) new-ret-addr)
+    (put-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))
+             new-ret-addr)
 
     ;; reset selector
-    (put-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8)) 0)))
+    (put-i64 (+ sp (selector-sp-offset))
+             0)))
 
 ;;-----------------------------------------------------------------------------
 ;; Interned symbols
