@@ -329,7 +329,7 @@
 ;; | Call arg 1    |
 ;; +---------------+
 (c-define (do-callback-fn sp) (long) void "do_callback_fn" ""
-  (##gc)
+
   (let* ((ret-addr
           (get-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))))
 
@@ -371,6 +371,7 @@
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
 (c-define (do-callback-cont sp) (long) void "do_callback_cont" ""
+
   (let* ((ret-addr
           (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
 
@@ -649,9 +650,8 @@
            (x86-label cgc label)
            (if (> i 0)
                (begin
-                 ;(x86-inc cgc (x86-cl))
                  (x86-add cgc (x86-ecx) (x86-imm-int (obj-encoding 1))) ;; increment selector
-                 (asm-align cgc 4 #x90)
+                 (x86-nop cgc)
                  (loop (- i 1))))))
        (gen cgc)))
     stub-labels))
@@ -1343,12 +1343,13 @@
                ;; known == unknown
                (else
                  (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
+                        (stub-first-label-addr #f)
                         (stub-labels
                               (add-callback cgc 1
                                 (let ((prev-action #f))
 
                                   (lambda (ret-addr selector)
-                                    (let ((stub-addr (- ret-addr 5 2))
+                                    (let ((stub-addr stub-first-label-addr)
                                           (jump-addr (asm-label-pos label-jump)))
 
                                       (if opt-verbose-jit
@@ -1388,6 +1389,10 @@
                                                  (if (= selector 0)
                                                     (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-success)
                                                     (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-fail))))))))))
+
+                  (set! stub-first-label-addr
+                        (min (asm-label-pos (list-ref stub-labels 0))
+                             (asm-label-pos (list-ref stub-labels 1))))
 
                   (if opt-verbose-jit
                       (println ">>> Gen dynamic type test at index " stack-idx))

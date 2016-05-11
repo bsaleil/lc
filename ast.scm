@@ -164,7 +164,7 @@
                      (make-vector         1  2  ,(prim-types 1 CTX_INT 2 CTX_INT CTX_ALL)   ())
                      (make-string         1  2  ,(prim-types 1 CTX_INT 2 CTX_INT CTX_CHAR)  ())
                      (eof-object?         1  1  ,(prim-types 1 CTX_ALL)                     ())
-                     (write-char          2  2  ,(prim-types 2 CTX_ALL CTX_OPORT)          ()) ;; TODO: CTX_CHAR
+                     (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT)          ())
                      (current-output-port 0  0  ,(prim-types 0 )                            ())
                      (current-input-port  0  0  ,(prim-types 0 )                            ())))
 
@@ -1436,6 +1436,8 @@
                           cgc
                           (new-sym 'patchable_jump)))
 
+                      (stub-first-label-addr #f)
+
                       (stub-labels
                         (add-callback
                           cgc
@@ -1443,7 +1445,7 @@
                           (let ((prev-action #f))
                             (lambda (ret-addr selector)
                               (let ((stub-addr
-                                      (- ret-addr 5 2))
+                                      stub-first-label-addr)
                                     (jump-addr
                                       (asm-label-pos label-jump)))
 
@@ -1520,6 +1522,10 @@
                  (let ((label-false (list-ref stub-labels 0))
                        (label-true  (list-ref stub-labels 1)))
 
+                   (set! stub-first-label-addr
+                         (min (asm-label-pos label-false)
+                              (asm-label-pos label-true)))
+
                    (if inline-condition?
                        (let* ((lazy-cmp
                                 (get-lazy-n-binop
@@ -1552,66 +1558,6 @@
         (gen-ast
           (cadr ast)
           lazy-code-test))))
-
-;; Create a new lazy code object.
-;; Takes the value from stack and cmp to #f
-;; If == #f jump to lazy-fail
-;; If != #f jump to lazy-success
-(define (get-lazy-dispatch lazy-success lazy-fail from-stack? cmp-val)
-
-    (make-lazy-code
-       (lambda (cgc ctx)
-         (let* ((ctx-out (if from-stack?
-                            (ctx-pop ctx)
-                            ctx))
-                (label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
-                (stub-labels
-                      (add-callback cgc 1
-                        (let ((prev-action #f))
-
-                          (lambda (ret-addr selector)
-                            (let ((stub-addr (- ret-addr 5 2))
-                                  (jump-addr (asm-label-pos label-jump)))
-
-                              (if opt-verbose-jit
-                                  (begin
-                                    (println ">>> selector= " selector)
-                                    (println ">>> prev-action= " prev-action)))
-
-                              (if (not prev-action)
-
-                                  (begin (set! prev-action 'no-swap)
-                                         (if (= selector 1)
-
-                                            ;; overwrite unconditional jump
-                                            (gen-version (+ jump-addr 6) lazy-success ctx-out)
-
-                                            (if (= (+ jump-addr 6 5) code-alloc)
-
-                                              (begin (if opt-verbose-jit (println ">>> swapping-branches"))
-                                                     (set! prev-action 'swap)
-                                                     ;; invert jump direction
-                                                     (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
-                                                     ;; make conditional jump to stub
-                                                     (patch-jump jump-addr stub-addr)
-                                                     ;; overwrite unconditional jump
-                                                     (gen-version
-                                                     (+ jump-addr 6)
-                                                     lazy-fail
-                                                     ctx-out))
-
-                                              ;; make conditional jump to new version
-                                              (gen-version jump-addr lazy-fail ctx-out))))
-
-                                  (begin ;; one branch has already been patched
-                                         ;; reclaim the stub
-                                         (release-still-vector (get-scmobj ret-addr))
-                                         (stub-reclaim stub-addr)
-                                         (if (= selector 0)
-                                            (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-fail ctx-out)
-                                            (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-success ctx-out))))))))))
-
-         (codegen-dispatch-imm cgc label-jump (list-ref stub-labels 0) (list-ref stub-labels 1) from-stack? cmp-val)))))
 
 ;;-----------------------------------------------------------------------------
 ;; APPLY & CALL

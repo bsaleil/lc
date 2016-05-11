@@ -11,15 +11,7 @@
 
 ;(cons 1 1)
 
-;(define (foo) #\I)
-
-(let ((foo (lambda () #\P)))
-
-
-
-  (write-char (foo))
-  (write-char (foo))
-  (write-char (foo)))
+(println 10)
 
 
 ;* . Créer un vecteur scheme qui servira de pile
