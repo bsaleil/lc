@@ -329,7 +329,7 @@
 ;; | Call arg 1    |
 ;; +---------------+
 (c-define (do-callback-fn sp) (long) void "do_callback_fn" ""
-  (println "WARNING: do-callback-fn: we patch the closure but maybe the GC moved it !!")
+  (##gc)
   (let* ((ret-addr
           (get-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))))
 
@@ -344,8 +344,9 @@
                #f
                (global-cc-get-ctx ctx-idx)))
 
+         ;; Closure is used as a Gambit procedure to keep an updated reference
          (closure
-          (get-i64 (+ sp (reg-sp-offset-r (x86-rsi)))))
+          (encoding-obj (get-i64 (+ sp (reg-sp-offset-r (x86-rsi))))))
 
          (nb-args
            (if (= selector 1)
@@ -671,7 +672,7 @@
     stub-labels))
 
 (define (call-handler cgc label-handler obj)
-  (x86-call-label-unaligned-ret cgc label-handler)
+  (x86-call-label-aligned-ret cgc label-handler)
   (asm-64   cgc (obj-encoding obj)))
 
 (define (stub-reclaim stub-addr)
@@ -715,7 +716,7 @@
           (set-sub c-caller-save-regs (cons selector-reg (cons alloc-ptr regalloc-regs)) '())
           (lambda (cgc)
             ;; Aligned call to label
-            (x86-call-label-unaligned-ret cgc label)))
+            (x86-call-label-aligned-ret cgc label)))
         ;; Update LC heap ptr and heap limit from Gambit heap ptr and heap limit
         (let ((r1 selector-reg)
               (r2 alloc-ptr))
@@ -1297,7 +1298,7 @@
 
     (let ((cctable-addr
             (or ep-loc
-                (get-i64 (- (+ closure 8) TAG_MEMOBJ))))) ;; +8(header) - 1(tag)
+                (get-i64 (- (+ (obj-encoding closure) 8) TAG_MEMOBJ))))) ;; +8(header) - 1(tag)
       (put-i64 (+ cctable-addr offset) label-addr))
 
     label-addr))

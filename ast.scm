@@ -164,7 +164,7 @@
                      (make-vector         1  2  ,(prim-types 1 CTX_INT 2 CTX_INT CTX_ALL)   ())
                      (make-string         1  2  ,(prim-types 1 CTX_INT 2 CTX_INT CTX_CHAR)  ())
                      (eof-object?         1  1  ,(prim-types 1 CTX_ALL)                     ())
-                     (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT)          ())
+                     (write-char          2  2  ,(prim-types 2 CTX_ALL CTX_OPORT)          ()) ;; TODO: CTX_CHAR
                      (current-output-port 0  0  ,(prim-types 0 )                            ())
                      (current-input-port  0  0  ,(prim-types 0 )                            ())))
 
