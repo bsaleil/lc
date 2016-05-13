@@ -679,7 +679,9 @@
                   (codegen-closure-ep cgc ep-loc close-length)))
 
             ;; Write free variables
-            (gen-free-vars cgc fvars ctx 0 lambda-opt)
+            (let* ((free-offset (* -1 (+ (length fvars) (if lambda-opt 1 0))))
+                   (clo-offset  (- free-offset 2)))
+              (gen-free-vars cgc fvars ctx free-offset clo-offset lambda-opt))
 
             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
               (apply-moves cgc ctx moves)
@@ -2283,11 +2285,13 @@
 ;; FREE VARS
 ;;
 
-(define (gen-free-vars cgc ids ctx offset lambda-opt)
+;; free-offset is the current free variable offset position from alloc-ptr
+;; clo-offset is the closure offset position from alloc-ptr
+(define (gen-free-vars cgc ids ctx free-offset clo-offset lambda-opt)
   (if (null? ids)
       (if lambda-opt
-          (begin (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-                 (x86-mov cgc (x86-mem (+ 16 (* offset 8)) alloc-ptr) (x86-rax))))
+          (begin (x86-lea cgc (x86-rax) (x86-mem (+ (* 8 clo-offset) TAG_MEMOBJ) alloc-ptr))
+                 (x86-mov cgc (x86-mem (* 8 free-offset) alloc-ptr) (x86-rax))))
       (let* ((identifier (cdr (assoc (car ids) (ctx-env ctx))))
              (loc (ctx-identifier-loc ctx identifier))
              (opn
@@ -2312,8 +2316,8 @@
                      ;;
                      (else
                        (codegen-reg-to-x86reg loc)))))
-        (x86-mov cgc (x86-mem (+ 16 (* offset 8)) alloc-ptr) opn)
-        (gen-free-vars cgc (cdr ids) ctx (+ offset 1) lambda-opt))))
+        (x86-mov cgc (x86-mem (* 8 free-offset) alloc-ptr) opn)
+        (gen-free-vars cgc (cdr ids) ctx (+ free-offset 1) clo-offset lambda-opt))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst params enc-ids)

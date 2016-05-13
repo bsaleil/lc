@@ -508,7 +508,7 @@
 ;; Process stack (pstack) is still used for each call to c code (stubs and others)
 (define ustack #f)
 (define ustack-init #f) ;; initial rsp value (right of the stack)
-(define ustack-len 8000)
+(define ustack-len 1000000) ;; 1M
 
 ;; TODO: use real pstack
 (define pstack #f)
@@ -551,15 +551,16 @@
 ;; +----------+----------+----------+----------+
 
 (define globals-space #f)
-(define globals-len 1024) ;; 128 globals
+(define globals-len 10000) ;; 1024 globals
 (define block #f)
 (define block-len 15)
 (define block-addr #f)
 (define debug-slots '((calls . 6) (tests . 7) (extests . 8) (closures . 9) (time . 10) (other . 11)))
 
 (define (init-block)
-  (set! globals-space (make-mcb globals-len))
-  (set! globals-addr (##foreign-address globals-space))
+  (set! globals-space (alloc-still-vector-0 globals-len))
+  (set! globals-addr (+ (- (obj-encoding globals-space) 1) 8))
+
   (set! block (make-mcb block-len))
   (set! block-addr (##foreign-address block)))
 

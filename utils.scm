@@ -200,6 +200,12 @@
     (print-frac (- n (truncate n)) nfrac)
     (newline)))
 
+(define (alloc-still-vector-0 len)
+  ((c-lambda (int)
+             scheme-object
+             "___result = ___EXT(___make_vector) (___PSTATE, ___arg1, ___FIX(0));")
+   len))
+
 (define (alloc-still-vector len)
   ((c-lambda (int)
              scheme-object

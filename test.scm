@@ -9,13 +9,27 @@
 ;; - closure: codegen-closure-create
 ;; - others: codegen-prologue-rest> codegen-num-ff codegen-open-io-file codegen-mutable (?)
 
-;(cons 1 1)
 
-;(println 100)
-;($$print-flonum 34.3)
-;(print-nb 34.3)
+(define (stress n)
+  (if (= n 0)
+      '()
+      (cons n (stress (- n 1)))))
 
-(println 100)
+(define (add l)
+  (if (eq? l '())
+      0
+      (+ (car l) (add (cdr l)))))
+
+
+(println (add (stress 3310)))
+
+;(define (foo) 1)
+;
+;
+;($$print-flonum 3.3)
+
+
+;(println '(1 2 3 4 5))
 
 ;* . Créer un vecteur scheme qui servira de pile
 ;* . Stocker son adresse, et conserver une variable globale qui pointe vers la pile (gambit root)
