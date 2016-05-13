@@ -11,6 +11,10 @@
 
 ;(cons 1 1)
 
+;(println 100)
+;($$print-flonum 34.3)
+;(print-nb 34.3)
+
 (println 100)
 
 ;* . Créer un vecteur scheme qui servira de pile

@@ -386,17 +386,17 @@
 ;;-----------------------------------------------------------------------------
 ;; Flonum
 (define (codegen-flonum cgc immediate reg)
-  (let ((header-word (mem-header 2 STAG_FLONUM))
+  (let ((header-word (mem-header 1 STAG_FLONUM))
         (dest (codegen-reg-to-x86reg reg)))
-    (gen-allocation cgc #f STAG_FLONUM 2) ;; TODO #f
+    (gen-allocation cgc #f STAG_FLONUM 16)
     ;; Write header
     (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+    (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
     ;; Write number
     (x86-mov cgc (x86-rax) (x86-imm-int immediate))
-    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+    (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
     ;; Move flonum to dest
-    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
+    (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))))
 
 ;;-----------------------------------------------------------------------------
 ;; Symbol
@@ -854,7 +854,7 @@
         (set! lright (##flonum->fixnum lright)))
 
     ;; Alloc result flonum
-    (gen-allocation cgc #f STAG_FLONUM 2)
+    (gen-allocation cgc #f STAG_FLONUM 16)
 
     (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd) (/ . ,x86-divsd))))))
 
@@ -896,14 +896,14 @@
      (x86-op cgc opleft opright)
 
     ;; Write header
-     (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 2 STAG_FLONUM)))
-     (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+     (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 1 STAG_FLONUM)))
+     (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
 
     ;; Write number
-     (x86-movsd cgc (x86-mem 8 alloc-ptr) opleft)
+     (x86-movsd cgc (x86-mem -8 alloc-ptr) opleft)
 
     ;; Put
-     (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr)))))
+     (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))))
 
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
@@ -1129,7 +1129,7 @@
         (opnd (codegen-loc-to-x86opnd fs loc)))
 
     (x86-mov cgc (x86-rax) opnd)
-    (gen-print-obj cgc (x86-rax) #f)
+    (gen-print-obj cgc (x86-rax) 0)
     (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
 
 ;;-----------------------------------------------------------------------------

@@ -235,16 +235,6 @@
 
     (x86-pop cgc r2)
     (x86-pop cgc r1)))
-  ;(x86-push cgc (x86-rax))
-  ;(x86-push cgc (x86-rcx))
-  ;
-  ;(x86-mov cgc (x86-rax) p1)
-  ;(x86-mov cgc (x86-rcx) p2)
-  ;
-  ;(x86-call-label-unaligned-ret cgc label-handler)
-  ;
-  ;(x86-pop cgc (x86-rcx))
-  ;(x86-pop cgc (x86-rax)))
 
 (define (gen-print-obj cgc reg newline?)
   (gen-print-*
@@ -263,21 +253,18 @@
 ;; Print msg which is encoded in rax
 ;; Print val which is in rcx
 (c-define (print-msg-val sp) (long) void "print_msg_val" ""
-  (let* ((msg-enc (get-i64 (+ sp (reg-sp-offset 0))))
-         (val     (get-i64 (+ sp (reg-sp-offset 1))))
-         (msg     (encoding-obj msg-enc)))
+  (let* ((msg (encoding-obj (get-i64 (+ sp (reg-sp-offset 0)))))
+         (val (get-i64 (+ sp (reg-sp-offset 1)))))
     (print msg " ")
     (println val)))
 
 ;; Print msg which is encoded in rax
 ;; if rcx contains #t, print a newline too
 (c-define (print-msg sp) (long) void "print_msg" ""
-  (let* ((msg      (encoding-obj (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8)))))
-         (newline? (encoding-obj (get-u64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))))
+  (let* ((msg      (encoding-obj (get-i64 (+ sp (reg-sp-offset 0)))))
+         (newline? (= (encoding-obj (get-i64 (+ sp (reg-sp-offset 1)))) 1)))
 
-    (println "FROM STUB")
-    (##gc)))
-    ;(and (print msg) (force-output) newline? (newline))))
+    (and (print msg) (force-output) newline? (newline))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -563,13 +550,16 @@
 ;; | addr     |          |          |          |
 ;; +----------+----------+----------+----------+
 
+(define globals-space #f)
+(define globals-len 1024) ;; 128 globals
 (define block #f)
-(define global-offset 15) ;; [Stack addr], [def-out-port-header|def-out-port-fd], [def-in-port-header|def-in-port-fd], [heaplimit] + n empty slot (used for debug)
-(define block-len (* 8 (+ global-offset 10000))) ;; 1 stack addr, 10000 globals
+(define block-len 15)
 (define block-addr #f)
 (define debug-slots '((calls . 6) (tests . 7) (extests . 8) (closures . 9) (time . 10) (other . 11)))
 
 (define (init-block)
+  (set! globals-space (make-mcb globals-len))
+  (set! globals-addr (##foreign-address globals-space))
   (set! block (make-mcb block-len))
   (set! block-addr (##foreign-address block)))
 
@@ -813,7 +803,7 @@
 
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
     (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr)))       ;; Heap addr in alloc-ptr
-    (x86-mov cgc global-ptr (x86-imm-int (+ block-addr (* 8 global-offset)))) ;; Globals addr in r10
+    (x86-mov cgc global-ptr (x86-imm-int globals-addr)) ;; Globals addr in r10
 
     ;; Set all registers used for regalloc to 0
     (for-each (lambda (el)
