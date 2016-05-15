@@ -1687,8 +1687,8 @@
       ;;
       ;; Primitive code
       (if val-cst?
-          (x86-mov cgc dest (x86-mem (+ (- 16 TAG_MEMOBJ) (* 8 lidx)) (opvec) #f 1))
-          (x86-mov cgc dest (x86-mem (- 16 TAG_MEMOBJ) (opvec) (opidx) 1))))))
+          (x86-mov cgc dest (x86-mem (+ (- 8 TAG_MEMOBJ) (* 8 lidx)) (opvec) #f 1))
+          (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) (opvec) (opidx) 1))))))
 
 ;;-----------------------------------------------------------------------------
 ;; string-ref
@@ -1764,7 +1764,7 @@
 
    (x86-mov cgc (x86-rax) opidx)
    (x86-shl cgc (x86-rax) (x86-imm-int 1))
-   (x86-mov cgc (x86-mem (- 16 TAG_MEMOBJ) opvec (x86-rax)) opval)
+   (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opvec (x86-rax)) opval)
    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
 
    (if regsaved

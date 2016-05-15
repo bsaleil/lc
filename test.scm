@@ -10,7 +10,7 @@
 ;; - others: codegen-prologue-rest> codegen-num-ff codegen-open-io-file codegen-mutable (?)
 
 
-;; TODO WIP: vector-ref vector-set
+;; TODO WIP: vector-ref vector-set, literal vectors
 
 ;(define (foo) 1)
 ;
