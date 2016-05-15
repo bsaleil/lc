@@ -705,7 +705,7 @@
         ;; Save c caller save registers
         (push-pop-regs
           cgc
-          (set-sub c-caller-save-regs (cons selector-reg (cons alloc-ptr regalloc-regs)) '())
+          (set-sub c-caller-save-regs regalloc-regs '())
           (lambda (cgc)
             ;; Aligned call to label
             (x86-call-label-aligned-ret cgc label)))

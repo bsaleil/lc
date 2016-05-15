@@ -1280,8 +1280,12 @@
 ;; primitives vector-length & string-length
 (define (prim-x-length cgc ctx reg succ cst-infos op)
   (let ((lval (ctx-get-loc ctx 0))
-        (mut-val? (ctx-is-mutable? ctx 0)))
-    (codegen-vec/str-length cgc (ctx-fs ctx) reg lval mut-val?)
+        (mut-val? (ctx-is-mutable? ctx 0))
+        (codegen-fn
+          (if (eq? op 'vector-length)
+              codegen-vector-length
+              codegen-string-length)))
+    (codegen-fn cgc (ctx-fs ctx) reg lval mut-val?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_INT reg))))
 
 ;;

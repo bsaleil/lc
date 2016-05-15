@@ -10,18 +10,7 @@
 ;; - others: codegen-prologue-rest> codegen-num-ff codegen-open-io-file codegen-mutable (?)
 
 
-(define (stress n)
-  (if (= n 0)
-      '()
-      (cons n (stress (- n 1)))))
-
-(define (add l)
-  (if (eq? l '())
-      0
-      (+ (car l) (add (cdr l)))))
-
-
-(println (add (stress 3310)))
+;; TODO WIP: vector-ref vector-set
 
 ;(define (foo) 1)
 ;

@@ -71,19 +71,29 @@ ___WORD get_heap_limit_addr()
         words)))
 
 ;; Length (bytes)
-(define (gen-allocation cgc ctx stag length)
+;; rt-size?: use runtime known size which is encoded in rax (rax contains 12 for size 3)
+(define (gen-allocation cgc ctx stag length rt-size?)
 
-  (if (> length MSECTION_BIGGEST)
+  (if (and (not rt-size?)
+           (> length MSECTION_BIGGEST))
       (error "MEM ERR 1"))
 
-  (let ((label-alloc-end (asm-make-label #f (new-sym 'label-alloc-ok))))
+  (let ((label-alloc-end   (asm-make-label #f (new-sym 'label-alloc-ok)))
+        (label-alloc-error (asm-make-label #f (new-sym 'label-alloc-error))))
 
-    (x86-add cgc alloc-ptr (x86-imm-int (* 8 (get-words-from-byte length))))
+    (if rt-size?
+        (begin (x86-lea cgc (x86-rax) (x86-mem (* 8 (get-words-from-byte length)) #f (x86-rax) 1))
+               (x86-cmp cgc (x86-rax) (x86-imm-int MSECTION_BIGGEST))
+               (x86-jg cgc label-alloc-error)
+               (x86-add cgc alloc-ptr (x86-rax)))
+        (x86-add cgc alloc-ptr (x86-imm-int (* 8 (get-words-from-byte length)))))
+
     (x86-mov cgc (x86-rax) (x86-imm-int (+ (* 5 8) block-addr)))
     (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
 
     (x86-jl cgc label-alloc-end)
 
+      (x86-label cgc label-alloc-error)
       (gen-error cgc "NOT ENOUGH MEMORY")
 
     (x86-label cgc label-alloc-end)))
