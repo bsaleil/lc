@@ -9,17 +9,6 @@
 ;; - closure: codegen-closure-create
 ;; - others: codegen-prologue-rest> codegen-num-ff codegen-open-io-file codegen-mutable (?)
 
-
-;; TODO WIP: vector-ref vector-set, literal vectors
-
-;(define (foo) 1)
-;
-;
-;($$print-flonum 3.3)
-
-
-;(println '(1 2 3 4 5))
-
 ;* . Créer un vecteur scheme qui servira de pile
 ;* . Stocker son adresse, et conserver une variable globale qui pointe vers la pile (gambit root)
 ;* . init-rtlib: stocker tous les registres sur la pile C

@@ -296,13 +296,15 @@
 ;;
 (define (mlc-vector ast succ)
 
+  (define mem-len (* 8 (+ (vector-length ast) 1)))
+
   (define (gen-set cgc ctx lidx)
     (let* ((lval (ctx-get-loc ctx lidx))
            (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
       (if (ctx-loc-is-memory? lval)
           (begin (x86-mov cgc (x86-rax) opval)
                  (set! opval (x86-rax))))
-      (x86-mov cgc (x86-mem (+ (* lidx 8) 16) alloc-ptr) opval)))
+      (x86-mov cgc (x86-mem (+ (* -1 mem-len) 8 (* lidx 8)) alloc-ptr) opval)))
 
   (define lazy-vector
     (make-lazy-code
@@ -311,7 +313,7 @@
           (if (= pos (vector-length ast))
               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
                 (apply-moves cgc ctx moves)
-                (x86-lea cgc (codegen-reg-to-x86reg reg) (x86-mem TAG_MEMOBJ alloc-ptr))
+                (x86-lea cgc (codegen-reg-to-x86reg reg) (x86-mem (+ (* -1 mem-len) TAG_MEMOBJ) alloc-ptr))
                 (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx (vector-length ast)) CTX_VECT reg)))
               (begin
                 (gen-set cgc ctx pos)
@@ -321,15 +323,14 @@
   (define lazy-alloc
     (make-lazy-code
       (lambda (cgc ctx)
-        (let ((header-word (mem-header (+ 2 (vector-length ast)) STAG_VECTOR)))
+
+        (let ((header-word (mem-header (vector-length ast) STAG_VECTOR)))
           ;; Allocate array in alloc-ptr
-          (gen-allocation cgc #f STAG_VECTOR (+ (vector-length ast) 2))
+          (gen-allocation cgc ctx STAG_VECTOR mem-len #f)
           ;; Write header
           (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-          (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+          (x86-mov cgc (x86-mem (* -1 mem-len) alloc-ptr) (x86-rax))
           ;; Write length
-          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (vector-length ast))))
-          (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
           (jump-to-version cgc lazy-vector ctx)))))
 
 
