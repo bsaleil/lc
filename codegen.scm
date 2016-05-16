@@ -436,8 +436,7 @@
 ;; Pair
 (define (codegen-pair cgc fs reg lcar lcdr car-cst? cdr-cst? mut-car? mut-cdr?)
 
-  (let ((header-word (mem-header 16 STAG_PAIR))
-        (dest  (codegen-reg-to-x86reg reg))
+  (let ((dest  (codegen-reg-to-x86reg reg))
         (opcar (lambda () (and (not car-cst?) (codegen-loc-to-x86opnd fs lcar))))
         (opcdr (lambda () (and (not cdr-cst?) (codegen-loc-to-x86opnd fs lcdr)))))
 
@@ -584,13 +583,9 @@
 
 ;; Alloc closure and write header
 (define (codegen-closure-create cgc nb-free)
-  (let* ((closure-size  (+ 1 nb-free)) ;; entry point & free vars
-         (header-word (mem-header (* 8 closure-size) STAG_PROCEDURE)))
+  (let* ((closure-size  (+ 1 nb-free))) ;; entry point & free vars
     ;; 1 - Alloc closure
-    (gen-allocation cgc #f STAG_PROCEDURE (* 8 (+ 1 closure-size)) #f)
-    ;; 2 - Write closure header
-    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-    (x86-mov cgc (x86-mem (* -8 (+ closure-size 1)) alloc-ptr) (x86-rax))))
+    (gen-allocation-imm cgc STAG_PROCEDURE (* 8 closure-size))))
 
 ;; Write entry point in closure (do not use cctable)
 (define (codegen-closure-ep cgc ep-loc nb-free)
