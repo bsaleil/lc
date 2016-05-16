@@ -99,14 +99,6 @@ ___WORD get_heap_limit_addr()
     (x86-label cgc label-alloc-end)))
 
 
-  ;; si la taille est supérieure au max pour non copiés
-     ;; erreur
-  ;; sinon
-     ;; hp += words
-     ;; if (hp > ps->heaplimit)
-      ;; ERROR
-     ;; hp -= words
-
 ;; Generate an heap object header
 ;; using layout used by Gambit.
 ;; NOTE : 'life' field is not used and set to 0.

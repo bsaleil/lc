@@ -203,6 +203,7 @@
   ;; file descriptor (rdi)
   (x86-mov cgc (x86-rdi) (x86-rax)) ;; Port object in rdi (port is in rax)
   (x86-mov cgc (x86-rdi) (x86-mem (- 8 TAG_MEMOBJ) (x86-rdi)))
+  (x86-mov cgc (x86-rdi) (x86-imm-int 1)) ;; 1=STDIN
 
   ;; buffer (rsi)
   (x86-mov cgc (x86-rax) (x86-mem 40 (x86-rsp)))
