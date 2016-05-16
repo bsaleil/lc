@@ -449,12 +449,8 @@
       (if (not cdr-cst?)
           (chk-pick-unmem-unbox! (opcdr) mut-cdr? (list dest (opcar) (opcdr))))
 
-      ;; Alloc
-      (gen-allocation cgc #f STAG_PAIR 24 #f)
-
-      ;; Write object header
-      (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-      (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))
+      ;; Get end of scheme pair in alloc-ptr
+      (gen-allocation-imm cgc STAG_PAIR 16)
 
       (if car-cst?
           (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-imm-int (obj-encoding lcar)) 64)

@@ -70,33 +70,73 @@ ___WORD get_heap_limit_addr()
         (+ words 1)
         words)))
 
+;; Create a scm obj and return ptr in rax
 ;; Length (bytes)
 ;; rt-size?: use runtime known size which is encoded in rax (rax contains 12 for size 3)
+
+;; Allocate a new scheme object of len nbytes (without header)
+
+(define (gen-allocation-imm cgc stag nbytes)
+
+  (define label-alloc-end (asm-make-label #f (new-sym 'alloc_end_)))
+
+  (if (> nbytes MSECTION_BIGGEST)
+      (error "NYI - ALLOC STILL OBJ"))
+
+  (assert (= (modulo nbytes 4) 0) "GC internal error")
+
+  ;; hp += (nbytes + 8)
+  (x86-add cgc alloc-ptr (x86-imm-int (+ nbytes 8)))
+
+  ;; if hp > heap_limit, goto error
+  (x86-mov cgc (x86-rax) (x86-imm-int (+ (* 5 8) block-addr)))
+  (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
+  (x86-jle cgc label-alloc-end) ;; TODO: when still allocation implemented, jump on error
+    (gen-error cgc "GC ERR")
+  (x86-label cgc label-alloc-end)
+  ;; write header
+  (x86-mov cgc (x86-mem (- 0 nbytes 8) alloc-ptr) (x86-imm-int (mem-header nbytes stag)) 64))
+
+
 (define (gen-allocation cgc ctx stag length rt-size?)
+  (error "NYI, use gen-allocation-imm for now"))
+;(define (gen-allocation cgc ctx stag length rt-size?)
+;
+;  (let ((label-alloc-end (asm-make-label #f (new-sym 'label-alloc-end)))
+;        (label-alloc-err (asm-make-label #f (new-sym 'label-alloc-err))))
+;
+;    ;; Update alloc ptr
+;    (if rt-size?
+;        (begin (x86-lea cgc (x86-rax) (x86-mem (* 8 (get-words-from-byte length)) #f (x86-rax) 1))
+;               (x86-cmp cgc (x86-rax) (x86-imm-int MSECTION_BIGGEST))
+;               (x86-jg cgc label-alloc-error)
+;               (x86-add cgc alloc-ptr (x86-rax)))
+;        (x86-add cgc alloc-ptr (x86-imm-int (* 8 (get-words-from-byte length)))))
 
-  (if (and (not rt-size?)
-           (> length MSECTION_BIGGEST))
-      (error "MEM ERR 1"))
 
-  (let ((label-alloc-end   (asm-make-label #f (new-sym 'label-alloc-ok)))
-        (label-alloc-error (asm-make-label #f (new-sym 'label-alloc-error))))
-
-    (if rt-size?
-        (begin (x86-lea cgc (x86-rax) (x86-mem (* 8 (get-words-from-byte length)) #f (x86-rax) 1))
-               (x86-cmp cgc (x86-rax) (x86-imm-int MSECTION_BIGGEST))
-               (x86-jg cgc label-alloc-error)
-               (x86-add cgc alloc-ptr (x86-rax)))
-        (x86-add cgc alloc-ptr (x86-imm-int (* 8 (get-words-from-byte length)))))
-
-    (x86-mov cgc (x86-rax) (x86-imm-int (+ (* 5 8) block-addr)))
-    (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
-
-    (x86-jl cgc label-alloc-end)
-
-      (x86-label cgc label-alloc-error)
-      (gen-error cgc "NOT ENOUGH MEMORY")
-
-    (x86-label cgc label-alloc-end)))
+  ;(if (and (not rt-size?)
+  ;         (> length MSECTION_BIGGEST))
+  ;    (error "MEM ERR 1"))
+  ;
+  ;(let ((label-alloc-end   (asm-make-label #f (new-sym 'label-alloc-ok)))
+  ;      (label-alloc-error (asm-make-label #f (new-sym 'label-alloc-error))))
+  ;
+  ;  (if rt-size?
+  ;      (begin (x86-lea cgc (x86-rax) (x86-mem (* 8 (get-words-from-byte length)) #f (x86-rax) 1))
+  ;             (x86-cmp cgc (x86-rax) (x86-imm-int MSECTION_BIGGEST))
+  ;             (x86-jg cgc label-alloc-error)
+  ;             (x86-add cgc alloc-ptr (x86-rax)))
+  ;      (x86-add cgc alloc-ptr (x86-imm-int (* 8 (get-words-from-byte length)))))
+  ;
+  ;  (x86-mov cgc (x86-rax) (x86-imm-int (+ (* 5 8) block-addr)))
+  ;  (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
+  ;
+  ;  (x86-jl cgc label-alloc-end)
+  ;
+  ;    (x86-label cgc label-alloc-error)
+  ;    (gen-error cgc "NOT ENOUGH MEMORY")
+  ;
+  ;  (x86-label cgc label-alloc-end)))
 
 
 ;; Generate an heap object header
