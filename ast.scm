@@ -324,7 +324,7 @@
     (make-lazy-code
       (lambda (cgc ctx)
 
-        (let ((header-word (mem-header (vector-length ast) STAG_VECTOR)))
+        (let ((header-word (mem-header (* 8 (vector-length ast)) STAG_VECTOR)))
           ;; Allocate array in alloc-ptr
           (gen-allocation cgc ctx STAG_VECTOR mem-len #f)
           ;; Write header

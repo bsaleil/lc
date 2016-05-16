@@ -386,7 +386,7 @@
 ;;-----------------------------------------------------------------------------
 ;; Flonum
 (define (codegen-flonum cgc immediate reg)
-  (let ((header-word (mem-header 1 STAG_FLONUM))
+  (let ((header-word (mem-header 8 STAG_FLONUM))
         (dest (codegen-reg-to-x86reg reg)))
     (gen-allocation cgc #f STAG_FLONUM 16)
     ;; Write header
@@ -409,39 +409,33 @@
 ;; String
 (define (codegen-string cgc str reg)
   (let* ((len (string-length str))
+         (mem-len (+ 8 (* len 4)))
          (size (arithmetic-shift (bitwise-and (+ len 8) (bitwise-not 7)) -3))
-         (header-word (mem-header (+ size 2) STAG_STRING))
+         (header-word (mem-header (* len 4) STAG_STRING))
          (dest (codegen-reg-to-x86reg reg)))
 
-    (gen-allocation cgc #f STAG_STRING (+ size 2))
+    (gen-allocation cgc #f STAG_STRING mem-len #f)
     ;; Write header
     (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-    ;; Write length
-    (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (string-length str))))
-    (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
+    (x86-mov cgc (x86-mem (* -1 mem-len) alloc-ptr) (x86-rax))
     ;; Write chars
-    (write-chars cgc str 0 16)
+    (write-chars cgc str 0 (+ (* -1 mem-len) 8))
     ;; Push string
-    (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))))
+    (x86-lea cgc dest (x86-mem (+ (* -1 mem-len) TAG_MEMOBJ) alloc-ptr))))
 
 ;; Write chars of the literal string 'str':
 ;; Write str[pos] char to [alloc-ptr+offset], and write next chars
 (define (write-chars cgc str pos offset)
   (if (< pos (string-length str))
-      (let* ((int (char->integer (string-ref str pos)))
-             (encoded (if (> int 127)
-                          (* -1 (- 256 int))
-                          int)))
-        (x86-mov cgc (x86-al) (x86-imm-int encoded))
-        (x86-mov cgc (x86-mem offset alloc-ptr) (x86-al))
-        (write-chars cgc str (+ pos 1) (+ offset 1)))))
+      (let* ((int (char->integer (string-ref str pos))))
+        (x86-mov cgc (x86-mem offset alloc-ptr) (x86-imm-int int) 32)
+        (write-chars cgc str (+ pos 1) (+ offset 4)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Pair
 (define (codegen-pair cgc fs reg lcar lcdr car-cst? cdr-cst? mut-car? mut-cdr?)
 
-  (let ((header-word (mem-header 2 STAG_PAIR))
+  (let ((header-word (mem-header 16 STAG_PAIR))
         (dest  (codegen-reg-to-x86reg reg))
         (opcar (and (not car-cst?) (codegen-loc-to-x86opnd fs lcar)))
         (opcdr (and (not cdr-cst?) (codegen-loc-to-x86opnd fs lcdr))))
@@ -529,7 +523,7 @@
                rest-regs))
         (dest
           (and destreg (codegen-loc-to-x86opnd fs destreg)))
-        (header-word     (mem-header 3 STAG_PAIR))
+        (header-word     (mem-header 24 STAG_PAIR))
         (label-loop-end (asm-make-label #f (new-sym 'prologue-loop-end)))
         (label-loop     (asm-make-label #f (new-sym 'prologue-loop))))
 
@@ -632,7 +626,7 @@
 ;; Alloc closure and write header
 (define (codegen-closure-create cgc nb-free)
   (let* ((closure-size  (+ 1 nb-free)) ;; entry point & free vars
-         (header-word (mem-header closure-size STAG_PROCEDURE)))
+         (header-word (mem-header (* 8 closure-size) STAG_PROCEDURE)))
     ;; 1 - Alloc closure
     (gen-allocation cgc #f STAG_PROCEDURE (* 8 (+ 1 closure-size)) #f)
     ;; 2 - Write closure header
@@ -896,7 +890,7 @@
      (x86-op cgc opleft opright)
 
     ;; Write header
-     (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 1 STAG_FLONUM)))
+     (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 8 STAG_FLONUM)))
      (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
 
     ;; Write number
@@ -1313,7 +1307,7 @@
 (define (codegen-open-io-file cgc fs op reg lstr mut-str?)
   (let* ((direction   (if (eq? op 'open-output-file) 'out 'in))
          (stag        (if (eq? direction 'in) STAG_IPORT STAG_OPORT))
-         (header-word (mem-header 2 stag))
+         (header-word (mem-header 16 stag))
          (dest  (codegen-reg-to-x86reg reg))
          (opval (lambda () (codegen-loc-to-x86opnd fs lstr)))
          (oprax (lambda () (x86-rax))))
@@ -1440,7 +1434,7 @@
 ;;-----------------------------------------------------------------------------
 ;; make-string
 (define (codegen-make-string cgc fs reg llen lval mut-len? mut-val?)
-  (let* ((header-word (mem-header 3 STAG_STRING))
+  (let* ((header-word (mem-header 24 STAG_STRING))
          (dest  (codegen-reg-to-x86reg reg))
          (oplen (lambda () (codegen-loc-to-x86opnd fs llen)))
          (opval (lambda () (if lval (codegen-loc-to-x86opnd fs lval) #f)))
@@ -1659,7 +1653,8 @@
         (begin (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opval))
                (set! opval (x86-rax))))
 
-    (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) opval))))
+    (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opval))
+    (x86-shr cgc dest (x86-imm-int 8))))
 
 ;;-----------------------------------------------------------------------------
 ;; vector-ref
@@ -1714,15 +1709,10 @@
       ;;
       ;; Primitive code
       (if idx-cst?
-          (x86-mov cgc (x86-al) (x86-mem (+ (- 16 TAG_MEMOBJ) lidx) (opstr)))
-          (begin
-            (x86-shr cgc (opidx) (x86-imm-int 2))
-            (x86-mov cgc (x86-al) (x86-mem (- 16 TAG_MEMOBJ) (opidx) (opstr)))
-            (if (neq? (opidx) (x86-rax))
-                (x86-shl cgc (opidx) (x86-imm-int 2)))))
+          (x86-mov cgc (x86-eax) (x86-mem (+ (- 8 TAG_MEMOBJ) (* 4 lidx)) (opstr)))
+          (x86-mov cgc (x86-eax) (x86-mem (- 8 TAG_MEMOBJ) (opidx) (opstr))))
 
       ;; Clear bits before al
-      (x86-and cgc (x86-rax) (x86-imm-int 255))
       (x86-shl cgc (x86-rax) (x86-imm-int 2))
       (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
       (x86-mov cgc dest (x86-rax)))))
@@ -1838,31 +1828,31 @@
           (chk-pick-unmem-unbox! (opstr) mut-str? (list (opstr) (opidx) (opchr)))
           (chk-unmem-unbox! (oprax) (opstr) mut-str?))
 
+      ;; TODO: no need to have idx in a new reg (idx reg is not modified)
+
       ;;
       ;; Primitive code
       (if (not chr-cst?)
           (x86-shr cgc (opchr) (x86-imm-int 2)))
-      (if (not idx-cst?)
-          (x86-shr cgc (opidx) (x86-imm-int 2)))
 
       (cond ((and idx-cst? chr-cst?)
              (x86-mov cgc
-                      (x86-mem (+ (- 16 TAG_MEMOBJ) lidx) (opstr))
+                      (x86-mem (+ (- 8 TAG_MEMOBJ) (* 4 lidx)) (opstr))
                       (x86-imm-int (char->integer lchr))
-                      8))
+                      32))
             (idx-cst?
                (x86-mov cgc
-                        (x86-mem (+ (- 16 TAG_MEMOBJ) lidx) (opstr))
-                        (x86-al)))
+                        (x86-mem (+ (- 8 TAG_MEMOBJ) (* 4 lidx)) (opstr))
+                        (x86-eax)))
             (chr-cst?
               (x86-mov cgc
-                       (x86-mem (- 16 TAG_MEMOBJ) (opstr) (opidx))
+                       (x86-mem (- 8 TAG_MEMOBJ) (opstr) (opidx))
                        (x86-imm-int (char->integer lchr))
-                       8))
+                       32))
             (else
               (x86-mov cgc
-                       (x86-mem (- 16 TAG_MEMOBJ) (opstr) (opidx))
-                       (x86-al)))) ;; If char is not a cst, it is in rax
+                       (x86-mem (- 8 TAG_MEMOBJ) (opstr) (opidx))
+                       (x86-eax)))) ;; If char is not a cst, it is in rax
 
       (x86-mov cgc dest (x86-imm-int ENCODING_VOID)))))
 
@@ -1885,7 +1875,7 @@
     (x86-pop cgc (x86-rdx)) ;; pop car
     (x86-mov cgc (x86-mem  8 alloc-ptr) (x86-rdx))
     (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
-    (x86-mov cgc (x86-rbx) (x86-imm-int (mem-header 3 STAG_PAIR)))
+    (x86-mov cgc (x86-rbx) (x86-imm-int (mem-header 24 STAG_PAIR)))
     (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rbx))
     (x86-lea cgc (x86-rbx) (x86-mem TAG_MEMOBJ alloc-ptr))
     (x86-push cgc (x86-rbx))
@@ -1930,7 +1920,7 @@
 ;;-----------------------------------------------------------------------------
 ;; Mutable var (creates mutable object, write variable and header and replace local with mutable object)
 (define (codegen-mutable cgc fs lval)
-  (let ((header-word (mem-header 2 STAG_MOBJECT))
+  (let ((header-word (mem-header 16 STAG_MOBJECT))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
     ;; Alloc mutable

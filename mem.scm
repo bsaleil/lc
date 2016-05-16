@@ -112,7 +112,7 @@ ___WORD get_heap_limit_addr()
 ;; NOTE : 'life' field is not used and set to 0.
 (define (mem-header length stag)
     ;; => Length (56 bits) | sTag (5 bits) | Life (3 bits)
-    (+ (arithmetic-shift (* 8 length) 8) (arithmetic-shift stag 3) 0))
+    (+ (arithmetic-shift length 8) (arithmetic-shift stag 3) 0))
 
 ;
 ;

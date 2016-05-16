@@ -64,6 +64,12 @@
 (define codegen-loc-to-x86opnd #f)
 (define ctime-entries-get #f)
 
+(define get-heap_limit-addr #f)
+(define get-hp-addr #f)
+(define global-offset #f)
+(define selector-reg #f)
+(define x86-call-label-aligned-ret #f)
+
 ;;-----------------------------------------------------------------------------
 
 ;; Global ids
