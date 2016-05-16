@@ -443,6 +443,12 @@
 
     (begin-with-cg-macro
 
+      ;;
+      (if (not car-cst?)
+          (chk-pick-unmem-unbox! (opcar) mut-car? (list dest (opcar) (opcdr))))
+      (if (not cdr-cst?)
+          (chk-pick-unmem-unbox! (opcdr) mut-cdr? (list dest (opcar) (opcdr))))
+
       ;; Alloc
       (gen-allocation cgc #f STAG_PAIR 24 #f)
 
@@ -450,53 +456,15 @@
       (x86-mov cgc (x86-rax) (x86-imm-int header-word))
       (x86-mov cgc (x86-mem -24 alloc-ptr) (x86-rax))
 
-      ;; CAR
-      (if (not car-cst?)
-          (chk-pick-unmem-unbox! (opcar) mut-car? (list dest (opcar) (opcdr))))
-
       (if car-cst?
           (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-imm-int (obj-encoding lcar)) 64)
           (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (opcar)))
-
-      ;; CDR
-      (if (not cdr-cst?)
-          (chk-unmem-unbox! (opcar) (opcdr) mut-cdr?))
 
       (if cdr-cst?
           (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-imm-int (obj-encoding lcdr)) 64)
           (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (opcdr)))
 
       (x86-lea cgc dest (x86-mem (+ -24 TAG_MEMOBJ) alloc-ptr)))))
-
-;;-----------------------------------------------------------------------------
-;; Vector (all elements are pushed on the stack in reverse order: first at [RSP+0], second at [RSP+8], ...)
-;(define (codegen-vector cgc vector reg)
-;  (let ((label-loop (asm-make-label #f (new-sym 'label-loop)))
-;        (label-end  (asm-make-label #f (new-sym 'label-end)))
-;        (header-word (mem-header (+ 2 (vector-length vector)) STAG_VECTOR)))
-;   ;; Allocate array in alloc-ptr
-;   (gen-allocation cgc #f STAG_VECTOR (+ (vector-length vector) 2))
-;   ;; Write header
-;   (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-;   (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-;   ;; Write length
-;   (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding (vector-length vector))))
-;   (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-;
-;   (x86-mov cgc (x86-rax) (x86-imm-int 0))
-;   (x86-label cgc label-loop)
-;   (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (vector-length vector))))
-;   (x86-je cgc label-end)
-;
-;     ;; Get val
-;   (x86-pop cgc (x86-rbx))
-;   (x86-mov cgc (x86-mem 16 (x86-rax) alloc-ptr) (x86-rbx))
-;   (x86-add cgc (x86-rax) (x86-imm-int 8))
-;   (x86-jmp cgc label-loop)
-;
-;   (x86-label cgc label-end)
-;   (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
-;   (x86-push cgc (x86-rax))))
 
 ;;-----------------------------------------------------------------------------
 ;; Functions
