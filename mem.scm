@@ -55,13 +55,47 @@ ___WORD get_heap_limit_addr()
   ___WORD* ptr = (___WORD*)___PSTATE+word_offset;
   return (___WORD)ptr;
 }
+
+___U64 get_pstate_addr()
+{
+  return (___U64)___PSTATE;
+}
+
+#include <stdio.h>
+
+
+___BOOL ___heap_limit
+   ___P((___PSDNC),
+        (___PSVNC)
+___PSDKR);
+
+int myHL(struct ___processor_state_struct* arg)
+{
+  int r = ___heap_limit(___PSPNC);
+  printf(\"%ld\\n\",r);
+  return r;
+}
+
+___U64 get___heap_limit_addr()
+{
+  //void* hladdr = &___heap_limit;
+  void* hladdr = &myHL;
+  return (___U64)hladdr;
+}
+
 ")
+
+(define (get___heap_limit-addr)
+  ((c-lambda () long "get___heap_limit_addr")))
 
 (define (get-heap_limit-addr)
   ((c-lambda () long "get_heap_limit_addr")))
 
 (define (get-hp-addr)
   ((c-lambda () long "get_hp_addr")))
+
+(define (get-pstate-addr)
+  ((c-lambda () long "get_pstate_addr")))
 
 (define (get-words-from-byte bytes)
   (let ((words (quotient bytes 8))
@@ -76,8 +110,54 @@ ___WORD get_heap_limit_addr()
 
 ;; Allocate a new scheme object of len nbytes (without header)
 
+(define (W_ALL cgc)
+  ;; Update gambit heap ptr from LC heap ptr
+  (x86-mov cgc (x86-mem (get-hp-addr)) alloc-ptr)
+  ;; Change stack
+  (x86-mov cgc selector-reg (x86-rsp))
+  (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
+  (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
+  (x86-push cgc selector-reg))
+
+(define (R_ALL cgc)
+  ;; heap limit (use heap-ptr & selector registers)
+  (x86-mov cgc alloc-ptr (x86-mem (get-heap_limit-addr)))
+  (x86-mov cgc selector-reg (x86-imm-int block-addr))
+  (x86-mov cgc (x86-mem (* 8 5) selector-reg) alloc-ptr)
+  ;; hp
+  (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr)))
+  ;; Set selector to 0
+  (x86-mov cgc (x86-rcx) (x86-imm-int 0))
+  ;; Set rsp to saved ustack sp
+  (x86-pop cgc (x86-rsp)))
+
+(define (gen-heap-limit-call cgc nbytes)
+
+  (define label-alloc-no-overflow (asm-make-label #f (new-sym 'alloc_no_overflow_)))
+
+  (W_ALL cgc)
+  (push-regs cgc c-caller-save-regs)
+
+  (x86-mov cgc (x86-rdi) (x86-imm-int (get-pstate-addr)))
+  (x86-mov cgc (x86-rax) (x86-imm-int (get___heap_limit-addr)))
+  (x86-call-label-unaligned-ret cgc (x86-rax))
+  ;; if not overflow, alloc ok
+  (x86-cmp cgc (x86-rax) (x86-imm-int 0))
+  (x86-je cgc label-alloc-no-overflow)
+
+    (pop-regs-reverse cgc c-caller-save-regs)
+    (R_ALL cgc)
+    (gen-error cgc "GC ERR")
+
+  (x86-label cgc label-alloc-no-overflow)
+  (pop-regs-reverse cgc c-caller-save-regs)
+  (R_ALL cgc)
+  (x86-add cgc alloc-ptr (x86-imm-int (+ nbytes 8))))
+
+
 (define (gen-allocation-imm cgc stag nbytes)
 
+  (define label-alloc-beg (asm-make-label #f (new-sym 'alloc_begin_)))
   (define label-alloc-end (asm-make-label #f (new-sym 'alloc_end_)))
 
   (if (> nbytes MSECTION_BIGGEST)
@@ -85,14 +165,20 @@ ___WORD get_heap_limit_addr()
 
   (assert (= (modulo nbytes 4) 0) "GC internal error")
 
+  (x86-label cgc label-alloc-beg)
+
   ;; hp += (nbytes + 8)
   (x86-add cgc alloc-ptr (x86-imm-int (+ nbytes 8)))
 
-  ;; if hp > heap_limit, goto error
+  ;; if hp <= heap_limit, alloc ok
   (x86-mov cgc (x86-rax) (x86-imm-int (+ (* 5 8) block-addr)))
   (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
-  (x86-jle cgc label-alloc-end) ;; TODO: when still allocation implemented, jump on error
-    (gen-error cgc "GC ERR")
+  (x86-jle cgc label-alloc-end)
+  ;; else
+    ;; overflow = ___heap_limit (___PSPNC) && ___garbage_collect (___PSP 0);
+    ;(gen-error cgc "KKK")
+    (gen-heap-limit-call cgc nbytes)
+
   (x86-label cgc label-alloc-end)
   ;; write header
   (x86-mov cgc (x86-mem (- 0 nbytes 8) alloc-ptr) (x86-imm-int (mem-header nbytes stag)) 64))

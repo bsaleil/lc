@@ -200,6 +200,7 @@
 ;;-----------------------------------------------------------------------------
 
 (c-define (gc sp) (long) long "gc" ""
+    (error "NYI GC")
     (let ((alloc-size (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8)))))
       (run-gc sp alloc-size)))
 
@@ -545,8 +546,9 @@
   ;; TODO: use real pstack
   (set! pstack (make-u8vector pstack-len))
   (set! pstack-init (+ (- (obj-encoding pstack) 1) 8 pstack-len))
-  (let ((extra (modulo pstack-init 8)))
-    (set! pstack-init (- pstack-init extra))))
+  (let ((extra (modulo pstack-init 16)))
+    (set! pstack-init (- pstack-init extra)))
+  (assert (= (modulo pstack-init 16) 0) "Internal ERROR"))
 
 ;; BLOCK :
 ;; 0          8                       (nb-globals * 8 + 8)
@@ -853,15 +855,12 @@
   (for-each (lambda (reg) (x86-pop cgc reg)) (reverse regs)))
 
 (define c-caller-save-regs ;; from System V ABI
-  (list (x86-rdi) ;; 1st argument
-        (x86-rsi) ;; 2nd argument
-        (x86-rdx) ;; 3rd argument
-        (x86-rcx) ;; 4th argument
-        (x86-r8)  ;; 5th argument
-        (x86-r9)  ;; 6th argument
-        (x86-r10)
-        (x86-r11)
-        (x86-rax))) ;; return register ;; TODO
+  (list (x86-rdi)  ;; 1st argument
+        (x86-rsi)  ;; 2nd argument
+        (x86-rdx)  ;; 3rd argument
+        (x86-rcx)  ;; 4th argument
+        (x86-r8)   ;; 5th argument
+        (x86-r9))) ;; 6th argument
 
 
 (define all-regs
@@ -921,13 +920,13 @@
   (- nb-c-caller-save-regs
      (length (member (x86-rdi) c-caller-save-regs))))
 
-(define r11-pos
-  (- nb-c-caller-save-regs
-     (length (member (x86-r11) c-caller-save-regs))))
+;(define r11-pos
+;  (- nb-c-caller-save-regs
+;     (length (member (x86-r11) c-caller-save-regs))))
 
-(define rax-pos
-  (- nb-c-caller-save-regs
-     (length (member (x86-rax) c-caller-save-regs))))
+;(define rax-pos
+;  (- nb-c-caller-save-regs
+;     (length (member (x86-rax) c-caller-save-regs))))
 
 (define rsi-pos
   (- nb-c-caller-save-regs

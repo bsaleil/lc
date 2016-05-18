@@ -12,7 +12,15 @@
 
 ;; TODO make-string
 ;; TODO codegen-list + list, alloc one mem bloc, same for function prologue
-(println "jj")
+
+
+(define (nb-allocs n)
+  (if (not (= n 0))
+      (begin '(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20)
+             (nb-allocs (- n 1)))))
+
+(nb-allocs 5000)
+
 ;* . Créer un vecteur scheme qui servira de pile
 ;* . Stocker son adresse, et conserver une variable globale qui pointe vers la pile (gambit root)
 ;* . init-rtlib: stocker tous les registres sur la pile C
