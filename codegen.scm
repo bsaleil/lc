@@ -387,16 +387,16 @@
 ;;-----------------------------------------------------------------------------
 ;; Flonum
 (define (codegen-flonum cgc immediate reg)
-  (let ((header-word (mem-header 8 STAG_FLONUM))
-        (dest (codegen-reg-to-x86reg reg)))
-    (gen-allocation cgc #f STAG_FLONUM 16)
-    ;; Write header
-    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-    (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
+
+  (let ((dest (codegen-reg-to-x86reg reg)))
+
+    (gen-allocation-imm cgc STAG_FLONUM 8)
+
     ;; Write number
     (x86-mov cgc (x86-rax) (x86-imm-int immediate))
     (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
-    ;; Move flonum to dest
+
+    ;; Put flonum
     (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))))
 
 ;;-----------------------------------------------------------------------------
@@ -409,28 +409,46 @@
 ;;-----------------------------------------------------------------------------
 ;; String
 (define (codegen-string cgc str reg)
-  (let* ((len (string-length str))
-         (mem-len (+ 8 (* len 4)))
-         (size (arithmetic-shift (bitwise-and (+ len 8) (bitwise-not 7)) -3))
-         (header-word (mem-header (* len 4) STAG_STRING))
-         (dest (codegen-reg-to-x86reg reg)))
 
-    (gen-allocation cgc #f STAG_STRING mem-len #f)
-    ;; Write header
-    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-    (x86-mov cgc (x86-mem (* -1 mem-len) alloc-ptr) (x86-rax))
+  (let ((dest (codegen-reg-to-x86reg reg)))
+
+    (x86-mov cgc (x86-rax) (x86-imm-int (* (string-length str) 4)))
+    (gen-allocation-rt cgc STAG_STRING (x86-rax))
+
     ;; Write chars
-    (write-chars cgc str 0 (+ (* -1 mem-len) 8))
-    ;; Push string
-    (x86-lea cgc dest (x86-mem (+ (* -1 mem-len) TAG_MEMOBJ) alloc-ptr))))
+    (write-chars cgc str 0 8)
+
+    ;; Put string
+    (x86-lea cgc dest (x86-mem TAG_MEMOBJ (x86-rax)))))
+
+(define (write-chars cgc str idx offset)
+  (if (< idx (string-length str))
+      (let* ((int (char->integer (string-ref str idx))))
+        (x86-mov cgc (x86-mem offset (x86-rax)) (x86-imm-int int) 32)
+        (write-chars cgc str (+ idx 1) (+ offset 4)))))
+
+  ;(let* ((len (string-length str))
+  ;       (mem-len (+ 8 (* len 4)))
+  ;       (size (arithmetic-shift (bitwise-and (+ len 8) (bitwise-not 7)) -3))
+  ;       (header-word (mem-header (* len 4) STAG_STRING))
+  ;       (dest (codegen-reg-to-x86reg reg)))
+  ;
+  ;  (gen-allocation cgc #f STAG_STRING mem-len #f)
+  ;  ;; Write header
+  ;  (x86-mov cgc (x86-rax) (x86-imm-int header-word))
+  ;  (x86-mov cgc (x86-mem (* -1 mem-len) alloc-ptr) (x86-rax))
+  ;  ;; Write chars
+  ;  (write-chars cgc str 0 (+ (* -1 mem-len) 8))
+  ;  ;; Push string
+  ;  (x86-lea cgc dest (x86-mem (+ (* -1 mem-len) TAG_MEMOBJ) alloc-ptr))))
 
 ;; Write chars of the literal string 'str':
 ;; Write str[pos] char to [alloc-ptr+offset], and write next chars
-(define (write-chars cgc str pos offset)
-  (if (< pos (string-length str))
-      (let* ((int (char->integer (string-ref str pos))))
-        (x86-mov cgc (x86-mem offset alloc-ptr) (x86-imm-int int) 32)
-        (write-chars cgc str (+ pos 1) (+ offset 4)))))
+;(define (write-chars cgc str pos offset)
+;  (if (< pos (string-length str))
+;      (let* ((int (char->integer (string-ref str pos))))
+;        (x86-mov cgc (x86-mem offset alloc-ptr) (x86-imm-int int) 32)
+;        (write-chars cgc str (+ pos 1) (+ offset 4)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Pair
@@ -802,7 +820,7 @@
         (set! lright (##flonum->fixnum lright)))
 
     ;; Alloc result flonum
-    (gen-allocation cgc #f STAG_FLONUM 16)
+    (gen-allocation-imm cgc STAG_FLONUM 8)
 
     (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd) (/ . ,x86-divsd))))))
 
@@ -841,17 +859,13 @@
      (set! opleft (x86-xmm1))
 
     ;; Operator, result in opleft
-     (x86-op cgc opleft opright)
-
-    ;; Write header
-     (x86-mov cgc (x86-rax) (x86-imm-int (mem-header 8 STAG_FLONUM)))
-     (x86-mov cgc (x86-mem -16 alloc-ptr) (x86-rax))
+    (x86-op cgc opleft opright)
 
     ;; Write number
-     (x86-movsd cgc (x86-mem -8 alloc-ptr) opleft)
+    (x86-movsd cgc (x86-mem -8 alloc-ptr) opleft)
 
     ;; Put
-     (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))))
+    (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))))
 
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
@@ -1815,7 +1829,7 @@
 (define (codegen-list cgc nb-els)
   (let ((label-list-loop (asm-make-label #f (new-sym 'list-loop)))
         (label-list-end  (asm-make-label #f (new-sym 'list-end))))
-    ;; Remainging length in rdi
+    ;; Remaining length in rdi
     (x86-mov cgc (x86-rdi) (x86-imm-int nb-els))
     ;; cdr on top of stack
     (x86-push cgc (x86-imm-int (obj-encoding '())))
@@ -1874,19 +1888,17 @@
 ;;-----------------------------------------------------------------------------
 ;; Mutable var (creates mutable object, write variable and header and replace local with mutable object)
 (define (codegen-mutable cgc fs lval)
-  (let ((header-word (mem-header 16 STAG_MOBJECT))
-        (opval (codegen-loc-to-x86opnd fs lval)))
+  (let ((opval (codegen-loc-to-x86opnd fs lval)))
 
     ;; Alloc mutable
-    (gen-allocation cgc #f STAG_MOBJECT 2)
+    (gen-allocation-imm cgc STAG_MOBJECT 8)
+
     ;; Write variable
     (if (ctx-loc-is-memory? lval)
         (begin (x86-mov cgc (x86-rax) opval)
                (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
         (x86-mov cgc (x86-mem 8 alloc-ptr) opval))
-    ;; Write header
-    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-    (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+
     ;; Replace local
     (if (ctx-loc-is-memory? lval)
         (begin (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))

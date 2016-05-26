@@ -92,7 +92,6 @@
 (define STAG_MOBJECT    2)
 (define STAG_SYMBOL     8)
 (define STAG_PROCEDURE 14)
-(define STAG_CCTABLE   16)
 (define STAG_IPORT     17)
 (define STAG_OPORT     18)
 (define STAG_STRING    19)
@@ -200,9 +199,8 @@
 ;;-----------------------------------------------------------------------------
 
 (c-define (gc sp) (long) long "gc" ""
-    (error "NYI GC")
-    (let ((alloc-size (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8)))))
-      (run-gc sp alloc-size)))
+    ;; TODO remove old gc related code
+    (error "NYI GC"))
 
 (define (gen-gc-call cgc)
 
@@ -534,6 +532,7 @@
     ;(println "### Initial to space  : " (##foreign-address tspace) " -> " (+ (##foreign-address tspace) space-len)))
   (set! from-space init-from-space)
   (set! to-space init-to-space)
+  (init-mss)
   (set! ustack (make-vector (/ ustack-len 8)))
   (set! ustack-init (+ (- (obj-encoding ustack) 1) 8 ustack-len))
 
@@ -681,6 +680,7 @@
 
 ;;-----------------------------------------------------------------------------
 
+(define label-heap-limit-handler       #f)
 (define label-do-callback-handler      #f)
 (define label-do-callback-fn-handler   #f)
 (define label-do-callback-cont-handler #f)
@@ -689,6 +689,48 @@
 (define label-rt-error-handler         #f)
 (define label-print-msg-handler        #f)
 (define label-print-msg-val-handler    #f)
+
+(define (gen-addr-handler cgc id addr)
+  (let ((label-handler (asm-make-label cgc id)))
+
+    (x86-label cgc label-handler)
+
+    ;; Save regalloc-regs to ustack because stub could trigger GC,
+    ;; then registers are treated as stack roots
+    ;; Save selector to allow stub to access its value
+    (push-pop-regs
+      cgc
+      (cons selector-reg regalloc-regs)
+      (lambda (cgc)
+        ;; Update gambit heap ptr from LC heap ptr
+        (x86-mov cgc (x86-mem (get-hp-addr)) alloc-ptr)
+        ;; Move ustack in c first arg register
+        (x86-mov cgc (x86-rdi) (x86-rsp))
+        ;; Set rsp to pstack
+        (x86-mov cgc (x86-rsp) (x86-imm-int pstack-init))
+        ;; Save ustack ptr to pstack
+        (x86-push cgc (x86-rdi))
+        ;; Save c caller save registers
+        (push-pop-regs
+          cgc
+          (set-sub c-caller-save-regs regalloc-regs '())
+          (lambda (cgc)
+            ;; Aligned call to addr
+            (x86-mov cgc (x86-rdi) (x86-imm-int addr))
+            (x86-call-label-aligned-ret cgc (x86-rdi))))
+        ;; Update LC heap ptr and heap limit from Gambit heap ptr and heap limit
+        (let ((r1 selector-reg)
+              (r2 alloc-ptr))
+          ;; heap limit
+          (x86-mov cgc r1 (x86-mem (get-heap_limit-addr)))
+          (x86-mov cgc r2 (x86-imm-int block-addr))
+          (x86-mov cgc (x86-mem (* 8 5) r2) r1)
+          ;; hp
+          (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr))))
+        ;; Set rsp to saved ustack sp
+        (x86-pop cgc (x86-rsp))))
+
+    label-handler))
 
 (define (gen-handler cgc id label)
   (let ((label-handler (asm-make-label cgc id)))
@@ -735,6 +777,11 @@
   (let ((label-rtlib-skip (asm-make-label cgc 'rtlib_skip)))
 
     (x86-jmp cgc label-rtlib-skip)
+
+    ;; heap_limit
+    (set! label-heap-limit-handler
+          (gen-addr-handler cgc 'heap_limit_handler (get___heap_limit-addr)))
+    (x86-ret cgc)
 
     ;; do_callback
     (set! label-do-callback-handler
@@ -907,30 +954,6 @@
 
 (define (selector-sp-offset)
   (* 8 (length regalloc-regs)))
-
-(define rdx-pos
-  (- nb-c-caller-save-regs
-     (length (member (x86-rdx) c-caller-save-regs))))
-
-(define rcx-pos
-  (- nb-c-caller-save-regs
-     (length (member (x86-rcx) c-caller-save-regs))))
-
-(define rdi-pos
-  (- nb-c-caller-save-regs
-     (length (member (x86-rdi) c-caller-save-regs))))
-
-;(define r11-pos
-;  (- nb-c-caller-save-regs
-;     (length (member (x86-r11) c-caller-save-regs))))
-
-;(define rax-pos
-;  (- nb-c-caller-save-regs
-;     (length (member (x86-rax) c-caller-save-regs))))
-
-(define rsi-pos
-  (- nb-c-caller-save-regs
-     (length (member (x86-rsi) c-caller-save-regs))))
 
 ;;-----------------------------------------------------------------------------
 
