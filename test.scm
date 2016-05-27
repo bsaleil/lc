@@ -13,7 +13,22 @@
 ;; TODO make-string
 ;; TODO codegen-list + list, alloc one mem bloc, same for function prologue
 
-(println "test")
+(define (print n)
+    (cond ((null? n) #f)
+          ((number? n) (print-nb n))
+          ((char? n) (print-char n))
+          ((procedure? n) (print-procedure n))
+          ((pair? n) (begin (print (car n))
+                            (print (cdr n))))
+          ((vector? n) (print-vector n 0 (vector-length n)))
+          ((string? n) (print-string n 0 (string-length n)))
+          ((symbol? n)
+             (let ((str (symbol->string n)))
+               (print-string str 0 (string-length str))))
+          ((eof-object? n)
+             (print-eof))
+          ((port? n) (print-port n))
+          (else (print-bool n))))
 
 ;* . Créer un vecteur scheme qui servira de pile
 ;* . Stocker son adresse, et conserver une variable globale qui pointe vers la pile (gambit root)

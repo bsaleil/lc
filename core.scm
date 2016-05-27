@@ -273,6 +273,29 @@
 
 ;;-----------------------------------------------------------------------------
 
+;; TODO WIP
+(c-define (gambit-call sp) (long) void "gambit_call" ""
+  (let* ((nargs
+           (encoding-obj (get-i64 (+ sp (* (+ (length regalloc-regs) 3) 8)))))
+         (op-sym
+           (encoding-obj (get-i64 (+ sp (* (+ (length regalloc-regs) 2) 8)))))
+         (args
+           (reverse
+             (let loop ((n nargs) (offset 4))
+               (if (= n 0)
+                   '()
+                   (cons (encoding-obj (get-i64 (+ sp (* (+ (length regalloc-regs) offset) 8))))
+                         (loop (- n 1) (+ offset 1)))))))
+
+         (op-fn (eval op-sym)))
+
+    (let ((retval (apply op-fn args)))
+
+      (put-i64 (+ sp (* (+ (length regalloc-regs) 2) 8))
+               (obj-encoding retval)))))
+
+;;-----------------------------------------------------------------------------
+
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
 (c-define (do-callback sp) (long) void "do_callback" ""
@@ -479,6 +502,7 @@
   (set-cdef-label! label-print-msg-val    'print-msg-val    "___result = ___CAST(void*,print_msg_val);")
   (set-cdef-label! label-rt-error         'rt_error         "___result = ___CAST(void*,rt_error);")
   (set-cdef-label! label-interned-symbol  'interned_symbol  "___result = ___CAST(void*,interned_symbol);")
+  (set-cdef-label! label-gambit-call      'gambit_call      "___result = ___CAST(void*,gambit_call);")
   (set-cdef-label! label-do-callback      'do_callback      "___result = ___CAST(void*,do_callback);")
   (set-cdef-label! label-do-callback-fn   'do_callback_fn   "___result = ___CAST(void*,do_callback_fn);")
   (set-cdef-label! label-do-callback-cont 'do_callback_cont "___result = ___CAST(void*,do_callback_cont);")
@@ -681,6 +705,7 @@
 ;;-----------------------------------------------------------------------------
 
 (define label-heap-limit-handler       #f)
+(define label-gambit-call-handler      #f)
 (define label-do-callback-handler      #f)
 (define label-do-callback-fn-handler   #f)
 (define label-do-callback-cont-handler #f)
@@ -781,6 +806,10 @@
     ;; heap_limit
     (set! label-heap-limit-handler
           (gen-addr-handler cgc 'heap_limit_handler (get___heap_limit-addr)))
+    (x86-ret cgc)
+
+    (set! label-gambit-call-handler
+          (gen-handler cgc 'gambit_call_handler label-gambit-call))
     (x86-ret cgc)
 
     ;; do_callback

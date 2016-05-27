@@ -230,6 +230,8 @@
                  ((eq? op 'define) (mlc-define ast succ))
                  ;; Apply
                  ((eq? op '$apply) (mlc-apply ast succ))
+                 ;; Gambit call
+                 ((gambit-call? op) (mlc-gambit-call ast succ))
                  ;; Call expr
                  (else (mlc-call ast succ)))))
         ;; *unknown*
@@ -1056,6 +1058,54 @@
                (codegen-sys-clock-gettime-ns cgc reg)
                (jump-to-version cgc succ (ctx-push ctx CTX_INT reg))))))
         (else (error "NYI"))))
+
+;;-----------------------------------------------------------------------------
+;;
+
+(define (gambit-call? sym)
+  (let ((lstsym (string->list (symbol->string sym)))
+        (lstprefix (string->list "gambit$$")))
+    (and (> (length lstsym) (length lstprefix))
+         (equal? (list-head lstsym (length lstprefix))
+                 lstprefix))))
+
+(define (mlc-gambit-call ast succ)
+
+  (define (get-gambit-sym sym)
+    (let* ((lstprefix (string->list "gambit$$"))
+           (lstsym (string->list (symbol->string sym)))
+           (lstres (list-tail lstsym (length lstprefix))))
+      (string->symbol (list->string lstres))))
+
+  (define (get-locs ctx nlocs)
+    (if (= nlocs 0)
+        '()
+        (cons (ctx-get-loc ctx (- nlocs 1))
+              (get-locs ctx (- nlocs 1)))))
+
+  (let* ((lazy-call
+           (make-lazy-code
+             (lambda (cgc ctx)
+               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
+                      (gsym (get-gambit-sym (car ast)))
+                      (nargs (length (cdr ast))))
+                 (apply-moves cgc ctx moves)
+                 (let ((locs (get-locs ctx nargs)))
+                   (let loop ((clocs locs)
+                              (fs (ctx-fs ctx)))
+                     (if (not (null? clocs))
+                         (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs (car clocs)))
+                                (x86-push cgc (x86-rax))
+                                (loop (cdr clocs) (+ fs 1))))))
+                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding nargs)))
+                 (x86-push cgc (x86-rax))
+                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding gsym)))
+                 (x86-push cgc (x86-rax))
+                 (x86-call-label-aligned-ret cgc label-gambit-call-handler)
+                 (x86-pop cgc (codegen-reg-to-x86reg reg))
+                 (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (+ nargs 1))))
+                 (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) CTX_UNK reg)))))))
+    (gen-ast-l (cdr ast) lazy-call)))
 
 ;;-----------------------------------------------------------------------------
 ;; PRIMITIVES

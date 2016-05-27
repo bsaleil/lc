@@ -144,7 +144,10 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
   ;; Remove saved values
   (x86-add cgc (x86-rsp) (x86-imm-int 16)))
 
-
+;; Alloc object of type stag of size nbytes + 8 (header)
+;; For performance reason, unlike gen-allocation-rt,
+;; this function does *not* return encoded object in rax.
+;; Caller need to load address of object
 (define (gen-allocation-imm cgc stag nbytes)
 
   (define label-alloc-beg (asm-make-label #f (new-sym 'alloc_begin_)))
