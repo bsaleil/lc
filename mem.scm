@@ -27,12 +27,6 @@
 ;;
 ;;---------------------------------------------------------------------------
 
-;; MEM API
-;(define (get-init-heap-pointer)
-;  ...)
-;(define (get-init-heap-limit)
-;  ...)
-
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
@@ -96,34 +90,59 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
         (+ words 1)
         words)))
 
-;; Alloc from nbbytes in rax
+;; Alloc from nbbytes in rax (and align alloc-ptr)
 ;; Return encoded scheme object in rax
+;; sizeloc is DESTROYED !
 (define (gen-allocation-rt cgc stag sizeloc)
 
   (define label-alloc-beg (asm-make-label #f (new-sym 'alloc_begin_)))
   (define label-alloc-end (asm-make-label #f (new-sym 'alloc_end_)))
+  (define label-alloc-ret (asm-make-label #f (new-sym 'alloc_ret_)))
 
-  (error "WIP")
   ;; TODO check MSECTION_BIGGEST
 
   (x86-label cgc label-alloc-beg)
 
-  (x86-push cgc sizeloc) ;; Save size to stack
-  ;; hp += (nbytes + 8)
-  (x86-add cgc alloc-ptr sizeloc)
+  ;; Save size (bytes)
+  (x86-push cgc sizeloc)
+  ;; Align sizeloc (8 bytes)
+  (x86-add cgc sizeloc (x86-imm-int 7))
+  (x86-mov cgc selector-reg   (x86-imm-int -8))
+  (x86-and cgc sizeloc selector-reg)
+  ;; Save aligned size
+  (x86-push cgc sizeloc)
+
+  ;; Update alloc ptr
+  (x86-lea cgc alloc-ptr (x86-mem 8 alloc-ptr sizeloc))
 
   ;; if hp <= heap_limit, alloc ok
   (x86-mov cgc (x86-rax) (x86-imm-int (+ (* 5 8) block-addr)))
   (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
   (x86-jle cgc label-alloc-end)
-  ;; else
+
+    ;; call heap-limit
     (x86-call-label-aligned-ret cgc label-heap-limit-handler)
-    (x86-add cgc alloc-ptr (x86-imm-int (+ nbytes 8)))
+    ;; rax = encoded ptr to obj
+    (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+    ;; Update alloc ptr
+    (x86-mov cgc selector-reg (x86-mem 0 (x86-rsp))) ;; get aligned size
+    (x86-lea cgc alloc-ptr (x86-mem 8 selector-reg selector-reg))
+    (x86-jmp cgc label-alloc-ret)
 
-  ;; write header
   (x86-label cgc label-alloc-end)
-  (x86-mov cgc (x86-mem (- 0 nbytes 8) alloc-ptr) (x86-imm-int (mem-header nbytes stag)) 64))
+  ;; rax = encoded ptr to obj
+  (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 8) alloc-ptr))
+  (x86-sub cgc (x86-rax) (x86-mem 0 (x86-rsp)))
 
+  (x86-label cgc label-alloc-ret)
+  (x86-mov cgc selector-reg (x86-mem 8 (x86-rsp))) ;; get saved nbytes (no aligned)
+  (x86-shl cgc selector-reg (x86-imm-int 8))
+  (x86-or  cgc selector-reg (x86-imm-int (mem-header 0 stag)))
+  (x86-mov cgc (x86-mem (- TAG_MEMOBJ) (x86-rax)) selector-reg) ;; write header
+  ;; Restore selector
+  (x86-mov cgc selector-reg (x86-imm-int 0))
+  ;; Remove saved values
+  (x86-add cgc (x86-rsp) (x86-imm-int 16)))
 
 
 (define (gen-allocation-imm cgc stag nbytes)
@@ -153,7 +172,7 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
   (x86-label cgc label-alloc-end)
   (x86-mov cgc (x86-mem (- 0 nbytes 8) alloc-ptr) (x86-imm-int (mem-header nbytes stag)) 64))
 
-
+;; TODO remove when all implemented
 (define (gen-allocation cgc ctx stag length rt-size?)
   (error "NYI, use gen-allocation-imm for now"))
 

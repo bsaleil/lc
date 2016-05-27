@@ -416,10 +416,10 @@
     (gen-allocation-rt cgc STAG_STRING (x86-rax))
 
     ;; Write chars
-    (write-chars cgc str 0 8)
+    (write-chars cgc str 0 (- 8 TAG_MEMOBJ))
 
     ;; Put string
-    (x86-lea cgc dest (x86-mem TAG_MEMOBJ (x86-rax)))))
+    (x86-mov cgc dest (x86-rax))))
 
 (define (write-chars cgc str idx offset)
   (if (< idx (string-length str))
@@ -1680,7 +1680,6 @@
           (x86-mov cgc (x86-eax) (x86-mem (+ (- 8 TAG_MEMOBJ) (* 4 lidx)) (opstr)))
           (x86-mov cgc (x86-eax) (x86-mem (- 8 TAG_MEMOBJ) (opidx) (opstr))))
 
-      ;; Clear bits before al
       (x86-shl cgc (x86-rax) (x86-imm-int 2))
       (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
       (x86-mov cgc dest (x86-rax)))))
