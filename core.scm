@@ -284,8 +284,9 @@
              (let loop ((n nargs) (offset 4))
                (if (= n 0)
                    '()
-                   (cons (encoding-obj (get-i64 (+ sp (* (+ (length regalloc-regs) offset) 8))))
-                         (loop (- n 1) (+ offset 1)))))))
+                   (let ((word (get-u64 (+ sp (* (+ (length regalloc-regs) offset) 8)))))
+                     (cons (encoding-obj word)
+                           (loop (- n 1) (+ offset 1))))))))
 
          (op-fn (eval op-sym)))
 
