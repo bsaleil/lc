@@ -231,7 +231,8 @@
                  ;; Apply
                  ((eq? op '$apply) (mlc-apply ast succ))
                  ;; Gambit call
-                 ((gambit-call? op) (mlc-gambit-call ast succ))
+                 ((and (symbol? op) (gambit-call? op))
+                    (mlc-gambit-call ast succ))
                  ;; Call expr
                  (else (mlc-call ast succ)))))
         ;; *unknown*
