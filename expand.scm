@@ -52,7 +52,6 @@
       ((equal? (car expr) 'if) (expand-if expr))
       ((equal? (car expr) 'begin) (expand-begin expr))
       ((equal? (car expr) 'do) (expand-do expr))
-      ;((equal? (car expr) 'list)  (expand-list expr))
       ((equal? (car expr) 'let) (expand-let expr))
       ((equal? (car expr) 'let*) (expand-let* expr))
       ((equal? (car expr) 'letrec) (expand-letrec expr))

@@ -164,7 +164,6 @@
                      (make-vector         1  2  ,(prim-types 1 CTX_INT 2 CTX_INT CTX_ALL)   ())
                      (make-string         1  2  ,(prim-types 1 CTX_INT 2 CTX_INT CTX_CHAR)  ())
                      (eof-object?         1  1  ,(prim-types 1 CTX_ALL)                     ())
-                     (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT)          ())
                      (current-output-port 0  0  ,(prim-types 0 )                            ())
                      (current-input-port  0  0  ,(prim-types 0 )                            ())))
 
@@ -200,8 +199,9 @@
          (let ((op (car ast)))
            (cond ;; Special
                  ((member op '(breakpoint $$sys-clock-gettime-ns)) (mlc-special ast succ))
-                 ;; TODO special function
-                 ((eq? op '$$print-flonum) (mlc-printflonum ast succ))
+                 ;; TODO
+                 ((and (eq? op 'write-char) (= (length ast) 2))
+                    (gen-ast (append ast '((current-output-port))) succ))
                  ;; Inlined primitive
                  ((assoc op primitives) (mlc-primitive ast succ))
                  ;; Quote
@@ -915,18 +915,14 @@
         ctx
         (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
           (apply-moves cgc ctx moves)
-          (let ((header-word (mem-header 2 STAG_MOBJECT))
-                (dest (codegen-reg-to-x86reg reg)))
+          (let ((dest (codegen-reg-to-x86reg reg)))
             ;; Alloc code
-            (gen-allocation cgc #f STAG_MOBJECT 2)
+            (gen-allocation-imm cgc STAG_MOBJECT 8)
             ;; Write variable
             (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
-            (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax))
-            ;; Write header
-            (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-            (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+            (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
             ;; Replace local
-            (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr))
+            (x86-lea cgc dest (x86-mem (+ -16 TAG_MEMOBJ) alloc-ptr))
             (alloc cgc (cdr ids) (ctx-push ctx (car stack-types) reg) (cdr stack-types))))))
 
   (if (and (not (contains (map cadr (cadr ast)) 'lambda))
@@ -1007,23 +1003,6 @@
 
 ;;-----------------------------------------------------------------------------
 ;; SPECIAL
-
-;;
-;; Make lazy code from special id $$print-flonum
-;;
-(define (mlc-printflonum ast succ)
-  (let ((spec
-          (make-lazy-code
-            (lambda (cgc ctx)
-              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
-                     (loc  (ctx-get-loc ctx 0))
-                     (mut? (ctx-is-mutable? ctx 0)))
-                (if mut?
-                    (error "NYI mutable print-flonum"))
-                (apply-moves cgc ctx moves)
-                (codegen-print-flonum cgc (ctx-fs ctx) reg loc)
-                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg)))))))
-    (gen-ast (cadr ast) spec)))
 
 ;;
 ;; Make lazy code from SPECIAL FORM
@@ -1143,15 +1122,6 @@
          (mut-port? (ctx-is-mutable? ctx 0)))
     (codegen-read-char cgc (ctx-fs ctx) reg lport mut-port?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_CHAR reg))))
-
-;; primitive write-char
-(define (prim-write-char cgc ctx reg succ cst-infos)
-  (let ((lchar (ctx-get-loc ctx 1))
-        (lport (ctx-get-loc ctx 0))
-        (mut-char? (ctx-is-mutable? ctx 1))
-        (mut-port? (ctx-is-mutable? ctx 0)))
-    (codegen-write-char cgc (ctx-fs ctx) reg lchar lport mut-char? mut-port?)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_VOID reg))))
 
 ;; primitive make-string
 (define (prim-make-string cgc ctx reg succ cst-infos args)
@@ -1275,12 +1245,16 @@
 
 ;; primitives current-input-port & current-output-port
 (define (prim-current-x-port cgc ctx reg succ cst-infos op)
-  (codegen-current-io-port cgc op reg)
-  (jump-to-version cgc succ (ctx-push ctx
-                                      (if (eq? op 'current-output-port)
-                                          CTX_OPORT
-                                          CTX_IPORT)
-                                      reg)))
+  (define lazy-out
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (let* ((stag (if (eq? op 'current-input-port) STAG_IPORT STAG_OPORT))
+               (ctx (ctx-set-type ctx 0 stag)))
+          (jump-to-version cgc succ ctx)))))
+  (define lazy-current
+    (let ((sym (string->symbol (string-append "gambit$$" (symbol->string op)))))
+      (gen-ast (list sym) lazy-out)))
+  (jump-to-version cgc lazy-current ctx))
 
 ;; primitive close-input-port & close-output-port
 (define (prim-close-x-port cgc ctx reg succ cst-infos op)
@@ -1330,11 +1304,6 @@
 ;;
 (define (mlc-primitive ast succ)
 
-  ;; Adjust args for some primitives
-  (if (and (eq? (car ast) 'write-char)
-           (= (length ast) 2))
-      (set! ast (append ast '((current-output-port)))))
-
   ;; Assert primitive nb args
   (assert-p-nbargs ast)
 
@@ -1356,7 +1325,6 @@
                        ((car cdr)        (prim-cxr            cgc ctx reg succ cst-infos (car ast)))
                        ((eof-object?)    (prim-eof-object?    cgc ctx reg succ cst-infos))
                        ((read-char)      (prim-read-char      cgc ctx reg succ cst-infos))
-                       ((write-char)     (prim-write-char     cgc ctx reg succ cst-infos))
                        ((make-string)    (prim-make-string    cgc ctx reg succ cst-infos (cdr ast)))
                        ((make-vector)    (prim-make-vector    cgc ctx reg succ cst-infos (cdr ast)))
                        ((string->symbol) (prim-string->symbol cgc ctx reg succ cst-infos))

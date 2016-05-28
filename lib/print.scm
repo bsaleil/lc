@@ -36,6 +36,9 @@
 (define (pp n)
   (gambit$$pp n))
 
+(define (write-char c p)
+  (gambit$$write-char c p))
+
 (define write
   (lambda (n)
     (pp n)))

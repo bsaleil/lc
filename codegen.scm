@@ -499,7 +499,6 @@
                rest-regs))
         (dest
           (and destreg (codegen-loc-to-x86opnd fs destreg)))
-        (header-word     (mem-header 24 STAG_PAIR))
         (label-loop-end (asm-make-label #f (new-sym 'prologue-loop-end)))
         (label-loop     (asm-make-label #f (new-sym 'prologue-loop))))
 
@@ -511,25 +510,21 @@
     (x86-label cgc label-loop)
     (x86-cmp cgc (x86-r15) (x86-imm-int 0))
     (x86-je cgc label-loop-end)
-    (gen-allocation cgc #f STAG_PAIR 3)
-    (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-    (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
-    (x86-pop cgc (x86-rax))
-    (x86-mov cgc (x86-mem OFFSET_PAIR_CAR alloc-ptr) (x86-rax))
-    (x86-mov cgc (x86-mem OFFSET_PAIR_CDR alloc-ptr) (x86-r14))
-    (x86-lea cgc (x86-r14) (x86-mem TAG_MEMOBJ alloc-ptr))
+    (gen-allocation-imm cgc STAG_PAIR 16)
+    (x86-pop cgc (x86-rax)) mtn
+    (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
+    (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r14))
+    (x86-lea cgc (x86-r14) (x86-mem (+ -24 TAG_MEMOBJ) alloc-ptr))
     (x86-sub cgc (x86-r15) (x86-imm-int (obj-encoding 1)))
     (x86-jmp cgc label-loop)
     (x86-label cgc label-loop-end)
     ;; Regs
     (for-each
       (lambda (src)
-        (gen-allocation cgc #f STAG_PAIR 3)
-        (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-        (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
-        (x86-mov cgc (x86-mem OFFSET_PAIR_CAR alloc-ptr) src)
-        (x86-mov cgc (x86-mem OFFSET_PAIR_CDR alloc-ptr) (x86-r14))
-        (x86-lea cgc (x86-r14) (x86-mem TAG_MEMOBJ alloc-ptr)))
+        (gen-allocation-imm cgc STAG_PAIR 16)
+        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) src)
+        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r14))
+        (x86-lea cgc (x86-r14) (x86-mem (+ -24 TAG_MEMOBJ) alloc-ptr)))
       regs)
     ;; Dest
     (if dest
