@@ -1472,8 +1472,7 @@
 ;;-----------------------------------------------------------------------------
 ;; make-vector
 (define (codegen-make-vector cgc fs reg llen lval mut-len? mut-val?)
-  (let* ((header-word (mem-header 0 STAG_VECTOR))
-         (dest  (codegen-reg-to-x86reg reg))
+  (let* ((dest  (codegen-reg-to-x86reg reg))
          (oplen (lambda () (codegen-loc-to-x86opnd fs llen)))
          (opval (lambda () (if lval (codegen-loc-to-x86opnd fs lval) #f)))
          (label-loop (asm-make-label #f (new-sym 'make-vector-loop)))
@@ -1487,34 +1486,31 @@
 
       ;; Primitive code
       (x86-mov cgc (x86-rax) (oplen))
-      (gen-allocation cgc #f STAG_VECTOR 8 #t)
-      (x86-push cgc alloc-ptr) ;; save alloc ptr
-      (x86-lea cgc (x86-rax) (x86-mem 8 #f (oplen) 1)) ;; rax = len(memblock)
-      (x86-sub cgc alloc-ptr (x86-rax)) ;; alloc-ptr at beginning
+      (x86-shl cgc (x86-rax) (x86-imm-int 1))
+      (gen-allocation-rt cgc STAG_VECTOR (x86-rax))
 
-      ;; Write header
-      (x86-mov cgc (x86-rax) (oplen))
-      (x86-shl cgc (x86-rax) (x86-imm-int 9))
-      (if (not (= header-word 0)) ;; if we use the stag 0 for vector (normal case), we save one instruction.
-          (x86-or cgc (x86-rax) (x86-imm-int header-word)))
-      (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
+      (x86-mov cgc selector-reg (oplen))
+      (x86-shl cgc selector-reg (x86-imm-int 1))
 
-      (x86-add cgc alloc-ptr (x86-imm-int 8))
       (x86-label cgc label-loop)
-      (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rsp)))
-      (x86-je  cgc label-end)
+      (x86-cmp cgc selector-reg (x86-imm-int 0))
+      (x86-je cgc label-end)
 
-        (if lval
-            (x86-mov cgc (x86-mem 0 alloc-ptr) (opval))
-            (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-imm-int 0)))
-        (x86-add cgc alloc-ptr (x86-imm-int 8))
-        (x86-jmp cgc label-loop)
+        (let ((memop
+                (x86-mem (- TAG_MEMOBJ) (x86-rax) selector-reg)))
+
+          (if lval
+              (x86-mov cgc memop (opval))
+              (x86-mov cgc memop (x86-imm-int 0) 64))
+          (x86-sub cgc selector-reg (x86-imm-int 8))
+          (x86-jmp cgc label-loop))
 
       (x86-label cgc label-end)
-      (x86-mov cgc dest alloc-ptr)
-      (x86-lea cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) #f (oplen) 1)) ;; rax = len(memblock)
-      (x86-sub cgc dest (x86-rax))
-      (x86-add cgc (x86-rsp) (x86-imm-int 8)))))
+      (x86-mov cgc selector-reg (oplen))
+      (x86-shl cgc selector-reg (x86-imm-int 9))
+      (x86-or cgc (x86-mem (- TAG_MEMOBJ) (x86-rax)) selector-reg)
+      (x86-mov cgc dest (x86-rax))
+      (x86-mov cgc selector-reg (x86-imm-int 0)))))
 
 ;;-----------------------------------------------------------------------------
 ;; string->symbol

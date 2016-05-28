@@ -299,7 +299,7 @@
 ;;
 (define (mlc-vector ast succ)
 
-  (define mem-len (* 8 (+ (vector-length ast) 1)))
+  (define len (vector-length ast))
 
   (define (gen-set cgc ctx lidx)
     (let* ((lval (ctx-get-loc ctx lidx))
@@ -307,37 +307,24 @@
       (if (ctx-loc-is-memory? lval)
           (begin (x86-mov cgc (x86-rax) opval)
                  (set! opval (x86-rax))))
-      (x86-mov cgc (x86-mem (+ (* -1 mem-len) 8 (* lidx 8)) alloc-ptr) opval)))
+      (x86-mov cgc (x86-mem (+ (* -8 len) (* 8 lidx)) alloc-ptr) opval)))
 
   (define lazy-vector
     (make-lazy-code
       (lambda (cgc ctx)
-        (let loop ((pos 0))
-          (if (= pos (vector-length ast))
+        (let ((len (vector-length ast)))
+          (gen-allocation-imm cgc STAG_VECTOR (* 8 len))
+          (let loop ((pos 0))
+            (if (= pos len)
               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
                 (apply-moves cgc ctx moves)
-                (x86-lea cgc (codegen-reg-to-x86reg reg) (x86-mem (+ (* -1 mem-len) TAG_MEMOBJ) alloc-ptr))
-                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx (vector-length ast)) CTX_VECT reg)))
+                (x86-lea cgc (codegen-reg-to-x86reg reg) (x86-mem (+ (* -8 (+ len 1)) TAG_MEMOBJ) alloc-ptr))
+                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx len) CTX_VECT reg)))
               (begin
                 (gen-set cgc ctx pos)
-                (loop (+ pos 1))))))))
+                (loop (+ pos 1)))))))))
 
-
-  (define lazy-alloc
-    (make-lazy-code
-      (lambda (cgc ctx)
-
-        (let ((header-word (mem-header (* 8 (vector-length ast)) STAG_VECTOR)))
-          ;; Allocate array in alloc-ptr
-          (gen-allocation cgc ctx STAG_VECTOR mem-len #f)
-          ;; Write header
-          (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-          (x86-mov cgc (x86-mem (* -1 mem-len) alloc-ptr) (x86-rax))
-          ;; Write length
-          (jump-to-version cgc lazy-vector ctx)))))
-
-
-  (gen-ast-l (reverse (vector->list ast)) lazy-alloc))
+  (gen-ast-l (reverse (vector->list ast)) lazy-vector))
 
 ;;
 ;; Make lazy code from string literal

@@ -13,7 +13,8 @@
 ;; TODO make-string
 ;; TODO codegen-list + list, alloc one mem bloc, same for function prologue
 
-(pp (cons 1 2))
+
+;(make-vector 10 #\R)
 
 ;(define (print n)
 ;    (cond ((null? n) #f)

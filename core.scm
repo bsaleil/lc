@@ -55,6 +55,8 @@
 ;;-----------------------------------------------------------------------------
 
 ;; Forward declarations
+(define init-mss #f)
+(define get___heap_limit-addr #f)
 (define run-gc #f)         ;; mem.scm
 (define expand-tl #f)      ;; expand.scm
 (define gen-ast #f)        ;; ast.scm
