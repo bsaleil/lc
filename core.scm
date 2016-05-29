@@ -422,11 +422,9 @@
 ;; Interned symbols
 ;; TODO
 
-(define label-interned-symbol #f)
 (define sym-space-len 100000)
 (define sym-space (make-mcb sym-space-len))
 (define sym-alloc (##foreign-address sym-space))
-(define interned-symbols (make-table test: eq?))
 
 ;; Allocate a new symbol and return encoded qword
 (define (alloc-symbol sym)
@@ -454,36 +452,6 @@
     ;; Return tagged symbol qword
     (+ addr TAG_MEMOBJ)))
 
-;; Get symbol qworw from symbol 'sym'
-;; Allocate a new symbol if not in table, and return existing if already in table
-(define (get-symbol-qword sym)
-  (let ((r (table-ref interned-symbols sym #f)))
-    (if r
-       ;; Symbol exists
-       r
-       ;; Symbol does not exist
-       (let ((c (alloc-symbol sym)))
-        (table-set! interned-symbols sym c)
-        c))))
-
-;; Entry point to create symbol from string at runtime
-(c-define (interned-symbol sp) (long) void "interned_symbol" ""
-
-  (let* ((str (get-i64 (+ sp (* (+ (length c-caller-save-regs) 1) 8)))) ;; Get str from top of runtime stack
-         (len (quotient (get-i64 (+ (- str TAG_MEMOBJ) 8)) 4)))
-
-    ;; Get gambit symbol from lc string
-    (define (lcstr->gsym addr len pos gstr)
-      (if (= 0 len)
-         (string->symbol gstr)
-         (begin (string-set! gstr pos (integer->char (get-u8 addr)))
-                (lcstr->gsym (+ addr 1) (- len 1) (+ pos 1) gstr))))
-
-    (let* ((sym   (lcstr->gsym (+ (- str TAG_MEMOBJ) 16) len 0 (make-string len)))
-           (qword (get-symbol-qword sym)))
-      ;; Write symbol qword at top on runtime stack
-      (put-i64 (+ sp (* (+ (length c-caller-save-regs) 1) 8)) qword))))
-
 ;;-----------------------------------------------------------------------------
 
 ;; Create label used by generated machine code to call c-define functions
@@ -504,7 +472,6 @@
   (set-cdef-label! label-print-msg        'print-msg        "___result = ___CAST(void*,print_msg);")
   (set-cdef-label! label-print-msg-val    'print-msg-val    "___result = ___CAST(void*,print_msg_val);")
   (set-cdef-label! label-rt-error         'rt_error         "___result = ___CAST(void*,rt_error);")
-  (set-cdef-label! label-interned-symbol  'interned_symbol  "___result = ___CAST(void*,interned_symbol);")
   (set-cdef-label! label-gambit-call      'gambit_call      "___result = ___CAST(void*,gambit_call);")
   (set-cdef-label! label-do-callback      'do_callback      "___result = ___CAST(void*,do_callback);")
   (set-cdef-label! label-do-callback-fn   'do_callback_fn   "___result = ___CAST(void*,do_callback_fn);")
@@ -713,7 +680,6 @@
 (define label-do-callback-fn-handler   #f)
 (define label-do-callback-cont-handler #f)
 (define label-breakpoint-handler       #f)
-(define label-interned-symbol-handler  #f)
 (define label-rt-error-handler         #f)
 (define label-print-msg-handler        #f)
 (define label-print-msg-val-handler    #f)
@@ -833,11 +799,6 @@
     ;; breakpoint
     (set! label-breakpoint-handler
           (gen-handler cgc 'breakpoint_handler label-breakpoint))
-    (x86-ret cgc)
-
-    ;; interned_symbol
-    (set! label-interned-symbol-handler
-          (gen-handler cgc 'interned_symbol_handler label-interned-symbol))
     (x86-ret cgc)
 
     ;; Runtime error

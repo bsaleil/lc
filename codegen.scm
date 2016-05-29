@@ -403,8 +403,10 @@
 ;;-----------------------------------------------------------------------------
 ;; Symbol
 (define (codegen-symbol cgc sym reg)
-  (let ((qword (get-symbol-qword sym))
+  (let ((qword (obj-encoding sym))
         (dest  (codegen-reg-to-x86reg reg)))
+    ;; Check symbol is a PERM gambit object
+    (assert (= (bitwise-and (get-i64 (- qword TAG_MEMOBJ)) 7) 6) "Internal error")
     (x86-mov cgc dest (x86-imm-int qword))))
 
 ;;-----------------------------------------------------------------------------
@@ -1492,6 +1494,7 @@
 ;;-----------------------------------------------------------------------------
 ;; string->symbol
 (define (codegen-str->sym cgc fs reg lstr mut-str?)
+  (error "NYI")
   (let ((dest (codegen-reg-to-x86reg reg))
         (opstr (codegen-loc-to-x86opnd fs lstr)))
 
@@ -1501,7 +1504,7 @@
                (set! opstr (x86-rax))))
 
     (x86-push cgc opstr)
-    (x86-call cgc label-interned-symbol-handler)
+    ;(x86-call cgc label-interned-symbol-handler)
     (x86-pop cgc dest)))
 
 ;;-----------------------------------------------------------------------------

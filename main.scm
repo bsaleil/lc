@@ -160,7 +160,7 @@
   (let ((lazy-final
           (make-lazy-code
             (lambda (cgc ctx)
-
+              
               ;; Update gambit heap ptr from LC heap ptr
               (x86-mov cgc (x86-mem (get-hp-addr)) alloc-ptr)
 
