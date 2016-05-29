@@ -92,6 +92,7 @@
 (define alloc-ptr  (x86-r9))
 (define global-ptr (x86-r8))
 (define selector-reg (x86-rcx))
+(define selector-reg-32 (x86-ecx))
 
 ;; NOTE: temporary register is always rax
 ;; NOTE: selector is always rcx
@@ -511,7 +512,7 @@
     (x86-cmp cgc (x86-r15) (x86-imm-int 0))
     (x86-je cgc label-loop-end)
     (gen-allocation-imm cgc STAG_PAIR 16)
-    (x86-pop cgc (x86-rax)) mtn
+    (x86-pop cgc (x86-rax))
     (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
     (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r14))
     (x86-lea cgc (x86-r14) (x86-mem (+ -24 TAG_MEMOBJ) alloc-ptr))
@@ -1409,60 +1410,40 @@
 
       ;;
       ;; Unmem / Unbox code
-      (chk-pick-unmem-unbox! (oplen) mut-len? (list (opval) (oplen) dest))
+      (chk-pick-unmem-unbox! (oplen) mut-len? (list selector-reg (opval) (oplen) dest))
+      (if lval
+          (chk-pick-unmem-unbox! (opval) mut-val? (list selector-reg (opval) (oplen) dest)))
 
-      ;; Len is encoded in rax (if (make-vector 3) rax=12)
-      ;; Nb chars to byte size
+      ;; Primitive code
       (x86-mov cgc (x86-rax) (oplen))
-      (x86-shr cgc (x86-rax) (x86-imm-int 2))
-      (x86-and cgc (x86-rax) (x86-imm-int (bitwise-not 7)))
-      (x86-shr cgc (x86-rax) (x86-imm-int 1))
+      (gen-allocation-rt cgc STAG_STRING (x86-rax))
 
-      ;; Alloc
-      (gen-allocation cgc #f STAG_STRING 3 #t)
-
-      ;; Dest reg = len
-      (x86-mov cgc dest (oplen))
-      (x86-shr cgc dest (x86-imm-int 2)) ;; decode length
-
-      ;; Move init val to register
-      (if (opval)
-          (begin (unmem! (oprax) (opval))
-                 (chk-unmem-unbox! (oprax) (opval) mut-val?)
-                 (x86-shr cgc (x86-rax) (x86-imm-int 2)))
-          (x86-mov cgc (x86-rax) (x86-imm-int (quotient (obj-encoding #\0) 4))))
+      (x86-push cgc (oplen))
+      (if lval
+          (begin
+            (x86-mov cgc selector-reg (opval))
+            (x86-shr cgc selector-reg (x86-imm-int 2))))
 
       (x86-label cgc label-loop)
-      ;; if dest == 0 then jump to end
-      (x86-cmp cgc dest (x86-imm-int 0))
+      (x86-cmp cgc (oplen) (x86-imm-int 0))
       (x86-je cgc label-end)
 
-      (x86-mov cgc (x86-mem 15 alloc-ptr dest) (x86-al))
-      (x86-dec cgc dest)
-      (x86-jmp cgc label-loop)
+        (let ((memop
+                (x86-mem (- 4 TAG_MEMOBJ) (x86-rax) (oplen))))
 
-      ;; END:
+          (if lval
+              (x86-mov cgc memop selector-reg-32)
+              (x86-mov cgc memop (x86-imm-int (obj-encoding #\0)) 32))
+          (x86-sub cgc (oplen) (x86-imm-int 4))
+          (x86-jmp cgc label-loop))
+
       (x86-label cgc label-end)
-
-      ;; Write length
-      (if (ctx-loc-is-memory? llen)
-          (begin (x86-mov cgc (x86-rax) (oplen))
-                 (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
-          (x86-mov cgc (x86-mem 8 alloc-ptr) (oplen)))
-
-      ;; Len is encoded in rax (if (make-vector 3) rax=12)
-      ;; Nb chars to byte size
-      (x86-mov cgc (x86-rax) (oplen))
-      (x86-shr cgc (x86-rax) (x86-imm-int 2))
-      (x86-and cgc (x86-rax) (x86-imm-int (bitwise-not 7)))
-      (x86-shr cgc (x86-rax) (x86-imm-int 1))
-      ;; Write header
-      (x86-shl cgc (x86-rax) (x86-imm-int 6))
-      (x86-add cgc (x86-rax) (x86-imm-int header-word))
-      (x86-mov cgc (x86-mem 0 alloc-ptr) (x86-rax))
-
-      ;; Put str
-      (x86-lea cgc dest (x86-mem TAG_MEMOBJ alloc-ptr)))))
+      (x86-pop cgc (oplen))
+      (x86-mov cgc selector-reg (oplen))
+      (x86-shl cgc selector-reg (x86-imm-int 8))
+      (x86-or cgc (x86-mem (- TAG_MEMOBJ) (x86-rax)) selector-reg)
+      (x86-mov cgc dest (x86-rax))
+      (x86-mov cgc selector-reg (x86-imm-int 0)))))
 
 ;;-----------------------------------------------------------------------------
 ;; make-vector
@@ -1477,7 +1458,8 @@
 
       ;; Unmem / Unbox code
       (chk-pick-unmem-unbox! (oplen) mut-len? (list (oplen) (opval) dest))
-      (chk-pick-unmem-unbox! (opval) mut-val? (list (oplen) (opval) dest))
+      (if lval
+          (chk-pick-unmem-unbox! (opval) mut-val? (list (oplen) (opval) dest)))
 
       ;; Primitive code
       (x86-mov cgc (x86-rax) (oplen))

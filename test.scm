@@ -13,10 +13,7 @@
 ;; TODO make-string
 ;; TODO codegen-list + list, alloc one mem bloc, same for function prologue
 
-(println (port? (current-input-port)))
-(println (port? (current-output-port)))
-
-(write-char #\E)
+(println (make-string 0 #\R))
 
 ;(make-vector 10 #\R)
 
