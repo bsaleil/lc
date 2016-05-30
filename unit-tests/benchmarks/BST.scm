@@ -122,7 +122,7 @@
      (begin (in-order (node.left  tree) fn)
             (fn (node.data tree))
             (in-order (node.right tree) fn))))
- 
+
 ;---------
 ; Deletion
 ;---------
@@ -141,7 +141,7 @@
                        (make-node min (node.left tree) (delete (node.right tree) min))))))
         ((< k (node.data tree))
            (make-node (node.data tree) (delete (node.left tree) k) (node.right tree)))
-           
+
         (else
            (make-node (node.data tree) (node.left tree) (delete (node.right tree) k)))))
 
@@ -155,7 +155,7 @@
 ;; Insertion
 (println "Insertion")
 (set! tree (insert-list tree keys))
-(pp tree)
+(println tree)
 
 ;; Checking
 (println "Checking")
@@ -163,14 +163,14 @@
 
 ;; Searching
 (println "Searching")
-(pp (search tree 12))
-(pp (search tree 15))
+(println (search tree 12))
+(println (search tree 15))
 
 ;; Deletion
 (println "Deletion")
-(pp (delete tree 24))
+(println (delete tree 24))
 (pp (is-bst (delete tree 24) 0 99999999999))
-(pp (delete tree 444))
+(println (delete tree 444))
 (pp (is-bst (delete tree 444) 0 99999999999))
 
 ;; Traversal
@@ -179,45 +179,39 @@
 ;; Pre-order traversal
 (println "pre:")
 (pre-order tree
-           (lambda (n)
-             (print n)
-             (print " ")))
+           print)
 (newline)
 
 ;; Post-order traversal
 (println "post:")
 (post-order tree
-            (lambda (n)
-              (print n)
-              (print " ")))
+            print)
 
 (newline)
 
 ;; In-order traversal
 (println "in:")
 (in-order tree
-          (lambda (n)
-            (print n)
-            (print " ")))
+          print)
 
 (newline)
 
 ;Insertion
-;(10 (8 (4 (3 () ()) ()) (9 () ())) (24 (13 (12 () ()) (23 (14 () ()) ())) (45 (25 () (42 () ())) (109 (87 (58 (57 () ()) ()) ()) (222 () ())))))
+;1084392413122314452542109875857222
 ;Checking
 ;#t
 ;Searching
-;(12 () ())
+;12
 ;#f
 ;Deletion
-;(10 (8 (4 (3 () ()) ()) (9 () ())) (25 (13 (12 () ()) (23 (14 () ()) ())) (45 (42 () ()) (109 (87 (58 (57 () ()) ()) ()) (222 () ())))))
+;10843925131223144542109875857222
 ;#t
-;(10 (8 (4 (3 () ()) ()) (9 () ())) (24 (13 (12 () ()) (23 (14 () ()) ())) (45 (25 () (42 () ())) (109 (87 (58 (57 () ()) ()) ()) (222 () ())))))
+;1084392413122314452542109875857222
 ;#t
 ;Traversal
 ;pre:
-;10 8 4 3 9 24 13 12 23 14 45 25 42 109 87 58 57 222 
+;1084392413122314452542109875857222
 ;post:
-;3 4 9 8 12 14 23 13 42 25 57 58 87 222 109 45 24 10 
+;3498121423134225575887222109452410
 ;in:
-;3 4 8 9 10 12 13 14 23 24 25 42 45 57 58 87 109 222 
+;3489101213142324254245575887109222
