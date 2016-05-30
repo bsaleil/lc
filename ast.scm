@@ -746,7 +746,7 @@
                 (x86-call cgc label-next-arg)
                 (x86-mov cgc (x86-mem OFFSET_PAIR_CAR alloc-ptr) (x86-rax))
                 (x86-mov cgc (x86-mem OFFSET_PAIR_CDR alloc-ptr) (x86-r14))
-                (x86-lea cgc (x86-r14) (x86-mem TAG_MEMOBJ alloc-ptr))
+                (x86-lea cgc (x86-r14) (x86-mem TAG_PAIR alloc-ptr))
                 (x86-jmp cgc label-rest-loop))
               ;
               (x86-label cgc label-rest-end)

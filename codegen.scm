@@ -480,7 +480,7 @@
           (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-imm-int (obj-encoding lcdr)) 64)
           (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (opcdr)))
 
-      (x86-lea cgc dest (x86-mem (+ -24 TAG_MEMOBJ) alloc-ptr)))))
+      (x86-lea cgc dest (x86-mem (+ -24 TAG_PAIR) alloc-ptr)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Functions
@@ -517,7 +517,7 @@
     (x86-pop cgc (x86-rax))
     (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
     (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r14))
-    (x86-lea cgc (x86-r14) (x86-mem (+ -24 TAG_MEMOBJ) alloc-ptr))
+    (x86-lea cgc (x86-r14) (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
     (x86-sub cgc (x86-r15) (x86-imm-int (obj-encoding 1)))
     (x86-jmp cgc label-loop)
     (x86-label cgc label-loop-end)
@@ -527,7 +527,7 @@
         (gen-allocation-imm cgc STAG_PAIR 16)
         (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) src)
         (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r14))
-        (x86-lea cgc (x86-r14) (x86-mem (+ -24 TAG_MEMOBJ) alloc-ptr)))
+        (x86-lea cgc (x86-r14) (x86-mem (+ -24 TAG_PAIR) alloc-ptr)))
       regs)
     ;; Dest
     (if dest
@@ -1196,8 +1196,8 @@
 (define (codegen-car/cdr cgc fs op reg lval mut-val?)
   (let ((offset
           (if (eq? op 'car)
-              (- OFFSET_PAIR_CAR TAG_MEMOBJ)
-              (- OFFSET_PAIR_CDR TAG_MEMOBJ)))
+              (- OFFSET_PAIR_CAR TAG_PAIR)
+              (- OFFSET_PAIR_CDR TAG_PAIR)))
         (dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
@@ -1215,8 +1215,8 @@
 (define (codegen-scar/scdr cgc fs op reg lpair lval val-cst? mut-val? mut-pair?)
   (let ((offset
           (if (eq? op 'set-car!)
-              (- OFFSET_PAIR_CAR TAG_MEMOBJ)
-              (- OFFSET_PAIR_CDR TAG_MEMOBJ)))
+              (- OFFSET_PAIR_CAR TAG_PAIR)
+              (- OFFSET_PAIR_CDR TAG_PAIR)))
         (dest (codegen-reg-to-x86reg reg))
         (oppair (codegen-loc-to-x86opnd fs lpair))
         (opval (and (not val-cst?) (codegen-loc-to-x86opnd fs lval))))
@@ -1820,7 +1820,7 @@
     (x86-mov cgc (x86-mem 16 alloc-ptr) (x86-rbx))
     (x86-mov cgc (x86-rbx) (x86-imm-int (mem-header 24 STAG_PAIR)))
     (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rbx))
-    (x86-lea cgc (x86-rbx) (x86-mem TAG_MEMOBJ alloc-ptr))
+    (x86-lea cgc (x86-rbx) (x86-mem TAG_PAIR alloc-ptr))
     (x86-push cgc (x86-rbx))
     (x86-sub cgc (x86-rdi) (x86-imm-int 1))
     (x86-jmp cgc label-list-loop)

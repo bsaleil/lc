@@ -87,6 +87,7 @@
 (define TAG_NUMBER  0)
 (define TAG_MEMOBJ  1)
 (define TAG_SPECIAL 2)
+(define TAG_PAIR    3)
 
 ;; STags
 (define STAG_VECTOR     0)
@@ -1431,13 +1432,18 @@
                           ((eq? type CTX_NULL)
                            (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
                            (x86-cmp cgc (x86-rax) opval))
+                          ;; Pair type test
+                          ((eq? type CTX_PAI)
+                           (x86-mov cgc (x86-rax) (x86-imm-int 3))
+                           (x86-and cgc (x86-rax) opval)
+                           (x86-cmp cgc (x86-rax) (x86-imm-int TAG_PAIR)))
                           ;; Char type check
                           ((eq? type CTX_CHAR)
                            (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
                            (x86-and cgc (x86-rax) opval)
                            (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL))) ;; TODO: not enough ? TAG_SPECIAL is uses by other types ?
                           ;; Procedure type test
-                          ((member type (list CTX_FLO CTX_CLO CTX_PAI CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))
+                          ((member type (list CTX_FLO CTX_CLO CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))
                            ;; Vérifier le tag memobj
                            ;; extraire le tag du header
                            ;; Vérifier le tag stag
@@ -1461,8 +1467,7 @@
                                                                           ((eq? type CTX_STR)  STAG_STRING)
                                                                           ((eq? type CTX_IPORT) STAG_IPORT)
                                                                           ((eq? type CTX_OPORT) STAG_OPORT)
-                                                                          ((eq? type CTX_VECT) STAG_VECTOR)
-                                                                          ((eq? type CTX_PAI)  STAG_PAIR))))))
+                                                                          ((eq? type CTX_VECT) STAG_VECTOR))))))
                           ;; Other
                           (else (error "Unknown type " type)))
 
