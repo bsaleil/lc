@@ -150,8 +150,6 @@
                      (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                   (0))
                      (integer->char       1  1  ,(prim-types 1 CTX_INT)                    (0))
                      (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_INT)            (1))
-                     (string->symbol      1  1  ,(prim-types 1 CTX_STR)                     ())
-                     (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ())
                      (close-output-port   1  1  ,(prim-types 1 CTX_OPORT)                   ())
                      (close-input-port    1  1  ,(prim-types 1 CTX_IPORT)                   ())
                      (open-output-file    1  1  ,(prim-types 1 CTX_STR)                     ())
@@ -1151,20 +1149,6 @@
                                         CTX_VECT
                                         reg))))
 
-;; primitive symbol->string
-(define (prim-symbol->string cgc ctx reg succ cst-infos)
-  (let ((lsym (ctx-get-loc ctx 0))
-        (mut-sym? (ctx-is-mutable? ctx 0)))
-    (codegen-sym->str cgc (ctx-fs ctx) reg lsym mut-sym?)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR reg))))
-
-;; primitive string->symbol
-(define (prim-string->symbol cgc ctx reg succ cst-infos)
-  (let ((lstr (ctx-get-loc ctx 0))
-        (mut-str? (ctx-is-mutable? ctx 0)))
-    (codegen-str->sym cgc (ctx-fs ctx) reg lstr mut-str?)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM reg))))
-
 ;; primitive vector-ref
 (define (prim-vector-ref cgc ctx reg succ cst-infos)
 
@@ -1327,8 +1311,6 @@
                        ((read-char)      (prim-read-char      cgc ctx reg succ cst-infos))
                        ((make-string)    (prim-make-string    cgc ctx reg succ cst-infos (cdr ast)))
                        ((make-vector)    (prim-make-vector    cgc ctx reg succ cst-infos (cdr ast)))
-                       ((string->symbol) (prim-string->symbol cgc ctx reg succ cst-infos))
-                       ((symbol->string) (prim-symbol->string cgc ctx reg succ cst-infos))
                        ((vector-ref)     (prim-vector-ref     cgc ctx reg succ cst-infos))
                        ((string-ref)     (prim-string-ref     cgc ctx reg succ cst-infos))
                        ((vector-set!)    (prim-vector-set!    cgc ctx reg succ cst-infos))

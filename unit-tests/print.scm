@@ -92,7 +92,7 @@
 ;#f
 ;#f
 ;
-;#<procedure>
+;#<procedure #2>
 ;1020
 ;1020
 ;99#f

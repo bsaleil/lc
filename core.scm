@@ -88,6 +88,8 @@
 (define TAG_MEMOBJ  1)
 (define TAG_SPECIAL 2)
 (define TAG_PAIR    3)
+;; Char mask is 100000...00011
+(define SPECIAL_MASK   (bitwise-not (- (expt 2 63) 4)))
 
 ;; STags
 (define STAG_VECTOR     0)
@@ -1439,9 +1441,12 @@
                            (x86-cmp cgc (x86-rax) (x86-imm-int TAG_PAIR)))
                           ;; Char type check
                           ((eq? type CTX_CHAR)
-                           (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
-                           (x86-and cgc (x86-rax) opval)
-                           (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL))) ;; TODO: not enough ? TAG_SPECIAL is uses by other types ?
+                           ;; char if val is tagged with TAG_SPECIAL and val > 0
+                           (x86-mov cgc (x86-rax) opval)
+                           (x86-mov cgc selector-reg (x86-imm-int SPECIAL_MASK))
+                           (x86-and cgc (x86-rax) selector-reg)
+                           (x86-mov cgc selector-reg (x86-imm-int 0))
+                           (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
                           ;; Procedure type test
                           ((member type (list CTX_FLO CTX_CLO CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))
                            ;; Vérifier le tag memobj
