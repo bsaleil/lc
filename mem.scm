@@ -98,6 +98,7 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
   (define label-alloc-beg (asm-make-label #f (new-sym 'alloc_begin_)))
   (define label-alloc-end (asm-make-label #f (new-sym 'alloc_end_)))
   (define label-alloc-ret (asm-make-label #f (new-sym 'alloc_ret_)))
+  (define label-not-still (asm-make-label #f (new-sym 'alloc_not_still)))
 
   ;; TODO check MSECTION_BIGGEST
 
@@ -111,6 +112,12 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
   (x86-and cgc sizeloc selector-reg)
   ;; Save aligned size
   (x86-push cgc sizeloc)
+
+  (x86-cmp cgc sizeloc (x86-imm-int MSECTION_BIGGEST))
+  (x86-jl cgc label-not-still) ;; TODO jl or jle ?
+    (x86-mov cgc selector-reg (x86-imm-int 0))
+    (gen-error cgc 'LALALA)
+  (x86-label cgc label-not-still)
 
   ;; Update alloc ptr
   (x86-lea cgc alloc-ptr (x86-mem 8 alloc-ptr sizeloc))

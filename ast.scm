@@ -731,16 +731,14 @@
               (x86-label cgc label-rest-loop)
               (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (- nb-args 1))))
               (x86-je cgc label-rest-end)
-              (let ((header-word (mem-header 3 STAG_PAIR)))
+
                 ;; Alloc
-                (gen-allocation cgc #f STAG_PAIR 3)
-                (x86-mov cgc (x86-rax) (x86-imm-int header-word))
-                (x86-mov cgc (x86-mem  0 alloc-ptr) (x86-rax))
-                (x86-call cgc label-next-arg)
-                (x86-mov cgc (x86-mem OFFSET_PAIR_CAR alloc-ptr) (x86-rax))
-                (x86-mov cgc (x86-mem OFFSET_PAIR_CDR alloc-ptr) (x86-r14))
-                (x86-lea cgc (x86-r14) (x86-mem TAG_PAIR alloc-ptr))
-                (x86-jmp cgc label-rest-loop))
+                (gen-allocation-imm cgc STAG_PAIR 16)
+                (x86-call-label-aligned-ret cgc label-next-arg)
+                (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
+                (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-rax))
+                (x86-lea cgc (x86-r14) (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
+                (x86-jmp cgc label-rest-loop)
               ;
               (x86-label cgc label-rest-end)
               (if (<= nb-args (length args-regs))
