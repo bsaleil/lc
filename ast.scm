@@ -150,14 +150,9 @@
                      (char->integer       1  1  ,(prim-types 1 CTX_CHAR)                   (0))
                      (integer->char       1  1  ,(prim-types 1 CTX_INT)                    (0))
                      (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_INT)            (1))
-                     (close-output-port   1  1  ,(prim-types 1 CTX_OPORT)                   ())
-                     (close-input-port    1  1  ,(prim-types 1 CTX_IPORT)                   ())
-                     (open-output-file    1  1  ,(prim-types 1 CTX_STR)                     ())
-                     (open-input-file     1  1  ,(prim-types 1 CTX_STR)                     ())
                      (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_INT CTX_CHAR) (1 2))
                      (vector-set!         3  3  ,(prim-types 3 CTX_VECT CTX_INT CTX_ALL)    ()) ;; + efficace cst TODO
                      (string-length       1  1  ,(prim-types 1 CTX_STR)                     ())
-                     (read-char           1  1  ,(prim-types 1 CTX_IPORT)                   ())
                      (exit                0  0  ,(prim-types 0 )                            ())
                      (make-vector         1  2  ,(prim-types 1 CTX_INT 2 CTX_INT CTX_ALL)   ())
                      (make-string         1  2  ,(prim-types 1 CTX_INT 2 CTX_INT CTX_CHAR)  ())
@@ -1114,13 +1109,6 @@
     (codegen-eof? cgc (ctx-fs ctx) reg lval mut-val?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))
 
-;; primitive read-char
-(define (prim-read-char cgc ctx reg succ cst-infos)
-  (let* ((lport (ctx-get-loc ctx 0))
-         (mut-port? (ctx-is-mutable? ctx 0)))
-    (codegen-read-char cgc (ctx-fs ctx) reg lport mut-port?)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_CHAR reg))))
-
 ;; primitive make-string
 (define (prim-make-string cgc ctx reg succ cst-infos args)
   (let* ((init-value? (= (length args) 2))
@@ -1240,24 +1228,6 @@
       (gen-ast (list sym) lazy-out)))
   (jump-to-version cgc lazy-current ctx))
 
-;; primitive close-input-port & close-output-port
-(define (prim-close-x-port cgc ctx reg succ cst-infos op)
-  (let ((lport (ctx-get-loc ctx 0))
-        (mut-port? (ctx-is-mutable? ctx 0)))
-    (codegen-close-io-port cgc (ctx-fs ctx) reg lport mut-port?)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))
-
-;; primitives open-input-file & open-output-file
-(define (prim-open-x-file cgc ctx reg succ cst-infos op)
-  (let ((lstr (ctx-get-loc ctx 0))
-        (mut-str? (ctx-is-mutable? ctx 0)))
-    (codegen-open-io-file cgc (ctx-fs ctx) op reg lstr mut-str?)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
-                                        (if (eq? op 'open-input-file)
-                                            CTX_IPORT
-                                            CTX_OPORT)
-                                        reg))))
-
 ;; primitives char->integer & integer->char
 (define (prim-char<->int cgc ctx reg succ cst-infos op)
   (let* ((cst-arg (assoc 0 cst-infos))
@@ -1308,7 +1278,6 @@
                        ((char=?)         (prim-eq?            cgc ctx reg succ cst-infos))
                        ((car cdr)        (prim-cxr            cgc ctx reg succ cst-infos (car ast)))
                        ((eof-object?)    (prim-eof-object?    cgc ctx reg succ cst-infos))
-                       ((read-char)      (prim-read-char      cgc ctx reg succ cst-infos))
                        ((make-string)    (prim-make-string    cgc ctx reg succ cst-infos (cdr ast)))
                        ((make-vector)    (prim-make-vector    cgc ctx reg succ cst-infos (cdr ast)))
                        ((vector-ref)     (prim-vector-ref     cgc ctx reg succ cst-infos))
@@ -1317,8 +1286,6 @@
                        ((string-set!)    (prim-string-set!    cgc ctx reg succ cst-infos))
                        ((set-car! set-cdr!)                      (prim-set-cxr!       cgc ctx reg succ cst-infos (car ast)))
                        ((current-input-port current-output-port) (prim-current-x-port cgc ctx reg succ cst-infos (car ast)))
-                       ((close-input-port close-output-port)     (prim-close-x-port   cgc ctx reg succ cst-infos (car ast)))
-                       ((open-input-file open-output-file)       (prim-open-x-file    cgc ctx reg succ cst-infos (car ast)))
                        ((char->integer integer->char)            (prim-char<->int     cgc ctx reg succ cst-infos (car ast)))
                        ((vector-length string-length)            (prim-x-length       cgc ctx reg succ cst-infos (car ast)))
                        (else (error "Unknown primitive"))))))))))

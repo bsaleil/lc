@@ -1794,14 +1794,14 @@
     ;; Write variable
     (if (ctx-loc-is-memory? lval)
         (begin (x86-mov cgc (x86-rax) opval)
-               (x86-mov cgc (x86-mem 8 alloc-ptr) (x86-rax)))
-        (x86-mov cgc (x86-mem 8 alloc-ptr) opval))
+               (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax)))
+        (x86-mov cgc (x86-mem -8 alloc-ptr) opval))
 
     ;; Replace local
     (if (ctx-loc-is-memory? lval)
-        (begin (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
+        (begin (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
                (x86-mov cgc opval (x86-rax)))
-        (x86-lea cgc opval (x86-mem TAG_MEMOBJ alloc-ptr)))))
+        (x86-lea cgc opval (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Time

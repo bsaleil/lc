@@ -94,7 +94,7 @@
 ;; STags
 (define STAG_VECTOR     0)
 (define STAG_PAIR       1)
-(define STAG_MOBJECT    2)
+(define STAG_MOBJECT    5)
 (define STAG_SYMBOL     8)
 (define STAG_PROCEDURE 14)
 (define STAG_IPORT     17)
