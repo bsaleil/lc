@@ -37,7 +37,7 @@
   (gambit$$close-output-port port))
 
 (define (close-input-port port)
-  (gambit$$close-output-port port))
+  (gambit$$close-input-port port))
 
 (define (read-char port)
   (gambit$$read-char port))
