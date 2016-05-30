@@ -13,11 +13,7 @@
 ;; TODO make-string
 ;; TODO codegen-list + list, alloc one mem bloc, same for function prologue
 
-;; open-input/output-file primitives
-(let ((file "./unit-tests/mutable"))
-  (set! file "./unit-tests/mutable-out")
-  (let ((in (open-input-file file)))
-    (print (read-char in)) (print #\,)))
+
 ;* . Créer un vecteur scheme qui servira de pile
 ;* . Stocker son adresse, et conserver une variable globale qui pointe vers la pile (gambit root)
 ;* . init-rtlib: stocker tous les registres sur la pile C

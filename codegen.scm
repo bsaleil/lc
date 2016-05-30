@@ -60,7 +60,8 @@
      (lambda (cb self)
        (let ((ex (modulo (+ self call-size) align-mult)))
          (if (> ex 0)
-             (set! nop-needed (- align-mult ex)))
+             (set! nop-needed (- align-mult ex))
+             (set! nop-needed 0))
          nop-needed))
 
      (lambda (cb self)
