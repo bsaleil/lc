@@ -1,22 +1,10 @@
-;; TODO: allocation:
-;; - Vérifier, pour chaque stub potentiel, qu'on ne manipule pas une donnée
-;; - Qui peut être déplacée (patch-closure?)
-;; TODO: allocation:
-;; x flonum : codegen-flonum
-;; - string : codegen-string codegen-make-string codegen-sym->str
-;; - pairs  : codegen-pair codegen-list
-;; x vector : codegen-vector codegen-make-vector
-;; x closure: codegen-closure-create
-;; - others: codegen-prologue-rest> codegen-num-ff codegen-open-io-file codegen-mutable (?)
-;; PORTS: remove ports and use Gambit ports
 
-(define (fact n)
-  (if (= n 0)
-      1
-      (fact 0)))
 
-(fact 1)
+(define (foo a) 10)
 
+(let ((z foo))
+  (foo 1)
+  (foo 2))
 
 ;* . Créer un vecteur scheme qui servira de pile
 ;* . Stocker son adresse, et conserver une variable globale qui pointe vers la pile (gambit root)

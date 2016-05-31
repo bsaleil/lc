@@ -1213,9 +1213,12 @@
     (pp call-ctx))
 
   (define (fn-patch label-dest new-version?)
-    (if generic
-        (patch-generic ast closure label-dest ep-loc global-opt-sym)
-        (patch-closure closure call-ctx label-dest ep-loc)))
+    (cond ((not opt-entry-points)
+           (patch-closure-ep closure label-dest ep-loc)) ;; TODO WIP multiple patch for same closure(?)
+          (generic
+           (patch-generic ast closure label-dest ep-loc global-opt-sym))
+          (else
+           (patch-closure closure call-ctx label-dest ep-loc))))
 
   (define (fn-codepos)
     code-alloc)
@@ -1290,7 +1293,6 @@
                   " (" (number->string label-addr 16) ")")))
 
    ;; TODO
-   ;(print "generic: ") ;; (+ block-addr (* 8 global-offset))
    (if global-opt-sym
        (let* ((r (table-ref globals global-opt-sym #f))
               (addr (+ globals-addr (* 8 (cdr r))))
@@ -1298,12 +1300,10 @@
          (set! closure curr-closure)))
    ;;TODO
 
-   (if opt-entry-points
-       (let ((table-addr
-               (or ep-loc
-                   (get-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8)))))
-         (put-i64 (+ table-addr 8) label-addr))
-       (error "Can't patch generic without opt-entry-points"))
+   (let ((table-addr
+           (or ep-loc
+               (get-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8)))))
+     (put-i64 (+ table-addr 8) label-addr))
    label-addr))
 
 ;; Patch closure
@@ -1324,16 +1324,31 @@
     ;             (number->string label-addr 16)
     ;             ")"))
 
-    ;; TODO: new patch-closure for case opt-entry-points is #f (with new do_callback_fn sub functions) (?)
     (let ((cctable-addr
             (or ep-loc
                 (get-i64 (- (+ (obj-encoding closure) 8) TAG_MEMOBJ))))) ;; +8(header) - 1(tag)
-      (if opt-entry-points
-          (put-i64 (+ cctable-addr offset) label-addr)
-          ;; TODO: rename cctable-addr which is a vector here
-          (put-i64 (+ (- (obj-encoding cctable-addr) TAG_MEMOBJ) 8) label-addr)))
-
+      (put-i64 (+ cctable-addr offset) label-addr))
     label-addr))
+
+;; Patch closure when opt-entry-points is #f (only one ep)
+(define (patch-closure-ep closure label ep-loc)
+
+  (define label-addr (asm-label-pos label))
+
+  (define (patch-globalopt loc)
+    ;; Patch box which contains entry point
+    (put-i64 (+ (- (obj-encoding loc) TAG_MEMOBJ) 8) label-addr))
+
+  (define (patch-noopt)
+    ;; TODO: use still box to patch entry point from ast (give by gen-version-fn) ??
+    (put-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8) label-addr))
+
+  (println "PATCH EP C")
+
+  (if ep-loc
+      (patch-globalopt ep-loc)
+      (patch-noopt))
+  label-addr)
 
 (define (jump-size jump-addr)
   (if (= (get-u8 jump-addr) #x0f) 6 5))
