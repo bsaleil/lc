@@ -1696,7 +1696,6 @@
          (lazy-call
            (make-lazy-code
              (lambda (cgc ctx)
-             (x86-mov cgc (x86-rax) (x86-imm-int 1111111))
                ;; Save used registers and update ctx
                (set! ctx (call-save-registers cgc ctx tail? (+ (length args) 1)))
 

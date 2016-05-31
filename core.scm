@@ -1330,7 +1330,8 @@
                 (get-i64 (- (+ (obj-encoding closure) 8) TAG_MEMOBJ))))) ;; +8(header) - 1(tag)
       (if opt-entry-points
           (put-i64 (+ cctable-addr offset) label-addr)
-          (vector-set! cctable-addr 0 label-addr)))
+          ;; TODO: rename cctable-addr which is a vector here
+          (put-i64 (+ (- (obj-encoding cctable-addr) TAG_MEMOBJ) 8) label-addr)))
 
     label-addr))
 

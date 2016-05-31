@@ -10,8 +10,12 @@
 ;; - others: codegen-prologue-rest> codegen-num-ff codegen-open-io-file codegen-mutable (?)
 ;; PORTS: remove ports and use Gambit ports
 
+(define (fact n)
+  (if (= n 0)
+      1
+      (fact 0)))
 
-(pp (vector-length (make-vector 32)))
+(fact 1)
 
 
 ;* . Créer un vecteur scheme qui servira de pile
