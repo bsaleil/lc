@@ -11,7 +11,7 @@
 ;; PORTS: remove ports and use Gambit ports
 
 
-(pp (make-vector 32))
+(pp (vector-length (make-vector 32)))
 
 
 ;* . Créer un vecteur scheme qui servira de pile

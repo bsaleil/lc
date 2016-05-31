@@ -56,7 +56,9 @@
 
 ;; Forward declarations
 (define init-mss #f)
-(define get___heap_limit-addr #f)
+(define get___heap_limit-addr  #f)
+(define get___alloc_still-addr #f)
+(define get-pstate-addr #f)
 (define run-gc #f)         ;; mem.scm
 (define expand-tl #f)      ;; expand.scm
 (define gen-ast #f)        ;; ast.scm
@@ -681,6 +683,7 @@
 ;;-----------------------------------------------------------------------------
 
 (define label-heap-limit-handler       #f)
+(define label-alloc-still-handler      #f)
 (define label-gambit-call-handler      #f)
 (define label-do-callback-handler      #f)
 (define label-do-callback-fn-handler   #f)
@@ -690,7 +693,7 @@
 (define label-print-msg-handler        #f)
 (define label-print-msg-val-handler    #f)
 
-(define (gen-addr-handler cgc id addr)
+(define (gen-addr-handler cgc id addr cargs-generator)
   (let ((label-handler (asm-make-label cgc id)))
 
     (x86-label cgc label-handler)
@@ -715,9 +718,10 @@
           cgc
           (set-sub c-caller-save-regs regalloc-regs '())
           (lambda (cgc)
+            (cargs-generator cgc) ;; Gen c args
             ;; Aligned call to addr
-            (x86-mov cgc (x86-rdi) (x86-imm-int addr))
-            (x86-call-label-aligned-ret cgc (x86-rdi))))
+            (x86-mov cgc (x86-rax) (x86-imm-int addr))
+            (x86-call-label-aligned-ret cgc (x86-rax))))
         ;; Update LC heap ptr and heap limit from Gambit heap ptr and heap limit
         (let ((r1 selector-reg)
               (r2 alloc-ptr))
@@ -780,7 +784,18 @@
 
     ;; heap_limit
     (set! label-heap-limit-handler
-          (gen-addr-handler cgc 'heap_limit_handler (get___heap_limit-addr)))
+          (gen-addr-handler cgc 'heap_limit_handler (get___heap_limit-addr) (lambda (cgc) #f)))
+    (x86-ret cgc)
+
+    ;; heap_limit
+    (set! label-alloc-still-handler
+          (gen-addr-handler cgc 'alloc_still_handler (get___alloc_still-addr)
+            (lambda (cgc)
+              ;; rdi rsi rdx (pstate, stag, len)
+              ;;(x86-mov cgc (x86-rdi) (x86-imm-int 0))
+              (x86-mov cgc (x86-rsi) (x86-mem (* 8 (+ (length regalloc-regs) 2)) (x86-rdi)))
+              (x86-mov cgc (x86-rdx) (x86-mem (* 8 (+ (length regalloc-regs) 4)) (x86-rdi)))
+              (x86-mov cgc (x86-rdi) (x86-imm-int (get-pstate-addr))))))
     (x86-ret cgc)
 
     (set! label-gambit-call-handler

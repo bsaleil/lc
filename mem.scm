@@ -48,6 +48,19 @@ void initmss()
       exit(0);
 }
 
+___U64 alloc_still(___processor_state pstate, ___U64 stag, ___U64 bytes)
+{
+  ___U64 r = ___alloc_scmobj(pstate,stag,bytes);
+  if ((r & 3)==0)
+  {
+    puts(\"Error: Heap overflow\\n\");
+    exit(0);
+  }
+  return r;
+}
+
+___U64  get___alloc_still_addr()      { return (___U64)&alloc_still; }
+
 int callHL()
 {
   int r = ___heap_limit(___PSPNC) && ___garbage_collect (___PSP 0);
@@ -58,6 +71,7 @@ int callHL()
   }
 }
 
+___U64  get_pstate_addr()            { return (___WORD)&___PSTATE;             }
 ___WORD get_hp_addr()                { return (___WORD)&___PSTATE->hp;         }
 ___WORD get_heap_limit_addr()        { return (___WORD)&___PSTATE->heap_limit; }
 ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
@@ -71,6 +85,9 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
 (define (get___heap_limit-addr)
   ((c-lambda () long "get___heap_limit_addr")))
 
+(define (get___alloc_still-addr)
+  ((c-lambda () long "get___alloc_still_addr")))
+
 (define (get-heap_limit-addr)
   ((c-lambda () long "get_heap_limit_addr")))
 
@@ -79,6 +96,9 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
              scheme-object
              "___result = ___EXT(___make_vector) (___PSTATE, ___arg1, ___FAL);")
    len))
+
+(define (get-pstate-addr)
+  ((c-lambda () long "get_pstate_addr")))
 
 (define (get-hp-addr)
   ((c-lambda () long "get_hp_addr")))
@@ -95,10 +115,13 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
 ;; sizeloc is DESTROYED !
 (define (gen-allocation-rt cgc stag sizeloc)
 
+  ;; TODO: use a dispatch to generate only still or not-still code
+
   (define label-alloc-beg (asm-make-label #f (new-sym 'alloc_begin_)))
   (define label-alloc-end (asm-make-label #f (new-sym 'alloc_end_)))
   (define label-alloc-ret (asm-make-label #f (new-sym 'alloc_ret_)))
-  (define label-not-still (asm-make-label #f (new-sym 'alloc_not_still)))
+  (define label-not-still (asm-make-label #f (new-sym 'alloc_not_still_)))
+  (define label-alloc-still-end (asm-make-label #f (new-sym 'alloc_still_end_)))
 
   ;; TODO check MSECTION_BIGGEST
 
@@ -113,10 +136,15 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
   ;; Save aligned size
   (x86-push cgc sizeloc)
 
+  ;; see TODO
   (x86-cmp cgc sizeloc (x86-imm-int MSECTION_BIGGEST))
   (x86-jl cgc label-not-still) ;; TODO jl or jle ?
-    (x86-mov cgc selector-reg (x86-imm-int 0))
-    (gen-error cgc 'LALALA)
+    ;; TODO: wrtie comments, and rewrite optimized code sequence
+    (x86-push cgc (x86-imm-int stag))
+    (x86-call-label-aligned-ret cgc label-alloc-still-handler)
+    (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-imm-int 0) 64) ;; 0
+    (x86-add cgc (x86-rsp) (x86-imm-int 8)) ;; remove
+    (x86-jmp cgc label-alloc-still-end)
   (x86-label cgc label-not-still)
 
   ;; Update alloc ptr
@@ -146,6 +174,8 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
   (x86-shl cgc selector-reg (x86-imm-int 8))
   (x86-or  cgc selector-reg (x86-imm-int (mem-header 0 stag)))
   (x86-mov cgc (x86-mem (- TAG_MEMOBJ) (x86-rax)) selector-reg) ;; write header
+
+  (x86-label cgc label-alloc-still-end)
   ;; Restore selector
   (x86-mov cgc selector-reg (x86-imm-int 0))
   ;; Remove saved values
