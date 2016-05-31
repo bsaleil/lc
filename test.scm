@@ -10,10 +10,9 @@
 ;; - others: codegen-prologue-rest> codegen-num-ff codegen-open-io-file codegen-mutable (?)
 ;; PORTS: remove ports and use Gambit ports
 
-;; TODO make-string
-;; TODO codegen-list + list, alloc one mem bloc, same for function prologue
 
-(make-vector 10000)
+(make-string 3)
+
 
 ;* . Créer un vecteur scheme qui servira de pile
 ;* . Stocker son adresse, et conserver une variable globale qui pointe vers la pile (gambit root)

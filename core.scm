@@ -358,10 +358,12 @@
           (encoding-obj (get-i64 (+ sp (selector-sp-offset)))))
 
          (ctx-idx
-          (encoding-obj (get-i64 (+ sp (reg-sp-offset-r (x86-r11))))))
+          (if opt-entry-points
+              (encoding-obj (get-i64 (+ sp (reg-sp-offset-r (x86-r11)))))
+              #f))
 
          (stack
-           (if (= selector 1)
+           (if (or (not opt-entry-points) (= selector 1))
                #f
                (global-cc-get-ctx ctx-idx)))
 
@@ -370,7 +372,7 @@
           (encoding-obj (get-i64 (+ sp (reg-sp-offset-r (x86-rsi))))))
 
          (nb-args
-           (if (= selector 1)
+           (if (or (not opt-entry-points) (= selector 1))
                (let ((encoded (get-i64 (+ sp (reg-sp-offset-r (x86-rdi))))))
                  (arithmetic-shift encoded -2))
                (- (length stack) 2)))
@@ -556,6 +558,7 @@
 
 (define globals-space #f)
 (define globals-len 10000) ;; 1024 globals
+(define globals-addr #f)
 (define block #f)
 (define block-len 15)
 (define block-addr #f)
@@ -1275,7 +1278,7 @@
    ;(print "generic: ") ;; (+ block-addr (* 8 global-offset))
    (if global-opt-sym
        (let* ((r (table-ref globals global-opt-sym #f))
-              (addr (+ block-addr (* 8 global-offset) (* 8 (cdr r))))
+              (addr (+ globals-addr (* 8 (cdr r))))
               (curr-closure (get-i64 addr)))
          (set! closure curr-closure)))
    ;;TODO
@@ -1283,15 +1286,9 @@
    (if opt-entry-points
        (let ((table-addr
                (or ep-loc
-                   (get-i64 (- (+ closure 8) TAG_MEMOBJ)))))
+                   (get-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8)))))
          (put-i64 (+ table-addr 8) label-addr))
-       (let ((loc
-               (or ep-loc
-                   (get-entry-points-loc ast #f))))
-         (put-i64 (- (+ closure 8) TAG_MEMOBJ) label-addr)     ;; Patch closure
-         (put-i64 (+ 8 (- (obj-encoding loc) 1)) label-addr))) ;; Patch still vector containing code addr
-
-
+       (error "Can't patch generic without opt-entry-points"))
    label-addr))
 
 ;; Patch closure
@@ -1312,10 +1309,13 @@
     ;             (number->string label-addr 16)
     ;             ")"))
 
+    ;; TODO: new patch-closure for case opt-entry-points is #f (with new do_callback_fn sub functions) (?)
     (let ((cctable-addr
             (or ep-loc
                 (get-i64 (- (+ (obj-encoding closure) 8) TAG_MEMOBJ))))) ;; +8(header) - 1(tag)
-      (put-i64 (+ cctable-addr offset) label-addr))
+      (if opt-entry-points
+          (put-i64 (+ cctable-addr offset) label-addr)
+          (vector-set! cctable-addr 0 label-addr)))
 
     label-addr))
 
@@ -1487,7 +1487,7 @@
 ;; Interprocedural BBV (cr/cc-tables)
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 500)
+(define global-cc-table-maxsize 500) ;; 500
 (define global-cr-table-maxsize (length type-cridx)) ;; TODO number of types
 ;; Holds the current shape of the global cc table
 (define global-cc-table (make-table))

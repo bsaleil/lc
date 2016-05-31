@@ -628,6 +628,7 @@
                                                        (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t global-opt)))
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
+                                                    ;; NOTE Handle case if opt-entry-points is #f
                                                     (else
                                                        (let ((ctx (ctx-init-fn stack ctx all-params fvars mvars global-opt lambda-opt)))
                                                          (gen-version-fn ast closure lazy-prologue ctx ctx #f global-opt)))))))
@@ -736,7 +737,7 @@
                 (gen-allocation-imm cgc STAG_PAIR 16)
                 (x86-call-label-aligned-ret cgc label-next-arg)
                 (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
-                (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-rax))
+                (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r14))
                 (x86-lea cgc (x86-r14) (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
                 (x86-jmp cgc label-rest-loop)
               ;

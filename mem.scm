@@ -133,7 +133,7 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
     (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
     ;; Update alloc ptr
     (x86-mov cgc selector-reg (x86-mem 0 (x86-rsp))) ;; get aligned size
-    (x86-lea cgc alloc-ptr (x86-mem 8 selector-reg selector-reg))
+    (x86-lea cgc alloc-ptr (x86-mem 8 alloc-ptr selector-reg))
     (x86-jmp cgc label-alloc-ret)
 
   (x86-label cgc label-alloc-end)
