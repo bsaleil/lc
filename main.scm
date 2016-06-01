@@ -215,8 +215,12 @@
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)
-             (set! from-space init-from-space)
-             (set! to-space   init-to-space)
+             (set! all-lazy-code #f)
+             (let loop ((i 0))
+               (if (< i (/ ustack-len 8))
+                   (begin (vector-set! ustack i 0)
+                          (loop (+ i 1)))))
+             (##gc)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
       (begin (##machine-code-block-exec mcb))))

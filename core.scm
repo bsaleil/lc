@@ -64,7 +64,7 @@
 (define gen-ast #f)        ;; ast.scm
 (define alloc-ptr #f)
 (define global-ptr #f)
-(define get-entry-points-loc #f)
+(define entry-points-locs #f)
 (define codegen-loc-to-x86opnd #f)
 (define ctime-entries-get #f)
 
@@ -161,7 +161,6 @@
 (define ERR_LET              "ILL-FORMED LET")
 (define ERR_LET*             "ILL-FORMED LET*")
 (define ERR_LETREC           "ILL-FORMED LETREC")
-(define ERR_HEAP_NOT_8       "INTERNAL ERROR: heap size should be a multiple of 8")
 
 (define (ERR_TYPE_EXPECTED type)
   (string-append (string-upcase type)
@@ -489,20 +488,6 @@
 
 ;; Machine code block management
 
-;; HEAP
-(define from-space #f)
-(define to-space   #f)
-;; Set to 2gb (2000000000) to exec all benchmarks without GC (except lattice.scm)
-;; Set to 7gb (7000000000) to exec all benchmarks without GC
-(define space-len 7000000000)
-;(define space-len 4000000000)
-;(define space-len 1000000000)
-
-(assert (= (modulo space-len 8) 0) ERR_HEAP_NOT_8)
-
-(define init-to-space #f)
-(define init-from-space #f)
-
 ;; CODE
 (define code-len 12000000)
 (define code-addr #f)
@@ -524,25 +509,11 @@
 (define (init-mcb)
   (set! mcb (make-mcb code-len))
   (set! code-addr (##foreign-address mcb))
-  (let ((tspace (make-mcb space-len))
-        (fspace (make-mcb space-len)))
-    (set! init-from-space (+ (##foreign-address fspace) space-len))
-    (set! init-to-space   (+ (##foreign-address tspace) space-len)))
-    ;(println "### Code segment: " code-addr " -> " (+ code-addr code-len))
-    ;(println "### Initial from space: " (##foreign-address fspace) " -> " (+ (##foreign-address fspace) space-len))
-    ;(println "### Initial to space  : " (##foreign-address tspace) " -> " (+ (##foreign-address tspace) space-len)))
-  (set! from-space init-from-space)
-  (set! to-space init-to-space)
   (init-mss)
   (set! ustack (make-vector (/ ustack-len 8)))
   (set! ustack-init (+ (- (obj-encoding ustack) 1) 8 ustack-len))
 
   ;;; stack
-  ;(set! ustack (make-u8vector ustack-len))
-  ;(set! ustack-init (+ (- (obj-encoding ustack) 1) 8 ustack-len))
-  ;;; Align initial stack pointer value to avoid weird segfault
-  ;(let ((extra (modulo ustack-init 8)))
-  ;  (set! ustack-init (- ustack-init extra)))
   ;; TODO: use real pstack
   (set! pstack (make-u8vector pstack-len))
   (set! pstack-init (+ (- (obj-encoding pstack) 1) 8 pstack-len))
@@ -1214,7 +1185,7 @@
 
   (define (fn-patch label-dest new-version?)
     (cond ((not opt-entry-points)
-           (patch-closure-ep closure label-dest ep-loc)) ;; TODO WIP multiple patch for same closure(?)
+           (patch-closure-ep ast closure label-dest ep-loc)) ;; TODO WIP multiple patch for same closure(?)
           (generic
            (patch-generic ast closure label-dest ep-loc global-opt-sym))
           (else
@@ -1331,7 +1302,7 @@
     label-addr))
 
 ;; Patch closure when opt-entry-points is #f (only one ep)
-(define (patch-closure-ep closure label ep-loc)
+(define (patch-closure-ep ast closure label ep-loc)
 
   (define label-addr (asm-label-pos label))
 
@@ -1339,15 +1310,19 @@
     ;; Patch box which contains entry point
     (put-i64 (+ (- (obj-encoding loc) TAG_MEMOBJ) 8) label-addr))
 
-  (define (patch-noopt)
-    ;; TODO: use still box to patch entry point from ast (give by gen-version-fn) ??
-    (put-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8) label-addr))
+  (define (patch-noopt stillbox)
+    ;; Patch current closure
+    (put-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8) label-addr)
+    ;; Patch still box
+    (put-i64 (+ (- (obj-encoding stillbox) TAG_MEMOBJ) 8) label-addr))
 
-  (println "PATCH EP C")
+  ;; TODO: don't get it from here ! (get it at same time than patch-generic)
+  ;; TODO: change and use get-entry-points-loc
+  ;; ep-loc, use get-entry-points-loc istead of ctime-... (?)
 
   (if ep-loc
       (patch-globalopt ep-loc)
-      (patch-noopt))
+      (patch-noopt (table-ref entry-points-locs ast)))
   label-addr)
 
 (define (jump-size jump-addr)

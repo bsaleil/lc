@@ -1,10 +1,14 @@
 
+(let ((foo (lambda () (lambda () 1))))
 
-(define (foo a) 10)
+  ((foo))
+  ((foo))
+  ((foo))
 
-(let ((z foo))
-  (foo 1)
-  (foo 2))
+  ((foo))
+  ((foo))
+  ((foo)))
+
 
 ;* . Créer un vecteur scheme qui servira de pile
 ;* . Stocker son adresse, et conserver une variable globale qui pointe vers la pile (gambit root)

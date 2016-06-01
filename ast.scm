@@ -627,8 +627,12 @@
                                                      (let ((ctx (ctx-init-fn stack ctx all-params fvars mvars global-opt lambda-opt)))
                                                        (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t global-opt)))
 
+                                                    ;; CASE ;; NOTE Handle case if opt-entry-points is #f
+                                                    ((eq? opt-entry-points #f)
+                                                     (let ((ctx (ctx-init-fn stack ctx all-params fvars mvars global-opt lambda-opt)))
+                                                       (gen-version-fn ast closure lazy-prologue-gen ctx ctx #f global-opt)))
+
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
-                                                    ;; NOTE Handle case if opt-entry-points is #f
                                                     (else
                                                        (let ((ctx (ctx-init-fn stack ctx all-params fvars mvars global-opt lambda-opt)))
                                                          (gen-version-fn ast closure lazy-prologue ctx ctx #f global-opt)))))))
