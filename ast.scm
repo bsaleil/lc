@@ -568,7 +568,8 @@
                                    (begin (x86-mov cgc oret opres)
                                           (x86-mov cgc oret (x86-mem (- 8 TAG_MEMOBJ) oret)))
                                    (x86-mov cgc oret (x86-mem (- 8 TAG_MEMOBJ) opres)))
-                               (x86-mov cgc oret opres)))
+                               (if (not (eq? oret opres))
+                                   (x86-mov cgc oret opres))))
 
                          ;; 3 - Clean stack
                          (if (> clean-nb 0)
