@@ -351,7 +351,7 @@
 ;; | Call arg 1    |
 ;; +---------------+
 (c-define (do-callback-fn sp) (long) void "do_callback_fn" ""
-
+  
   (let* ((ret-addr
           (get-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))))
 

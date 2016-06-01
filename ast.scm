@@ -611,27 +611,19 @@
                (stub-labels (add-fn-callback cgc
                                              1
                                              (lambda (sp stack ret-addr selector closure)
-                                              (cond ;; CASE 1 - Use multiple entry points AND use max-versions limit AND this limit is reached
-                                                    ((and (= selector 0)
-                                                          opt-max-versions
-                                                          (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
-                                                     (error "NYI1")
-                                                     (let* ((cctx (ctx-init-fn stack ctx all-params fvars mvars global-opt lambda-opt))
-                                                            (stack
-                                                              (append (make-list (length all-params) CTX_UNK)
-                                                                      (list CTX_CLO CTX_RETAD)))
-                                                            (gctx (ctx-copy cctx stack))) ;; To handle rest param
-                                                       (gen-version-fn ast closure lazy-prologue-gen gctx cctx #f global-opt)))
-
-                                                    ;; CASE 2 - Do not use multiple entry points
-                                                    ((= selector 1)
-                                                     (let ((ctx (ctx-init-fn stack ctx all-params fvars mvars global-opt lambda-opt)))
-                                                       (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t global-opt)))
-
-                                                    ;; CASE ;; NOTE Handle case if opt-entry-points is #f
+                                              (cond ;; CASE 1 - Use entry point (no cctable)
                                                     ((eq? opt-entry-points #f)
                                                      (let ((ctx (ctx-init-fn stack ctx all-params fvars mvars global-opt lambda-opt)))
                                                        (gen-version-fn ast closure lazy-prologue-gen ctx ctx #f global-opt)))
+
+                                                    ;; CASE 2 - Use multiple entry points AND use max-versions limit AND this limit is reached
+                                                    ;;          OR use generic entry point
+                                                    ((or (= selector 1)
+                                                         (and (= selector 0)
+                                                              opt-max-versions
+                                                              (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions)))
+                                                     (let ((ctx (ctx-init-fn #f ctx all-params fvars mvars global-opt lambda-opt)))
+                                                       (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t global-opt)))
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
