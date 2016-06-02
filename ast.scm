@@ -1800,19 +1800,28 @@
 
                (jump-to-version cgc succ ctx))))
          (stub-labels
-           (add-cont-callback cgc
-                              0
-                              (lambda (ret-addr selector type table)
-                                     (mlet ((args (cdr ast))
-                                            (ctx
-                                              (if apply?
-                                                  (ctx-pop-n ctx 2) ;; Pop operator and args
-                                                  (ctx-pop-n ctx (+ (length args) 1))))) ;; Remove closure and args from virtual stack
-                                         (let ((reg (car (ctx-init-free-regs))))
-                                           (gen-version-continuation-cr lazy-continuation
-                                                                        (ctx-push ctx type reg)
-                                                                        type
-                                                                        table))))))
+           (add-cont-callback
+             cgc
+             0
+             (lambda (ret-addr selector type table)
+
+                   ;;
+                   (let* ((args (cdr ast))
+                          (ctx
+                            (if apply?
+                                (ctx-pop-n ctx 2) ;; Pop operator and args
+                                (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
+                          (type
+                            (if (and opt-max-versions
+                                     (>= (lazy-code-nb-versions lazy-continuation) opt-max-versions))
+                                CTX_UNK
+                                type)))
+                     (let ((reg (car (ctx-init-free-regs))))
+                       (gen-version-continuation-cr
+                         lazy-continuation
+                         (ctx-push ctx type reg)
+                         type
+                         table))))))
          ;; CRtable
          (crtable-key (get-crtable-key ast ctx))
          (stub-addr (vector-ref (list-ref stub-labels 0) 1))
