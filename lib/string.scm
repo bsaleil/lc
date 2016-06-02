@@ -30,9 +30,6 @@
 (define (string->symbol str)
   (gambit$$string->symbol str))
 
-(define (symbol->string sym)
-  (gambit$$symbol->string sym))
-
 (define (string->list-h s pos)
   (if (= (string-length s) pos)
       '()

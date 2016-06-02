@@ -157,6 +157,7 @@
                      (make-vector         1  2  ,(prim-types 1 CTX_INT 2 CTX_INT CTX_ALL)   ())
                      (make-string         1  2  ,(prim-types 1 CTX_INT 2 CTX_INT CTX_CHAR)  ())
                      (eof-object?         1  1  ,(prim-types 1 CTX_ALL)                     ())
+                     (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ())
                      (current-output-port 0  0  ,(prim-types 0 )                            ())
                      (current-input-port  0  0  ,(prim-types 0 )                            ())))
 
@@ -1196,6 +1197,13 @@
     (codegen-string-set! cgc (ctx-fs ctx) reg lstr lidx lchr idx-cst chr-cst mut-str? mut-idx? mut-chr?)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_VOID reg))))
 
+;;
+(define (prim-symbol->string cgc ctx reg succ cst-infos)
+  (let* ((lsym  (ctx-get-loc ctx 0))
+         (mut-sym? (ctx-is-mutable? ctx 0)))
+    (codegen-symbol->string cgc (ctx-fs ctx) reg lsym mut-sym?)
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR reg))))
+
 ;; primitives set-car! & set-cdr!
 (define (prim-set-cxr! cgc ctx reg succ cst-infos op)
 
@@ -1280,6 +1288,7 @@
                        ((string-ref)     (prim-string-ref     cgc ctx reg succ cst-infos))
                        ((vector-set!)    (prim-vector-set!    cgc ctx reg succ cst-infos))
                        ((string-set!)    (prim-string-set!    cgc ctx reg succ cst-infos))
+                       ((symbol->string) (prim-symbol->string cgc ctx reg succ cst-infos))
                        ((set-car! set-cdr!)                      (prim-set-cxr!       cgc ctx reg succ cst-infos (car ast)))
                        ((current-input-port current-output-port) (prim-current-x-port cgc ctx reg succ cst-infos (car ast)))
                        ((char->integer integer->char)            (prim-char<->int     cgc ctx reg succ cst-infos (car ast)))

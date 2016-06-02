@@ -1063,6 +1063,22 @@
     (x86-mov cgc dest (x86-mem offset opval))))
 
 ;;-----------------------------------------------------------------------------
+;; symbol->string
+(define (codegen-symbol->string cgc fs reg lsym mut-sym?)
+  (let ((dest (codegen-reg-to-x86reg reg))
+        (opsym (lambda () (codegen-loc-to-x86opnd fs lsym)))
+        (optmp (lambda () (x86-rax))))
+
+    (begin-with-cg-macro
+
+      ;; Unmem & Unbox
+      (chk-unmem-unbox! (optmp) (opsym) mut-sym?)
+
+      ;; Primitive code
+      ;; Get string scheme object from symbol representation
+      (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) (opsym))))))
+
+;;-----------------------------------------------------------------------------
 ;; set-car!/set-cdr!
 (define (codegen-scar/scdr cgc fs op reg lpair lval val-cst? mut-val? mut-pair?)
   (let ((offset

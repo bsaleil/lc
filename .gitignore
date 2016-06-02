@@ -1,5 +1,6 @@
 *.o1
 /tools/graphs.pdf
+/tools/benchtimes/result
 lazy-comp
 *~
 out
