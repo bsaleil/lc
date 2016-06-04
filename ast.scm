@@ -615,7 +615,7 @@
                                               (cond ;; CASE 1 - Use entry point (no cctable)
                                                     ((eq? opt-entry-points #f)
                                                      (let ((ctx (ctx-init-fn stack ctx all-params fvars mvars global-opt lambda-opt)))
-                                                       (gen-version-fn ast closure lazy-prologue-gen ctx ctx #f global-opt)))
+                                                       (gen-version-fn ast closure lazy-prologue-gen ctx stack #f global-opt)))
 
                                                     ;; CASE 2 - Use multiple entry points AND use max-versions limit AND this limit is reached
                                                     ;;          OR use generic entry point
@@ -624,12 +624,12 @@
                                                               opt-max-versions
                                                               (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions)))
                                                      (let ((ctx (ctx-init-fn #f ctx all-params fvars mvars global-opt lambda-opt)))
-                                                       (gen-version-fn ast closure lazy-prologue-gen ctx ctx #t global-opt)))
+                                                       (gen-version-fn ast closure lazy-prologue-gen ctx stack #t global-opt)))
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
                                                        (let ((ctx (ctx-init-fn stack ctx all-params fvars mvars global-opt lambda-opt)))
-                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f global-opt)))))))
+                                                         (gen-version-fn ast closure lazy-prologue ctx stack #f global-opt)))))))
 
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
                (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
@@ -1820,16 +1820,15 @@
                             (if apply?
                                 (ctx-pop-n ctx 2) ;; Pop operator and args
                                 (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
-                          (type
-                            (if (and opt-max-versions
-                                     (>= (lazy-code-nb-versions lazy-continuation) opt-max-versions))
-                                CTX_UNK
-                                type)))
+                          (generic?
+                            (and opt-max-versions
+                                 (>= (lazy-code-nb-versions lazy-continuation) opt-max-versions))))
                      (let ((reg (car (ctx-init-free-regs))))
                        (gen-version-continuation-cr
                          lazy-continuation
-                         (ctx-push ctx type reg)
+                         (ctx-push ctx (if generic? CTX_UNK type) reg)
                          type
+                         generic?
                          table))))))
          ;; CRtable
          (crtable-key (get-crtable-key ast ctx))
@@ -1855,7 +1854,7 @@
           ((not nb-args) ;; apply
              (codegen-call-cc-gen cgc #f entry-loc))
           (else
-             (let* ((idx (get-closure-index call-ctx)))
+             (let* ((idx (get-closure-index (ctx-stack call-ctx))))
                (if idx
                    (codegen-call-cc-spe cgc idx nb-args entry-loc)
                    (codegen-call-cc-gen cgc nb-args entry-loc))))))

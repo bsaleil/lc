@@ -351,7 +351,7 @@
 ;; | Call arg 1    |
 ;; +---------------+
 (c-define (do-callback-fn sp) (long) void "do_callback_fn" ""
-  
+
   (let* ((ret-addr
           (get-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))))
 
@@ -1152,7 +1152,7 @@
 
 ;; #### CONTINUATION CR
 ;; Generate continuation using cr table (patch cr entry)
-(define (gen-version-continuation-cr lazy-code ctx type table)
+(define (gen-version-continuation-cr lazy-code ctx type generic? table)
 
   (define (fn-verbose)
     (print "GEN VERSION CONTINUATION (CR)")
@@ -1162,7 +1162,7 @@
     (pp ctx))
 
   (define (fn-patch label-dest new-version?)
-    (patch-continuation-cr label-dest type table))
+    (patch-continuation-cr label-dest type generic? table))
 
   (define (fn-codepos)
     code-alloc)
@@ -1171,7 +1171,7 @@
 
 ;; #### FUNCTION ENTRY
 ;; Generate an entry point
-(define (gen-version-fn ast closure lazy-code gen-ctx call-ctx generic global-opt-sym)
+(define (gen-version-fn ast closure lazy-code gen-ctx call-stack generic global-opt-sym)
 
   (define ep-loc
     (and global-opt-sym
@@ -1181,15 +1181,15 @@
     (print "GEN VERSION FN")
     (print " >>> ")
     (pp gen-ctx)
-    (pp call-ctx))
+    (pp call-stack))
 
   (define (fn-patch label-dest new-version?)
     (cond ((not opt-entry-points)
            (patch-closure-ep ast closure label-dest ep-loc)) ;; TODO WIP multiple patch for same closure(?)
           (generic
-           (patch-generic ast closure label-dest ep-loc global-opt-sym))
+           (patch-generic ast closure call-stack label-dest ep-loc global-opt-sym))
           (else
-           (patch-closure closure call-ctx label-dest ep-loc))))
+           (patch-closure closure call-stack label-dest ep-loc))))
 
   (define (fn-codepos)
     code-alloc)
@@ -1228,10 +1228,12 @@
   (asm-label-pos continuation-label))
 
 ;; Patch continuation if using cr (write label addr in table instead of compiler stub addr)
-(define (patch-continuation-cr continuation-label type table)
-    ;; TODO: msg if opt-verbose-jit (see patch-continuation)
-    (put-i64 (+ (type-to-cridx type) table) (asm-label-pos continuation-label))
-    (asm-label-pos continuation-label))
+(define (patch-continuation-cr continuation-label type generic? table)
+  ;; TODO: msg if opt-verbose-jit (see patch-continuation)
+  (if generic?
+      (put-i64 (+ (type-to-cridx CTX_UNK) table) (asm-label-pos continuation-label)))
+  (put-i64 (+ (type-to-cridx type) table) (asm-label-pos continuation-label))
+  (asm-label-pos continuation-label))
 
 ;; Patch jump at jump-addr: change jump destination to dest-addr
 (define (patch-jump jump-addr dest-addr)
@@ -1248,10 +1250,11 @@
                  (- dest-addr (+ jump-addr size))))))
 
 ;; Patch generic slot in closure
-(define (patch-generic ast closure label ep-loc global-opt-sym)
+(define (patch-generic ast closure stack label ep-loc global-opt-sym)
 
   (let ((label-addr (asm-label-pos  label))
-        (label-name (asm-label-name label)))
+        (label-name (asm-label-name label))
+        (offset (+ 16 (* 8 (get-closure-index stack)))))
 
    (if opt-verbose-jit
        (let ((closure-id
@@ -1274,16 +1277,17 @@
    (let ((table-addr
            (or ep-loc
                (get-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8)))))
-     (put-i64 (+ table-addr 8) label-addr))
+     (put-i64 (+ table-addr 8)      label-addr)  ;; Patch generic slot
+     (put-i64 (+ table-addr offset) label-addr)) ;; Patch table slot (fall back to generic)
    label-addr))
 
 ;; Patch closure
 ;; TODO WIP Move ep-loc arg next to closure
-(define (patch-closure closure ctx label ep-loc)
+(define (patch-closure closure stack label ep-loc)
 
   (let* ((label-addr (asm-label-pos  label))
          (label-name (asm-label-name label))
-         (index (or (get-closure-index ctx) -1)) ;; -1 TODO to patch generic
+         (index (or (get-closure-index stack) -1)) ;; -1 TODO to patch generic
          (offset (+ 16 (* index 8)))) ;; +16 (header & generic)
 
     ;(if opt-verbose-jit
@@ -1503,8 +1507,8 @@
 ;; the new associated index. Index starts from 0.
 ;; Store and compare ctx-stack in enough because environment is
 ;; the same for all versions of a lazy-object.
-(define (get-closure-index ctx)
-  (let ((res (table-ref global-cc-table (ctx-stack ctx) #f)))
+(define (get-closure-index stack)
+  (let ((res (table-ref global-cc-table stack #f)))
     (if res
       ;; Ctx exists in global table
       res
@@ -1516,7 +1520,7 @@
           (error "Global entry points table overflow!"))
         ;; Global table is not full
         (let ((value (table-length global-cc-table)))
-          (table-set! global-cc-table (ctx-stack ctx) value)
+          (table-set! global-cc-table stack value)
           value)))))
 
 (define (global-cc-get-ctx ctx-idx)
