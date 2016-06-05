@@ -959,31 +959,30 @@
   generator
   versions
   flags
-  ;; rctx is used when register allocation is not used to specialize code
-  ;; then a rctx (ctx with only slot-loc, free-regs, and fs) is associated to each lazy-code
-  rctx)
+  generic-ctx
+  generic-vers)
 
 
 (define (lazy-code-nb-versions lazy-code)
   (table-length (lazy-code-versions lazy-code)))
 
 (define (make-lazy-code generator)
-  (let ((lc (make-lazy-code* generator (make-table) '() #f)))
+  (let ((lc (make-lazy-code* generator (make-table) '() #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-cont generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(cont) #f)))
+  (let ((lc (make-lazy-code* generator (make-table) '(cont) #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-entry generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(entry) #f)))
+  (let ((lc (make-lazy-code* generator (make-table) '(entry) #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-ret generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(ret) #f)))
+  (let ((lc (make-lazy-code* generator (make-table) '(ret) #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
@@ -1002,7 +1001,7 @@
 (define (apply-moves cgc ctx moves #!optional tmpreg)
 
   (define (apply-move move)
-    (cond ((eq? (car move) (cdr move)) #f)
+    (cond ((equal? (car move) (cdr move)) #f)
           ((eq? (car move) 'fs)
            (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 (cdr move)))))
           ((and (ctx-loc-is-register? (car move))
@@ -1210,7 +1209,93 @@
   (define (fn-codepos)
     code-alloc)
 
-  (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
+  ;; TODO WIP
+  ;; TODO: move all this test in gen-generic version
+  (if (and opt-max-versions
+           (>= (lazy-code-nb-versions lazy-code) opt-max-versions))
+      ;; Max versions reached
+      (if (not (lazy-code-generic-vers lazy-code))
+          (gen-generic ctx)
+          ;(let* ((generic-ctx  (ctx-generic ctx))
+          ;       (generic-vers (gen-generic cgc lazy-code generic-ctx 'generic_version_ fn-verbose fn-patch fn-codepos)))
+          ;  (lazy-code-generic-ctx-set!  lazy-code generic-ctx)
+          ;  (lazy-code-generic-vers-set! lazy-code generic-vers)
+          ;  generic-vers)
+          ;;
+          (gen-merge cgc ctx (lazy-code-generic-ctx lazy-code) (lazy-code-generic-vers lazy-code) fn-patch fn-codepos))
+
+
+      (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos)))
+  ;(gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
+
+;; TODO WIP
+(define (gen-generic ctx)
+  (pp ctx)
+  (pp (ctx-generic ctx))
+  (pp "OK")
+  (error "OO"))
+
+  ;(let ((ctx-gen (ctx-generic ctx)))
+  ;  ;; TODO
+  ;  (let ((version-label (asm-make-label #f (new-sym label-sym))))
+  ;    (set! code-alloc (fn-codepos))
+  ;    (x86-label cgc version-label)
+  ;    ((lazy-code-generator lazy-code) cgc ctx)
+  ;    (fn-patch version-label #t)
+  ;    ;; TODO
+  ;    version-label)))
+
+;; TODO WIP
+(define (gen-merge cgc currctx destctx generic-vers fn-patch fn-codepos)
+
+  ;; pour chaque id de l'environnement
+  ;; ne garder que la position de droite (position d'origine)
+  ;;  - si l'id est mutable, des boxer les autres avant de les enlever
+
+  (pp currctx)
+  (pp destctx)
+
+  (pp "MERGE")
+
+    (if (not (equal? (ctx-env currctx) (ctx-env destctx)))
+        (begin
+          (pp currctx)
+          (pp destctx)))
+
+    (let ((required-moves
+            (let loop ((sl (ctx-slot-loc currctx)))
+              (if (null? sl)
+                  '()
+                  (cons (cons (cdar sl)
+                              (cdr (assoc (caar sl) (ctx-slot-loc destctx))))
+                        (loop (cdr sl)))))))
+
+      (let ((merge-label (asm-make-label #f (new-sym 'MERGE_V)))
+            (moves (steps required-moves)))
+
+        (set! code-alloc (fn-codepos))
+        (x86-label cgc merge-label)
+        ;; TODO: update rsp before applying moves
+        (apply-moves cgc currctx moves)
+        ;; Update fs (sp)
+        (let ((nb-slots (- (ctx-fs currctx) (ctx-fs destctx))))
+          (x86-add cgc (x86-rsp) (x86-imm-int (* 8 nb-slots))))
+        (x86-jmp cgc generic-vers)
+        (fn-patch merge-label #t)
+        (pp "Merge end")
+        merge-label)))
+
+
+      ;(if (not (equal? (ctx-slot-loc currctx)
+      ;                 (ctx-slot-loc destctx)))
+      ;    (begin (pp currctx)
+      ;           (pp destctx)
+      ;           (pp required-moves)
+      ;           (pp (steps required-moves))
+      ;           (error "NYI-sl")))
+      ;
+      ;(fn-patch generic-vers #f)
+      ;generic-vers))
 
 ;;-----------------------------------------------------------------------------
 

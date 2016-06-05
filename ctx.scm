@@ -81,6 +81,83 @@
 ;; L'api ne doit fonctionner qu'avec un index de pile. Les slots sont propre à l'implantation.
 ;;
 
+;; TODO WIP:
+;; Return a pair (ctx, moves)
+;; ctx: generic version of ctx context
+;; moves: moves generated to create generic ctx
+(define (ctx-generic ctx)
+
+  ;; 1 stack
+  (define (stack-gen)
+    (if (< (ctx-nb-args ctx) 0)
+        (make-list (length (ctx-stack ctx)) CTX_UNK)
+        (append (make-list (- (length (ctx-stack ctx)) 2) CTX_UNK) (list CTX_CLO CTX_RETAD))))
+
+  ;; 2 env
+  (define (env-gen)
+    (foldr (lambda (el r)
+             (let* ((ss  (identifier-sslots (cdr el)))
+                    (nss (list-tail ss (- (length ss) 1))))
+               (cons (cons (car el)
+                           (identifier-copy (cdr el) #f nss #f #f #f))
+                     r)))
+           '()
+           (ctx-env ctx)))
+
+  ;; TODO WIP
+  (define (get-mult-sloc slot-loc)
+    (if (null? slot-loc)
+        #f
+        (or (and (loc-used? (cdar slot-loc) (cdr slot-loc)) (car slot-loc))
+            (get-mult-sloc (cdr slot-loc)))))
+
+  ;; TODO WIP (already a function for this?)
+  (define (get-available-loc ctx)
+    (cond ((not (null? (ctx-free-regs ctx)))
+             (car (ctx-free-regs ctx)))
+          ((not (null? (ctx-free-mems ctx)))
+             (car (ctx-free-mems ctx)))
+          (else #f)))
+
+  ;; 3 slot-loc
+  (define (sl-gen ctx moves)
+    (let ((mult (get-mult-sloc (ctx-slot-loc ctx))))
+      ;; Si r, alors on a un doublon
+      (if mult
+          (let ((avail (get-available-loc ctx)))
+            (if avail
+                ;; A reg or mem slot is available and free, use it
+                (sl-gen (ctx-set-loc ctx (car mult) avail)
+                        (append moves (list (cons (cdr mult) avail))))
+                ;; There is no reg or mem available,
+                ;; Get a free loc and call sl-gen
+                (error "NYI-ctx-generic")))
+          (cons ctx moves))))
+
+  (let ((stack (stack-gen))
+        (env   (env-gen)))
+    (pp (sl-gen (ctx-copy ctx stack #f #f #f env) '())))
+
+  (error "OK"))
+
+
+;(define (ctx-generic ctx)
+;  (let ((env
+;          (foldr (lambda (el r)
+;                   (let* ((ss  (identifier-sslots (cdr el)))
+;                          (nss (list-tail ss (- (length ss) 1))))
+;                     (cons (cons (car el)
+;                                 (identifier-copy (cdr el) #f nss #f #f #f))
+;                           r)))
+;                 '()
+;                 (ctx-env ctx)))
+;        (st
+;          (if (< (ctx-nb-args ctx) 0)
+;              (make-list (length (ctx-stack ctx)) CTX_UNK)
+;              (append (make-list (- (length (ctx-stack ctx)) 2) CTX_UNK) (list CTX_CLO CTX_RETAD)))))
+;    (ctx-copy ctx st #f #f #f env #f #f)))
+
+
 (define (ctx-identifier-mutable? ctx identifier)
   (member 'mutable (identifier-flags identifier)))
 
@@ -452,6 +529,13 @@
      #f
      #f)))
 
+;; TODO: move
+;; Is loc 'loc' used in slot-loc set ?
+(define (loc-used? loc slot-loc)
+  (if (null? slot-loc)
+      #f
+      (or (equal? (cdar slot-loc) loc)
+          (loc-used? loc (cdr slot-loc)))))
 
 ;;
 ;; POP-N
@@ -465,14 +549,6 @@
 ;;
 ;; POP
 (define (ctx-pop ctx)
-
-  ;; Is loc 'loc' used in slot-loc set ?
-  (define (loc-used? slot-loc loc)
-    (if (null? slot-loc)
-        #f
-        (let ((sl (car slot-loc)))
-          (or (eq? (cdr sl) loc)
-              (loc-used? (cdr slot-loc) loc)))))
 
   ;; If one of the positions of an identifier is given slot, remove this slot.
   ;; If this slot is the only position, remove the identifier
@@ -504,11 +580,11 @@
       ctx
       (cdr (ctx-stack ctx))                        ;; stack: remove top
       (cdr (assoc-remove slot (ctx-slot-loc ctx))) ;; slot-loc: remove popped slot
-      (if (and (not (loc-used? slot-loc loc))      ;; free-regs: add popped loc if it's an unused reg
+      (if (and (not (loc-used? loc slot-loc))      ;; free-regs: add popped loc if it's an unused reg
                (ctx-loc-is-register? loc))
           (cons loc (ctx-free-regs ctx))
           #f)
-      (if (and (not (loc-used? slot-loc loc))      ;; free-mems: add popped loc if it's an unused mem
+      (if (and (not (loc-used? loc slot-loc))      ;; free-mems: add popped loc if it's an unused mem
                (ctx-loc-is-memory? loc))
           (cons loc (ctx-free-mems ctx))
           #f)
@@ -624,7 +700,7 @@
               (cons sl (get-slot-loc (cdr slot-loc)))))))
 
   (define (get-free-* slot-loc curr-free old-loc loc check-loc-type)
-    (let* ((r (assoc old-loc slot-loc))
+    (let* ((r (loc-used? old-loc slot-loc))
            (free-set
              (if (or (not (check-loc-type old-loc))
                      r)

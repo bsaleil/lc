@@ -4,10 +4,34 @@
 
 (define (foo n)
   (if (= n 0)
-      1
-      (foo (- n 1))))
+      n
+      10)
+  22)
 
-(foo 20)
+(foo 3)
+(foo 0)
+
+;(define (fib n)
+;  (if (< n 2)
+;    n
+;    (+ (fib 0)
+;       (fib 0))))
+;
+;;(pp (fib 30))
+;(pp (fib 30))
+
+;; MERGE:
+;; CAS SPECIAL 1:
+;;    ((3 r . 1) (2 m . 1) (1 . #f) (0 m . 0)) -> Version courante
+;;    ((3 r . 0) (2 r . 0) (1 . #f) (0 m . 0)) -> Version générique (destination)
+;; Ici, la meme loc est utilisée pour plusieurs slots
+;; Dans ce cas, le ctx pour la version générique est invalide.
+;; Avant de générer une version générique, il faut que chaque slot soit dans une loc différente
+;; La version générique doit donc être générée avec:
+;;    ((3 r . 1) (2 r . 0) (1 . #f) (0 m . 0)) par ex.
+
+;; CAS SPECIAL 2:
+;; ...
 
 ;(define (foo n)
 ;  (if (= n 0)
