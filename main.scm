@@ -228,6 +228,23 @@
 ;;-----------------------------------------------------------------------------
 ;; Main
 
+;; Run command
+(define (run path . args)
+  (let* ((port
+          (open-process (list path: path
+                              arguments: args
+                              ;;stderr-redirection: #t
+                              )))
+         (output
+          (read-line port #f))
+         (status
+          (process-status port)))
+    (close-port port)
+    (cons status output)))
+
+(define (copy-with-declare src dst)
+  (run "./copy-with-declare.sh" src dst))
+
 (define (main . args)
 
   ;; Set options and get files from cl args
@@ -244,8 +261,8 @@
             (repl lib))
           ;; Can only exec 1 file
           ((= (length files) 1)
-            (let ((content (read-all (open-input-file (car files)))))
-                ;; TODO
+            (copy-with-declare (car files) "./tmp")
+            (let ((content (c#expand-program "./tmp")))
                 (define (get-global-type g)
                   (cond ((symbol? (cadr g))
                             (cond ((symbol?  (caddr g)) CTX_UNK) ;; TODO si globale connue, mettre type

@@ -185,7 +185,8 @@
         ;; Symbol
         ((symbol? ast) (mlc-identifier ast succ))
         ;; Flonum
-        ((flonum? ast)  (mlc-flonum ast succ))
+        ((compiler-flonum? ast)
+         (mlc-flonum ast succ))
         ;; Other literal
         ((literal? ast) (mlc-literal ast succ))
         ;; Pair
@@ -236,6 +237,12 @@
 ;;-----------------------------------------------------------------------------
 ;; LITERALS
 
+(define (compiler-flonum? n)
+ (and (number? n)
+      (or (flonum? n)                            ;; 3.3
+          (and (integer? n) (inexact? n))        ;; 3.
+          (and (not (integer? n)) (exact? n))))) ;; (/ 10 3)
+
 ;;
 ;; Make lazy code from num/bool/char/null literal
 ;;
@@ -263,6 +270,7 @@
 ;; Make lazy code from flonum literal
 ;;
 (define (mlc-flonum ast succ)
+
   (make-lazy-code
       (lambda (cgc ctx)
         (mlet ((immediate
@@ -1689,7 +1697,6 @@
 ;; Make lazy code from CALL EXPR
 ;;
 (define (mlc-call ast succ)
-
   (let* (;; TODO wip change to global-opt-sym or global-opt? (?)
          (global-opt #f)
          ;; Tail call if successor's flags set contains 'ret flag
@@ -1739,6 +1746,7 @@
               (and (symbol? (car ast))
                    (not (assoc (car ast) (ctx-env ctx)))
                    (eq? (table-ref gids (car ast) #f) CTX_CLO)))
+
         (if global-opt
             (jump-to-version
               cgc
@@ -1930,6 +1938,7 @@
     (else
       (let ((lcst (integer? (cadr ast)))
             (rcst (integer? (caddr ast))))
+
         (cond
           ((and lcst rcst)
              (if (eq? op '/)
@@ -2343,7 +2352,8 @@
         ;; Pair
         ((pair? ast)
            (let ((op (car ast)))
-              (cond ((eq? op 'lambda) (mutable-vars (caddr ast) (set-sub params
+              (cond ((eq? op 'quote) '())
+                    ((eq? op 'lambda) (mutable-vars (caddr ast) (set-sub params
                                                                          (if (list? (cadr ast))
                                                                            (cadr ast)
                                                                            (list (cadr ast)))

@@ -157,6 +157,9 @@
         (+ 1 (assocount el (cdr lst)))
         (assocount el (cdr lst))))))
 
+(define (void? n)
+  (eq? #!void n))
+
 ;; Is the v a literal ?
 (define (literal? v)
    (or (char? v) (number? v) (symbol? v) (vector? v) (string? v) (boolean? v) (null? v)))

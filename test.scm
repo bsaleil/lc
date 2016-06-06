@@ -2,14 +2,18 @@
 ;; TODO uniformiser: si --max-versions 3, ona droit a 3 versions + la générique
 ;; donc --max-versions 0 est uniquement la générique!
 
-(define (foo n)
-  (if (= n 0)
-      n
-      10)
-  22)
+(if (read)
+    (println 1))
 
-(foo 3)
-(foo 0)
+
+;(define (foo n)
+;  (if (= n 0)
+;      n
+;      10)
+;  22)
+;
+;(foo 3)
+;(foo 0)
 
 ;(define (fib n)
 ;  (if (< n 2)
