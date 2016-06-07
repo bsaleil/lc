@@ -990,8 +990,7 @@
                (if (ctx-loc-is-memory? loc)
                    (begin (x86-mov cgc (x86-rax) opnd)
                           (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                   (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))
-               (pp ctx)))
+                   (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
           (jump-to-version cgc succ ctx))))))
 
 (define (unbox-mutables cgc ctx idx-start idx-lim)
