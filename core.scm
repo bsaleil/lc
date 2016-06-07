@@ -1215,87 +1215,73 @@
            (>= (lazy-code-nb-versions lazy-code) opt-max-versions))
       ;; Max versions reached
       (if (not (lazy-code-generic-vers lazy-code))
-          (gen-generic ctx)
-          ;(let* ((generic-ctx  (ctx-generic ctx))
-          ;       (generic-vers (gen-generic cgc lazy-code generic-ctx 'generic_version_ fn-verbose fn-patch fn-codepos)))
-          ;  (lazy-code-generic-ctx-set!  lazy-code generic-ctx)
-          ;  (lazy-code-generic-vers-set! lazy-code generic-vers)
-          ;  generic-vers)
-          ;;
-          (gen-merge cgc ctx (lazy-code-generic-ctx lazy-code) (lazy-code-generic-vers lazy-code) fn-patch fn-codepos))
+          (gen-generic cgc lazy-code ctx 'generic_version_ fn-verbose fn-patch fn-codepos)
+          (gen-merge cgc ctx (lazy-code-generic-ctx lazy-code) (lazy-code-generic-vers lazy-code) fn-verbose fn-patch fn-codepos))
 
 
       (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos)))
   ;(gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
 
 ;; TODO WIP
-(define (gen-generic ctx)
-  (pp ctx)
-  (pp (ctx-generic ctx))
-  (pp "OK")
-  (error "OO"))
+(define (gen-generic cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos)
 
-  ;(let ((ctx-gen (ctx-generic ctx)))
-  ;  ;; TODO
-  ;  (let ((version-label (asm-make-label #f (new-sym label-sym))))
-  ;    (set! code-alloc (fn-codepos))
-  ;    (x86-label cgc version-label)
-  ;    ((lazy-code-generator lazy-code) cgc ctx)
-  ;    (fn-patch version-label #t)
-  ;    ;; TODO
-  ;    version-label)))
+  ;; TODO: fn-verbose
+
+  (let* ((r (ctx-generic ctx))
+         (gctx  (car r))
+         (moves (cdr r))
+         (generic-label (asm-make-label #f (new-sym label-sym))))
+
+    (set! code-alloc (fn-codepos))
+    (apply-moves cgc ctx moves)
+    (x86-label cgc generic-label)
+    ((lazy-code-generator lazy-code) cgc gctx)
+    (lazy-code-generic-ctx-set!  lazy-code gctx)
+    (lazy-code-generic-vers-set! lazy-code generic-label)
+    ;; Update lco info
+    (fn-patch generic-label #t)))
 
 ;; TODO WIP
-(define (gen-merge cgc currctx destctx generic-vers fn-patch fn-codepos)
+(define (gen-merge cgc ctx generic-ctx generic-vers fn-verbose fn-patch fn-codepos)
 
   ;; pour chaque id de l'environnement
   ;; ne garder que la position de droite (position d'origine)
   ;;  - si l'id est mutable, des boxer les autres avant de les enlever
 
-  (pp currctx)
-  (pp destctx)
+  ;; Return (sp-add moves)
+  ;; sp-add: number of word added to adjust sp for ctx merging
+  ;; moves: moves required for ctx merging
+  (define (ctx-merge src-ctx dst-ctx)
+    (define (get-sp-add)
+      (- (ctx-fs src-ctx) (ctx-fs dst-ctx)))
+    (define (get-moves)
+      (let loop ((sl (ctx-slot-loc src-ctx)))
+        (if (null? sl)
+            '()
+            (cons (cons (cdar sl)
+                        (cdr (assoc (caar sl) (ctx-slot-loc dst-ctx))))
+                        (loop (cdr sl))))))
+    (list
+      (get-sp-add)
+      (steps (get-moves))))
 
-  (pp "MERGE")
+  ;; TODO: NYI != env
+  ;; TODO: NYI to generic with free var
+  (if (not (equal? (ctx-env ctx) (ctx-env generic-ctx)))
+      (error "NYI gen-merge"))
 
-    (if (not (equal? (ctx-env currctx) (ctx-env destctx)))
-        (begin
-          (pp currctx)
-          (pp destctx)))
+  (let* ((r (ctx-merge ctx generic-ctx))
+         (sp-add (car r))
+         (moves (cadr r))
+         (merge-label (asm-make-label #f (new-sym 'merge_version_))))
 
-    (let ((required-moves
-            (let loop ((sl (ctx-slot-loc currctx)))
-              (if (null? sl)
-                  '()
-                  (cons (cons (cdar sl)
-                              (cdr (assoc (caar sl) (ctx-slot-loc destctx))))
-                        (loop (cdr sl)))))))
-
-      (let ((merge-label (asm-make-label #f (new-sym 'MERGE_V)))
-            (moves (steps required-moves)))
-
-        (set! code-alloc (fn-codepos))
-        (x86-label cgc merge-label)
-        ;; TODO: update rsp before applying moves
-        (apply-moves cgc currctx moves)
-        ;; Update fs (sp)
-        (let ((nb-slots (- (ctx-fs currctx) (ctx-fs destctx))))
-          (x86-add cgc (x86-rsp) (x86-imm-int (* 8 nb-slots))))
-        (x86-jmp cgc generic-vers)
-        (fn-patch merge-label #t)
-        (pp "Merge end")
-        merge-label)))
-
-
-      ;(if (not (equal? (ctx-slot-loc currctx)
-      ;                 (ctx-slot-loc destctx)))
-      ;    (begin (pp currctx)
-      ;           (pp destctx)
-      ;           (pp required-moves)
-      ;           (pp (steps required-moves))
-      ;           (error "NYI-sl")))
-      ;
-      ;(fn-patch generic-vers #f)
-      ;generic-vers))
+    (set! code-alloc (fn-codepos))
+    (x86-label cgc merge-label)
+    (apply-moves cgc ctx moves)
+    ;; Update fs (sp)
+    (x86-add cgc (x86-rsp) (x86-imm-int (* 8 sp-add)))
+    (x86-jmp cgc generic-vers)
+    (fn-patch merge-label #t)))
 
 ;;-----------------------------------------------------------------------------
 

@@ -262,7 +262,7 @@
           ;; Can only exec 1 file
           ((= (length files) 1)
             (copy-with-declare (car files) "./tmp")
-            (let ((content (c#expand-program "./tmp")))
+            (let ((content (read-all (open-input-file (car files)))));;(c#expand-program "./tmp")))
                 (define (get-global-type g)
                   (cond ((symbol? (cadr g))
                             (cond ((symbol?  (caddr g)) CTX_UNK) ;; TODO si globale connue, mettre type

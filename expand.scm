@@ -130,7 +130,9 @@
     (,##fxabs . fxabs)
     (,##fxmin . min)
     (,##fxmax . max)
-    (,read . read)))
+    (,read . read)
+    (,write . write)
+    (,display . display)))
 
 (define-macro (resolve-alias op ast)
   `(if (and (pair? ,op)

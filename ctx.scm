@@ -108,8 +108,9 @@
   (define (get-mult-sloc slot-loc)
     (if (null? slot-loc)
         #f
-        (or (and (loc-used? (cdar slot-loc) (cdr slot-loc)) (car slot-loc))
-            (get-mult-sloc (cdr slot-loc)))))
+        (let ((loc (cdar slot-loc)))
+          (or (and loc (loc-used? loc (cdr slot-loc)) (car slot-loc))
+              (get-mult-sloc (cdr slot-loc))))))
 
   ;; TODO WIP (already a function for this?)
   (define (get-available-loc ctx)
@@ -136,9 +137,10 @@
 
   (let ((stack (stack-gen))
         (env   (env-gen)))
-    (pp (sl-gen (ctx-copy ctx stack #f #f #f env) '())))
-
-  (error "OK"))
+    (let* ((r (sl-gen (ctx-copy ctx stack #f #f #f env) '()))
+           (ctx (car r))
+           (moves (cdr r)))
+      (cons ctx (steps moves)))))
 
 
 ;(define (ctx-generic ctx)

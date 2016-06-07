@@ -2,12 +2,21 @@
 ;; TODO uniformiser: si --max-versions 3, ona droit a 3 versions + la générique
 ;; donc --max-versions 0 est uniquement la générique!
 
+;(define a 10)
+;(define b 20)
+;
+;(define (foo a b) (equal? a b))
 
-(let ((n 11))
-  (set! n
-        (let ((a 10))
-          n))
-  (+ n 10))
+;(define a #f)
+;(define b 0)
+;(define c (cons 11 22))
+;(define d '(11 . 22))
+;
+;(define (equal? a b) 1)
+;
+;(define (try p1 p2) (println (equal? p1 p2)))
+;
+;(try a a)
 
 
 ;(let ((n #f))
@@ -24,12 +33,17 @@
 ;  (set-car! l 10)
 ;  (println l))
 
+(define (a) 1)
+
+
+(a (a 10))
 
 ;(define (foo n)
 ;  (if (= n 0)
 ;      n
 ;      10)
 ;  22)
+;
 ;
 ;(foo 3)
 ;(foo 0)
