@@ -986,12 +986,21 @@
                (ctx  (ctx-pop-n ctx (+ (length ids) 1)))
                (ctx  (ctx-push ctx type loc)))
           (if mutable?
-              (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-               (if (ctx-loc-is-memory? loc)
-                   (begin (x86-mov cgc (x86-rax) opnd)
-                          (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                   (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
-          (jump-to-version cgc succ ctx))))))
+              ;; Get free register to copy unboxed value
+              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+                (apply-moves cgc ctx moves)
+                (let* ((loc  (ctx-get-loc ctx 0)) ;; ctx-get-free-reg could change loc
+                       (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
+                       (dest (codegen-reg-to-x86reg reg)))
+                  (if (ctx-loc-is-memory? loc)
+                      (begin
+                        (x86-mov cgc (x86-rax) opnd)
+                        (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                      (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) opnd))))
+                ;; Update ctx
+                (let ((ctx (ctx-push (ctx-pop ctx) type reg)))
+                  (jump-to-version cgc succ ctx)))
+              (jump-to-version cgc succ ctx)))))))
 
 (define (unbox-mutables cgc ctx idx-start idx-lim)
   (if (< idx-start idx-lim)
