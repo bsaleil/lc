@@ -45,6 +45,8 @@
     (,##fx- . -)
     (,##fx< . <)
     (,##fx> . >)
+    (,/ . /)
+    (,##fl/ . /)
     (,##fx<= . <=)
     (,##fx>= . >=)
     (,##eq? . eq?)
@@ -57,6 +59,7 @@
     (,append . append)
     (,assoc . assoc)
     (,apply . apply)
+    (,reverse . reverse)
     (,close-input-port . close-input-port)
     (,close-output-port . close-output-port)
     (,open-input-file  . open-input-file)
@@ -99,6 +102,7 @@
     (,##string-set! . string-set!)
     (,##vector-ref . vector-ref)
     (,##integer->char . integer->char)
+    (,##char->integer . char->integer)
     (,substring . substring)
     (,string-copy . string-copy)
     (,##string . string)
@@ -136,6 +140,14 @@
             (begin (set! ,op (cdr r))
                    (set! ,ast (cons ,op (cdr ,ast))))))))
 
+(define-macro (resolve-symalias ast)
+  (let ((s (gensym)))
+    `(if (and (pair? ,ast)
+              (eq? (car ,ast) 'quote))
+         (let ((,s (assoc (cadr ,ast) aliases)))
+           (if ,s
+               (set! ,ast (cdr ,s)))))))
+
 (define-macro (resolve-unused ast)
   `(if (and (pair? ,ast)
             (pair? (car ,ast))
@@ -155,6 +167,7 @@
 ;; Expand function called outside top-level
 (define (expand expr)
   (resolve-unused expr)
+  (resolve-symalias expr)
   (cond ((void? expr) #f)
         ((or (null? expr) (vector? expr) (symbol? expr) (number? expr) (char? expr) (string? expr) (boolean? expr))
          expr)

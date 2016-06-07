@@ -490,9 +490,10 @@
 
     (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
            (lval (ctx-get-loc ctx 0))
-           (type (ctx-get-type ctx 0)))
+           (type (ctx-get-type ctx 0))
+           (mut-val? (ctx-is-mutable? ctx 0)))
       (apply-moves cgc ctx moves)
-      (codegen-set-non-global cgc reg lval (ctx-fs ctx))
+      (codegen-set-non-global cgc reg lval (ctx-fs ctx) mut-val?)
       (let ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg)))
         (jump-to-version cgc succ (ctx-set-type ctx local type))))))
 
@@ -989,7 +990,8 @@
                (if (ctx-loc-is-memory? loc)
                    (begin (x86-mov cgc (x86-rax) opnd)
                           (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                   (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
+                   (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))
+               (pp ctx)))
           (jump-to-version cgc succ ctx))))))
 
 (define (unbox-mutables cgc ctx idx-start idx-lim)

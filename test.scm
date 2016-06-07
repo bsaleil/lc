@@ -2,8 +2,27 @@
 ;; TODO uniformiser: si --max-versions 3, ona droit a 3 versions + la générique
 ;; donc --max-versions 0 est uniquement la générique!
 
-(if (read)
-    (println 1))
+
+(let ((n 11))
+  (set! n
+        (let ((a 10))
+          n))
+  (+ n 10))
+
+
+;(let ((n #f))
+;  (set! n (let ((begin-temp.0 (set! n 10))) n))
+;  (+ n 1))
+
+
+;(define (setletrec1 n)
+; (letrec ((n (begin (set! n 10) n)))
+;   (+ n 1)))
+;
+;(println (setletrec1 333))
+;(let ((l '(1 2)))
+;  (set-car! l 10)
+;  (println l))
 
 
 ;(define (foo n)

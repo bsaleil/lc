@@ -289,11 +289,12 @@
       (x86-mov cgc (x86-mem (* 8 pos) global-ptr) (opval))
       (x86-mov cgc dest (x86-imm-int ENCODING_VOID)))))
 
-(define (codegen-set-non-global cgc reg lval fs)
+(define (codegen-set-non-global cgc reg lval fs mut-val?)
   (let ((dest  (lambda () (codegen-reg-to-x86reg reg)))
         (opval (lambda () (codegen-loc-to-x86opnd fs lval))))
     (begin-with-cg-macro
-      (chk-unmem! (dest) (opval))
+      (x86-label cgc (asm-make-label #f (new-sym 'LABELBUG)))
+      (chk-unmem-unbox! (dest) (opval) mut-val?)
       (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (opval))
       (x86-mov cgc (dest) (x86-imm-int ENCODING_VOID)))))
 
