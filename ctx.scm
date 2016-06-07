@@ -97,7 +97,11 @@
   (define (env-gen)
     (foldr (lambda (el r)
              (let* ((ss  (identifier-sslots (cdr el)))
-                    (nss (list-tail ss (- (length ss) 1))))
+                    (id (cdr el))
+                    (nss
+                      (if (eq? (identifier-kind id) 'free)
+                          '()
+                          (list-tail ss (- (length ss) 1)))))
                (cons (cons (car el)
                            (identifier-copy (cdr el) #f nss #f #f #f))
                      r)))
