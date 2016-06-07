@@ -1,581 +1,461 @@
 (declare (standard-bindings) (inlining-limit 0) (block) (fixnum) (not safe))
-
-;; TODO uniformiser: si --max-versions 3, ona droit a 3 versions + la générique
-;; donc --max-versions 0 est uniquement la générique!
-
-;(define a 10)
-;(define b 20)
-;
-;(define (foo a b) (equal? a b))
-
-;(define a #f)
-;(define b 0)
-;(define c (cons 11 22))
-;(define d '(11 . 22))
-;
-;(define (equal? a b) 1)
-;
-;(define (try p1 p2) (println (equal? p1 p2)))
-;
-;(try a a)
-
-
-;(let ((n #f))
-;  (set! n (let ((begin-temp.0 (set! n 10))) n))
-;  (+ n 1))
-
-
-;(define (setletrec1 n)
-; (letrec ((n (begin (set! n 10) n)))
-;   (+ n 1)))
-;
-;(println (setletrec1 333))
-;(let ((l '(1 2)))
-;  (set-car! l 10)
-;  (println l))
-
-(define (foo n)
-  (set! n 10)
-  n
-  100)
-
-(println (foo 33))
-
-;(define (foo n)
-;  (if (= n 0)
-;      n
-;      10)
-;  22)
-;
-;
-;(foo 3)
-;(foo 0)
-
-;(define (fib n)
-;  (if (< n 2)
-;    n
-;    (+ (fib 0)
-;       (fib 0))))
-;
-;;(pp (fib 30))
-;(pp (fib 30))
-
-;; MERGE:
-;; CAS SPECIAL 1:
-;;    ((3 r . 1) (2 m . 1) (1 . #f) (0 m . 0)) -> Version courante
-;;    ((3 r . 0) (2 r . 0) (1 . #f) (0 m . 0)) -> Version générique (destination)
-;; Ici, la meme loc est utilisée pour plusieurs slots
-;; Dans ce cas, le ctx pour la version générique est invalide.
-;; Avant de générer une version générique, il faut que chaque slot soit dans une loc différente
-;; La version générique doit donc être générée avec:
-;;    ((3 r . 1) (2 r . 0) (1 . #f) (0 m . 0)) par ex.
-
-;; CAS SPECIAL 2:
-;; ...
-
-;(define (foo n)
-;  (if (= n 0)
-;      1
-;      (let ((a 10) (b 20) (c 30) (d 40) (e 50) (f 60) (g 70) (h 80) (i 100) (j 200) (k 300))
-;        (+ n 1)))
-;  n)
-;
-;(foo 0)
-;(foo 10)
-
-;* . Créer un vecteur scheme qui servira de pile
-;* . Stocker son adresse, et conserver une variable globale qui pointe vers la pile (gambit root)
-;* . init-rtlib: stocker tous les registres sur la pile C
-;* . init-rtlib: faire pointer rsp sur la nouvelle pile
-;* A chaque callback: on fait pointer rsp sur la pile C
-;*                    les registres sont sauvegardés sur la pile C (après avoir maj rsp parce que les stubs utilisent rsp avec offset pour modifier les registres (selecteur par ex.))
-;*                    gambit va "polluer" la pile c, aucun soucis
-;*                    puis, après la callback, on restaure les registres
-;*                    puis on refait pointer rsp sur la pile vecteur
-;* . NOTE: on peut commencer par utiliser une pile créée comme chaine de caractère pour faire fonctionner la pile
-;*         sans que Gambit ne la scanne lors d'une phase GC
-;* NOTE: en attendant, pour faire fonctionner le GC de LC, il faut stocker dans block le bottom de la pile V aussi
-
-;; Optimisation appel:
-;;   * Pour chaque variable globale non redéfinie et fonction:
-;;      - Stocker sa cc table (son pt entrée)
-;;      - pour chaque entrée de la table, garder si une version existe (ou juste un booleen si pt entree)
-;;      - pour chaque entrée de la table, garder une liste des adresses ou ona écrit le stub en dur (ou juste une liste si pt entree)
-;; Optimisation retour:
-;
-;(string->symbol "jjj")
-
-;100
-
-;(let ((p1 (cons #\t #\e))
-;      (p2 (cons #\s #\t)))
-;  100
-;  (write-char (car p1))
-;  (write-char (cdr p1))
-;  (write-char (car p2))
-;  (write-char (cdr p2))
-;  (write-char #\newline))
-;(cons 1 2)
-
-;; TODO WIP: extraire le code de mlc-lambda en sous fonctions, et créer des versions de mlc-lambda spécialisées:
-;; mlc-lambda
-;; mlc-lambda-globalopt
-;; mlc-lambda-lambdaopt
-;; TODO: voir si le type de la fermeture va bien dans le systeme de spécialisation des cc en fonction du type des free
-;; TODO Check there is no set! !!!!
-
-;; TODO GC: Enlever rax de c-caller-save-regs
-
-;; Rewrite mlc-set! with get-setter
-;; Check exec time of compiler.scm using cg-macros
-
-
-
-
-;;;; S'OCCUPER DU TODO DES PATCH GENERIC DANS core.scm (patch-generic)
-
-
-;; ATTENTION: on voudrait un seul appel à do_callback_fn pour ce code: (--nolib)
-;(define (foo) 10)
-;
-;(let ((rr foo))
-;  (foo)
-;
-;  (foo))
-
-;(define (time . expr))
-;
-;(pp ($$sys-clock-gettime-s))
-;(pp ($$sys-clock-gettime-s))
-;(time (println 10))
-
-;(define (fib n)
-;  (if (< n 2)
-;      1
-;      (+ (fib (- n 1))
-;         (fib (- n 2)))))
-;
-;(define time-before 0)
-;(define time-after  0)
-;
-;(set! time-before ($$sys-clock-gettime-ns))
-;(fib 40)
-;(set! time-after  ($$sys-clock-gettime-ns))
-;
-;(println (/ (- time-after time-before) (expt 10 6)))
-
-;(define (fib n)
-;  (if (< n 2)
-;      1
-;      (+ (fib (- n 1))
-;         (fib (- n 2)))))
-;
-;(define (time)
-;  (let ((SYM1 ($$sys-clock-gettime-s)))
-;    (fib 30)
-;    (let ((SYM2 ($$sys-clock-gettime-s)))
-;      (let ((ms (/ (- SYM2 SYM1) 1000000)))
-;        (print ms)
-;        (println " ms real time")))))
-;
-;(time)
-
-
-
-;; ATTENTION: apply-moves: il faut faire attention au contexte utilisé ici!!
-
-;; Vérifier et améliorer implantation appel avec point d'entrée. (stub ?)
-;; + global opt pour implantation appel avec point d'entrée
-
-
-;; WIP: Détecter appel fonction globale
-  ;; * Détecter dans le stub, qu'on veut patcher une globale.
-  ;;   -> dans ce cas, ne pas récupérer la fermeture par le registre, et patcher directement la cctable
-  ;; * A l'appel, si global-opt, plus besoin de passer la fermeture
-  ;; * Regalloc: on a un registre supplémentaire dispo, car pas de fermeture si global-opt
-
-;; TODO: Analyse pour détecter les variables mutables qui ne deviennent pas libres (paresseux?)
-;; TODO: Réduire les cache misses avec appel pour le paramètre rest + appels système
-;; TODO: Enlever mov ctx
-;; TODO: allouer la valeur de retour au registre de retour
-;; TODO: adresse de retour + fermeture dans des registres. Si on doit spill, on prend en priorité un des deux
-
-;; TODO: réfléchir BBV AOT
-
-
-
-;; TODO
-;; Comparer le contexte avec le contexte associé à la version générique.
-;; Si le contexte diffère seulement sur l'allocation de registre,
-;; Faire un merge, et utiliser la version générique existante.
-;; Sinon,
-;; Comme avant, générer une nouvelle version
-;; -> Au moment de générer une version, il faut enregistrer le contexte
-;;    associé à la version générique.
-
-;; TODO: vérifier que pour chaque lco, toutes les versions ont une pile de la meme taille (sauf pt entrée)
-
-;; TODO:
-;; Pour limiter le nombre de version, il manque le cas ou l'allocation de registre provoque
-;; un changement de version. dans ce cas, on doit générer un merge
-
-;; TODO: pour le tri topologique:
-;; commencer par la aretes qui ont une destination libre.
-;; Puis, terminer par les autres
-;; -> permet d'éviter des mouvements inutiles
-;; Exemple avec:
-
-;(define (foo n m)
-;  (if (< n 0)
-;      1
-;      (let ((a 1) (b 2) (c 3) (d 4) (e 5) (f 6) (g 7) (h 8))
-;        2))
-;  (+ n m))
-;
-;(pp (foo -10 3))
-;(pp (foo 100 3))
-
-;; -----------------------------
-
-;; Optimisations:
-;; Ne pas utiliser de booléen dans les conditions du if
-;;   * Ajouter la fonctionalité pour les (if (number?) ...)
-;;   * Reécrire pour les opérateurs de comparaison avec le nouveau code mlc-op-n
-;; Détecter les constantes en opérandes des opérateurs
-;;   * DONE!
-;; Enlever rbp
-;;   * DONE!
-;; Récupérer directement la valeur de retour dans rax (pareil pour les arguments?)
-;;   * TODO
-;; Tail call: écraser les valeurs des registres d'argument
-;;   * ?
-
-;; Avec les arguments par registres, il manque:
-;; Attention, est-ce que les registres sont bien sauvegardés dans mlc-apply ?
-;; Tail call
-
-;; FAIT?
-;; Au site d'appel, sauvegarder sur la pile les registres associés à des valeurs,
-;;   mais PAS ceux des arguments
-
-;(declare (standard-bindings) (block))
-;(declare (fixnum) (not safe))
-
-;(define (fib n)
-;  (if (< n 2)
-;      1
-;      (+ (fib (- n 1)) (fib (- n 2)))))
-;
-;(println (fib 40))
-
-;(print-pos 10)
-;(define (foo a b . c)
-;  c)
-;
-;(foo 1 2 3)
-
-
-;; TODO:
-;; REGALLOC: décider si on utilise des registres des opérandes ou non. L'avantage est qu'on a moins de spill.
-;;           l'inconvénient est que le code générer de peut pas utiliser le registre dest comme temporaire (ce qu'on fait en ce moment)
-;;           donc bcp de code à changer
-;; get-free : retourner les mouvements à faire (spill), puis le faire dans le générateur de code
-;; voir ou est utilisé (ctx-identifier-loc ...) peut-etre faut-il ajouter #t pour avoir la orig-loc
-;;  ((AU SPILL, CONSERVER LES DEUX LOCS))
-;;  * meme travail pour gen-get-freevar que gen-get-localvar:
-;;    Il faut faire attenton au orig-loc
-;;  * au gen set local/free, changer le type
-;;  ATTENTION: au set, changer la valeur DANS ORIG POS et enlever les autres locs qui ne sont plus bonnes
-
-
-;; Graph ok:
-;;  -- propagation des points d'entrée + points de retour (no opts)
-;;  -- propagation des points d'entrée uniquement (--disable-return-points)
-
-
-;; TODO: ALLOC DE REGISTRE:
-;; - Fonction pour init les registres libres (utilisé 3 ou 4 fois)
-;; - Vérifier que le flag ret est bien propagé
-;; - Conventio d'appel : Retaddr, Op, arg1, ..., argn
-;; - SUPPRIMER la primitive 'list' car macro. Mais, conserver la création de fermeture si mlc-identifier list
-;; - RBP inutile? puisqu'on connait le fs...
-;; - Vérifier les headers mémoire des vecteurs, et strings + taille au moment de l'allocation
-;; - Un registre est assigné à UN slot mémoire
-;; - Et vice versa
-;; - Par contre, un identifier DOIT pouvoir etre assigné à plusieurs stack slots
-;;   (pour le moment assigné à un loc, mais DOIT changer)
-
-;; TODO: AVANT ALLOC DE REGISTRE:
-;;  - Vérifier si --max-versions 3 et --max-versions 0 ne dépassent pas le nb de versions
-;;    (avec et sans entry/return points)
-
-;; 0 - TODO UTILISATIONS
-;;   * (length l)   -> si on sait que l est une liste, on peut simplement PUSH 0
-;;   * (equal? a b) -> si on a une info de type sur a et b, on peut spécialiser par eq? voir meme push direct si a et b sont null par ex
-;;   * append avec une des listes NULL -> simplement ignorer la liste
-
-;; 1 - TODO CODE
-;;   * PB quoted vector avec liste
-;;   * Enlever les deux TODO dans ast.scm au moment de la création des deux nouveaux contextes
-;;   * MLC qui génere une erreur pour remplacer les (make-lazy-code) avec juste une erreur
-;;   * Factoriser lazy-ret de apply et call
-;;   * Si redéfinition de globale, écraser l'ancienne ? (peut briser opti appels lib)
-;;   * Bug gc a la lecture du tag 4 (sur compiler.scm)
-;;   * Expand multiple corps des lambda et define en begin (fait ?)
-;;   * MLC-test peut etre modifié pour éviter d'utiliser trop de lazy-objects
-;;   * Test des out of bounds (string-ref "kk" 100), ...
-;;
-;;   * Constantes en opérandes
-;;   * Ctx info sur les variables libres? (probleme des mutables)
-
-;; 2 - TODO TESTS UNITAIRES
-;;   * Heap
-;;   * apply
-;;   * bind define
-;;   * eq? eqv? equal?
-;;   * ERROR
-;;   * definitions internes
-;;   * tests bindings let, let* et letrec avec definitions internes
-;;   * corps define begin ?
-;;   * print symbol, print eof
-;;   * open-input-file, read-char, eof-object ?
-;;   * TOUTES fonctions des ports + pp et print ports
-;;   * revoir les tests de lib
-;;   * Tests unitaires pour les nouvelles primitives inlinées (bcp d'args) (+,-*,...)
-
-
-;; 3 - TODO ORGANISATION
-;;   * Check-err de toutes les primitives
-;;   * reorganiser tests unitaires
-;;   * Le test boyer passe
-;;   * Que donne le expand de (begin expr)
-
-
-;-------------------------------
-;; OPTI : Gérer mutation comme (set! LIB_GLO)
-;; OPTI : (define integer? number?) c'est pas géré donc modifier :
-    ;; fatal-error, integer?, write quand modifié
-;; Workaround : Bug GC avec opti libcall, donc on stocke la fermeture non encodee (coute un inc de plus)
-;; Points dans le code :
-;; 0 - Associer un still vec à chaque idlib
-;; 1 - Mlc-define. Si on reconnait une définition de librairie, on compile la lambda avec un flag
-;; 2 - Mlc-lambda. Si on recoit le flag de mlc-define, on saivegarde l'adresse de la fermeture et de la cc table dans le still vector
-;; 3 - Mlc-call (X2)
-;; 4 - Mlc-set! TODO
-;; 5 - GC : maj apres déplacement des fermetures, CC table
-;-------------------------------
-
-;; TODO : faire une fonction log-jit comme log-gc (voir mem.scm)
-;; TODO : sortir toutes les fonctions utils dans un utils.scm
-
-; (apply (lambda () (println "Test1")) '())
-
-; (apply (lambda (x)
-;          (println x))
-;        '("Test2"))
-
-; (apply (lambda (x y z)
-;          (println x)
-;          (println y)
-;          (println z))
-;        '("Test3" "Test4" "Test5"))
-
-; (apply (lambda (x y . z)
-;          (println x)
-;          (println y)
-;          (pp z))
-;        '("Hello" "World" 1 2 3 4 5))
-
-;; TODO : apply write-char (list #\A (open-output-port "out") ne marche pas
-;;        car la fonction générée pour write-char a un seul arg. (modifier quand current-output-port implémenté)
-;; TODO : pareil pour apply make-vector (modifier quand optional param implémenté, sinon, créer des fonctions alternatives qui sont retournées avec rest en attendant)
-;; INTERNED STRING (symbols)
-;; TODO : améliorer la detection des mutables : par exemple voir le test ut/Symbols.scm avec lc et gsi !
-
-;; TODO : augmenter l'info de ctx avec eq? (ex. eq? a #t) ... et pour d'autres primitives si on a un id
-;; TODO : Voir pourquoi KO avec opt-libcall faux
-; (define (foo n)
-;   (pp (length n)))
-
-;; Revoir allocation str/sym, taille dans header
-
-; (foo '(1 2 3))
-
-; (define (length n)
-;   10)
-
-; (foo '(1 2 3))
-
-; (define (length l)
-;   (if ($eq? l '())
-;     55
-;     (length (cdr l))))
-
-; (define (foo) 10)
-
-
-;; TODO : pas de gc pour les symboles. Pour que les symboles soient GC :
-;; 1 - dans core.scm partie interned symbol, les allouer dans le tas au lieu d'un endroit spécial
-;; 2 - dans mem.scm, enlever simplement les symboles de is-special ? (Et vérifier que ok dans scan-field, scan-ref et copy-root)
-
-
-;(define B 'bonjour)
-
-; (define C "bonjour")
-; (define D (string->symbol C))
-
-; (pp A)
-; (pp B)
-; (pp C)
-; (pp D)
-
-; (pp (eq? A B))
-; (pp (eq? A D))
-; (pp (eq? B D))
-
-; (define interned-symbols (make-table test: eq?))
-
-; (define addr 43524528) ;; TODO
-
-; (define (alloc-symbol sym)
-;   ;; TODO (put-i64, ...)
-;   (let ((r (+ addr 1))) ;; Encoded
-;     (set! addr (+ addr 256))
-;     r))
-
-
-; (define (get-symbol-qword sym)
-;   (let ((r (table-ref interned-symbols sym #f)))
-;     (if r
-;        ;; Symbol exists
-;        r
-;        ;; Symbol does not exist
-;        (let ((c (alloc-symbol sym)))
-;          (table-set! interned-symbols sym c)
-;          c))))
-
-; (pp (get-symbol-qword 'aa))
-; (pp (get-symbol-qword 'bb))
-; (pp (get-symbol-qword (string->symbol "aa")))
-
-;; TODO : renommer saved-env
-;; TODO : enlever les variables mutables du letrec
-
-;; TODO : pourquoi make-string  et d'autres passent par mlc-primitives avec uniquement (car #f)
-
-; (make-vector 10)
-
-; (car #f)
-;(write-char #\A (current-output-port))
-
-;; TODO : PROBLEME DE MUTABLE
-
-;;-----
-;; MARDI :
-;;   Nombre de pt entree max pour chaque test
-;;   Performances contre gsc avec options pour chaque test
-;;   Nombre d'appels pour chaque primitive
-
-;; Nettoyer optimisation variables globales
-
-;; convention pour les noms de fonctions :
-;;   lazy-fn représente un block
-;;   get-lazy-fn, fonction qui créé un block
-;;   gen-... pour la génération du code machine
-
-;; ATTENTION, pour l'instant l'optimisation du type de retour fait que par ex si
-;; la fonction 'length' est appellée, la valeur de retour est un nombre. MAIS, l'opti
-;; est bien désactivée si la globale est modifiée (set! length ...) mais pas si elle est
-;; redéfinie. ex (define length ...) dans le programme.
-;; Il faut donc passer à faux ces redéfinitions dans gids
-
-;; unit tests fp operations (se baser sur le test comparison.scm)
-
-;(pp (+ 1 (length '(1 2 3))))
-
-; (define (lam-gen z)
-;   (lambda (a) (not a)))
-
-; (lam-gen 1)
-; (lam-gen #t)
-;(lam-gen 2)
-;(lam-gen #f)
-
-; (println 10)
-
-; (define (lam a)
-; 	(lambda ()
-; 		(+ a 10)))
-
-; ((lam 1))
-; ((lam 10))
-
-; (define (ppp)
-;   (print "#t"))
-
-;(ppp)
-;(char=? #\A #\B))
-
-;; TODO : prendre en compte le slot pour le generic addr dans le GC
-;; Partager la table de méthodes, mais aussi le stub de lambda ?
-;; TODO : ajouter les flonums au GC et autres points (number? real? flonum?)
-;; TODO : on peut passer pas mal de fonctions dans lib/num.scm en primitive pour etre inlinees
-
-; (define (fact n)
-;    (if (or (= n 0) (= n 1))
-;        1
-;        (* n (fact (- n 1)))))
-
-; (println (fact 10))
-
-; (define (fibo n)
-;    (if (or (= n 0) (= n 1))
-;       n
-;       (+ (fibo (- n 1)) (fibo (- n 2)))))
-
-; (println (fibo 31))
-
-;(println (number? 10))
-
-;; CAS:
-   ;; On a deux lambdas qui suivent la meme table (donc spécialisées avec les meme types unknown)
-   ;; La découverte du type de la variable libre est valide pour l'une mais pas pour l'autre
-
-;; Spécialiser les lambda en fonction du type des locales ?
-
-
-; UNK INT INT INT CHAR STRING INT UNK UNK RET
-;
-; a:1,2,9
-;
-; change-type 9 -> INT
-;
-; 1-retrouver identifier depuis pos -> a
-; 2-A chaque pos: mettre le type
-
-;; On découvre le type de l dans (cddr l)
-;; Mais on a créé la fermeture avec l:unknown, donc on doit retester le type avec (car l)
-
-;; Allocation sinking:
-;; A la création de la fermeture:
-;;   - Si aucune variable libre: on propage simplement l'identité, on alloue pas de fermeture
-;;   - Si au moins une variable libre mutable: on créé normalement la fermeture
-;;   - Si variables libres et aucunes mutables, on alloue en mémoire header, espace cctable, copie des variables libres, mais on n'utilise pas de cc table
-;;      -> Tout ca est stocké en mémoire avec un nouveau type closure "non initialisée" T
-;;
-;;   Cas d'allocation de la fermeture:
-;;    - 1: lors d'un appel, un argument est de type T, ou on a que l'identité, on doit initialiser la fermeture
-;;    - 2: une variable de type T (ou une id de fonction) devient variable libre
-;;    - 3: On perd l'information sur le type d'une variable de type T, ou un id de fonction.
-
-
-;; Solution pourrie:
-;;   On garde l'information: une variable v est utilisée comme variable libre dans la fonction numéro #fn
-;;   Lorsqu'on découvre le type de v, on sait qu'elle est utilisée pour #fn.
-;;   Alors on récupère la table de #fn pour laquelle f est du type découvert (sinon on la créé)
-;;   On patche la fermeture si elle est présente sur la pile avec l'adresse de la nouvelle table
-
-;; Meilleur solution:
-;; Allocation sinking, la fermeture n'est pas allouée
-;; On va découvrir le type de la variable, la fermeture est allouée que si elle sort du scope
-;; Dans l'exemple de recursive-div2-cps, la fermeture sera créée apr!s avoir évalué (cddr l) donc on connaitra le type de l
+;;; CONFORM -- Type checker, written by Jim Miller.
+
+;;; Functional and unstable
+
+(define (sort-list obj pred)
+
+  (define (loop l)
+    (if (and (pair? l) (pair? (cdr l)))
+        (split-list l '() '())
+        l))
+
+  (define (split-list l one two)
+    (if (pair? l)
+        (split-list (cdr l) two (cons (car l) one))
+        (merge (loop one) (loop two))))
+
+  (define (merge one two)
+    (cond ((null? one) two)
+          ((pred (car two) (car one))
+           (cons (car two)
+                 (merge (cdr two) one)))
+          (else
+           (cons (car one)
+                 (merge (cdr one) two)))))
+
+  (loop obj))
+
+;; SET OPERATIONS
+; (representation as lists with distinct elements)
+
+(define (adjoin element set)
+  (if (memq element set) set (cons element set)))
+
+(define (eliminate element set)
+  (cond ((null? set) set)
+        ((eq? element (car set)) (cdr set))
+        (else (cons (car set) (eliminate element (cdr set))))))
+
+(define (intersect list1 list2)
+  (let loop ((l list1))
+    (cond ((null? l) '())
+          ((memq (car l) list2) (cons (car l) (loop (cdr l))))
+          (else (loop (cdr l))))))
+
+(define (union list1 list2)
+  (if (null? list1)
+      list2
+      (union (cdr list1)
+             (adjoin (car list1) list2))))
+
+;; GRAPH NODES
+
+(define make-internal-node vector)
+(define (internal-node-name node) (vector-ref node 0))
+(define (internal-node-green-edges node) (vector-ref node 1))
+(define (internal-node-red-edges node) (vector-ref node 2))
+(define (internal-node-blue-edges node) (vector-ref node 3))
+(define (set-internal-node-name! node name) (vector-set! node 0 name))
+(define (set-internal-node-green-edges! node edges) (vector-set! node 1 edges))
+(define (set-internal-node-red-edges! node edges) (vector-set! node 2 edges))
+(define (set-internal-node-blue-edges! node edges) (vector-set! node 3 edges))
+
+(define (make-node name . blue-edges)   ; User's constructor
+  (let ((name (if (symbol? name) (symbol->string name) name))
+        (blue-edges (if (null? blue-edges) 'NOT-A-NODE-YET (car blue-edges))))
+    (make-internal-node name '() '() blue-edges)))
+
+(define (copy-node node)
+  (make-internal-node (name node) '() '() (blue-edges node)))
+
+; Selectors
+
+(define name internal-node-name)
+(define (make-edge-getter selector)
+  (lambda (node)
+    (if (or (none-node? node) (any-node? node))
+        (fatal-error "Can't get edges from the ANY or NONE nodes")
+        (selector node))))
+(define red-edges (make-edge-getter internal-node-red-edges))
+(define green-edges (make-edge-getter internal-node-green-edges))
+(define blue-edges (make-edge-getter internal-node-blue-edges))
+
+; Mutators
+
+(define (make-edge-setter mutator!)
+  (lambda (node value)
+    (cond ((any-node? node) (fatal-error "Can't set edges from the ANY node"))
+          ((none-node? node) 'OK)
+          (else (mutator! node value)))))
+(define set-red-edges! (make-edge-setter set-internal-node-red-edges!))
+(define set-green-edges! (make-edge-setter set-internal-node-green-edges!))
+(define set-blue-edges! (make-edge-setter set-internal-node-blue-edges!))
+
+;; BLUE EDGES
+
+(define make-blue-edge vector)
+(define (blue-edge-operation edge) (vector-ref edge 0))
+(define (blue-edge-arg-node edge) (vector-ref edge 1))
+(define (blue-edge-res-node edge) (vector-ref edge 2))
+(define (set-blue-edge-operation! edge value) (vector-set! edge 0 value))
+(define (set-blue-edge-arg-node! edge value) (vector-set! edge 1 value))
+(define (set-blue-edge-res-node! edge value) (vector-set! edge 2 value))
+
+; Selectors
+(define operation blue-edge-operation)
+(define arg-node blue-edge-arg-node)
+(define res-node blue-edge-res-node)
+
+; Mutators
+(define set-arg-node! set-blue-edge-arg-node!)
+(define set-res-node! set-blue-edge-res-node!)
+
+; Higher level operations on blue edges
+
+(define (lookup-op op node)
+  (let loop ((edges (blue-edges node)))
+    (cond ((null? edges) '())
+          ((eq? op (operation (car edges))) (car edges))
+          (else (loop (cdr edges))))))
+
+(define (has-op? op node)
+  (not (null? (lookup-op op node))))
+
+;; GRAPHS
+
+(define make-internal-graph vector)
+(define (internal-graph-nodes graph) (vector-ref graph 0))
+(define (internal-graph-already-met graph) (vector-ref graph 1))
+(define (internal-graph-already-joined graph) (vector-ref graph 2))
+(define (set-internal-graph-nodes! graph nodes) (vector-set! graph 0 nodes))
+
+; Constructor
+
+(define (make-graph . nodes)
+  (make-internal-graph nodes (make-empty-table) (make-empty-table)))
+
+; Selectors
+
+(define graph-nodes internal-graph-nodes)
+(define already-met internal-graph-already-met)
+(define already-joined internal-graph-already-joined)
+
+; Higher level functions on graphs
+
+(define (add-graph-nodes! graph nodes)
+  (set-internal-graph-nodes! graph (cons nodes (graph-nodes graph))))
+
+(define (copy-graph g)
+  (define (copy-list l) (vector->list (list->vector l)))
+  (make-internal-graph
+   (copy-list (graph-nodes g))
+   (already-met g)
+   (already-joined g)))
+
+(define (clean-graph g)
+  (define (clean-node node)
+    (if (not (or (any-node? node) (none-node? node)))
+        (begin
+          (set-green-edges! node '())
+          (set-red-edges! node '()))))
+  (for-each clean-node (graph-nodes g))
+  g)
+
+(define (canonicalize-graph graph classes)
+  (define (fix node)
+    (define (fix-set object selector mutator)
+      (mutator object
+               (map (lambda (node)
+                      (find-canonical-representative node classes))
+                    (selector object))))
+    (if (not (or (none-node? node) (any-node? node)))
+        (begin
+          (fix-set node green-edges set-green-edges!)
+          (fix-set node red-edges set-red-edges!)
+          (for-each
+           (lambda (blue-edge)
+             (set-arg-node! blue-edge
+                            (find-canonical-representative (arg-node blue-edge) classes))
+             (set-res-node! blue-edge
+                            (find-canonical-representative (res-node blue-edge) classes)))
+           (blue-edges node))))
+    node)
+  (define (fix-table table)
+    (define (canonical? node) (eq? node (find-canonical-representative node classes)))
+    (define (filter-and-fix predicate-fn update-fn list)
+      (let loop ((list list))
+        (cond ((null? list) '())
+              ((predicate-fn (car list))
+               (cons (update-fn (car list)) (loop (cdr list))))
+              (else (loop (cdr list))))))
+    (define (fix-line line)
+      (filter-and-fix
+       (lambda (entry) (canonical? (car entry)))
+       (lambda (entry) (cons (car entry)
+                             (find-canonical-representative (cdr entry) classes)))
+       line))
+    (if (null? table)
+        '()
+        (cons (car table)
+              (filter-and-fix
+               (lambda (entry) (canonical? (car entry)))
+               (lambda (entry) (cons (car entry) (fix-line (cdr entry))))
+               (cdr table)))))
+  (make-internal-graph
+   (map (lambda (class) (fix (car class))) classes)
+   (fix-table (already-met graph))
+   (fix-table (already-joined graph))))
+
+;; USEFUL NODES
+
+(define none-node (make-node 'none #t))
+(define (none-node? node) (eq? node none-node))
+
+(define any-node (make-node 'any '()))
+(define (any-node? node) (eq? node any-node))
+
+;; COLORED EDGE TESTS
+
+(define (green-edge? from-node to-node)
+  (cond ((any-node? from-node) #f)
+        ((none-node? from-node) #t)
+        ((memq to-node (green-edges from-node)) #t)
+        (else #f)))
+
+(define (red-edge? from-node to-node)
+  (cond ((any-node? from-node) #f)
+        ((none-node? from-node) #t)
+        ((memq to-node (red-edges from-node)) #t)
+        (else #f)))
+
+;; SIGNATURE
+
+; Return signature (i.e. <arg, res>) given an operation and a node
+
+(define sig
+  (let ((none-comma-any (cons none-node any-node)))
+    (lambda (op node)                   ; Returns (arg, res)
+      (let ((the-edge (lookup-op op node)))
+        (if (not (null? the-edge))
+            (cons (arg-node the-edge) (res-node the-edge))
+            none-comma-any)))))
+
+; Selectors from signature
+
+(define (arg pair) (car pair))
+(define (res pair) (cdr pair))
+
+;; CONFORMITY
+
+(define (conforms? t1 t2)
+  (define nodes-with-red-edges-out '())
+  (define (add-red-edge! from-node to-node)
+    (set-red-edges! from-node (adjoin to-node (red-edges from-node)))
+    (set! nodes-with-red-edges-out
+          (adjoin from-node nodes-with-red-edges-out)))
+  (define (greenify-red-edges! from-node)
+    (set-green-edges! from-node
+                      (append (red-edges from-node) (green-edges from-node)))
+    (set-red-edges! from-node '()))
+  (define (delete-red-edges! from-node)
+    (set-red-edges! from-node '()))
+  (define (does-conform t1 t2)
+    (cond ((or (none-node? t1) (any-node? t2)) #t)
+          ((or (any-node? t1) (none-node? t2)) #f)
+          ((green-edge? t1 t2) #t)
+          ((red-edge? t1 t2) #t)
+          (else
+           (add-red-edge! t1 t2)
+           (let loop ((blues (blue-edges t2)))
+             (if (null? blues)
+                 #t
+                 (let* ((current-edge (car blues))
+                        (phi (operation current-edge)))
+                   (and (has-op? phi t1)
+                        (does-conform
+                         (res (sig phi t1))
+                         (res (sig phi t2)))
+                        (does-conform
+                         (arg (sig phi t2))
+                         (arg (sig phi t1)))
+                        (loop (cdr blues)))))))))
+  (let ((result (does-conform t1 t2)))
+    (for-each (if result greenify-red-edges! delete-red-edges!)
+              nodes-with-red-edges-out)
+    result))
+
+(define (equivalent? a b)
+  (and (conforms? a b) (conforms? b a)))
+
+;; EQUIVALENCE CLASSIFICATION
+; Given a list of nodes, return a list of equivalence classes
+
+(define (classify nodes)
+  (let node-loop ((classes '())
+                  (nodes nodes))
+    (if (null? nodes)
+        (map (lambda (class)
+               (sort-list class
+                          (lambda (node1 node2)
+                            (< (string-length (name node1))
+                               (string-length (name node2))))))
+             classes)
+        (let ((this-node (car nodes)))
+          (define (add-node classes)
+            (cond ((null? classes) (list (list this-node)))
+                  ((equivalent? this-node (caar classes))
+                   (cons (cons this-node (car classes))
+                         (cdr classes)))
+                  (else (cons (car classes)
+                              (add-node (cdr classes))))))
+          (node-loop (add-node classes)
+                     (cdr nodes))))))
+
+; Given a node N and a classified set of nodes,
+; find the canonical member corresponding to N
+
+(define (find-canonical-representative element classification)
+  (let loop ((classes classification))
+    (cond ((null? classes) (fatal-error "Can't classify" element))
+          ((memq element (car classes)) (car (car classes)))
+          (else (loop (cdr classes))))))
+
+; Reduce a graph by taking only one member of each equivalence
+; class and canonicalizing all outbound pointers
+
+(define (reduce graph)
+  (let ((classes (classify (graph-nodes graph))))
+    (canonicalize-graph graph classes)))
+
+;; TWO DIMENSIONAL TABLES
+
+(define (make-empty-table) (list 'TABLE))
+(define (lookup table x y)
+  (let ((one (assq x (cdr table))))
+    (if one
+        (let ((two (assq y (cdr one))))
+          (if two (cdr two) #f))
+        #f)))
+(define (insert! table x y value)
+  (define (make-singleton-table x y)
+    (list (cons x y)))
+  (let ((one (assq x (cdr table))))
+    (if one
+        (set-cdr! one (cons (cons y value) (cdr one)))
+        (set-cdr! table (cons (cons x (make-singleton-table y value))
+                              (cdr table))))))
+
+;; MEET/JOIN
+; These update the graph when computing the node for node1*node2
+
+(define (blue-edge-operate arg-fn res-fn graph op sig1 sig2)
+  (make-blue-edge op
+                  (arg-fn graph (arg sig1) (arg sig2))
+                  (res-fn graph (res sig1) (res sig2))))
+
+(define (meet graph node1 node2)
+  (cond ((eq? node1 node2) node1)
+        ((or (any-node? node1) (any-node? node2)) any-node) ; canonicalize
+        ((none-node? node1) node2)
+        ((none-node? node2) node1)
+        ((lookup (already-met graph) node1 node2)) ; return it if found
+        ((conforms? node1 node2) node2)
+        ((conforms? node2 node1) node1)
+        (else
+         (let ((result
+                (make-node (string-append "(" (name node1) " ^ " (name node2) ")"))))
+           (add-graph-nodes! graph result)
+           (insert! (already-met graph) node1 node2 result)
+           (set-blue-edges! result
+             (map
+              (lambda (op)
+                (blue-edge-operate join meet graph op (sig op node1) (sig op node2)))
+              (intersect (map operation (blue-edges node1))
+                         (map operation (blue-edges node2)))))
+           result))))
+
+(define (join graph node1 node2)
+  (cond ((eq? node1 node2) node1)
+        ((any-node? node1) node2)
+        ((any-node? node2) node1)
+        ((or (none-node? node1) (none-node? node2)) none-node) ; canonicalize
+        ((lookup (already-joined graph) node1 node2)) ; return it if found
+        ((conforms? node1 node2) node1)
+        ((conforms? node2 node1) node2)
+        (else
+         (let ((result
+                (make-node (string-append "(" (name node1) " v " (name node2) ")"))))
+           (add-graph-nodes! graph result)
+           (insert! (already-joined graph) node1 node2 result)
+           (set-blue-edges! result
+             (map
+              (lambda (op)
+                (blue-edge-operate meet join graph op (sig op node1) (sig op node2)))
+              (union (map operation (blue-edges node1))
+                     (map operation (blue-edges node2)))))
+           result))))
+
+;; MAKE A LATTICE FROM A GRAPH
+
+(define (make-lattice g print?)
+  (define (step g)
+    (let* ((copy (copy-graph g))
+           (nodes (graph-nodes copy)))
+      (for-each (lambda (first)
+                  (for-each (lambda (second)
+                              (meet copy first second) (join copy first second))
+                            nodes))
+                nodes)
+      copy))
+  (define (loop g count)
+    (if print? (display count))
+    (let ((lattice (step g)))
+      (if print? (begin (display " -> ") (display (length (graph-nodes lattice)))))
+      (let* ((new-g (reduce lattice))
+             (new-count (length (graph-nodes new-g))))
+        (if (= new-count count)
+            (begin
+              (if print? (newline))
+              new-g)
+            (begin
+              (if print? (begin (display " -> ") (display new-count) (newline)))
+              (loop new-g new-count))))))
+  (let ((graph
+         (apply make-graph
+                (adjoin any-node (adjoin none-node (graph-nodes (clean-graph g)))))))
+    (loop graph (length (graph-nodes graph)))))
+
+;; DEBUG and TEST
+
+(define a '())
+(define b '())
+(define c '())
+(define d '())
+
+(define (setup)
+  (set! a (make-node 'a))
+  (set! b (make-node 'b))
+  (set-blue-edges! a (list (make-blue-edge 'phi any-node b)))
+  (set-blue-edges! b (list (make-blue-edge 'phi any-node a)
+                           (make-blue-edge 'theta any-node b)))
+  (set! c (make-node "c"))
+  (set! d (make-node "d"))
+  (set-blue-edges! c (list (make-blue-edge 'theta any-node b)))
+  (set-blue-edges! d (list (make-blue-edge 'phi any-node c)
+                           (make-blue-edge 'theta any-node d)))
+  '(made a b c d))
+
+(define (test)
+  (setup)
+  (map name
+       (graph-nodes (make-lattice (make-graph a b c d any-node none-node) #f))))
+
+;-----
+
+(let ((r (test)))
+  (println (length r))
+  (println r))
+
+;31
+;(((b v d) ^ a) v c)(c ^ d)(b v (a ^ d))((a v d) ^ b)(b v d)(b ^ (a v c))(a v (c ^ d))((b v d) ^ a)(c v (a v d))(a v c)(d v (b ^ (a v c)))(d ^ (a v c))((a ^ d) v c)((a ^ b) v d)(((a v d) ^ b) v (a ^ d))(b ^ d)(b v (a v d))(a ^ c)(b ^ (c v d))(a ^ b)(a v b)((a ^ d) ^ b)(a ^ d)(a v d)d(c v d)abcanynone

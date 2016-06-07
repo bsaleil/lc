@@ -1002,6 +1002,13 @@
 
   (define (apply-move move)
     (cond ((equal? (car move) (cdr move)) #f)
+          ((eq? (car move) 'unbox)
+           (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
+             (if (x86-mem? opnd)
+                 (begin (x86-mov cgc (x86-rax) opnd)
+                        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
+                        (x86-mov cgc opnd (x86-rax)))
+                 (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
           ((eq? (car move) 'fs)
            (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 (cdr move)))))
           ((and (ctx-loc-is-register? (car move))
@@ -1019,8 +1026,7 @@
            (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
                  (dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
              (x86-mov cgc dst src)))
-          ((and (ctx-loc-is-register? (car move))
-                (eq? 'rtmp (cdr move)))
+          ((eq? 'rtmp (cdr move))
            (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
                  (dst (if tmpreg
                           (codegen-loc-to-x86opnd (ctx-fs ctx) tmpreg)
@@ -1033,6 +1039,12 @@
                           (codegen-loc-to-x86opnd (ctx-fs ctx) tmpreg)
                           (x86-rax))))
              (x86-mov cgc dst src)))
+          ((and (ctx-loc-is-memory? (car move))
+                (ctx-loc-is-memory? (cdr move)))
+             (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
+                   (dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
+               (x86-mov cgc (x86-rax) src)
+               (x86-mov cgc dst (x86-rax))))
           (else (pp move) (error "NYI apply-moves"))))
 
   (if (and (= (length moves) 2)       ;; Only two moves
@@ -1267,7 +1279,7 @@
 
   ;; TODO: NYI != env
   ;; TODO: NYI to generic with free var
-  
+
 
   (let* ((r (ctx-merge ctx generic-ctx))
          (sp-add (car r))
@@ -1326,15 +1338,16 @@
         (label-name (asm-label-name label))
         (offset (+ 16 (* 8 (get-closure-index stack)))))
 
-   (if opt-verbose-jit
-       (let ((closure-id
-               (if ep-loc
-                   "#f"
-                   (number->string closure 16))))
-         (println ">>> patching generic slot of closure " closure-id
-                  ": now contains label "
-                  label-name
-                  " (" (number->string label-addr 16) ")")))
+  ;; TODO
+  ; (if opt-verbose-jit
+  ;     (let ((closure-id
+  ;             (if ep-loc
+  ;                 "#f"
+  ;                 (number->string closure 16))))
+  ;       (println ">>> patching generic slot of closure " closure-id
+  ;                ": now contains label "
+  ;                label-name
+  ;                " (" (number->string label-addr 16) ")")))
 
    ;; TODO
    (if global-opt-sym

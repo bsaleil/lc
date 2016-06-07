@@ -98,14 +98,26 @@
     (foldr (lambda (el r)
              (let* ((ss  (identifier-sslots (cdr el)))
                     (id (cdr el))
+                    (free? (eq? (identifier-kind id) 'free))
                     (nss
-                      (if (eq? (identifier-kind id) 'free)
+                      (if free?
                           '()
-                          (list-tail ss (- (length ss) 1)))))
-               (cons (cons (car el)
-                           (identifier-copy (cdr el) #f nss #f #f #f))
-                     r)))
-           '()
+                          (list-tail ss (- (length ss) 1))))
+                    (to-unbox
+                      (if (identifier-mutable? id)
+                          (if free?
+                              ss
+                              (if (null? ss)
+                                  '()
+                                  (list-head ss (- (length ss) 1))))
+                          '()))
+                    (env
+                      (cons (cons (car el)
+                                  ;; (identifier-copy identifier kind sslots flags stype cloc)
+                                  (identifier-copy (cdr el) #f nss #f #f #f))
+                            (car r))))
+               (cons env (append to-unbox (cdr r)))))
+           (cons '() '()) ;; env, to-unbox
            (ctx-env ctx)))
 
   ;; TODO WIP
@@ -136,15 +148,31 @@
                         (append moves (list (cons (cdr mult) avail))))
                 ;; There is no reg or mem available,
                 ;; Get a free loc and call sl-gen
-                (error "NYI-ctx-generic")))
+                (let* ((r (ctx-get-free-reg ctx))
+                       (nmoves (car r))
+                       (ctx (caddr r)))
+                  (sl-gen ctx (append moves nmoves)))))
+                ;(error "NYI-ctx-generic")))
           (cons ctx moves))))
 
-  (let ((stack (stack-gen))
-        (env   (env-gen)))
+  (println "------------------------- TO GENERIC:")
+  (pp ctx)
+  (let* ((stack (stack-gen))
+         (env/tu   (env-gen))
+         (env (car env/tu))
+         (slots-to-unbox (cdr env/tu)))
     (let* ((r (sl-gen (ctx-copy ctx stack #f #f #f env) '()))
            (ctx (car r))
-           (moves (cdr r)))
-      (cons ctx (steps moves)))))
+           (moves (cdr r))
+           (locs-to-unbox (map (lambda (i) (cons 'unbox (ctx-get-loc ctx (slot-to-stack-idx ctx i))))
+                               slots-to-unbox)))
+
+      (pp ctx)
+      (pp (append (steps moves) locs-to-unbox))
+      (cons ctx
+            (append
+              (steps moves)
+              locs-to-unbox)))))
 
 
 ;(define (ctx-generic ctx)
