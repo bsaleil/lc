@@ -33,10 +33,8 @@
 ;  (set-car! l 10)
 ;  (println l))
 
-(define (a) 1)
-
-
-(a (a 10))
+(pp (char-alphabetic? #\@))
+(pp (char-alphabetic? #\A))
 
 ;(define (foo n)
 ;  (if (= n 0)

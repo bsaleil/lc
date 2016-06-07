@@ -1267,8 +1267,7 @@
 
   ;; TODO: NYI != env
   ;; TODO: NYI to generic with free var
-  (if (not (equal? (ctx-env ctx) (ctx-env generic-ctx)))
-      (error "NYI gen-merge"))
+  
 
   (let* ((r (ctx-merge ctx generic-ctx))
          (sp-add (car r))
