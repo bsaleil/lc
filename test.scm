@@ -24,6 +24,7 @@
 ;  (+ n 1))
 
 
+
 ;(define (setletrec1 n)
 ; (letrec ((n (begin (set! n 10) n)))
 ;   (+ n 1)))
@@ -32,6 +33,9 @@
 ;(let ((l '(1 2)))
 ;  (set-car! l 10)
 ;  (println l))
+
+(println (##fixnum->flonum 100))
+
 
 
 ;(define (foo n)

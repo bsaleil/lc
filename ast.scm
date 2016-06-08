@@ -159,7 +159,14 @@
                      (eof-object?         1  1  ,(prim-types 1 CTX_ALL)                     ())
                      (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ())
                      (current-output-port 0  0  ,(prim-types 0 )                            ())
-                     (current-input-port  0  0  ,(prim-types 0 )                            ())))
+                     (current-input-port  0  0  ,(prim-types 0 )                            ())
+
+                     (##fixnum->flonum   1  1  ,(prim-types 1 CTX_ALL)                     ())
+                     (##mem-allocated?    1  1  ,(prim-types 1 CTX_ALL)                     ())
+                     (##box               1  1  ,(prim-types 1 CTX_ALL)                     ())
+                     (##unbox             1  1  ,(prim-types 1 CTX_ALL)                     ())
+                     (##set-box!          2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ())))
+
 
 (define (assert-p-nbargs ast)
   (let ((infos (cdr (assoc (car ast) primitives))))
@@ -193,7 +200,7 @@
         ((pair? ast)
          (let ((op (car ast)))
            (cond ;; Special
-                 ((member op '(breakpoint $$sys-clock-gettime-ns)) (mlc-special ast succ))
+                 ((member op '(##subtype breakpoint $$sys-clock-gettime-ns)) (mlc-special ast succ))
                  ;; TODO
                  ((and (eq? op 'write-char) (= (length ast) 2))
                     (gen-ast (append ast '((current-output-port))) succ))
@@ -1032,7 +1039,29 @@
                (apply-moves cgc ctx moves)
                (codegen-sys-clock-gettime-ns cgc reg)
                (jump-to-version cgc succ (ctx-push ctx CTX_INT reg))))))
-        (else (error "NYI"))))
+        ((eq? (car ast) '##subtype)
+         (let* ((lazy-imm
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+                        (codegen-literal cgc STAG_PAIR reg)
+                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_INT reg))))))
+                (lazy-subtype
+                  (make-lazy-code
+                    (lambda (cgc ctx)
+                      ;; We know here that the value is not a pair
+                      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
+                             (type (ctx-get-type ctx 0)))
+                        (if (eq? type CTX_UNK)
+                            ;; type is unknown, get it from memory
+                            (codegen-subtype cgc (ctx-fs ctx) reg (ctx-get-loc ctx 0))
+                            ;; type is known, gen literal
+                            (codegen-literal cgc (memtype-to-stag type) reg))
+                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_INT reg))))))
+                (lazy-pair-check
+                         (gen-dyn-type-test CTX_PAI 0 lazy-imm lazy-subtype ast)))
+
+           (gen-ast (cadr ast) lazy-pair-check)))))
 
 ;;-----------------------------------------------------------------------------
 ;;
@@ -1222,6 +1251,43 @@
     (codegen-symbol->string cgc (ctx-fs ctx) reg lsym mut-sym?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR reg))))
 
+;;
+(define (prim-mem-allocated? cgc ctx reg succ cst-infos)
+  (let ((type (ctx-get-type ctx 0)))
+    (cond ((eq? type CTX_UNK)
+             (let ((lval (ctx-get-loc ctx 0)))
+               (codegen-mem-allocated? cgc (ctx-fs ctx) reg lval)))
+          ((mem-allocated-type? type)
+             (codegen-set-bool cgc #t reg))
+          (else
+             (codegen-set-bool cgc #f reg))))
+  (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg)))
+
+;;
+(define (prim-fixnum->flonum cgc ctx reg succ cst-infos)
+  (let ((lval (ctx-get-loc ctx 0)))
+    (codegen-fixnum->flonum cgc (ctx-fs ctx) reg lval)
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_FLO reg))))
+
+;;
+(define (prim-box cgc ctx reg succ cst-infos)
+  (let ((lval (ctx-get-loc ctx 0)))
+    (codegen-pbox cgc (ctx-fs ctx) reg lval)
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOX reg))))
+
+;;
+(define (prim-set-box! cgc ctx reg succ cst-infos)
+  (let ((lval (ctx-get-loc ctx 0))
+        (lbox (ctx-get-loc ctx 1)))
+    (codegen-set-box cgc (ctx-fs ctx) reg lbox lval)
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) CTX_VOID reg))))
+
+;;
+(define (prim-unbox cgc ctx reg succ cst-infos)
+  (let ((lbox (ctx-get-loc ctx 0)))
+    (codegen-punbox cgc (ctx-fs ctx) reg lbox)
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK reg))))
+
 ;; primitives set-car! & set-cdr!
 (define (prim-set-cxr! cgc ctx reg succ cst-infos op)
 
@@ -1294,19 +1360,25 @@
                  (lambda (cgc ctx)
                    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
                      (apply-moves cgc ctx moves)
+                     ;; TODO: add function in 'primitives' set
                      (case (car ast)
-                       ((not)            (prim-not            cgc ctx reg succ cst-infos))
-                       ((eq?)            (prim-eq?            cgc ctx reg succ cst-infos))
-                       ((char=?)         (prim-eq?            cgc ctx reg succ cst-infos))
-                       ((car cdr)        (prim-cxr            cgc ctx reg succ cst-infos (car ast)))
-                       ((eof-object?)    (prim-eof-object?    cgc ctx reg succ cst-infos))
-                       ((make-string)    (prim-make-string    cgc ctx reg succ cst-infos (cdr ast)))
-                       ((make-vector)    (prim-make-vector    cgc ctx reg succ cst-infos (cdr ast)))
-                       ((vector-ref)     (prim-vector-ref     cgc ctx reg succ cst-infos))
-                       ((string-ref)     (prim-string-ref     cgc ctx reg succ cst-infos))
-                       ((vector-set!)    (prim-vector-set!    cgc ctx reg succ cst-infos))
-                       ((string-set!)    (prim-string-set!    cgc ctx reg succ cst-infos))
-                       ((symbol->string) (prim-symbol->string cgc ctx reg succ cst-infos))
+                       ((not)               (prim-not            cgc ctx reg succ cst-infos))
+                       ((eq?)               (prim-eq?            cgc ctx reg succ cst-infos))
+                       ((char=?)            (prim-eq?            cgc ctx reg succ cst-infos))
+                       ((car cdr)           (prim-cxr            cgc ctx reg succ cst-infos (car ast)))
+                       ((eof-object?)       (prim-eof-object?    cgc ctx reg succ cst-infos))
+                       ((make-string)       (prim-make-string    cgc ctx reg succ cst-infos (cdr ast)))
+                       ((make-vector)       (prim-make-vector    cgc ctx reg succ cst-infos (cdr ast)))
+                       ((vector-ref)        (prim-vector-ref     cgc ctx reg succ cst-infos))
+                       ((string-ref)        (prim-string-ref     cgc ctx reg succ cst-infos))
+                       ((vector-set!)       (prim-vector-set!    cgc ctx reg succ cst-infos))
+                       ((string-set!)       (prim-string-set!    cgc ctx reg succ cst-infos))
+                       ((symbol->string)    (prim-symbol->string cgc ctx reg succ cst-infos))
+                       ((##fixnum->flonum)  (prim-fixnum->flonum cgc ctx reg succ cst-infos))
+                       ((##mem-allocated?)  (prim-mem-allocated? cgc ctx reg succ cst-infos))
+                       ((##box)             (prim-box            cgc ctx reg succ cst-infos))
+                       ((##unbox)           (prim-unbox          cgc ctx reg succ cst-infos))
+                       ((##set-box!)        (prim-set-box!       cgc ctx reg succ cst-infos))
                        ((set-car! set-cdr!)                      (prim-set-cxr!       cgc ctx reg succ cst-infos (car ast)))
                        ((current-input-port current-output-port) (prim-current-x-port cgc ctx reg succ cst-infos (car ast)))
                        ((char->integer integer->char)            (prim-char<->int     cgc ctx reg succ cst-infos (car ast)))

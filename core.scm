@@ -96,7 +96,7 @@
 ;; STags
 (define STAG_VECTOR     0)
 (define STAG_PAIR       1)
-(define STAG_MOBJECT    5)
+(define STAG_MOBJECT    5) ;; TODO: rename to STAG_BOX
 (define STAG_SYMBOL     8)
 (define STAG_PROCEDURE 14)
 (define STAG_IPORT     17)
@@ -107,20 +107,37 @@
 ;; Context types
 (define CTX_ALL   '*) ; Represents all ctx types
 (define CTX_UNK   'unknown)
-(define CTX_INT   'integer)
+;; !mem allocated
 (define CTX_CHAR  'char)
-(define CTX_BOOL  'boolean)
-(define CTX_CLO   'procedure)
-(define CTX_PAI   'pair)
 (define CTX_VOID  'void)
 (define CTX_NULL  'null)
 (define CTX_RETAD 'retAddr)
+(define CTX_INT   'integer)
+(define CTX_BOOL  'boolean)
+;; mem allocated
+(define CTX_BOX   'box)
+(define CTX_PAI   'pair)
 (define CTX_VECT  'vector)
 (define CTX_STR   'string)
 (define CTX_SYM   'symbol)
 (define CTX_IPORT 'inport)
-(define CTX_OPORT 'outport)
 (define CTX_FLO   'float)
+(define CTX_OPORT 'outport)
+(define CTX_CLO   'procedure)
+
+(define (memtype-to-stag type)
+  (cond ((eq? type CTX_BOX)  STAG_MOBJECT)
+        ((eq? type CTX_PAI)  STAG_PAIR)
+        ((eq? type CTX_VECT) STAG_VECTOR)
+        ((eq? type CTX_STR)  STAG_STRING)
+        ((eq? type CTX_SYM)  STAG_SYMBOL)
+        ((eq? type CTX_FLO)  STAG_FLONUM)
+        ((eq? type CTX_CLO)  STAG_PROCEDURE)
+        (else (pp type) (error "Internal error"))))
+
+(define (mem-allocated-type? type)
+  (member type (list CTX_BOX CTX_PAI   CTX_VECT  CTX_STR CTX_CLO
+                     CTX_SYM CTX_IPORT CTX_OPORT CTX_FLO)))
 
 (define type-cridx
   `((,CTX_INT  .  8) ;; Start from 8 because of header

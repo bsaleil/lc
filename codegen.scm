@@ -103,6 +103,8 @@
 (define OFFSET_PAIR_CAR 16)
 (define OFFSET_PAIR_CDR  8)
 (define OFFSET_PROC_EP 8)
+(define OFFSET_BOX 8)
+(define OFFSET_FLONUM 8)
 (define (OFFSET_PROC_FREE i) (+ 16 (* 8 i)))
 
 ;;-----------------------------------------------------------------------------
@@ -296,6 +298,104 @@
       (chk-unmem-unbox! (dest) (opval) mut-val?)
       (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (opval))
       (x86-mov cgc (dest) (x86-imm-int ENCODING_VOID)))))
+
+;;-----------------------------------------------------------------------------
+;; Internals
+;;-----------------------------------------------------------------------------
+
+(define (codegen-subtype cgc fs reg lval)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opval (codegen-loc-to-x86opnd fs lval)))
+
+    (if (x86-mem? opval)
+        (begin (x86-mov cgc (x86-rax) opval)
+               (set! opval (x86-rax))))
+
+    ;; Get header
+    (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opval))
+    ;; Get stype
+    (x86-and cgc dest (x86-imm-int 248))
+    (x86-shr cgc dest (x86-imm-int 1))))
+
+(define (codegen-mem-allocated? cgc fs reg lval)
+  (let ((dest (codegen-reg-to-x86reg reg))
+        (opval (codegen-loc-to-x86opnd fs lval))
+        (label-next (asm-make-label #f (new-sym 'next_))))
+
+    (x86-mov cgc (x86-rax) opval)
+    (x86-and cgc (x86-rax) (x86-imm-int 1))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+    (x86-je cgc label-next)
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+    (x86-label cgc label-next)))
+
+(define (codegen-fixnum->flonum cgc fs reg lval)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (lval  (codegen-loc-to-x86opnd fs lval)))
+
+    (gen-allocation-imm cgc STAG_FLONUM 8)
+
+    (x86-cvtsi2sd cgc (x86-xmm0) lval)
+    (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-xmm0))
+    (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))))
+
+
+;;-----------------------------------------------------------------------------
+;; Boxes
+;;-----------------------------------------------------------------------------
+
+;;-----------------------------------------------------------------------------
+;; box
+(define (codegen-pbox cgc fs reg lval)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opval (codegen-loc-to-x86opnd fs lval)))
+
+    (gen-allocation-imm cgc STAG_MOBJECT 8)
+
+    (if (x86-mem? opval)
+        (begin (x86-mov cgc (x86-rax) opval)
+               (set! opval (x86-rax))))
+
+    (x86-mov cgc (x86-mem (+ -16 OFFSET_BOX) alloc-ptr) opval)
+    (x86-lea cgc dest (x86-mem (+ -16 TAG_MEMOBJ) alloc-ptr))))
+
+;;-----------------------------------------------------------------------------
+;; unbox
+(define (codegen-punbox cgc fs reg lbox)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opbox (codegen-loc-to-x86opnd fs lbox)))
+
+    (if (x86-mem? opbox)
+        (begin (x86-mov cgc (x86-rax) opbox)
+               (set! opbox (x86-rax))))
+
+    (x86-mov cgc dest (x86-mem (- OFFSET_BOX TAG_MEMOBJ) opbox))))
+
+;;-----------------------------------------------------------------------------
+;; box-set!
+(define (codegen-set-box cgc fs reg lbox lval)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opbox (codegen-loc-to-x86opnd fs lbox))
+        (opval (codegen-loc-to-x86opnd fs lval))
+        (use-selector? #f))
+
+    (if (x86-mem? opbox)
+        (begin (x86-mov cgc (x86-rax) opbox)
+               (set! opbox (x86-rax))))
+
+    (if (x86-mem? opval)
+        (if (eq? opbox (x86-rax))
+            (begin (x86-mov cgc selector-reg opbox)
+                   (set! opval selector-reg)
+                   (set! use-selector? #t))
+            (begin (x86-mov cgc (x86-rax) opbox)
+                   (set! opbox (x86-rax)))))
+
+    (x86-mov cgc (x86-mem (- OFFSET_BOX TAG_MEMOBJ) opbox) opval)
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+
+    (if use-selector?
+        (x86-mov cgc selector-reg (x86-imm-int 0)))))
 
 ;;-----------------------------------------------------------------------------
 ;; If
