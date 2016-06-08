@@ -1264,6 +1264,17 @@
   ;; sp-add: number of word added to adjust sp for ctx merging
   ;; moves: moves required for ctx merging
   (define (ctx-merge src-ctx dst-ctx)
+    (define (get-to-unbox env)
+      (if (null? env)
+          '()
+          (let* ((identifier (cdar env))
+                 (free? (eq? (identifier-kind identifier) 'free))
+                 (ss (identifier-sslots identifier)))
+            (if (identifier-mutable? identifier)
+                (if free?
+                    (append ss (get-to-unbox (cdr env)))
+                    (append (list-head ss (- (length ss) 1)) (get-to-unbox (cdr env))))
+                (get-to-unbox (cdr env))))))
     (define (get-sp-add)
       (- (ctx-fs src-ctx) (ctx-fs dst-ctx)))
     (define (get-moves)
@@ -1273,17 +1284,19 @@
             (cons (cons (cdar sl)
                         (cdr (assoc (caar sl) (ctx-slot-loc dst-ctx))))
                         (loop (cdr sl))))))
+    (define locs-to-unbox
+      (map (lambda (slot)
+             (cons 'unbox (ctx-get-loc dst-ctx (slot-to-stack-idx dst-ctx slot))))
+           (get-to-unbox (ctx-env src-ctx))))
+
     (list
-      (get-sp-add)
-      (steps (get-moves))))
-
-  ;; TODO: NYI != env
-  ;; TODO: NYI to generic with free var
-
+      (append (steps (get-moves))
+              locs-to-unbox)
+      (get-sp-add)))
 
   (let* ((r (ctx-merge ctx generic-ctx))
-         (sp-add (car r))
-         (moves (cadr r))
+         (moves  (car r))
+         (sp-add (cadr r))
          (merge-label (asm-make-label #f (new-sym 'merge_version_))))
 
     (set! code-alloc (fn-codepos))

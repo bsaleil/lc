@@ -155,8 +155,6 @@
                 ;(error "NYI-ctx-generic")))
           (cons ctx moves))))
 
-  (println "------------------------- TO GENERIC:")
-  (pp ctx)
   (let* ((stack (stack-gen))
          (env/tu   (env-gen))
          (env (car env/tu))
@@ -167,8 +165,6 @@
            (locs-to-unbox (map (lambda (i) (cons 'unbox (ctx-get-loc ctx (slot-to-stack-idx ctx i))))
                                slots-to-unbox)))
 
-      (pp ctx)
-      (pp (append (steps moves) locs-to-unbox))
       (cons ctx
             (append
               (steps moves)

@@ -1,461 +1,651 @@
 (declare (standard-bindings) (inlining-limit 0) (block) (fixnum) (not safe))
-;;; CONFORM -- Type checker, written by Jim Miller.
+;;; EARLEY -- Earley's parser, written by Marc Feeley.
 
-;;; Functional and unstable
+; (make-parser grammar lexer) is used to create a parser from the grammar
+; description `grammar' and the lexer function `lexer'.
+;
+; A grammar is a list of definitions.  Each definition defines a non-terminal
+; by a set of rules.  Thus a definition has the form: (nt rule1 rule2...).
+; A given non-terminal can only be defined once.  The first non-terminal
+; defined is the grammar's goal.  Each rule is a possibly empty list of
+; non-terminals.  Thus a rule has the form: (nt1 nt2...).  A non-terminal
+; can be any scheme value.  Note that all grammar symbols are treated as
+; non-terminals.  This is fine though because the lexer will be outputing
+; non-terminals.
+;
+; The lexer defines what a token is and the mapping between tokens and
+; the grammar's non-terminals.  It is a function of one argument, the input,
+; that returns the list of tokens corresponding to the input.  Each token is
+; represented by a list.  The first element is some `user-defined' information
+; associated with the token and the rest represents the token's class(es) (as a
+; list of non-terminals that this token corresponds to).
+;
+; The result of `make-parser' is a function that parses the single input it
+; is given into the grammar's goal.  The result is a `parse' which can be
+; manipulated with the procedures: `parse->parsed?', `parse->trees'
+; and `parse->nb-trees' (see below).
+;
+; Let's assume that we want a parser for the grammar
+;
+;  S -> x = E
+;  E -> E + E | V
+;  V -> V y |
+;
+; and that the input to the parser is a string of characters.  Also, assume we
+; would like to map the characters `x', `y', `+' and `=' into the corresponding
+; non-terminals in the grammar.  Such a parser could be created with
+;
+; (make-parser
+;   '(
+;      (s (x = e))
+;      (e (e + e) (v))
+;      (v (v y) ())
+;    )
+;   (lambda (str)
+;     (map (lambda (char)
+;            (list char ; user-info = the character itself
+;                  (case char
+;                    ((#\x) 'x)
+;                    ((#\y) 'y)
+;                    ((#\+) '+)
+;                    ((#\=) '=)
+;                    (else (fatal-error "lexer error")))))
+;          (string->list str)))
+; )
+;
+; An alternative definition (that does not check for lexical errors) is
+;
+; (make-parser
+;   '(
+;      (s (#\x #\= e))
+;      (e (e #\+ e) (v))
+;      (v (v #\y) ())
+;    )
+;   (lambda (str) (map (lambda (char) (list char char)) (string->list str)))
+; )
+;
+; To help with the rest of the discussion, here are a few definitions:
+;
+; An input pointer (for an input of `n' tokens) is a value between 0 and `n'.
+; It indicates a point between two input tokens (0 = beginning, `n' = end).
+; For example, if `n' = 4, there are 5 input pointers:
+;
+;   input                   token1     token2     token3     token4
+;   input pointers       0          1          2          3          4
+;
+; A configuration indicates the extent to which a given rule is parsed (this
+; is the common `dot notation').  For simplicity, a configuration is
+; represented as an integer, with successive configurations in the same
+; rule associated with successive integers.  It is assumed that the grammar
+; has been extended with rules to aid scanning.  These rules are of the
+; form `nt ->', and there is one such rule for every non-terminal.  Note
+; that these rules are special because they only apply when the corresponding
+; non-terminal is returned by the lexer.
+;
+; A configuration set is a configuration grouped with the set of input pointers
+; representing where the head non-terminal of the configuration was predicted.
+;
+; Here are the rules and configurations for the grammar given above:
+;
+;  S -> .         \
+;       0          |
+;  x -> .          |
+;       1          |
+;  = -> .          |
+;       2          |
+;  E -> .          |
+;       3           > special rules (for scanning)
+;  + -> .          |
+;       4          |
+;  V -> .          |
+;       5          |
+;  y -> .          |
+;       6         /
+;  S -> .  x  .  =  .  E  .
+;       7     8     9     10
+;  E -> .  E  .  +  .  E  .
+;       11    12    13    14
+;  E -> .  V  .
+;       15    16
+;  V -> .  V  .  y  .
+;       17    18    19
+;  V -> .
+;       20
+;
+; Starters of the non-terminal `nt' are configurations that are leftmost
+; in a non-special rule for `nt'.  Enders of the non-terminal `nt' are
+; configurations that are rightmost in any rule for `nt'.  Predictors of the
+; non-terminal `nt' are configurations that are directly to the left of `nt'
+; in any rule.
+;
+; For the grammar given above,
+;
+;   Starters of V   = (17 20)
+;   Enders of V     = (5 19 20)
+;   Predictors of V = (15 17)
 
-(define (sort-list obj pred)
+(define (make-parser grammar lexer)
 
-  (define (loop l)
-    (if (and (pair? l) (pair? (cdr l)))
-        (split-list l '() '())
-        l))
+  (define (non-terminals grammar) ; return vector of non-terminals in grammar
 
-  (define (split-list l one two)
-    (if (pair? l)
-        (split-list (cdr l) two (cons (car l) one))
-        (merge (loop one) (loop two))))
+    (define (add-nt nt nts)
+      (if (member nt nts) nts (cons nt nts))) ; use equal? for equality tests
 
-  (define (merge one two)
-    (cond ((null? one) two)
-          ((pred (car two) (car one))
-           (cons (car two)
-                 (merge (cdr two) one)))
-          (else
-           (cons (car one)
-                 (merge (cdr one) two)))))
+    (let def-loop ((defs grammar) (nts '()))
+      (if (pair? defs)
+        (let* ((def (car defs))
+               (head (car def)))
+          (let rule-loop ((rules (cdr def))
+                          (nts (add-nt head nts)))
+            (if (pair? rules)
+              (let ((rule (car rules)))
+                (let loop ((l rule) (nts nts))
+                  (if (pair? l)
+                    (let ((nt (car l)))
+                      (loop (cdr l) (add-nt nt nts)))
+                    (rule-loop (cdr rules) nts))))
+              (def-loop (cdr defs) nts))))
+        (list->vector (reverse nts))))) ; goal non-terminal must be at index 0
 
-  (loop obj))
-
-;; SET OPERATIONS
-; (representation as lists with distinct elements)
-
-(define (adjoin element set)
-  (if (memq element set) set (cons element set)))
-
-(define (eliminate element set)
-  (cond ((null? set) set)
-        ((eq? element (car set)) (cdr set))
-        (else (cons (car set) (eliminate element (cdr set))))))
-
-(define (intersect list1 list2)
-  (let loop ((l list1))
-    (cond ((null? l) '())
-          ((memq (car l) list2) (cons (car l) (loop (cdr l))))
-          (else (loop (cdr l))))))
-
-(define (union list1 list2)
-  (if (null? list1)
-      list2
-      (union (cdr list1)
-             (adjoin (car list1) list2))))
-
-;; GRAPH NODES
-
-(define make-internal-node vector)
-(define (internal-node-name node) (vector-ref node 0))
-(define (internal-node-green-edges node) (vector-ref node 1))
-(define (internal-node-red-edges node) (vector-ref node 2))
-(define (internal-node-blue-edges node) (vector-ref node 3))
-(define (set-internal-node-name! node name) (vector-set! node 0 name))
-(define (set-internal-node-green-edges! node edges) (vector-set! node 1 edges))
-(define (set-internal-node-red-edges! node edges) (vector-set! node 2 edges))
-(define (set-internal-node-blue-edges! node edges) (vector-set! node 3 edges))
-
-(define (make-node name . blue-edges)   ; User's constructor
-  (let ((name (if (symbol? name) (symbol->string name) name))
-        (blue-edges (if (null? blue-edges) 'NOT-A-NODE-YET (car blue-edges))))
-    (make-internal-node name '() '() blue-edges)))
-
-(define (copy-node node)
-  (make-internal-node (name node) '() '() (blue-edges node)))
-
-; Selectors
-
-(define name internal-node-name)
-(define (make-edge-getter selector)
-  (lambda (node)
-    (if (or (none-node? node) (any-node? node))
-        (fatal-error "Can't get edges from the ANY or NONE nodes")
-        (selector node))))
-(define red-edges (make-edge-getter internal-node-red-edges))
-(define green-edges (make-edge-getter internal-node-green-edges))
-(define blue-edges (make-edge-getter internal-node-blue-edges))
-
-; Mutators
-
-(define (make-edge-setter mutator!)
-  (lambda (node value)
-    (cond ((any-node? node) (fatal-error "Can't set edges from the ANY node"))
-          ((none-node? node) 'OK)
-          (else (mutator! node value)))))
-(define set-red-edges! (make-edge-setter set-internal-node-red-edges!))
-(define set-green-edges! (make-edge-setter set-internal-node-green-edges!))
-(define set-blue-edges! (make-edge-setter set-internal-node-blue-edges!))
-
-;; BLUE EDGES
-
-(define make-blue-edge vector)
-(define (blue-edge-operation edge) (vector-ref edge 0))
-(define (blue-edge-arg-node edge) (vector-ref edge 1))
-(define (blue-edge-res-node edge) (vector-ref edge 2))
-(define (set-blue-edge-operation! edge value) (vector-set! edge 0 value))
-(define (set-blue-edge-arg-node! edge value) (vector-set! edge 1 value))
-(define (set-blue-edge-res-node! edge value) (vector-set! edge 2 value))
-
-; Selectors
-(define operation blue-edge-operation)
-(define arg-node blue-edge-arg-node)
-(define res-node blue-edge-res-node)
-
-; Mutators
-(define set-arg-node! set-blue-edge-arg-node!)
-(define set-res-node! set-blue-edge-res-node!)
-
-; Higher level operations on blue edges
-
-(define (lookup-op op node)
-  (let loop ((edges (blue-edges node)))
-    (cond ((null? edges) '())
-          ((eq? op (operation (car edges))) (car edges))
-          (else (loop (cdr edges))))))
-
-(define (has-op? op node)
-  (not (null? (lookup-op op node))))
-
-;; GRAPHS
-
-(define make-internal-graph vector)
-(define (internal-graph-nodes graph) (vector-ref graph 0))
-(define (internal-graph-already-met graph) (vector-ref graph 1))
-(define (internal-graph-already-joined graph) (vector-ref graph 2))
-(define (set-internal-graph-nodes! graph nodes) (vector-set! graph 0 nodes))
-
-; Constructor
-
-(define (make-graph . nodes)
-  (make-internal-graph nodes (make-empty-table) (make-empty-table)))
-
-; Selectors
-
-(define graph-nodes internal-graph-nodes)
-(define already-met internal-graph-already-met)
-(define already-joined internal-graph-already-joined)
-
-; Higher level functions on graphs
-
-(define (add-graph-nodes! graph nodes)
-  (set-internal-graph-nodes! graph (cons nodes (graph-nodes graph))))
-
-(define (copy-graph g)
-  (define (copy-list l) (vector->list (list->vector l)))
-  (make-internal-graph
-   (copy-list (graph-nodes g))
-   (already-met g)
-   (already-joined g)))
-
-(define (clean-graph g)
-  (define (clean-node node)
-    (if (not (or (any-node? node) (none-node? node)))
-        (begin
-          (set-green-edges! node '())
-          (set-red-edges! node '()))))
-  (for-each clean-node (graph-nodes g))
-  g)
-
-(define (canonicalize-graph graph classes)
-  (define (fix node)
-    (define (fix-set object selector mutator)
-      (mutator object
-               (map (lambda (node)
-                      (find-canonical-representative node classes))
-                    (selector object))))
-    (if (not (or (none-node? node) (any-node? node)))
-        (begin
-          (fix-set node green-edges set-green-edges!)
-          (fix-set node red-edges set-red-edges!)
-          (for-each
-           (lambda (blue-edge)
-             (set-arg-node! blue-edge
-                            (find-canonical-representative (arg-node blue-edge) classes))
-             (set-res-node! blue-edge
-                            (find-canonical-representative (res-node blue-edge) classes)))
-           (blue-edges node))))
-    node)
-  (define (fix-table table)
-    (define (canonical? node) (eq? node (find-canonical-representative node classes)))
-    (define (filter-and-fix predicate-fn update-fn list)
-      (let loop ((list list))
-        (cond ((null? list) '())
-              ((predicate-fn (car list))
-               (cons (update-fn (car list)) (loop (cdr list))))
-              (else (loop (cdr list))))))
-    (define (fix-line line)
-      (filter-and-fix
-       (lambda (entry) (canonical? (car entry)))
-       (lambda (entry) (cons (car entry)
-                             (find-canonical-representative (cdr entry) classes)))
-       line))
-    (if (null? table)
-        '()
-        (cons (car table)
-              (filter-and-fix
-               (lambda (entry) (canonical? (car entry)))
-               (lambda (entry) (cons (car entry) (fix-line (cdr entry))))
-               (cdr table)))))
-  (make-internal-graph
-   (map (lambda (class) (fix (car class))) classes)
-   (fix-table (already-met graph))
-   (fix-table (already-joined graph))))
-
-;; USEFUL NODES
-
-(define none-node (make-node 'none #t))
-(define (none-node? node) (eq? node none-node))
-
-(define any-node (make-node 'any '()))
-(define (any-node? node) (eq? node any-node))
-
-;; COLORED EDGE TESTS
-
-(define (green-edge? from-node to-node)
-  (cond ((any-node? from-node) #f)
-        ((none-node? from-node) #t)
-        ((memq to-node (green-edges from-node)) #t)
-        (else #f)))
-
-(define (red-edge? from-node to-node)
-  (cond ((any-node? from-node) #f)
-        ((none-node? from-node) #t)
-        ((memq to-node (red-edges from-node)) #t)
-        (else #f)))
-
-;; SIGNATURE
-
-; Return signature (i.e. <arg, res>) given an operation and a node
-
-(define sig
-  (let ((none-comma-any (cons none-node any-node)))
-    (lambda (op node)                   ; Returns (arg, res)
-      (let ((the-edge (lookup-op op node)))
-        (if (not (null? the-edge))
-            (cons (arg-node the-edge) (res-node the-edge))
-            none-comma-any)))))
-
-; Selectors from signature
-
-(define (arg pair) (car pair))
-(define (res pair) (cdr pair))
-
-;; CONFORMITY
-
-(define (conforms? t1 t2)
-  (define nodes-with-red-edges-out '())
-  (define (add-red-edge! from-node to-node)
-    (set-red-edges! from-node (adjoin to-node (red-edges from-node)))
-    (set! nodes-with-red-edges-out
-          (adjoin from-node nodes-with-red-edges-out)))
-  (define (greenify-red-edges! from-node)
-    (set-green-edges! from-node
-                      (append (red-edges from-node) (green-edges from-node)))
-    (set-red-edges! from-node '()))
-  (define (delete-red-edges! from-node)
-    (set-red-edges! from-node '()))
-  (define (does-conform t1 t2)
-    (cond ((or (none-node? t1) (any-node? t2)) #t)
-          ((or (any-node? t1) (none-node? t2)) #f)
-          ((green-edge? t1 t2) #t)
-          ((red-edge? t1 t2) #t)
-          (else
-           (add-red-edge! t1 t2)
-           (let loop ((blues (blue-edges t2)))
-             (if (null? blues)
-                 #t
-                 (let* ((current-edge (car blues))
-                        (phi (operation current-edge)))
-                   (and (has-op? phi t1)
-                        (does-conform
-                         (res (sig phi t1))
-                         (res (sig phi t2)))
-                        (does-conform
-                         (arg (sig phi t2))
-                         (arg (sig phi t1)))
-                        (loop (cdr blues)))))))))
-  (let ((result (does-conform t1 t2)))
-    (for-each (if result greenify-red-edges! delete-red-edges!)
-              nodes-with-red-edges-out)
-    result))
-
-(define (equivalent? a b)
-  (and (conforms? a b) (conforms? b a)))
-
-;; EQUIVALENCE CLASSIFICATION
-; Given a list of nodes, return a list of equivalence classes
-
-(define (classify nodes)
-  (let node-loop ((classes '())
-                  (nodes nodes))
-    (if (null? nodes)
-        (map (lambda (class)
-               (sort-list class
-                          (lambda (node1 node2)
-                            (< (string-length (name node1))
-                               (string-length (name node2))))))
-             classes)
-        (let ((this-node (car nodes)))
-          (define (add-node classes)
-            (cond ((null? classes) (list (list this-node)))
-                  ((equivalent? this-node (caar classes))
-                   (cons (cons this-node (car classes))
-                         (cdr classes)))
-                  (else (cons (car classes)
-                              (add-node (cdr classes))))))
-          (node-loop (add-node classes)
-                     (cdr nodes))))))
-
-; Given a node N and a classified set of nodes,
-; find the canonical member corresponding to N
-
-(define (find-canonical-representative element classification)
-  (let loop ((classes classification))
-    (cond ((null? classes) (fatal-error "Can't classify" element))
-          ((memq element (car classes)) (car (car classes)))
-          (else (loop (cdr classes))))))
-
-; Reduce a graph by taking only one member of each equivalence
-; class and canonicalizing all outbound pointers
-
-(define (reduce graph)
-  (let ((classes (classify (graph-nodes graph))))
-    (canonicalize-graph graph classes)))
-
-;; TWO DIMENSIONAL TABLES
-
-(define (make-empty-table) (list 'TABLE))
-(define (lookup table x y)
-  (let ((one (assq x (cdr table))))
-    (if one
-        (let ((two (assq y (cdr one))))
-          (if two (cdr two) #f))
+  (define (ind nt nts) ; return index of non-terminal `nt' in `nts'
+    (let loop ((i (- (vector-length nts) 1)))
+      (if (>= i 0)
+        (if (equal? (vector-ref nts i) nt) i (loop (- i 1)))
         #f)))
-(define (insert! table x y value)
-  (define (make-singleton-table x y)
-    (list (cons x y)))
-  (let ((one (assq x (cdr table))))
-    (if one
-        (set-cdr! one (cons (cons y value) (cdr one)))
-        (set-cdr! table (cons (cons x (make-singleton-table y value))
-                              (cdr table))))))
 
-;; MEET/JOIN
-; These update the graph when computing the node for node1*node2
+  (define (nb-configurations grammar) ; return nb of configurations in grammar
+    (let def-loop ((defs grammar) (nb-confs 0))
+      (if (pair? defs)
+        (let ((def (car defs)))
+          (let rule-loop ((rules (cdr def)) (nb-confs nb-confs))
+            (if (pair? rules)
+              (let ((rule (car rules)))
+                (let loop ((l rule) (nb-confs nb-confs))
+                  (if (pair? l)
+                    (loop (cdr l) (+ nb-confs 1))
+                    (rule-loop (cdr rules) (+ nb-confs 1)))))
+              (def-loop (cdr defs) nb-confs))))
+      nb-confs)))
 
-(define (blue-edge-operate arg-fn res-fn graph op sig1 sig2)
-  (make-blue-edge op
-                  (arg-fn graph (arg sig1) (arg sig2))
-                  (res-fn graph (res sig1) (res sig2))))
+; First, associate a numeric identifier to every non-terminal in the
+; grammar (with the goal non-terminal associated with 0).
+;
+; So, for the grammar given above we get:
+;
+; s -> 0   x -> 1   = -> 4   e ->3    + -> 4   v -> 5   y -> 6
 
-(define (meet graph node1 node2)
-  (cond ((eq? node1 node2) node1)
-        ((or (any-node? node1) (any-node? node2)) any-node) ; canonicalize
-        ((none-node? node1) node2)
-        ((none-node? node2) node1)
-        ((lookup (already-met graph) node1 node2)) ; return it if found
-        ((conforms? node1 node2) node2)
-        ((conforms? node2 node1) node1)
-        (else
-         (let ((result
-                (make-node (string-append "(" (name node1) " ^ " (name node2) ")"))))
-           (add-graph-nodes! graph result)
-           (insert! (already-met graph) node1 node2 result)
-           (set-blue-edges! result
-             (map
-              (lambda (op)
-                (blue-edge-operate join meet graph op (sig op node1) (sig op node2)))
-              (intersect (map operation (blue-edges node1))
-                         (map operation (blue-edges node2)))))
-           result))))
+  (let* ((nts (non-terminals grammar))          ; id map = list of non-terms
+         (nb-nts (vector-length nts))           ; the number of non-terms
+         (nb-confs (+ (nb-configurations grammar) nb-nts)) ; the nb of confs
+         (starters (make-vector nb-nts '()))    ; starters for every non-term
+         (enders (make-vector nb-nts '()))      ; enders for every non-term
+         (predictors (make-vector nb-nts '()))  ; predictors for every non-term
+         (steps (make-vector nb-confs #f))      ; what to do in a given conf
+         (names (make-vector nb-confs #f)))     ; name of rules
 
-(define (join graph node1 node2)
-  (cond ((eq? node1 node2) node1)
-        ((any-node? node1) node2)
-        ((any-node? node2) node1)
-        ((or (none-node? node1) (none-node? node2)) none-node) ; canonicalize
-        ((lookup (already-joined graph) node1 node2)) ; return it if found
-        ((conforms? node1 node2) node1)
-        ((conforms? node2 node1) node2)
-        (else
-         (let ((result
-                (make-node (string-append "(" (name node1) " v " (name node2) ")"))))
-           (add-graph-nodes! graph result)
-           (insert! (already-joined graph) node1 node2 result)
-           (set-blue-edges! result
-             (map
-              (lambda (op)
-                (blue-edge-operate meet join graph op (sig op node1) (sig op node2)))
-              (union (map operation (blue-edges node1))
-                     (map operation (blue-edges node2)))))
-           result))))
+    (define (setup-tables grammar nts starters enders predictors steps names)
 
-;; MAKE A LATTICE FROM A GRAPH
+      (define (add-conf conf nt nts class)
+        (let ((i (ind nt nts)))
+          (vector-set! class i (cons conf (vector-ref class i)))))
 
-(define (make-lattice g print?)
-  (define (step g)
-    (let* ((copy (copy-graph g))
-           (nodes (graph-nodes copy)))
-      (for-each (lambda (first)
-                  (for-each (lambda (second)
-                              (meet copy first second) (join copy first second))
-                            nodes))
-                nodes)
-      copy))
-  (define (loop g count)
-    (if print? (display count))
-    (let ((lattice (step g)))
-      (if print? (begin (display " -> ") (display (length (graph-nodes lattice)))))
-      (let* ((new-g (reduce lattice))
-             (new-count (length (graph-nodes new-g))))
-        (if (= new-count count)
+      (let ((nb-nts (vector-length nts)))
+
+        (let nt-loop ((i (- nb-nts 1)))
+          (if (>= i 0)
             (begin
-              (if print? (newline))
-              new-g)
-            (begin
-              (if print? (begin (display " -> ") (display new-count) (newline)))
-              (loop new-g new-count))))))
-  (let ((graph
-         (apply make-graph
-                (adjoin any-node (adjoin none-node (graph-nodes (clean-graph g)))))))
-    (loop graph (length (graph-nodes graph)))))
+              (vector-set! steps i (- i nb-nts))
+              (vector-set! names i (list (vector-ref nts i) 0))
+              (vector-set! enders i (list i))
+              (nt-loop (- i 1)))))
 
-;; DEBUG and TEST
+        (let def-loop ((defs grammar) (conf (vector-length nts)))
+          (if (pair? defs)
+            (let* ((def (car defs))
+                   (head (car def)))
+              (let rule-loop ((rules (cdr def)) (conf conf) (rule-num 1))
+                (if (pair? rules)
+                  (let ((rule (car rules)))
+                    (vector-set! names conf (list head rule-num))
+                    (add-conf conf head nts starters)
+                    (let loop ((l rule) (conf conf))
+                      (if (pair? l)
+                        (let ((nt (car l)))
+                          (vector-set! steps conf (ind nt nts))
+                          (add-conf conf nt nts predictors)
+                          (loop (cdr l) (+ conf 1)))
+                        (begin
+                          (vector-set! steps conf (- (ind head nts) nb-nts))
+                          (add-conf conf head nts enders)
+                          (rule-loop (cdr rules) (+ conf 1) (+ rule-num 1))))))
+                  (def-loop (cdr defs) conf))))))))
 
-(define a '())
-(define b '())
-(define c '())
-(define d '())
+; Now, for each non-terminal, compute the starters, enders and predictors and
+; the names and steps tables.
 
-(define (setup)
-  (set! a (make-node 'a))
-  (set! b (make-node 'b))
-  (set-blue-edges! a (list (make-blue-edge 'phi any-node b)))
-  (set-blue-edges! b (list (make-blue-edge 'phi any-node a)
-                           (make-blue-edge 'theta any-node b)))
-  (set! c (make-node "c"))
-  (set! d (make-node "d"))
-  (set-blue-edges! c (list (make-blue-edge 'theta any-node b)))
-  (set-blue-edges! d (list (make-blue-edge 'phi any-node c)
-                           (make-blue-edge 'theta any-node d)))
-  '(made a b c d))
+    (setup-tables grammar nts starters enders predictors steps names)
+
+; Build the parser description
+
+    (let ((parser-descr (vector lexer
+                                nts
+                                starters
+                                enders
+                                predictors
+                                steps
+                                names)))
+      (lambda (input)
+
+        (define (ind nt nts) ; return index of non-terminal `nt' in `nts'
+          (let loop ((i (- (vector-length nts) 1)))
+            (if (>= i 0)
+              (if (equal? (vector-ref nts i) nt) i (loop (- i 1)))
+              #f)))
+
+        (define (comp-tok tok nts) ; transform token to parsing format
+          (let loop ((l1 (cdr tok)) (l2 '()))
+            (if (pair? l1)
+              (let ((i (ind (car l1) nts)))
+                (if i
+                  (loop (cdr l1) (cons i l2))
+                  (loop (cdr l1) l2)))
+              (cons (car tok) (reverse l2)))))
+
+        (define (input->tokens input lexer nts)
+          (list->vector (map (lambda (tok) (comp-tok tok nts)) (lexer input))))
+
+        (define (make-states nb-toks nb-confs)
+          (let ((states (make-vector (+ nb-toks 1) #f)))
+            (let loop ((i nb-toks))
+              (if (>= i 0)
+                (let ((v (make-vector (+ nb-confs 1) #f)))
+                  (vector-set! v 0 -1)
+                  (vector-set! states i v)
+                  (loop (- i 1)))
+                states))))
+
+        (define (conf-set-get state conf)
+          (vector-ref state (+ conf 1)))
+
+        (define (conf-set-get* state state-num conf)
+          (let ((conf-set (conf-set-get state conf)))
+            (if conf-set
+              conf-set
+              (let ((conf-set (make-vector (+ state-num 6) #f)))
+                (vector-set! conf-set 1 -3) ; old elems tail (points to head)
+                (vector-set! conf-set 2 -1) ; old elems head
+                (vector-set! conf-set 3 -1) ; new elems tail (points to head)
+                (vector-set! conf-set 4 -1) ; new elems head
+                (vector-set! state (+ conf 1) conf-set)
+                conf-set))))
+
+        (define (conf-set-merge-new! conf-set)
+          (vector-set! conf-set
+            (+ (vector-ref conf-set 1) 5)
+            (vector-ref conf-set 4))
+          (vector-set! conf-set 1 (vector-ref conf-set 3))
+          (vector-set! conf-set 3 -1)
+          (vector-set! conf-set 4 -1))
+
+        (define (conf-set-head conf-set)
+          (vector-ref conf-set 2))
+
+        (define (conf-set-next conf-set i)
+          (vector-ref conf-set (+ i 5)))
+
+        (define (conf-set-member? state conf i)
+          (let ((conf-set (vector-ref state (+ conf 1))))
+            (if conf-set
+              (conf-set-next conf-set i)
+              #f)))
+
+        (define (conf-set-adjoin state conf-set conf i)
+          (let ((tail (vector-ref conf-set 3))) ; put new element at tail
+            (vector-set! conf-set (+ i 5) -1)
+            (vector-set! conf-set (+ tail 5) i)
+            (vector-set! conf-set 3 i)
+            (if (< tail 0)
+              (begin
+                (vector-set! conf-set 0 (vector-ref state 0))
+                (vector-set! state 0 conf)))))
+
+        (define (conf-set-adjoin* states state-num l i)
+          (let ((state (vector-ref states state-num)))
+            (let loop ((l1 l))
+              (if (pair? l1)
+                (let* ((conf (car l1))
+                       (conf-set (conf-set-get* state state-num conf)))
+                  (if (not (conf-set-next conf-set i))
+                    (begin
+                      (conf-set-adjoin state conf-set conf i)
+                      (loop (cdr l1)))
+                    (loop (cdr l1))))))))
+
+        (define (conf-set-adjoin** states states* state-num conf i)
+          (let ((state (vector-ref states state-num)))
+            (if (conf-set-member? state conf i)
+              (let* ((state* (vector-ref states* state-num))
+                     (conf-set* (conf-set-get* state* state-num conf)))
+                (if (not (conf-set-next conf-set* i))
+                  (conf-set-adjoin state* conf-set* conf i))
+                #t)
+              #f)))
+
+        (define (conf-set-union state conf-set conf other-set)
+          (let loop ((i (conf-set-head other-set)))
+            (if (>= i 0)
+              (if (not (conf-set-next conf-set i))
+                (begin
+                  (conf-set-adjoin state conf-set conf i)
+                  (loop (conf-set-next other-set i)))
+                (loop (conf-set-next other-set i))))))
+
+        (define (forw states state-num starters enders predictors steps nts)
+
+          (define (predict state state-num conf-set conf nt starters enders)
+
+            ; add configurations which start the non-terminal `nt' to the
+            ; right of the dot
+
+            (let loop1 ((l (vector-ref starters nt)))
+              (if (pair? l)
+                (let* ((starter (car l))
+                       (starter-set (conf-set-get* state state-num starter)))
+                  (if (not (conf-set-next starter-set state-num))
+                    (begin
+                      (conf-set-adjoin state starter-set starter state-num)
+                      (loop1 (cdr l)))
+                    (loop1 (cdr l))))))
+
+            ; check for possible completion of the non-terminal `nt' to the
+            ; right of the dot
+
+            (let loop2 ((l (vector-ref enders nt)))
+              (if (pair? l)
+                (let ((ender (car l)))
+                  (if (conf-set-member? state ender state-num)
+                    (let* ((next (+ conf 1))
+                           (next-set (conf-set-get* state state-num next)))
+                      (conf-set-union state next-set next conf-set)
+                      (loop2 (cdr l)))
+                    (loop2 (cdr l)))))))
+
+          (define (reduce states state state-num conf-set head preds)
+
+            ; a non-terminal is now completed so check for reductions that
+            ; are now possible at the configurations `preds'
+
+            (let loop1 ((l preds))
+              (if (pair? l)
+                (let ((pred (car l)))
+                  (let loop2 ((i head))
+                    (if (>= i 0)
+                      (let ((pred-set (conf-set-get (vector-ref states i) pred)))
+                        (if pred-set
+                          (let* ((next (+ pred 1))
+                                 (next-set (conf-set-get* state state-num next)))
+                            (conf-set-union state next-set next pred-set)))
+                        (loop2 (conf-set-next conf-set i)))
+                      (loop1 (cdr l))))))))
+
+          (let ((state (vector-ref states state-num))
+                (nb-nts (vector-length nts)))
+            (let loop ()
+              (let ((conf (vector-ref state 0)))
+                (if (>= conf 0)
+                  (let* ((step (vector-ref steps conf))
+                         (conf-set (vector-ref state (+ conf 1)))
+                         (head (vector-ref conf-set 4)))
+                    (vector-set! state 0 (vector-ref conf-set 0))
+                    (conf-set-merge-new! conf-set)
+                    (if (>= step 0)
+                      (predict state state-num conf-set conf step starters enders)
+                      (let ((preds (vector-ref predictors (+ step nb-nts))))
+                        (reduce states state state-num conf-set head preds)))
+                    (loop)))))))
+
+        (define (forward starters enders predictors steps nts toks)
+          (let* ((nb-toks (vector-length toks))
+                 (nb-confs (vector-length steps))
+                 (states (make-states nb-toks nb-confs))
+                 (goal-starters (vector-ref starters 0)))
+            (conf-set-adjoin* states 0 goal-starters 0) ; predict goal
+            (forw states 0 starters enders predictors steps nts)
+            (let loop ((i 0))
+              (if (< i nb-toks)
+                (let ((tok-nts (cdr (vector-ref toks i))))
+                  (conf-set-adjoin* states (+ i 1) tok-nts i) ; scan token
+                  (forw states (+ i 1) starters enders predictors steps nts)
+                  (loop (+ i 1)))))
+            states))
+
+        (define (produce conf i j enders steps toks states states* nb-nts)
+          (let ((prev (- conf 1)))
+            (if (and (>= conf nb-nts) (>= (vector-ref steps prev) 0))
+              (let loop1 ((l (vector-ref enders (vector-ref steps prev))))
+                (if (pair? l)
+                  (let* ((ender (car l))
+                         (ender-set (conf-set-get (vector-ref states j)
+                                                  ender)))
+                    (if ender-set
+                      (let loop2 ((k (conf-set-head ender-set)))
+                        (if (>= k 0)
+                          (begin
+                            (and (>= k i)
+                                 (conf-set-adjoin** states states* k prev i)
+                                 (conf-set-adjoin** states states* j ender k))
+                            (loop2 (conf-set-next ender-set k)))
+                          (loop1 (cdr l))))
+                      (loop1 (cdr l)))))))))
+
+        (define (back states states* state-num enders steps nb-nts toks)
+          (let ((state* (vector-ref states* state-num)))
+            (let loop1 ()
+              (let ((conf (vector-ref state* 0)))
+                (if (>= conf 0)
+                  (let* ((conf-set (vector-ref state* (+ conf 1)))
+                         (head (vector-ref conf-set 4)))
+                    (vector-set! state* 0 (vector-ref conf-set 0))
+                    (conf-set-merge-new! conf-set)
+                    (let loop2 ((i head))
+                      (if (>= i 0)
+                        (begin
+                          (produce conf i state-num enders steps
+                                   toks states states* nb-nts)
+                          (loop2 (conf-set-next conf-set i)))
+                        (loop1)))))))))
+
+        (define (backward states enders steps nts toks)
+          (let* ((nb-toks (vector-length toks))
+                 (nb-confs (vector-length steps))
+                 (nb-nts (vector-length nts))
+                 (states* (make-states nb-toks nb-confs))
+                 (goal-enders (vector-ref enders 0)))
+            (let loop1 ((l goal-enders))
+              (if (pair? l)
+                (let ((conf (car l)))
+                  (conf-set-adjoin** states states* nb-toks conf 0)
+                  (loop1 (cdr l)))))
+            (let loop2 ((i nb-toks))
+              (if (>= i 0)
+                (begin
+                  (back states states* i enders steps nb-nts toks)
+                  (loop2 (- i 1)))))
+            states*))
+
+        (define (parsed? nt i j nts enders states)
+          (let ((nt* (ind nt nts)))
+            (if nt*
+              (let ((nb-nts (vector-length nts)))
+                (let loop ((l (vector-ref enders nt*)))
+                  (if (pair? l)
+                    (let ((conf (car l)))
+                      (if (conf-set-member? (vector-ref states j) conf i)
+                        #t
+                        (loop (cdr l))))
+                    #f)))
+              #f)))
+
+        (define (deriv-trees conf i j enders steps names toks states nb-nts)
+          (let ((name (vector-ref names conf)))
+
+            (if name ; `conf' is at the start of a rule (either special or not)
+              (if (< conf nb-nts)
+                (list (list name (car (vector-ref toks i))))
+                (list (list name)))
+
+              (let ((prev (- conf 1)))
+                (let loop1 ((l1 (vector-ref enders (vector-ref steps prev)))
+                            (l2 '()))
+                  (if (pair? l1)
+                    (let* ((ender (car l1))
+                           (ender-set (conf-set-get (vector-ref states j)
+                                                    ender)))
+                      (if ender-set
+                        (let loop2 ((k (conf-set-head ender-set)) (l2 l2))
+                          (if (>= k 0)
+                            (if (and (>= k i)
+                                     (conf-set-member? (vector-ref states k)
+                                                       prev i))
+                              (let ((prev-trees
+                                      (deriv-trees prev i k enders steps names
+                                                   toks states nb-nts))
+                                    (ender-trees
+                                      (deriv-trees ender k j enders steps names
+                                                   toks states nb-nts)))
+                                (let loop3 ((l3 ender-trees) (l2 l2))
+                                  (if (pair? l3)
+                                    (let ((ender-tree (list (car l3))))
+                                      (let loop4 ((l4 prev-trees) (l2 l2))
+                                        (if (pair? l4)
+                                          (loop4 (cdr l4)
+                                                 (cons (append (car l4)
+                                                               ender-tree)
+                                                       l2))
+                                          (loop3 (cdr l3) l2))))
+                                    (loop2 (conf-set-next ender-set k) l2))))
+                              (loop2 (conf-set-next ender-set k) l2))
+                            (loop1 (cdr l1) l2)))
+                        (loop1 (cdr l1) l2)))
+                    l2))))))
+
+        (define (deriv-trees* nt i j nts enders steps names toks states)
+          (let ((nt* (ind nt nts)))
+            (if nt*
+              (let ((nb-nts (vector-length nts)))
+                (let loop ((l (vector-ref enders nt*)) (trees '()))
+                  (if (pair? l)
+                    (let ((conf (car l)))
+                      (if (conf-set-member? (vector-ref states j) conf i)
+                        (loop (cdr l)
+                              (append (deriv-trees conf i j enders steps names
+                                                   toks states nb-nts)
+                                      trees))
+                        (loop (cdr l) trees)))
+                    trees)))
+              #f)))
+
+        (define (nb-deriv-trees conf i j enders steps toks states nb-nts)
+          (let ((prev (- conf 1)))
+            (if (or (< conf nb-nts) (< (vector-ref steps prev) 0))
+              1
+              (let loop1 ((l (vector-ref enders (vector-ref steps prev)))
+                          (n 0))
+                (if (pair? l)
+                  (let* ((ender (car l))
+                         (ender-set (conf-set-get (vector-ref states j)
+                                                  ender)))
+                    (if ender-set
+                      (let loop2 ((k (conf-set-head ender-set)) (n n))
+                        (if (>= k 0)
+                          (if (and (>= k i)
+                                   (conf-set-member? (vector-ref states k)
+                                                     prev i))
+                            (let ((nb-prev-trees
+                                    (nb-deriv-trees prev i k enders steps
+                                                    toks states nb-nts))
+                                  (nb-ender-trees
+                                    (nb-deriv-trees ender k j enders steps
+                                                    toks states nb-nts)))
+                              (loop2 (conf-set-next ender-set k)
+                                     (+ n (* nb-prev-trees nb-ender-trees))))
+                            (loop2 (conf-set-next ender-set k) n))
+                          (loop1 (cdr l) n)))
+                      (loop1 (cdr l) n)))
+                  n)))))
+
+        (define (nb-deriv-trees* nt i j nts enders steps toks states)
+          (let ((nt* (ind nt nts)))
+            (if nt*
+              (let ((nb-nts (vector-length nts)))
+                (let loop ((l (vector-ref enders nt*)) (nb-trees 0))
+                  (if (pair? l)
+                    (let ((conf (car l)))
+                      (if (conf-set-member? (vector-ref states j) conf i)
+                        (loop (cdr l)
+                              (+ (nb-deriv-trees conf i j enders steps
+                                                 toks states nb-nts)
+                                 nb-trees))
+                        (loop (cdr l) nb-trees)))
+                    nb-trees)))
+              #f)))
+
+        (let* ((lexer      (vector-ref parser-descr 0))
+               (nts        (vector-ref parser-descr 1))
+               (starters   (vector-ref parser-descr 2))
+               (enders     (vector-ref parser-descr 3))
+               (predictors (vector-ref parser-descr 4))
+               (steps      (vector-ref parser-descr 5))
+               (names      (vector-ref parser-descr 6))
+               (toks       (input->tokens input lexer nts)))
+
+          (vector nts
+                  starters
+                  enders
+                  predictors
+                  steps
+                  names
+                  toks
+                  (backward (forward starters enders predictors steps nts toks)
+                            enders steps nts toks)
+                  parsed?
+                  deriv-trees*
+                  nb-deriv-trees*))))))
+
+(define (parse->parsed? parse nt i j)
+  (let* ((nts     (vector-ref parse 0))
+         (enders  (vector-ref parse 2))
+         (states  (vector-ref parse 7))
+         (parsed? (vector-ref parse 8)))
+    (parsed? nt i j nts enders states)))
+
+(define (parse->trees parse nt i j)
+  (let* ((nts          (vector-ref parse 0))
+         (enders       (vector-ref parse 2))
+         (steps        (vector-ref parse 4))
+         (names        (vector-ref parse 5))
+         (toks         (vector-ref parse 6))
+         (states       (vector-ref parse 7))
+         (deriv-trees* (vector-ref parse 9)))
+    (deriv-trees* nt i j nts enders steps names toks states)))
+
+(define (parse->nb-trees parse nt i j)
+  (let* ((nts             (vector-ref parse 0))
+         (enders          (vector-ref parse 2))
+         (steps           (vector-ref parse 4))
+         (toks            (vector-ref parse 6))
+         (states          (vector-ref parse 7))
+         (nb-deriv-trees* (vector-ref parse 10)))
+    (nb-deriv-trees* nt i j nts enders steps toks states)))
 
 (define (test)
-  (setup)
-  (map name
-       (graph-nodes (make-lattice (make-graph a b c d any-node none-node) #f))))
+  (let ((p (make-parser '( (s (a) (s s)) )
+                        (lambda (l) (map (lambda (x) (list x x)) l)))))
+    (let ((x (p '(a a a a a a a a a))))
+      (length (parse->trees x 's 0 9)))))
 
 ;-----
 
-(let ((r (test)))
-  (println (length r))
-  (println r))
+(pp (test))
 
-;31
-;(((b v d) ^ a) v c)(c ^ d)(b v (a ^ d))((a v d) ^ b)(b v d)(b ^ (a v c))(a v (c ^ d))((b v d) ^ a)(c v (a v d))(a v c)(d v (b ^ (a v c)))(d ^ (a v c))((a ^ d) v c)((a ^ b) v d)(((a v d) ^ b) v (a ^ d))(b ^ d)(b v (a v d))(a ^ c)(b ^ (c v d))(a ^ b)(a v b)((a ^ d) ^ b)(a ^ d)(a v d)d(c v d)abcanynone
+;1430
