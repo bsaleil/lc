@@ -1,14 +1,9 @@
 
 
-(let ((a 100))
-  (letrec ((f 900)
-           (foo (lambda () "FOO"))
-           (g 3000)
-           (bar (lambda () "BAR")))
-    (pp f)
-    (pp (foo))
-    (pp g)
-    (pp (bar))))
+(call-with-current-continuation
+  (lambda (cont)
+    (pp cont)
+    (println 100)))
 
 
 ;; TODO uniformiser: si --max-versions 3, ona droit a 3 versions + la générique

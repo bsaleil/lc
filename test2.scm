@@ -1,49 +1,23 @@
 
+(define (call/cc . n)
+  (let ((l (length n)))
+    (cond ((= l 1)
+             ((car n) #f))
+          ((= l 2)
+             ((car n) #f (cadr n)))
+          (else (error "call/cc")))))
 
-;(letrec ((f (lambda (n)
-;              (if (= 0 n)
-;                (pp "A")
-;                (g (- n 1)))))
-;         (g (lambda (n)
-;              (if (= 0 n)
-;                (pp "B")
-;                (f (- n 1))))))
-;   (f 11))
-
-(let ((a 100)
-      (b 33))
-
-  (letrec ((baz (lambda () (+ a b)))
-           ;(r (test))
-           (foo (lambda () (+ (baz) a)))
-           (bar (lambda () (+ (foo) b))))
-    (set! baz (lambda () 10))
-    (pp (bar))
-    (pp (foo))
-    (pp (baz))))
-
-;(letrec ((lst
-;          (##box #f))
-;         (bar
-;          (lambda (lst)
-;            (##set-box! lst 1))))
-; (##set-box! lst '())
-; (bar lst))
+(call/cc (lambda (c) (println 10)))
 
 
+(call/cc (lambda (a b) (b)) (lambda () (println 100)))
+
+;(define call/cc (lambda (r) (r #f)))
 ;
-;(define (test)
+;(define (foo proc)
 ;
-;  (define lst '())
+;    (call-with-current-continuation
+;                (lambda (cont)
+;                  (proc))))
 ;
-;  (define (foo)
-;    (set! lst 1))
-;
-;  (define (bar)
-;    (foo)
-;    (error "K")
-;    (bar))
-;
-;  (bar))
-;
-;(test)
+;(foo (lambda () 10))
