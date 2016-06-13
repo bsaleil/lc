@@ -34,10 +34,10 @@
 ;(define call/cc (lambda (r) (r #f)))
 (define (call/cc . n)
   (let ((l (length n)))
-    (cond ((= l 1
-             ((car n) #f)))
-          ((= l 2
-             ((car n) #f (cadr n))))
+    (cond ((= l 1)
+           ((car n) #f))
+          ((= l 2)
+           ((car n) #f (cadr n)))
           (else (error "call/cc")))))
 
 (define abs (lambda (x) (if (< x 0) (- x) x)))
