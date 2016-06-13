@@ -1568,8 +1568,9 @@
 
       ;;
       ;;
+      (x86-mov cgc (opto) (opfrom)))))
+      ;(x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (opto)) (opfrom)))))
 
-      (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (opto)) (opfrom)))))
 
 ;;-----------------------------------------------------------------------------
 ;; TCO

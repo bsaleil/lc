@@ -196,7 +196,6 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
   (assert (= (modulo nbytes 4) 0) "GC internal error")
 
   (x86-label cgc label-alloc-beg)
-
   ;; hp += (nbytes + 8)
   (x86-add cgc alloc-ptr (x86-imm-int (+ nbytes 8)))
 

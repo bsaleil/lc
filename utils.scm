@@ -53,6 +53,15 @@
       (set-union (cdr lsta) lstb)
       (set-union (cdr lsta) (cons (car lsta) lstb)))))
 
+;; Set intersect with lists
+;; return lsta INTERSECT lstb
+(define (set-inter lsta lstb)
+  (if (null? lsta)
+      '()
+      (if (member (car lsta) lstb)
+          (cons (car lsta) (set-inter (cdr lsta) lstb))
+          (set-inter (cdr lsta) lstb))))
+
 ;;-----------------------------------------------------------------------------
 ;; Lists
 

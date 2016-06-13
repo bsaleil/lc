@@ -1,16 +1,49 @@
 
 
-(define (foo)
+;(letrec ((f (lambda (n)
+;              (if (= 0 n)
+;                (pp "A")
+;                (g (- n 1)))))
+;         (g (lambda (n)
+;              (if (= 0 n)
+;                (pp "B")
+;                (f (- n 1))))))
+;   (f 11))
 
-  (let ((b 500)
-        (c 400)
-        (d 300)
-        (e 200)
-        (f 100))
+(let ((a 100)
+      (b 33))
 
-    (define (bar y a b c d) 1)
+  (letrec ((baz (lambda () (+ a b)))
+           ;(r (test))
+           (foo (lambda () (+ (baz) a)))
+           (bar (lambda () (+ (foo) b))))
+    (set! baz (lambda () 10))
+    (pp (bar))
+    (pp (foo))
+    (pp (baz))))
 
-    (bar 1 b b b d)
-    b))
+;(letrec ((lst
+;          (##box #f))
+;         (bar
+;          (lambda (lst)
+;            (##set-box! lst 1))))
+; (##set-box! lst '())
+; (bar lst))
 
-(foo)
+
+;
+;(define (test)
+;
+;  (define lst '())
+;
+;  (define (foo)
+;    (set! lst 1))
+;
+;  (define (bar)
+;    (foo)
+;    (error "K")
+;    (bar))
+;
+;  (bar))
+;
+;(test)

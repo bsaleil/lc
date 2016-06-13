@@ -270,25 +270,36 @@
       (if lambda-opt
           (cons lambda-opt (make-identifier 'free '() '() CTX_CLO (cons 'f (length free-vars))))))
     ;; Create environment entries for free variables
-    (define env
-      (init-env-*
-        free-vars
-        2
-        0
-        (lambda (id slot nvar)
-          (let ((ident (ctx-ident enclosing-ctx id)))
-            (make-identifier
-              'free
-              '()
-              (identifier-flags (cdr ident))
-              (if (and (ctx-identifier-mutable? enclosing-ctx (cdr ident))
-                       (not (ctx-identifier-letrec-nm? enclosing-ctx (cdr ident))))
-                  CTX_UNK
-                  (ctx-identifier-type enclosing-ctx (cdr ident)))
-              (cons 'f nvar))))))
-    (if lambda-opt
-        (cons lambda-opt-entry env)
-        env))
+    (init-env-*
+      free-vars
+      2
+      0
+      (lambda (id slot nvar)
+        (make-identifier
+          'free
+          '()
+          '()
+          CTX_UNK ;; TODO: type (late-fbinds?)
+          (cons 'f nvar)))))
+    ;(define env
+    ;  (init-env-*
+    ;    free-vars
+    ;    2
+    ;    0
+    ;    (lambda (id slot nvar)
+    ;      (let ((ident (ctx-ident enclosing-ctx id)))
+    ;        (make-identifier
+    ;          'free
+    ;          '()
+    ;          (identifier-flags (cdr ident))
+    ;          (if (and (ctx-identifier-mutable? enclosing-ctx (cdr ident))
+    ;                   (not (ctx-identifier-letrec-nm? enclosing-ctx (cdr ident))))
+    ;              CTX_UNK
+    ;              (ctx-identifier-type enclosing-ctx (cdr ident)))
+    ;          (cons 'f nvar))))))
+    ;(if lambda-opt
+    ;    (cons lambda-opt-entry env)
+    ;    env))
 
   (define (init-env-local)
     (init-env-*
@@ -401,9 +412,9 @@
                         (list (stack-idx-to-slot ctx (cdr first)))
                         (cond ((and letrec-bind?
                                     (not (member (car first) mvars)))
-                                 '(mutable letrec-nm))
+                                 '())
                               ((member (car first) mvars)
-                                 '(mutable))
+                                 '())
                               (else
                                  '()))
                         #f

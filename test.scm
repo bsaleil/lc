@@ -1,4 +1,16 @@
 
+
+(let ((a 100))
+  (letrec ((f 900)
+           (foo (lambda () "FOO"))
+           (g 3000)
+           (bar (lambda () "BAR")))
+    (pp f)
+    (pp (foo))
+    (pp g)
+    (pp (bar))))
+
+
 ;; TODO uniformiser: si --max-versions 3, ona droit a 3 versions + la générique
 ;; donc --max-versions 0 est uniquement la générique!
 
@@ -33,10 +45,6 @@
 ;(let ((l '(1 2)))
 ;  (set-car! l 10)
 ;  (println l))
-
-(println (##fixnum->flonum 100))
-
-
 
 ;(define (foo n)
 ;  (if (= n 0)
