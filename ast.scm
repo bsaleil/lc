@@ -554,7 +554,7 @@
          ;; Flatten list of param (include rest param)
          (all-params (flatten (cadr ast)))
          ;; Lambda mutable vars
-         (mvars (mutable-vars (caddr ast) all-params))
+         (mvars '())
          ;; Rest param ?
          (rest-param (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
                          (and (pair? (cadr ast)) (not (list? (cadr ast)))))) ;; (foo a..z . rest)
@@ -758,7 +758,6 @@
                     (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-r14)))
                   (x86-push cgc (x86-r14)))))
 
-        (gen-mutable cgc ctx mvars)
         (jump-to-version cgc succ ctx)))))
 
 ;; Create and return a lazy prologue
@@ -775,7 +774,6 @@
                            (list-ref args-regs (- nb-formal 1))
                            #f)))
                  (codegen-prologue-rest= cgc reg)
-                 (gen-mutable cgc ctx mvars)
                  (jump-to-version cgc succ ctx)))
               ;; rest AND actual > formal
               ;; TODO merge > and == (?)
@@ -811,14 +809,12 @@
                      (reverse rest-regs)
                      reg))
 
-                 (gen-mutable cgc ctx mvars)
                  (jump-to-version cgc succ ctx)))
               ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
               ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
                (gen-error cgc ERR_WRONG_NUM_ARGS))
               ;; Else, nothing to do
               (else
-                 (gen-mutable cgc ctx mvars)
                  (jump-to-version cgc succ ctx)))))))
 
 ;;
@@ -872,9 +868,8 @@
            (make-lazy-code
              (lambda (cgc ctx)
                (let* ((id-idx (build-id-idx ids (- (length ids) 1)))
-                      (mvars (mutable-vars (cddr ast) ids))
+                      (mvars '())
                       (ctx (ctx-bind-locals ctx id-idx mvars)))
-                 (gen-mutable cgc ctx mvars)
                  (jump-to-version cgc lazy-body ctx))))))
    (gen-ast-l values lazy-binds)))
 
@@ -1172,34 +1167,28 @@
                (if rcst
                    (ctx-get-loc ctx 0)
                    (ctx-get-loc ctx 1))))
-         (mutl? (and (not lcst) (ctx-is-mutable? ctx (if rcst 0 1))))
-         (mutr? (and (not rcst) (ctx-is-mutable? ctx 0)))
          (n-pop (count (list lcst rcst) not)))
-    (codegen-eq? cgc (ctx-fs ctx) reg lleft lright lcst rcst mutl? mutr?)
+    (codegen-eq? cgc (ctx-fs ctx) reg lleft lright lcst rcst #f #f)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_BOOL reg))))
 
 ;; primitives car & cdr
 (define (prim-cxr cgc ctx reg succ cst-infos op)
-  (let ((lval (ctx-get-loc ctx 0))
-        (mut-val? (ctx-is-mutable? ctx 0)))
-    (codegen-car/cdr cgc (ctx-fs ctx) op reg lval mut-val?)
+  (let ((lval (ctx-get-loc ctx 0)))
+    (codegen-car/cdr cgc (ctx-fs ctx) op reg lval #f)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK reg))))
 
 ;; primitive eof-object?
 (define (prim-eof-object? cgc ctx reg succ cst-infos)
-  (let ((lval (ctx-get-loc ctx 0))
-        (mut-val? (ctx-is-mutable? ctx 0)))
-    (codegen-eof? cgc (ctx-fs ctx) reg lval mut-val?)
+  (let ((lval (ctx-get-loc ctx 0)))
+    (codegen-eof? cgc (ctx-fs ctx) reg lval #f)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))
 
 ;; primitive make-string
 (define (prim-make-string cgc ctx reg succ cst-infos args)
   (let* ((init-value? (= (length args) 2))
          (llen (ctx-get-loc ctx (if init-value? 1 0)))
-         (lval (if init-value? (ctx-get-loc ctx 0) #f))
-         (mut-len? (ctx-is-mutable? ctx (if init-value? 1 0)))
-         (mut-val? (and init-value? (ctx-is-mutable? ctx 0))))
-    (codegen-make-string cgc (ctx-fs ctx) reg llen lval mut-len? mut-val?)
+         (lval (if init-value? (ctx-get-loc ctx 0) #f)))
+    (codegen-make-string cgc (ctx-fs ctx) reg llen lval #f #f)
     (jump-to-version cgc succ (ctx-push (if init-value?
                                             (ctx-pop-n ctx 2)
                                             (ctx-pop ctx))
@@ -1210,10 +1199,8 @@
 (define (prim-make-vector cgc ctx reg succ cst-infos args)
   (let* ((init-value? (= (length args) 2))
          (llen (ctx-get-loc ctx (if init-value? 1 0)))
-         (lval (if init-value? (ctx-get-loc ctx 0) #f))
-         (mut-len? (ctx-is-mutable? ctx (if init-value? 1 0)))
-         (mut-val? (and init-value? (ctx-is-mutable? ctx 0))))
-    (codegen-make-vector cgc (ctx-fs ctx) reg llen lval mut-len? mut-val?)
+         (lval (if init-value? (ctx-get-loc ctx 0) #f)))
+    (codegen-make-vector cgc (ctx-fs ctx) reg llen lval #f #f)
     (jump-to-version cgc succ (ctx-push (if init-value?
                                             (ctx-pop-n ctx 2)
                                             (ctx-pop ctx))
@@ -1229,11 +1216,9 @@
            (if poscst
                (ctx-get-loc ctx 0)
                (ctx-get-loc ctx 1)))
-         (idx-mut? (and (not poscst) (ctx-is-mutable? ctx 0)))
-         (vec-mut? (ctx-is-mutable? ctx (if poscst 0 1)))
          (n-pop (if poscst 1 2)))
 
-    (codegen-vector-ref cgc (ctx-fs ctx) reg lvec lidx poscst idx-mut? vec-mut?)
+    (codegen-vector-ref cgc (ctx-fs ctx) reg lvec lidx poscst #f #f)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_UNK reg))))
 
 ;; primitive string-ref
@@ -1245,10 +1230,8 @@
            (if poscst
                (ctx-get-loc ctx 0)
                (ctx-get-loc ctx 1)))
-         (idx-mut? (and (not poscst) (ctx-is-mutable? ctx 0)))
-         (str-mut? (ctx-is-mutable? ctx (if poscst 0 1)))
          (n-pop (if poscst 1 2)))
-    (codegen-string-ref cgc (ctx-fs ctx) reg lstr lidx poscst idx-mut? str-mut?)
+    (codegen-string-ref cgc (ctx-fs ctx) reg lstr lidx poscst #f #f)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_CHAR reg))))
 
 ;; primitive vector-set!
@@ -1256,10 +1239,6 @@
   (let ((lval (ctx-get-loc ctx 0))
         (lidx (ctx-get-loc ctx 1))
         (lvec (ctx-get-loc ctx 2)))
-    (if (or (ctx-is-mutable? ctx 0)
-            (ctx-is-mutable? ctx 1)
-            (ctx-is-mutable? ctx 2))
-        (error "NYI"))
     (codegen-vector-set! cgc (ctx-fs ctx) reg lvec lidx lval)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) CTX_VOID reg))))
 
@@ -1275,19 +1254,15 @@
                (if chr-cst
                    (ctx-get-loc ctx 0)
                    (ctx-get-loc ctx 1))))
-         (mut-chr? (and (not chr-cst) (ctx-is-mutable? ctx 0)))
-         (mut-idx? (and (not idx-cst) (ctx-is-mutable? ctx (if chr-cst 0 1))))
          (n-pop (+ (count (list idx-cst chr-cst) not) 1))
-         (lstr (ctx-get-loc ctx (- n-pop 1)))
-         (mut-str? (ctx-is-mutable? ctx (- n-pop 1))))
-    (codegen-string-set! cgc (ctx-fs ctx) reg lstr lidx lchr idx-cst chr-cst mut-str? mut-idx? mut-chr?)
+         (lstr (ctx-get-loc ctx (- n-pop 1))))
+    (codegen-string-set! cgc (ctx-fs ctx) reg lstr lidx lchr idx-cst chr-cst #f #f #f)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_VOID reg))))
 
 ;;
 (define (prim-symbol->string cgc ctx reg succ cst-infos)
-  (let* ((lsym  (ctx-get-loc ctx 0))
-         (mut-sym? (ctx-is-mutable? ctx 0)))
-    (codegen-symbol->string cgc (ctx-fs ctx) reg lsym mut-sym?)
+  (let* ((lsym  (ctx-get-loc ctx 0)))
+    (codegen-symbol->string cgc (ctx-fs ctx) reg lsym #f)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR reg))))
 
 ;;
@@ -1336,10 +1311,8 @@
            (if valcst
                (ctx-get-loc ctx 0)
                (ctx-get-loc ctx 1)))
-         (mut-val?  (and (not valcst) (ctx-is-mutable? ctx 0)))
-         (mut-pair? (ctx-is-mutable? ctx (if valcst 0 1)))
          (n-pop (if valcst 1 2)))
-    (codegen-scar/scdr cgc (ctx-fs ctx) op reg lpair lval valcst mut-val? mut-pair?)
+    (codegen-scar/scdr cgc (ctx-fs ctx) op reg lpair lval valcst #f #f)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_VOID reg))))
 
 ;; primitives current-input-port & current-output-port
@@ -1362,9 +1335,8 @@
           (if cst-arg
               (cdr cst-arg)
               (ctx-get-loc ctx 0)))
-         (mut-val? (if cst-arg #f (ctx-is-mutable? ctx 0)))
          (n-pop (if cst-arg 0 1)))
-    (codegen-ch<->int cgc (ctx-fs ctx) op reg lval cst-arg mut-val?)
+    (codegen-ch<->int cgc (ctx-fs ctx) op reg lval cst-arg #f)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop)
                                         (if (eq? op 'char->integer)
                                             CTX_INT
@@ -1374,12 +1346,11 @@
 ;; primitives vector-length & string-length
 (define (prim-x-length cgc ctx reg succ cst-infos op)
   (let ((lval (ctx-get-loc ctx 0))
-        (mut-val? (ctx-is-mutable? ctx 0))
         (codegen-fn
           (if (eq? op 'vector-length)
               codegen-vector-length
               codegen-string-length)))
-    (codegen-fn cgc (ctx-fs ctx) reg lval mut-val?)
+    (codegen-fn cgc (ctx-fs ctx) reg lval #f)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_INT reg))))
 
 ;;
@@ -1632,9 +1603,8 @@
                                   succ
                                   (list label-jump label-true label-false))))
                          (jump-to-version cgc lazy-cmp ctx))
-                       (let* ((lcond (ctx-get-loc ctx 0))
-                              (mut-cond? (ctx-is-mutable? ctx 0)))
-                         (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond mut-cond?)))))))))
+                       (let* ((lcond (ctx-get-loc ctx 0)))
+                         (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond #f)))))))))
 
     (if inline-condition?
         (cond ((< (length (cadr ast)) 3)
@@ -1744,9 +1714,8 @@
 ;; Push closure, put it in rax, and return updated ctx
 (define (call-get-closure cgc ctx closure-idx)
   (let* ((fs (ctx-fs ctx))
-         (loc  (ctx-get-loc     ctx closure-idx))
-         (mut? (ctx-is-mutable? ctx closure-idx)))
-    (codegen-load-closure cgc fs loc mut?)))
+         (loc  (ctx-get-loc     ctx closure-idx)))
+    (codegen-load-closure cgc fs loc #f)))
 
 ;; Move args in regs or mem following calling convention
 (define (call-prep-args cgc ctx ast nbargs)
@@ -1776,24 +1745,6 @@
       (apply-moves cgc ctx moves (car unused-regs))
 
       ctx)))
-
-;; Unbox mutable args
-(define (call-unbox-args cgc ctx nbargs)
-  (let loop ((narg 0)
-             (stack-idx (- nbargs 1)))
-    (if (< narg nbargs)
-        (begin
-          (if (ctx-is-mutable? ctx stack-idx)
-              (if (< narg (length args-regs))
-                  (let* ((rloc (list-ref args-regs narg))
-                         (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) rloc)))
-                    (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))
-                  (let ((memopnd
-                          (x86-mem (* stack-idx 8) (x86-rsp))))
-                    (x86-mov cgc (x86-r14) memopnd)
-                    (x86-mov cgc (x86-r14) (x86-mem (- 8 TAG_MEMOBJ) (x86-r14)))
-                    (x86-mov cgc memopnd (x86-r14)))))
-          (loop (+ narg 1) (- stack-idx 1))))))
 
 ;; Shift args and closure for tail call
 (define (call-tail-shift cgc ctx ast tail? nbargs)
@@ -1842,9 +1793,6 @@
 
                ;; Move args to regs or stack following calling convention
                (set! ctx (call-prep-args cgc ctx ast (length args)))
-
-               ;; Unbox mutable args
-               (call-unbox-args cgc ctx (length args))
 
                ;; Shift args and closure for tail call
                (call-tail-shift cgc ctx ast tail? (length args))
@@ -2006,11 +1954,7 @@
                    (mlet ((label-div0 (get-label-error ERR_DIVIDE_ZERO))
                           (moves/reg/ctx (ctx-get-free-reg ctx))
                           (lleft (ctx-get-loc ctx 1))
-                          (lright (ctx-get-loc ctx 0))
-                          (mut-left? (ctx-is-mutable? ctx 1))
-                          (mut-right? (ctx-is-mutable? ctx 0)))
-                     (if (or mut-left? mut-right?)
-                         (error "NYI"))
+                          (lright (ctx-get-loc ctx 0)))
                      (apply-moves cgc ctx moves)
                      (codegen-binop cgc (ctx-fs ctx) op label-div0 reg lleft lright)
                      (jump-to-version cgc
@@ -2130,14 +2074,12 @@
                  (if rcst
                      (or lcst (ctx-get-loc ctx 0))
                      (or lcst (ctx-get-loc ctx 1))))
-               (mut-right? (and (not rcst) (ctx-is-mutable? ctx 0)))
-               (mut-left?  (and (not lcst) (ctx-is-mutable? ctx (if rcst 0 1))))
                (n-pop (count (list lcst rcst) not)))
           (apply-moves cgc ctx moves)
 
           (if num-op?
-              (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst mut-left? mut-right?)
-              (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst mut-left? mut-right? inline-if-labels))
+              (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #f #f)
+              (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #f #f inline-if-labels))
 
           (if (not inlined-if-cond?)
               (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg)))))))
@@ -2157,12 +2099,8 @@
                  (if rcst
                      (or lcst (ctx-get-loc ctx 0))
                      (or lcst (ctx-get-loc ctx 1))))
-               (mut-right? (and (not rcst) (ctx-is-mutable? ctx 0)))
-               (mut-left?  (and (not lcst) (ctx-is-mutable? ctx (if rcst 0 1))))
                (n-pop (count (list lcst rcst) not)))
           (apply-moves cgc ctx moves)
-          (if (or mut-left? mut-right?)
-              (error "NYI mutable float op"))
           (if num-op?
               (codegen-num-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst)
               (codegen-cmp-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst inline-if-labels))
@@ -2209,16 +2147,14 @@
              (car-cst (assoc 0 cst-infos))
              (cdr-cst (assoc 1 cst-infos))
              (lcdr (if cdr-cst (cdr cdr-cst) (ctx-get-loc ctx 0)))
-             (mut-cdr? (and (not cdr-cst) (ctx-is-mutable? ctx 0)))
              (car-idx (if cdr-cst 0 1))
              (lcar
                (if car-cst
                    (cdr car-cst)
                    (ctx-get-loc ctx car-idx)))
-             (mut-car? (and (not car-cst) (ctx-is-mutable? ctx car-idx)))
              (n-pop (count (list car-cst cdr-cst) not)))
       (apply-moves cgc ctx moves)
-      (codegen-pair cgc (ctx-fs ctx) reg lcar lcdr car-cst cdr-cst mut-car? mut-cdr?)
+      (codegen-pair cgc (ctx-fs ctx) reg lcar lcdr car-cst cdr-cst #f #f)
       (jump-to-version cgc
                        succ
                        (ctx-push (ctx-pop-n ctx n-pop) CTX_PAI reg))))))
@@ -2459,49 +2395,6 @@
                   (else (free-vars-l body params enc-ids)))))))
 
 ;;
-;; MUTABLE VARS
-;;
-
-;; Return all mutable vars used by the list of ast
-(define (mutable-vars-l lst params)
-  (if (or (null? lst) (not (pair? lst)))
-    '()
-    (set-union (mutable-vars (car lst) params) (mutable-vars-l (cdr lst) params))))
-
-;; Return all mutable vars used by ast
-(define (mutable-vars ast params)
-  (cond ;; Literal
-        ((literal? ast) '())
-        ;; Pair
-        ((pair? ast)
-           (let ((op (car ast)))
-              (cond ((eq? op 'quote) '())
-                    ((eq? op 'lambda) (mutable-vars (caddr ast) (set-sub params
-                                                                         (if (list? (cadr ast))
-                                                                           (cadr ast)
-                                                                           (list (cadr ast)))
-                                                                         '())))
-                    ((eq? op 'set!)
-                      (set-union (mutable-vars (caddr ast) params)
-                                 (if (member (cadr ast) params)
-                                   (list (cadr ast))
-                                   '())))
-                    ((eq? op 'let)
-                      ;; Search for mutable only in bindings, and body if ids not redefined
-                      (let* ((mvars-bindings (mutable-vars-l (cadr ast) params))
-                             (let-ids (map car (cadr ast)))
-                             (p (set-sub params let-ids '()))
-                             (mvars-body (mutable-vars-l (cddr ast) p)))
-                        (set-union mvars-bindings mvars-body)))
-                    ((eq? op 'letrec)
-                      ;; Search for mutable in ast if ids not redefined
-                      (let* ((letrec-ids (map car (cadr ast)))
-                             (p (set-sub params letrec-ids '())))
-                        (set-union (mutable-vars-l (cadr ast) p)
-                                   (mutable-vars-l (cddr ast) p))))
-                    (else (mutable-vars-l ast params)))))))
-
-;;
 ;; OPTIMIZATIONS
 ;;
 
@@ -2551,17 +2444,6 @@
   (if (not (pair? l))
      '()
      (cons (car l) (formal-params (cdr l)))))
-
-(define (gen-mutable cgc ctx mvars)
-  (if (null? mvars)
-      ctx
-      (let* ((mid (car mvars))
-             (resid (assoc mid (ctx-env ctx)))
-             (identifier (cdr resid))
-             (loc (ctx-identifier-loc ctx identifier)))
-
-        (codegen-mutable cgc (ctx-fs ctx) loc)
-        (gen-mutable cgc ctx (cdr mvars)))))
 
 ;; Return label of a stub generating error with 'msg'
 (define (get-label-error msg) (list-ref (add-callback #f   0 (lambda (ret-addr selector) (error msg))) 0))
