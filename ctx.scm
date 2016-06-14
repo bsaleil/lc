@@ -163,23 +163,6 @@
               (steps moves)
               locs-to-unbox)))))
 
-
-;(define (ctx-generic ctx)
-;  (let ((env
-;          (foldr (lambda (el r)
-;                   (let* ((ss  (identifier-sslots (cdr el)))
-;                          (nss (list-tail ss (- (length ss) 1))))
-;                     (cons (cons (car el)
-;                                 (identifier-copy (cdr el) #f nss #f #f #f))
-;                           r)))
-;                 '()
-;                 (ctx-env ctx)))
-;        (st
-;          (if (< (ctx-nb-args ctx) 0)
-;              (make-list (length (ctx-stack ctx)) CTX_UNK)
-;              (append (make-list (- (length (ctx-stack ctx)) 2) CTX_UNK) (list CTX_CLO CTX_RETAD)))))
-;    (ctx-copy ctx st #f #f #f env #f #f)))
-
 (define (ctx-identifier-letrec-nm? ctx identifier)
   (member 'letrec-nm (identifier-flags identifier)))
 
@@ -213,17 +196,8 @@
   (ctx-copy ctx #f #f #f #f #f #f fs))
 
 ;;
-;; IS MUTABLE ?
-;; is this stack-idx mutable?
-(define (ctx-is-mutable? ctx stack-idx)
-  (let ((ident (ctx-ident-at ctx stack-idx)))
-    (and
-      ident
-      (member 'mutable (identifier-flags (cdr ident))))))
-
-;;
 ;; CTX INIT FN
-(define (ctx-init-fn stack enclosing-ctx args free-vars mutable-vars global-opt? lambda-opt)
+(define (ctx-init-fn stack enclosing-ctx args free-vars global-opt? lambda-opt)
 
   ;;
   ;; FREE REGS
@@ -280,7 +254,7 @@
         (make-identifier
           'local
           (list slot)
-          (if (member id mutable-vars) '(mutable) '())
+          '()
           #f
           #f))))
 
@@ -361,7 +335,7 @@
 
 ;;
 ;; BIND LOCALS
-(define (ctx-bind-locals ctx id-idx mvars #!optional letrec-bind?)
+(define (ctx-bind-locals ctx id-idx #!optional letrec-bind?)
 
   (define (clean-env env bound-slots)
     (if (null? env)
@@ -380,13 +354,7 @@
                       (make-identifier
                         'local   ;; symbol 'free or 'local
                         (list (stack-idx-to-slot ctx (cdr first)))
-                        (cond ((and letrec-bind?
-                                    (not (member (car first) mvars)))
-                                 '())
-                              ((member (car first) mvars)
-                                 '())
-                              (else
-                                 '()))
+                        '()
                         #f
                         #f))
                 (gen-env env (cdr id-idx))))))
@@ -874,9 +842,6 @@
   stype  ;; ctx type (copied to virtual stack)
   cloc   ;; closure slot if free variable
 )
-
-(define (identifier-mutable? identifier)
-  (member 'mutable (identifier-flags identifier)))
 
 ;; TODO USE IT ! remove all make-ctx which are only copies and use ctx-copy
 (define (identifier-copy identifier #!optional kind sslots flags stype cloc)

@@ -1287,10 +1287,8 @@
           (let* ((identifier (cdar env))
                  (free? (eq? (identifier-kind identifier) 'free))
                  (ss (identifier-sslots identifier)))
-            (if (identifier-mutable? identifier)
-                (if free?
-                    (append ss (get-to-unbox (cdr env)))
-                    (append (list-head ss (- (length ss) 1)) (get-to-unbox (cdr env))))
+            (if #f;(identifier-mutable? identifier)
+                #f ;; TODO: remove all mutable related code
                 (get-to-unbox (cdr env))))))
     (define (get-sp-add)
       (- (ctx-fs src-ctx) (ctx-fs dst-ctx)))
@@ -1540,14 +1538,8 @@
                   (if opt-stats
                    (gen-inc-slot cgc 'tests))
 
-                  ;; TODO: utiliser un registre si la variable est mutable
-                  (let* ((mutable? (ctx-is-mutable? ctx stack-idx))
-                         (lval (ctx-get-loc ctx stack-idx))
+                  (let* ((lval (ctx-get-loc ctx stack-idx))
                          (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
-
-                    (if mutable?
-                        (begin (x86-push cgc opval)
-                               (x86-mov cgc opval (x86-mem (- 8 TAG_MEMOBJ) opval))))
 
                     (cond ;; Number type check
                           ((eq? type CTX_INT)
@@ -1598,9 +1590,6 @@
                                                                           ((eq? type CTX_VECT) STAG_VECTOR))))))
                           ;; Other
                           (else (error "Unknown type " type)))
-
-                    (if mutable?
-                        (x86-pop cgc opval))
 
                     (x86-label cgc label-jump)
                     (x86-je cgc (list-ref stub-labels 0))

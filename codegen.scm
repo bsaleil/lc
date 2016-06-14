@@ -178,17 +178,6 @@
   `(if (x86-mem? ,src)
        (unmem! ,dst ,src)))
 
-;; Unbox a value in src register to dst register
-;; update operand
-(define-macro (unbox! dst src)
-  `(begin (x86-mov cgc ,dst (x86-mem (- 8 TAG_MEMOBJ) ,src))
-          (set! ,(car src) ,(car dst))))
-
-;;
-(define-macro (chk-unbox! dst src mut?)
-  `(if ,mut?
-       (unbox! ,dst ,src)))
-
 ;; Find an unused register, save it, unmem from src to this register
 ;; update saved set
 (define-macro (pick-unmem! src used-regs)
@@ -199,57 +188,11 @@
        (set! ##registers-saved## (cons ,sym ##registers-saved##))
        (unmem! ((lambda () ,sym)) ,src))))
 
-
-;; Find an unused register, save it, unbox from src to this register
-;; update saved set
-(define-macro (pick-unbox! src used-regs)
-  (let ((sym (gensym)))
-    `(let ((,sym (pick-reg ,used-regs)))
-       (x86-push cgc ,sym)
-       (set! fs (+ fs 1))
-       (set! ##registers-saved## (cons ,sym ##registers-saved##))
-       (if (x86-reg? ,src)
-           (unbox! ((lambda () ,sym)) ,src)
-           (begin (x86-mov cgc ,sym ,src)
-                  (unbox! ((lambda () ,sym)) ,src))))))
-
-
-;; Check if src is in memory. If so, unmem
-;; then, check if src is mutable. Is so, unbox
-(define-macro (chk-unmem-unbox! dst src mut?)
-  `(begin
-     (if (x86-mem? ,src)
-         (unmem! ,dst ,src))
-     (if ,mut?
-         (unbox! ,dst ,src))))
-
-;; Check if src is in memory AND mutable. If so, unmem and unbox
-;; Else, if src is mutable but not in memory, unbox directly
-;; (Same as chk-unmem-unbox! no moves are generated if src is in memory and not mutable)
-(define-macro (chk-unmem&unbox! dst src mut?)
-  `(cond ((and (x86-mem? ,src) ,mut?)
-          (chk-unmem-unbox! ,dst ,src ,mut?))
-         (,mut?
-            (unbox! ,dst ,src))))
-
 ;; Check if src is in memory. If so, pick-unmem (unmem in an available reg)
-;; then, check if src is mutable. If so, unbox in register used by pick-unmem
-;; or pick-unbox (unbox in an available reg)
-(define-macro (chk-pick-unmem-unbox! src mut? used-regs)
+(define-macro (chk-pick-unmem! src used-regs)
   `(begin
     (if (x86-mem? ,src)
-        (pick-unmem! ,src (append ,used-regs ##registers-saved##)))
-    (if ,mut?
-        (if (x86-mem? ,src)
-            (unbox! ,src ,src)
-            (pick-unbox! ,src (append ,used-regs ##registers-saved##))))))
-
-(define-macro (chk-pick-unmem&unbox! src mut? used-regs)
-  `(cond ((and (x86-mem? ,src) ,mut?)
-          (chk-pick-unmem-unbox! ,src ,mut? ,used-regs))
-         (,mut?
-          (pick-unbox! ,src (append ,used-regs ##registers-saved##)))))
-
+        (pick-unmem! ,src (append ,used-regs ##registers-saved##)))))
 ;;
 (define-macro (restore-saved)
   `(for-each (lambda (el) (x86-pop cgc el)) ##registers-saved##))
@@ -284,20 +227,25 @@
 
 (define (codegen-set-global cgc reg pos lval fs)
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opval (lambda () (codegen-loc-to-x86opnd fs lval)))
-        (oprax (lambda () (x86-rax))))
-    (begin-with-cg-macro
-      (chk-unmem! (oprax) (opval))
-      (x86-mov cgc (x86-mem (* 8 pos) global-ptr) (opval))
-      (x86-mov cgc dest (x86-imm-int ENCODING_VOID)))))
+        (opval (codegen-loc-to-x86opnd fs lval)))
 
-(define (codegen-set-non-global cgc reg lval fs mut-val?)
-  (let ((dest  (lambda () (codegen-reg-to-x86reg reg)))
-        (opval (lambda () (codegen-loc-to-x86opnd fs lval))))
-    (begin-with-cg-macro
-      (chk-unmem-unbox! (dest) (opval) mut-val?)
-      (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) (opval))
-      (x86-mov cgc (dest) (x86-imm-int ENCODING_VOID)))))
+    (if (x86-mem? opval)
+        (begin (x86-mov cgc (x86-rax) opval)
+               (set! opval (x86-rax))))
+
+    (x86-mov cgc (x86-mem (* 8 pos) global-ptr) opval)
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
+
+(define (codegen-set-non-global cgc reg lval fs)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opval (codegen-loc-to-x86opnd fs lval)))
+
+    (if (x86-mem? opval)
+        (begin (x86-mov cgc (x86-rax) opval)
+               (set! opval (x86-rax))))
+
+    (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
 
 ;;-----------------------------------------------------------------------------
 ;; Internals
@@ -346,7 +294,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; box
-(define (codegen-pbox cgc fs reg lval)
+(define (codegen-box cgc fs reg lval)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
@@ -399,15 +347,11 @@
 
 ;;-----------------------------------------------------------------------------
 ;; If
-(define (codegen-if cgc fs label-jump label-false label-true lcond mut-cond?)
+(define (codegen-if cgc fs label-jump label-false label-true lcond)
   (let ((opcond (lambda () (codegen-loc-to-x86opnd fs lcond)))
         (oprax  (lambda () (x86-rax))))
 
     (begin-with-cg-macro
-
-      ;;
-      ;; Unmem / Unbox code
-      (chk-unmem&unbox! (oprax) (opcond) mut-cond?)
 
       ;;
       ;;
@@ -486,7 +430,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Pair
-(define (codegen-pair cgc fs reg lcar lcdr car-cst? cdr-cst? mut-car? mut-cdr?)
+(define (codegen-pair cgc fs reg lcar lcdr car-cst? cdr-cst?)
 
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opcar (lambda () (and (not car-cst?) (codegen-loc-to-x86opnd fs lcar))))
@@ -496,9 +440,9 @@
 
       ;;
       (if (not car-cst?)
-          (chk-pick-unmem-unbox! (opcar) mut-car? (list dest (opcar) (opcdr))))
+          (chk-pick-unmem! (opcar) (list dest (opcar) (opcdr))))
       (if (not cdr-cst?)
-          (chk-pick-unmem-unbox! (opcdr) mut-cdr? (list dest (opcar) (opcdr))))
+          (chk-pick-unmem! (opcdr) (list dest (opcar) (opcdr))))
 
       ;; Get end of scheme pair in alloc-ptr
       (gen-allocation-imm cgc STAG_PAIR 16)
@@ -647,15 +591,11 @@
     (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))))
 
 ;; Load closure in tmp register
-(define (codegen-load-closure cgc fs loc mut?)
+(define (codegen-load-closure cgc fs loc)
 
-  (let ((opnd  (lambda () (codegen-loc-to-x86opnd fs loc)))
-        (oprax (lambda () (x86-rax))))
+  (let ((opnd  (codegen-loc-to-x86opnd fs loc)))
 
-    (begin-with-cg-macro
-      (chk-unmem&unbox! (oprax) (opnd) mut?)
-      (if (not (eq? opnd oprax))
-          (x86-mov cgc (x86-rax)  (opnd))))))
+    (x86-mov cgc (x86-rax) opnd)))
 
 ;;; Push closure
 (define (codegen-closure-put cgc reg nb-free)
@@ -757,17 +697,6 @@
         (oprax   (lambda () (x86-rax))))
 
    (begin-with-cg-macro
-
-     ;;
-     ;; Unmem / Unbox code
-     (if (not lcst?)
-         ;; if (in memory?) unmem,unbox else unbox only
-         (chk-unmem&unbox! (oprax) (opleft) mut-left?))
-     (if (not rcst?)
-         ;; if (in memory?) unmem,unbox else unbox only
-         (if (eq? (opleft) (x86-rax))
-             (chk-pick-unmem&unbox! (opright) mut-right? (list dest (opleft) (opright)))
-             (chk-unmem&unbox! (oprax) (opright) mut-right?)))
 
      ;;
      ;; Primitive code
@@ -887,14 +816,6 @@
 
     (begin-with-cg-macro
 
-      ;;
-      ;; Unmem / Unbox code
-      (chk-unmem&unbox! (oprax) (opl) mut-left?)
-
-      (if (eq? (opl) (x86-rax))
-          (chk-pick-unmem&unbox! (opr) mut-right? (list dest opl opr))
-          (chk-unmem&unbox! (oprax) (opr) mut-right?))
-
       ;; if the operands are both not mutable and both in memory, use rax
       (if (and (ctx-loc-is-memory? lleft)
                (ctx-loc-is-memory? lright))
@@ -995,7 +916,6 @@
 
 (define (codegen-binop cgc fs op label-div0 reg lleft lright)
 
-  ;; TODO: rewrite with mutable support
   (let* ((dest (codegen-reg-to-x86reg reg))
          (mod (if (eq? dest (x86-rdx)) 1 2))
          (lopnd (codegen-loc-to-x86opnd (+ fs mod) lleft))
@@ -1046,20 +966,13 @@
 
 ;;-----------------------------------------------------------------------------
 ;; not
-(define (codegen-not cgc fs reg lval mut-val?)
+(define (codegen-not cgc fs reg lval)
   (let ((label-done
           (asm-make-label cgc (new-sym 'done)))
         (dest (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
     (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-    (cond ((and (ctx-loc-is-memory? lval) mut-val?)
-           (x86-mov cgc (x86-rax) opval) ;; move mem to reg
-           (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))) ;; unbox mutable
-           (set! opval (x86-rax)))
-          (mut-val?
-             (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opval))
-             (set! opval (x86-rax))))
     (x86-cmp cgc opval dest)
     (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
     (x86-je  cgc label-done)
@@ -1145,7 +1058,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; car/cdr
-(define (codegen-car/cdr cgc fs op reg lval mut-val?)
+(define (codegen-car/cdr cgc fs op reg lval)
   (let ((offset
           (if (eq? op 'car)
               (- OFFSET_PAIR_CAR TAG_PAIR)
@@ -1153,30 +1066,24 @@
         (dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
-    (if (ctx-loc-is-memory? lval)
+    (if (x86-mem? opval)
         (begin (x86-mov cgc (x86-rax) opval)
-               (set! opval (x86-rax))))
-    (if mut-val?
-        (begin (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opval))
                (set! opval (x86-rax))))
 
     (x86-mov cgc dest (x86-mem offset opval))))
 
 ;;-----------------------------------------------------------------------------
 ;; symbol->string
-(define (codegen-symbol->string cgc fs reg lsym mut-sym?)
-  (let ((dest (codegen-reg-to-x86reg reg))
-        (opsym (lambda () (codegen-loc-to-x86opnd fs lsym)))
-        (optmp (lambda () (x86-rax))))
+(define (codegen-symbol->string cgc fs reg lsym)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opsym (codegen-loc-to-x86opnd fs lsym)))
 
-    (begin-with-cg-macro
+    (if (x86-mem? opsym)
+        (begin (x86-mov cgc (x86-rax) opsym)
+               (set! opsym (x86-rax))))
 
-      ;; Unmem & Unbox
-      (chk-unmem-unbox! (optmp) (opsym) mut-sym?)
-
-      ;; Primitive code
-      ;; Get string scheme object from symbol representation
-      (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) (opsym))))))
+    ;; Get string scheme object from symbol representation
+    (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) opsym))))
 
 ;;-----------------------------------------------------------------------------
 ;; set-car!/set-cdr!
@@ -1212,26 +1119,20 @@
 
 ;;-----------------------------------------------------------------------------
 ;; eof-object?
-(define (codegen-eof? cgc fs reg lval mut-val?)
+(define (codegen-eof? cgc fs reg lval)
   (let ((label-end (asm-make-label #f (new-sym 'label-end)))
         (dest  (codegen-reg-to-x86reg reg))
-        (opval (lambda () (codegen-loc-to-x86opnd fs lval)))
-        (oprax (lambda () (x86-rax))))
+        (opval (codegen-loc-to-x86opnd fs lval)))
 
-    (begin-with-cg-macro
+    ;; ENCODING_EOF is a a imm64 and cmp r/m64, imm32 is not possible
+    ;; then use a r64
+    (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_EOF))
 
-      ;;
-      ;; Unmem / Unbox code
-      ;; Move operand to rax for syscall
-      (chk-unmem-unbox! (oprax) (opval) mut-val?)
-
-      ;;
-      ;; Primitive code
-      (x86-cmp cgc (opval) (x86-imm-int ENCODING_EOF))
-      (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-      (x86-jne cgc label-end)
-      (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-      (x86-label cgc label-end))))
+    (x86-cmp cgc opval (x86-rax))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+    (x86-jne cgc label-end)
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+    (x86-label cgc label-end)))
 
 ;;-----------------------------------------------------------------------------
 ;; char->integer/integer->char
@@ -1272,9 +1173,9 @@
 
       ;;
       ;; Unmem / Unbox code
-      (chk-pick-unmem-unbox! (oplen) mut-len? (list selector-reg (opval) (oplen) dest))
+      (chk-pick-unmem! (oplen) (list selector-reg (opval) (oplen) dest))
       (if lval
-          (chk-pick-unmem-unbox! (opval) mut-val? (list selector-reg (opval) (oplen) dest)))
+          (chk-pick-unmem! (opval) (list selector-reg (opval) (oplen) dest)))
 
       ;; Primitive code
       (x86-mov cgc (x86-rax) (oplen))
@@ -1319,9 +1220,9 @@
     (begin-with-cg-macro
 
       ;; Unmem / Unbox code
-      (chk-pick-unmem-unbox! (oplen) mut-len? (list (oplen) (opval) dest))
+      (chk-pick-unmem! (oplen) (list (oplen) (opval) dest))
       (if lval
-          (chk-pick-unmem-unbox! (opval) mut-val? (list (oplen) (opval) dest)))
+          (chk-pick-unmem! (opval) (list (oplen) (opval) dest)))
 
       ;; Primitive code
       (x86-mov cgc (x86-rax) (oplen))
@@ -1353,31 +1254,23 @@
 
 ;;-----------------------------------------------------------------------------
 ;; vector/string-length
-(define (codegen-vector-length cgc fs reg lval mut-val?)
+(define (codegen-vector-length cgc fs reg lval)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
     (if (ctx-loc-is-memory? lval)
         (begin (x86-mov cgc (x86-rax) opval)
-               (set! opval (x86-rax))))
-
-    (if mut-val?
-        (begin (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opval))
                (set! opval (x86-rax))))
 
     (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opval))
     (x86-shr cgc dest (x86-imm-int 9))))
 
-(define (codegen-string-length cgc fs reg lval mut-val?)
+(define (codegen-string-length cgc fs reg lval)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
     (if (ctx-loc-is-memory? lval)
         (begin (x86-mov cgc (x86-rax) opval)
-               (set! opval (x86-rax))))
-
-    (if mut-val?
-        (begin (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) opval))
                (set! opval (x86-rax))))
 
     (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opval))
@@ -1387,61 +1280,67 @@
 ;; vector-ref
 ;; TODO val-cst? -> idx-cst?
 
-(define (codegen-vector-ref cgc fs reg lvec lidx val-cst? idx-mut? vec-mut?)
+(define (codegen-vector-ref cgc fs reg lvec lidx val-cst?)
 
-  (let* ((dest (codegen-reg-to-x86reg reg))
-         (opvec (lambda () (codegen-loc-to-x86opnd fs lvec)))
-         (opidx (lambda () (and (not val-cst?) (codegen-loc-to-x86opnd fs lidx))))
-         (oprax (lambda () (x86-rax)))
-         (vec-mem? (ctx-loc-is-memory? lvec))
-         (idx-mem? (ctx-loc-is-memory? lidx)))
+  (let* ((dest  (codegen-reg-to-x86reg reg))
+         (opvec (codegen-loc-to-x86opnd fs lvec))
+         (opidx (and (not val-cst?) (codegen-loc-to-x86opnd fs lidx)))
+         (use-selector #f))
 
+    ;; opvec doit etre en registre
+    (if (x86-mem? opvec)
+        (begin (x86-mov cgc (x86-rax) opvec)
+               (set! opvec  (x86-rax))))
 
-    (begin-with-cg-macro
-      ;;
-      ;; Unmem / Unbox code
-      (chk-unmem-unbox! (oprax) (opvec) vec-mut?)
-      (if (not val-cst?)
-          (if (eq? (opvec) (x86-rax))
-              (chk-pick-unmem-unbox! (opidx) idx-mut? (list dest (opvec) (opidx)))
-              (chk-unmem-unbox! (oprax) (opidx) idx-mut?)))
+    (if (and opidx
+             (x86-mem? opidx))
+        (if (eq? opvec (x86-rax))
+            (begin (x86-mov cgc selector-reg opidx)
+                   (set! opidx selector-reg)
+                   (set! use-selector #t))
+            (begin (x86-mov cgc selector-reg (x86-rax))
+                   (set! opidx selector-reg))))
 
-      ;;
-      ;; Primitive code
-      (if val-cst?
-          (x86-mov cgc dest (x86-mem (+ (- 8 TAG_MEMOBJ) (* 8 lidx)) (opvec) #f 1))
-          (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) (opvec) (opidx) 1))))))
+    (if val-cst?
+        (x86-mov cgc dest (x86-mem (+ (- 8 TAG_MEMOBJ) (* 8 lidx)) opvec #f 1))
+        (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) opvec opidx 1)))
+
+    (if use-selector
+        (x86-xor cgc selector-reg selector-reg))))
 
 ;;-----------------------------------------------------------------------------
 ;; string-ref
-(define (codegen-string-ref cgc fs reg lstr lidx idx-cst? idx-mut? str-mut?)
+(define (codegen-string-ref cgc fs reg lstr lidx idx-cst?)
 
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opstr (lambda () (codegen-loc-to-x86opnd fs lstr)))
-        (opidx (lambda () (and (not idx-cst?) (codegen-loc-to-x86opnd fs lidx))))
-        (oprax (lambda () (x86-rax)))
+        (opstr (codegen-loc-to-x86opnd fs lstr))
+        (opidx (and (not idx-cst?) (codegen-loc-to-x86opnd fs lidx)))
         (str-mem? (ctx-loc-is-memory? lstr))
-        (idx-mem? (ctx-loc-is-memory? lidx)))
+        (idx-mem? (ctx-loc-is-memory? lidx))
+        (use-selector #f))
 
-    (begin-with-cg-macro
-      ;;
-      ;; Unmem / Unbox code
-      ;; idx first because if both are moved, we prefer to have idx in rax
-      (if (not idx-cst?)
-          (chk-unmem-unbox! (oprax) (opidx) idx-mut?))
-      (if (eq? (opidx) (x86-rax))
-          (chk-pick-unmem-unbox! (opstr) str-mut? (list dest (opstr) (opidx)))
-          (chk-unmem-unbox! (oprax) (opstr) str-mut?))
+    ;; opstr in reg64
+    ;; opidx in reg64
 
-      ;;
-      ;; Primitive code
-      (if idx-cst?
-          (x86-mov cgc (x86-eax) (x86-mem (+ (- 8 TAG_MEMOBJ) (* 4 lidx)) (opstr)))
-          (x86-mov cgc (x86-eax) (x86-mem (- 8 TAG_MEMOBJ) (opidx) (opstr))))
+    (if (x86-mem? opstr)
+        (begin (x86-mov cgc (x86-rax) opstr)
+               (set! opstr (x86-rax))))
+    (if (and opidx
+             (x86-mem? opidx))
+        (if (eq? opstr (x86-rax))
+            (begin (x86-mov cgc selector-reg opidx)
+                   (set! opidx selector-reg)
+                   (set! use-selector #t))
+            (begin (x86-mov cgc (x86-rax) opidx)
+                   (set! opstr (x86-rax)))))
 
-      (x86-shl cgc (x86-rax) (x86-imm-int 2))
-      (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
-      (x86-mov cgc dest (x86-rax)))))
+    (if idx-cst?
+        (x86-mov cgc (x86-eax) (x86-mem (+ (- 8 TAG_MEMOBJ) (* 4 lidx)) opstr))
+        (x86-mov cgc (x86-eax) (x86-mem (- 8 TAG_MEMOBJ) opidx opstr)))
+
+    (x86-shl cgc (x86-rax) (x86-imm-int 2))
+    (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
+    (x86-mov cgc dest (x86-rax))))
 
 ;;-----------------------------------------------------------------------------
 ;; vector-set!
@@ -1501,20 +1400,18 @@
       ;;
       ;; Unmem / Unbox code
       (if (not chr-cst?)
-          (begin (unmem! (oprax) (opchr)) ;; If not a cst, we want char in rax
-                 (chk-unbox! (oprax) (opchr) mut-chr?)))
+          (unmem! (oprax) (opchr))) ;; If not a cst, we want char in rax
+
 
       (if (not idx-cst?)
           (if (eq? (opchr) (x86-rax))
-              (begin (pick-unmem! (opidx) (list (opstr) (opidx) (opchr)))
-                     (chk-unbox! (opidx) (opidx) mut-idx?))
-              (begin (unmem! (oprax) (opidx))
-                     (chk-unbox! (oprax) (opidx) mut-idx?))))
+              (pick-unmem! (opidx) (list (opstr) (opidx) (opchr)))
+              (unmem! (oprax) (opidx))))
 
       (if (or (eq? (opidx) (x86-rax))
               (eq? (opchr) (x86-rax)))
-          (chk-pick-unmem-unbox! (opstr) mut-str? (list (opstr) (opidx) (opchr)))
-          (chk-unmem-unbox! (oprax) (opstr) mut-str?))
+          (chk-pick-unmem! (opstr) (list (opstr) (opidx) (opchr)))
+          (chk-unmem! (oprax) (opstr)))
 
       ;; TODO: no need to have idx in a new reg (idx reg is not modified)
 
@@ -1547,30 +1444,6 @@
 ;;-----------------------------------------------------------------------------
 ;; Others
 ;;-----------------------------------------------------------------------------
-
-;;-----------------------------------------------------------------------------
-;; letrec set!
-(define (codegen-letrec-set! cgc fs lto lfrom mut-from?)
-
-  (let ((opto   (lambda () (codegen-loc-to-x86opnd fs lto)))
-        (opfrom (lambda () (codegen-loc-to-x86opnd fs lfrom)))
-        (oprax  (lambda () (x86-rax))))
-
-    (begin-with-cg-macro
-
-      ;;
-      ;; Unmem / Unbox code
-
-      (chk-unmem! (oprax) (opto))
-      (if (eq? (opto) (x86-rax))
-          (chk-pick-unmem-unbox! (opfrom) mut-from? (list (opto) (opfrom)))
-          (chk-unmem-unbox! (oprax) (opfrom) mut-from?))
-
-      ;;
-      ;;
-      (x86-mov cgc (opto) (opfrom)))))
-      ;(x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (opto)) (opfrom)))))
-
 
 ;;-----------------------------------------------------------------------------
 ;; TCO

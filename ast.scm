@@ -496,7 +496,7 @@
            (lval (ctx-get-loc ctx 0))
            (type (ctx-get-type ctx 0)))
       (apply-moves cgc ctx moves)
-      (codegen-set-non-global cgc reg lval (ctx-fs ctx) #f)
+      (codegen-set-non-global cgc reg lval (ctx-fs ctx))
       (let ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg)))
         (jump-to-version cgc succ (ctx-set-type ctx local type))))))
 
@@ -553,8 +553,6 @@
          (fvars #f)
          ;; Flatten list of param (include rest param)
          (all-params (flatten (cadr ast)))
-         ;; Lambda mutable vars
-         (mvars '())
          ;; Rest param ?
          (rest-param (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
                          (and (pair? (cadr ast)) (not (list? (cadr ast)))))) ;; (foo a..z . rest)
@@ -592,10 +590,10 @@
 
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))
-         ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
-         (lazy-prologue (get-lazy-prologue ast lazy-body rest-param mvars))
+         ;; Lazy function prologue : creates rest param if any, ...
+         (lazy-prologue (get-lazy-prologue ast lazy-body rest-param))
          ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
-         (lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param mvars (length params))))
+         (lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params))))
 
     ;; Lazy closure generation
     (make-lazy-code
@@ -627,7 +625,7 @@
 
                                               (cond ;; CASE 1 - Use entry point (no cctable)
                                                     ((eq? opt-entry-points #f)
-                                                     (let ((ctx (ctx-init-fn stack ctx all-params free mvars global-opt lambda-opt)))
+                                                     (let ((ctx (ctx-init-fn stack ctx all-params free global-opt lambda-opt)))
                                                        (gen-version-fn ast closure lazy-prologue-gen ctx stack #f global-opt)))
 
                                                     ;; CASE 2 - Use multiple entry points AND use max-versions limit AND this limit is reached
@@ -636,12 +634,12 @@
                                                          (and (= selector 0)
                                                               opt-max-versions
                                                               (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions)))
-                                                     (let ((ctx (ctx-init-fn #f ctx all-params free mvars global-opt lambda-opt)))
+                                                     (let ((ctx (ctx-init-fn #f ctx all-params free global-opt lambda-opt)))
                                                        (gen-version-fn ast closure lazy-prologue-gen ctx stack #t global-opt)))
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
-                                                       (let ((ctx (ctx-init-fn stack ctx all-params free mvars global-opt lambda-opt)))
+                                                       (let ((ctx (ctx-init-fn stack ctx all-params free global-opt lambda-opt)))
                                                          (gen-version-fn ast closure lazy-prologue ctx stack #f global-opt)))))))
 
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
@@ -689,7 +687,7 @@
               (jump-to-version cgc succ (ctx-push ctx CTX_CLO reg)))))))))
 
 ;; Create and return a lazy generic prologue
-(define (get-lazy-generic-prologue ast succ rest-param mvars nb-formal)
+(define (get-lazy-generic-prologue ast succ rest-param nb-formal)
   (make-lazy-code-entry
     (lambda (cgc ctx)
       (let ((nb-args (ctx-nb-args ctx))
@@ -761,7 +759,7 @@
         (jump-to-version cgc succ ctx)))))
 
 ;; Create and return a lazy prologue
-(define (get-lazy-prologue ast succ rest-param mvars)
+(define (get-lazy-prologue ast succ rest-param)
   (make-lazy-code-entry
     (lambda (cgc ctx)
       (let* ((nb-actual (- (length (ctx-stack ctx)) 2))
@@ -868,8 +866,7 @@
            (make-lazy-code
              (lambda (cgc ctx)
                (let* ((id-idx (build-id-idx ids (- (length ids) 1)))
-                      (mvars '())
-                      (ctx (ctx-bind-locals ctx id-idx mvars)))
+                      (ctx (ctx-bind-locals ctx id-idx)))
                  (jump-to-version cgc lazy-body ctx))))))
    (gen-ast-l values lazy-binds)))
 
@@ -1152,7 +1149,7 @@
 ;; primitive not
 (define (prim-not cgc ctx reg succ cst-infos)
   (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-not cgc (ctx-fs ctx) reg lval #f)
+    (codegen-not cgc (ctx-fs ctx) reg lval)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))
 
 ;; primitive eq?
@@ -1174,13 +1171,13 @@
 ;; primitives car & cdr
 (define (prim-cxr cgc ctx reg succ cst-infos op)
   (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-car/cdr cgc (ctx-fs ctx) op reg lval #f)
+    (codegen-car/cdr cgc (ctx-fs ctx) op reg lval)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK reg))))
 
 ;; primitive eof-object?
 (define (prim-eof-object? cgc ctx reg succ cst-infos)
   (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-eof? cgc (ctx-fs ctx) reg lval #f)
+    (codegen-eof? cgc (ctx-fs ctx) reg lval)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))
 
 ;; primitive make-string
@@ -1218,7 +1215,7 @@
                (ctx-get-loc ctx 1)))
          (n-pop (if poscst 1 2)))
 
-    (codegen-vector-ref cgc (ctx-fs ctx) reg lvec lidx poscst #f #f)
+    (codegen-vector-ref cgc (ctx-fs ctx) reg lvec lidx poscst)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_UNK reg))))
 
 ;; primitive string-ref
@@ -1231,7 +1228,7 @@
                (ctx-get-loc ctx 0)
                (ctx-get-loc ctx 1)))
          (n-pop (if poscst 1 2)))
-    (codegen-string-ref cgc (ctx-fs ctx) reg lstr lidx poscst #f #f)
+    (codegen-string-ref cgc (ctx-fs ctx) reg lstr lidx poscst)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_CHAR reg))))
 
 ;; primitive vector-set!
@@ -1262,7 +1259,7 @@
 ;;
 (define (prim-symbol->string cgc ctx reg succ cst-infos)
   (let* ((lsym  (ctx-get-loc ctx 0)))
-    (codegen-symbol->string cgc (ctx-fs ctx) reg lsym #f)
+    (codegen-symbol->string cgc (ctx-fs ctx) reg lsym)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR reg))))
 
 ;;
@@ -1286,7 +1283,7 @@
 ;;
 (define (prim-box cgc ctx reg succ cst-infos)
   (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-pbox cgc (ctx-fs ctx) reg lval)
+    (codegen-box cgc (ctx-fs ctx) reg lval)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOX reg))))
 
 ;;
@@ -1350,7 +1347,7 @@
           (if (eq? op 'vector-length)
               codegen-vector-length
               codegen-string-length)))
-    (codegen-fn cgc (ctx-fs ctx) reg lval #f)
+    (codegen-fn cgc (ctx-fs ctx) reg lval)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_INT reg))))
 
 ;;
@@ -1604,7 +1601,7 @@
                                   (list label-jump label-true label-false))))
                          (jump-to-version cgc lazy-cmp ctx))
                        (let* ((lcond (ctx-get-loc ctx 0)))
-                         (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond #f)))))))))
+                         (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond)))))))))
 
     (if inline-condition?
         (cond ((< (length (cadr ast)) 3)
@@ -1715,7 +1712,7 @@
 (define (call-get-closure cgc ctx closure-idx)
   (let* ((fs (ctx-fs ctx))
          (loc  (ctx-get-loc     ctx closure-idx)))
-    (codegen-load-closure cgc fs loc #f)))
+    (codegen-load-closure cgc fs loc)))
 
 ;; Move args in regs or mem following calling convention
 (define (call-prep-args cgc ctx ast nbargs)
@@ -2154,7 +2151,7 @@
                    (ctx-get-loc ctx car-idx)))
              (n-pop (count (list car-cst cdr-cst) not)))
       (apply-moves cgc ctx moves)
-      (codegen-pair cgc (ctx-fs ctx) reg lcar lcdr car-cst cdr-cst #f #f)
+      (codegen-pair cgc (ctx-fs ctx) reg lcar lcdr car-cst cdr-cst)
       (jump-to-version cgc
                        succ
                        (ctx-push (ctx-pop-n ctx n-pop) CTX_PAI reg))))))
@@ -2416,22 +2413,6 @@
 ;;
 ;; UTILS
 ;;
-
-;; Build new environment with ids starting from 'start'
-;; Append this new environment to existing 'env'
-;; ex : (build-env '(...) '(a b c) 8) -> ((a . 8) (b . 9) (c . 10))
-;; mvars contains all mutable vars to tag created identifier objects
-(define (build-env mvars ids start env)
-  (if (null? ids)
-    env
-    (cons (cons (car ids) (make-identifier 'local
-                                           start
-                                           (list start)
-                                           (if (member (car ids) mvars)
-                                              '(mutable)
-                                              '())
-                                           '()))
-          (build-env mvars (cdr ids) (+ start 1) env))))
 
 ;; Get position of current closure in stack
 (define (closure-pos ctx)
