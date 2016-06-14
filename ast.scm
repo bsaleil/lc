@@ -436,10 +436,7 @@
 (define (gen-get-localvar cgc ctx local succ for-set?)
 
   (let ((loc (ctx-identifier-loc ctx (cdr local)))
-        (type (if (and (ctx-identifier-mutable? ctx (cdr local))
-                       (not (ctx-identifier-letrec-nm? ctx (cdr local))))
-                  CTX_UNK
-                  (ctx-identifier-type ctx (cdr local)))))
+        (type (ctx-identifier-type ctx (cdr local))))
 
     (if for-set?
         (codegen-load-loc cgc (ctx-fs ctx) loc)
@@ -497,10 +494,9 @@
 
     (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
            (lval (ctx-get-loc ctx 0))
-           (type (ctx-get-type ctx 0))
-           (mut-val? (ctx-is-mutable? ctx 0)))
+           (type (ctx-get-type ctx 0)))
       (apply-moves cgc ctx moves)
-      (codegen-set-non-global cgc reg lval (ctx-fs ctx) mut-val?)
+      (codegen-set-non-global cgc reg lval (ctx-fs ctx) #f)
       (let ((ctx (ctx-push (ctx-pop ctx) CTX_VOID reg)))
         (jump-to-version cgc succ (ctx-set-type ctx local type))))))
 
@@ -574,19 +570,14 @@
                        ;; 1 - Get clean stack size (higher mx in ctx)
                        (let* ((clean-nb (- (ctx-fs ctx) 1))
                               (lres (ctx-get-loc ctx 0))
-                              (opres (codegen-loc-to-x86opnd (ctx-fs ctx) lres))
-                              (mutable? (ctx-is-mutable? ctx 0)))
+                              (opres (codegen-loc-to-x86opnd (ctx-fs ctx) lres)))
 
                          ;; 2 - Move res in result reg
                          (let* ((lret (car (ctx-init-free-regs))) ;; TODO: use result-reg variable
                                 (oret (codegen-reg-to-x86reg lret)))
-                           (if mutable?
-                               (if (ctx-loc-is-memory? lres)
-                                   (begin (x86-mov cgc oret opres)
-                                          (x86-mov cgc oret (x86-mem (- 8 TAG_MEMOBJ) oret)))
-                                   (x86-mov cgc oret (x86-mem (- 8 TAG_MEMOBJ) opres)))
-                               (if (not (eq? oret opres))
-                                   (x86-mov cgc oret opres))))
+
+                           (if (not (eq? oret opres))
+                               (x86-mov cgc oret opres)))
 
                          ;; 3 - Clean stack
                          (if (> clean-nb 0)
@@ -880,7 +871,6 @@
          (lazy-binds
            (make-lazy-code
              (lambda (cgc ctx)
-               (unbox-mutables cgc ctx 0 (length ids))
                (let* ((id-idx (build-id-idx ids (- (length ids) 1)))
                       (mvars (mutable-vars (cddr ast) ids))
                       (ctx (ctx-bind-locals ctx id-idx mvars)))
@@ -1051,156 +1041,6 @@
           ;    (error "NYI letrec"))
           (jump-to-version cgc (mlc-lambdas imm-info late-info lazy-set) ctx))))))
 
-
-;; TODO: mlc-letrec-lamopt & mlc-letrec-mult are dead code
-;(define (mlc-letrec ast succ)
-;
-;  ;; We need the free info here TODO
-;  (define (get-free-vars ctx fbindings late-fbinds)
-;    (if (null? fbindings)
-;        '()
-;        (let ((l (cadr (car fbindings))))
-;          (cons (cons (caar fbindings)
-;                      (free-vars
-;                        (caddr l) ;; body mtn
-;                        (flatten (cadr l))
-;                        (append late-fbinds (map car (ctx-env ctx)))))
-;                (get-free-vars ctx (cdr fbindings) late-fbinds)))))
-;
-;  (define (get-lambdas bindings)
-;    (if (null? bindings)
-;        '()
-;        (let ((v (cadr (car bindings))))
-;          (if (and (pair? v)
-;                   (eq? (car v) 'lambda))
-;              (cons (car bindings) (get-lambdas (cdr bindings)))
-;              (get-lambdas (cdr bindings))))))
-;
-;  (define free-inf #f)
-;
-;    (let* ((bindings (cadr ast))
-;           (lambda-bindings (get-lambdas bindings)))
-;
-;      (let ((lazy-bind
-;              (make-lazy-code
-;                (lambda (cgc ctx)
-;                  (pp ctx)
-;                  (pp bindings)
-;                  (pp free-inf)
-;                  (gen-error cgc "POKKL")))))
-;
-;        (if (not (= (length lambda-bindings)
-;                    (length bindings)))
-;           (error "KK"))
-;
-;        (make-lazy-code
-;          (lambda (cgc ctx)
-;            ;; TODO: remove the use of ctx in 'free-vars' to avoid the use of this lco
-;            ;; TODO: then, always give free infos to mlc-lambda as parameter
-;            (set! free-inf (get-free-vars ctx lambda-bindings (map car lambda-bindings)))
-;            (pp free-inf)
-;            (jump-to-version
-;              cgc
-;              (mlc-lambdas (map cadr lambda-bindings) (map car lambda-bindings) lazy-bind free-inf)
-;              ctx))))))
-      ;(mlc-lambdas (map cadr lambda-bindings) (map car lambda-bindings) lazy-bind))))
-
-
-;(define (mlc-letrec ast succ)
-;  (let ((bindings (cadr ast)))
-;    (if (and (eq?   (length (cadr ast)) 1)
-;             (pair? (cadar bindings))
-;             (eq?   (caadar bindings) 'lambda))
-;        (mlc-letrec-lamopt ast succ)
-;        (mlc-letrec-mult ast succ))))
-
-;; SPECIAL LETREC
-;; Special case: letrect with only one binding wich is a lambda expr
-;; (to handle loops efficiently)
-(define (mlc-letrec-lamopt ast succ)
-  (let* ((id    (caaadr ast))
-         (lexpr (car (cdaadr ast)))
-         (body  (cddr ast))
-         (lazy-out  (get-lazy-lets-out (list id) succ))
-         (lazy-body (gen-ast (cons 'begin body) lazy-out))
-         (lazy-bind
-           (make-lazy-code
-             (lambda (cgc ctx)
-               (jump-to-version
-                 cgc
-                 lazy-body
-                 (ctx-bind-locals ctx (list (cons id 0)) '())))))
-         (lazy-lambda (mlc-lambda lexpr lazy-bind #f id)))
-    lazy-lambda))
-
-;; GENERIC LETREC
-;; Letrec with no special case
-(define (mlc-letrec-mult ast succ)
-
-  (define (alloc cgc ids ctx stack-types)
-    (if (null? ids)
-        ctx
-        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
-          (apply-moves cgc ctx moves)
-          (let ((dest (codegen-reg-to-x86reg reg)))
-            (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
-            (alloc cgc (cdr ids) (ctx-push ctx (car stack-types) reg) (cdr stack-types))))))
-            ;;; Alloc code
-            ;(gen-allocation-imm cgc STAG_MOBJECT 8)
-            ;;; Write variable
-            ;(x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
-            ;(x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
-            ;;; Replace local
-            ;(x86-lea cgc dest (x86-mem (+ -16 TAG_MEMOBJ) alloc-ptr))
-            ;(alloc cgc (cdr ids) (ctx-push ctx (car stack-types) reg) (cdr stack-types))))))
-
-  (if (and (not (contains (map cadr (cadr ast)) 'lambda))
-           (not (contains (map cadr (cadr ast)) 'set!)))
-      ;; If letrec bind values do not contain 'lambda symbol, it's a let
-      (gen-ast (cons 'let (cdr ast)) succ)
-      (let* ((ids (map car (cadr ast)))
-             (body (cddr ast))
-             (lazy-out
-               (get-lazy-lets-out ids succ))
-             (lazy-set
-               (make-lazy-code
-                 (lambda (cgc ctx)
-                   (let loop ((i 0)
-                              (ctx ctx))
-                     (if (= i (length ids))
-                         (let ((ctx (ctx-pop-n ctx (length ids))))
-                           (jump-to-version cgc (gen-ast-l body lazy-out) ctx))
-                         (let ((lfrom (ctx-get-loc ctx i))
-                               (mut-from? (ctx-is-mutable? ctx i))
-                               (lto   (ctx-get-loc ctx (+ i (length ids))))
-                               (ctx   (ctx-stack-move ctx i (+ i (length ids)))))
-
-                           (codegen-letrec-set! cgc (ctx-fs ctx) lto lfrom mut-from?)
-
-                           (loop (+ i 1) ctx)))))))
-             (lazy-pre
-               (make-lazy-code
-                 (lambda (cgc ctx)
-                   (let* ((mvars (mutable-vars (cdr ast) ids))
-                          (stack-types
-                            (foldr (lambda (el r)
-                                     (if (and (pair? (cadr el))
-                                              (eq? (caadr el) 'lambda)
-                                              (not (member (car el) mvars)))
-                                         (cons CTX_CLO r)    ;; Non mutable and lambda, keep the type
-                                         (cons CTX_UNK r)))
-                                   '()
-                                   (cadr ast)))
-                          (ctx (alloc cgc ids ctx stack-types))
-                          (rids (reverse ids))
-                          (bind-lst (build-list (length ids) (lambda (n) (cons (list-ref rids n) n)))))
-
-                     (jump-to-version
-                       cgc
-                       (gen-ast-l (map cadr (cadr ast)) lazy-set)
-                       (ctx-bind-locals ctx bind-lst '() #t)))))))
-       lazy-pre)))
-
 ;; Create and return out lazy code object of let/letrec
 ;; Unbind locals, unbox result, and update ctx
 (define (get-lazy-lets-out ids succ)
@@ -1211,33 +1051,10 @@
       (lambda (cgc ctx)
         (let* ((type (car (ctx-stack ctx)))
                (loc  (ctx-get-loc ctx 0))
-               (mutable? (ctx-is-mutable? ctx 0))
                (ctx  (ctx-unbind-locals ctx ids))
                (ctx  (ctx-pop-n ctx (+ (length ids) 1)))
                (ctx  (ctx-push ctx type loc)))
-          (if mutable?
-              ;; Get free register to copy unboxed value
-              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
-                (apply-moves cgc ctx moves)
-                (let* ((loc  (ctx-get-loc ctx 0)) ;; ctx-get-free-reg could change loc
-                       (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
-                       (dest (codegen-reg-to-x86reg reg)))
-                  (if (ctx-loc-is-memory? loc)
-                      (begin
-                        (x86-mov cgc (x86-rax) opnd)
-                        (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                      (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) opnd))))
-                ;; Update ctx
-                (let ((ctx (ctx-push (ctx-pop ctx) type reg)))
-                  (jump-to-version cgc succ ctx)))
-              (jump-to-version cgc succ ctx)))))))
-
-(define (unbox-mutables cgc ctx idx-start idx-lim)
-  (if (< idx-start idx-lim)
-      (begin
-        (if (ctx-is-mutable? ctx idx-start)
-            (codegen-nunbox cgc (ctx-fs ctx) (ctx-get-loc ctx idx-start)))
-        (unbox-mutables cgc ctx (+ idx-start 1) idx-lim))))
+          (jump-to-version cgc succ ctx))))))
 
 ;;-----------------------------------------------------------------------------
 ;; SPECIAL
@@ -1339,9 +1156,8 @@
 
 ;; primitive not
 (define (prim-not cgc ctx reg succ cst-infos)
-  (let ((lval (ctx-get-loc ctx 0))
-        (mut-val? (ctx-is-mutable? ctx 0)))
-    (codegen-not cgc (ctx-fs ctx) reg lval mut-val?)
+  (let ((lval (ctx-get-loc ctx 0)))
+    (codegen-not cgc (ctx-fs ctx) reg lval #f)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))
 
 ;; primitive eq?

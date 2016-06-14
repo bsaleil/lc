@@ -103,14 +103,7 @@
                       (if free?
                           '()
                           (list-tail ss (- (length ss) 1))))
-                    (to-unbox
-                      (if (identifier-mutable? id)
-                          (if free?
-                              ss
-                              (if (null? ss)
-                                  '()
-                                  (list-head ss (- (length ss) 1))))
-                          '()))
+                    (to-unbox '()) ;; TODO remove all mutable related code
                     (env
                       (cons (cons (car el)
                                   ;; (identifier-copy identifier kind sslots flags stype cloc)
@@ -186,10 +179,6 @@
 ;              (make-list (length (ctx-stack ctx)) CTX_UNK)
 ;              (append (make-list (- (length (ctx-stack ctx)) 2) CTX_UNK) (list CTX_CLO CTX_RETAD)))))
 ;    (ctx-copy ctx st #f #f #f env #f #f)))
-
-
-(define (ctx-identifier-mutable? ctx identifier)
-  (member 'mutable (identifier-flags identifier)))
 
 (define (ctx-identifier-letrec-nm? ctx identifier)
   (member 'letrec-nm (identifier-flags identifier)))
@@ -281,25 +270,6 @@
           '()
           CTX_UNK ;; TODO: type (late-fbinds?)
           (cons 'f nvar)))))
-    ;(define env
-    ;  (init-env-*
-    ;    free-vars
-    ;    2
-    ;    0
-    ;    (lambda (id slot nvar)
-    ;      (let ((ident (ctx-ident enclosing-ctx id)))
-    ;        (make-identifier
-    ;          'free
-    ;          '()
-    ;          (identifier-flags (cdr ident))
-    ;          (if (and (ctx-identifier-mutable? enclosing-ctx (cdr ident))
-    ;                   (not (ctx-identifier-letrec-nm? enclosing-ctx (cdr ident))))
-    ;              CTX_UNK
-    ;              (ctx-identifier-type enclosing-ctx (cdr ident)))
-    ;          (cons 'f nvar))))))
-    ;(if lambda-opt
-    ;    (cons lambda-opt-entry env)
-    ;    env))
 
   (define (init-env-local)
     (init-env-*
