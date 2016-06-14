@@ -167,7 +167,6 @@
                      (##unbox             1  1  ,(prim-types 1 CTX_ALL)                     ())
                      (##set-box!          2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ())))
 
-
 (define (assert-p-nbargs ast)
   (let ((infos (cdr (assoc (car ast) primitives))))
     (assert (or (not (car infos)) ;; nb args and types are not fixed
@@ -1061,7 +1060,6 @@
              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
                (apply-moves cgc ctx moves)
                (x86-call cgc label-breakpoint-handler)
-               ;(gen-breakpoint cgc)
                (codegen-void cgc reg)
                (jump-to-version cgc succ (ctx-push ctx CTX_VOID reg))))))
         ((eq? (car ast) '$$sys-clock-gettime-ns)
@@ -1165,7 +1163,7 @@
                    (ctx-get-loc ctx 0)
                    (ctx-get-loc ctx 1))))
          (n-pop (count (list lcst rcst) not)))
-    (codegen-eq? cgc (ctx-fs ctx) reg lleft lright lcst rcst #f #f)
+    (codegen-eq? cgc (ctx-fs ctx) reg lleft lright lcst rcst)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_BOOL reg))))
 
 ;; primitives car & cdr
@@ -1185,7 +1183,7 @@
   (let* ((init-value? (= (length args) 2))
          (llen (ctx-get-loc ctx (if init-value? 1 0)))
          (lval (if init-value? (ctx-get-loc ctx 0) #f)))
-    (codegen-make-string cgc (ctx-fs ctx) reg llen lval #f #f)
+    (codegen-make-string cgc (ctx-fs ctx) reg llen lval)
     (jump-to-version cgc succ (ctx-push (if init-value?
                                             (ctx-pop-n ctx 2)
                                             (ctx-pop ctx))
@@ -1197,7 +1195,7 @@
   (let* ((init-value? (= (length args) 2))
          (llen (ctx-get-loc ctx (if init-value? 1 0)))
          (lval (if init-value? (ctx-get-loc ctx 0) #f)))
-    (codegen-make-vector cgc (ctx-fs ctx) reg llen lval #f #f)
+    (codegen-make-vector cgc (ctx-fs ctx) reg llen lval)
     (jump-to-version cgc succ (ctx-push (if init-value?
                                             (ctx-pop-n ctx 2)
                                             (ctx-pop ctx))
@@ -1253,7 +1251,7 @@
                    (ctx-get-loc ctx 1))))
          (n-pop (+ (count (list idx-cst chr-cst) not) 1))
          (lstr (ctx-get-loc ctx (- n-pop 1))))
-    (codegen-string-set! cgc (ctx-fs ctx) reg lstr lidx lchr idx-cst chr-cst #f #f #f)
+    (codegen-string-set! cgc (ctx-fs ctx) reg lstr lidx lchr idx-cst chr-cst)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_VOID reg))))
 
 ;;
@@ -1296,7 +1294,7 @@
 ;;
 (define (prim-unbox cgc ctx reg succ cst-infos)
   (let ((lbox (ctx-get-loc ctx 0)))
-    (codegen-punbox cgc (ctx-fs ctx) reg lbox)
+    (codegen-unbox cgc (ctx-fs ctx) reg lbox)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK reg))))
 
 ;; primitives set-car! & set-cdr!
@@ -1309,7 +1307,7 @@
                (ctx-get-loc ctx 0)
                (ctx-get-loc ctx 1)))
          (n-pop (if valcst 1 2)))
-    (codegen-scar/scdr cgc (ctx-fs ctx) op reg lpair lval valcst #f #f)
+    (codegen-scar/scdr cgc (ctx-fs ctx) op reg lpair lval valcst)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_VOID reg))))
 
 ;; primitives current-input-port & current-output-port
@@ -1333,7 +1331,7 @@
               (cdr cst-arg)
               (ctx-get-loc ctx 0)))
          (n-pop (if cst-arg 0 1)))
-    (codegen-ch<->int cgc (ctx-fs ctx) op reg lval cst-arg #f)
+    (codegen-ch<->int cgc (ctx-fs ctx) op reg lval cst-arg)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop)
                                         (if (eq? op 'char->integer)
                                             CTX_INT
@@ -2075,8 +2073,8 @@
           (apply-moves cgc ctx moves)
 
           (if num-op?
-              (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #f #f)
-              (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #f #f inline-if-labels))
+              (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst)
+              (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst inline-if-labels))
 
           (if (not inlined-if-cond?)
               (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg)))))))
@@ -2390,25 +2388,6 @@
                                                enc-ids))
                   ;; Call
                   (else (free-vars-l body params enc-ids)))))))
-
-;;
-;; OPTIMIZATIONS
-;;
-
-;; Shift stack slots for tail call optimization
-;; 'nb': nb of slot to shift
-;; 'init-from': position of first slot to move
-;; 'init-to': destination of the first slot to move
-(define (tail-shift cgc nb init-from init-to)
-  (tail-shift-h cgc nb init-from init-to (- init-to init-from)))
-
-(define (tail-shift-h cgc curr from to rsp-offset)
-  (if (= curr 0)
-      ;; All shifted, update RSP
-      (codegen-clean-stack cgc rsp-offset)
-      ;; Shift next
-      (begin (codegen-tco-move-arg cgc from to)
-             (tail-shift-h cgc (- curr 1) (- from 1) (- to 1) rsp-offset))))
 
 ;;
 ;; UTILS

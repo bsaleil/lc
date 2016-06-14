@@ -103,14 +103,13 @@
                       (if free?
                           '()
                           (list-tail ss (- (length ss) 1))))
-                    (to-unbox '()) ;; TODO remove all mutable related code
                     (env
                       (cons (cons (car el)
                                   ;; (identifier-copy identifier kind sslots flags stype cloc)
                                   (identifier-copy (cdr el) #f nss #f #f #f))
-                            (car r))))
-               (cons env (append to-unbox (cdr r)))))
-           (cons '() '()) ;; env, to-unbox
+                            r)))
+               env))
+           '()
            (ctx-env ctx)))
 
   ;; TODO WIP
@@ -149,22 +148,13 @@
           (cons ctx moves))))
 
   (let* ((stack (stack-gen))
-         (env/tu   (env-gen))
-         (env (car env/tu))
-         (slots-to-unbox (cdr env/tu)))
+         (env   (env-gen)))
     (let* ((r (sl-gen (ctx-copy ctx stack #f #f #f env) '()))
            (ctx (car r))
-           (moves (cdr r))
-           (locs-to-unbox (map (lambda (i) (cons 'unbox (ctx-get-loc ctx (slot-to-stack-idx ctx i))))
-                               slots-to-unbox)))
+           (moves (cdr r)))
 
       (cons ctx
-            (append
-              (steps moves)
-              locs-to-unbox)))))
-
-(define (ctx-identifier-letrec-nm? ctx identifier)
-  (member 'letrec-nm (identifier-flags identifier)))
+            (steps moves)))))
 
 ;; CTX IDENTIFIER LOC
 ;; Return best loc for identifier. (Register if available, memory otherwise)

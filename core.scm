@@ -1019,13 +1019,6 @@
 
   (define (apply-move move)
     (cond ((equal? (car move) (cdr move)) #f)
-          ((eq? (car move) 'unbox)
-           (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
-             (if (x86-mem? opnd)
-                 (begin (x86-mov cgc (x86-rax) opnd)
-                        (x86-mov cgc (x86-rax) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)))
-                        (x86-mov cgc opnd (x86-rax)))
-                 (x86-mov cgc opnd (x86-mem (- 8 TAG_MEMOBJ) opnd)))))
           ((eq? (car move) 'fs)
            (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 (cdr move)))))
           ((and (ctx-loc-is-register? (car move))
@@ -1281,15 +1274,6 @@
   ;; sp-add: number of word added to adjust sp for ctx merging
   ;; moves: moves required for ctx merging
   (define (ctx-merge src-ctx dst-ctx)
-    (define (get-to-unbox env)
-      (if (null? env)
-          '()
-          (let* ((identifier (cdar env))
-                 (free? (eq? (identifier-kind identifier) 'free))
-                 (ss (identifier-sslots identifier)))
-            (if #f;(identifier-mutable? identifier)
-                #f ;; TODO: remove all mutable related code
-                (get-to-unbox (cdr env))))))
     (define (get-sp-add)
       (- (ctx-fs src-ctx) (ctx-fs dst-ctx)))
     (define (get-moves)
@@ -1299,14 +1283,9 @@
             (cons (cons (cdar sl)
                         (cdr (assoc (caar sl) (ctx-slot-loc dst-ctx))))
                         (loop (cdr sl))))))
-    (define locs-to-unbox
-      (map (lambda (slot)
-             (cons 'unbox (ctx-get-loc dst-ctx (slot-to-stack-idx dst-ctx slot))))
-           (get-to-unbox (ctx-env src-ctx))))
 
     (list
-      (append (steps (get-moves))
-              locs-to-unbox)
+      (steps (get-moves))
       (get-sp-add)))
 
   (let* ((r (ctx-merge ctx generic-ctx))
