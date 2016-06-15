@@ -34,7 +34,7 @@
 
 (define-macro (assert c err)
   `(if (not ,c)
-       (begin (pp ast)
+       (begin
         (println "!!! ERROR : " ,err)
         (exit 1))))
 
