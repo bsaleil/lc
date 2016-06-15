@@ -286,6 +286,19 @@
     (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
     (x86-label cgc label-next)))
 
+(define (codegen-subtyped? cgc fs reg lval)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opval (codegen-loc-to-x86opnd fs lval))
+        (label-end (asm-make-label #f (new-sym 'subtyped_end_))))
+
+    (x86-mov cgc (x86-rax) opval)
+    (x86-and cgc (x86-rax) (x86-imm-int 3))
+    (x86-cmp cgc (x86-rax) (x86-imm-int 1))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+    (x86-je  cgc label-end)
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+    (x86-label cgc label-end)))
+
 (define (codegen-fixnum->flonum cgc fs reg lval)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (lval  (codegen-loc-to-x86opnd fs lval)))
@@ -590,52 +603,49 @@
 ;; N-ary arithmetic operators
 
 ;; Gen code for arithmetic operation on int/int
-(define (codegen-num-ii cgc fs op reg lleft lright lcst? rcst?)
+(define (codegen-num-ii cgc fs op reg lleft lright lcst? rcst? overflow?)
 
   (assert (not (and lcst? rcst?)) "Internal codegen error")
 
   (let ((labels-overflow (add-callback #f 0 (lambda (ret-addr selector)
                                               (error ERR_ARR_OVERFLOW))))
-        (dest (codegen-reg-to-x86reg reg))
-        (opleft  (lambda () (and (not lcst?) (codegen-loc-to-x86opnd fs lleft))))
-        (opright (lambda () (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
-        (oprax   (lambda () (x86-rax))))
+        (dest    (codegen-reg-to-x86reg reg))
+        (opleft  (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
+        (opright (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
 
-   (begin-with-cg-macro
+   ;; Handle cases like 1. 2. etc...
+   (if (and lcst? (flonum? lleft))
+       (set! lleft (##flonum->fixnum lleft)))
+   (if (and rcst? (flonum? lright))
+       (set! lright (##flonum->fixnum lright)))
 
-     ;;
-     ;; Primitive code
+   (cond
+     (lcst?
+       (cond ((eq? op '+) (x86-mov cgc dest opright)
+                          (x86-add cgc dest (x86-imm-int (obj-encoding lleft))))
+             ((eq? op '-) (x86-mov cgc dest (x86-imm-int (obj-encoding lleft)))
+                          (x86-sub cgc dest opright))
+             ((eq? op '*) (x86-imul cgc dest opright (x86-imm-int lleft)))))
+     (rcst?
+       (cond ((eq? op '+) (x86-mov cgc dest opleft)
+                          (x86-add cgc dest (x86-imm-int (obj-encoding lright))))
+             ((eq? op '-) (x86-mov cgc dest opleft)
+                          (x86-sub cgc dest (x86-imm-int (obj-encoding lright))))
+             ((eq? op '*) (x86-imul cgc dest opleft (x86-imm-int lright)))))
+     (else
+       (x86-mov cgc dest opleft)
+       (cond ((eq? op '+) (x86-add cgc dest opright))
+             ((eq? op '-) (x86-sub cgc dest opright))
+             ((eq? op '*) (x86-sar cgc dest (x86-imm-int 2))
+                          (x86-imul cgc dest opright)))))
 
-     ;; Handle cases like 1. 2. etc...
-     (if (and lcst? (flonum? lleft))
-         (set! lleft (##flonum->fixnum lleft)))
-     (if (and rcst? (flonum? lright))
-         (set! lright (##flonum->fixnum lright)))
-
-     (cond
-       (lcst?
-         (cond ((eq? op '+) (x86-mov cgc dest (opright))
-                            (x86-add cgc dest (x86-imm-int (obj-encoding lleft))))
-               ((eq? op '-) (x86-mov cgc dest (x86-imm-int (obj-encoding lleft)))
-                            (x86-sub cgc dest (opright)))
-               ((eq? op '*) (x86-imul cgc dest (opright) (x86-imm-int lleft)))))
-       (rcst?
-         (cond ((eq? op '+) (x86-mov cgc dest (opleft))
-                            (x86-add cgc dest (x86-imm-int (obj-encoding lright))))
-               ((eq? op '-) (x86-mov cgc dest (opleft))
-                            (x86-sub cgc dest (x86-imm-int (obj-encoding lright))))
-               ((eq? op '*) (x86-imul cgc dest (opleft) (x86-imm-int lright)))))
-       (else
-         (x86-mov cgc dest (opleft))
-         (cond ((eq? op '+) (x86-add cgc dest (opright)))
-               ((eq? op '-) (x86-sub cgc dest (opright)))
-               ((eq? op '*) (x86-sar cgc dest (x86-imm-int 2))
-                            (x86-imul cgc dest (opright))))))
-
-     (x86-jo cgc (list-ref labels-overflow 0)))))
+   (if overflow?
+       (x86-jo cgc (list-ref labels-overflow 0)))))
 
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
-(define (codegen-num-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst?)
+(define (codegen-num-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst? overflow?)
+
+  ;; TODO: overflow
 
   (assert (not (and lcst? rcst?)) "Internal codegen error")
 

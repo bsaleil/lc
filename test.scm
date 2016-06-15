@@ -1,11 +1,7 @@
 
+(define (foo) 0)
 
-(define (foo proc)
-  (call-with-current-continuation
-    (lambda (cont) (proc))))
-
-(foo (lambda () (println 100)))
-
+(pp (##fx-? (foo) 34343))
 
 
 ;; TODO uniformiser: si --max-versions 3, ona droit a 3 versions + la générique

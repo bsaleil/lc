@@ -161,8 +161,18 @@
                      (current-output-port 0  0  ,(prim-types 0 )                            ())
                      (current-input-port  0  0  ,(prim-types 0 )                            ())
 
-                     (##fixnum->flonum   1  1  ,(prim-types 1 CTX_ALL)                     ())
+                     (##fx+               2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
+                     (##fx-               2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
+                     (##fx*               2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
+                     (##fx+?              2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
+                     (##fx-?              2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
+                     (##fx*?              2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
+                     (##fl+               2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
+                     (##fl-               2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
+                     (##fl*               2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
+                     (##fixnum->flonum    1  1  ,(prim-types 1 CTX_ALL)                     ())
                      (##mem-allocated?    1  1  ,(prim-types 1 CTX_ALL)                     ())
+                     (##subtyped?         1  1  ,(prim-types 1 CTX_ALL)                     ())
                      (##box               1  1  ,(prim-types 1 CTX_ALL)                     ())
                      (##unbox             1  1  ,(prim-types 1 CTX_ALL)                     ())
                      (##set-box!          2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ())))
@@ -1028,8 +1038,6 @@
 
           (set! imm-info  (car infos))
           (set! late-info (cdr infos))
-          ;(if (not (null? (car infos)))
-          ;    (error "NYI letrec"))
           (jump-to-version cgc (mlc-lambdas imm-info late-info lazy-set) ctx))))))
 
 ;; Create and return out lazy code object of let/letrec
@@ -1273,6 +1281,62 @@
   (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg)))
 
 ;;
+(define (prim-subtyped? cgc ctx reg succ cst-infos)
+  (let ((lval (ctx-get-loc ctx 0)))
+    (codegen-subtyped? cgc (ctx-fs ctx) reg lval)
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))
+
+;;
+(define (prim-fxl-op cgc ctx reg succ cst-infos op cgcfn)
+  (let* ((rcst  (assoc 1 cst-infos))
+         (lcst  (assoc 0 cst-infos))
+         (n-pop  (count (list lcst rcst) not))
+         (lright (or (and rcst (cdr rcst)) (ctx-get-loc ctx 0)))
+         (lleft  (or (and lcst (cdr lcst))
+                     (if rcst
+                         (ctx-get-loc ctx 0)
+                         (ctx-get-loc ctx 1)))))
+    (if (and lcst rcst)
+        (codegen-literal cgc (+ (cdr lcst) (cdr rcst)) reg)
+        (if (eq? cgcfn codegen-num-ii)
+            (cgcfn cgc (ctx-fs ctx) op reg lleft lright lcst rcst #f)
+            (cgcfn cgc (ctx-fs ctx) op reg lleft #f lright #f lcst rcst #f)))
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_INT reg))))
+
+(define (prim-fxl?-op cgc ctx reg succ cst-infos op cgcfn)
+
+  (let* (;; Primitive
+         (rcst  (assoc 1 cst-infos))
+         (lcst  (assoc 0 cst-infos))
+         (n-pop  (count (list lcst rcst) not))
+         (lright (or (and rcst (cdr rcst)) (ctx-get-loc ctx 0)))
+         (lleft  (or (and lcst (cdr lcst))
+                     (if rcst
+                         (ctx-get-loc ctx 0)
+                         (ctx-get-loc ctx 1))))
+         ;; Branch generator
+         (generator
+           (lambda (cgc)
+             (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #f)))
+         ;; No overflow, next is succ
+         (lazy-false succ)
+         (ctx-false (ctx-push (ctx-pop-n ctx n-pop) CTX_INT reg))
+         ;; Overflow, next is a new lco
+         (lazy-true
+           (make-lazy-code
+             (lambda (cgc ctx)
+               (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int (obj-encoding #f)))
+               (jump-to-version cgc succ ctx))))
+         (ctx-true (ctx-push (ctx-pop-n ctx n-pop) CTX_BOOL reg)))
+
+  (assert (not (and lcst rcst)) "Internal error")
+
+  (jump-to-version
+    cgc
+    (mlc-branch x86-jo generator lazy-true lazy-false ctx-true ctx-false)
+    ctx)))
+
+;;
 (define (prim-fixnum->flonum cgc ctx reg succ cst-infos)
   (let ((lval (ctx-get-loc ctx 0)))
     (codegen-fixnum->flonum cgc (ctx-fs ctx) reg lval)
@@ -1351,6 +1415,11 @@
 ;;
 (define (mlc-primitive ast succ)
 
+  (let ((op (car ast)))
+    (cond ((and (= (length ast) 2)
+                (member op '(##fx-? ##fl-)))
+             (set! ast (list op 0 (cadr ast))))))
+
   ;; Assert primitive nb args
   (assert-p-nbargs ast)
 
@@ -1379,8 +1448,18 @@
                        ((vector-set!)       (prim-vector-set!    cgc ctx reg succ cst-infos))
                        ((string-set!)       (prim-string-set!    cgc ctx reg succ cst-infos))
                        ((symbol->string)    (prim-symbol->string cgc ctx reg succ cst-infos))
+                       ((##fx+)             (prim-fxl-op         cgc ctx reg succ cst-infos '+ codegen-num-ii))
+                       ((##fx-)             (prim-fxl-op         cgc ctx reg succ cst-infos '- codegen-num-ii))
+                       ((##fx*)             (prim-fxl-op         cgc ctx reg succ cst-infos '* codegen-num-ii))
+                       ((##fx+?)            (prim-fxl?-op        cgc ctx reg succ cst-infos '+ codegen-num-ii))
+                       ((##fx-?)            (prim-fxl?-op        cgc ctx reg succ cst-infos '- codegen-num-ii))
+                       ((##fx*?)            (prim-fxl?-op        cgc ctx reg succ cst-infos '* codegen-num-ii))
+                       ((##fl+)             (prim-fxl-op         cgc ctx reg succ cst-infos '+ codegen-num-ff))
+                       ((##fl-)             (prim-fxl-op         cgc ctx reg succ cst-infos '- codegen-num-ff))
+                       ((##fl*)             (prim-fxl-op         cgc ctx reg succ cst-infos '* codegen-num-ff))
                        ((##fixnum->flonum)  (prim-fixnum->flonum cgc ctx reg succ cst-infos))
                        ((##mem-allocated?)  (prim-mem-allocated? cgc ctx reg succ cst-infos))
+                       ((##subtyped?)       (prim-subtyped?      cgc ctx reg succ cst-infos))
                        ((##box)             (prim-box            cgc ctx reg succ cst-infos))
                        ((##unbox)           (prim-unbox          cgc ctx reg succ cst-infos))
                        ((##set-box!)        (prim-set-box!       cgc ctx reg succ cst-infos))
@@ -1464,7 +1543,7 @@
   (check-types-h types args 0))
 
 ;;-----------------------------------------------------------------------------
-;; Conditionals
+;; Branches
 
 ;;
 ;; Make lazy code from IF
@@ -1619,6 +1698,60 @@
         (gen-ast
           (cadr ast)
           lazy-code-test))))
+
+(define (mlc-branch x86-jop generator lazy-true lazy-false ctx-true ctx-false)
+
+  (make-lazy-code
+    (lambda (cgc ctx)
+
+      (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
+             (stub-first-label-addr #f)
+             (stub-labels
+               (add-callback cgc 1
+                 (let ((prev-action #f))
+                   (lambda (ret-addr selector)
+                     (let ((stub-addr stub-first-label-addr)
+                           (jump-addr (asm-label-pos label-jump)))
+
+                       (if (not prev-action)
+                           (begin (set! prev-action 'no-swap)
+                                  (if (= selector 1)
+                                      ;; overwrite unconditional jump
+                                      (gen-version (+ jump-addr 6) lazy-false ctx-false)
+                                      (if (= (+ jump-addr 6 5) code-alloc)
+                                          (begin (if opt-verbose-jit (println ">>> swapping-branches"))
+                                                 (set! prev-action 'swap)
+                                                 ;; invert jump direction
+                                                 (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
+                                                 ;; make conditional jump to stub
+                                                 (patch-jump jump-addr stub-addr)
+                                                 ;; overwrite unconditional jump
+                                                 (gen-version
+                                                              (+ jump-addr 6)
+                                                              lazy-true
+                                                              ctx-true))
+
+                                          ;; make conditional jump to new version
+                                          (gen-version jump-addr lazy-true ctx-true))))
+
+                           (begin ;; one branch has already been patched
+                                  ;; reclaim the stub
+                                  (release-still-vector (get-scmobj ret-addr))
+                                  (stub-reclaim stub-addr)
+                                  (if (= selector 0)
+                                     (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-true ctx-true)
+                                     (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-false ctx-false))))))))))
+
+        (set! stub-first-label-addr
+              (min (asm-label-pos (list-ref stub-labels 0))
+                   (asm-label-pos (list-ref stub-labels 1))))
+
+        (generator cgc)
+
+        (x86-label cgc label-jump)
+        (x86-jop cgc (list-ref stub-labels 0))
+        (x86-jmp cgc (list-ref stub-labels 1))))))
+
 
 ;;-----------------------------------------------------------------------------
 ;; APPLY & CALL
@@ -2073,7 +2206,7 @@
           (apply-moves cgc ctx moves)
 
           (if num-op?
-              (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst)
+              (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #t)
               (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst inline-if-labels))
 
           (if (not inlined-if-cond?)
@@ -2097,7 +2230,7 @@
                (n-pop (count (list lcst rcst) not)))
           (apply-moves cgc ctx moves)
           (if num-op?
-              (codegen-num-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst)
+              (codegen-num-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst #t)
               (codegen-cmp-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst inline-if-labels))
 
           (if (not inlined-if-cond?)
