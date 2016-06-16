@@ -1,7 +1,7 @@
 
 (define (foo) 0)
 
-(pp (##fx-? (foo) 34343))
+(pp (cons (foo) (foo)))
 
 
 ;; TODO uniformiser: si --max-versions 3, ona droit a 3 versions + la générique

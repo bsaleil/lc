@@ -1561,7 +1561,7 @@
          (lazy-code1
            (gen-ast (caddr ast) succ))
          (lazy-code-test
-           (make-lazy-code
+           (make-lazy-code-cond
              (lambda (cgc ctx)
                (let* ((n-pop (count (list cleft cright) (lambda (n) (not (integer? n)))))
                       (ctx0

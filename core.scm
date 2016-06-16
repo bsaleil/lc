@@ -1003,6 +1003,11 @@
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
+(define (make-lazy-code-cond generator)
+  (let ((lc (make-lazy-code* generator (make-table) '(cond) #f #f)))
+    (set! all-lazy-code (cons lc all-lazy-code))
+    lc))
+
 (define (get-version lazy-code ctx)
   (let ((versions (lazy-code-versions lazy-code)))
     (table-ref versions ctx #f)))
