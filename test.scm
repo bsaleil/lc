@@ -1,7 +1,35 @@
 
-(define (foo) 0)
 
-(pp (cons (foo) (foo)))
+
+
+(letrec ((foo
+          (lambda (n)
+            (if (= n 0)
+                1
+                (foo (- n 1))))))
+
+  (foo 100000))
+
+;; Si une lambda est bindée à un id (let et letrec)
+;;  -> alors cet id est immutable, sinon ça serait une box
+;;  -> dans ce cas, on peut associé à l'id l'adresse de la cctable de la fonction (ou id, ...)
+;; ainsi à chaque appel du type:
+;;  (foo ...)
+;;  -> on connait l'identité de la fonction
+;;  -> donc on peut générer un appel optimisé vers le pt entrée
+
+
+;; au letrec: pour compiler la lambda (mlc-lambda)
+;; au letrec: pour compiler le corps du letrec
+;; au let: pour compiler le corps du let
+
+;(define (foo w)
+;  (letrec ((loop (lambda (a x) (begin (pp w) (if (= a x) 1 (loop (+ a 1) x))))))
+;    (pp (loop 1 5))))
+;
+;(foo 100)
+;(foo #f)
+
 
 
 ;; TODO uniformiser: si --max-versions 3, ona droit a 3 versions + la générique

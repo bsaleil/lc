@@ -187,7 +187,7 @@
 
 ;;
 ;; CTX INIT FN
-(define (ctx-init-fn stack enclosing-ctx args free-vars global-opt? lambda-opt)
+(define (ctx-init-fn stack enclosing-ctx args free-vars global-opt?)
 
   ;;
   ;; FREE REGS
@@ -218,10 +218,6 @@
                 (init-env-* (cdr ids) (+ slot 1) (+ nvar 1) fn-make)))))
 
   (define (init-env-free)
-    ;; Create environment entry if lambda-opt
-    (define lambda-opt-entry
-      (if lambda-opt
-          (cons lambda-opt (make-identifier 'free '() '() CTX_CLO (cons 'f (length free-vars))))))
     ;; Create environment entries for free variables
     (init-env-*
       free-vars

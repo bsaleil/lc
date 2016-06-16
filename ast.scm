@@ -220,7 +220,7 @@
                  ;; Set!
                  ((eq? 'set! (car ast)) (mlc-set! ast succ))
                  ;; Lambda
-                 ((eq? op 'lambda) (mlc-lambda ast succ #f #f))
+                 ((eq? op 'lambda) (mlc-lambda ast succ #f))
                  ;; Begin
                  ((eq? op 'begin) (mlc-begin ast succ))
                  ;; Binding
@@ -541,7 +541,7 @@
                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID reg))))))
          (lazy-val
            (if (eq? (table-ref gids (cadr ast) #f) CTX_CLO)
-               (mlc-lambda (caddr ast) lazy-bind (cadr ast) #f)
+               (mlc-lambda (caddr ast) lazy-bind (cadr ast))
                (gen-ast (caddr ast) lazy-bind))))
 
     (make-lazy-code
@@ -556,7 +556,7 @@
 ;; Make lazy code from LAMBDA
 ;;
 
-(define (mlc-lambda ast succ global-opt lambda-opt #!optional (sfvars #f) (late-fbinds '()))
+(define (mlc-lambda ast succ global-opt #!optional (sfvars #f) (late-fbinds '()))
 
   (let* (;; Lambda free vars
          (fvars #f)
@@ -634,7 +634,7 @@
 
                                               (cond ;; CASE 1 - Use entry point (no cctable)
                                                     ((eq? opt-entry-points #f)
-                                                     (let ((ctx (ctx-init-fn stack ctx all-params free global-opt lambda-opt)))
+                                                     (let ((ctx (ctx-init-fn stack ctx all-params free global-opt)))
                                                        (gen-version-fn ast closure lazy-prologue-gen ctx stack #f global-opt)))
 
                                                     ;; CASE 2 - Use multiple entry points AND use max-versions limit AND this limit is reached
@@ -643,12 +643,12 @@
                                                          (and (= selector 0)
                                                               opt-max-versions
                                                               (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions)))
-                                                     (let ((ctx (ctx-init-fn #f ctx all-params free global-opt lambda-opt)))
+                                                     (let ((ctx (ctx-init-fn #f ctx all-params free global-opt)))
                                                        (gen-version-fn ast closure lazy-prologue-gen ctx stack #t global-opt)))
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
-                                                       (let ((ctx (ctx-init-fn stack ctx all-params free global-opt lambda-opt)))
+                                                       (let ((ctx (ctx-init-fn stack ctx all-params free global-opt)))
                                                          (gen-version-fn ast closure lazy-prologue ctx stack #f global-opt)))))))
 
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
@@ -667,10 +667,10 @@
           (if cctable-new?
               (cctable-fill cctable stub-addr generic-addr))
 
-          (let ((close-length (+ (length fvars) (length late-fbinds) (if lambda-opt 1 0))))
+          (let ((close-length (+ (length fvars) (length late-fbinds))))
 
             ;; Create closure
-            ;; Closure size = lenght of free variables + 1 if lambda-opt
+            ;; Closure size = lenght of free variables
             (codegen-closure-create cgc close-length)
 
             ;; Write entry point or cctable location
@@ -682,9 +682,9 @@
                   (codegen-closure-ep cgc ep-loc close-length)))
 
             ;; Write free variables
-            (let* ((free-offset (* -1 (+ (length fvars) (length late-fbinds) (if lambda-opt 1 0))))
+            (let* ((free-offset (* -1 (+ (length fvars) (length late-fbinds))))
                    (clo-offset  (- free-offset 2)))
-              (gen-free-vars cgc fvars ctx free-offset clo-offset lambda-opt))
+              (gen-free-vars cgc fvars ctx free-offset clo-offset))
 
             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
               (apply-moves cgc ctx moves)
@@ -879,25 +879,6 @@
                  (jump-to-version cgc lazy-body ctx))))))
    (gen-ast-l values lazy-binds)))
 
-;; TODO
-;; TODO
-
-
-;(define (mlc-lambdas asts ids succ free-inf)
-;  (pp "OOO")
-;  (pp ids)
-;  (if (null? asts)
-;      succ
-;      (let* ((fvars (cdr (assoc (car ids) free-inf)))
-;             (late-fbinds (set-inter fvars ids)))
-;
-;        (mlc-lambda (car asts)
-;                    (mlc-lambdas (cdr asts) ids succ free-inf)
-;                    #f
-;                    #f
-;                    fvars
-;                    late-fbinds))))
-
 ;; TODO: rename
 (define (mlc-lambdas imm-infos late-infos succ)
 
@@ -906,7 +887,7 @@
            (late  (cadddr info))
            (code  (cadddr (cdr info)))
            (next  (mlc-lambdas imm-infos (cdr late-infos) succ)))
-      (mlc-lambda code next #f #f fvars late)))
+      (mlc-lambda code next #f fvars late)))
 
   (define (gen-imm info)
     (let ((next (mlc-lambdas (cdr imm-infos) late-infos succ)))
@@ -921,20 +902,6 @@
            (gen-late (car late-infos)))
         (else
            (gen-imm  (car imm-infos)))))
-  ;(if (null? infos)
-  ;    succ
-  ;    (let* ((info (car infos))
-  ;           (fvars (caddr info))
-  ;           (late  (cadddr info))
-  ;           (code  (cadddr (cdr info))))
-  ;
-  ;      (mlc-lambda
-  ;        code
-  ;        (mlc-lambdas (cdr infos) succ)
-  ;        #f
-  ;        #f
-  ;        fvars
-  ;        late))))
 
 ;;
 ;; Make lazy code from LETREC
@@ -1891,7 +1858,8 @@
                 (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift 1) curr)) (x86-rsp)) (x86-r14))
                 (loop (- curr 1)))))
 
-        (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- fs nshift 1)))))))
+        (if (not (= (- fs nshift 1) 0))
+            (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- fs nshift 1))))))))
 
 ;;
 ;; Make lazy code from CALL EXPR
@@ -2454,12 +2422,9 @@
 
 ;; free-offset is the current free variable offset position from alloc-ptr
 ;; clo-offset is the closure offset position from alloc-ptr
-;; TODO: remove all old lambda-opt mechanism
-(define (gen-free-vars cgc ids ctx free-offset clo-offset lambda-opt)
+(define (gen-free-vars cgc ids ctx free-offset clo-offset)
   (if (null? ids)
-      (if lambda-opt
-          (begin (x86-lea cgc (x86-rax) (x86-mem (+ (* 8 clo-offset) TAG_MEMOBJ) alloc-ptr))
-                 (x86-mov cgc (x86-mem (* 8 free-offset) alloc-ptr) (x86-rax))))
+      #f
       (let* ((identifier (cdr (assoc (car ids) (ctx-env ctx))))
              (loc (ctx-identifier-loc ctx identifier))
              (opn
@@ -2485,7 +2450,7 @@
                      (else
                        (codegen-reg-to-x86reg loc)))))
         (x86-mov cgc (x86-mem (* 8 free-offset) alloc-ptr) opn)
-        (gen-free-vars cgc (cdr ids) ctx (+ free-offset 1) clo-offset lambda-opt))))
+        (gen-free-vars cgc (cdr ids) ctx (+ free-offset 1) clo-offset))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst params enc-ids)

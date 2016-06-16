@@ -159,6 +159,7 @@
     (,display . display)
     (,##char-whitespace? . char-whitespace?)
     (,##char-downcase . char-downcase)
+    (,char-downcase . char-downcase)
     (,##eqv? . eqv?)
     (,vector . vector)
     (,##vector . vector)
