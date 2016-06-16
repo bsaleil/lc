@@ -1,14 +1,18 @@
 
 
 
+(define (foo a b c)
+  (+ a b c))
 
-(letrec ((foo
-          (lambda (n)
-            (if (= n 0)
-                1
-                (foo (- n 1))))))
+(foo 10 20 30)
 
-  (foo 100000))
+;(letrec ((foo
+;          (lambda (n)
+;            (if (= n 0)
+;                1
+;                (foo (- n 1))))))
+;
+;  (foo 100000))
 
 ;; Si une lambda est bindée à un id (let et letrec)
 ;;  -> alors cet id est immutable, sinon ça serait une box

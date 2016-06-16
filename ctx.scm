@@ -187,7 +187,7 @@
 
 ;;
 ;; CTX INIT FN
-(define (ctx-init-fn stack enclosing-ctx args free-vars global-opt?)
+(define (ctx-init-fn stack enclosing-ctx args free-vars global-opt? late-fbinds)
 
   ;;
   ;; FREE REGS
@@ -228,7 +228,12 @@
           'free
           '()
           '()
-          CTX_UNK ;; TODO: type (late-fbinds?)
+          (if (member id late-fbinds)
+              ;; If id is a late-fbind, type it's a function
+              CTX_CLO
+              ;; Else, get type from enclosing ctx
+              (let ((ident (ctx-ident enclosing-ctx id)))
+                (ctx-identifier-type enclosing-ctx (cdr ident))))
           (cons 'f nvar)))))
 
   (define (init-env-local)

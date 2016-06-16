@@ -634,7 +634,7 @@
 
                                               (cond ;; CASE 1 - Use entry point (no cctable)
                                                     ((eq? opt-entry-points #f)
-                                                     (let ((ctx (ctx-init-fn stack ctx all-params free global-opt)))
+                                                     (let ((ctx (ctx-init-fn stack ctx all-params free global-opt late-fbinds)))
                                                        (gen-version-fn ast closure lazy-prologue-gen ctx stack #f global-opt)))
 
                                                     ;; CASE 2 - Use multiple entry points AND use max-versions limit AND this limit is reached
@@ -643,12 +643,12 @@
                                                          (and (= selector 0)
                                                               opt-max-versions
                                                               (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions)))
-                                                     (let ((ctx (ctx-init-fn #f ctx all-params free global-opt)))
+                                                     (let ((ctx (ctx-init-fn #f ctx all-params free global-opt late-fbinds)))
                                                        (gen-version-fn ast closure lazy-prologue-gen ctx stack #t global-opt)))
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
-                                                       (let ((ctx (ctx-init-fn stack ctx all-params free global-opt)))
+                                                       (let ((ctx (ctx-init-fn stack ctx all-params free global-opt late-fbinds)))
                                                          (gen-version-fn ast closure lazy-prologue ctx stack #f global-opt)))))))
 
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
