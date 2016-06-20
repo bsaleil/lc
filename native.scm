@@ -50,6 +50,12 @@
   (x86-push cgc (x86-rdi))
   (x86-push cgc (x86-rsi))
 
+  ;;; Use pstack for system call
+  (x86-mov cgc (x86-rax) (x86-rsp)) ;; get ustack ptr in rax
+  (x86-mov cgc (x86-rcx) (x86-imm-int block-addr))
+  (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rcx))) ;; set rsp to pstack
+  (x86-push cgc (x86-rax)) ;; save ustack ptr in pstack
+
   ;; Clock in rdi
   (x86-mov cgc (x86-rdi) (x86-imm-int C_CLOCK_MONOTONIC))
 
@@ -69,6 +75,8 @@
   (x86-add cgc (x86-rax) (x86-mem C_TIMESPEC_NSEC_OFFSET (x86-rsp)))
 
   (x86-add cgc (x86-rsp) (x86-imm-int C_SIZEOF_TIMESPEC))
+
+  (x86-pop cgc (x86-rsp))
 
   (x86-pop cgc (x86-rsi))
   (x86-pop cgc (x86-rdi))
