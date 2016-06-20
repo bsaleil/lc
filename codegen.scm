@@ -545,39 +545,50 @@
   (x86-jmp cgc (x86-rax)))
 
 ;; Generate function call using a single entry point
-(define (codegen-call-ep cgc nb-args ep-loc)
+(define (codegen-call-ep cgc nb-args eploc global-eploc?)
   ;; TODO: use call/ret if opt-entry-points opt-return-points are #f
   (if nb-args ;; If nb-args given, move encoded in rdi, else nb-args is already encoded in rdi (apply)
       (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args))))
-  (if ep-loc
-      (x86-jmp cgc (x86-mem (+ (obj-encoding ep-loc) 7) #f))
-      (begin (x86-mov cgc (x86-rsi) (x86-rax))
-             (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
-             (x86-jmp cgc (x86-rbp)))))
+
+  (cond ((and eploc global-eploc?)
+           (x86-jmp cgc (x86-mem (+ (obj-encoding eploc) 7) #f)))
+        (eploc
+           (x86-mov cgc (x86-rsi) (x86-rax))
+           (x86-jmp cgc (x86-mem (+ (obj-encoding eploc) 7) #f)))
+        (else
+           (x86-mov cgc (x86-rsi) (x86-rax))
+           (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
+           (x86-jmp cgc (x86-rbp)))))
 
 ;;; Generate function call using a cctable and generic entry point
-(define (codegen-call-cc-gen cgc nb-args cctable-loc)
+(define (codegen-call-cc-gen cgc nb-args eploc global-eploc?)
   (if nb-args
       (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args))))
-  (if cctable-loc
-      (x86-mov cgc (x86-rbp) (x86-imm-int cctable-loc))
-      (begin
-        (x86-mov cgc (x86-rsi) (x86-rax))
-        (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi))))) ;; Get table
+  (cond ((and eploc global-eploc?)
+           (x86-mov cgc (x86-rbp) (x86-imm-int eploc)))
+        (eploc
+           (x86-mov cgc (x86-rsi) (x86-rax))
+           (x86-mov cgc (x86-rbp) (x86-imm-int eploc)))
+        (else
+           (x86-mov cgc (x86-rsi) (x86-rax))
+           (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi))))) ;; Get table
   (x86-jmp cgc (x86-mem 8 (x86-rbp)))) ;; Jump to generic entry point
 
 ;; Generate function call using a cctable and specialized entry point
-(define (codegen-call-cc-spe cgc idx nb-args cctable-loc)
+(define (codegen-call-cc-spe cgc idx nb-args eploc global-eploc?)
     ;; Closure is in rax
     (let ((cct-offset (* 8 (+ 2 idx))))
       ;; 1 - Put ctx in r11
       (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding idx)))
       ;; 2- Get cc-table
-      (if cctable-loc
-          (x86-mov cgc (x86-rbp) (x86-imm-int cctable-loc))
-          (begin
-            (x86-mov cgc (x86-rsi) (x86-rax))
-            (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))))
+      (cond ((and eploc global-eploc?)
+               (x86-mov cgc (x86-rbp) (x86-imm-int eploc)))
+            (eploc
+               (x86-mov cgc (x86-rsi) (x86-rax))
+               (x86-mov cgc (x86-rbp) (x86-imm-int eploc)))
+            (else
+               (x86-mov cgc (x86-rsi) (x86-rax))
+               (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))))
       ;; 3 - If opt-max-versions is not #f, a generic version could be called.
       ;;     (if entry point lco reached max), then give nb-args
       (if opt-max-versions

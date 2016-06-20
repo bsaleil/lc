@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import os
 import shutil
 import glob
@@ -155,33 +157,24 @@ def userWants(str):
     r = input(str + ' (y/N) ')
     return r == 'y'
 
-## TESTS SYSTEMS
-# systems = []
-# systems.append(System("GambitC","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n"))
-# #systems.append(System("GambitI","",".scm",["gsi","{0}"],"(\d+) ms real time\\n"))
-# systems.append(System("LC-all","",".scm",["lazy-comp","{0}","--time"],"(\d+.\d+) ms real time\\n\("))
+#
+systems = []
+l1 = System("LC-prev","",".scm",["lazy-comp-previous","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
+l2 = System("LC-new","",".scm",["lazy-comp","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
+systems.append(l1)
+systems.append(l2)
 
-# Systems
-#systems = []
-#g1 = System("GambitNS","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
-#g2 = System("GambitS","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
-#l1 = System("LCI","",".scm",["lazy-comp","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
-#l2 = System("LCNI","",".scm",["lazy-comp","{0}","--time","--disable-entry-points","--disable-return-points"],"(\d+.\d+) ms real time\\n\(")
+
+# # GC
+# systems = []
+# g1 = System("GambitNS","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
+# g2 = System("GambitS","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
+# l1 = System("LC-old","",".scm",["lazy-comp-old","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
+# l2 = System("LC-new","",".scm",["lazy-comp","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
 # systems.append(g1)
 # systems.append(g2)
 # systems.append(l1)
 # systems.append(l2)
-
-# GC
-systems = []
-g1 = System("GambitNS","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
-g2 = System("GambitS","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
-l1 = System("LC-old","",".scm",["lazy-comp-old","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
-l2 = System("LC-new","",".scm",["lazy-comp","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
-systems.append(g1)
-systems.append(g2)
-systems.append(l1)
-systems.append(l2)
 
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))

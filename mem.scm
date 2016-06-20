@@ -66,7 +66,7 @@ int callHL()
   int r = ___heap_limit(___PSPNC) && ___garbage_collect (___PSP 0);
   if (r != 0)
   {
-    puts(\"Error: Heap overflow\\n\");
+    puts(\"Error: Heap overflow\");
     exit(0);
   }
 }

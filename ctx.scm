@@ -45,13 +45,14 @@
   env       ;; alist which associates a variable symbol to an identifier object
   nb-args   ;; number of arguments of function of the current stack frame
   fs        ;; current frame size
+  eploc     ;;
 )
 
 ;(define (make-regalloc-ctx slot-loc free-regs fs)
 ;  (make-ctx #f slot-loc free-regs #f #f fs))
 
 ;; TODO USE IT ! remove all make-ctx which are only copies and use ctx-copy
-(define (ctx-copy ctx #!optional stack slot-loc free-regs free-mems env nb-args fs)
+(define (ctx-copy ctx #!optional stack slot-loc free-regs free-mems env nb-args fs eploc)
   (make-ctx
     (or stack     (ctx-stack ctx))
     (or slot-loc  (ctx-slot-loc ctx))
@@ -59,7 +60,8 @@
     (or free-mems  (ctx-free-mems ctx))
     (or env       (ctx-env ctx))
     (or nb-args   (ctx-nb-args ctx))
-    (or fs        (ctx-fs ctx))))
+    (or fs        (ctx-fs ctx))
+    (or eploc     (ctx-eploc ctx))))
 
 
 ;; Generate initial free regs list
@@ -74,7 +76,8 @@
             '()
             '()
             -1
-            0))
+            0
+            #f))
 
 
 ;;; TODO public api
@@ -187,7 +190,7 @@
 
 ;;
 ;; CTX INIT FN
-(define (ctx-init-fn stack enclosing-ctx args free-vars global-opt? late-fbinds)
+(define (ctx-init-fn stack enclosing-ctx args free-vars global-opt? late-fbinds eploc bound-id)
 
   ;;
   ;; FREE REGS
@@ -234,7 +237,8 @@
               ;; Else, get type from enclosing ctx
               (let ((ident (ctx-ident enclosing-ctx id)))
                 (ctx-identifier-type enclosing-ctx (cdr ident))))
-          (cons 'f nvar)))))
+          (cons 'f nvar)
+          (eq? id bound-id)))))
 
   (define (init-env-local)
     (init-env-*
@@ -246,6 +250,7 @@
           'local
           (list slot)
           '()
+          #f
           #f
           #f))))
 
@@ -289,7 +294,8 @@
     '()
     (init-env)
     (length args)
-    (init-fs (length args))))
+    (init-fs (length args))
+    eploc))
 
 ;;
 ;; GET FREE REG
@@ -325,6 +331,19 @@
               (ctx-copy ctx #f #f (cdr free-regs))))))
 
 ;;
+;;
+(define (ctx-get-eploc ctx id)
+  (define (get env)
+    (if (null? env)
+        #f
+        (or (and (eq? (caar env) id)
+                 #f
+                 (identifier-thisid (cdar env))
+                 (ctx-eploc ctx))
+            (get (cdr env)))))
+  (get (ctx-env ctx)))
+
+;;
 ;; BIND LOCALS
 (define (ctx-bind-locals ctx id-idx #!optional letrec-bind?)
 
@@ -346,6 +365,7 @@
                         'local   ;; symbol 'free or 'local
                         (list (stack-idx-to-slot ctx (cdr first)))
                         '()
+                        #f
                         #f
                         #f))
                 (gen-env env (cdr id-idx))))))
@@ -832,13 +852,15 @@
   flags  ;; list of variable
   stype  ;; ctx type (copied to virtual stack)
   cloc   ;; closure slot if free variable
+  thisid ;;
 )
 
 ;; TODO USE IT ! remove all make-ctx which are only copies and use ctx-copy
-(define (identifier-copy identifier #!optional kind sslots flags stype cloc)
+(define (identifier-copy identifier #!optional kind sslots flags stype cloc thisid)
   (make-identifier
     (or kind   (identifier-kind identifier))
     (or sslots (identifier-sslots identifier))
     (or flags  (identifier-flags identifier))
     (or stype  (identifier-stype identifier))
-    (or cloc   (identifier-cloc identifier))))
+    (or cloc   (identifier-cloc identifier))
+    (or thisid (identifier-thisid identifier))))

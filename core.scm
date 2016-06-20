@@ -518,25 +518,12 @@
 (define ustack-init #f) ;; initial rsp value (right of the stack)
 (define ustack-len 1000000) ;; 1M
 
-;; TODO: use real pstack
-(define pstack #f)
-(define pstack-init #f)
-(define pstack-len 500000) ;; 512ko
-
 (define (init-mcb)
   (set! mcb (make-mcb code-len))
   (set! code-addr (##foreign-address mcb))
   (init-mss)
   (set! ustack (make-vector (/ ustack-len 8)))
-  (set! ustack-init (+ (- (obj-encoding ustack) 1) 8 ustack-len))
-
-  ;;; stack
-  ;; TODO: use real pstack
-  (set! pstack (make-u8vector pstack-len))
-  (set! pstack-init (+ (- (obj-encoding pstack) 1) 8 pstack-len))
-  (let ((extra (modulo pstack-init 16)))
-    (set! pstack-init (- pstack-init extra)))
-  (assert (= (modulo pstack-init 16) 0) "Internal ERROR"))
+  (set! ustack-init (+ (- (obj-encoding ustack) 1) 8 ustack-len)))
 
 ;; BLOCK :
 ;; 0          8                       (nb-globals * 8 + 8)
@@ -698,7 +685,8 @@
         ;; Move ustack in c first arg register
         (x86-mov cgc (x86-rdi) (x86-rsp))
         ;; Set rsp to pstack
-        (x86-mov cgc (x86-rsp) (x86-imm-int pstack-init))
+        (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
+        (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
         ;; Save ustack ptr to pstack
         (x86-push cgc (x86-rdi))
         ;; Save c caller save registers
@@ -741,7 +729,8 @@
         ;; Move ustack in c first arg register
         (x86-mov cgc (x86-rdi) (x86-rsp))
         ;; Set rsp to pstack
-        (x86-mov cgc (x86-rsp) (x86-imm-int pstack-init))
+        (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
+        (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
         ;; Save ustack ptr to pstack
         (x86-push cgc (x86-rdi))
         ;; Save c caller save registers
@@ -831,12 +820,6 @@
 
     ;; -------------------------
 
-    ;; Runtime GC call
-    ;(set! label-gc-trampoline (asm-make-label cgc 'gc_trampoline))
-    ;(x86-label cgc label-gc-trampoline)
-    ;(gen-gc-call cgc)
-    ;(x86-ret cgc)
-
     (x86-label cgc label-rtlib-skip)
 
     ;; Save all regs to pstack (because the GC must *not* scan these values)
@@ -850,6 +833,7 @@
     (x86-mov cgc (x86-rsp) (x86-imm-int ustack-init))
 
     ;; Init debug slots
+    ;; TODO
     ;(for-each (lambda (s)
     ;            (gen-set-slot cgc (car s) 0))
     ;          debug-slots)

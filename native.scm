@@ -76,6 +76,7 @@
 
   (x86-add cgc (x86-rsp) (x86-imm-int C_SIZEOF_TIMESPEC))
 
+  ;; set rsp back to ustack
   (x86-pop cgc (x86-rsp))
 
   (x86-pop cgc (x86-rsi))

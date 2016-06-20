@@ -556,7 +556,7 @@
 ;; Make lazy code from LAMBDA
 ;;
 
-(define (mlc-lambda ast succ global-opt #!optional (sfvars #f) (late-fbinds '()))
+(define (mlc-lambda ast succ global-opt #!optional (bound-id #f) (sfvars #f) (late-fbinds '()))
 
   (let* (;; Lambda free vars
          (fvars #f)
@@ -631,10 +631,11 @@
                                              1
                                              (lambda (sp stack ret-addr selector closure)
                                               (define free (append fvars late-fbinds))
+                                              (define eploc (if opt-entry-points cctable-loc (error "NYI add-fn-callback")))
 
                                               (cond ;; CASE 1 - Use entry point (no cctable)
                                                     ((eq? opt-entry-points #f)
-                                                     (let ((ctx (ctx-init-fn stack ctx all-params free global-opt late-fbinds)))
+                                                     (let ((ctx (ctx-init-fn stack ctx all-params free global-opt late-fbinds eploc bound-id)))
                                                        (gen-version-fn ast closure lazy-prologue-gen ctx stack #f global-opt)))
 
                                                     ;; CASE 2 - Use multiple entry points AND use max-versions limit AND this limit is reached
@@ -643,12 +644,12 @@
                                                          (and (= selector 0)
                                                               opt-max-versions
                                                               (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions)))
-                                                     (let ((ctx (ctx-init-fn #f ctx all-params free global-opt late-fbinds)))
+                                                     (let ((ctx (ctx-init-fn #f ctx all-params free global-opt late-fbinds eploc bound-id)))
                                                        (gen-version-fn ast closure lazy-prologue-gen ctx stack #t global-opt)))
 
                                                     ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
                                                     (else
-                                                       (let ((ctx (ctx-init-fn stack ctx all-params free global-opt late-fbinds)))
+                                                       (let ((ctx (ctx-init-fn stack ctx all-params free global-opt late-fbinds eploc bound-id)))
                                                          (gen-version-fn ast closure lazy-prologue ctx stack #f global-opt)))))))
 
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
@@ -887,7 +888,7 @@
            (late  (cadddr info))
            (code  (cadddr (cdr info)))
            (next  (mlc-lambdas imm-infos (cdr late-infos) succ)))
-      (mlc-lambda code next #f fvars late)))
+      (mlc-lambda code next #f (car info) fvars late)))
 
   (define (gen-imm info)
     (let ((next (mlc-lambdas (cdr imm-infos) late-infos succ)))
@@ -1723,6 +1724,15 @@
 ;;-----------------------------------------------------------------------------
 ;; APPLY & CALL
 
+(define (call-get-eploc ctx global-opt? op)
+  (if global-opt?
+      (let ((r (ctime-entries-get op)))
+        (if (not r) (error "Internal error"))
+        r)
+      (if (symbol? op)
+          (ctx-get-eploc ctx op)
+          #f)))
+
 ;;
 ;; Make lazy code from APPLY
 ;;
@@ -1731,12 +1741,13 @@
   (let* ((lazy-call
           (make-lazy-code
             (lambda (cgc ctx)
-              (let ((global-opt
-                      (and (symbol? (cadr ast))
-                           (not (assoc (cadr ast) (ctx-env ctx)))
-                           (eq? (table-ref gids (cadr ast) #f) CTX_CLO))))
+              (let* ((global-opt
+                       (and (symbol? (cadr ast))
+                            (not (assoc (cadr ast) (ctx-env ctx)))
+                            (eq? (table-ref gids (cadr ast) #f) CTX_CLO)))
+                     (eploc (call-get-eploc ctx global-opt (cadr ast))))
                 (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
-                (gen-call-sequence ast cgc #f #f (and global-opt (cadr ast)))))))
+                (gen-call-sequence ast cgc #f #f eploc global-opt)))))
         (lazy-args
           (make-lazy-code
             (lambda (cgc ctx)
@@ -1877,6 +1888,7 @@
          (lazy-call
            (make-lazy-code
              (lambda (cgc ctx)
+
                ;; Save used registers and update ctx
                (set! ctx (call-save-registers cgc ctx tail? (+ (length args) 1)))
 
@@ -1899,8 +1911,9 @@
                        (ctx-copy
                          (ctx-init)
                          (append (list-head (ctx-stack ctx) (length (cdr ast)))
-                                 (list CTX_CLO CTX_RETAD)))))
-                 (gen-call-sequence ast cgc call-ctx (length args) (and global-opt (car ast)))))))
+                                 (list CTX_CLO CTX_RETAD))))
+                     (eploc (call-get-eploc ctx global-opt (car ast))))
+                 (gen-call-sequence ast cgc call-ctx (length args) eploc global-opt)))))
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
@@ -2015,22 +2028,17 @@
 ;; Gen call sequence (call instructions)
 ;; Global-id contains global identifier if it is an optimized global call
 ;; (compile time lookup)
-(define (gen-call-sequence ast cgc call-ctx nb-args global-id)
-
-    (define entry-loc (ctime-entries-get global-id))
-
-    (if global-id
-        (assert (if opt-entry-points entry-loc #t) "Internal error"))
+(define (gen-call-sequence ast cgc call-ctx nb-args eploc global-eploc?)
 
     (cond ((not opt-entry-points)
-             (codegen-call-ep cgc nb-args entry-loc))
+             (codegen-call-ep cgc nb-args eploc global-eploc?))
           ((not nb-args) ;; apply
-             (codegen-call-cc-gen cgc #f entry-loc))
+             (codegen-call-cc-gen cgc #f eploc global-eploc?))
           (else
              (let* ((idx (get-closure-index (ctx-stack call-ctx))))
                (if idx
-                   (codegen-call-cc-spe cgc idx nb-args entry-loc)
-                   (codegen-call-cc-gen cgc nb-args entry-loc))))))
+                   (codegen-call-cc-spe cgc idx nb-args eploc global-eploc?)
+                   (codegen-call-cc-gen cgc nb-args eploc global-eploc?))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators

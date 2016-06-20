@@ -1,19 +1,25 @@
 
 
+(define a 10)
 
-(define (foo a b c)
-  (+ a b c))
 
-(foo 10 20 30)
 
-;(letrec ((foo
-;          (lambda (n)
-;            (if (= n 0)
-;                1
-;                (foo (- n 1))))))
+;(define (run n)
+;  (let loop ((i n) (sum 0))
+;    (if (< i 0)
+;      sum
+;      (loop (- i 1) (+ i sum)))))
 ;
-;  (foo 100000))
+;(run 1000000000)
 
+
+;(define (run n)
+;  (let loop ((i n) (sum 0))
+;    (if (< i 0)
+;      sum
+;      (loop (- i 1) (+ i sum)))))
+;
+;(run 10000)
 ;; Si une lambda est bindée à un id (let et letrec)
 ;;  -> alors cet id est immutable, sinon ça serait une box
 ;;  -> dans ce cas, on peut associé à l'id l'adresse de la cctable de la fonction (ou id, ...)
