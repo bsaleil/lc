@@ -628,7 +628,7 @@
 ;; TODO nettoyer
 ;;; TODO: uniformiser et placer
 ;; TODO: not 3 & 5 because rdi and R11 are used for ctx, nb-args
-(define args-regs '((r . 0) (r . 1) (r . 4) (r . 6) (r . 7))) ;; TODO
+(define args-regs '((r . 0) (r . 1) (r . 4) (r . 6))) ;; TODO
 (define (ctx-get-call-args-moves ctx nb-args)
 
   (define (get-req-moves curr-idx rem-regs moves pushed)

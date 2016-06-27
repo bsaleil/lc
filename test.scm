@@ -1,24 +1,10 @@
+;;---------------------------------------------------------------------------
 
+(define t1 '(11 . 22))
 
-(define a 10)
+(define (try p) (##car p))
 
-
-
-;(define (run n)
-;  (let loop ((i n) (sum 0))
-;    (if (< i 0)
-;      sum
-;      (loop (- i 1) (+ i sum)))))
-;
-;(run 1000000000)
-
-
-;(define (run n)
-;  (let loop ((i n) (sum 0))
-;    (if (< i 0)
-;      sum
-;      (loop (- i 1) (+ i sum)))))
-;
+(try t1)
 ;(run 10000)
 ;; Si une lambda est bindée à un id (let et letrec)
 ;;  -> alors cet id est immutable, sinon ça serait une box

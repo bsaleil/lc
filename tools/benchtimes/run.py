@@ -159,21 +159,21 @@ def userWants(str):
 
 #
 systems = []
-l1 = System("LC-prev","",".scm",["lazy-comp-previous","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
-l2 = System("LC-new","",".scm",["lazy-comp","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
+l1 = System("LC-old","",".scm",["lazy-comp-old","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
+l2 = System("LC-new","",".scm",["lazy-comp-new","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
 systems.append(l1)
 systems.append(l2)
 
 
-# # GC
+# GC
 # systems = []
 # g1 = System("GambitNS","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
 # g2 = System("GambitS","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
 # l1 = System("LC-old","",".scm",["lazy-comp-old","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
 # l2 = System("LC-new","",".scm",["lazy-comp","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
-# systems.append(g1)
+# #systems.append(g1)
 # systems.append(g2)
-# systems.append(l1)
+# #systems.append(l1)
 # systems.append(l2)
 
 config = Config()

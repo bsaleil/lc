@@ -55,6 +55,13 @@
 ;;-----------------------------------------------------------------------------
 
 ;; Forward declarations
+(define x86-upush #f)
+(define x86-upop  #f)
+(define x86-ppush #f)
+(define x86-ppop  #f)
+(define x86-usp   #f)
+(define x86-pcall #f)
+
 (define init-mss #f)
 (define get___heap_limit-addr  #f)
 (define get___alloc_still-addr #f)
@@ -206,44 +213,23 @@
 (define (gen-error cgc err #!optional (stop-exec? #t))
   ;; Put error msg in RAX
   (let ((r1 (car regalloc-regs)))
-    (x86-push cgc r1)
+    (x86-upush cgc r1)
     (x86-mov cgc r1 (x86-imm-int (obj-encoding err)))
-    (x86-call-label-aligned-ret cgc label-rt-error-handler)
-    (x86-pop cgc r1)))
+    (x86-pcall cgc label-rt-error-handler)
+    (x86-upop cgc r1)))
 
 ;; The procedure exec-error is callable from generated machine code.
 ;; This function print the error message in rax
-(c-define (rt-error sp) (long) void "rt_error" ""
-  (let* ((err-enc (get-i64 (+ sp (reg-sp-offset 0))))
-         (err (encoding-obj err-enc)))
-    (print "!!! ERROR : ")
-    (println err)))
-
-;;-----------------------------------------------------------------------------
-
-(c-define (gc sp) (long) long "gc" ""
-    ;; TODO remove old gc related code
-    (error "NYI GC"))
-
-(define (gen-gc-call cgc)
-
-  ;; Move all regalloc regs (register roots) to stack
-  ;; then, we have only global and stack roots
-  (push-pop-regs
-     cgc
-     regalloc-regs
-     (lambda (cgc)
-       (push-pop-regs
-          cgc
-          (set-sub c-caller-save-regs (list alloc-ptr) '()) ;; preserve regs for C call
-          (lambda (cgc)
-            (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-            (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-            (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-            (x86-push cgc (x86-rdi))
-            (x86-call cgc label-gc) ;; call C function
-            (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-            (x86-mov cgc alloc-ptr (x86-rax))))))) ;; TODO : Update alloc-ptr
+(c-define (rt-error usp psp) (long long) void "rt_error" ""
+  (error "NYI rt-error"))
+  ;(pp (reg-sp-offset 0))
+  ;(let* ((err-enc (get-i64 (+ usp (reg-sp-offset 0))))
+  ;       (err (encoding-obj err-enc)))
+  ;  (pp err-enc)
+  ;  (pp err)
+  ;  (error "OK")))
+    ;(print "!!! ERROR : ")
+    ;(println err)))
 
 ;;-----------------------------------------------------------------------------
 
@@ -253,16 +239,16 @@
   (let ((r1 (car regalloc-regs))
         (r2 (cadr regalloc-regs)))
 
-    (x86-push cgc r1)
-    (x86-push cgc r2)
+    (x86-upush cgc r1)
+    (x86-upush cgc r2)
 
     (x86-mov cgc r1 p1)
     (x86-mov cgc r2 p2)
 
     (x86-call-label-aligned-ret cgc label-handler)
 
-    (x86-pop cgc r2)
-    (x86-pop cgc r1)))
+    (x86-upop cgc r2)
+    (x86-upop cgc r1)))
 
 (define (gen-print-obj cgc reg newline?)
   (gen-print-*
@@ -297,17 +283,17 @@
 ;;-----------------------------------------------------------------------------
 
 ;; TODO WIP
-(c-define (gambit-call sp) (long) void "gambit_call" ""
+(c-define (gambit-call usp psp) (long long) void "gambit_call" ""
   (let* ((nargs
-           (encoding-obj (get-i64 (+ sp (* (+ (length regalloc-regs) 3) 8)))))
+           (encoding-obj (get-i64 (+ usp (* (+ (length regalloc-regs) 2) 8)))))
          (op-sym
-           (encoding-obj (get-i64 (+ sp (* (+ (length regalloc-regs) 2) 8)))))
+           (encoding-obj (get-i64 (+ usp (* (+ (length regalloc-regs) 1) 8)))))
          (args
            (reverse
-             (let loop ((n nargs) (offset 4))
+             (let loop ((n nargs) (offset 3))
                (if (= n 0)
                    '()
-                   (let ((word (get-u64 (+ sp (* (+ (length regalloc-regs) offset) 8)))))
+                   (let ((word (get-u64 (+ usp (* (+ (length regalloc-regs) offset) 8)))))
                      (cons (encoding-obj word)
                            (loop (- n 1) (+ offset 1))))))))
 
@@ -315,32 +301,31 @@
 
     (let ((retval (apply op-fn args)))
 
-      (put-i64 (+ sp (* (+ (length regalloc-regs) 2) 8))
+      (put-i64 (+ usp (* 8 (+ (length regalloc-regs) 1)))
                (obj-encoding retval)))))
 
 ;;-----------------------------------------------------------------------------
 
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
-(c-define (do-callback sp) (long) void "do_callback" ""
-  (let* ((ret-addr
-          (get-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))))
+(c-define (do-callback usp psp) (long long) void "do_callback" ""
+  (let* ((ret-addr (get-i64 psp))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
 
          (selector
-          (encoding-obj (get-i64 (+ sp (selector-sp-offset)))))
+          (encoding-obj (get-i64 (+ usp (selector-sp-offset)))))
 
          (new-ret-addr
           (callback-fn ret-addr selector)))
 
     ;; replace return address
-    (put-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))
+    (put-i64 psp
              new-ret-addr)
 
     ;; reset selector
-    (put-i64 (+ sp (selector-sp-offset))
+    (put-i64 (+ usp (selector-sp-offset))
              0)))
 
 ;; Same behavior as 'do-callback' but calls callback with call site addr
@@ -367,17 +352,17 @@
 ;; +---------------+
 ;; | Call arg 1    |
 ;; +---------------+
-(c-define (do-callback-fn sp) (long) void "do_callback_fn" ""
+(c-define (do-callback-fn usp psp) (long long) void "do_callback_fn" ""
 
-  (let* ((ret-addr
-          (get-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))))
+  (let* ((ret-addr (get-i64 psp))
 
          (selector
-          (encoding-obj (get-i64 (+ sp (selector-sp-offset)))))
+          (encoding-obj (get-i64 (- psp 16))))
 
+         ;; TODO
          (ctx-idx
           (if opt-entry-points
-              (encoding-obj (get-i64 (+ sp (reg-sp-offset-r (x86-r11)))))
+              (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-r11)))))
               #f))
 
          (stack
@@ -387,11 +372,11 @@
 
          ;; Closure is used as a Gambit procedure to keep an updated reference
          (closure
-          (encoding-obj (get-i64 (+ sp (reg-sp-offset-r (x86-rsi))))))
+          (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-rsi))))))
 
          (nb-args
            (if (or (not opt-entry-points) (= selector 1))
-               (let ((encoded (get-i64 (+ sp (reg-sp-offset-r (x86-rdi))))))
+               (let ((encoded (get-i64 (+ usp (reg-sp-offset-r (x86-rdi))))))
                  (arithmetic-shift encoded -2))
                (- (length stack) 2)))
 
@@ -399,34 +384,32 @@
           (vector-ref (get-scmobj ret-addr) 0))
 
          (new-ret-addr
-          (callback-fn sp stack ret-addr selector closure)))
+          (callback-fn stack ret-addr selector closure)))
 
     ;; replace return address
-    (put-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))
-             new-ret-addr)
+    (put-i64 psp new-ret-addr)
 
     ;; reset selector
-    (put-i64 (+ sp (selector-sp-offset))
+    (put-i64 (+ usp (selector-sp-offset))
              0)))
 
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
-(c-define (do-callback-cont sp) (long) void "do_callback_cont" ""
+(c-define (do-callback-cont usp psp) (long long) void "do_callback_cont" ""
 
-  (let* ((ret-addr
-          (get-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))))
+  (let* ((ret-addr (get-i64 psp))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
 
          (selector
-          (encoding-obj (get-i64 (+ sp (selector-sp-offset)))))
+          (encoding-obj (get-i64 (- psp 16))))
 
          (type-idx
-          (encoding-obj (get-i64 (+ sp (reg-sp-offset-r (x86-r11))))))
+          (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-r11))))))
 
          (table
-          (get-i64 (+ sp (reg-sp-offset-r (x86-rdx)))))
+          (get-i64 (+ usp (reg-sp-offset-r (x86-rdx)))))
 
          (type (cridx-to-type type-idx))
 
@@ -434,11 +417,11 @@
            (callback-fn ret-addr selector type table)))
 
     ;; replace return address
-    (put-i64 (+ sp (* (+ (length regalloc-regs) 1) 8))
+    (put-i64 psp
              new-ret-addr)
 
     ;; reset selector
-    (put-i64 (+ sp (selector-sp-offset))
+    (put-i64 (+ usp (selector-sp-offset))
              0)))
 
 ;;-----------------------------------------------------------------------------
@@ -489,9 +472,6 @@
                        ,c-code))))))
 
 (define (init-labels cgc)
-  ;; TODO WIP
-  (set-cdef-label! label-gc               'gc               "___result = ___CAST(void*,gc);")
-
   (set-cdef-label! label-print-msg        'print-msg        "___result = ___CAST(void*,print_msg);")
   (set-cdef-label! label-print-msg-val    'print-msg-val    "___result = ___CAST(void*,print_msg_val);")
   (set-cdef-label! label-rt-error         'rt_error         "___result = ___CAST(void*,rt_error);")
@@ -515,7 +495,7 @@
 ;; to find roots.
 ;; Process stack (pstack) is still used for each call to c code (stubs and others)
 (define ustack #f)
-(define ustack-init #f) ;; initial rsp value (right of the stack)
+(define ustack-init #f) ;; initial sp value (right of the stack)
 (define ustack-len 1000000) ;; 1M
 
 (define (init-mcb)
@@ -648,7 +628,7 @@
     stub-labels))
 
 (define (call-handler cgc label-handler obj)
-  (x86-call-label-aligned-ret cgc label-handler)
+  (x86-pcall cgc label-handler)
   (asm-64   cgc (obj-encoding obj)))
 
 (define (stub-reclaim stub-addr)
@@ -676,28 +656,30 @@
     ;; Save regalloc-regs to ustack because stub could trigger GC,
     ;; then registers are treated as stack roots
     ;; Save selector to allow stub to access its value
-    (push-pop-regs
+    (upush-pop-regs
       cgc
       (cons selector-reg regalloc-regs)
       (lambda (cgc)
         ;; Update gambit heap ptr from LC heap ptr
         (x86-mov cgc (x86-mem (get-hp-addr)) alloc-ptr)
-        ;; Move ustack in c first arg register
-        (x86-mov cgc (x86-rdi) (x86-rsp))
-        ;; Set rsp to pstack
-        (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-        (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
+        ;; Set usp as the first c-arg
+        (x86-mov cgc (x86-rdi) (x86-usp))
         ;; Save ustack ptr to pstack
-        (x86-push cgc (x86-rdi))
+        (x86-ppush cgc (x86-usp))
         ;; Save c caller save registers
-        (push-pop-regs
+        (ppush-pop-regs
           cgc
           (set-sub c-caller-save-regs regalloc-regs '())
           (lambda (cgc)
             (cargs-generator cgc) ;; Gen c args
             ;; Aligned call to addr
+            (x86-mov  cgc (x86-rax) (x86-rsp)) ;; align stack-pointer for C call
+            (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+            (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+            (x86-ppush cgc (x86-rax))
             (x86-mov cgc (x86-rax) (x86-imm-int addr))
-            (x86-call-label-aligned-ret cgc (x86-rax))))
+            (x86-pcall cgc (x86-rax))
+            (x86-ppop cgc (x86-rsp))))
         ;; Update LC heap ptr and heap limit from Gambit heap ptr and heap limit
         (let ((r1 selector-reg)
               (r2 alloc-ptr))
@@ -708,7 +690,7 @@
           ;; hp
           (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr))))
         ;; Set rsp to saved ustack sp
-        (x86-pop cgc (x86-rsp))))
+        (x86-ppop cgc (x86-usp))))
 
     label-handler))
 
@@ -720,26 +702,29 @@
     ;; Save regalloc-regs to ustack because stub could trigger GC,
     ;; then registers are treated as stack roots
     ;; Save selector to allow stub to access its value
-    (push-pop-regs
+    (upush-pop-regs
       cgc
       (cons selector-reg regalloc-regs)
       (lambda (cgc)
         ;; Update gambit heap ptr from LC heap ptr
         (x86-mov cgc (x86-mem (get-hp-addr)) alloc-ptr)
-        ;; Move ustack in c first arg register
-        (x86-mov cgc (x86-rdi) (x86-rsp))
-        ;; Set rsp to pstack
-        (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-        (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
+        ;; Set usp & psp as the first & second c-args
+        (x86-mov cgc (x86-rdi) (x86-usp))       ;; NOTE: will not be correctly restored if rdi is not a reg-alloc reg
+        (x86-mov cgc (x86-rsi) (x86-rsp)) ;; NOTE: will not be correctly restored if rsi is not a reg-alloc reg
         ;; Save ustack ptr to pstack
-        (x86-push cgc (x86-rdi))
+        (x86-ppush cgc (x86-usp))
         ;; Save c caller save registers
-        (push-pop-regs
+        (ppush-pop-regs
           cgc
           (set-sub c-caller-save-regs regalloc-regs '())
           (lambda (cgc)
             ;; Aligned call to label
-            (x86-call-label-aligned-ret cgc label)))
+            (x86-mov  cgc (x86-rax) (x86-rsp)) ;; align stack-pointer for C call
+            (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+            (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+            (x86-ppush cgc (x86-rax))
+            (x86-pcall cgc label)
+            (x86-ppop cgc (x86-rsp))))
         ;; Update LC heap ptr and heap limit from Gambit heap ptr and heap limit
         (let ((r1 selector-reg)
               (r2 alloc-ptr))
@@ -750,7 +735,7 @@
           ;; hp
           (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr))))
         ;; Set rsp to saved ustack sp
-        (x86-pop cgc (x86-rsp))))
+        (x86-ppop cgc (x86-usp))))
 
     label-handler))
 
@@ -770,9 +755,15 @@
             (lambda (cgc)
               ;; rdi rsi rdx (pstate, stag, len)
               ;;(x86-mov cgc (x86-rdi) (x86-imm-int 0))
-              (x86-mov cgc (x86-rsi) (x86-mem (* 8 (+ (length regalloc-regs) 2)) (x86-rdi)))
-              (x86-mov cgc (x86-rdx) (x86-mem (* 8 (+ (length regalloc-regs) 4)) (x86-rdi)))
-              (x86-mov cgc (x86-rdi) (x86-imm-int (get-pstate-addr))))))
+
+              (let* (;; NOTE: Must match the registers saved using ppush-pop-regs in gen-addr-handler
+                     (saved-offset (length (set-sub c-caller-save-regs regalloc-regs '())))
+                     (stag-offset  (* 8 (+ saved-offset 2))))
+
+                ;; stag is not encoded, then it is in pstack
+                (x86-mov cgc (x86-rdi) (x86-mem stag-offset (x86-rsp)))
+                (x86-mov cgc (x86-rsi) (x86-mem (* 8 (+ (length regalloc-regs) 2)) (x86-rbp)))))))
+                ;(x86-mov cgc (x86-rdi) (x86-imm-int (get-pstate-addr)))))))
     (x86-ret cgc)
 
     (set! label-gambit-call-handler
@@ -802,10 +793,6 @@
     ;; Runtime error
     (set! label-rt-error-handler
           (gen-handler cgc 'rt_error_handler label-rt-error))
-    (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-    (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
-    (x86-mov cgc (x86-rax) (x86-imm-int -1))
-    (pop-regs-reverse cgc all-regs)
     (x86-ret cgc)
 
     ;; Print msg
@@ -823,14 +810,10 @@
     (x86-label cgc label-rtlib-skip)
 
     ;; Save all regs to pstack (because the GC must *not* scan these values)
-    (push-regs cgc all-regs)
+    (ppush-regs cgc all-regs)
 
-    ;; Put bottom of the pstack (after saving registers) at "block-addr + 0"
-    (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-    (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rsp))
-
-    ;; Set rsp to ustack init
-    (x86-mov cgc (x86-rsp) (x86-imm-int ustack-init))
+    ;; Set usp to ustack init
+    (x86-mov cgc (x86-usp) (x86-imm-int ustack-init))
 
     ;; Init debug slots
     ;; TODO
@@ -840,11 +823,12 @@
 
     ;; Put heaplimit in heaplimit slot
     ;; TODO: remove cst slots
+    (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
     (x86-mov cgc (x86-rcx) (x86-mem (get-heap_limit-addr)))
     (x86-mov cgc (x86-mem (* 8 5) (x86-rax)) (x86-rcx))
 
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-    (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr)))       ;; Heap addr in alloc-ptr
+    (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr)))     ;; Heap addr in alloc-ptr
     (x86-mov cgc global-ptr (x86-imm-int globals-addr)) ;; Globals addr in r10
 
     ;; Set all registers used for regalloc to 0
@@ -876,16 +860,28 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define (push-pop-regs cgc regs proc)
-  (for-each (lambda (reg) (x86-push cgc reg)) regs)
+(define (upush-pop-regs cgc regs proc)
+  (for-each (lambda (reg) (x86-upush cgc reg)) regs)
   (proc cgc)
-  (for-each (lambda (reg) (x86-pop cgc reg)) (reverse regs)))
+  (for-each (lambda (reg) (x86-upop cgc reg)) (reverse regs)))
 
-(define (push-regs cgc regs)
-  (for-each (lambda (reg) (x86-push cgc reg)) regs))
+(define (ppush-pop-regs cgc regs proc)
+  (for-each (lambda (reg) (x86-ppush cgc reg)) regs)
+  (proc cgc)
+  (for-each (lambda (reg) (x86-ppop cgc reg)) (reverse regs)))
 
-(define (pop-regs-reverse cgc regs)
-  (for-each (lambda (reg) (x86-pop cgc reg)) (reverse regs)))
+
+(define (upush-regs cgc regs)
+  (for-each (lambda (reg) (x86-upush cgc reg)) regs))
+
+(define (ppush-regs cgc regs)
+  (for-each (lambda (reg) (x86-ppush cgc reg)) regs))
+
+(define (upop-regs-reverse cgc regs)
+  (for-each (lambda (reg) (x86-upop cgc reg)) (reverse regs)))
+
+(define (ppop-regs-reverse cgc regs)
+  (for-each (lambda (reg) (x86-ppop cgc reg)) (reverse regs)))
 
 (define c-caller-save-regs ;; from System V ABI
   (list (x86-rdi)  ;; 1st argument
@@ -897,8 +893,7 @@
 
 
 (define all-regs
-  (list (x86-rsp)
-        (x86-rax)
+  (list (x86-rax)
         (x86-rbx)
         (x86-rcx)
         (x86-rdx)
@@ -924,8 +919,7 @@
         (x86-r12)
         (x86-r13)
         (x86-r14)
-        (x86-r15)
-        (x86-rbp)))
+        (x86-r15)))
 
 (define nb-c-caller-save-regs
   (length c-caller-save-regs))
@@ -1009,7 +1003,7 @@
   (define (apply-move move)
     (cond ((equal? (car move) (cdr move)) #f)
           ((eq? (car move) 'fs)
-           (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 (cdr move)))))
+           (x86-sub cgc (x86-usp) (x86-imm-int (* 8 (cdr move)))))
           ((and (ctx-loc-is-register? (car move))
                 (ctx-loc-is-memory?   (cdr move)))
            (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
@@ -1051,7 +1045,7 @@
            (equal? (cdadr moves)
                    (cons 'm (- (ctx-fs ctx) 1)))) ;; Second is a move to new cell
       (let ((loc (caadr moves)))
-        (x86-push cgc (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
+        (x86-upush cgc (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
       (if (not (null? moves))
           (begin (apply-move (car moves))
                  (apply-moves cgc ctx (cdr moves) tmpreg)))))
@@ -1286,7 +1280,7 @@
     (x86-label cgc merge-label)
     (apply-moves cgc ctx moves)
     ;; Update fs (sp)
-    (x86-add cgc (x86-rsp) (x86-imm-int (* 8 sp-add)))
+    (x86-add cgc (x86-usp) (x86-imm-int (* 8 sp-add)))
     (x86-jmp cgc generic-vers)
     (fn-patch merge-label #t)))
 

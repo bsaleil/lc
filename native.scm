@@ -45,21 +45,16 @@
   (x86-label cgc (asm-make-label #f (new-sym 'syscall_clock-gettime_)))
 
   ;; Save destroyed regs
-  (x86-push cgc (x86-rcx)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
-  (x86-push cgc (x86-r11)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
-  (x86-push cgc (x86-rdi))
-  (x86-push cgc (x86-rsi))
-
-  ;;; Use pstack for system call
-  (x86-mov cgc (x86-rax) (x86-rsp)) ;; get ustack ptr in rax
-  (x86-mov cgc (x86-rcx) (x86-imm-int block-addr))
-  (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rcx))) ;; set rsp to pstack
-  (x86-push cgc (x86-rax)) ;; save ustack ptr in pstack
+  (x86-upush cgc (x86-rcx)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
+  (x86-upush cgc (x86-r11)) ;; Destroyed by kernel (System V Application Binary Interface AMD64 Architecture Processor Supplement section A.2)
+  (x86-upush cgc (x86-rdi))
+  (x86-upush cgc (x86-rsi))
 
   ;; Clock in rdi
   (x86-mov cgc (x86-rdi) (x86-imm-int C_CLOCK_MONOTONIC))
 
   ;; timespect struct address in rsi
+  ;; alloc struct in pstack!
   (x86-sub cgc (x86-rsp) (x86-imm-int C_SIZEOF_TIMESPEC))
   (x86-mov cgc (x86-rsi) (x86-rsp))
 
@@ -76,10 +71,7 @@
 
   (x86-add cgc (x86-rsp) (x86-imm-int C_SIZEOF_TIMESPEC))
 
-  ;; set rsp back to ustack
-  (x86-pop cgc (x86-rsp))
-
-  (x86-pop cgc (x86-rsi))
-  (x86-pop cgc (x86-rdi))
-  (x86-pop cgc (x86-r11))
-  (x86-pop cgc (x86-rcx)))
+  (x86-upop cgc (x86-rsi))
+  (x86-upop cgc (x86-rdi))
+  (x86-upop cgc (x86-r11))
+  (x86-upop cgc (x86-rcx)))

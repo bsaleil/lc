@@ -30,10 +30,52 @@
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
+;;-----------------------------------------------------------------------------
+;; x86-push/pop redef
+
+(define x86-ppush #f)
+(define x86-ppop  #f)
+(define x86-upush #f)
+(define x86-upush #f)
+
+(let ((gpush x86-push)
+      (gpop  x86-pop)
+      (push/pop-error
+        (lambda n
+          (error "Internal error, do *NOT* directly use x86-push/pop functions."))))
+  (set! x86-ppush gpush)
+  (set! x86-ppop  gpop)
+  (set! x86-upush
+        (lambda (cgc op)
+          (cond ((x86-imm? op)
+                  (x86-sub cgc (x86-usp) (x86-imm-int 8))
+                  (x86-mov cgc (x86-mem 0 (x86-usp)) op 64))
+                ((x86-mem? op)
+                  ;; TODO
+                  (x86-ppush cgc (x86-rax))
+                  (x86-mov cgc (x86-rax) op)
+                  (x86-sub cgc (x86-usp) (x86-imm-int 8))
+                  (x86-mov cgc (x86-mem 0 (x86-usp)) (x86-rax))
+                  (x86-ppop cgc (x86-rax)))
+                (else
+                  (x86-sub cgc (x86-usp) (x86-imm-int 8))
+                  (x86-mov cgc (x86-mem 0 (x86-usp)) op)))))
+  (set! x86-upop
+        (lambda (cgc op)
+          (x86-mov cgc op (x86-mem 0 (x86-usp)))
+          (x86-add cgc (x86-usp) (x86-imm-int 8))))
+  (set! x86-push push/pop-error)
+  (set! x86-pop  push/pop-error))
+
+;;-----------------------------------------------------------------------------
+;; x86-call redef
+
 ;; x86-call function produce an error.
 ;; x86-call could generate a call with a non aligned return address
 ;; which may cause trouble to the gc
 ;; Use specialized *x86-call-label-unaligned-ret* and *x86-call-label-aligned-ret* instead
+;; x86-call-label-aligned-ret is a ucall: store ret addr in ustack and align return address
+;; x86-call-label-unaligned-ret is a pcall: store ret addr in pstack and does not change return address
 
 ;; Generate a call to a label with a return address not necessarily aligned to 4
 (define x86-call-label-unaligned-ret #f)
@@ -73,10 +115,11 @@
     (call-fn cgc label)))
 
 ;; Redefine calls
+(set! x86-pcall x86-call)
 (let ((gambit-call x86-call))
-  (set! x86-call (gen-x86-error-call))
-  (set! x86-call-label-unaligned-ret gambit-call)
-  (set! x86-call-label-aligned-ret (gen-x86-aligned-call gambit-call)))
+  (set! x86-call (gen-x86-error-call)))
+  ;(set! x86-call-label-unaligned-ret gambit-call)
+  ;(set! x86-call-label-aligned-ret (gen-x86-aligned-call gambit-call)))
 
 ;;-----------------------------------------------------------------------------
 ;; x86 Registers
@@ -94,10 +137,10 @@
 (define global-ptr (x86-r8))
 (define selector-reg (x86-rcx))
 (define selector-reg-32 (x86-ecx))
+(define (x86-usp) (x86-rbp)) ;; user stack pointer is rbp
 
 ;; NOTE: temporary register is always rax
 ;; NOTE: selector is always rcx
-;; NOTE: stack pointer is always rsp
 
 ;; TODO: other offsets
 (define OFFSET_PAIR_CAR 16)
@@ -143,7 +186,7 @@
         (else (error "Internal error"))))
 
 (define (codegen-mem-to-x86mem fs mem)
-  (x86-mem (* 8 (- fs (cdr mem) 1)) (x86-rsp)))
+  (x86-mem (* 8 (- fs (cdr mem) 1)) (x86-usp)))
 
 (define (codegen-reg-to-x86reg reg)
   (cdr (assoc reg codegen-regmap)))
@@ -179,7 +222,7 @@
 (define-macro (pick-unmem! src used-regs)
   (let ((sym (gensym)))
     `(let ((,sym (pick-reg ,used-regs)))
-       (x86-push cgc ,sym)
+       (x86-upush cgc ,sym)
        (set! fs (+ fs 1))
        (set! ##registers-saved## (cons ,sym ##registers-saved##))
        (unmem! ((lambda () ,sym)) ,src))))
@@ -191,7 +234,7 @@
         (pick-unmem! ,src (append ,used-regs ##registers-saved##)))))
 ;;
 (define-macro (restore-saved)
-  `(for-each (lambda (el) (x86-pop cgc el)) ##registers-saved##))
+  `(for-each (lambda (el) (x86-upop cgc el)) ##registers-saved##))
 
 ;;-----------------------------------------------------------------------------
 ;; Define
@@ -460,7 +503,7 @@
           (and destreg (codegen-reg-to-x86reg destreg))))
     (if dest
         (x86-mov cgc dest (x86-imm-int (obj-encoding '())))
-        (x86-push cgc (x86-imm-int (obj-encoding '()))))))
+        (x86-upush cgc (x86-imm-int (obj-encoding '()))))))
 
 ;; Generate specialized function prologue with rest param and actual > formal
 (define (codegen-prologue-rest> cgc fs nb-rest-stack rest-regs destreg)
@@ -482,7 +525,7 @@
     (x86-cmp cgc (x86-r15) (x86-imm-int 0))
     (x86-je cgc label-loop-end)
     (gen-allocation-imm cgc STAG_PAIR 16)
-    (x86-pop cgc (x86-rax))
+    (x86-upop cgc (x86-rax))
     (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
     (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r14))
     (x86-lea cgc (x86-r14) (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
@@ -500,7 +543,7 @@
     ;; Dest
     (if dest
         (x86-mov cgc dest (x86-r14))
-        (x86-push cgc (x86-r14)))))
+        (x86-upush cgc (x86-r14)))))
 
 ;; Alloc closure and write header
 (define (codegen-closure-create cgc nb-free)
@@ -533,13 +576,13 @@
 
 ;; Generate function return using a return address
 (define (codegen-return-rp cgc)
-  (x86-pop cgc (x86-rdx))
+  (x86-upop cgc (x86-rdx))
   (x86-jmp cgc (x86-rdx)))
 
 ;; Generate function return using a crtable
 (define (codegen-return-cr cgc crtable-offset)
   ;; rax contains ret val
-  (x86-pop cgc (x86-rdx)) ;; Table must be in rdx
+  (x86-upop cgc (x86-rdx)) ;; Table must be in rdx
   (x86-mov cgc (x86-rax) (x86-mem crtable-offset (x86-rdx)))
   (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding crtable-offset))) ;; TODO (?)
   (x86-jmp cgc (x86-rax)))
@@ -557,22 +600,22 @@
            (x86-jmp cgc (x86-mem (+ (obj-encoding eploc) 7) #f)))
         (else
            (x86-mov cgc (x86-rsi) (x86-rax))
-           (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
-           (x86-jmp cgc (x86-rbp)))))
+           (x86-mov cgc (x86-r15) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
+           (x86-jmp cgc (x86-r15)))))
 
 ;;; Generate function call using a cctable and generic entry point
 (define (codegen-call-cc-gen cgc nb-args eploc global-eploc?)
   (if nb-args
       (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args))))
   (cond ((and eploc global-eploc?)
-           (x86-mov cgc (x86-rbp) (x86-imm-int eploc)))
+           (x86-mov cgc (x86-r15) (x86-imm-int eploc)))
         (eploc
            (x86-mov cgc (x86-rsi) (x86-rax))
-           (x86-mov cgc (x86-rbp) (x86-imm-int eploc)))
+           (x86-mov cgc (x86-r15) (x86-imm-int eploc)))
         (else
            (x86-mov cgc (x86-rsi) (x86-rax))
-           (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi))))) ;; Get table
-  (x86-jmp cgc (x86-mem 8 (x86-rbp)))) ;; Jump to generic entry point
+           (x86-mov cgc (x86-r15) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi))))) ;; Get table
+  (x86-jmp cgc (x86-mem 8 (x86-r15)))) ;; Jump to generic entry point
 
 ;; Generate function call using a cctable and specialized entry point
 (define (codegen-call-cc-spe cgc idx nb-args eploc global-eploc?)
@@ -582,29 +625,31 @@
       (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding idx)))
       ;; 2- Get cc-table
       (cond ((and eploc global-eploc?)
-               (x86-mov cgc (x86-rbp) (x86-imm-int eploc)))
+               (x86-mov cgc (x86-r15) (x86-imm-int eploc)))
             (eploc
                (x86-mov cgc (x86-rsi) (x86-rax))
-               (x86-mov cgc (x86-rbp) (x86-imm-int eploc)))
+               (x86-mov cgc (x86-r15) (x86-imm-int eploc)))
             (else
                (x86-mov cgc (x86-rsi) (x86-rax))
-               (x86-mov cgc (x86-rbp) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))))
+               (x86-mov cgc (x86-r15) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))))
       ;; 3 - If opt-max-versions is not #f, a generic version could be called.
       ;;     (if entry point lco reached max), then give nb-args
       (if opt-max-versions
           (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
       ;; 4 - Jump to entry point from ctable
-      (x86-jmp cgc (x86-mem cct-offset (x86-rbp)))))
+      (x86-jmp cgc (x86-mem cct-offset (x86-r15)))))
 
 ;; Load continuation using specialized return points
 (define (codegen-load-cont-cr cgc crtable-loc)
   (x86-mov cgc (x86-rax) (x86-imm-int crtable-loc))
-  (x86-push cgc (x86-rax)))
+  (assert (= (modulo crtable-loc 4) 0) "Internal error")
+  (x86-upush cgc (x86-rax)))
 
 (define (codegen-load-cont-rp cgc label-load-ret label-cont-stub)
   (x86-label cgc label-load-ret)
   (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref label-cont-stub 1)))
-  (x86-push cgc (x86-rax)))
+  (assert (= (modulo (vector-ref label-cont-stub 1) 4) 0) "Internal error")
+  (x86-upush cgc (x86-rax)))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
@@ -852,10 +897,10 @@
          (orropnd ropnd))
 
     (if (and (neq? ordest  (x86-rdx)))
-        (x86-push cgc (x86-rdx)))
+        (x86-upush cgc (x86-rdx)))
 
     (let ((REG (pick-reg (list (x86-rax) (x86-rdx) lopnd ropnd dest))))
-      (x86-push cgc REG)
+      (x86-upush cgc REG)
 
       (x86-mov cgc (x86-rax) lopnd)
       (x86-mov cgc REG ropnd)
@@ -881,10 +926,10 @@
              (x86-shl cgc (x86-rdx) (x86-imm-int 2))
              (x86-mov cgc dest (x86-rdx))))
 
-      (x86-pop cgc REG)
+      (x86-upop cgc REG)
 
       (if (and (neq? ordest  (x86-rdx)))
-          (x86-pop cgc (x86-rdx))))))
+          (x86-upop cgc (x86-rdx))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Primitives
@@ -1057,7 +1102,7 @@
       (x86-mov cgc (x86-rax) (oplen))
       (gen-allocation-rt cgc STAG_STRING (x86-rax))
 
-      (x86-push cgc (oplen))
+      (x86-upush cgc (oplen))
       (if lval
           (begin
             (x86-mov cgc selector-reg (opval))
@@ -1077,7 +1122,7 @@
           (x86-jmp cgc label-loop))
 
       (x86-label cgc label-end)
-      (x86-pop cgc (oplen))
+      (x86-upop cgc (oplen))
       (x86-mov cgc selector-reg (oplen))
       (x86-shl cgc selector-reg (x86-imm-int 8))
       (x86-or cgc (x86-mem (- TAG_MEMOBJ) (x86-rax)) selector-reg)
@@ -1173,8 +1218,8 @@
             (begin (x86-mov cgc selector-reg opidx)
                    (set! opidx selector-reg)
                    (set! use-selector #t))
-            (begin (x86-mov cgc selector-reg (x86-rax))
-                   (set! opidx selector-reg))))
+            (begin (x86-mov cgc (x86-rax) opidx)
+                   (set! opidx (x86-rax)))))
 
     (if val-cst?
         (x86-mov cgc dest (x86-mem (+ (- 8 TAG_MEMOBJ) (* 8 lidx)) opvec #f 1))
@@ -1255,7 +1300,7 @@
    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
 
    (if regsaved
-       (x86-pop cgc regsaved))))
+       (x86-upop cgc regsaved))))
 
 ;;-----------------------------------------------------------------------------
 ;; string-set!

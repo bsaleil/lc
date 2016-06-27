@@ -48,9 +48,9 @@ void initmss()
       exit(0);
 }
 
-___U64 alloc_still(___processor_state pstate, ___U64 stag, ___U64 bytes)
+___U64 alloc_still(___U64 stag, ___U64 bytes)
 {
-  ___U64 r = ___alloc_scmobj(pstate,stag,bytes);
+  ___U64 r = ___alloc_scmobj(___PSTATE,stag,bytes);
   if ((r & 3)==0)
   {
     puts(\"Error: Heap overflow\\n\");
@@ -69,6 +69,7 @@ int callHL()
     puts(\"Error: Heap overflow\");
     exit(0);
   }
+  return 0;
 }
 
 ___U64  get_pstate_addr()            { return (___WORD)&___PSTATE;             }
@@ -123,27 +124,25 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
   (define label-not-still (asm-make-label #f (new-sym 'alloc_not_still_)))
   (define label-alloc-still-end (asm-make-label #f (new-sym 'alloc_still_end_)))
 
-  ;; TODO check MSECTION_BIGGEST
-
   (x86-label cgc label-alloc-beg)
 
   ;; Save size (bytes)
-  (x86-push cgc sizeloc)
+  (x86-upush cgc sizeloc)
   ;; Align sizeloc (8 bytes)
   (x86-add cgc sizeloc (x86-imm-int 7))
-  (x86-mov cgc selector-reg   (x86-imm-int -8))
+  (x86-mov cgc selector-reg (x86-imm-int -8))
   (x86-and cgc sizeloc selector-reg)
   ;; Save aligned size
-  (x86-push cgc sizeloc)
+  (x86-upush cgc sizeloc)
 
   ;; see TODO
   (x86-cmp cgc sizeloc (x86-imm-int MSECTION_BIGGEST))
   (x86-jl cgc label-not-still) ;; TODO jl or jle ?
-    ;; TODO: wrtie comments, and rewrite optimized code sequence
-    (x86-push cgc (x86-imm-int stag))
-    (x86-call-label-aligned-ret cgc label-alloc-still-handler)
-    (x86-mov cgc (x86-mem 0 (x86-rsp)) (x86-imm-int 0) 64) ;; 0
-    (x86-add cgc (x86-rsp) (x86-imm-int 8)) ;; remove
+    ;; TODO: write comments, and rewrite optimized code sequence
+    (x86-ppush cgc (x86-imm-int stag)) ;; stag is not encoded, push it to pstack
+    (x86-pcall cgc label-alloc-still-handler)
+    (x86-mov cgc (x86-mem 0 (x86-usp)) (x86-imm-int 0) 64) ;; 0
+    (x86-add cgc (x86-rsp) (x86-imm-int 8)) ;; remove stag
     (x86-jmp cgc label-alloc-still-end)
   (x86-label cgc label-not-still)
 
@@ -156,21 +155,21 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
   (x86-jle cgc label-alloc-end)
 
     ;; call heap-limit
-    (x86-call-label-aligned-ret cgc label-heap-limit-handler)
+    (x86-pcall cgc label-heap-limit-handler)
     ;; rax = encoded ptr to obj
     (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
     ;; Update alloc ptr
-    (x86-mov cgc selector-reg (x86-mem 0 (x86-rsp))) ;; get aligned size
+    (x86-mov cgc selector-reg (x86-mem 0 (x86-usp))) ;; get aligned size
     (x86-lea cgc alloc-ptr (x86-mem 8 alloc-ptr selector-reg))
     (x86-jmp cgc label-alloc-ret)
 
   (x86-label cgc label-alloc-end)
   ;; rax = encoded ptr to obj
   (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 8) alloc-ptr))
-  (x86-sub cgc (x86-rax) (x86-mem 0 (x86-rsp)))
+  (x86-sub cgc (x86-rax) (x86-mem 0 (x86-usp)))
 
   (x86-label cgc label-alloc-ret)
-  (x86-mov cgc selector-reg (x86-mem 8 (x86-rsp))) ;; get saved nbytes (no aligned)
+  (x86-mov cgc selector-reg (x86-mem 8 (x86-usp))) ;; get saved nbytes (no aligned)
   (x86-shl cgc selector-reg (x86-imm-int 8))
   (x86-or  cgc selector-reg (x86-imm-int (mem-header 0 stag)))
   (x86-mov cgc (x86-mem (- TAG_MEMOBJ) (x86-rax)) selector-reg) ;; write header
@@ -179,7 +178,7 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
   ;; Restore selector
   (x86-mov cgc selector-reg (x86-imm-int 0))
   ;; Remove saved values
-  (x86-add cgc (x86-rsp) (x86-imm-int 16)))
+  (x86-add cgc (x86-usp) (x86-imm-int 16)))
 
 ;; Alloc object of type stag of size nbytes + 8 (header)
 ;; For performance reason, unlike gen-allocation-rt,
@@ -204,7 +203,7 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
   (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
   (x86-jle cgc label-alloc-end)
   ;; else
-    (x86-call-label-aligned-ret cgc label-heap-limit-handler)
+    (x86-pcall cgc label-heap-limit-handler)
     (x86-add cgc alloc-ptr (x86-imm-int (+ nbytes 8)))
 
   ;; write header

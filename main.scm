@@ -170,12 +170,8 @@
                     (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc))
                     (error "NYI regalloc")))
 
-              ;; Set rsp to pstack top (rsp points to the last saved registers)
-              (x86-mov cgc (x86-rbx) (x86-imm-int block-addr))
-              (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rbx)))
-
               ;; Restore registers values from pstack
-              (pop-regs-reverse cgc all-regs)
+              (ppop-regs-reverse cgc all-regs)
               (x86-ret cgc)))))
 
 
@@ -224,7 +220,6 @@
                (if (< i globals-len)
                    (begin (vector-set! globals-space i 0)
                           (loop (+ i 1)))))
-             (##gc)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
       (begin (##machine-code-block-exec mcb))))
@@ -266,7 +261,7 @@
           ;; Can only exec 1 file
           ((= (length files) 1)
             (copy-with-declare (car files) "./tmp")
-            (let ((content (c#expand-program "./tmp"))) ;(read-all (open-input-file (car files)))))
+            (let ((content (c#expand-program "./tmp")));(read-all (open-input-file (car files)))))
                 (define (get-global-type g)
                   (cond ((symbol? (cadr g))
                             (cond ((symbol?  (caddr g)) CTX_UNK) ;; TODO si globale connue, mettre type

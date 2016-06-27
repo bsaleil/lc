@@ -62,7 +62,6 @@
 
   (cond ;; Last choice (do we take 2^-23 ?)
       ((= p (* -1 nbits-fraction))
-
          ;; We get the closest number of f between n and n+2^-23
          (let ((sa (abs (- f (+ n (expt 2 p)))))
                (sb (abs (- f n))))
@@ -101,7 +100,6 @@
         (nsign (sign-int f))
         (nexpo (+ bias (cdr frac)))
         (nfrac (frac-int nbits-fraction (- (car frac) 1) 0 -1)))
-
      (+ (* nsign (expt 2 nbits-exp-frac))
         (* nexpo (expt 2 nbits-fraction))
         nfrac))))

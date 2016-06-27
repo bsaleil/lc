@@ -289,14 +289,14 @@
 
   (make-lazy-code
       (lambda (cgc ctx)
-        (mlet ((immediate
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
+               (immediate
                 (if (< ast 0)
                     (let* ((ieee-rep (ieee754 (abs ast) 'double))
                            (64-mod   (bitwise-not (- ieee-rep 1)))
                            (64-modl  (bitwise-and (- (expt 2 63) 1) 64-mod)))
                       (* -1 64-modl))
-                    (ieee754 ast 'double)))
-               (moves/reg/ctx (ctx-get-free-reg ctx)))
+                    (ieee754 ast 'double))))
           (apply-moves cgc ctx moves)
           (codegen-flonum cgc immediate reg)
           (jump-to-version cgc succ (ctx-push ctx CTX_FLO reg))))))
@@ -588,7 +588,7 @@
 
                          ;; 3 - Clean stack
                          (if (> clean-nb 0)
-                             (x86-add cgc (x86-rsp) (x86-imm-int (* 8 clean-nb))))
+                             (x86-add cgc (x86-usp) (x86-imm-int (* 8 clean-nb))))
 
                          (if opt-return-points
                              (let* ((ret-type (car (ctx-stack ctx)))
@@ -629,7 +629,7 @@
                ;; Lambda stub
                (stub-labels (add-fn-callback cgc
                                              1
-                                             (lambda (sp stack ret-addr selector closure)
+                                             (lambda (stack ret-addr selector closure)
                                               (define free (append fvars late-fbinds))
                                               (define eploc (if opt-entry-points cctable-loc (error "NYI add-fn-callback")))
 
@@ -685,7 +685,7 @@
             ;; Write free variables
             (let* ((free-offset (* -1 (+ (length fvars) (length late-fbinds))))
                    (clo-offset  (- free-offset 2)))
-              (gen-free-vars cgc fvars ctx free-offset clo-offset))
+              (gen-free-vars cgc fvars late-fbinds ctx free-offset clo-offset))
 
             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
               (apply-moves cgc ctx moves)
@@ -735,11 +735,7 @@
                           (loop (- i 1) (cdr regs)))))
                 (x86-jmp cgc label-next-arg-end)
                 (x86-label cgc label-from-stack)
-                (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rsp)))
-                (x86-mov cgc (x86-r15) (x86-mem 0 (x86-rsp)))
-                (x86-add cgc (x86-rsp) (x86-imm-int 16))
-                (x86-sub cgc (x86-rdi) (x86-imm-int (obj-encoding 1)))
-                (x86-jmp cgc (x86-r15))
+                (x86-upop cgc (x86-rax))
                 (x86-label cgc label-next-arg-end)
                 (x86-sub cgc (x86-rdi) (x86-imm-int (obj-encoding 1)))
                 (x86-ret cgc)
@@ -754,7 +750,7 @@
 
                 ;; Alloc
                 (gen-allocation-imm cgc STAG_PAIR 16)
-                (x86-call-label-aligned-ret cgc label-next-arg)
+                (x86-pcall cgc label-next-arg)
                 (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
                 (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r14))
                 (x86-lea cgc (x86-r14) (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
@@ -764,7 +760,7 @@
               (if (<= nb-args (length args-regs))
                   (let ((reg (list-ref args-regs (- nb-args 1))))
                     (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-r14)))
-                  (x86-push cgc (x86-r14)))))
+                  (x86-upush cgc (x86-r14)))))
 
         (jump-to-version cgc succ ctx)))))
 
@@ -1105,15 +1101,15 @@
                               (fs (ctx-fs ctx)))
                      (if (not (null? clocs))
                          (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs (car clocs)))
-                                (x86-push cgc (x86-rax))
+                                (x86-upush cgc (x86-rax))
                                 (loop (cdr clocs) (+ fs 1))))))
                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding nargs)))
-                 (x86-push cgc (x86-rax))
+                 (x86-upush cgc (x86-rax))
                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding gsym)))
-                 (x86-push cgc (x86-rax))
-                 (x86-call-label-aligned-ret cgc label-gambit-call-handler)
-                 (x86-pop cgc (codegen-reg-to-x86reg reg))
-                 (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (+ nargs 1))))
+                 (x86-upush cgc (x86-rax))
+                 (x86-pcall cgc label-gambit-call-handler)
+                 (x86-upop cgc (codegen-reg-to-x86reg reg))
+                 (x86-add cgc (x86-usp) (x86-imm-int (* 8 (+ nargs 1))))
                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) CTX_UNK reg)))))))
     (gen-ast-l (cdr ast) lazy-call)))
 
@@ -1255,7 +1251,7 @@
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))
 
 ;;
-(define (prim-fxl-op cgc ctx reg succ cst-infos op cgcfn)
+(define (prim-fxl-op cgc ctx reg succ cst-infos op cgcfn fx?)
   (let* ((rcst  (assoc 1 cst-infos))
          (lcst  (assoc 0 cst-infos))
          (n-pop  (count (list lcst rcst) not))
@@ -1269,7 +1265,7 @@
         (if (eq? cgcfn codegen-num-ii)
             (cgcfn cgc (ctx-fs ctx) op reg lleft lright lcst rcst #f)
             (cgcfn cgc (ctx-fs ctx) op reg lleft #f lright #f lcst rcst #f)))
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_INT reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (if fx? CTX_INT CTX_FLO) reg))))
 
 (define (prim-fxl?-op cgc ctx reg succ cst-infos op cgcfn)
 
@@ -1416,15 +1412,15 @@
                        ((vector-set!)       (prim-vector-set!    cgc ctx reg succ cst-infos))
                        ((string-set!)       (prim-string-set!    cgc ctx reg succ cst-infos))
                        ((symbol->string)    (prim-symbol->string cgc ctx reg succ cst-infos))
-                       ((##fx+)             (prim-fxl-op         cgc ctx reg succ cst-infos '+ codegen-num-ii))
-                       ((##fx-)             (prim-fxl-op         cgc ctx reg succ cst-infos '- codegen-num-ii))
-                       ((##fx*)             (prim-fxl-op         cgc ctx reg succ cst-infos '* codegen-num-ii))
+                       ((##fx+)             (prim-fxl-op         cgc ctx reg succ cst-infos '+ codegen-num-ii #t))
+                       ((##fx-)             (prim-fxl-op         cgc ctx reg succ cst-infos '- codegen-num-ii #t))
+                       ((##fx*)             (prim-fxl-op         cgc ctx reg succ cst-infos '* codegen-num-ii #t))
                        ((##fx+?)            (prim-fxl?-op        cgc ctx reg succ cst-infos '+ codegen-num-ii))
                        ((##fx-?)            (prim-fxl?-op        cgc ctx reg succ cst-infos '- codegen-num-ii))
                        ((##fx*?)            (prim-fxl?-op        cgc ctx reg succ cst-infos '* codegen-num-ii))
-                       ((##fl+)             (prim-fxl-op         cgc ctx reg succ cst-infos '+ codegen-num-ff))
-                       ((##fl-)             (prim-fxl-op         cgc ctx reg succ cst-infos '- codegen-num-ff))
-                       ((##fl*)             (prim-fxl-op         cgc ctx reg succ cst-infos '* codegen-num-ff))
+                       ((##fl+)             (prim-fxl-op         cgc ctx reg succ cst-infos '+ codegen-num-ff #f))
+                       ((##fl-)             (prim-fxl-op         cgc ctx reg succ cst-infos '- codegen-num-ff #f))
+                       ((##fl*)             (prim-fxl-op         cgc ctx reg succ cst-infos '* codegen-num-ff #f))
                        ((##fixnum->flonum)  (prim-fixnum->flonum cgc ctx reg succ cst-infos))
                        ((##mem-allocated?)  (prim-mem-allocated? cgc ctx reg succ cst-infos))
                        ((##subtyped?)       (prim-subtyped?      cgc ctx reg succ cst-infos))
@@ -1767,7 +1763,7 @@
                         (x86-je cgc label-end)
                           (x86-add cgc (x86-r11) (x86-imm-int 4))
                           (x86-mov cgc (x86-r14) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-r15)))
-                          (x86-push cgc (x86-r14))
+                          (x86-upush cgc (x86-r14))
                           (x86-mov cgc (x86-r15) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-r15)))
                           (x86-jmp cgc label-loop))
                       (begin
@@ -1835,7 +1831,7 @@
       (if (null? locs)
           (set! ctx (ctx-fs-update ctx fs))
           (let ((opnd (codegen-loc-to-x86opnd fs (car locs))))
-            (x86-push cgc opnd)
+            (x86-upush cgc opnd)
             (loop (+ fs 1) (cdr locs)))))
 
     (let* ((used-regs
@@ -1865,12 +1861,12 @@
         (let loop ((curr (- nshift 1)))
           (if (>= curr 0)
               (begin
-                (x86-mov cgc (x86-r14) (x86-mem (* 8 curr) (x86-rsp)))
-                (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift 1) curr)) (x86-rsp)) (x86-r14))
+                (x86-mov cgc (x86-r14) (x86-mem (* 8 curr) (x86-usp)))
+                (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift 1) curr)) (x86-usp)) (x86-r14))
                 (loop (- curr 1)))))
 
         (if (not (= (- fs nshift 1) 0))
-            (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (- fs nshift 1))))))))
+            (x86-add cgc (x86-usp) (x86-imm-int (* 8 (- fs nshift 1))))))))
 
 ;;
 ;; Make lazy code from CALL EXPR
@@ -1950,7 +1946,7 @@
                (for-each
                  (lambda (i)
                    (let ((opnd (codegen-reg-to-x86reg i)))
-                     (x86-pop cgc opnd)))
+                     (x86-upop cgc opnd)))
                  (reverse saved-regs))
 
                (jump-to-version cgc succ ctx))))
@@ -1990,7 +1986,7 @@
                (for-each
                  (lambda (i)
                    (let ((opnd (codegen-reg-to-x86reg i)))
-                     (x86-pop cgc opnd)))
+                     (x86-upop cgc opnd)))
                  (reverse saved-regs))
 
                (jump-to-version cgc succ ctx))))
@@ -2430,9 +2426,14 @@
 
 ;; free-offset is the current free variable offset position from alloc-ptr
 ;; clo-offset is the closure offset position from alloc-ptr
-(define (gen-free-vars cgc ids ctx free-offset clo-offset)
+(define (gen-free-vars cgc ids late-ids ctx free-offset clo-offset)
   (if (null? ids)
-      #f
+      ;; Write 0 in all late slots (to keep the GC happy!)
+      (let loop ((n (length late-ids)) (off free-offset))
+        (if (> n 0)
+            (begin
+              (x86-mov cgc (x86-mem (* 8 off) alloc-ptr) (x86-imm-int 0) 64)
+              (loop (- n 1) (+ off 1)))))
       (let* ((identifier (cdr (assoc (car ids) (ctx-env ctx))))
              (loc (ctx-identifier-loc ctx identifier))
              (opn
@@ -2458,7 +2459,7 @@
                      (else
                        (codegen-reg-to-x86reg loc)))))
         (x86-mov cgc (x86-mem (* 8 free-offset) alloc-ptr) opn)
-        (gen-free-vars cgc (cdr ids) ctx (+ free-offset 1) clo-offset))))
+        (gen-free-vars cgc (cdr ids) late-ids ctx (+ free-offset 1) clo-offset))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst params enc-ids)
