@@ -234,7 +234,7 @@
                  ((member op '(+ - * < > <= >= = /))         (mlc-op-n ast succ op)) ;; nary operator
                  ((member op '(quotient modulo remainder)) (mlc-op-bin ast succ op)) ;; binary operator
                  ;; Type predicate
-                 ((type-predicate? op) (mlc-test ast succ))
+                 ((type-predicate? op) (mlc-test ast succ #f))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -1644,6 +1644,7 @@
                        (let* ((lcond (ctx-get-loc ctx 0)))
                          (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond)))))))))
 
+    ;; TODO: cond
     (if inline-condition?
         (cond ((< (length (cadr ast)) 3)
                  ;; if (op) or (op opnd) then inline the true branch
@@ -1659,9 +1660,14 @@
                  (gen-ast cleft lazy-code-test))
               (else
                  (gen-ast-l (cdr condition) lazy-code-test)))
-        (gen-ast
-          (cadr ast)
-          lazy-code-test))))
+        (if (and (pair? (cadr ast))
+                 (type-predicate? (caadr ast)))
+            (mlc-test (cadr ast)
+                      lazy-code-test
+                      lazy-code1)
+            (gen-ast
+              (cadr ast)
+              lazy-code-test)))))
 
 (define (mlc-branch x86-jop generator lazy-true lazy-false ctx-true ctx-false)
 
@@ -2218,7 +2224,8 @@
 ;;
 ;; Make lazy code from TYPE TEST
 ;;
-(define (mlc-test ast succ)
+;; TODO: explain if-cond-true
+(define (mlc-test ast succ if-cond-true)
 
   (define (get-lazy-res bool)
     (make-lazy-code
@@ -2230,11 +2237,21 @@
 
   (let ((type (predicate-to-ctxtype (car ast)))
         (stack-idx 0)
-        (lazy-success (get-lazy-res #t))
         (lazy-fail    (get-lazy-res #f)))
 
-    (gen-ast (cadr ast)
-             (gen-dyn-type-test type stack-idx lazy-success lazy-fail ast))))
+    (if if-cond-true
+        ;; If we have a if condition true branch, use it
+        (let ((lazy-success
+                (make-lazy-code
+                  (lambda (cgc ctx)
+                    (jump-to-version cgc if-cond-true (ctx-pop ctx))))))
+
+          (gen-ast (cadr ast)
+                   (gen-dyn-type-test type stack-idx lazy-success lazy-fail ast)))
+        ;; Else create a new lco with #t
+        (let ((lazy-success (get-lazy-res #t)))
+          (gen-ast (cadr ast)
+                   (gen-dyn-type-test type stack-idx lazy-success lazy-fail ast))))))
 
 ;;
 ;; Make lazy code to create pair

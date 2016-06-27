@@ -1,10 +1,13 @@
-;;---------------------------------------------------------------------------
 
-(define t1 '(11 . 22))
+;;; ACK -- One of the Kernighan and Van Wyk benchmarks.
 
-(define (try p) (##car p))
+(define (ack m n)
+  (cond ((= m 0) (+ n 1))
+        ((= n 0) (ack (- m 1) 1))
+        (else (ack (- m 1) (ack m (- n 1))))))
 
-(try t1)
+($apply ack (cons 3 (cons 9 '())))
+
 ;(run 10000)
 ;; Si une lambda est bindée à un id (let et letrec)
 ;;  -> alors cet id est immutable, sinon ça serait une box

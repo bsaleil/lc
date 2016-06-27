@@ -220,6 +220,7 @@
                (if (< i globals-len)
                    (begin (vector-set! globals-space i 0)
                           (loop (+ i 1)))))
+             (##gc)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
       (begin (##machine-code-block-exec mcb))))
