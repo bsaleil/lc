@@ -1,12 +1,12 @@
 
-;;; ACK -- One of the Kernighan and Van Wyk benchmarks.
+(rrr 10)
 
-(define (ack m n)
-  (cond ((= m 0) (+ n 1))
-        ((= n 0) (ack (- m 1) 1))
-        (else (ack (- m 1) (ack m (- n 1))))))
-
-($apply ack (cons 3 (cons 9 '())))
+;(define (fibo n)
+;   (if (or (= n 0) (= n 1))
+;      n
+;      (fibo (- n 2))))
+;
+;(fibo 35)
 
 ;(run 10000)
 ;; Si une lambda est bindée à un id (let et letrec)

@@ -221,15 +221,10 @@
 ;; The procedure exec-error is callable from generated machine code.
 ;; This function print the error message in rax
 (c-define (rt-error usp psp) (long long) void "rt_error" ""
-  (error "NYI rt-error"))
-  ;(pp (reg-sp-offset 0))
-  ;(let* ((err-enc (get-i64 (+ usp (reg-sp-offset 0))))
-  ;       (err (encoding-obj err-enc)))
-  ;  (pp err-enc)
-  ;  (pp err)
-  ;  (error "OK")))
-    ;(print "!!! ERROR : ")
-    ;(println err)))
+  (let ((msg (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-rbx)))))))
+    (print "*** ERROR -- ")
+    (println msg)
+    (exit 0)))
 
 ;;-----------------------------------------------------------------------------
 

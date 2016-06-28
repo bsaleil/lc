@@ -36,6 +36,11 @@
 (define (pp n)
   (gambit$$pp n))
 
+(define (display . n)
+  (if (= (length n 1))
+      (display (car n))
+      (display (car n) (cadr n))))
+
 (define write
   (lambda (n)
     (pp n)))

@@ -199,7 +199,7 @@
   (cond ;; String
         ((string? ast)  (mlc-string ast succ))
         ;; Symbol
-        ((symbol? ast) (mlc-identifier ast succ))
+        ((symbol? ast) (mlc-identifier ast succ #f))
         ;; Flonum
         ((compiler-flonum? ast)
          (mlc-flonum ast succ))
@@ -376,7 +376,21 @@
 ;; Make lazy code from SYMBOL
 ;;
 ;; TODO: réécrire: attention la recherche d'id met à jour le ctx
-(define (mlc-identifier ast succ)
+(define (mlc-identifier ast succ if-true-cond)
+
+  (define (inlined-cond? type-fn)
+    (and if-true-cond
+         (let ((type (type-fn)))
+           (and
+             type
+             (not (eq? type CTX_BOOL))    ;; If it's a bool, we must check the value
+             (not (eq? type CTX_UNK)))))) ;; If it's a unk, we must check the type
+
+  (define (lcl-inlined-cond? ctx identifier)
+    (inlined-cond? (lambda () (ctx-identifier-type ctx identifier))))
+
+  (define (gbl-inlined-cond? id)
+    (inlined-cond? (lambda () (table-ref gids id #f))))
 
   (make-lazy-code
     (lambda (cgc ctx)
@@ -385,7 +399,11 @@
             (global (table-ref globals ast #f)))
 
         ;;
-        (cond ;; Identifier is a free variable
+        (cond ;; Identifier local or global and inlined condition
+              ((or (and local  (lcl-inlined-cond? ctx (cdr local)))
+                   (and global (gbl-inlined-cond? ast)))
+                (jump-to-version cgc if-true-cond ctx))
+              ;; Identifier is a free variable
               ((and local (eq? (identifier-kind (cdr local)) 'free))
                 (gen-get-freevar cgc ctx local succ #f))
               ;; Identifier is a local variable
@@ -1644,27 +1662,33 @@
                        (let* ((lcond (ctx-get-loc ctx 0)))
                          (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond)))))))))
 
-    ;; TODO: cond
-    (if inline-condition?
-        (cond ((< (length (cadr ast)) 3)
-                 ;; if (op) or (op opnd) then inline the true branch
-                 (gen-ast (caddr ast) succ))
-              ((and inline-condition? (number? cleft) (number? cright))
-                 ;; operands are constants, inline corresponding branch
-                 (if (eval condition)
-                     (gen-ast (caddr ast)  succ)
-                     (gen-ast (cadddr ast) succ)))
-              ((and inline-condition? (integer? cleft))
-                 (gen-ast cright lazy-code-test))
-              ((and inline-condition? (integer? cright))
-                 (gen-ast cleft lazy-code-test))
-              (else
-                 (gen-ast-l (cdr condition) lazy-code-test)))
-        (if (and (pair? (cadr ast))
-                 (type-predicate? (caadr ast)))
-            (mlc-test (cadr ast)
-                      lazy-code-test
-                      lazy-code1)
+    ;; Each optimizable if condition take an extra argument
+    ;; TODO
+    (cond ;; Inlined if condition
+          (inline-condition?
+            (cond ((< (length (cadr ast)) 3)
+                     ;; if (op) or (op opnd) then inline the true branch
+                     (gen-ast (caddr ast) succ))
+                  ((and inline-condition? (number? cleft) (number? cright))
+                     ;; operands are constants, inline corresponding branch
+                     (if (eval condition)
+                         (gen-ast (caddr ast)  succ)
+                         (gen-ast (cadddr ast) succ)))
+                  ((and inline-condition? (integer? cleft))
+                     (gen-ast cright lazy-code-test))
+                  ((and inline-condition? (integer? cright))
+                     (gen-ast cleft lazy-code-test))
+                  (else
+                     (gen-ast-l (cdr condition) lazy-code-test))))
+          ;; Type predicate condition ex. (fixnum? n)
+          ((and (pair? (cadr ast))
+                (type-predicate? (caadr ast)))
+            (mlc-test (cadr ast) lazy-code-test lazy-code1))
+          ; Identifier condition ex. n
+          ((symbol? (cadr ast))
+            (mlc-identifier (cadr ast) lazy-code-test lazy-code1))
+          ;;
+          (else
             (gen-ast
               (cadr ast)
               lazy-code-test)))))
@@ -2225,7 +2249,7 @@
 ;; Make lazy code from TYPE TEST
 ;;
 ;; TODO: explain if-cond-true
-(define (mlc-test ast succ if-cond-true)
+(define (mlc-test ast succ if-true-cond)
 
   (define (get-lazy-res bool)
     (make-lazy-code
@@ -2239,12 +2263,12 @@
         (stack-idx 0)
         (lazy-fail    (get-lazy-res #f)))
 
-    (if if-cond-true
+    (if if-true-cond
         ;; If we have a if condition true branch, use it
         (let ((lazy-success
                 (make-lazy-code
                   (lambda (cgc ctx)
-                    (jump-to-version cgc if-cond-true (ctx-pop ctx))))))
+                    (jump-to-version cgc if-true-cond (ctx-pop ctx))))))
 
           (gen-ast (cadr ast)
                    (gen-dyn-type-test type stack-idx lazy-success lazy-fail ast)))
