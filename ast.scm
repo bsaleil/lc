@@ -107,6 +107,41 @@
   `(let* ,(write-bindings bindings) ,@body))
 
 ;;-----------------------------------------------------------------------------
+;; Parsistent data structures
+;; a chaque site d'appel dont on connait le receveur:
+;;   * tester si la version pour ce contexte a déjà été générée (pt entre == stub_addr (?))
+;;   * si déjà générée: on fait un jmp classique
+;;   * sinon:
+;;     * On ajoute une association (adresse mov - cctable - ctxidx) à un ensemble global
+;;     * On fait un mov de l'adresse du stub
+;; a chaque patch de cctable:
+;;  * regarder dans l'ensemble global si on a une assoc avec cette table et ce ctx (key)
+;;  * si oui: patch du chargement du pt d'éntrée
+;;  * sinon: rien à faire
+;; CAS POSSIBLES:
+;;  1. On veut appeller un point d'entrée:
+;;    - Voir ci-dessus
+;;  2. On veut appeller un pt générique:
+;;    - Meme stratégie, la structure stocke l'adresse du stub générique
+;;  3. On utilisa pas de cc-tables:
+;;    - Meme stratégie, mais la structore stocke qu'une seule adresse de stub
+;; Pour commencer:
+;; -> 1. etre capable de déterminer à un site d'appel avec receveur connu si c'est le stub ou non
+;; -> 2. utiliser un jmp classique
+
+;; ensemble pour stocker cctable -> stub-addr
+;; ensemble pour stocker addresse mov -> cctable/ctxidx
+
+;; TODO: comment this data struct
+;; TODO: move all persistent data struct here!
+;; TODO: WIP
+(define asc-cc-stub (make-table))
+(define (asc-cc-stub-add cctable generic-addr stub-addr)
+  (table-set! asc-cc-stub cctable (cons generic-addr stub-addr)))
+(define (asc-cc-stub-get cctable)
+  (table-ref asc-cc-stub cctable #f))
+
+;;-----------------------------------------------------------------------------
 ;; Type predicates
 
 (define type-predicates `(
@@ -199,7 +234,7 @@
   (cond ;; String
         ((string? ast)  (mlc-string ast succ))
         ;; Symbol
-        ((symbol? ast) (mlc-identifier ast succ #f))
+        ((symbol? ast) (mlc-identifier ast succ))
         ;; Flonum
         ((compiler-flonum? ast)
          (mlc-flonum ast succ))
@@ -234,7 +269,7 @@
                  ((member op '(+ - * < > <= >= = /))         (mlc-op-n ast succ op)) ;; nary operator
                  ((member op '(quotient modulo remainder)) (mlc-op-bin ast succ op)) ;; binary operator
                  ;; Type predicate
-                 ((type-predicate? op) (mlc-test ast succ #f))
+                 ((type-predicate? op) (mlc-test ast succ))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -376,10 +411,12 @@
 ;; Make lazy code from SYMBOL
 ;;
 ;; TODO: réécrire: attention la recherche d'id met à jour le ctx
-(define (mlc-identifier ast succ if-true-cond)
+(define (mlc-identifier ast succ)
+
+  (define next-is-cond (member 'cond (lazy-code-flags succ)))
 
   (define (inlined-cond? type-fn)
-    (and if-true-cond
+    (and next-is-cond
          (let ((type (type-fn)))
            (and
              type
@@ -402,7 +439,7 @@
         (cond ;; Identifier local or global and inlined condition
               ((or (and local  (lcl-inlined-cond? ctx (cdr local)))
                    (and global (gbl-inlined-cond? ast)))
-                (jump-to-version cgc if-true-cond ctx))
+                (jump-to-version cgc (lazy-code-lco-true succ) ctx))
               ;; Identifier is a free variable
               ((and local (eq? (identifier-kind (cdr local)) 'free))
                 (gen-get-freevar cgc ctx local succ #f))
@@ -1543,124 +1580,128 @@
          (lazy-code1
            (gen-ast (caddr ast) succ))
          (lazy-code-test
-           (make-lazy-code-cond
-             (lambda (cgc ctx)
-               (let* ((n-pop (count (list cleft cright) (lambda (n) (not (integer? n)))))
-                      (ctx0
-                        (if inline-condition?
-                          (ctx-pop-n ctx n-pop) ;; Pop both condition operands
-                          (ctx-pop ctx)))   ;; Pop condition result
-
-                      (ctx1
-                        ctx0)
-
-                      (label-jump
-                        (asm-make-label
-                          cgc
-                          (new-sym 'patchable_jump)))
-
-                      (stub-first-label-addr #f)
-
-                      (stub-labels
-                        (add-callback
-                          cgc
-                          1
-                          (let ((prev-action #f))
-                            (lambda (ret-addr selector)
-                              (let ((stub-addr
-                                      stub-first-label-addr)
-                                    (jump-addr
-                                      (asm-label-pos label-jump)))
-
-                                (if opt-verbose-jit
-                                    (begin
-                                      (println ">>> selector= " selector)
-                                      (println ">>> prev-action= " prev-action)))
-
-                                (if (not prev-action)
-
-                                    (begin
-
-                                      (set! prev-action 'no-swap)
-
-                                      (if (= selector 1)
-                                          ;; overwrite unconditional jump
-                                          (gen-version
-                                            (+ jump-addr 6)
-                                            lazy-code1
-                                            ctx1)
-
-                                          (if (= (+ jump-addr 6 5) code-alloc)
-
-                                              (begin
-
-                                                (if opt-verbose-jit (println ">>> swapping-branches"))
-
-                                                (set! prev-action 'swap)
-
-                                                ;; invert jump direction
-                                                (put-u8 (+ jump-addr 1)
-                                                        (fxxor 1 (get-u8 (+ jump-addr 1))))
-
-                                                ;; make conditional jump to stub
-                                                (patch-jump jump-addr stub-addr)
-
-                                                ;; overwrite unconditional jump
-                                                (gen-version
-                                                  (+ jump-addr 6)
-                                                  lazy-code0
-                                                  ctx0))
-
-                                              ;; make conditional jump to new version
-                                              (gen-version
-                                                jump-addr
-                                                lazy-code0
-                                                ctx0))))
-
-                                    (begin
-
-                                      ;; one branch has already been patched
-
-                                      ;; reclaim the stub
-                                      (release-still-vector
-                                        (get-scmobj ret-addr))
-                                      (stub-reclaim stub-addr)
-
-                                      (if (= selector 0)
-
-                                          (gen-version
-                                            (if (eq? prev-action 'swap)
-                                                (+ jump-addr 6)
-                                                jump-addr)
-                                            lazy-code0
-                                            ctx0)
-
-                                          (gen-version
-                                            (if (eq? prev-action 'swap)
-                                                jump-addr
-                                                (+ jump-addr 6))
-                                            lazy-code1
-                                            ctx1))))))))))
-
-                 (let ((label-false (list-ref stub-labels 0))
-                       (label-true  (list-ref stub-labels 1)))
-
-                   (set! stub-first-label-addr
-                         (min (asm-label-pos label-false)
-                              (asm-label-pos label-true)))
-
+           (let ((make-lco
                    (if inline-condition?
-                       (let* ((lazy-cmp
-                                (get-lazy-n-binop
-                                  condition
-                                  (caadr ast)
-                                  (and (integer? cleft) cleft)
-                                  (and (integer? cright) cright)
-                                  succ
-                                  (list label-jump label-true label-false))))
-                         (jump-to-version cgc lazy-cmp ctx))
-                       (let* ((lcond (ctx-get-loc ctx 0)))
-                         (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond)))))))))
+                       make-lazy-code
+                       (lambda (gen) (make-lazy-code-cond lazy-code1 lazy-code0 gen)))))
+             (make-lco
+               (lambda (cgc ctx)
+                 (let* ((n-pop (count (list cleft cright) (lambda (n) (not (integer? n)))))
+                        (ctx0
+                          (if inline-condition?
+                            (ctx-pop-n ctx n-pop) ;; Pop both condition operands
+                            (ctx-pop ctx)))   ;; Pop condition result
+
+                        (ctx1
+                          ctx0)
+
+                        (label-jump
+                          (asm-make-label
+                            cgc
+                            (new-sym 'patchable_jump)))
+
+                        (stub-first-label-addr #f)
+
+                        (stub-labels
+                          (add-callback
+                            cgc
+                            1
+                            (let ((prev-action #f))
+                              (lambda (ret-addr selector)
+                                (let ((stub-addr
+                                        stub-first-label-addr)
+                                      (jump-addr
+                                        (asm-label-pos label-jump)))
+
+                                  (if opt-verbose-jit
+                                      (begin
+                                        (println ">>> selector= " selector)
+                                        (println ">>> prev-action= " prev-action)))
+
+                                  (if (not prev-action)
+
+                                      (begin
+
+                                        (set! prev-action 'no-swap)
+
+                                        (if (= selector 1)
+                                            ;; overwrite unconditional jump
+                                            (gen-version
+                                              (+ jump-addr 6)
+                                              lazy-code1
+                                              ctx1)
+
+                                            (if (= (+ jump-addr 6 5) code-alloc)
+
+                                                (begin
+
+                                                  (if opt-verbose-jit (println ">>> swapping-branches"))
+
+                                                  (set! prev-action 'swap)
+
+                                                  ;; invert jump direction
+                                                  (put-u8 (+ jump-addr 1)
+                                                          (fxxor 1 (get-u8 (+ jump-addr 1))))
+
+                                                  ;; make conditional jump to stub
+                                                  (patch-jump jump-addr stub-addr)
+
+                                                  ;; overwrite unconditional jump
+                                                  (gen-version
+                                                    (+ jump-addr 6)
+                                                    lazy-code0
+                                                    ctx0))
+
+                                                ;; make conditional jump to new version
+                                                (gen-version
+                                                  jump-addr
+                                                  lazy-code0
+                                                  ctx0))))
+
+                                      (begin
+
+                                        ;; one branch has already been patched
+
+                                        ;; reclaim the stub
+                                        (release-still-vector
+                                          (get-scmobj ret-addr))
+                                        (stub-reclaim stub-addr)
+
+                                        (if (= selector 0)
+
+                                            (gen-version
+                                              (if (eq? prev-action 'swap)
+                                                  (+ jump-addr 6)
+                                                  jump-addr)
+                                              lazy-code0
+                                              ctx0)
+
+                                            (gen-version
+                                              (if (eq? prev-action 'swap)
+                                                  jump-addr
+                                                  (+ jump-addr 6))
+                                              lazy-code1
+                                              ctx1))))))))))
+
+                   (let ((label-false (list-ref stub-labels 0))
+                         (label-true  (list-ref stub-labels 1)))
+
+                     (set! stub-first-label-addr
+                           (min (asm-label-pos label-false)
+                                (asm-label-pos label-true)))
+
+                     (if inline-condition?
+                         (let* ((lazy-cmp
+                                  (get-lazy-n-binop
+                                    condition
+                                    (caadr ast)
+                                    (and (integer? cleft) cleft)
+                                    (and (integer? cright) cright)
+                                    succ
+                                    (list label-jump label-true label-false))))
+                           (jump-to-version cgc lazy-cmp ctx))
+                         (let* ((lcond (ctx-get-loc ctx 0)))
+                           (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond))))))))))
 
     ;; Each optimizable if condition take an extra argument
     ;; TODO
@@ -1680,13 +1721,6 @@
                      (gen-ast cleft lazy-code-test))
                   (else
                      (gen-ast-l (cdr condition) lazy-code-test))))
-          ;; Type predicate condition ex. (fixnum? n)
-          ((and (pair? (cadr ast))
-                (type-predicate? (caadr ast)))
-            (mlc-test (cadr ast) lazy-code-test lazy-code1))
-          ; Identifier condition ex. n
-          ((symbol? (cadr ast))
-            (mlc-identifier (cadr ast) lazy-code-test lazy-code1))
           ;;
           (else
             (gen-ast
@@ -2056,15 +2090,15 @@
 ;; (compile time lookup)
 (define (gen-call-sequence ast cgc call-ctx nb-args eploc global-eploc?)
 
-    (cond ((not opt-entry-points)
-             (codegen-call-ep cgc nb-args eploc global-eploc?))
-          ((not nb-args) ;; apply
-             (codegen-call-cc-gen cgc #f eploc global-eploc?))
-          (else
-             (let* ((idx (get-closure-index (ctx-stack call-ctx))))
-               (if idx
-                   (codegen-call-cc-spe cgc idx nb-args eploc global-eploc?)
-                   (codegen-call-cc-gen cgc nb-args eploc global-eploc?))))))
+  (cond ((not opt-entry-points)
+           (codegen-call-ep cgc nb-args eploc global-eploc?))
+        ((not nb-args) ;; apply
+           (codegen-call-cc-gen cgc #f eploc global-eploc?))
+        (else
+           (let* ((idx (get-closure-index (ctx-stack call-ctx))))
+             (if idx
+                 (codegen-call-cc-spe cgc idx nb-args eploc global-eploc?))
+                 (codegen-call-cc-gen cgc nb-args eploc global-eploc?)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
@@ -2249,7 +2283,9 @@
 ;; Make lazy code from TYPE TEST
 ;;
 ;; TODO: explain if-cond-true
-(define (mlc-test ast succ if-true-cond)
+(define (mlc-test ast succ)
+
+  (define next-is-cond (member 'cond (lazy-code-flags succ)))
 
   (define (get-lazy-res bool)
     (make-lazy-code
@@ -2259,23 +2295,26 @@
           (codegen-set-bool cgc bool reg)
           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))))
 
+  (define (get-lazy-inline bool)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (let ((next (if bool (lazy-code-lco-true succ)
+                             (lazy-code-lco-false succ))))
+          (jump-to-version cgc next (ctx-pop ctx))))))
+
   (let ((type (predicate-to-ctxtype (car ast)))
         (stack-idx 0)
-        (lazy-fail    (get-lazy-res #f)))
+        (lazy-fail
+          (if next-is-cond
+              (get-lazy-inline #f)
+              (get-lazy-res #f)))
+        (lazy-success
+          (if next-is-cond
+              (get-lazy-inline #t)
+              (get-lazy-res #t))))
 
-    (if if-true-cond
-        ;; If we have a if condition true branch, use it
-        (let ((lazy-success
-                (make-lazy-code
-                  (lambda (cgc ctx)
-                    (jump-to-version cgc if-true-cond (ctx-pop ctx))))))
-
-          (gen-ast (cadr ast)
-                   (gen-dyn-type-test type stack-idx lazy-success lazy-fail ast)))
-        ;; Else create a new lco with #t
-        (let ((lazy-success (get-lazy-res #t)))
-          (gen-ast (cadr ast)
-                   (gen-dyn-type-test type stack-idx lazy-success lazy-fail ast))))))
+    (gen-ast (cadr ast)
+             (gen-dyn-type-test type stack-idx lazy-success lazy-fail ast))))
 
 ;;
 ;; Make lazy code to create pair

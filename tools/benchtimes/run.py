@@ -158,23 +158,24 @@ def userWants(str):
     return r == 'y'
 
 #
-systems = []
-l1 = System("LC-old","",".scm",["lazy-comp-old","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
-l2 = System("LC-new","",".scm",["lazy-comp-new","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
-systems.append(l1)
-systems.append(l2)
+# systems = []
+# l1 = System("LC-old","",".scm",["lazy-comp-old","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
+# l2 = System("LC-new","",".scm",["lazy-comp-new","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
+# systems.append(l1)
+# systems.append(l2)
 
 
 # GC
-# systems = []
-# g1 = System("GambitNS","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
-# g2 = System("GambitS","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
-# l1 = System("LC-old","",".scm",["lazy-comp-old","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
-# l2 = System("LC-new","",".scm",["lazy-comp","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
-# #systems.append(g1)
-# systems.append(g2)
-# #systems.append(l1)
-# systems.append(l2)
+systems = []
+g1 = System("GambitNS","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
+g2 = System("GambitS","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
+#l1 = System("LC-old","",".scm",["lazy-comp-old","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
+l2 = System("LC-new","",".scm",["lazy-comp","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
+
+systems.append(g1)
+systems.append(g2)
+#systems.append(l1)
+systems.append(l2)
 
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))

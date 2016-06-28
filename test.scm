@@ -1,12 +1,22 @@
 
-(rrr 10)
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-;(define (fibo n)
-;   (if (or (= n 0) (= n 1))
-;      n
-;      (fibo (- n 2))))
-;
-;(fibo 35)
+(fib 30)
+
+;; Quand on créé un lco-cond, on stocke à l'intérieur:
+;;   * Le lco #t
+;;   * Le lco #f
+;; A chaque compilation de:
+;;   * cst
+;;   * (type? ...)
+;;   * identifier
+;;   On teste si on a l'info: cst:toujours, (type? n) si type connu, identifier, si type connu
+;;   Alors si on a l'info, on jump-to le true bloc du cond succ
+;;   sinon, normal
 
 ;(run 10000)
 ;; Si une lambda est bindée à un id (let et letrec)
