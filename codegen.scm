@@ -265,6 +265,11 @@
     (x86-je  cgc label-false)
     (x86-jmp cgc label-true)))
 
+(define (codegen-inlined-if cgc label-jump label-false label-true x86-op)
+  (x86-label cgc label-jump)
+  (x86-op cgc label-false)
+  (x86-jmp cgc label-true))
+
 ;;-----------------------------------------------------------------------------
 ;; Variables
 ;;-----------------------------------------------------------------------------
@@ -766,10 +771,10 @@
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
 
-(define (codegen-cmp-ii cgc fs op reg lleft lright lcst? rcst? inline-if-labels)
+(define (codegen-cmp-ii cgc fs op reg lleft lright lcst? rcst? inline-if-cond?)
 
   (define-macro (if-inline expr)
-    `(if inline-if-labels #f ,expr))
+    `(if inline-if-cond? #f ,expr))
 
   (assert (not (and lcst? rcst?)) "Internal codegen error")
 
@@ -813,19 +818,17 @@
 
       (x86-cmp cgc (opl) (opr)))
 
-    (if inline-if-labels
-        (begin (x86-label cgc (car inline-if-labels)) ;; label-jump
-               (selinop cgc (caddr inline-if-labels))
-               (x86-jmp cgc (cadr inline-if-labels))) ;; jmp label-true
+    (if inline-if-cond?
+        selinop ;; Return x86-op
         (begin (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
                (selop cgc label-end)
                (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
                (x86-label cgc label-end)))))
 
-(define (codegen-cmp-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst? inline-if-labels)
+(define (codegen-cmp-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst? inline-if-cond?)
 
   (define-macro (if-inline expr)
-    `(if inline-if-labels #f ,expr))
+    `(if inline-if-cond? #f ,expr))
 
   (assert (not (and lcst? rcst?)) "Internal codegen error")
 
@@ -873,10 +876,8 @@
         (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright))))
 
     ;; NOTE: check that mlc-if patch is able to patch ieee jcc instructions (ja, jb, etc...)
-    (if inline-if-labels
-        (begin (x86-label cgc (car inline-if-labels))
-               (x86-op cgc (caddr inline-if-labels))
-               (x86-jmp cgc (cadr inline-if-labels)))
+    (if inline-if-cond?
+        x86-op ;; return x86 op
         (begin (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
                (x86-op cgc label-end)
                (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
