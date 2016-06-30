@@ -173,8 +173,8 @@
     (,##fltruncate   . NYItruncate)
     (,##flfinite?    . NYIfinite?)
     (,inexact->exact . NYIinexact->exact)
-    (,exact->inexact . NYIexact->inexact)
-    (,exact?         . NYIexact?)
+    (,exact->inexact . exact->inexact)
+    (,exact?         . exact?)
     (,##rational?    . NYIrational?)
     (,peek-char    . NYIpeek-char)
     ;;

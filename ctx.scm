@@ -189,6 +189,13 @@
   (ctx-copy ctx #f #f #f #f #f #f fs))
 
 ;;
+(define (ctx-add-mem-slots ctx nslots)
+  (let* ((fs (ctx-fs ctx))
+         (new-free (build-list nslots (lambda (n) (cons 'm (+ fs n)))))
+         (free-mem (append new-free (ctx-free-mems ctx))))
+    (ctx-copy ctx #f #f #f free-mem #f #f (+ fs nslots) #f)))
+
+;;
 ;; CTX INIT FN
 (define (ctx-init-fn stack enclosing-ctx args free-vars global-opt? late-fbinds eploc bound-id)
 
@@ -607,6 +614,14 @@
 ;; GET TYPE
 (define (ctx-get-type ctx stack-idx)
   (list-ref (ctx-stack ctx) stack-idx))
+
+;; GET TYPE FROM ID
+;; Return #f if not found, type if found
+(define (ctx-id-type ctx id)
+  (let ((ident (assoc id (ctx-env ctx))))
+    (if ident
+        (ctx-identifier-type ctx (cdr ident))
+        #f)))
 
 ;;
 ;; SET TYPE

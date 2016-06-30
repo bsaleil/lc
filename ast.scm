@@ -2068,8 +2068,8 @@
         (else
            (let* ((idx (get-closure-index (ctx-stack call-ctx))))
              (if idx
-                 (codegen-call-cc-spe cgc idx nb-args eploc global-eploc?))
-                 (codegen-call-cc-gen cgc nb-args eploc global-eploc?)))))
+                 (codegen-call-cc-spe cgc idx nb-args eploc global-eploc?)
+                 (codegen-call-cc-gen cgc nb-args eploc global-eploc?))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
@@ -2296,8 +2296,20 @@
               (get-lazy-inline #t)
               (get-lazy-res #t))))
 
-    (gen-ast (cadr ast)
-             (gen-dyn-type-test type stack-idx lazy-success lazy-fail ast))))
+    (let ((check (gen-dyn-type-test type stack-idx lazy-success lazy-fail ast)))
+
+      (if (and next-is-cond
+               (symbol? (cadr ast)))
+          (make-lazy-code
+            (lambda (cgc ctx)
+              (define vartype (ctx-id-type ctx (cadr ast)))
+              (cond ((or (not vartype) (eq? vartype CTX_UNK))
+                       (jump-to-version cgc (gen-ast (cadr ast) check) ctx))
+                    ((eq? vartype type)
+                       (jump-to-version cgc (lazy-code-lco-true succ) ctx))
+                    (else
+                       (jump-to-version cgc (lazy-code-lco-false succ) ctx)))))
+          (gen-ast (cadr ast) check)))))
 
 ;;
 ;; Make lazy code to create pair

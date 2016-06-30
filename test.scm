@@ -1,14 +1,28 @@
 
-
-
+(declare  (not inline-primitives) (inlining-limit 1000))
 
 (define (fib n)
   (if (< n 2)
       1
       (+ (fib (- n 1))
          (fib (- n 2)))))
-
 (fib 40)
+
+
+;;;; SUMFP -- Compute sum of integers from 0 to 10000 using floating point
+;
+;(define run
+;  (lambda (n)
+;    (letrec ((loop
+;               (lambda (i sum)
+;                 (if (FLOAT< i 0.)
+;                     sum
+;                     (loop (FLOAT- i 1.) (FLOAT+ i sum))))))
+;      (loop n 0.))))
+;
+;(run 10000.)
+
+
 
 ;; Quand on créé un lco-cond, on stocke à l'intérieur:
 ;;   * Le lco #t
