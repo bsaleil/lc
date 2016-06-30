@@ -343,11 +343,16 @@
   (define (get env)
     (if (null? env)
         #f
-        (or (and (eq? (caar env) id)
-                 #f
-                 (identifier-thisid (cdar env))
+        (cond ;; Identifier represents current function
+              ((and (eq? (caar env) id)
+                    (identifier-thisid (cdar env)))
                  (ctx-eploc ctx))
-            (get (cdr env)))))
+              ;; Identifier does not represent current function, stop
+              ((eq? (caar env) id)
+                 #f)
+              ;; Else continue
+              (else
+                 (get (cdr env))))))
   (get (ctx-env ctx)))
 
 ;;

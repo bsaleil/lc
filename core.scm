@@ -92,6 +92,11 @@
 
 ;;-----------------------------------------------------------------------------
 
+;; Object life
+(define LIFE_MOVE  0)
+(define LIFE_STILL 5)
+(define LIFE_PERM  6)
+
 ;; Tags
 (define TAG_NUMBER  0)
 (define TAG_MEMOBJ  1)

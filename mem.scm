@@ -217,6 +217,6 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
 ;; Generate an heap object header
 ;; using layout used by Gambit.
 ;; NOTE : 'life' field is not used and set to 0.
-(define (mem-header length stag)
+(define (mem-header length stag #!optional (life LIFE_MOVE))
     ;; => Length (56 bits) | sTag (5 bits) | Life (3 bits)
-    (+ (arithmetic-shift length 8) (arithmetic-shift stag 3) 0))
+    (+ (arithmetic-shift length 8) (arithmetic-shift stag 3) life))

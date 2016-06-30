@@ -141,6 +141,37 @@
 (define (asc-cc-stub-get cctable)
   (table-ref asc-cc-stub cctable #f))
 
+;;
+;; Global closures
+;;
+
+;; The compiler use global objects for functions without free variables
+;; or with 1 free variable which is self
+
+;; Max size of global closures space (number of machine words)
+(define global-closures-size 4000)
+;; Space used to store closures
+(define global-closures (alloc-still-vector global-closures-size))
+;; Pointer to next free slot
+(define global-closures-ptr (+ (- 8 1) (obj-encoding global-closures)))
+;; Limit value for global-closures-ptr
+(define global-closures-lim (+ global-closures-ptr (* 16 global-closures-size)))
+;; Table used to store closure for given ast
+(define global-closures-table (make-table))
+;; If a closure already exist for this ast, return it
+;; else, create a new global closure, update space & pointer and return it
+(define (global-closures-add ast ep nblate)
+  (let ((existing (table-ref global-closures-table ast #f)))
+    (or existing
+        (begin
+          (table-set! global-closures-table ast (+ global-closures-ptr TAG_MEMOBJ))
+          (let ((addr global-closures-ptr))
+            (put-i64 (+ addr 0) (mem-header 8 STAG_PROCEDURE LIFE_PERM))
+            (put-i64 (+ addr 8) ep)
+            (set! global-closures-ptr (+ global-closures-ptr 16 (* 8 nblate)))
+            (assert (< global-closures-ptr global-closures-lim) "NYI: global-closures limimit reached.")
+            (+ addr TAG_MEMOBJ)))))) ;; Return encoded closure
+
 ;;-----------------------------------------------------------------------------
 ;; Type predicates
 
@@ -664,7 +695,7 @@
       (lambda (cgc ctx)
 
         ;; Get free vars from ast
-        ;; fvarc contains all free vars except late-bindings
+        ;; fvars contains all free vars except late-bindings
         (if sfvars
             (set! fvars (set-sub sfvars late-fbinds '()))
             ;; TODO: remove when fvars is an mlc-lambda arg
@@ -725,31 +756,56 @@
 
           (let ((close-length (+ (length fvars) (length late-fbinds))))
 
-            ;; Create closure
-            ;; Closure size = lenght of free variables
-            (codegen-closure-create cgc close-length)
 
-            ;; Write entry point or cctable location
-            (if opt-entry-points
-                ;; If opt-entry-points generate a closure using cctable
-                (codegen-closure-cc cgc cctable-loc close-length)
-                ;; Else, generate a closure using a single entry point
-                (let ((ep-loc (get-entry-points-loc ast stub-addr)))
-                  (codegen-closure-ep cgc ep-loc close-length)))
 
-            ;; Write free variables
-            (let* ((free-offset (* -1 (+ (length fvars) (length late-fbinds))))
-                   (clo-offset  (- free-offset 2)))
-              (gen-free-vars cgc fvars late-fbinds ctx free-offset clo-offset))
+            ;; If there is no fvars, and only one late bind which is self
+            ;; then use global closure
+            (if (and (null? fvars)
+                     (or (null? late-fbinds)
+                         (and (= (length late-fbinds) 1)
+                              (eq? (car late-fbinds) bound-id))))
+                ;;
+                ;; TODO
+                ;; MOVE IN EXTERNAL FUNCTION create-global-closure / create-local-closure
+                ;;
+                (let* ((ep (if opt-entry-points (- (obj-encoding cctable) 1) (error "NYI")))
+                       (qword (global-closures-add ast ep (length late-fbinds))))
+                  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+                    (apply-moves cgc ctx moves)
+                    (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int qword))
+                    (jump-to-version cgc succ (ctx-push ctx CTX_CLO reg))))
+                ;;
+                ;; TODO
+                ;; MOVE IN EXTERNAL FUNCTION create-global-closure / create-local-closure
+                ;;
+                ;; Else, create a local closure (local instance)
+                (begin
 
-            (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
-              (apply-moves cgc ctx moves)
+                  ;; Create closure
+                  ;; Closure size = lenght of free variables
+                  (codegen-closure-create cgc close-length)
 
-              ;; Put closure
-              (codegen-closure-put cgc reg close-length)
+                  ;; Write entry point or cctable location
+                  (if opt-entry-points
+                      ;; If opt-entry-points generate a closure using cctable
+                      (codegen-closure-cc cgc cctable-loc close-length)
+                      ;; Else, generate a closure using a single entry point
+                      (let ((ep-loc (get-entry-points-loc ast stub-addr)))
+                        (codegen-closure-ep cgc ep-loc close-length)))
 
-              ;; Trigger the next object
-              (jump-to-version cgc succ (ctx-push ctx CTX_CLO reg)))))))))
+                  ;; Write free variables
+                  (let* ((free-offset (* -1 (+ (length fvars) (length late-fbinds))))
+                         (clo-offset  (- free-offset 2)))
+                    (gen-free-vars cgc fvars late-fbinds ctx free-offset clo-offset))
+
+                  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+                    (apply-moves cgc ctx moves)
+
+                    ;; Put closure
+                    (codegen-closure-put cgc reg close-length)
+
+                    ;; Trigger the next object
+                    (jump-to-version cgc succ (ctx-push ctx CTX_CLO reg)))))))))))
 
 ;; Create and return a lazy generic prologue
 (define (get-lazy-generic-prologue ast succ rest-param nb-formal)
