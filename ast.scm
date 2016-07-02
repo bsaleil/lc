@@ -660,28 +660,30 @@
          (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
                      (lambda (cgc ctx)
 
-                       ;; 1 - Get clean stack size (higher mx in ctx)
                        (let* ((clean-nb (- (ctx-fs ctx) 1))
-                              (lres (ctx-get-loc ctx 0))
-                              (opres (codegen-loc-to-x86opnd (ctx-fs ctx) lres)))
+                              ;; Retval loc
+                              (lres  (ctx-get-loc ctx 0))
+                              (opres (codegen-loc-to-x86opnd (ctx-fs ctx) lres))
+                              ;; Retreg loc
+                              (lret  (car (ctx-init-free-regs)))
+                              (opret (codegen-reg-to-x86reg lret)))
 
-                         ;; 2 - Move res in result reg
-                         (let* ((lret (car (ctx-init-free-regs))) ;; TODO: use result-reg variable
-                                (oret (codegen-reg-to-x86reg lret)))
+                         ;; Move retval to retreg
+                         (if (not (eq? opret opres))
+                             (x86-mov cgc opret opres))
 
-                           (if (not (eq? oret opres))
-                               (x86-mov cgc oret opres)))
+                         ;; Get return address or cctable in rdx
+                         (x86-mov cgc (x86-rdx) (x86-mem (* clean-nb 8) (x86-usp)))
 
-                         ;; 3 - Clean stack
-                         (if (> clean-nb 0)
-                             (x86-add cgc (x86-usp) (x86-imm-int (* 8 clean-nb))))
+                         ;; Clean stack
+                         (x86-add cgc (x86-usp) (x86-imm-int (* 8 (+ clean-nb 1))))
 
+                         ;; Gen return
                          (if opt-return-points
                              (let* ((ret-type (car (ctx-stack ctx)))
                                     (crtable-offset (type-to-cridx ret-type)))
                                (codegen-return-cr cgc crtable-offset))
-                             (codegen-return-rp cgc))))))
-                       ;; 4 - ret seq
+                               (codegen-return-rp cgc))))))
 
          ;; Lazy lambda body
          (lazy-body (gen-ast (caddr ast) lazy-ret))

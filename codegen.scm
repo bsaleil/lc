@@ -580,14 +580,13 @@
     (x86-lea cgc dest (x86-mem offset alloc-ptr))))
 
 ;; Generate function return using a return address
+;; Retaddr (or cctable) is in rdx
 (define (codegen-return-rp cgc)
-  (x86-upop cgc (x86-rdx))
   (x86-jmp cgc (x86-rdx)))
 
 ;; Generate function return using a crtable
+;; Retaddr (or cctable) is in rdx
 (define (codegen-return-cr cgc crtable-offset)
-  ;; rax contains ret val
-  (x86-upop cgc (x86-rdx)) ;; Table must be in rdx
   (x86-mov cgc (x86-rax) (x86-mem crtable-offset (x86-rdx)))
   (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding crtable-offset))) ;; TODO (?)
   (x86-jmp cgc (x86-rax)))
