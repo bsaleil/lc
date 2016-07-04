@@ -38,6 +38,22 @@
 (define x86-upush #f)
 (define x86-upush #f)
 
+(define (x86-upush-l cgc opnds)
+  (x86-sub cgc (x86-usp) (x86-imm-int (* 8 (length opnds))))
+  (let loop ((offset (* 8 (- (length opnds) 1)))
+             (l opnds))
+    (if (not (null? l))
+        (begin (x86-mov cgc (x86-mem offset (x86-usp)) (car l))
+               (loop (- offset 8) (cdr l))))))
+
+(define (x86-upop-l cgc opnds)
+  (let loop ((offset 0)
+             (l opnds))
+    (if (not (null? l))
+        (begin (x86-mov cgc (car l) (x86-mem offset (x86-usp)))
+               (loop (+ offset 8) (cdr l)))))
+  (x86-add cgc (x86-usp) (x86-imm-int (* 8 (length opnds)))))
+
 (let ((gpush x86-push)
       (gpop  x86-pop)
       (push/pop-error
@@ -633,7 +649,8 @@
     ;; Closure is in rax
     (let ((cct-offset (* 8 (+ 2 idx))))
       ;; 1 - Put ctx in r11
-      (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding idx)))
+      (if (not direct-eploc)
+          (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding idx))))
       ;; 2 - Put closure in rax if needed
       (if (not global-eploc?)
           (x86-mov cgc (x86-rsi) (x86-rax)))

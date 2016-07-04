@@ -57,6 +57,8 @@
 ;; Forward declarations
 (define x86-upush #f)
 (define x86-upop  #f)
+(define x86-upush-l #f)
+(define x86-upop-l  #f)
 (define x86-ppush #f)
 (define x86-ppop  #f)
 (define x86-usp   #f)
@@ -861,15 +863,14 @@
 ;;-----------------------------------------------------------------------------
 
 (define (upush-pop-regs cgc regs proc)
-  (for-each (lambda (reg) (x86-upush cgc reg)) regs)
+  (x86-upush-l cgc regs)
   (proc cgc)
-  (for-each (lambda (reg) (x86-upop cgc reg)) (reverse regs)))
+  (x86-upop-l cgc (reverse regs)))
 
 (define (ppush-pop-regs cgc regs proc)
   (for-each (lambda (reg) (x86-ppush cgc reg)) regs)
   (proc cgc)
   (for-each (lambda (reg) (x86-ppop cgc reg)) (reverse regs)))
-
 
 (define (upush-regs cgc regs)
   (for-each (lambda (reg) (x86-upush cgc reg)) regs))

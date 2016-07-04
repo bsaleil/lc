@@ -7,7 +7,7 @@
       (+ (fib (- n 1))
          (fib (- n 2)))))
 
-(fib 40)
+(fib 20)
 
 ;(define (fib n)
 ;  (if (< n 2)
