@@ -592,6 +592,8 @@
   (x86-jmp cgc (x86-rax)))
 
 ;; Generate function call using a single entry point
+;; eploc is the cctable or entry points if it's known
+;; if global-eploc? is #t, it's a global call, no need to give the closure in closure reg
 (define (codegen-call-ep cgc nb-args eploc global-eploc?)
   ;; TODO: use call/ret if opt-entry-points opt-return-points are #f
   (if nb-args ;; If nb-args given, move encoded in rdi, else nb-args is already encoded in rdi (apply)
@@ -607,7 +609,9 @@
            (x86-mov cgc (x86-r15) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
            (x86-jmp cgc (x86-r15)))))
 
-;;; Generate function call using a cctable and generic entry point
+;; Generate function call using a cctable and generic entry point
+;; eploc is the cctable or entry points if it's known
+;; if global-eploc? is #t, no need to give the closure in closure reg
 (define (codegen-call-cc-gen cgc nb-args eploc global-eploc?)
   (if nb-args
       (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args))))
@@ -622,26 +626,31 @@
   (x86-jmp cgc (x86-mem 8 (x86-r15)))) ;; Jump to generic entry point
 
 ;; Generate function call using a cctable and specialized entry point
-(define (codegen-call-cc-spe cgc idx nb-args eploc global-eploc?)
+;; eploc is the cctable or entry points if it's known
+;; if global-eploc? is #t, no need to give the closure in closure reg
+(define (codegen-call-cc-spe cgc idx nb-args eploc direct-eploc global-eploc?)
+
     ;; Closure is in rax
     (let ((cct-offset (* 8 (+ 2 idx))))
       ;; 1 - Put ctx in r11
       (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding idx)))
-      ;; 2- Get cc-table
-      (cond ((and eploc global-eploc?)
-               (x86-mov cgc (x86-r15) (x86-imm-int eploc)))
-            (eploc
-               (x86-mov cgc (x86-rsi) (x86-rax))
-               (x86-mov cgc (x86-r15) (x86-imm-int eploc)))
-            (else
-               (x86-mov cgc (x86-rsi) (x86-rax))
-               (x86-mov cgc (x86-r15) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))))
-      ;; 3 - If opt-max-versions is not #f, a generic version could be called.
-      ;;     (if entry point lco reached max), then give nb-args
+      ;; 2 - Put closure in rax if needed
+      (if (not global-eploc?)
+          (x86-mov cgc (x86-rsi) (x86-rax)))
+      ;; 3 - Put nbargs in rdi if needed
       (if opt-max-versions
-          (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
-      ;; 4 - Jump to entry point from ctable
-      (x86-jmp cgc (x86-mem cct-offset (x86-r15)))))
+           (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
+      ;; 2- Get cc-table
+      (cond (direct-eploc
+              (let ((label (asm-make-label #f (new-sym 'known_dest_) direct-eploc)))
+                (x86-jmp cgc label)))
+            (eploc
+              (x86-mov cgc (x86-r15) (x86-imm-int eploc))
+              (x86-jmp cgc (x86-mem cct-offset (x86-r15))))
+            (else
+              (x86-mov cgc (x86-rsi) (x86-rax))
+              (x86-mov cgc (x86-r15) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
+              (x86-jmp cgc (x86-mem cct-offset (x86-r15)))))))
 
 ;; Load continuation using specialized return points
 (define (codegen-load-cont-cr cgc crtable-loc)

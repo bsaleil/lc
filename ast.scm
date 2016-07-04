@@ -132,6 +132,9 @@
 ;; ensemble pour stocker cctable -> stub-addr
 ;; ensemble pour stocker addresse mov -> cctable/ctxidx
 
+;; 1: a chaque création de cc-table (cctable-fill), stocker cctable->stub-addr
+;; 2: a chaque site d'appel: appeller directement le pt entrée s'il est != stub-addr
+
 ;; TODO: comment this data struct
 ;; TODO: move all persistent data struct here!
 ;; TODO: WIP
@@ -2119,14 +2122,25 @@
 ;; (compile time lookup)
 (define (gen-call-sequence ast cgc call-ctx nb-args eploc global-eploc?)
 
+  (define (get-ep-direct cc-idx)
+    (if (and opt-entry-points cc-idx eploc)
+        (let ((r  (asc-cc-stub-get eploc))
+              (ep (get-i64 (+ eploc (* 8 (+ 2 cc-idx))))))
+          (if (and (not (= ep (car r)))
+                   (not (= ep (cdr r))))
+              ep
+              #f))
+        #f))
+
   (cond ((not opt-entry-points)
            (codegen-call-ep cgc nb-args eploc global-eploc?))
         ((not nb-args) ;; apply
            (codegen-call-cc-gen cgc #f eploc global-eploc?))
         (else
-           (let* ((idx (get-closure-index (ctx-stack call-ctx))))
+           (let* ((idx (get-closure-index (ctx-stack call-ctx)))
+                  (direct (get-ep-direct idx)))
              (if idx
-                 (codegen-call-cc-spe cgc idx nb-args eploc global-eploc?)
+                 (codegen-call-cc-spe cgc idx nb-args eploc direct global-eploc?)
                  (codegen-call-cc-gen cgc nb-args eploc global-eploc?))))))
 
 ;;-----------------------------------------------------------------------------
@@ -2471,6 +2485,9 @@
 
 ;; Fill cctable with stub and generic addresses
 (define (cctable-fill cctable stub-addr generic-addr)
+  ;; Add cctable->stub-addrs assoc (TODO: move where cctable-fill is called (?))
+  (asc-cc-stub-add (- (obj-encoding cctable) 1) generic-addr stub-addr)
+  ;; Fill cctable
   (put-i64 (+ 8 (- (obj-encoding cctable) 1)) generic-addr) ;; Write generic after header
   (let loop ((i 1))
     (if (< i (vector-length cctable))
