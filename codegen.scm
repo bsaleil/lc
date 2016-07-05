@@ -665,7 +665,6 @@
               (x86-mov cgc (x86-r15) (x86-imm-int eploc))
               (x86-jmp cgc (x86-mem cct-offset (x86-r15))))
             (else
-              (x86-mov cgc (x86-rsi) (x86-rax))
               (x86-mov cgc (x86-r15) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
               (x86-jmp cgc (x86-mem cct-offset (x86-r15)))))))
 
@@ -673,13 +672,13 @@
 (define (codegen-load-cont-cr cgc crtable-loc)
   (x86-mov cgc (x86-rax) (x86-imm-int crtable-loc))
   (assert (= (modulo crtable-loc 4) 0) "Internal error")
-  (x86-upush cgc (x86-rax)))
+  (x86-mov cgc (x86-mem 0 (x86-usp)) (x86-rax)))
 
 (define (codegen-load-cont-rp cgc label-load-ret label-cont-stub)
   (x86-label cgc label-load-ret)
   (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref label-cont-stub 1)))
   (assert (= (modulo (vector-ref label-cont-stub 1) 4) 0) "Internal error")
-  (x86-upush cgc (x86-rax)))
+  (x86-mov cgc (x86-mem 0 (x86-usp)) cgc (x86-rax)))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators

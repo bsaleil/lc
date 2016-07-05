@@ -999,61 +999,67 @@
     (table-set! versions ctx v)))
 
 ;;-----------------------------------------------------------------------------
-;; Ctx TODO regalloc
+;; ctx regalloc
 
-;; TODO: merge cases EB
+;; Apply list of moves
+;; Possible moves are (src . dst):
+;; (loc1  . loc2)  -> move loc1 to loc2
+;; ('rtmp . loc)  -> move temporary register to loc (temporary is tmpreg or rax)
+;; (loc   . 'rtmp)  -> move loc to temporary register (temporary is tmpreg or rax)
+;; (fs    . n)       -> add n words to sp
 (define (apply-moves cgc ctx moves #!optional tmpreg)
 
-  (define (apply-move move)
-    (cond ((equal? (car move) (cdr move)) #f)
-          ((eq? (car move) 'fs)
-           (if (> (cdr move) 0)
-               (x86-sub cgc (x86-usp) (x86-imm-int (* 8 (cdr move))))))
-          ((and (ctx-loc-is-register? (car move))
-                (ctx-loc-is-memory?   (cdr move)))
-           (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
-                 (dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
-             (x86-mov cgc dst src)))
-          ((and (ctx-loc-is-memory?   (car move))
-                (ctx-loc-is-register? (cdr move)))
-           (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
-                 (dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
-             (x86-mov cgc dst src)))
-          ((and (ctx-loc-is-register? (car move))
-                (ctx-loc-is-register? (cdr move)))
-           (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
-                 (dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
-             (x86-mov cgc dst src)))
-          ((eq? 'rtmp (cdr move))
-           (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
-                 (dst (if tmpreg
-                          (codegen-loc-to-x86opnd (ctx-fs ctx) tmpreg)
-                          (x86-rax))))
-             (x86-mov cgc dst src)))
-          ((and (ctx-loc-is-register? (cdr move))
-                (eq? 'rtmp (car move)))
-           (let ((dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move)))
-                 (src (if tmpreg
-                          (codegen-loc-to-x86opnd (ctx-fs ctx) tmpreg)
-                          (x86-rax))))
-             (x86-mov cgc dst src)))
-          ((and (ctx-loc-is-memory? (car move))
-                (ctx-loc-is-memory? (cdr move)))
-             (let ((src (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))
-                   (dst (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
-               (x86-mov cgc (x86-rax) src)
-               (x86-mov cgc dst (x86-rax))))
-          (else (pp move) (error "NYI apply-moves"))))
+  ;; Filter moves
+  ;; Return a pair with fs to add in first and moves except fs moves
+  ;; ex. (4 . ((r0 . r1) (r2 . r3)))
+  (define (filter-fs moves fs filtered)
+    (if (null? moves)
+        (cons fs (reverse filtered))
+        (let ((move (car moves)))
+          (if (eq? (car move) 'fs)
+              (filter-fs (cdr moves) (+ fs (cdr move)) filtered)
+              (filter-fs (cdr moves) fs (cons move filtered))))))
 
-  (if (and (= (length moves) 2)       ;; Only two moves
-           (equal? (car moves) '(fs . 1)) ;; First is fs = fs + 1
-           (equal? (cdadr moves)
-                   (cons 'm (- (ctx-fs ctx) 1)))) ;; Second is a move to new cell
-      (let ((loc (caadr moves)))
-        (x86-upush cgc (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-      (if (not (null? moves))
-          (begin (apply-move (car moves))
-                 (apply-moves cgc ctx (cdr moves) tmpreg)))))
+  ;; Return tmp register to use for 'rtmp operand
+  ;; Use given temporary register if given, rax otherwise
+  (define (get-tmp)
+    (if tmpreg
+        (codegen-loc-to-x86opnd (ctx-fs ctx) tmpreg)
+        (x86-rax)))
+
+  ;; Apply move. A move is one of possible moves except fs move
+  (define (apply-filtered moves)
+    (if (not (null? moves))
+        (let* ((move (car moves))
+               ;; Compute x86 src operand
+               (src
+                 (if (eq? (car move) 'rtmp)
+                     (get-tmp)
+                     (codegen-loc-to-x86opnd (ctx-fs ctx) (car move))))
+               ;; Compute x86 dst operand
+               (dst
+                 (if (eq? (cdr move) 'rtmp)
+                     (get-tmp)
+                     (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move)))))
+          (cond ;; Same operands, useless move
+                ((eq? src dst) #f)
+                ;; Both in memory, use rax
+                ((and (x86-mem? src)
+                      (x86-mem? dst))
+                   (x86-mov cgc (x86-rax) src)
+                   (x86-mov cgc dst (x86-rax)))
+                ;; direct x86 mov is possible
+                (else
+                   (x86-mov cgc dst src)))
+          ;;
+          (apply-filtered (cdr moves)))))
+
+  (let ((r (filter-fs moves 0 '())))
+    ;; Update sp
+    (if (> (car r) 0)
+        (x86-sub cgc (x86-usp) (x86-imm-int (* 8 (car r)))))
+    ;; Apply other moves
+    (apply-filtered (cdr r))))
 
 ;;-----------------------------------------------------------------------------
 

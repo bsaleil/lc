@@ -1874,11 +1874,9 @@
         (lazy-pre
           (make-lazy-code
             (lambda (cgc ctx)
-              ;; Save used registers and update ctx
-              (set! ctx (call-save-registers cgc ctx #f 2))
 
-              ;; Generate continuation stub and push return address
-              (set! ctx (call-gen-continuation cgc ctx #f ast succ #t))
+              ;; Save used registers, generate and push continuation stub
+              (set! ctx (call-save/cont cgc ctx ast succ #f 2 #t))
 
               ;; Push closure
               (call-get-closure cgc ctx 1)
@@ -1892,22 +1890,22 @@
 ;;
 
 ;; Save used registers and return updated ctx
-(define (call-save-registers cgc ctx tail? idx-offset)
+(define (call-save/cont cgc ctx ast succ tail? idx-offset apply?)
+
   (if tail?
+      ;; Tail call, no register to save and no continuation to generate
       ctx
       (mlet ((moves/nctx (ctx-save-call ctx idx-offset)))
-        (apply-moves cgc nctx moves)
-        nctx)))
-
-;; Gen continuation stub, push return address, and return updated ctx
-(define (call-gen-continuation cgc ctx tail? ast succ apply?)
-  (if tail?
-      ctx
-      (begin
+        (define fctx (ctx-fs-inc nctx))
+        ;; Save registers
+        (set! moves (cons (cons 'fs 1) moves))
+        (apply-moves cgc fctx moves)
+        ;; Generate & push continuation
+        ;; gen-continuation-* needs ctx without return address slot
         (if opt-return-points
-            (gen-continuation-cr cgc ast succ ctx '() apply?) ;; TODO: remove '() arg
-            (gen-continuation-rp cgc ast succ ctx '() apply?))
-        (ctx-fs-inc ctx))))
+            (gen-continuation-cr cgc ast succ nctx '() apply?) ;; TODO: remove '() arg
+            (gen-continuation-rp cgc ast succ nctx '() apply?))
+        fctx)))
 
 ;; Push closure, put it in rax, and return updated ctx
 (define (call-get-closure cgc ctx closure-idx)
@@ -1981,11 +1979,8 @@
            (make-lazy-code
              (lambda (cgc ctx)
 
-               ;; Save used registers and update ctx
-               (set! ctx (call-save-registers cgc ctx tail? (+ (length args) 1)))
-
-               ;; Generate continuation stub and push return address
-               (set! ctx (call-gen-continuation cgc ctx tail? ast succ #f))
+               ;; Save used registers, generate and push continuation stub
+               (set! ctx (call-save/cont cgc ctx ast succ tail? (+ (length args) 1) #f))
 
                ;; Push closure
                (if (not global-opt)
