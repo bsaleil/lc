@@ -1,11 +1,4 @@
-
-(define (bar) 1)
-
-(define (foo n)
-  (bar)
-  (bar))
-  
-(foo 100)
+10
 
 ;(define (fib n)
 ;  (if (< n 2)

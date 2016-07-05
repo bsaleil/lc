@@ -538,8 +538,8 @@
         (label-loop     (asm-make-label #f (new-sym 'prologue-loop))))
 
     ;; TODO: Only one alloc
-
-    (x86-mov cgc (x86-r14) (x86-imm-int (obj-encoding '())))
+    ;; r11 is available because it's the ctx reg
+    (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding '())))
     ;; Stack
     (x86-mov cgc (x86-r15) (x86-imm-int (obj-encoding nb-rest-stack)))
     (x86-label cgc label-loop)
@@ -548,8 +548,8 @@
     (gen-allocation-imm cgc STAG_PAIR 16)
     (x86-upop cgc (x86-rax))
     (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
-    (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r14))
-    (x86-lea cgc (x86-r14) (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
+    (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r11))
+    (x86-lea cgc (x86-r11) (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
     (x86-sub cgc (x86-r15) (x86-imm-int (obj-encoding 1)))
     (x86-jmp cgc label-loop)
     (x86-label cgc label-loop-end)
@@ -558,13 +558,13 @@
       (lambda (src)
         (gen-allocation-imm cgc STAG_PAIR 16)
         (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) src)
-        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r14))
-        (x86-lea cgc (x86-r14) (x86-mem (+ -24 TAG_PAIR) alloc-ptr)))
+        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r11))
+        (x86-lea cgc (x86-r11) (x86-mem (+ -24 TAG_PAIR) alloc-ptr)))
       regs)
     ;; Dest
     (if dest
-        (x86-mov cgc dest (x86-r14))
-        (x86-upush cgc (x86-r14)))))
+        (x86-mov cgc dest (x86-r11))
+        (x86-upush cgc (x86-r11)))))
 
 ;; Alloc closure and write header
 (define (codegen-closure-create cgc nb-free)

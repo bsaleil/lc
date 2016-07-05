@@ -864,7 +864,7 @@
 
               (x86-label cgc label-rest)
               ;; cdr (rax) = '()
-              (x86-mov cgc (x86-r14) (x86-imm-int (obj-encoding '())))
+              (x86-mov cgc selector-reg (x86-imm-int (obj-encoding '())))
               (x86-label cgc label-rest-loop)
               (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (- nb-args 1))))
               (x86-je cgc label-rest-end)
@@ -873,15 +873,17 @@
                 (gen-allocation-imm cgc STAG_PAIR 16)
                 (x86-pcall cgc label-next-arg)
                 (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
-                (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r14))
-                (x86-lea cgc (x86-r14) (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
+                (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) selector-reg)
+                (x86-lea cgc selector-reg (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
                 (x86-jmp cgc label-rest-loop)
-              ;
+              ;;
               (x86-label cgc label-rest-end)
               (if (<= nb-args (length args-regs))
                   (let ((reg (list-ref args-regs (- nb-args 1))))
-                    (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-r14)))
-                  (x86-upush cgc (x86-r14)))))
+                    (x86-mov cgc (codegen-reg-to-x86reg reg) selector-reg))
+                  (x86-upush cgc selector-reg))
+              ;; Reset selector used as temporary
+              (x86-mov cgc selector-reg (x86-imm-int 0))))
 
         (jump-to-version cgc succ ctx)))))
 
@@ -1414,7 +1416,7 @@
                (jump-to-version cgc succ ctx))))
          (ctx-true (ctx-push (ctx-pop-n ctx n-pop) CTX_BOOL reg)))
 
-  (assert (not (and lcst rcst)) "Internal error")
+  (assert (not (and lcst rcst)) "Internal error (prim-fxl-op?)")
 
   (jump-to-version
     cgc
@@ -1824,7 +1826,7 @@
 (define (call-get-eploc ctx global-opt? op)
   (if global-opt?
       (let ((r (ctime-entries-get op)))
-        (if (not r) (error "Internal error"))
+        (if (not r) (error "Internal error (call-get-eploc)"))
         r)
       (if (symbol? op)
           (ctx-get-eploc ctx op)
@@ -1851,7 +1853,7 @@
               (let* ((label-end (asm-make-label #f (new-sym 'apply-end-args)))
                      (llst (ctx-get-loc ctx 0))
                      (oplst (codegen-loc-to-x86opnd (ctx-fs ctx) llst)))
-                ;; r11, r14 & r15 are used as tmp registers
+                ;; r11, selector & r15 are used as tmp registers
                 ;; It is safe because they are not used for parameters.
                 ;; And if they are used after, they already are saved on the stack
                 (x86-mov cgc (x86-r15) oplst)
@@ -1863,8 +1865,8 @@
                         (x86-cmp cgc (x86-r15) (x86-imm-int (obj-encoding '())))
                         (x86-je cgc label-end)
                           (x86-add cgc (x86-r11) (x86-imm-int 4))
-                          (x86-mov cgc (x86-r14) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-r15)))
-                          (x86-upush cgc (x86-r14))
+                          (x86-mov cgc selector-reg (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-r15)))
+                          (x86-upush cgc selector-reg)
                           (x86-mov cgc (x86-r15) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-r15)))
                           (x86-jmp cgc label-loop))
                       (begin
@@ -1875,6 +1877,8 @@
                           (x86-mov cgc (x86-r15) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-r15)))
                         (loop (cdr args-regs)))))
                 (x86-label cgc label-end)
+                ;; Reset selector used as tmp reg
+                (x86-mov cgc selector-reg (x86-imm-int 0))
                 (jump-to-version cgc lazy-call ctx)))))
         (lazy-pre
           (make-lazy-code
@@ -1942,15 +1946,18 @@
                     '()
                     moves))
              (unused-regs (set-sub (ctx-init-free-regs) used-regs '())))
-      (assert (not (null? unused-regs)) "Internal error")
-      (apply-moves cgc ctx moves (car unused-regs))
+
+      (if (null? unused-regs)
+          (begin (apply-moves cgc ctx moves selector-reg)
+                 (x86-mov cgc selector-reg (x86-imm-int 0)))
+          (apply-moves cgc ctx moves (car unused-regs)))
 
       ctx)))
 
 ;; Shift args and closure for tail call
 (define (call-tail-shift cgc ctx ast tail? nbargs)
 
-  ;; Use r14 because it is not an args reg
+  ;; r11 is available because it's the ctx register
   (if tail?
       (let ((fs (ctx-fs ctx))
             (nshift
@@ -1960,8 +1967,8 @@
         (let loop ((curr (- nshift 1)))
           (if (>= curr 0)
               (begin
-                (x86-mov cgc (x86-r14) (x86-mem (* 8 curr) (x86-usp)))
-                (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift 1) curr)) (x86-usp)) (x86-r14))
+                (x86-mov cgc (x86-r11) (x86-mem (* 8 curr) (x86-usp)))
+                (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift 1) curr)) (x86-usp)) (x86-r11))
                 (loop (- curr 1)))))
 
         (if (not (= (- fs nshift 1) 0))
@@ -2206,7 +2213,7 @@
     ((> (length ast) 3)
        (if (member op '(+ - * /))
            (gen-ast (trans-num-op ast) succ)
-           (error "Internal error"))) ;; comparisons are handled by macro expander
+           (error "Internal error (mlc-op-n)"))) ;; comparisons are handled by macro expander
     (else
       (let ((lcst (integer? (cadr ast)))
             (rcst (integer? (caddr ast))))

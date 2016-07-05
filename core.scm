@@ -147,7 +147,7 @@
         ((eq? type CTX_SYM)  STAG_SYMBOL)
         ((eq? type CTX_FLO)  STAG_FLONUM)
         ((eq? type CTX_CLO)  STAG_PROCEDURE)
-        (else (pp type) (error "Internal error"))))
+        (else (pp type) (error "Internal error (memtype-to-stag)"))))
 
 (define (mem-allocated-type? type)
   (member type (list CTX_BOX CTX_PAI   CTX_VECT  CTX_STR CTX_CLO
@@ -926,11 +926,11 @@
   (length c-caller-save-regs))
 
 (define (reg-sp-offset idx)
-  (assert (< idx (length regalloc-regs)) "Internal error")
+  (assert (< idx (length regalloc-regs)) "Internal error (reg-sp-offset)")
   (* 8 (- (length regalloc-regs) idx 1)))
 
 (define (reg-sp-offset-r reg)
-  (assert (member reg regalloc-regs) "Internal error")
+  (assert (member reg regalloc-regs) "Internal error (reg-sp-offset-r)")
   (* 8 (- (length (member reg regalloc-regs)) 1)))
 
 (define (selector-sp-offset)
@@ -1601,7 +1601,7 @@
 (define (global-cc-get-ctx ctx-idx)
   (define (get lst)
     (if (null? lst)
-        (error "Internal error")
+        (error "Internal error (global-cc-get-ctx)")
         (let ((first (car lst)))
           (if (eq? (cdr first) ctx-idx)
               (car first)

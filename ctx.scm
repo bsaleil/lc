@@ -165,7 +165,7 @@
 
   (define (get-best-loc slot-loc sslots mloc)
     (if (null? slot-loc)
-        (and (assert mloc "Internal error") mloc)
+        (and (assert mloc "Internal error (ctx-identifier-loc)") mloc)
         (let ((sl (car slot-loc)))
           (if (member (car sl) sslots)
               (if (ctx-loc-is-register? (cdr sl))
@@ -177,7 +177,7 @@
     (if (null? sslots)
         ;; Free var
         (begin
-          (assert (eq? (identifier-kind identifier) 'free) "Internal error")
+          (assert (eq? (identifier-kind identifier) 'free) "Internal error (ctx-identifier-loc)")
           (identifier-cloc identifier))
         (get-best-loc (ctx-slot-loc ctx) sslots #f))))
 
@@ -317,7 +317,7 @@
                          r))
                    #f
                    (ctx-slot-loc ctx))))
-      (assert sl "Internal error l")
+      (assert sl "Internal error (ctx-get-free-reg)")
       (cdr sl)))
 
   (let ((free-regs (ctx-free-regs ctx)))
@@ -397,7 +397,7 @@
 
   (define (gen-env env ids)
     (if (null? env)
-        (begin (assert (null? ids) "Internal error")
+        (begin (assert (null? ids) "Internal error (ctx-unbind-locals)")
                '())
         (let ((ident (car env)))
           (if (member (car ident) ids)
@@ -597,7 +597,7 @@
 (define (ctx-get-loc ctx stack-idx)
   (let* ((slot (stack-idx-to-slot ctx stack-idx))
          (r (assoc slot (ctx-slot-loc ctx))))
-    (assert r "Internal error")
+    (assert r "Internal error (ctx-get-loc)")
     (cdr r)))
 
 ;; Is register?
@@ -648,7 +648,7 @@
 ;; TODO nettoyer
 ;;; TODO: uniformiser et placer
 ;; TODO: not 3 & 5 because rdi and R11 are used for ctx, nb-args
-(define args-regs '((r . 0) (r . 1) (r . 4) (r . 6))) ;; TODO
+(define args-regs '((r . 0) (r . 1) (r . 4) (r . 6) (r . 7) (r . 8))) ;; TODO
 (define (ctx-get-call-args-moves ctx nb-args)
 
   (define (get-req-moves curr-idx rem-regs moves pushed)
