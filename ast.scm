@@ -663,23 +663,28 @@
          (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
                      (lambda (cgc ctx)
 
-                       (let* ((clean-nb (- (ctx-fs ctx) 1))
+                       (let* ((clean-nb (ctx-fs ctx))
                               ;; Retval loc
                               (lres  (ctx-get-loc ctx 0))
                               (opres (codegen-loc-to-x86opnd (ctx-fs ctx) lres))
                               ;; Retreg loc
                               (lret  (car (ctx-init-free-regs)))
-                              (opret (codegen-reg-to-x86reg lret)))
+                              (opret (codegen-reg-to-x86reg lret))
+                              ;; Retaddr loc
+                              (laddr (ctx-get-loc ctx (- (length (ctx-stack ctx)) 1)))
+                              (opaddr (codegen-loc-to-x86opnd (ctx-fs ctx) laddr)))
 
                          ;; Move retval to retreg
                          (if (not (eq? opret opres))
                              (x86-mov cgc opret opres))
 
                          ;; Get return address or cctable in rdx
-                         (x86-mov cgc (x86-rdx) (x86-mem (* clean-nb 8) (x86-usp)))
+                         (if (not (eq? opaddr (x86-rdx)))
+                             (x86-mov cgc (x86-rdx) opaddr))
 
                          ;; Clean stack
-                         (x86-add cgc (x86-usp) (x86-imm-int (* 8 (+ clean-nb 1))))
+                         (if (> clean-nb 0)
+                             (x86-add cgc (x86-usp) (x86-imm-int (* 8 clean-nb 1))))
 
                          ;; Gen return
                          (if opt-return-points

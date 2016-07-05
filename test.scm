@@ -1,9 +1,16 @@
 
+(define (bar) 1)
 
-(define (fib n)
-  (if (< n 2)
-    n
-    (+ (fib (- n 1))
-       (fib (- n 2)))))
+(define (foo n)
+  (bar)
+  (bar))
+  
+(foo 100)
 
-(fib 40)
+;(define (fib n)
+;  (if (< n 2)
+;    n
+;    (+ (fib (- n 1))
+;       (fib (- n 2)))))
+;
+;(fib 40)
