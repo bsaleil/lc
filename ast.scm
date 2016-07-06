@@ -1246,6 +1246,9 @@
 
 ;; primitive eq?
 (define (prim-eq? cgc ctx reg succ cst-infos)
+;; NOTE: if inlined-if-cond? is #t, reg register is uselessly freed
+
+  (define inlined-if-cond? (member 'cond (lazy-code-flags succ)))
 
   (let* ((lcst (assoc 0 cst-infos))
          (rcst (assoc 1 cst-infos))
@@ -1257,8 +1260,14 @@
                    (ctx-get-loc ctx 0)
                    (ctx-get-loc ctx 1))))
          (n-pop (count (list lcst rcst) not)))
-    (codegen-eq? cgc (ctx-fs ctx) reg lleft lright lcst rcst)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_BOOL reg))))
+    (codegen-eq? cgc (ctx-fs ctx) reg lleft lright lcst rcst inlined-if-cond?)
+    (let ((ctx
+            (if inlined-if-cond?
+                (ctx-pop-n ctx n-pop) ;; if it's an if inlined condition, no push required
+                (ctx-push (ctx-pop-n ctx n-pop) CTX_BOOL reg))))
+      (if inlined-if-cond?
+          (lazy-code-tmpdata-set! succ x86-jne))
+      (jump-to-version cgc succ ctx))))
 
 ;; primitives car & cdr
 (define (prim-cxr cgc ctx reg succ cst-infos op)
@@ -1947,7 +1956,7 @@
              (unused-regs (set-sub (ctx-init-free-regs) used-regs '())))
 
       (if (null? unused-regs)
-          (begin (apply-moves cgc ctx moves selector-reg)
+          (begin (apply-moves cgc ctx moves 'selector)
                  (x86-mov cgc selector-reg (x86-imm-int 0)))
           (apply-moves cgc ctx moves (car unused-regs)))
 

@@ -1,11 +1,12 @@
 
 
 (define (foo n)
-  (if (not (eq? 1 n))
+  (if (eq? 1 n)
       1
       2))
 
-(foo 10)
+(pp (foo 10))
+(pp (foo 1))
 ;(define (fib n)
 ;  (if (< n 2)
 ;      1

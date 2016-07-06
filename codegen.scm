@@ -195,7 +195,9 @@
 
 
 (define (codegen-loc-to-x86opnd fs loc)
-  (cond ((ctx-loc-is-register? loc)
+  (cond ((eq? loc 'selector)
+         selector-reg)
+        ((ctx-loc-is-register? loc)
          (codegen-reg-to-x86reg loc))
         ((ctx-loc-is-memory? loc)
          (codegen-mem-to-x86mem fs loc))
@@ -982,16 +984,17 @@
 
 ;;-----------------------------------------------------------------------------
 ;; eq?
-(define (codegen-eq? cgc fs reg lleft lright lcst? rcst?)
+(define (codegen-eq? cgc fs reg lleft lright lcst? rcst? inline-if-cond?)
+
+  ;; (eq? cst1 cst2) is handled by code expansion
+  (assert (not (and lcst? rcst?)) "Internal error (codegen-eq?)")
 
   (let ((dest (codegen-reg-to-x86reg reg))
         (label-done (asm-make-label #f (new-sym 'eq?_end_)))
         (lopnd (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
         (ropnd (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
 
-   (cond ((and lcst? rcst?)
-          (x86-mov cgc dest (x86-imm-int (obj-encoding (eq? lleft lright)))))
-         (lcst?
+   (cond (lcst?
           ;; Check for imm64
           (if (codegen-is-imm-64? (obj-encoding lleft))
               (begin (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding lleft)))
@@ -1009,7 +1012,7 @@
                      (set! lopnd (x86-rax))))
           (x86-cmp cgc lopnd ropnd)))
 
-   (if (not (and lcst? rcst?))
+   (if (not inline-if-cond?)
        (begin
          (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
          (x86-je  cgc label-done)

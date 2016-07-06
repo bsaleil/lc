@@ -894,7 +894,6 @@
         (x86-r8)   ;; 5th argument
         (x86-r9))) ;; 6th argument
 
-
 (define all-regs
   (list (x86-rax)
         (x86-rbx)
@@ -1043,6 +1042,7 @@
                  (if (eq? (cdr move) 'rtmp)
                      (get-tmp)
                      (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move)))))
+
           (cond ;; Same operands, useless move
                 ((eq? src dst) #f)
                 ;; Both in memory, use rax
