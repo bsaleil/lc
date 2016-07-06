@@ -217,6 +217,15 @@
     (,##char-downcase . ##char-downcase)
     ))
 
+(define (get-alias el)
+  (if (and (pair? el)
+           (eq? (car el) 'quote))
+      (set! el (cadr el)))
+  (let ((r (assoc el aliases)))
+    (if r
+        (cdr r)
+        el)))
+
 (define-macro (resolve-alias op ast)
   `(if (and (pair? ,op)
             (eq? (car ,op) 'quote))
@@ -327,11 +336,19 @@
 
 ;; IF
 (define (expand-if expr)
-  (if (eq? (length expr) 3)
-      ;; No else
-      `(if ,(expand (cadr expr)) ,(expand (caddr expr)) #f)
-      ;; If then else
-      `(if ,(expand (cadr expr)) ,(expand (caddr expr)) ,(expand (cadddr expr)))))
+  (cond ;; (if A B) -> (if A B #f)
+        ((eq? (length expr) 3)
+           (expand `(if ,(expand (cadr expr)) ,(expand (caddr expr)) #f)))
+        ;; (if (not A) B C) -> (if A C D)
+        ((and (pair? (cadr expr))
+              (eq? (get-alias (caadr expr)) 'not))
+           (let ((c (cadadr expr))
+                 (t (cadddr expr))
+                 (f (caddr expr)))
+             `(if ,(expand c) ,(expand t) ,(expand f))))
+        ;;
+        (else
+           `(if ,(expand (cadr expr)) ,(expand (caddr expr)) ,(expand (cadddr expr))))))
 
 ;; BEGIN
 ;; TODO : begin is a special form
