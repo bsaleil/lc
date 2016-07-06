@@ -155,6 +155,20 @@
   (member type (list CTX_BOX CTX_PAI   CTX_VECT  CTX_STR CTX_CLO
                      CTX_SYM CTX_IPORT CTX_OPORT CTX_FLO)))
 
+(define (literal-ctxtype l)
+  (cond
+    ((char?    l) CTX_CHAR)
+    ((null?    l) CTX_NULL)
+    ((fixnum?  l) CTX_INT)
+    ((boolean? l) CTX_BOOL)
+    ((pair?    l) CTX_PAI)
+    ((vector?  l) CTX_VECT)
+    ((string?  l) CTX_STR)
+    ((symbol?  l) CTX_SYM)
+    ((flonum?  l) CTX_FLO)
+    (else (error "Internal error (literal-ctxtype)"))))
+
+
 (define type-cridx
   `((,CTX_INT  .  8) ;; Start from 8 because of header
     (,CTX_CHAR . 16)

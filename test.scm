@@ -1,12 +1,18 @@
 
+(define (boolean? n)
+  (eq? n #f))
 
-(define (foo n)
-  (if (eq? 1 n)
-      1
-      2))
+(define t2 #f)
 
-(pp (foo 10))
-(pp (foo 1))
+(gambit$$println (boolean? t2))
+
+
+;(define (foo n)
+;  (eq? n 10))
+;
+;(pp (foo #f))
+;(pp (foo 10))
+;(pp (foo 1))
 ;(define (fib n)
 ;  (if (< n 2)
 ;      1

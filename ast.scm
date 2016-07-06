@@ -1252,7 +1252,14 @@
 
   (let* ((lcst (assoc 0 cst-infos))
          (rcst (assoc 1 cst-infos))
+         (tright (if rcst (literal-ctxtype (cdr rcst)) (ctx-get-type ctx 0)))
          (lright (if rcst (cdr rcst) (ctx-get-loc ctx 0)))
+         (tleft
+           (if lcst
+               (literal-ctxtype (cdr lcst))
+               (if rcst
+                   (ctx-get-type ctx 0)
+                   (ctx-get-type ctx 1))))
          (lleft
            (if lcst
                (cdr lcst)
@@ -1260,14 +1267,31 @@
                    (ctx-get-loc ctx 0)
                    (ctx-get-loc ctx 1))))
          (n-pop (count (list lcst rcst) not)))
-    (codegen-eq? cgc (ctx-fs ctx) reg lleft lright lcst rcst inlined-if-cond?)
-    (let ((ctx
+
+    ;; Si les deux types sont différents (et connus)
+    ;; on peut sauter direct à #f
+    (if (and (not (eq? tleft CTX_UNK))
+             (not (eq? tright CTX_UNK))
+             (not (eq? tleft tright)))
+        ;; Both types are known and !=
+        (if inlined-if-cond?
+            ;; Then if it's an if cond, jump directly to false branch
+            (let ((lco-false (lazy-code-lco-false succ)))
+              (jump-to-version cgc lco-false (ctx-pop-n ctx n-pop)))
+            ;; Then if it's not an if cond, result is #f
+            (begin
+              (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int (obj-encoding #f)))
+              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) CTX_BOOL reg))))
+        ;; Both types are not known
+        (begin
+          (codegen-eq? cgc (ctx-fs ctx) reg lleft lright lcst rcst inlined-if-cond?)
+          (let ((ctx
+                  (if inlined-if-cond?
+                      (ctx-pop-n ctx n-pop) ;; if it's an if inlined condition, no push required
+                      (ctx-push (ctx-pop-n ctx n-pop) CTX_BOOL reg))))
             (if inlined-if-cond?
-                (ctx-pop-n ctx n-pop) ;; if it's an if inlined condition, no push required
-                (ctx-push (ctx-pop-n ctx n-pop) CTX_BOOL reg))))
-      (if inlined-if-cond?
-          (lazy-code-tmpdata-set! succ x86-jne))
-      (jump-to-version cgc succ ctx))))
+                (lazy-code-tmpdata-set! succ x86-jne))
+            (jump-to-version cgc succ ctx))))))
 
 ;; primitives car & cdr
 (define (prim-cxr cgc ctx reg succ cst-infos op)
