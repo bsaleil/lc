@@ -158,7 +158,7 @@
 ;; NOTE: temporary register is always rax
 ;; NOTE: selector is always rcx
 
-;; TODO: other offsets
+;; Offsets
 (define OFFSET_PAIR_CAR 16)
 (define OFFSET_PAIR_CDR  8)
 (define OFFSET_PROC_EP 8)
@@ -649,7 +649,8 @@
     ;; Closure is in rax
     (let ((cct-offset (* 8 (+ 2 idx))))
       ;; 1 - Put ctx in r11
-      (if (not direct-eploc)
+      (if (or (not direct-eploc)                  ;; ctx needed if it's not a direct call
+              (not (eq? (car direct-eploc) 'ep))) ;; ctx needed if it's a direct call to a stub
           (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding idx))))
       ;; 2 - Put closure in rax if needed
       (if (not global-eploc?)
@@ -659,7 +660,11 @@
            (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
       ;; 2- Get cc-table
       (cond (direct-eploc
-              (let ((label (asm-make-label #f (new-sym 'known_dest_) direct-eploc)))
+              ;; If it's a direct call to a not yet generated entry point, add stub_load label
+              (if (eq? (car direct-eploc) 'stub)
+                  (let ((load-label (caddr direct-eploc)))
+                    (x86-label cgc load-label)))
+              (let ((label (asm-make-label #f (new-sym 'known_dest_) (cadr direct-eploc))))
                 (x86-jmp cgc label)))
             (eploc
               (x86-mov cgc (x86-r15) (x86-imm-int eploc))

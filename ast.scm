@@ -108,41 +108,40 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Parsistent data structures
-;; a chaque site d'appel dont on connait le receveur:
-;;   * tester si la version pour ce contexte a déjà été générée (pt entre == stub_addr (?))
-;;   * si déjà générée: on fait un jmp classique
-;;   * sinon:
-;;     * On ajoute une association (adresse mov - cctable - ctxidx) à un ensemble global
-;;     * On fait un mov de l'adresse du stub
-;; a chaque patch de cctable:
-;;  * regarder dans l'ensemble global si on a une assoc avec cette table et ce ctx (key)
-;;  * si oui: patch du chargement du pt d'éntrée
-;;  * sinon: rien à faire
-;; CAS POSSIBLES:
-;;  1. On veut appeller un point d'entrée:
-;;    - Voir ci-dessus
-;;  2. On veut appeller un pt générique:
-;;    - Meme stratégie, la structure stocke l'adresse du stub générique
-;;  3. On utilisa pas de cc-tables:
-;;    - Meme stratégie, mais la structore stocke qu'une seule adresse de stub
-;; Pour commencer:
-;; -> 1. etre capable de déterminer à un site d'appel avec receveur connu si c'est le stub ou non
-;; -> 2. utiliser un jmp classique
 
-;; ensemble pour stocker cctable -> stub-addr
-;; ensemble pour stocker addresse mov -> cctable/ctxidx
-
-;; 1: a chaque création de cc-table (cctable-fill), stocker cctable->stub-addr
-;; 2: a chaque site d'appel: appeller directement le pt entrée s'il est != stub-addr
-
-;; TODO: comment this data struct
-;; TODO: move all persistent data struct here!
-;; TODO: WIP
+;;
+;; CCTable -> stubs
+;; Associate a pair generic,stub to a cctable
+;; This structure is used to determine if an entry of the cctable is a stub
+;; address or a version address
+;;
 (define asc-cc-stub (make-table))
+;; Add an entry to the table
 (define (asc-cc-stub-add cctable generic-addr stub-addr)
   (table-set! asc-cc-stub cctable (cons generic-addr stub-addr)))
+;; Read an entry from the table
 (define (asc-cc-stub-get cctable)
   (table-ref asc-cc-stub cctable #f))
+
+;;
+;; CCTable/CtxIdx -> label list
+;; Associate a list of label to a pair cctable/ctxidx
+;; This structure is used to store all addresses where the compiler generated a
+;; direct jump to a stub.
+;; When the stub generate a version stored in this cctable with a ctx represented by 'ctxidx',
+;; it patches all stored labels and clear the table entry
+;;
+(define asc-entry-load (make-table))
+;; Add an entry to the table
+(define (asc-entry-load-add cctable ctxidx label)
+  (let ((r (table-ref asc-entry-load (cons cctable ctxidx) '())))
+    (table-set! asc-entry-load (cons cctable ctxidx) (cons label r))))
+;; Get all labels from cctable and ctxidx
+(define (asc-entry-load-get cctable ctxidx)
+  (table-ref asc-entry-load (cons cctable ctxidx) '()))
+;; Clear the entry for the cctable/ctxidx
+(define (asc-entry-load-clear cctable ctxidx)
+  (table-set! asc-entry-load (cons cctable ctxidx) '())) ;; TODO: remove table entry
 
 ;;
 ;; Global closures
@@ -2133,10 +2132,18 @@
     (if (and opt-entry-points cc-idx eploc)
         (let ((r  (asc-cc-stub-get eploc))
               (ep (get-i64 (+ eploc (* 8 (+ 2 cc-idx))))))
-          (if (and (not (= ep (car r)))
-                   (not (= ep (cdr r))))
-              ep
-              #f))
+          (cond ;; It's a call to an already generated entry point
+                ((and (not (= ep (car r)))
+                      (not (= ep (cdr r))))
+                   (list 'ep ep))
+                ;; It's a call to a known stub
+                ((= ep (cdr r))
+                   (let ((label (asm-make-label #f (new-sym 'stub_load_))))
+                     (asc-entry-load-add eploc cc-idx label)
+                     (list 'stub ep label)))
+                ;;
+                (else
+                   #f)))
         #f))
 
   (cond ((not opt-entry-points)
