@@ -1242,18 +1242,16 @@
           (loop (+ i 1) (get-u8 (+ entry-pos (+ i 1))))))
     ;;
     (let* ((opcode (get-u8 entry-pos)))
-      (cond ;; First instruction is a jmp rel8
-            ((= opcode #xeb)
-               ;; Retrieve destination from jump instruction
-               (let ((jmpdest (+ entry-pos (get-i8 (+ entry-pos 1)) 2)))
-                 ;; Update code-alloc, the compiler can overwrite this code
-                 (set! code-alloc (asm-label-pos version-label))
-                 ;; The new version label is a new label built from jmp destination address
-                 (asm-make-label #f (new-sym 'fn_entry_opt) jmpdest)))
-            ;; TODO WIP
+      (cond ;; TODO WIP
+            ;; First instruction is a jmp rel8
+            ;((= opcode #xeb)
+            ;   ;; Get destination from jump instruction
+            ;   (let ((jmpdest (+ entry-pos (get-i8 (+ entry-pos 1)) 2)))
+            ;     ;; The new version label is a new label built from jmp destination address
+            ;     (asm-make-label #f (new-sym 'fn_entry_opt) jmpdest)))
+            ;; First instruction is a jmp rel32
             ;((= opcode #xe9)
             ;   (let ((jmpdest (+ entry-pos (get-i32 (+ entry-pos 1)) 5)))
-            ;     (set! code-alloc (asm-label-pos version-label))
             ;     (asm-make-label #f (new-sym 'fn_entry_opt) jmpdest)))
             (else
                version-label))))
