@@ -1,11 +1,12 @@
+(define sum 0)
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
+(define (do-loop n)
+  (set! sum 0)
+  (do ((i 0 (+ i 1)))
+      ((>= i n) sum)
+    (set! sum (+ sum 1))))
 
-($apply fib '(40))
+($apply do-loop '(100000000))
 
 
 ;; gen-version-fn:

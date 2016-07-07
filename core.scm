@@ -666,6 +666,8 @@
 (define label-print-msg-handler        #f)
 (define label-print-msg-val-handler    #f)
 
+(define label-err-wrong-num-args       #f)
+
 (define (gen-addr-handler cgc id addr cargs-generator)
   (let ((label-handler (asm-make-label cgc id)))
 
@@ -822,6 +824,10 @@
     (set! label-print-msg-val-handler
           (gen-handler cgc 'print_msg_val_handler label-print-msg-val))
     (x86-ret cgc)
+
+    (set! label-err-wrong-num-args (asm-make-label #f 'err_wrong_num_args))
+    (x86-label cgc label-err-wrong-num-args)
+    (gen-error cgc ERR_WRONG_NUM_ARGS)
 
     ;; -------------------------
 

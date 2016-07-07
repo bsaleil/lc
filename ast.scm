@@ -821,15 +821,12 @@
   (make-lazy-code-entry
     (lambda (cgc ctx)
       (let ((nb-args (ctx-nb-args ctx))
-            (label-next (asm-make-label #f (new-sym 'label-next)))
-            (label-end (asm-make-label #f (new-sym 'label-end))))
+            (label-next (asm-make-label #f (new-sym 'label-next))))
         (if (not rest-param)
             ;; If not rest, only check args number
             (begin
               (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args)))
-              (x86-je cgc label-end)
-              (gen-error cgc ERR_WRONG_NUM_ARGS)
-              (x86-label cgc label-end))
+              (x86-jne cgc label-err-wrong-num-args))
             ;; If rest, check args number then build rest list from regs and stack
             (let ((nb-args-regs (length args-regs))
                   (label-rest       (asm-make-label #f (new-sym 'prologue-rest)))
