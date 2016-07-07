@@ -1,11 +1,24 @@
 
-(define (boolean? n)
-  (eq? n #f))
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-(define t2 #f)
+($apply fib '(40))
 
-(gambit$$println (boolean? t2))
 
+;; gen-version-fn:
+;;   * on génère le code avec le générateur
+;;   * on va lire le premier octet du code généré
+;;   * si l'octet est 0xeb, c'est un jmp rel8
+;;   * si l'octet est 0xe9, c'est un jmp rel32
+;;   * les autres jumps ne sont pas optimisables
+;;
+;;   -> si on obtient un jump
+;;   -> on va lire l'opérande pour récupérer l'adresse de destination qu'on stocke dans un label
+;;   -> on remet code-alloc à la position de ce jump, on peut écraser son contenu
+;;   -> on retourne se label comme étant le label de la version
 
 ;(define (foo n)
 ;  (eq? n 10))

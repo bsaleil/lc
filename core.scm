@@ -1094,7 +1094,7 @@
 ;;-----------------------------------------------------------------------------
 ;; JIT
 
-(define (gen-version-* cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos)
+(define (gen-version-* cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos #!optional fn-opt-label)
 
   (if opt-verbose-jit
       (fn-verbose))
@@ -1115,6 +1115,8 @@
                   (asm-align cgc 4 0 #x90)
                   (x86-label cgc version-label)
                   ((lazy-code-generator lazy-code) cgc ctx))))
+          (if fn-opt-label
+              (set! version-label (fn-opt-label version-label)))
           (put-version lazy-code ctx version-label)
           (set! label-dest version-label)))
     (fn-patch label-dest new-version?)))
@@ -1225,7 +1227,32 @@
   (define (fn-codepos)
     code-alloc)
 
-  (gen-version-* #f lazy-code gen-ctx 'fn_entry_ fn-verbose fn-patch fn-codepos))
+  (define (fn-opt-label version-label)
+    (define entry-pos (asm-label-pos version-label))
+    ;; Ignore all nop instructions (byte 0x90)
+    (let loop ((i 0) (opcode (get-u8 entry-pos)))
+      (if (not (= opcode #x90))
+          (set! entry-pos (+ entry-pos i))
+          (loop (+ i 1) (get-u8 (+ entry-pos (+ i 1))))))
+    ;;
+    (let* ((opcode (get-u8 entry-pos)))
+      (cond ;; First instruction is a jmp rel8
+            ((= opcode #xeb)
+               ;; Retrieve destination from jump instruction
+               (let ((jmpdest (+ entry-pos (get-i8 (+ entry-pos 1)) 2)))
+                 ;; Update code-alloc, the compiler can overwrite this code
+                 (set! code-alloc (asm-label-pos version-label))
+                 ;; The new version label is a new label built from jmp destination address
+                 (asm-make-label #f (new-sym 'fn_entry_opt) jmpdest)))
+            ;; TODO WIP
+            ;((= opcode #xe9)
+            ;   (let ((jmpdest (+ entry-pos (get-i32 (+ entry-pos 1)) 5)))
+            ;     (set! code-alloc (asm-label-pos version-label))
+            ;     (asm-make-label #f (new-sym 'fn_entry_opt) jmpdest)))
+            (else
+               version-label))))
+
+  (gen-version-* #f lazy-code gen-ctx 'fn_entry_ fn-verbose fn-patch fn-codepos fn-opt-label))
 
 
 ;; #### LAZY CODE OBJECT

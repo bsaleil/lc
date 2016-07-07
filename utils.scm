@@ -261,6 +261,10 @@
    addr
    val))
 
+ (define (get-i8 addr)
+   ((c-lambda (int64) long "___result = *___CAST(___S8*,___arg1);")
+    addr))
+
 (define (get-scmobj addr)
   ((c-lambda (int64) scheme-object "___result = *___CAST(___SCMOBJ*,___arg1);")
    addr))
