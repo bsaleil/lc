@@ -1243,6 +1243,7 @@
     ;;
     (let* ((opcode (get-u8 entry-pos)))
       (cond ;; TODO WIP
+            ;;  -> segfault because new label is not aligned. Allow cctable to store unaligned addresses
             ;; First instruction is a jmp rel8
             ;((= opcode #xeb)
             ;   ;; Get destination from jump instruction
