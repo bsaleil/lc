@@ -2523,7 +2523,7 @@
 ;; !! cctable is not filled. Not even with dummy value (0)
 (define (cctable-make cctable-key)
   (let* ((len     (+ 1 global-cc-table-maxsize))
-         (cctable (alloc-still-vector len)))
+         (cctable (make-s64vector len)))
     (table-set! cctables cctable-key cctable)
     cctable))
 
@@ -2534,7 +2534,7 @@
   ;; Fill cctable
   (put-i64 (+ 8 (- (obj-encoding cctable) 1)) generic-addr) ;; Write generic after header
   (let loop ((i 1))
-    (if (< i (vector-length cctable))
+    (if (< i (s64vector-length cctable))
       (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding cctable) 1)) stub-addr)
              (loop (+ i 1)))
       cctable)))

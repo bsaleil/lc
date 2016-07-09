@@ -1242,18 +1242,16 @@
           (loop (+ i 1) (get-u8 (+ entry-pos (+ i 1))))))
     ;;
     (let* ((opcode (get-u8 entry-pos)))
-      (cond ;; TODO WIP
-            ;;  -> segfault because new label is not aligned. Allow cctable to store unaligned addresses
-            ;; First instruction is a jmp rel8
-            ;((= opcode #xeb)
-            ;   ;; Get destination from jump instruction
-            ;   (let ((jmpdest (+ entry-pos (get-i8 (+ entry-pos 1)) 2)))
-            ;     ;; The new version label is a new label built from jmp destination address
-            ;     (asm-make-label #f (new-sym 'fn_entry_opt) jmpdest)))
+      (cond ;; First instruction is a jmp rel8
+            ((= opcode #xeb)
+               ;; Get destination from jump instruction
+               (let ((jmpdest (+ entry-pos (get-i8 (+ entry-pos 1)) 2)))
+                 ;; The new version label is a new label built from jmp destination address
+                 (asm-make-label #f (new-sym 'fn_entry_opt) jmpdest)))
             ;; First instruction is a jmp rel32
-            ;((= opcode #xe9)
-            ;   (let ((jmpdest (+ entry-pos (get-i32 (+ entry-pos 1)) 5)))
-            ;     (asm-make-label #f (new-sym 'fn_entry_opt) jmpdest)))
+            ((= opcode #xe9)
+               (let ((jmpdest (+ entry-pos (get-i32 (+ entry-pos 1)) 5)))
+                 (asm-make-label #f (new-sym 'fn_entry_opt) jmpdest)))
             (else
                version-label))))
 
