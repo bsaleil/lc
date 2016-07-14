@@ -201,13 +201,14 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
   ;; if hp <= heap_limit, alloc ok
   (x86-mov cgc (x86-rax) (x86-imm-int (+ (* 5 8) block-addr)))
   (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
+
   (x86-jle cgc label-alloc-end)
   ;; else
     (x86-pcall cgc label-heap-limit-handler)
     (x86-add cgc alloc-ptr (x86-imm-int (+ nbytes 8)))
-
   ;; write header
   (x86-label cgc label-alloc-end)
+
   (x86-mov cgc (x86-mem (- 0 nbytes 8) alloc-ptr) (x86-imm-int (mem-header nbytes stag)) 64))
 
 ;; TODO remove when all implemented

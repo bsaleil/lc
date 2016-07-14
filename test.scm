@@ -1,12 +1,32 @@
-(define sum 0)
+;(declare (standard-bindings) (extended-bindings) (block) (inlining-limit 0))
 
-(define (do-loop n)
-  (set! sum 0)
-  (do ((i 0 (+ i 1)))
-      ((>= i n) sum)
-    (set! sum (+ sum 1))))
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 2))
+         (fib (- n 1)))))
 
-($apply do-loop '(100000000))
+(fib 40)
+
+;(define (fibfp n)
+;  (if (< n 2.)
+;    n
+;    (+ (fibfp (- n 1.))
+;       (fibfp (- n 2.)))))
+;
+;(time
+;(apply fibfp (list 30.)))
+
+
+;(define sum 0)
+;
+;(define (do-loop n)
+;  (set! sum 0)
+;  (do ((i 0 (+ i 1)))
+;      ((>= i n) sum)
+;    (set! sum (+ sum 1))))
+;
+;($apply do-loop '(100000000))
 
 
 ;; gen-version-fn:

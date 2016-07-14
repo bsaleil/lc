@@ -72,10 +72,11 @@
 (pp (cddr l))
 (pp (cadr l))
 (pp (caddr l))
-(set-car! l #f)
-(pp l)
-(set-cdr! l '(#f #f #f))
-(pp l)
+(define ll (list 1 #t #\T "Hello"))
+(set-car! ll #f)
+(pp ll)
+(set-cdr! ll '(#f #f #f))
+(pp ll)
 
 (println "Set-car!/Set-cdr!")
 

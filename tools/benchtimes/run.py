@@ -167,8 +167,8 @@ def userWants(str):
 
 # GC
 systems = []
-g1 = System("GambitNS","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
-g2 = System("GambitS","gsc -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
+g1 = System("GambitNS","gsc -:m8000 -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
+g2 = System("GambitS","gsc -:m8000 -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
 #l1 = System("LC-old","",".scm",["lazy-comp-old","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
 l2 = System("LC-new","",".scm",["lazy-comp","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
 

@@ -211,7 +211,12 @@
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)
+             (set! lazy-lib #f)
              (set! all-lazy-code #f)
+             (set! asc-cc-stub #f)
+             (set! asc-entry-load #f)
+             (set! ctime-entries #f)
+             (set! stub-freelist #f)
              (let loop ((i 0))
                (if (< i (/ ustack-len 8))
                    (begin (vector-set! ustack i 0)
@@ -221,6 +226,7 @@
                    (begin (vector-set! globals-space i 0)
                           (loop (+ i 1)))))
              (##gc)
+
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
       (begin (##machine-code-block-exec mcb))))

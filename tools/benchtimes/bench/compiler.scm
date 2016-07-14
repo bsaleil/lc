@@ -3405,12 +3405,13 @@
     (if (< i *opnd-table-alloc*)
         (let ((x (vector-ref *opnd-table* i)))
           (if (and (eqv? (car x) arg1) (eqv? (cdr x) arg2)) i (loop (+ i 1))))
-        (if (< *opnd-table-alloc* 10000)
+        (if (< *opnd-table-alloc* opnd-table-size)
             (begin
               (set! *opnd-table-alloc* (+ *opnd-table-alloc* 1))
               (vector-set! *opnd-table* i (cons arg1 arg2))
               i)
-            (error "CE")))))
+            (compiler-limitation-error
+             "program is too long [virtual machine operand table overflow]")))))
 (define (contains-opnd? opnd1 opnd2)
   (cond ((eqv? opnd1 opnd2) #t)
         ((clo? opnd2) (contains-opnd? opnd1 (clo-base opnd2)))
@@ -3426,9 +3427,7 @@
 (define (make-stk num) (+ num 10000))
 (define (stk? x) (= (quotient x 10000) 1))
 (define (stk-num x) (modulo x 10000))
-(define (make-glo name)
-  (enter-opnd 'ack #t)
-  (error "NNN"))
+(define (make-glo name) (+ (enter-opnd name #t) 30000))
 (define (glo? x) (= (quotient x 10000) 3))
 (define (glo-name x) (car (vector-ref *opnd-table* (modulo x 10000))))
 (define (make-clo base index) (+ (enter-opnd base index) 40000))
@@ -3616,7 +3615,6 @@
 (define (closure-parms-lbl x) (vector-ref x 1))
 (define (closure-parms-opnds x) (vector-ref x 2))
 (define (make-ifjump test opnds true false poll? frame comment)
-  (pp (vector-ref test 1))
   (vector 'ifjump frame comment test opnds true false poll?))
 (define (ifjump-test gvm-instr) (vector-ref gvm-instr 3))
 (define (ifjump-opnds gvm-instr) (vector-ref gvm-instr 4))
@@ -3678,14 +3676,9 @@
                     lbl-num))
               lbl-num))))
   (define (remove-cascade! bb)
-
     (let ((branch (bb-branch-instr bb)))
-
       (case (gvm-instr-type branch)
         ((ifjump)
-         (pp "{{{{{ Generate another ifjump with true/false:")
-         (pp (equiv-lbl (ifjump-true branch) '()))
-         (pp (equiv-lbl (ifjump-false branch) '()))
          (bb-put-branch!
           bb
           (make-ifjump
@@ -3730,9 +3723,6 @@
                                       (else opnd)))
                               (case (gvm-instr-type last-branch)
                                 ((ifjump)
-                                  (pp "{{{{{ Generate another ifjump with true/false:")
-                                  (pp (equiv-lbl (ifjump-true last-branch) '()))
-                                  (pp (equiv-lbl (ifjump-false last-branch) '()))
                                  (bb-put-branch!
                                   bb
                                   (make-ifjump
@@ -4091,11 +4081,6 @@
         (gvm-instr-frame instr)
         (gvm-instr-comment instr)))
       ((ifjump)
-        (pp "{{{{{ Generate another replace ifjump with true/false:")
-        (pp (ifjump-true instr))
-        (pp (replacement-lbl-num (ifjump-true instr)))
-
-
        (make-ifjump
         (ifjump-test instr)
         (map update-gvm-opnd (ifjump-opnds instr))
@@ -4776,7 +4761,6 @@
                               port)
                              (loop (cdr l)))))
                      (newline port)))
-
                (let ((module-init-proc
                       (compile-parsed-program
                        module-name
@@ -4790,7 +4774,6 @@
                             (open-output-file (string-append dest ".gvm"))))
                        (virtual.dump module-init-proc gvm-port)
                        (close-output-port gvm-port)))
-
                  (target.dump module-init-proc dest c-intf opts)
                  (dump-c-intf module-init-proc dest c-intf)))))
           (unselect-target!)
@@ -5029,7 +5012,6 @@
           (make-bb (make-label-entry entry-lbl 0 0 #f #f frame comment) *bbs*))
     (bb-put-branch! entry-bb (make-jump (make-lbl body-lbl) #f #f frame #f))
     (set! *bb* (make-bb (make-label-simple body-lbl frame comment) *bbs*))
-
     (let loop1 ((l (c-intf-procs c-intf)))
       (if (not (null? l))
           (let* ((x (car l))
@@ -5040,7 +5022,6 @@
              var
              (make-obj (make-proc-obj name #t #f 0 #t '() '(#f))))
             (loop1 (cdr l)))))
-
     (let loop2 ((l program))
       (if (not (null? l))
           (let ((node (car l)))
@@ -5059,23 +5040,24 @@
                          '()
                          '(#f)))))))
             (loop2 (cdr l)))))
-
     (let loop3 ((l program))
       (if (null? l)
-          (error "END")
+          (let ((ret-opnd (var->opnd ret-var)))
+            (seal-bb #t 'return)
+            (dealloc-slots nb-slots)
+            (bb-put-branch!
+             *bb*
+             (make-jump ret-opnd #f #f (current-frame (set-empty)) #f)))
           (let ((node (car l)))
             (if (def? node)
                 (begin
                   (gen-define (def-var node) (def-val node) info-port)
-                  (error "OK")
                   (loop3 (cdr l)))
-                (begin (pp "c2")
                 (if (null? (cdr l))
                     (gen-node node ret-var-set 'tail)
                     (begin
                       (gen-node node ret-var-set 'need)
-                      (loop3 (cdr l)))))))))
-
+                      (loop3 (cdr l))))))))
     (let loop4 ()
       (if (pair? proc-queue)
           (let ((x (car proc-queue)))
@@ -5118,7 +5100,6 @@
 (define (trace-unindent info-port)
   (set! trace-indentation (- trace-indentation 1)))
 (define (gen-define var node info-port)
-
   (if (prc? node)
       (let* ((p-bbs *bbs*)
              (p-bb *bb*)
@@ -5154,39 +5135,43 @@
                   (loop))))
           (trace-unindent info-port)
           (bbs-purify! *bbs*))
-
         (context-entry-bb-set! context bb1)
         (bbs-entry-lbl-num-set! bbs lbl1)
         (bb-put-branch! bb1 (make-jump (make-lbl lbl2) #f #f frame #f))
         (set! *bbs* bbs)
         (set! proc-queue '())
         (set! known-procs '())
-
-        (let* ((x (assq var constant-vars)) (temp (cdr x)))
-          (set-cdr! x (make-lbl lbl1))
-          (add-known-proc lbl1 node)
-          (do-body))
-
-        (make-glo (var-name var))
-
+        (if (constant-var? var)
+            (let-constant-var
+             var
+             (make-lbl lbl1)
+             (lambda () (add-known-proc lbl1 node) (do-body)))
+            (do-body))
         (set! *bbs* p-bbs)
         (set! *bb* p-bb)
         (set! proc-queue p-proc-queue)
         (set! known-procs p-known-procs)
         (restore-context p-context)
-
-        (let* ((x 0))
-
-
-          (make-glo (var-name var))
-          (error "JJ")
+        (let* ((x (assq var constant-vars))
+               (proc (if x
+                         (let ((p (cdr x)))
+                           (proc-obj-code-set! (obj-val p) bbs)
+                           p)
+                         (make-obj
+                          (make-proc-obj
+                           (symbol->string (var-name var))
+                           #f
+                           bbs
+                           (call-pattern node)
+                           #t
+                           '()
+                           '(#f))))))
           (put-copy
            proc
            (make-glo (var-name var))
            #f
            ret-var-set
-           (source-comment node))
-          (error "AP")))
+           (source-comment node))))
       (put-copy
        (gen-node node ret-var-set 'need)
        (make-glo (var-name var))
@@ -5597,10 +5582,6 @@
           (loop (cdr args*) (set-adjoin liv var) (cons var vars*)))
         (let* ((true-lbl (bbs-new-lbl! *bbs*))
                (false-lbl (bbs-new-lbl! *bbs*)))
-          (pp "{{{{{ Generate a ifjump with true/false= ")
-          (pp true-lbl)
-          (pp false-lbl)
-
           (seal-bb (intrs-enabled? (node-decl node)) 'internal)
           (bb-put-branch!
            *bb*
@@ -5812,7 +5793,6 @@
           (bool? (boolean-value? pre))
           (predicate-var (make-temp-var 'predicate)))
       (define (general-predicate node live cont)
-        (error "GENERAL-PREDICATE")
         (let* ((con-lbl (bbs-new-lbl! *bbs*)) (alt-lbl (bbs-new-lbl! *bbs*)))
           (save-opnd-to-reg
            (gen-node pre live 'need)
@@ -7130,15 +7110,15 @@
 (define subtype-cpxnum 4)
 (define subtype-string 16)
 (define subtype-bignum 17)
-(define data-false (- 0 33686019))
-(define data-null (- 0 67372037))
+(define data-false (- 33686019))
+(define data-null (- 67372037))
 (define data-true -2)
 (define data-undef -3)
 (define data-unass -4)
 (define data-unbound -5)
 (define data-eof -6)
 (define data-max-fixnum 268435455)
-(define data-min-fixnum (- 0 268435456))
+(define data-min-fixnum (- 268435456))
 (define (make-encoding data type) (+ (* data 8) type))
 (define (obj-type obj)
   (cond ((false-object? obj) 'special)
@@ -7243,13 +7223,11 @@
 (define (asm-m68881-proc) (queue-put! asm-code-queue '(m68881-proc)))
 (define (asm-stat x) (queue-put! asm-code-queue (cons 'stat x)))
 (define (asm-brel type lbl)
-  (print "BREL ") (print type) (print " ") (println lbl)
   (queue-put! asm-code-queue (cons 'brab (cons type lbl))))
 (define (asm-wrel lbl offs)
   (queue-put! asm-code-queue (cons 'wrel (cons lbl offs))))
 (define (asm-lrel lbl offs n)
   (queue-put! asm-code-queue (cons 'lrel (cons lbl (cons offs n)))))
-(define MYCPT 0)
 (define (asm-assemble! debug-info)
   (define header-offset 2)
   (define ref-glob-len 2)
@@ -7297,27 +7275,12 @@
                         (loop rest (cons (cons (cadr part) part) x))
                         (loop rest x)))))))
       (define (replace-lbl-refs-by-pointer-to-label)
-        (if (= MYCPT 4)
-            (begin
-              (pp "BEGIN")
-              (pp MYCPT)
-              (println "---------------------------")
-              (println "---------------------------")
-              (pp lbl-list)
-              (println "---------------------------")
-              (println "---------------------------")))
-        (set! MYCPT (+ MYCPT 1))
-
         (let loop ((l code-list))
           (if (not (null? l))
               (let ((part (car l)) (rest (cdr l)))
                 (if (pair? part)
                     (case (car part)
                       ((brab)
-
-                       (println "-----------")
-                       (pp part)
-                       (pp (assq (cddr part) lbl-list))
                        (set-cdr! (cdr part) (cdr (assq (cddr part) lbl-list))))
                       ((wrel)
                        (set-car! (cdr part) (cdr (assq (cadr part) lbl-list))))
@@ -7325,8 +7288,7 @@
                        (set-car!
                         (cdr part)
                         (cdr (assq (cadr part) lbl-list))))))
-                (loop rest))))
-        (pp "END"))
+                (loop rest)))))
       (define (assign-loc-to-labels)
         (let loop ((l fix-list) (loc 0))
           (if (not (null? l))
@@ -7477,7 +7439,6 @@
         (ofile-word end-of-code-tag)
         (for-each ofile-ref const-list)
         (ofile-long (obj-encoding (+ (length const-list) 1))))
-
       (replace-lbl-refs-by-pointer-to-label)
       (branch-tensioning-pass)
       (write-code))))
@@ -8337,7 +8298,6 @@
      (cons (cons 'return (make-reg 0)) (location-of-args 1)))))
 (define (closed-var-offset i) (+ (* i pointer-size) 2))
 (define (dump proc filename c-intf options)
-  (pp "PREV")
   (if *info-port*
       (begin (display "Dumping:" *info-port*) (newline *info-port*)))
   (set! ofile-asm? (memq 'asm options))
@@ -8348,7 +8308,6 @@
   (ofile.begin! filename add-object)
   (queue-put! object-queue proc)
   (queue-put! objects-dumped proc)
-
   (let loop ((index 0))
     (if (not (queue-empty? object-queue))
         (let ((obj (queue-get! object-queue)))
@@ -8531,9 +8490,6 @@
                 (pres-slots-needed (code-slots-needed (car l)))
                 (next-gvm-instr
                  (if (null? (cdr l)) #f (code-gvm-instr (cadr l)))))
-            ;(gvm-instr-type gvm-instr)
-            (if (eq? (gvm-instr-type pres-gvm-instr) 'ifjump)
-                (begin (println "!! GEN GVM INSTR ") (pp (ifjump-true pres-gvm-instr))))
             (if ofile-asm? (asm-comment (car l)))
             (gen-gvm-instr
              prev-gvm-instr
@@ -8541,7 +8497,6 @@
              next-gvm-instr
              pres-slots-needed)
             (loop pres-bb pres-gvm-instr (cdr l)))))
-
     (asm.end!
      (if debug-info?
          (vector (lst->vector (queue->list first-class-label-queue))
@@ -8628,9 +8583,6 @@
     ((copy) (gen-copy (copy-opnd gvm-instr) (copy-loc gvm-instr) sn))
     ((close) (gen-close (close-parms gvm-instr) sn))
     ((ifjump)
-     (pp "It's a jump...")
-     (pp (ifjump-test gvm-instr))
-     (pp (ifjump-true gvm-instr))
      (gen-ifjump
       (ifjump-test gvm-instr)
       (ifjump-opnds gvm-instr)
@@ -9389,7 +9341,6 @@
                  atemp2)
                 (loop2 rest))))))))
 (define (gen-ifjump test opnds true-lbl false-lbl poll? next-lbl)
-
   (if ofile-stats?
       (begin
         (stat-add!
@@ -9406,7 +9357,6 @@
         (gen-ifjump* proc opnds true-lbl false-lbl poll? next-lbl)
         (compiler-internal-error "gen-IFJUMP, unknown 'test':" test))))
 (define (gen-ifjump* proc opnds true-lbl false-lbl poll? next-lbl)
-
   (let ((fs (frame-size exit-frame)))
     (define (double-branch)
       (proc #t opnds false-lbl fs)
@@ -10357,15 +10307,10 @@
          lbl
          fs)
   (define (gen-compare-sequence opnd1 opnd2 rest)
-
     (if (null? rest)
-        (begin (pp "C1")
         (if (gen-comp opnd1 opnd2 fs)
-            (begin (pp "C1.1") (if not? (branch<= lbl) (branch> lbl)))
-            (begin (pp "C1.2")
-                   (if not?
-                       (begin (pp "C1.2.1") (branch>= lbl))
-                       (begin (pp "C1.2.2") (branch< lbl))))))
+            (if not? (branch<= lbl) (branch> lbl))
+            (if not? (branch>= lbl) (branch< lbl)))
         (let ((order-1-2
                (gen-comp opnd1 opnd2 (sn-opnd opnd2 (sn-opnds rest fs)))))
           (if (= current-fs fs)
@@ -10391,7 +10336,6 @@
                     (emit-label next-lbl)
                     (gen-compare-sequence opnd2 (car rest) (cdr rest))
                     (emit-label exit-lbl)))))))
-
   (if (or (null? opnds) (null? (cdr opnds)))
       (begin (shrink-frame fs) (if (not not?) (emit-bra lbl)))
       (gen-compare-sequence (car opnds) (cadr opnds) (cddr opnds))))
@@ -10714,7 +10658,6 @@
 (define-ifjump
  "##FIXNUM.NEGATIVE?"
  (lambda (not? opnds lbl fs)
-
    (gen-compares
     emit-blt
     emit-bge
@@ -10737,26 +10680,18 @@
 (define-ifjump
  "##FIXNUM.<"
  (lambda (not? opnds lbl fs)
-   (pp "######################################## FIX INF")
    (gen-compares emit-blt emit-bge emit-bgt emit-ble not? opnds lbl fs)))
 (define-ifjump
  "##FIXNUM.>"
  (lambda (not? opnds lbl fs)
-   (pp "######################################## FIX SUP")
    (gen-compares emit-bgt emit-ble emit-blt emit-bge not? opnds lbl fs)))
 (define-ifjump
  "##FIXNUM.<="
  (lambda (not? opnds lbl fs)
-   (pp "######################################## FIX INFEQ")
    (gen-compares emit-ble emit-bgt emit-bge emit-blt not? opnds lbl fs)))
 (define-ifjump
  "##FIXNUM.>="
  (lambda (not? opnds lbl fs)
-   (pp "######################################## FIX SUPEQ")
-   (print "NOT IS = ") (pp not?)
-   (print "OPNDS IS = ") (pp opnds)
-   (print "LBL IS = ") (pp lbl)
-   (print "FS IS = ") (pp fs)
    (gen-compares emit-bge emit-blt emit-ble emit-bgt not? opnds lbl fs)))
 (define-apply
  "##FLONUM.->FIXNUM"
@@ -11202,11 +11137,559 @@
 (begin
 (declare (standard-bindings) (fixnum) (not safe) (block))
 
-(define (ack m)
-  10)
+(define (fib n)
+  (if (< n 2)
+      n
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
+(define (tak x y z)
+  (if (not (< y x))
+      z
+      (tak (tak (- x 1) y z)
+           (tak (- y 1) z x)
+           (tak (- z 1) x y))))
+
+(define (ack m n)
+  (cond ((= m 0) (+ n 1))
+        ((= n 0) (ack (- m 1) 1))
+        (else (ack (- m 1) (ack m (- n 1))))))
+
+(define (create-x n)
+  (define result (make-vector n))
+  (do ((i 0 (+ i 1)))
+      ((>= i n) result)
+    (vector-set! result i i)))
+
+(define (create-y x)
+  (let* ((n (vector-length x))
+         (result (make-vector n)))
+    (do ((i (- n 1) (- i 1)))
+        ((< i 0) result)
+      (vector-set! result i (vector-ref x i)))))
+
+(define (my-try n)
+  (vector-length (create-y (create-x n))))
+
+(define (go n)
+  (let loop ((repeat 100)
+             (result 0))
+    (if (> repeat 0)
+        (loop (- repeat 1) (my-try n))
+        result)))
+
+(+ (fib 20)
+   (tak 18 12 6)
+   (ack 3 9)
+   (go 200000))
 ))
 
-;-----
+(define output-expected '(
+"|------------------------------------------------------"
+"| #[primitive #!program] ="
+"L1:"
+" cmpw #1,d0"
+" beq L1000"
+" TRAP1(9,0)"
+" LBL_PTR(L1)"
+"L1000:"
+" MOVE_PROC(1,a1)"
+" movl a1,GLOB(fib)"
+" MOVE_PROC(2,a1)"
+" movl a1,GLOB(tak)"
+" MOVE_PROC(3,a1)"
+" movl a1,GLOB(ack)"
+" MOVE_PROC(4,a1)"
+" movl a1,GLOB(create-x)"
+" MOVE_PROC(5,a1)"
+" movl a1,GLOB(create-y)"
+" MOVE_PROC(6,a1)"
+" movl a1,GLOB(my-try)"
+" MOVE_PROC(7,a1)"
+" movl a1,GLOB(go)"
+" movl a0,sp@-"
+" movl #160,d1"
+" lea L2,a0"
+" dbra d5,L1001"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1001"
+" TRAP2(24)"
+" RETURN(L1,1,1)"
+"L1002:"
+"L1001:"
+" JMP_PROC(1,10)"
+" RETURN(L1,1,1)"
+"L2:"
+" movl d1,sp@-"
+" moveq #48,d3"
+" moveq #96,d2"
+" movl #144,d1"
+" lea L3,a0"
+" JMP_PROC(2,14)"
+" RETURN(L1,2,1)"
+"L3:"
+" movl d1,sp@-"
+" moveq #72,d2"
+" moveq #24,d1"
+" lea L4,a0"
+" JMP_PROC(3,10)"
+" RETURN(L1,3,1)"
+"L4:"
+" movl d1,sp@-"
+" movl #1600000,d1"
+" lea L5,a0"
+" JMP_PROC(7,10)"
+" RETURN(L1,4,1)"
+"L5:"
+" dbra d5,L1003"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1003"
+" TRAP2(24)"
+" RETURN(L1,4,1)"
+"L1004:"
+"L1003:"
+"L6:"
+" addl sp@(8),d1"
+" addl sp@(4),d1"
+" addl sp@+,d1"
+" addql #8,sp"
+" rts"
+"L0:"
+"|------------------------------------------------------"
+"| #[primitive fib] ="
+"L1:"
+" bmi L1000"
+" TRAP1(9,1)"
+" LBL_PTR(L1)"
+"L1000:"
+" moveq #16,d0"
+" cmpl d1,d0"
+" ble L3"
+" bra L4"
+" RETURN(L1,2,1)"
+"L2:"
+" movl d1,sp@-"
+" movl sp@(4),d1"
+" moveq #-16,d0"
+" addl d0,d1"
+" lea L5,a0"
+" moveq #16,d0"
+" cmpl d1,d0"
+" bgt L4"
+"L3:"
+" movl a0,sp@-"
+" movl d1,sp@-"
+" subql #8,d1"
+" lea L2,a0"
+" dbra d5,L1001"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1001"
+" TRAP2(24)"
+" RETURN(L1,2,1)"
+"L1002:"
+"L1001:"
+" moveq #16,d0"
+" cmpl d1,d0"
+" ble L3"
+"L4:"
+" jmp a0@"
+" RETURN(L1,3,1)"
+"L5:"
+" addl sp@+,d1"
+" dbra d5,L1003"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1003"
+" TRAP2(24)"
+" RETURN(L1,2,1)"
+"L1004:"
+"L1003:"
+" addql #4,sp"
+" rts"
+"L0:"
+"|------------------------------------------------------"
+"| #[primitive tak] ="
+"L1:"
+" cmpw #4,d0"
+" beq L1000"
+" TRAP1(9,3)"
+" LBL_PTR(L1)"
+"L1000:"
+" cmpl d1,d2"
+" bge L4"
+" bra L3"
+" RETURN(L1,6,1)"
+"L2:"
+" movl d1,d3"
+" movl sp@(20),a0"
+" movl sp@+,d2"
+" movl sp@+,d1"
+" dbra d5,L1001"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1001"
+" movl a0,sp@(12)"
+" TRAP2(24)"
+" RETURN(L1,4,1)"
+"L1002:"
+" movl sp@(12),a0"
+"L1001:"
+" cmpl d1,d2"
+" lea sp@(16),sp"
+" bge L4"
+"L3:"
+" movl a0,sp@-"
+" movl d1,sp@-"
+" movl d2,sp@-"
+" movl d3,sp@-"
+" subql #8,d1"
+" lea L5,a0"
+" dbra d5,L1003"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1003"
+" TRAP2(24)"
+" RETURN(L1,4,1)"
+"L1004:"
+"L1003:"
+" cmpl d1,d2"
+" blt L3"
+"L4:"
+" movl d3,d1"
+" jmp a0@"
+" RETURN(L1,4,1)"
+"L5:"
+" movl d1,sp@-"
+" movl sp@(12),d3"
+" movl sp@(4),d2"
+" movl sp@(8),d1"
+" subql #8,d1"
+" lea L6,a0"
+" cmpl d1,d2"
+" bge L4"
+" bra L3"
+" RETURN(L1,5,1)"
+"L6:"
+" movl d1,sp@-"
+" movl sp@(12),d3"
+" movl sp@(16),d2"
+" movl sp@(8),d1"
+" subql #8,d1"
+" lea L2,a0"
+" cmpl d1,d2"
+" bge L4"
+" bra L3"
+"L0:"
+"|------------------------------------------------------"
+"| #[primitive ack] ="
+"L1:"
+" beq L1000"
+" TRAP1(9,2)"
+" LBL_PTR(L1)"
+"L1000:"
+" movl d1,d0"
+" bne L3"
+" bra L5"
+" RETURN(L1,2,1)"
+"L2:"
+" movl d1,d2"
+" movl sp@+,d1"
+" subql #8,d1"
+" movl sp@+,a0"
+" dbra d5,L1001"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1001"
+" movl a0,sp@-"
+" TRAP2(24)"
+" RETURN(L1,1,1)"
+"L1002:"
+" movl sp@+,a0"
+"L1001:"
+" movl d1,d0"
+" beq L5"
+"L3:"
+" movl d2,d0"
+" bne L6"
+"L4:"
+" subql #8,d1"
+" moveq #8,d2"
+" dbra d5,L1003"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1003"
+" movl a0,sp@-"
+" TRAP2(24)"
+" RETURN(L1,1,1)"
+"L1004:"
+" movl sp@+,a0"
+"L1003:"
+" movl d1,d0"
+" bne L3"
+"L5:"
+" movl d2,d1"
+" addql #8,d1"
+" jmp a0@"
+"L6:"
+" movl a0,sp@-"
+" movl d1,sp@-"
+" movl d2,d1"
+" subql #8,d1"
+" movl d1,d2"
+" movl sp@,d1"
+" lea L2,a0"
+" dbra d5,L1005"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1005"
+" TRAP2(24)"
+" RETURN(L1,2,1)"
+"L1006:"
+"L1005:"
+" movl d1,d0"
+" bne L3"
+" bra L5"
+"L0:"
+"|------------------------------------------------------"
+"| #[primitive create-x] ="
+"L1:"
+" bmi L1000"
+" TRAP1(9,1)"
+" LBL_PTR(L1)"
+"L1000:"
+" movl a0,sp@-"
+" movl d1,sp@-"
+" lea L2,a0"
+" dbra d5,L1001"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1001"
+" TRAP2(24)"
+" RETURN(L1,2,1)"
+"L1002:"
+"L1001:"
+" moveq #-1,d0"
+" JMP_PRIM(make-vector,0)"
+" RETURN(L1,2,1)"
+"L2:"
+" movl d1,d2"
+" movl sp@+,d1"
+" moveq #0,d3"
+" movl sp@+,a0"
+" dbra d5,L1003"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1003"
+" movl a0,sp@-"
+" TRAP2(24)"
+" RETURN(L1,1,1)"
+"L1004:"
+" movl sp@+,a0"
+"L1003:"
+" cmpl d1,d3"
+" bge L4"
+"L3:"
+" movl d3,d0"
+" asrl #1,d0"
+" movl d2,a1"
+" movl d3,a1@(1,d0:l)"
+" addql #8,d3"
+" dbra d5,L1005"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1005"
+" movl a0,sp@-"
+" TRAP2(24)"
+" RETURN(L1,1,1)"
+"L1006:"
+" movl sp@+,a0"
+"L1005:"
+" cmpl d1,d3"
+" blt L3"
+"L4:"
+" movl d2,d1"
+" jmp a0@"
+"L0:"
+"|------------------------------------------------------"
+"| #[primitive create-y] ="
+"L1:"
+" bmi L1000"
+" TRAP1(9,1)"
+" LBL_PTR(L1)"
+"L1000:"
+" movl d1,a1"
+" movl a1@(-3),d2"
+" lsrl #7,d2"
+" movl a0,sp@-"
+" movl d1,sp@-"
+" movl d2,sp@-"
+" movl d2,d1"
+" lea L2,a0"
+" dbra d5,L1001"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1001"
+" TRAP2(24)"
+" RETURN(L1,3,1)"
+"L1002:"
+"L1001:"
+" moveq #-1,d0"
+" JMP_PRIM(make-vector,0)"
+" RETURN(L1,3,1)"
+"L2:"
+" movl sp@+,d2"
+" subql #8,d2"
+" movl d2,d3"
+" movl d1,d2"
+" movl sp@+,d1"
+" movl sp@+,a0"
+" dbra d5,L1003"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1003"
+" movl a0,sp@-"
+" TRAP2(24)"
+" RETURN(L1,1,1)"
+"L1004:"
+" movl sp@+,a0"
+"L1003:"
+" movl d3,d0"
+" blt L4"
+"L3:"
+" movl d3,d0"
+" asrl #1,d0"
+" movl d1,a1"
+" movl a1@(1,d0:l),d4"
+" movl d3,d0"
+" asrl #1,d0"
+" movl d2,a1"
+" movl d4,a1@(1,d0:l)"
+" subql #8,d3"
+" dbra d5,L1005"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1005"
+" movl a0,sp@-"
+" TRAP2(24)"
+" RETURN(L1,1,1)"
+"L1006:"
+" movl sp@+,a0"
+"L1005:"
+" movl d3,d0"
+" bge L3"
+"L4:"
+" movl d2,d1"
+" jmp a0@"
+"L0:"
+"|------------------------------------------------------"
+"| #[primitive my-try] ="
+"L1:"
+" bmi L1000"
+" TRAP1(9,1)"
+" LBL_PTR(L1)"
+"L1000:"
+" movl a0,sp@-"
+" lea L2,a0"
+" dbra d5,L1001"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1001"
+" TRAP2(24)"
+" RETURN(L1,1,1)"
+"L1002:"
+"L1001:"
+" JMP_PROC(4,10)"
+" RETURN(L1,1,1)"
+"L2:"
+" lea L3,a0"
+" JMP_PROC(5,10)"
+" RETURN(L1,1,1)"
+"L3:"
+" movl d1,a1"
+" movl a1@(-3),d1"
+" lsrl #7,d1"
+" dbra d5,L1003"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1003"
+" TRAP2(24)"
+" RETURN(L1,1,1)"
+"L1004:"
+"L1003:"
+" rts"
+"L0:"
+"|------------------------------------------------------"
+"| #[primitive go] ="
+"L1:"
+" bmi L1000"
+" TRAP1(9,1)"
+" LBL_PTR(L1)"
+"L1000:"
+" moveq #0,d3"
+" movl #800,d2"
+" dbra d5,L1001"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1001"
+" movl a0,sp@-"
+" TRAP2(24)"
+" RETURN(L1,1,1)"
+"L1002:"
+" movl sp@+,a0"
+"L1001:"
+" movl d2,d0"
+" ble L4"
+" bra L3"
+" RETURN(L1,3,1)"
+"L2:"
+" movl d1,d3"
+" movl sp@+,d1"
+" subql #8,d1"
+" movl d1,d2"
+" movl sp@+,d1"
+" movl sp@+,a0"
+" dbra d5,L1003"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1003"
+" movl a0,sp@-"
+" TRAP2(24)"
+" RETURN(L1,1,1)"
+"L1004:"
+" movl sp@+,a0"
+"L1003:"
+" movl d2,d0"
+" ble L4"
+"L3:"
+" movl a0,sp@-"
+" movl d1,sp@-"
+" movl d2,sp@-"
+" lea L2,a0"
+" dbra d5,L1005"
+" moveq #9,d5"
+" cmpl a5@,sp"
+" bcc L1005"
+" TRAP2(24)"
+" RETURN(L1,3,1)"
+"L1006:"
+"L1005:"
+" JMP_PROC(6,10)"
+"L4:"
+" movl d3,d1"
+" jmp a0@"
+"L0:"
+""))
 
-(apply ce (list input-source-code 'm68000 'asm))
+(define (main . args)
+  (run-benchmark
+    "compiler"
+    compiler-iters
+    (lambda (result)
+      (equal? result output-expected))
+    (lambda (expr target opt) (lambda () (ce expr target opt) (asm-output-get)))
+    input-source-code
+    'm68000
+    'asm))

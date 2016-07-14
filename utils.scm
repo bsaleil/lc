@@ -27,12 +27,12 @@
 ;;
 ;;---------------------------------------------------------------------------
 
-(c-declare "#include \"string.h\"") ;; for memcpy
-
 ;; Utils functions
 
 ;;-----------------------------------------------------------------------------
 ;; Sets
+(define LIFE_PERM #f)
+(define TAG_MEMOBJ #f)
 
 ;; Set subtraction with lists
 ;; return lsta - lstb
@@ -212,6 +212,12 @@
     (print-frac (- n (truncate n)) nfrac)
     (newline)))
 
+(define (permanent-object? obj)
+  (and (##mem-allocated? obj)
+       (let* ((obj-addr (- (obj-encoding obj) TAG_MEMOBJ))
+              (life (bitwise-and (get-i64 obj-addr) 7)))
+         (= life LIFE_PERM))))
+
 (define (alloc-still-vector-0 len)
   ((c-lambda (int)
              scheme-object
@@ -223,6 +229,20 @@
              scheme-object
              "___result = ___EXT(___make_vector) (___PSTATE, ___arg1, ___FAL);")
    len))
+
+(define (alloc-still-s64vector-0 len)
+  (let ((r (alloc-still-s64vector-0-h len)))
+    (let loop ((i 0))
+      (if (< i len)
+          (begin (s64vector-set! r i 0)
+                 (loop (+ i 1)))))
+    r))
+
+(define (alloc-still-s64vector-0-h len)
+ ((c-lambda (int)
+            scheme-object
+            "___result = ___EXT(___alloc_scmobj) (___ps, ___sS64VECTOR, ___arg1<<3);")
+  len))
 
 (define (release-still-vector vect)
   ((c-lambda (scheme-object)
@@ -273,12 +293,5 @@
   ((c-lambda (int64 scheme-object) void "*___CAST(___SCMOBJ*,___arg1) = ___arg2;")
    addr
    val))
-
-(define (memcpy dst src num)
- ((c-lambda
-    (int64 int64 int64)
-    int64
-    "___result = ___CAST(___S64,memcpy(___CAST(void*,___arg1),___CAST(void*,___arg2),___CAST(size_t,___arg3)));")
-  dst src num))
 
 ;;-----------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-(declare (standard-bindings) (extended-bindings) (not safe) (block))
+(declare (standard-bindings) (extended-bindings) (not safe) (block) (inlining-limit 0))
 ;------------------------------------------------------------------------------
 
 ; Macros...

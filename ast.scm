@@ -109,6 +109,20 @@
 ;;-----------------------------------------------------------------------------
 ;; Parsistent data structures
 
+;; Keep each constant of the program in a still box
+;; allowing the compiler to generate:
+;; mov dest, [box]
+;; to load the constant
+(define cst-table (make-table test: equal?))
+(define (cst-get cst)
+  (let ((r (table-ref cst-table cst #f)))
+    (if r
+        (+ (obj-encoding r) (- 8 TAG_MEMOBJ))
+        (let* ((box  (alloc-still-vector 1)))
+          (vector-set! box 0 cst)
+          (table-set! cst-table cst box)
+          (+ (obj-encoding box) (- 8 TAG_MEMOBJ))))))
+
 ;;
 ;; CCTable -> stubs
 ;; Associate a pair generic,stub to a cctable
@@ -426,16 +440,26 @@
 ;;
 ;; Make lazy code from QUOTE
 ;;
+
 (define (mlc-quote ast succ)
-  (cond ((pair? ast)
-         (let* ((lazy-pair (mlc-pair succ))
-                (lazy-cdr  (mlc-quote (cdr ast) lazy-pair)))
-           (mlc-quote (car ast) lazy-cdr)))
-        ((symbol? ast)
-            (mlc-symbol ast succ))
-        ((vector? ast)
-            (mlc-vector ast succ))
-        (else (gen-ast ast succ))))
+
+  (cond ((null? ast)
+          (mlc-literal ast succ))
+        ((or (pair? ast) (symbol? ast) (vector? ast))
+          (make-lazy-code
+            (lambda (cgc ctx)
+              (define type
+                (cond ((pair? ast)   CTX_PAI)
+                      ((symbol? ast) CTX_SYM)
+                      ((vector? ast) CTX_VECT)))
+              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+                (apply-moves cgc ctx moves)
+                (let ((dest (codegen-reg-to-x86reg reg)))
+                  (if (permanent-object? ast)
+                      (x86-mov cgc dest (x86-imm-int (obj-encoding ast)))
+                      (x86-mov cgc dest (x86-mem (cst-get ast)))))
+                (jump-to-version cgc succ (ctx-push ctx type reg))))))
+        (else (error "Internal error mlc-quote"))))
 
 ;;-----------------------------------------------------------------------------
 ;; VARIABLES GET
