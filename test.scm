@@ -1,12 +1,11 @@
-;(declare (standard-bindings) (extended-bindings) (block) (inlining-limit 0))
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 2))
-         (fib (- n 1)))))
-
-(fib 40)
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 2))
+;         (fib (- n 1)))))
+;
+;(fib 40)
 
 ;(define (fibfp n)
 ;  (if (< n 2.)

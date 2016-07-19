@@ -799,7 +799,7 @@
     (ctx-env ctx)
     (stack-idx-to-slot ctx stack-idx)))
 
-;; TODO ranem
+;; TODO rename
 (define (steps required-moves)
   (let loop ((real-moves '())
              (req-moves required-moves))
@@ -823,6 +823,23 @@
   (define (loc-available loc)
     (not (assoc loc req-moves)))
 
+  ;; Update list of required moves, replace each src by its new position
+  (define (update-req-moves next-req-moves step-real-moves)
+    (if (null? next-req-moves)
+        '()
+        (let* ((move (car next-req-moves))
+               (src (car move))
+               (r (assoc src step-real-moves))
+               (updated-move
+                 (cond ((and r (eq? (cdr r) 'rtmp))
+                          (error "NYI err (step)"))
+                       (r
+                          (cons (cdr r) (cdr move)))
+                       (else
+                          move))))
+            (cons updated-move
+                  (update-req-moves (cdr next-req-moves) step-real-moves)))))
+
   (let* ((move
            (cond ((null? req-moves) #f)
                  (src-sym           (assoc src-sym req-moves))
@@ -840,15 +857,17 @@
              (let ((real-moves
                      (append (cons (cons src 'rtmp)
                                    pending-moves)
-                             (list (cons 'rtmp dst)))))
+                             (list (cons 'rtmp dst))))
+                   (req-moves (set-sub req-moves (list move) '())))
                (cons real-moves
-                     (set-sub req-moves (list move) '()))))
+                     (update-req-moves req-moves real-moves))))
           ;; Case 1: Destination is free, validate pending moves
           ((loc-available dst)
              (let ((real-moves (cons move
-                                     pending-moves)))
+                                     pending-moves))
+                   (req-moves  (set-sub req-moves (list move) '())))
                (cons real-moves
-                     (set-sub req-moves (list move) '()))))
+                     (update-req-moves req-moves real-moves))))
           ;; Case X: src is dst
           ((equal? src dst)
              (step (cons src visited)

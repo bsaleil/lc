@@ -1,6 +1,0 @@
-(declare (standard-bindings) (extended-bindings) (block) (inlining-limit 0) (not safe))
-(println #f)
-(println #t)
-
-;#f
-;#t

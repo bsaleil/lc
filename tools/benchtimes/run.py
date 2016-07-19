@@ -21,12 +21,13 @@ class Config:
 
 class System:
 
-    def __init__(self,name,ccmd,eext,ecmd,regexms):
+    def __init__(self,name,ccmd,eext,ecmd,regexms,regexgc):
         self.name = name
         self.ccmd = ccmd # Compilation cmd
         self.eext = eext # Execution extension
         self.ecmd = ecmd # Execution cmd
         self.regexms = regexms # regex to extract ms time
+        self.regexgc = regexgc # regex to extract gc ms time
         self.times = {}
 
         self.green = 2
@@ -126,6 +127,15 @@ class System:
             res = re.findall(self.regexms, sout)
             assert (len(res) == 1)
             timems = res[0]
+
+            # Remove gc time
+            res = re.findall(self.regexgc, sout)
+            assert (len(res) == 0 or len(res) == 1)
+            if (len(res) == 1):
+                timems = (float(timems) - float(res[0]))
+            else:
+                timems = float(timems)
+
             self.times[file] = timems
 
 #---------------------------------------------------------------------------
@@ -167,10 +177,26 @@ def userWants(str):
 
 # GC
 systems = []
-g1 = System("GambitNS","gsc -:m8000 -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
-g2 = System("GambitS","gsc -:m8000 -exe -o {0}.o1 {0}",".o1",["{0}"],"(\d+) ms real time\\n")
-#l1 = System("LC-old","",".scm",["lazy-comp-old","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
-l2 = System("LC-new","",".scm",["lazy-comp","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
+
+g1 = System("GambitNS",
+            "gsc -:m8000 -exe -o {0}.o1 {0}",".o1",
+            ["{0}"],
+            "(\d+) ms real time\\n",
+            "accounting for (\d+) ms real time")
+
+g2 = System("GambitS",
+            "gsc -:m8000 -exe -o {0}.o1 {0}",
+            ".o1",
+            ["{0}"],
+            "(\d+) ms real time\\n",
+            "accounting for (\d+) ms real time")
+
+l2 = System("LC-new",
+            "",
+            ".scm",
+            ["lazy-comp","{0}","--time"],
+            "(\d+.\d+) ms real time\\n\(",
+            "accounting for (\d+) ms real time")
 
 systems.append(g1)
 systems.append(g2)
