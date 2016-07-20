@@ -109,6 +109,15 @@
 ;;-----------------------------------------------------------------------------
 ;; Parsistent data structures
 
+;; Associate an entry object to a function number
+;; if opt-entry-points is #t, entry is the cc-table
+;; if opt-entry-points is #f, entry is the 1-sized vector which contains ep
+(define asc-globalfn-entry (make-table))
+(define (asc-globalfn-entry-add fn-num entry)
+  (table-set! asc-globalfn-entry fn-num entry))
+(define (asc-globalfn-entry-get fn-num)
+  (table-ref asc-globalfn-entry fn-num))
+
 ;; Keep each constant of the program in a still box
 ;; allowing the compiler to generate:
 ;; mov dest, [box]
@@ -746,38 +755,41 @@
                                        (begin (set! cctable-new? #t) (cctable-make cctable-key))))))
                (cctable-loc (and opt-entry-points (- (obj-encoding cctable) 1)))
                ;; Lambda stub
-               (stub-labels (add-fn-callback cgc
-                                             1
-                                             (lambda (stack ret-addr selector closure)
-                                              (define free (append fvars late-fbinds))
-                                              (define eploc (if opt-entry-points cctable-loc (error "NYI add-fn-callback")))
+               (fn-num 0)
+               (r (add-fn-callback cgc
+                                   1
+                                   (lambda (stack ret-addr selector closure)
+                                    (define free (append fvars late-fbinds))
 
-                                              (cond ;; CASE 1 - Use entry point (no cctable)
-                                                    ((eq? opt-entry-points #f)
-                                                     (let ((ctx (ctx-init-fn stack ctx all-params free global-opt late-fbinds eploc bound-id)))
-                                                       (gen-version-fn ast closure lazy-prologue-gen ctx stack #f global-opt)))
+                                    (cond ;; CASE 1 - Use entry point (no cctable)
+                                          ((eq? opt-entry-points #f)
+                                           (let ((ctx (ctx-init-fn stack ctx all-params free global-opt late-fbinds fn-num bound-id)))
+                                             (gen-version-fn ast closure lazy-prologue-gen ctx stack #f global-opt)))
 
-                                                    ;; CASE 2 - Use multiple entry points AND use max-versions limit AND this limit is reached
-                                                    ;;          OR use generic entry point
-                                                    ((or (= selector 1)
-                                                         (and (= selector 0)
-                                                              opt-max-versions
-                                                              (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions)))
-                                                     (let ((ctx (ctx-init-fn #f ctx all-params free global-opt late-fbinds eploc bound-id)))
-                                                       (gen-version-fn ast closure lazy-prologue-gen ctx stack #t global-opt)))
+                                          ;; CASE 2 - Use multiple entry points AND use max-versions limit AND this limit is reached
+                                          ;;          OR use generic entry point
+                                          ((or (= selector 1)
+                                               (and (= selector 0)
+                                                    opt-max-versions
+                                                    (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions)))
+                                           (let ((ctx (ctx-init-fn #f ctx all-params free global-opt late-fbinds fn-num bound-id)))
+                                             (gen-version-fn ast closure lazy-prologue-gen ctx stack #t global-opt)))
 
-                                                    ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
-                                                    (else
-                                                       (let ((ctx (ctx-init-fn stack ctx all-params free global-opt late-fbinds eploc bound-id)))
-                                                         (gen-version-fn ast closure lazy-prologue ctx stack #f global-opt)))))))
-
+                                          ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
+                                          (else
+                                             (let ((ctx (ctx-init-fn stack ctx all-params free global-opt late-fbinds fn-num bound-id)))
+                                               (gen-version-fn ast closure lazy-prologue ctx stack #f global-opt)))))))
+               (stub-labels (cdr r))
                (stub-addr (vector-ref (list-ref stub-labels 0) 1))
                (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
 
+          (set! fn-num (car r))
+
+          (let ((entry (if opt-entry-points cctable-loc (get-entry-points-loc ast stub-addr))))
+            (asc-globalfn-entry-add fn-num entry))
+
           (if global-opt
-              (if opt-entry-points
-                  (ctime-entries-set global-opt cctable-loc)
-                  (ctime-entries-set global-opt (get-entry-points-loc ast stub-addr))))
+              (ctime-entries-set global-opt fn-num))
 
           ;; If 'stats' option, then inc closures slot
           (if opt-stats
@@ -1878,9 +1890,9 @@
 
 (define (call-get-eploc ctx global-opt? op)
   (if global-opt?
-      (let ((r (ctime-entries-get op)))
-        (if (not r) (error "Internal error (call-get-eploc)"))
-        r)
+      (let ((fn-num (ctime-entries-get op)))
+        (if (not fn-num) (error "Internal error (call-get-eploc)"))
+        fn-num)
       (if (symbol? op)
           (ctx-get-eploc ctx op)
           #f)))
@@ -1897,9 +1909,9 @@
                        (and (symbol? (cadr ast))
                             (not (assoc (cadr ast) (ctx-env ctx)))
                             (eq? (table-ref gids (cadr ast) #f) CTX_CLO)))
-                     (eploc (call-get-eploc ctx global-opt (cadr ast))))
+                     (fn-num (call-get-eploc ctx global-opt (cadr ast))))
                 (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
-                (gen-call-sequence ast cgc #f #f eploc global-opt)))))
+                (gen-call-sequence ast cgc #f #f fn-num global-opt)))))
         (lazy-args
           (make-lazy-code
             (lambda (cgc ctx)
@@ -2064,8 +2076,8 @@
                          (ctx-init)
                          (append (list-head (ctx-stack ctx) (length (cdr ast)))
                                  (list CTX_CLO CTX_RETAD))))
-                     (eploc (call-get-eploc ctx global-opt (car ast))))
-                 (gen-call-sequence ast cgc call-ctx (length args) eploc global-opt)))))
+                     (fn-num (call-get-eploc ctx global-opt (car ast))))
+                 (gen-call-sequence ast cgc call-ctx (length args) fn-num global-opt)))))
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
@@ -2180,7 +2192,9 @@
 ;; Gen call sequence (call instructions)
 ;; Global-id contains global identifier if it is an optimized global call
 ;; (compile time lookup)
-(define (gen-call-sequence ast cgc call-ctx nb-args eploc global-eploc?)
+(define (gen-call-sequence ast cgc call-ctx nb-args fn-num global-eploc?)
+
+  (define eploc (and fn-num (asc-globalfn-entry-get fn-num)))
 
   (define (get-ep-direct cc-idx)
     (if (and opt-entry-points cc-idx eploc)
@@ -2572,8 +2586,8 @@
 ;; The entry point is the cc-table if opt-entry-points is #t
 (define ctime-entries (make-table))
 ;; Set the entry point for given id
-(define (ctime-entries-set id entry)
-  (table-set! ctime-entries id entry))
+(define (ctime-entries-set id fn-num)
+  (table-set! ctime-entries id fn-num))
 ;; Get currently known entry point from given id
 (define (ctime-entries-get id)
   (table-ref ctime-entries id #f))

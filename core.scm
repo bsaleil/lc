@@ -65,6 +65,7 @@
 (define x86-pcall #f)
 (define asc-entry-load-get #f)
 (define asc-entry-load-clear #f)
+(define asc-globalfn-entry-get #f)
 
 (define init-mss #f)
 (define get___heap_limit-addr  #f)
@@ -814,7 +815,7 @@
     (set! label-rt-error-handler
           (gen-handler cgc 'rt_error_handler label-rt-error))
     (x86-ret cgc)
-    
+
     ;; Print msg
     (set! label-print-msg-handler
           (gen-handler cgc 'print_msg_handler label-print-msg))
@@ -1085,13 +1086,17 @@
 
 ;;-----------------------------------------------------------------------------
 
+(define fn-count 0)
+
 ;; Add callback
 (define (add-callback cgc max-selector callback-fn)
   (create-stub label-do-callback-handler max-selector callback-fn))
 
 ;; Add function callback
 (define (add-fn-callback cgc max-selector callback-fn)
-  (create-stub label-do-callback-fn-handler max-selector callback-fn))
+  (let ((i fn-count))
+    (set! fn-count (+ fn-count 1))
+    (cons i (create-stub label-do-callback-fn-handler max-selector callback-fn i))))
 
 ;; Add continuation callback
 (define (add-cont-callback cgc max-selector callback-fn)
@@ -1214,7 +1219,8 @@
 
   (define ep-loc
     (and global-opt-sym
-         (ctime-entries-get global-opt-sym)))
+         (let ((fn-num (ctime-entries-get global-opt-sym)))
+           (and fn-num (asc-globalfn-entry-get fn-num)))))
 
   (define (fn-verbose)
     (print "GEN VERSION FN")
