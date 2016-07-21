@@ -109,6 +109,8 @@
 ;;-----------------------------------------------------------------------------
 ;; Parsistent data structures
 
+(define fn-count 0)
+
 ;; Associate an entry object to a function number
 ;; if opt-entry-points is #t, entry is the cc-table
 ;; if opt-entry-points is #f, entry is the 1-sized vector which contains ep
@@ -677,27 +679,6 @@
 ;; Make lazy code from LAMBDA
 ;;
 
-(define (mlc-lambda ast succ global-opt #!optional (bound-id #f) (sfvars #f) (late-fbinds '()))
-
-  (let* (;; Rest param ?
-         (rest-param (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
-                         (and (pair? (cadr ast)) (not (list? (cadr ast)))))) ;; (foo a..z . rest)
-         ;; Params list
-         (params
-           (if rest-param
-              (formal-params (cadr ast))
-              (cadr ast)))
-         ;; Lazy lambda return
-         (lazy-ret (get-lazy-return))
-         ;; Lazy lambda body
-         (lazy-body (gen-ast (caddr ast) lazy-ret))
-         ;; Lazy function prologue : creates rest param if any, ...
-         (lazy-prologue (get-lazy-prologue ast lazy-body rest-param))
-         ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
-         (lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params))))
-
-  (get-lazy-make-closure ast succ lazy-prologue lazy-prologue-gen global-opt bound-id sfvars late-fbinds)))
-
 ;;
 ;; Create and return a generic prologue lco
 (define (get-lazy-generic-prologue ast succ rest-param nb-formal)
@@ -806,65 +787,88 @@
               (codegen-return-rp cgc))))))
 
 ;;
+;; Create fn entry stub
+(define (create-fn-stub cgc ast fn-num fn-generator)
+  (add-fn-callback
+    cgc
+    1
+    fn-num
+    (lambda (stack ret-addr selector closure)
+
+      ;; Function use rest param ?
+      (define rest-param (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
+                             (and (pair? (cadr ast)) (not (list? (cadr ast)))))) ;; (foo a..z . rest)
+      ;; List of formal params
+      (define params
+        (if rest-param
+            (formal-params (cadr ast))
+            (cadr ast)))
+      ;; Lazy lambda return
+      (define lazy-ret (get-lazy-return))
+      ;; Lazy lambda body
+      (define lazy-body (gen-ast (caddr ast) lazy-ret))
+      ;; Lazy function prologue
+      (define lazy-prologue (get-lazy-prologue ast lazy-body rest-param))
+      ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
+      (define lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params)))
+
+      (cond ;; CASE 1 - Use entry point (no cctable)
+            ((eq? opt-entry-points #f)
+               (fn-generator closure lazy-prologue-gen stack #f))
+            ;; CASE 2 - Use multiple entry points AND use max-versions limit AND this limit is reached
+            ;;          OR use generic entry point
+            ((or (= selector 1)
+                 (and (= selector 0)
+                      opt-max-versions
+                      (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions)))
+               (fn-generator closure lazy-prologue-gen stack #t))
+            ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
+            (else
+               (fn-generator closure lazy-prologue stack #f))))))
+
+;;
 ;; Create and return a make-closure lco
-(define (get-lazy-make-closure ast succ lazy-prologue lazy-prologue-gen global-opt bound-id sfvars late-fbinds)
+(define (mlc-lambda ast succ global-opt #!optional (bound-id #f) (fvars-imm #f) (fvars-late '()))
+
   ;; Lazy closure generation
   (make-lazy-code
     (lambda (cgc ctx)
 
-      ;; Lambda free vars
-      (define fvars #f)
       ;; Flatten list of param (include rest param)
       (define all-params (flatten (cadr ast)))
 
-      ;; Get free vars from ast
-      ;; fvars contains all free vars except late-bindings
-      (if sfvars
-          (set! fvars (set-sub sfvars late-fbinds '()))
-          ;; TODO: remove when fvars is an mlc-lambda arg
-          (set! fvars (free-vars
-                        (caddr ast)
-                        all-params
-                        (map car (ctx-env ctx)))))
+      ;; If fvars-imm set not given, compute it from ast
+      (if (not fvars-imm)
+          (set! fvars-imm
+                (free-vars
+                  (caddr ast)
+                  all-params
+                  (map car (ctx-env ctx)))))
 
-      (let* (;; WIP
+      (let* (;; Is the cctable new or existed before ?
              (cctable-new? #f)
-             (cctable-key (and opt-entry-points (get-cctable-key ast ctx fvars late-fbinds)))
+             (cctable-key (and opt-entry-points (get-cctable-key ast ctx fvars-imm fvars-late)))
              (cctable     (and opt-entry-points
                                (let ((table (cctable-get cctable-key)))
                                  (or table
                                      (begin (set! cctable-new? #t) (cctable-make cctable-key))))))
              (cctable-loc (and opt-entry-points (- (obj-encoding cctable) 1)))
-             ;; Lambda stub
-             (fn-num 0)
-             (r (add-fn-callback cgc
-                                 1
-                                 (lambda (stack ret-addr selector closure)
-                                  (define free (append fvars late-fbinds))
-
-                                  (cond ;; CASE 1 - Use entry point (no cctable)
-                                        ((eq? opt-entry-points #f)
-                                         (let ((ctx (ctx-init-fn stack ctx all-params free global-opt late-fbinds fn-num bound-id)))
-                                           (gen-version-fn ast closure lazy-prologue-gen ctx stack #f global-opt)))
-
-                                        ;; CASE 2 - Use multiple entry points AND use max-versions limit AND this limit is reached
-                                        ;;          OR use generic entry point
-                                        ((or (= selector 1)
-                                             (and (= selector 0)
-                                                  opt-max-versions
-                                                  (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions)))
-                                         (let ((ctx (ctx-init-fn #f ctx all-params free global-opt late-fbinds fn-num bound-id)))
-                                           (gen-version-fn ast closure lazy-prologue-gen ctx stack #t global-opt)))
-
-                                        ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
-                                        (else
-                                           (let ((ctx (ctx-init-fn stack ctx all-params free global-opt late-fbinds fn-num bound-id)))
-                                             (gen-version-fn ast closure lazy-prologue ctx stack #f global-opt)))))))
-             (stub-labels (cdr r))
+             ;; Closure unique number
+             (fn-num
+               (let ((r fn-count))
+                 (set! fn-count (+ fn-count 1))
+                 r))
+             ;; Generator used to generate function code waiting for runtime data
+             ;; First create function entry ctx
+             ;; Then generate function prologue code
+             (fn-generator
+               (lambda (closure prologue stack generic?)
+                 (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) global-opt fvars-late fn-num bound-id)))
+                   (gen-version-fn ast closure prologue ctx stack generic? global-opt))))
+             ;;
+             (stub-labels (create-fn-stub cgc ast fn-num fn-generator))
              (stub-addr (vector-ref (list-ref stub-labels 0) 1))
              (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
-
-        (set! fn-num (car r))
 
         (let ((entry (if opt-entry-points cctable-loc (get-entry-points-loc ast stub-addr))))
           (asc-globalfn-entry-add fn-num entry))
@@ -881,23 +885,23 @@
             (cctable-fill cctable stub-addr generic-addr))
 
         ;; If there is no fvars, and only one late bind which is self
-        (if (and (null? fvars)
-                 (or (null? late-fbinds)
-                     (and (= (length late-fbinds) 1)
-                          (eq? (car late-fbinds) bound-id))))
+        (if (and (null? fvars-imm)
+                 (or (null? fvars-late)
+                     (and (= (length fvars-late) 1)
+                          (eq? (car fvars-late) bound-id))))
             ;; then use a global closure
             (let ((ep (if opt-entry-points (- (obj-encoding cctable) 1) (error "NYI"))))
-              (gen-global-closure cgc ctx ast succ ep late-fbinds))
+              (gen-global-closure cgc ctx ast succ ep fvars-late))
             ;; else use a local closure
             (let ((ep (if opt-entry-points
                           (- (obj-encoding cctable) 1)
                           (get-entry-points-loc ast stub-addr))))
-              (gen-local-closure cgc ctx ast succ ep late-fbinds fvars)))))))
+              (gen-local-closure cgc ctx ast succ ep fvars-late fvars-imm)))))))
 
 ;; Create or use an existing global closure, and load it in dest register
 ;; A global closure is a closure without any free vars which can be use as a single instance
-(define (gen-global-closure cgc ctx ast succ ep late-fbinds)
-  (let ((qword (global-closures-add ast ep (length late-fbinds))))
+(define (gen-global-closure cgc ctx ast succ ep fvars-late)
+  (let ((qword (global-closures-add ast ep (length fvars-late))))
     (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
       (apply-moves cgc ctx moves)
       (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int qword))
@@ -905,9 +909,9 @@
 
 ;; Create a local closure, and load it in dest register
 ;; A local closure is a closure with free variables which needs to be instantiated
-(define (gen-local-closure cgc ctx ast succ ep late-fbinds fvars)
+(define (gen-local-closure cgc ctx ast succ ep fvars-late fvars-imm)
 
-  (define close-length (+ (length fvars) (length late-fbinds)))
+  (define close-length (+ (length fvars-imm) (length fvars-late)))
 
   ;; Create closure
   ;; Closure size = lenght of free variables
@@ -921,9 +925,9 @@
       (codegen-closure-ep cgc ep close-length))
 
   ;; Write free variables
-  (let* ((free-offset (* -1 (+ (length fvars) (length late-fbinds))))
+  (let* ((free-offset (* -1 (+ (length fvars-imm) (length fvars-late))))
          (clo-offset  (- free-offset 2)))
-    (gen-free-vars cgc fvars late-fbinds ctx free-offset clo-offset))
+    (gen-free-vars cgc fvars-imm fvars-late ctx free-offset clo-offset))
 
   (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
     (apply-moves cgc ctx moves)
@@ -2569,11 +2573,11 @@
 ;; The hash function uses eq? on ast, and equal? on free-vars-inf.
 ;; This allows us to use different cctable if types of free vars are not the same.
 ;; (to properly handle type checks)
-(define (get-cctable-key ast ctx fvars late-fbinds)
+(define (get-cctable-key ast ctx fvars-imm fvars-late)
   (cons ast
-        (append (map (lambda (n) (cons n CTX_CLO)) late-fbinds)
+        (append (map (lambda (n) (cons n CTX_CLO)) fvars-late)
                 (foldr (lambda (n r)
-                         (if (member (car n) fvars) ;; If this id is a free var of future lambda
+                         (if (member (car n) fvars-imm) ;; If this id is a free var of future lambda
                              (cons (cons (car n)
                                          (if (eq? (identifier-kind (cdr n)) 'local)
                                              ;; If local, get type from stack
@@ -2617,10 +2621,10 @@
 
 ;; free-offset is the current free variable offset position from alloc-ptr
 ;; clo-offset is the closure offset position from alloc-ptr
-(define (gen-free-vars cgc ids late-ids ctx free-offset clo-offset)
+(define (gen-free-vars cgc ids fvars-imm ctx free-offset clo-offset)
   (if (null? ids)
       ;; Write 0 in all late slots (to keep the GC happy!)
-      (let loop ((n (length late-ids)) (off free-offset))
+      (let loop ((n (length fvars-imm)) (off free-offset))
         (if (> n 0)
             (begin
               (x86-mov cgc (x86-mem (* 8 off) alloc-ptr) (x86-imm-int 0) 64)
@@ -2650,7 +2654,7 @@
                      (else
                        (codegen-reg-to-x86reg loc)))))
         (x86-mov cgc (x86-mem (* 8 free-offset) alloc-ptr) opn)
-        (gen-free-vars cgc (cdr ids) late-ids ctx (+ free-offset 1) clo-offset))))
+        (gen-free-vars cgc (cdr ids) fvars-imm ctx (+ free-offset 1) clo-offset))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst params enc-ids)

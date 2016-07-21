@@ -1,4 +1,11 @@
 
+(define (foo n)
+  (letrec ((aa (lambda () (println n) (println bb)))
+           (bb (lambda () (println n) (println aa))))
+    (aa)))
+
+(foo 5)
+
 ;(define (fib n)
 ;  (if (< n 2)
 ;      1

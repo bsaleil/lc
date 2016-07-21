@@ -1086,17 +1086,13 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define fn-count 0)
-
 ;; Add callback
 (define (add-callback cgc max-selector callback-fn)
   (create-stub label-do-callback-handler max-selector callback-fn))
 
 ;; Add function callback
-(define (add-fn-callback cgc max-selector callback-fn)
-  (let ((i fn-count))
-    (set! fn-count (+ fn-count 1))
-    (cons i (create-stub label-do-callback-fn-handler max-selector callback-fn i))))
+(define (add-fn-callback cgc max-selector fn-num callback-fn)
+  (create-stub label-do-callback-fn-handler max-selector callback-fn fn-num))
 
 ;; Add continuation callback
 (define (add-cont-callback cgc max-selector callback-fn)
