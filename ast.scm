@@ -705,65 +705,11 @@
     (lambda (cgc ctx)
       (let ((nb-args (ctx-nb-args ctx))
             (label-next (asm-make-label #f (new-sym 'label-next))))
+        ;;
         (if (not rest-param)
-            ;; If not rest, only check args number
-            (begin
-              (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args)))
-              (x86-jne cgc label-err-wrong-num-args))
-            ;; If rest, check args number then build rest list from regs and stack
-            (let ((nb-args-regs (length args-regs))
-                  (label-rest       (asm-make-label #f (new-sym 'prologue-rest)))
-                  (label-rest-loop  (asm-make-label #f (new-sym 'prologue-rest-loop)))
-                  (label-rest-end   (asm-make-label #f (new-sym 'prologue-rest-end)))
-                  (label-next-arg   (asm-make-label #f (new-sym 'prologue-next-arg)))
-                  (label-from-stack (asm-make-label #f (new-sym 'prologue-from-stack)))
-                  (label-next-arg-end (asm-make-label #f (new-sym 'prologue-next-arg-end))))
-              (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (- nb-args 1))))
-              (x86-jge cgc label-rest)
-                (gen-error cgc ERR_WRONG_NUM_ARGS)
-              ;; GET NEXT ARG PART
-              (x86-label cgc label-next-arg)
-                (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (length args-regs))))
-                (x86-jg cgc label-from-stack)
-                (let loop ((i (length args-regs))
-                           (regs (reverse args-regs)))
-                  (if (> i 0)
-                      (begin
-                          (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding i)))
-                          (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) (car regs)))
-                          (x86-je cgc label-next-arg-end)
-                          (loop (- i 1) (cdr regs)))))
-                (x86-jmp cgc label-next-arg-end)
-                (x86-label cgc label-from-stack)
-                (x86-upop cgc (x86-rax))
-                (x86-label cgc label-next-arg-end)
-                (x86-sub cgc (x86-rdi) (x86-imm-int (obj-encoding 1)))
-                (x86-ret cgc)
-              ;; END GET NEXT ARG PART
-
-              (x86-label cgc label-rest)
-              ;; cdr (rax) = '()
-              (x86-mov cgc selector-reg (x86-imm-int (obj-encoding '())))
-              (x86-label cgc label-rest-loop)
-              (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding (- nb-args 1))))
-              (x86-je cgc label-rest-end)
-
-                ;; Alloc
-                (gen-allocation-imm cgc STAG_PAIR 16)
-                (x86-pcall cgc label-next-arg)
-                (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
-                (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) selector-reg)
-                (x86-lea cgc selector-reg (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
-                (x86-jmp cgc label-rest-loop)
-              ;;
-              (x86-label cgc label-rest-end)
-              (if (<= nb-args (length args-regs))
-                  (let ((reg (list-ref args-regs (- nb-args 1))))
-                    (x86-mov cgc (codegen-reg-to-x86reg reg) selector-reg))
-                  (x86-upush cgc selector-reg))
-              ;; Reset selector used as temporary
-              (x86-mov cgc selector-reg (x86-imm-int 0))))
-
+            (codegen-prologue-gen-nrest cgc nb-args)
+            (codegen-prologue-gen-rest  cgc (ctx-fs ctx) nb-args))
+        ;;
         (jump-to-version cgc succ ctx)))))
 
 ;;
