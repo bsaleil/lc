@@ -967,6 +967,13 @@
     (table-set! new-sym-counters sym n)
     (string->symbol (string-append (symbol->string sym) (number->string n)))))
 
+(define fn-count 0)
+
+(define (new-fn-num)
+  (let ((n fn-count))
+    (set! fn-count (+ fn-count 1))
+    n))
+
 ;;-----------------------------------------------------------------------------
 
 ;; List of all lazy code objects (for debug/measure purposes)

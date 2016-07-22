@@ -109,8 +109,6 @@
 ;;-----------------------------------------------------------------------------
 ;; Parsistent data structures
 
-(define fn-count 0)
-
 ;; Associate an entry object to a function number
 ;; if opt-entry-points is #t, entry is the cc-table
 ;; if opt-entry-points is #f, entry is the 1-sized vector which contains ep
@@ -827,8 +825,32 @@
                (fn-generator closure lazy-prologue stack #f))))))
 
 ;;
-;; Create and return a make-closure lco
+;; Create closure generation lco
 (define (mlc-lambda ast succ global-opt #!optional (bound-id #f) (fvars-imm #f) (fvars-late '()))
+
+  ;; ---------------------------------------------------------------------------
+  ;; Return pair (entry-iden . entry-loc)
+  ;; entry-iden is an object used as unique (eq?) identifier for the entry point
+  ;; entry-addr is the actual address sotres in the closure
+  ;; In the case of -cc, entry-iden and entry-loc are both cctable address
+  (define (entry-iden/addr-cc ctx stub-addr generic-addr)
+    (let* (;; Is the cctable new or existed before ?
+           (cctable-new? #f)
+           (cctable-key (get-cctable-key ast ctx fvars-imm fvars-late))
+           (cctable     (let ((table (cctable-get cctable-key)))
+                          (or table
+                              (begin (set! cctable-new? #t) (cctable-make cctable-key)))))
+           (cctable-loc (- (obj-encoding cctable) 1)))
+      ;; The compiler needs to fill cctable if it is a new cctable
+      (if cctable-new?
+          (cctable-fill cctable stub-addr generic-addr))
+      (cons cctable-loc
+            cctable-loc)))
+  ;; In the case of -ep, entry-iden is the still vector of size 1 which contains
+  ;; entry-point, and entry-loc is the value stored in this vector
+  (define (entry-iden/addr-ep ctx stub-addr generic-addr)
+    (error "NYI"))
+  ;; ---------------------------------------------------------------------------
 
   ;; Lazy closure generation
   (make-lazy-code
@@ -845,19 +867,8 @@
                   all-params
                   (map car (ctx-env ctx)))))
 
-      (let* (;; Is the cctable new or existed before ?
-             (cctable-new? #f)
-             (cctable-key (and opt-entry-points (get-cctable-key ast ctx fvars-imm fvars-late)))
-             (cctable     (and opt-entry-points
-                               (let ((table (cctable-get cctable-key)))
-                                 (or table
-                                     (begin (set! cctable-new? #t) (cctable-make cctable-key))))))
-             (cctable-loc (and opt-entry-points (- (obj-encoding cctable) 1)))
-             ;; Closure unique number
-             (fn-num
-               (let ((r fn-count))
-                 (set! fn-count (+ fn-count 1))
-                 r))
+      (let* (;; Closure unique number
+             (fn-num (new-fn-num))
              ;; Generator used to generate function code waiting for runtime data
              ;; First create function entry ctx
              ;; Then generate function prologue code
@@ -866,37 +877,35 @@
                  (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) global-opt fvars-late fn-num bound-id)))
                    (gen-version-fn ast closure prologue ctx stack generic? global-opt))))
              ;;
-             (stub-labels (create-fn-stub cgc ast fn-num fn-generator))
-             (stub-addr (vector-ref (list-ref stub-labels 0) 1))
-             (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
+             (stub-labels  (create-fn-stub cgc ast fn-num fn-generator))
+             (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
+             (generic-addr (asm-label-pos (list-ref stub-labels 1)))
+             (r (if opt-entry-points
+                    (entry-iden/addr-cc ctx stub-addr generic-addr)
+                    (entry-iden/addr-ep ctx stub-addr generic-addr)))
+             (entry-iden (car r))
+             (entry-addr (cdr r)))
 
-        (let ((entry (if opt-entry-points cctable-loc (get-entry-points-loc ast stub-addr))))
-          (asc-globalfn-entry-add fn-num entry))
+          ;; Add compile time identity if known
+          (if global-opt
+              (ctime-entries-set global-opt fn-num))
 
-        (if global-opt
-            (ctime-entries-set global-opt fn-num))
+          ;; If 'stats' option, then inc closures slot
+          (if opt-stats
+            (gen-inc-slot cgc 'closures))
 
-        ;; If 'stats' option, then inc closures slot
-        (if opt-stats
-          (gen-inc-slot cgc 'closures))
+          ;; Add association fn-num -> entry point
+          (asc-globalfn-entry-add fn-num entry-iden)
 
-        ;; WIP
-        (if cctable-new?
-            (cctable-fill cctable stub-addr generic-addr))
-
-        ;; If there is no fvars, and only one late bind which is self
-        (if (and (null? fvars-imm)
-                 (or (null? fvars-late)
-                     (and (= (length fvars-late) 1)
-                          (eq? (car fvars-late) bound-id))))
-            ;; then use a global closure
-            (let ((ep (if opt-entry-points (- (obj-encoding cctable) 1) (error "NYI"))))
-              (gen-global-closure cgc ctx ast succ ep fvars-late))
-            ;; else use a local closure
-            (let ((ep (if opt-entry-points
-                          (- (obj-encoding cctable) 1)
-                          (get-entry-points-loc ast stub-addr))))
-              (gen-local-closure cgc ctx ast succ ep fvars-late fvars-imm)))))))
+          ;; If there is no fvars, and only one late bind which is self
+          (if (and (null? fvars-imm)
+                   (or (null? fvars-late)
+                       (and (= (length fvars-late) 1)
+                            (eq? (car fvars-late) bound-id))))
+              ;; then use a global closure
+              (gen-global-closure cgc ctx ast succ entry-addr fvars-late)
+              ;; else use a local closure
+              (gen-local-closure cgc ctx ast succ entry-addr fvars-late fvars-imm))))))
 
 ;; Create or use an existing global closure, and load it in dest register
 ;; A global closure is a closure without any free vars which can be use as a single instance
