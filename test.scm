@@ -1,4 +1,8 @@
 
+(define (foo n)
+  10)
+
+(foo 1)
 
 ;(define (fib n)
 ;  (if (< n 2)

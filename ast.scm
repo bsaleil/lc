@@ -849,7 +849,9 @@
   ;; In the case of -ep, entry-iden is the still vector of size 1 which contains
   ;; entry-point, and entry-loc is the value stored in this vector
   (define (entry-iden/addr-ep ctx stub-addr generic-addr)
-    (error "NYI"))
+    (let ((iden (get-entry-points-loc ast stub-addr)))
+      (cons iden
+            (vector-ref iden 0))))
   ;; ---------------------------------------------------------------------------
 
   ;; Lazy closure generation
@@ -867,24 +869,26 @@
                   all-params
                   (map car (ctx-env ctx)))))
 
-      (let* (;; Closure unique number
-             (fn-num (new-fn-num))
-             ;; Generator used to generate function code waiting for runtime data
-             ;; First create function entry ctx
-             ;; Then generate function prologue code
-             (fn-generator
-               (lambda (closure prologue stack generic?)
-                 (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) global-opt fvars-late fn-num bound-id)))
-                   (gen-version-fn ast closure prologue ctx stack generic? global-opt))))
-             ;;
-             (stub-labels  (create-fn-stub cgc ast fn-num fn-generator))
-             (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
-             (generic-addr (asm-label-pos (list-ref stub-labels 1)))
-             (r (if opt-entry-points
-                    (entry-iden/addr-cc ctx stub-addr generic-addr)
-                    (entry-iden/addr-ep ctx stub-addr generic-addr)))
-             (entry-iden (car r))
-             (entry-addr (cdr r)))
+      (letrec (;; Closure unique number
+               (fn-num (new-fn-num))
+               ;; Generator used to generate function code waiting for runtime data
+               ;; First create function entry ctx
+               ;; Then generate function prologue code
+               (fn-generator
+                 (lambda (closure prologue stack generic?)
+                   (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) global-opt fvars-late fn-num bound-id)))
+                     (gen-version-fn ast closure entry-iden prologue ctx stack generic? global-opt))))
+               ;;
+               (stub-labels  (create-fn-stub cgc ast fn-num fn-generator))
+               (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
+               (generic-addr (asm-label-pos (list-ref stub-labels 1)))
+               (r (if opt-entry-points
+                      (entry-iden/addr-cc ctx stub-addr generic-addr)
+                      (entry-iden/addr-ep ctx stub-addr generic-addr)))
+               (entry-iden (car r))
+               (entry-addr (cdr r)))
+
+          (set! liden entry-iden)
 
           ;; Add compile time identity if known
           (if global-opt
