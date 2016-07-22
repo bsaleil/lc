@@ -1233,8 +1233,7 @@
 
   (define (fn-patch label-dest new-version?)
     (cond ((not opt-entry-points)
-           (error "NYI core gen-version-fn")
-           (patch-closure-ep ast closure label-dest ep-loc)) ;; TODO WIP multiple patch for same closure(?)
+           (patch-closure-ep ast closure entry-iden label-dest ep-loc)) ;; TODO WIP multiple patch for same closure(?)
           (generic
            (patch-generic ast entry-iden call-stack label-dest ep-loc global-opt-sym))
           (else
@@ -1450,32 +1449,22 @@
     label-addr))
 
 ;; Patch closure when opt-entry-points is #f (only one ep)
-(define (patch-closure-ep ast closure label ep-loc)
+(define (patch-closure-ep ast closure entry-iden label ep-loc)
 
   (define label-addr (asm-label-pos label))
 
-  (define (patch-globalopt loc)
-    ;; Patch box which contains entry point
-    (put-i64 (+ (- (obj-encoding loc) TAG_MEMOBJ) 8) label-addr))
-
-  (define (patch-noopt stillbox)
-    ;; Patch current closure
-    (put-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8) label-addr)
-    ;; Patch still box
-    (put-i64 (+ (- (obj-encoding stillbox) TAG_MEMOBJ) 8) label-addr))
-
-  ;; TODO: don't get it from here ! (get it at same time than patch-generic)
-  ;; TODO: change and use get-entry-points-loc
-  ;; ep-loc, use get-entry-points-loc istead of ctime-... (?)
-
+  ;; Patch current closure
   (if ep-loc
-      (patch-globalopt ep-loc)
-      (patch-noopt (table-ref entry-points-locs ast)))
+      ;; Static call, patch global closure
+      (put-i64 (+ (- (obj-encoding ep-loc) TAG_MEMOBJ) 8) label-addr)
+      ;; Dynamic call, patch current closure and entry-iden
+      (begin (put-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8) label-addr)
+             (vector-set! entry-iden 0 (quotient label-addr 4))))
+
   label-addr)
 
 (define (jump-size jump-addr)
   (if (= (get-u8 jump-addr) #x0f) 6 5))
-
 
 ;; Gen fatal dynamic type test
 ;; fatal means that if type test fails, it stops execution

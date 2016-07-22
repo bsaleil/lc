@@ -176,7 +176,8 @@
 ;; Max size of global closures space (number of machine words)
 (define global-closures-size 4000)
 ;; Space used to store closures
-(define global-closures (alloc-still-vector global-closures-size))
+(define global-closures (make-u64vector global-closures-size))
+;(define global-closures (alloc-still-vector global-closures-size))
 ;; Pointer to next free slot
 (define global-closures-ptr (+ (- 8 1) (obj-encoding global-closures)))
 ;; Limit value for global-closures-ptr
@@ -844,14 +845,11 @@
       ;; The compiler needs to fill cctable if it is a new cctable
       (if cctable-new?
           (cctable-fill cctable stub-addr generic-addr))
-      (cons cctable-loc
-            cctable-loc)))
+      cctable-loc))
   ;; In the case of -ep, entry-iden is the still vector of size 1 which contains
   ;; entry-point, and entry-loc is the value stored in this vector
   (define (entry-iden/addr-ep ctx stub-addr generic-addr)
-    (let ((iden (get-entry-points-loc ast stub-addr)))
-      (cons iden
-            (vector-ref iden 0))))
+    (get-entry-points-loc ast stub-addr))
   ;; ---------------------------------------------------------------------------
 
   ;; Lazy closure generation
@@ -882,11 +880,9 @@
                (stub-labels  (create-fn-stub cgc ast fn-num fn-generator))
                (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
                (generic-addr (asm-label-pos (list-ref stub-labels 1)))
-               (r (if opt-entry-points
-                      (entry-iden/addr-cc ctx stub-addr generic-addr)
-                      (entry-iden/addr-ep ctx stub-addr generic-addr)))
-               (entry-iden (car r))
-               (entry-addr (cdr r)))
+               (entry-iden (if opt-entry-points
+                               (entry-iden/addr-cc ctx stub-addr generic-addr)
+                               (entry-iden/addr-ep ctx stub-addr generic-addr))))
 
           (set! liden entry-iden)
 
@@ -907,14 +903,15 @@
                        (and (= (length fvars-late) 1)
                             (eq? (car fvars-late) bound-id))))
               ;; then use a global closure
-              (gen-global-closure cgc ctx ast succ entry-addr fvars-late)
+              (gen-global-closure cgc ctx ast succ entry-iden fvars-late)
               ;; else use a local closure
-              (gen-local-closure cgc ctx ast succ entry-addr fvars-late fvars-imm))))))
+              (gen-local-closure cgc ctx ast succ entry-iden fvars-late fvars-imm))))))
 
 ;; Create or use an existing global closure, and load it in dest register
 ;; A global closure is a closure without any free vars which can be use as a single instance
 (define (gen-global-closure cgc ctx ast succ ep fvars-late)
-  (let ((qword (global-closures-add ast ep (length fvars-late))))
+  (let* ((ep-qword (if opt-entry-points ep (* 4 (vector-ref ep 0))))
+         (qword (global-closures-add ast ep-qword (length fvars-late))))
     (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
       (apply-moves cgc ctx moves)
       (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int qword))

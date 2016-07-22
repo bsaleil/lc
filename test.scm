@@ -1,8 +1,17 @@
 
-(define (foo n)
-  10)
 
-(foo 1)
+(let ((f #f)
+	    (g #f))
+   (set! f (lambda (n)
+              1000))
+   (set! g (lambda (n)
+              (if (= 0 n)
+              	4000
+              	(f (- n 1)))))
+   (f 0))
+
+
+;(apply do-loop (list 100000000))
 
 ;(define (fib n)
 ;  (if (< n 2)
