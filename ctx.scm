@@ -832,7 +832,8 @@
                (r (assoc src step-real-moves))
                (updated-move
                  (cond ((and r (eq? (cdr r) 'rtmp))
-                          (error "NYI err (step)"))
+                          (let ((r (assoc 'rtmp step-real-moves)))
+                            (cons (cdr r) (cdr move))))
                        (r
                           (cons (cdr r) (cdr move)))
                        (else
