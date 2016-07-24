@@ -666,13 +666,10 @@
                (mlc-lambda (caddr ast) lazy-bind (cadr ast))
                (gen-ast (caddr ast) lazy-bind))))
 
-    (make-lazy-code
-      (lambda (cgc ctx)
-        ;; TODO regalloc: this codegen is useless ? Just update globals set?
-        (codegen-define-id cgc)
-        (table-set! globals identifier (cons identifier nb-globals))
-        (set! nb-globals (+ nb-globals 1))
-        (jump-to-version cgc lazy-val ctx)))))
+    (table-set! globals identifier (cons identifier nb-globals))
+    (put-i64 (+ globals-addr (* 8 nb-globals)) ENCODING_VOID)
+    (set! nb-globals (+ nb-globals 1))
+    lazy-val))
 
 ;;
 ;; Make lazy code from LAMBDA
