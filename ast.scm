@@ -257,6 +257,7 @@
                      ;; These primitives are inlined during expansion but still here to check args and build lambda
                      (number?             1  1  ,(prim-types 1 CTX_ALL)                     ())
                      (real?               1  1  ,(prim-types 1 CTX_ALL)                     ())
+                     (eqv?                2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ())
                      ;;
                      (##fx+               2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
                      (##fx-               2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
