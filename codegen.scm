@@ -606,16 +606,16 @@
     ;; r11 is available because it's the ctx reg
     (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding '())))
     ;; Stack
-    (x86-mov cgc (x86-r15) (x86-imm-int (obj-encoding nb-rest-stack)))
+    (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding nb-rest-stack)))
     (x86-label cgc label-loop)
-    (x86-cmp cgc (x86-r15) (x86-imm-int 0))
+    (x86-cmp cgc (x86-rdx) (x86-imm-int 0))
     (x86-je cgc label-loop-end)
     (gen-allocation-imm cgc STAG_PAIR 16)
     (x86-upop cgc (x86-rax))
     (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
     (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r11))
     (x86-lea cgc (x86-r11) (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
-    (x86-sub cgc (x86-r15) (x86-imm-int (obj-encoding 1)))
+    (x86-sub cgc (x86-rdx) (x86-imm-int (obj-encoding 1)))
     (x86-jmp cgc label-loop)
     (x86-label cgc label-loop-end)
     ;; Regs
@@ -687,8 +687,8 @@
            (x86-jmp cgc (x86-mem (+ (obj-encoding eploc) 7) #f)))
         (else
            (x86-mov cgc (x86-rsi) (x86-rax))
-           (x86-mov cgc (x86-r15) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
-           (x86-jmp cgc (x86-r15)))))
+           (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
+           (x86-jmp cgc (x86-rdx)))))
 
 ;; Generate function call using a cctable and generic entry point
 ;; eploc is the cctable or entry points if it's known
@@ -697,14 +697,14 @@
   (if nb-args
       (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args))))
   (cond ((and eploc global-eploc?)
-           (x86-mov cgc (x86-r15) (x86-imm-int eploc)))
+           (x86-mov cgc (x86-rdx) (x86-imm-int eploc)))
         (eploc
            (x86-mov cgc (x86-rsi) (x86-rax))
-           (x86-mov cgc (x86-r15) (x86-imm-int eploc)))
+           (x86-mov cgc (x86-rdx) (x86-imm-int eploc)))
         (else
            (x86-mov cgc (x86-rsi) (x86-rax))
-           (x86-mov cgc (x86-r15) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi))))) ;; Get table
-  (x86-jmp cgc (x86-mem 8 (x86-r15)))) ;; Jump to generic entry point
+           (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi))))) ;; Get table
+  (x86-jmp cgc (x86-mem 8 (x86-rdx)))) ;; Jump to generic entry point
 
 ;; Generate function call using a cctable and specialized entry point
 ;; eploc is the cctable or entry points if it's known
@@ -732,11 +732,11 @@
               (let ((label (asm-make-label #f (new-sym 'known_dest_) (cadr direct-eploc))))
                 (x86-jmp cgc label)))
             (eploc
-              (x86-mov cgc (x86-r15) (x86-imm-int eploc))
-              (x86-jmp cgc (x86-mem cct-offset (x86-r15))))
+              (x86-mov cgc (x86-rdx) (x86-imm-int eploc))
+              (x86-jmp cgc (x86-mem cct-offset (x86-rdx))))
             (else
-              (x86-mov cgc (x86-r15) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
-              (x86-jmp cgc (x86-mem cct-offset (x86-r15)))))))
+              (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
+              (x86-jmp cgc (x86-mem cct-offset (x86-rdx)))))))
 
 ;; Load continuation using specialized return points
 (define (codegen-load-cont-cr cgc crtable-loc)
@@ -983,48 +983,46 @@
 (define (codegen-binop cgc fs op label-div0 reg lleft lright)
 
   (let* ((dest (codegen-reg-to-x86reg reg))
-         (mod (if (eq? dest (x86-rdx)) 1 2))
-         (lopnd (codegen-loc-to-x86opnd (+ fs mod) lleft))
-         (ropnd (codegen-loc-to-x86opnd (+ fs mod) lright))
-         ;; TODO: save original opnd to restore rdx if needed
-         (ordest dest)
-         (orlopnd lopnd)
-         (orropnd ropnd))
+         (lopnd (codegen-loc-to-x86opnd fs lleft))
+         (orig-ropnd (codegen-loc-to-x86opnd fs lright))
+         (ropnd (codegen-loc-to-x86opnd fs lright))
+         (save-rdx? (neq? dest (x86-rdx))))
 
-    (if (and (neq? ordest  (x86-rdx)))
-        (x86-upush cgc (x86-rdx)))
+    (x86-mov cgc (x86-rax) lopnd)
 
-    (let ((REG (pick-reg (list (x86-rax) (x86-rdx) lopnd ropnd dest))))
-      (x86-upush cgc REG)
+    (x86-mov cgc (x86-rcx) (x86-rdx))
 
-      (x86-mov cgc (x86-rax) lopnd)
-      (x86-mov cgc REG ropnd)
+    (if (eq? ropnd (x86-rdx))
+        (begin (x86-ppush cgc (x86-rdx))
+               (set! ropnd (x86-rcx))))
 
-      (x86-sar cgc (x86-rax) (x86-imm-int 2))
-      (x86-sar cgc REG (x86-imm-int 2))
-      (x86-cmp cgc REG (x86-imm-int 0)) ;; Check '/0'
-      (x86-je  cgc label-div0)
-      (x86-cqo cgc)
-      (x86-idiv cgc REG)
+    (x86-cmp cgc ropnd (x86-imm-int 0))
+    (x86-je cgc label-div0)
 
-      (cond ((eq? op 'quotient)
-             (x86-shl cgc (x86-rax) (x86-imm-int 2))
-             (x86-mov cgc dest (x86-rax)))
-            ((eq? op 'remainder)
-             (x86-shl cgc (x86-rdx) (x86-imm-int 2))
-             (x86-mov cgc dest (x86-rdx)))
-            ((eq? op 'modulo)
-             (x86-mov cgc (x86-rax) (x86-rdx))
-             (x86-add cgc (x86-rax) REG)
-             (x86-cqo cgc)
-             (x86-idiv cgc REG)
-             (x86-shl cgc (x86-rdx) (x86-imm-int 2))
-             (x86-mov cgc dest (x86-rdx))))
+    (x86-sar cgc ropnd (x86-imm-int 2))
+    (x86-sar cgc (x86-rax) (x86-imm-int 2))
+    (x86-cqo cgc)
+    (x86-idiv cgc ropnd)
 
-      (x86-upop cgc REG)
+    (cond ((eq? op 'quotient)
+            (x86-shl cgc (x86-rax) (x86-imm-int 2))
+            (x86-mov cgc dest (x86-rax)))
+          ((eq? op 'remainder)
+            (x86-shl cgc (x86-rdx) (x86-imm-int 2))
+            (x86-mov cgc dest (x86-rdx)))
+          ((eq? op 'modulo)
+            (x86-mov cgc (x86-rax) (x86-rdx))
+            (x86-add cgc (x86-rax) ropnd)
+            (x86-cqo cgc)
+            (x86-idiv cgc ropnd)
+            (x86-shl cgc (x86-rdx) (x86-imm-int 2))
+            (x86-mov cgc dest (x86-rdx))))
 
-      (if (and (neq? ordest  (x86-rdx)))
-          (x86-upop cgc (x86-rdx))))))
+    (if (eq? orig-ropnd (x86-rdx))
+        (x86-ppop cgc (x86-rdx))
+        (begin (x86-shl cgc orig-ropnd (x86-imm-int 2))
+               (x86-mov cgc (x86-rdx) (x86-rcx))))
+    (x86-mov cgc (x86-rcx) (x86-imm-int 0))))
 
 ;;-----------------------------------------------------------------------------
 ;; Primitives

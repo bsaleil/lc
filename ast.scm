@@ -1891,25 +1891,25 @@
                 ;; r11, selector & r15 are used as tmp registers
                 ;; It is safe because they are not used for parameters.
                 ;; And if they are used after, they already are saved on the stack
-                (x86-mov cgc (x86-r15) oplst)
+                (x86-mov cgc (x86-rdx) oplst)
                 (x86-mov cgc (x86-r11) (x86-imm-int 0))
                 (let loop ((args-regs args-regs))
                   (if (null? args-regs)
                       (let ((label-loop (asm-make-label #f (new-sym 'apply-loop-args))))
                         (x86-label cgc label-loop)
-                        (x86-cmp cgc (x86-r15) (x86-imm-int (obj-encoding '())))
+                        (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
                         (x86-je cgc label-end)
                           (x86-add cgc (x86-r11) (x86-imm-int 4))
-                          (x86-mov cgc selector-reg (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-r15)))
+                          (x86-mov cgc selector-reg (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
                           (x86-upush cgc selector-reg)
-                          (x86-mov cgc (x86-r15) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-r15)))
+                          (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
                           (x86-jmp cgc label-loop))
                       (begin
-                        (x86-cmp cgc (x86-r15) (x86-imm-int (obj-encoding '())))
+                        (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
                         (x86-je cgc label-end)
                           (x86-add cgc (x86-r11) (x86-imm-int 4))
-                          (x86-mov cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (car args-regs)) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-r15)))
-                          (x86-mov cgc (x86-r15) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-r15)))
+                          (x86-mov cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (car args-regs)) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
+                          (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
                         (loop (cdr args-regs)))))
                 (x86-label cgc label-end)
                 ;; Reset selector used as tmp reg

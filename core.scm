@@ -934,7 +934,7 @@
 
 (define regalloc-regs
   (list (x86-rbx)
-        (x86-rdx)
+        (x86-r15)
         (x86-rsi)
         (x86-rdi)
         (x86-r10)
@@ -942,7 +942,7 @@
         (x86-r12)
         (x86-r13)
         (x86-r14)
-        (x86-r15)))
+        (x86-rdx)))
 
 (define nb-c-caller-save-regs
   (length c-caller-save-regs))

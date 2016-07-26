@@ -1,9 +1,17 @@
 
-(define (foo n)
-  (quotient n 10))
+;(define (foo n)
+;  (quotient n 10))
+;
+;(gambit$$println (foo 434))
 
-(gambit$$println (foo 434))
 
+(define (quotloop n)
+  (if (= n 0)
+      10
+      (begin (quotient n 10)
+             (quotloop (- n 1)))))
+
+(quotloop 5000000)
 
 
 ;(apply do-loop (list 100000000))
