@@ -340,27 +340,41 @@
   `(set! ,(cadr expr) ,(expand (caddr expr))))
 
 (define (expand-prim expr)
+
+  (define (get-opnds-bindings opnds bindings symbols)
+    (if (null? opnds)
+        (cons (reverse bindings)
+              (reverse symbols))
+        (let ((opnd (car opnds)))
+          (if (literal? opnd)
+              (get-opnds-bindings (cdr opnds) bindings (cons opnd symbols))
+              (let ((sym (gensym)))
+                (get-opnds-bindings
+                  (cdr opnds)
+                  (cons (cons sym (list opnd))
+                        bindings)
+                  (cons sym symbols)))))))
+
+
   (assert-p-nbargs expr)
   (let ((op (car expr)))
     (cond ;; number? & real?
           ((member op '(number? real?))
-             (let ((sym (gensym))
-                   (arg (cadr expr)))
+             (let ((r (get-opnds-bindings (cdr expr) '() '())))
                (expand
-                 `(let ((,sym ,arg))
-                    (or (fixnum? ,sym)
-                        (flonum? ,sym))))))
+                 `(let ,(car r)
+                    (or (fixnum? ,(cadr r))
+                        (flonum? ,(cadr r)))))))
           ;; eqv?
           ((eq? op 'eqv?)
-             (let ((lsym (gensym))
-                   (rsym (gensym)))
-               (expand
-                 `(let ((,lsym ,(cadr expr))
-                        (,rsym ,(caddr expr)))
-                    (if (number? ,lsym)
-                        (and (number? ,rsym) (= ,lsym ,rsym))
-                        (eq? ,lsym ,rsym)))))))))
-
+            (let* ((r (get-opnds-bindings (cdr expr) '() '()))
+                   (syml (cadr r))
+                   (symr (caddr r)))
+              (expand
+                `(let ,(car r)
+                   (if (number? ,syml)
+                       (and (number? ,symr) (= ,syml ,symr))
+                       (eq? ,syml ,symr)))))))))
 
 (define (expand-cmp expr)
 
@@ -487,8 +501,10 @@
       ;; Named let
       (expand-letn expr)
       ;; let
-      `(let ,(expand (cadr expr))
-         ,(expand (cons 'begin (cddr expr))))))
+      (if (null? (cadr expr))
+          (expand `(begin ,@(cddr expr)))
+          `(let ,(expand (cadr expr))
+             ,(expand (cons 'begin (cddr expr)))))))
 
 ;; LETREC
 (define (expand-letrec expr)
