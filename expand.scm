@@ -311,6 +311,7 @@
               ((equal? (car expr) 'case) (expand-case expr))
               ((equal? (car expr) 'quote) expr)
               ((equal? (car expr) 'set!) (expand-set! expr))
+              ((member (car expr) '(number? real?)) (expand-prim expr))
               ((member (car expr) '(> >= < <= =)) (expand-cmp expr))
               ((member (car expr) list-accessors) (expand-accessor expr))
               (else (if (list? (cdr expr))
@@ -337,6 +338,17 @@
          (table-set! gids (cadr expr) #f)))
 
   `(set! ,(cadr expr) ,(expand (caddr expr))))
+
+(define (expand-prim expr)
+  (assert-p-nbargs expr)
+  (let ((op (car expr)))
+    (cond ((member op '(number? real?))
+             (let ((sym (gensym))
+                   (arg (cadr expr)))
+               (expand
+                 `(let ((,sym ,arg))
+                    (or (fixnum? ,sym)
+                        (flonum? ,sym)))))))))
 
 (define (expand-cmp expr)
 

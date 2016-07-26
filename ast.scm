@@ -29,6 +29,8 @@
 
 (include "~~lib/_asm#.scm")
 (include "~~lib/_x86#.scm") ;; TODO regalloc remove when finished
+
+(define expand #f)
 ;;-----------------------------------------------------------------------------
 ;; Macros
 
@@ -252,7 +254,10 @@
                      (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ())
                      (current-output-port 0  0  ,(prim-types 0 )                            ())
                      (current-input-port  0  0  ,(prim-types 0 )                            ())
-
+                     ;; These primitives are inlined during expansion but still here to check args and build lambda
+                     (number?             1  1  ,(prim-types 1 CTX_ALL)                     ())
+                     (real?               1  1  ,(prim-types 1 CTX_ALL)                     ())
+                     ;;
                      (##fx+               2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
                      (##fx-               2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
                      (##fx*               2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
@@ -522,7 +527,7 @@
                    (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
                      (jump-to-version
                        cgc
-                       (gen-ast `(lambda ,args (,ast ,@args)) succ)
+                       (gen-ast (expand `(lambda ,args (,ast ,@args))) succ)
                        ctx))))
               (else (gen-error cgc (ERR_UNKNOWN_VAR ast))))))))
 
