@@ -311,7 +311,7 @@
               ((equal? (car expr) 'case) (expand-case expr))
               ((equal? (car expr) 'quote) expr)
               ((equal? (car expr) 'set!) (expand-set! expr))
-              ((member (car expr) '(number? real? eqv?)) (expand-prim expr))
+              ((member (car expr) '(real? eqv?)) (expand-prim expr))
               ((member (car expr) '(> >= < <= =)) (expand-cmp expr))
               ((member (car expr) list-accessors) (expand-accessor expr))
               (else (if (list? (cdr expr))
@@ -358,13 +358,9 @@
 
   (assert-p-nbargs expr)
   (let ((op (car expr)))
-    (cond ;; number? & real?
-          ((member op '(number? real?))
-             (let ((r (get-opnds-bindings (cdr expr) '() '())))
-               (expand
-                 `(let ,(car r)
-                    (or (fixnum? ,(cadr r))
-                        (flonum? ,(cadr r)))))))
+    (cond ;; real?
+          ((eq? op 'real?)
+            `(number? ,@(cdr expr)))
           ;; eqv?
           ((eq? op 'eqv?)
             (let* ((r (get-opnds-bindings (cdr expr) '() '()))

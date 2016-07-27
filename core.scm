@@ -1494,7 +1494,7 @@
 
        ;; TODO: plus nettoyer tout ca
        (let* ((ctx-success (ctx-set-type ctx stack-idx type))
-              (ctx-success-known ctx);; If know type is tested type, do not change ctx
+              (ctx-success-known ctx);; If know type is tested type, do not change ctx (TODO?)
               (ctx-fail ctx)
               (known-type (list-ref (ctx-stack ctx) stack-idx)))
 

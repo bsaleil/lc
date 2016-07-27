@@ -1,4 +1,4 @@
-(declare (standard-bindings) (extended-bindings) (block) (not safe))
+(declare (standard-bindings) (extended-bindings) (not safe))
 (define ###TIME_BEFORE### 0)
 (define ###TIME_AFTER###  0)
 

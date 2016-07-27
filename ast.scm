@@ -1302,6 +1302,19 @@
                 (lazy-code-tmpdata-set! succ x86-jne))
             (jump-to-version cgc succ ctx))))))
 
+;; primitive number?
+(define (prim-number? cgc ctx reg succ cst-infos)
+
+  (define (get-lazy-res r)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (codegen-set-bool cgc r reg)
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg)))))
+
+  (let* ((lazy-flo (gen-dyn-type-test CTX_FLO 0 (get-lazy-res #t) (get-lazy-res #f) #f))
+         (lazy-fix (gen-dyn-type-test CTX_INT 0 (get-lazy-res #t) lazy-flo #f)))
+    (jump-to-version cgc lazy-fix ctx)))
+
 ;; primitives car & cdr
 (define (prim-cxr cgc ctx reg succ cst-infos op)
   (let ((lval (ctx-get-loc ctx 0)))
@@ -1567,6 +1580,7 @@
                        ((not)               (prim-not            cgc ctx reg succ cst-infos))
                        ((eq?)               (prim-eq?            cgc ctx reg succ cst-infos))
                        ((char=?)            (prim-eq?            cgc ctx reg succ cst-infos))
+                       ((number?)           (prim-number?        cgc ctx reg succ cst-infos))
                        ((car cdr)           (prim-cxr            cgc ctx reg succ cst-infos (car ast)))
                        ((eof-object?)       (prim-eof-object?    cgc ctx reg succ cst-infos))
                        ((make-string)       (prim-make-string    cgc ctx reg succ cst-infos (cdr ast)))
@@ -1679,8 +1693,6 @@
 (define (mlc-if ast succ)
 
   (letrec ((condition (cadr ast))
-           (cleft  (and (pair? condition) (>= (length condition) 3) (cadr condition)))
-           (cright (and (pair? condition) (>= (length condition) 3) (caddr condition)))
            (lazy-code0
              (gen-ast (cadddr ast) succ))
            (lazy-code1
@@ -1695,8 +1707,7 @@
                  ;; Reset tmpdta
                  (lazy-code-tmpdata-set! lazy-code-test #f)
 
-                 (let* ((n-pop (count (list cleft cright) (lambda (n) (not (integer? n)))))
-                        (ctx0 (if x86-op ctx (ctx-pop ctx)))   ;; Pop condition result
+                 (let* ((ctx0 (if x86-op ctx (ctx-pop ctx)))   ;; Pop condition result
 
                         (ctx1
                           ctx0)
@@ -1796,13 +1807,13 @@
                            (min (asm-label-pos label-false)
                                 (asm-label-pos label-true)))
 
+                     ;; Si on reconnait le pattern (if SYM SYM X) et que succ est cond
+
                      (if x86-op
                          (codegen-inlined-if cgc label-jump label-false label-true x86-op)
                          (let* ((lcond (ctx-get-loc ctx 0)))
                            (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond)))))))))
 
-    ;; Each optimizable if condition take an extra argument
-    ;; TODO
     (gen-ast
       (cadr ast)
       lazy-code-test)))

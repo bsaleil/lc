@@ -1,1 +1,1 @@
-echo "(declare (standard-bindings) (extended-bindings) (block) (not safe))"|cat - "$1" > "$2"
+echo "(declare (standard-bindings) (extended-bindings) (not safe))"|cat - "$1" > "$2"
