@@ -553,19 +553,25 @@
              (if for-set?
                  (let* ((fs (ctx-fs ctx))
                         (cloc (ctx-get-loc ctx (- (length (ctx-stack ctx)) 2)))
-                        (copnd (codegen-loc-to-x86opnd fs cloc)))
-                   (x86-mov cgc (x86-rax) copnd)
-                   (x86-mov cgc (x86-rax) (x86-mem (- (* 8 (+ (cdr loc) 2)) TAG_MEMOBJ) (x86-rax))))
+                        (copnd (codegen-loc-to-x86opnd fs cloc))
+                        (coffset (- (* 8 (+ (cdr loc) 2)) TAG_MEMOBJ)))
+                   (if (x86-reg? copnd)
+                       (x86-mov cgc (x86-rax) (x86-mem coffset copnd))
+                       (begin
+                         (x86-mov cgc (x86-rax) copnd)
+                         (x86-mov cgc (x86-rax) (x86-mem coffset (x86-rax))))))
                  (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
                    (apply-moves cgc nctx moves)
                    (let* ((fs (ctx-fs nctx))
                           (cloc (ctx-get-loc ctx (- (length (ctx-stack ctx)) 2)))
-                          (copnd (codegen-loc-to-x86opnd fs cloc)))
-                     (x86-mov cgc (x86-rax) copnd) ;; Get closure
-                     (x86-mov
-                       cgc
-                       (codegen-reg-to-x86reg reg)
-                       (x86-mem (- (* 8 (+ (cdr loc) 2)) TAG_MEMOBJ) (x86-rax))))
+                          (copnd (codegen-loc-to-x86opnd fs cloc))
+                          (coffset (- (* 8 (+ (cdr loc) 2)) TAG_MEMOBJ))
+                          (dest (codegen-reg-to-x86reg reg)))
+                     (if (x86-reg? copnd)
+                         (x86-mov cgc dest (x86-mem coffset copnd))
+                         (begin
+                           (x86-mov cgc (x86-rax) copnd) ;; Get closure
+                           (x86-mov cgc dest (x86-mem coffset (x86-rax))))))
                    (jump-to-version cgc succ (ctx-push nctx type reg (car local)))))))))
 
 ;; TODO: + utiliser un appel récursif comme pour gen-get-freevar (??)
