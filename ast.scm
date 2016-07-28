@@ -1898,7 +1898,8 @@
                             (eq? (table-ref gids (cadr ast) #f) CTX_CLO)))
                      (fn-num (call-get-eploc ctx global-opt (cadr ast))))
                 (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
-                (gen-call-sequence ast cgc #f #f fn-num global-opt)))))
+                (x86-mov cgc (x86-rsi) (x86-rax)) ;; Move closure in closure reg
+                (gen-call-sequence ast cgc #f #f fn-num)))))
         (lazy-args
           (make-lazy-code
             (lambda (cgc ctx)
@@ -1975,9 +1976,10 @@
     (codegen-load-closure cgc fs loc)))
 
 ;; Move args in regs or mem following calling convention
-(define (call-prep-args cgc ctx ast nbargs)
+(define (call-prep-args cgc ctx ast nbargs global-opt)
 
-  (let* ((stackp/moves (ctx-get-call-args-moves ctx nbargs))
+  (let* ((cloloc (if global-opt #f (ctx-get-loc ctx nbargs)))
+         (stackp/moves (ctx-get-call-args-moves ctx nbargs cloloc))
          (stackp (car stackp/moves))
          (moves (cdr stackp/moves)))
 
@@ -2046,12 +2048,8 @@
                ;; Save used registers, generate and push continuation stub
                (set! ctx (call-save/cont cgc ctx ast succ tail? (+ (length args) 1) #f))
 
-               ;; Push closure
-               (if (not global-opt)
-                   (call-get-closure cgc ctx (length args)))
-
                ;; Move args to regs or stack following calling convention
-               (set! ctx (call-prep-args cgc ctx ast (length args)))
+               (set! ctx (call-prep-args cgc ctx ast (length args) global-opt))
 
                ;; Shift args and closure for tail call
                (call-tail-shift cgc ctx ast tail? (length args))
@@ -2064,7 +2062,7 @@
                          (append (list-head (ctx-stack ctx) (length (cdr ast)))
                                  (list CTX_CLO CTX_RETAD))))
                      (fn-num (call-get-eploc ctx global-opt (car ast))))
-                 (gen-call-sequence ast cgc call-ctx (length args) fn-num global-opt)))))
+                 (gen-call-sequence ast cgc call-ctx (length args) fn-num)))))
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
 
@@ -2179,7 +2177,7 @@
 ;; Gen call sequence (call instructions)
 ;; Global-id contains global identifier if it is an optimized global call
 ;; (compile time lookup)
-(define (gen-call-sequence ast cgc call-ctx nb-args fn-num global-eploc?)
+(define (gen-call-sequence ast cgc call-ctx nb-args fn-num)
 
   (define eploc (and fn-num (asc-globalfn-entry-get fn-num)))
 
@@ -2202,15 +2200,15 @@
         #f))
 
   (cond ((not opt-entry-points)
-           (codegen-call-ep cgc nb-args eploc global-eploc?))
+           (codegen-call-ep cgc nb-args eploc))
         ((not nb-args) ;; apply
-           (codegen-call-cc-gen cgc #f eploc global-eploc?))
+           (codegen-call-cc-gen cgc #f eploc))
         (else
            (let* ((idx (get-closure-index (ctx-stack call-ctx)))
                   (direct (get-ep-direct idx)))
              (if idx
-                 (codegen-call-cc-spe cgc idx nb-args eploc direct global-eploc?)
-                 (codegen-call-cc-gen cgc nb-args eploc global-eploc?))))))
+                 (codegen-call-cc-spe cgc idx nb-args eploc direct)
+                 (codegen-call-cc-gen cgc nb-args eploc))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators

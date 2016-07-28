@@ -674,42 +674,32 @@
 
 ;; Generate function call using a single entry point
 ;; eploc is the cctable or entry points if it's known
-;; if global-eploc? is #t, it's a global call, no need to give the closure in closure reg
-(define (codegen-call-ep cgc nb-args eploc global-eploc?)
+(define (codegen-call-ep cgc nb-args eploc)
   ;; TODO: use call/ret if opt-entry-points opt-return-points are #f
   (if nb-args ;; If nb-args given, move encoded in rdi, else nb-args is already encoded in rdi (apply)
       (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args))))
 
-  (cond ((and eploc global-eploc?)
-           (x86-jmp cgc (x86-mem (+ (obj-encoding eploc) 7) #f)))
-        (eploc
-           (x86-mov cgc (x86-rsi) (x86-rax))
-           (x86-jmp cgc (x86-mem (+ (obj-encoding eploc) 7) #f)))
-        (else
-           (x86-mov cgc (x86-rsi) (x86-rax))
-           (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
-           (x86-jmp cgc (x86-rdx)))))
+  (if eploc
+      (x86-jmp cgc (x86-mem (+ (obj-encoding eploc) 7) #f)))
+      (begin
+        (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
+        (x86-jmp cgc (x86-rdx))))
 
 ;; Generate function call using a cctable and generic entry point
 ;; eploc is the cctable or entry points if it's known
-;; if global-eploc? is #t, no need to give the closure in closure reg
-(define (codegen-call-cc-gen cgc nb-args eploc global-eploc?)
+(define (codegen-call-cc-gen cgc nb-args eploc)
   (if nb-args
       (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args))))
-  (cond ((and eploc global-eploc?)
-           (x86-mov cgc (x86-rdx) (x86-imm-int eploc)))
-        (eploc
-           (x86-mov cgc (x86-rsi) (x86-rax))
-           (x86-mov cgc (x86-rdx) (x86-imm-int eploc)))
-        (else
-           (x86-mov cgc (x86-rsi) (x86-rax))
-           (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi))))) ;; Get table
+
+  (if eploc
+      (x86-mov cgc (x86-rdx) (x86-imm-int eploc))
+      (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))) ;; Get table
+
   (x86-jmp cgc (x86-mem 8 (x86-rdx)))) ;; Jump to generic entry point
 
 ;; Generate function call using a cctable and specialized entry point
 ;; eploc is the cctable or entry points if it's known
-;; if global-eploc? is #t, no need to give the closure in closure reg
-(define (codegen-call-cc-spe cgc idx nb-args eploc direct-eploc global-eploc?)
+(define (codegen-call-cc-spe cgc idx nb-args eploc direct-eploc)
 
     ;; Closure is in rax
     (let ((cct-offset (* 8 (+ 2 idx))))
@@ -717,13 +707,10 @@
       (if (or (not direct-eploc)                  ;; ctx needed if it's not a direct call
               (not (eq? (car direct-eploc) 'ep))) ;; ctx needed if it's a direct call to a stub
           (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding idx))))
-      ;; 2 - Put closure in rax if needed
-      (if (not global-eploc?)
-          (x86-mov cgc (x86-rsi) (x86-rax)))
-      ;; 3 - Put nbargs in rdi if needed
+      ;; 2 - Put nbargs in rdi if needed
       (if opt-max-versions
            (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
-      ;; 2- Get cc-table
+      ;; 3- Get cc-table
       (cond (direct-eploc
               ;; If it's a direct call to a not yet generated entry point, add stub_load label
               (if (eq? (car direct-eploc) 'stub)

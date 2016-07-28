@@ -648,8 +648,13 @@
 ;; TODO nettoyer
 ;;; TODO: uniformiser et placer
 ;; TODO: not 3 & 5 because rdi and R11 are used for ctx, nb-args
+;; cloloc is the location of the closure.
+;; If cloloc is #f, no need to move the closure to the closure reg.
+;; If cloloc is not #f, we add an extra move to required moves set which is closure -> closure reg
 (define args-regs '((r . 0) (r . 1) (r . 4) (r . 6) (r . 7) (r . 8))) ;; TODO
-(define (ctx-get-call-args-moves ctx nb-args)
+(define (ctx-get-call-args-moves ctx nb-args cloloc)
+
+  (define clomove (and cloloc (cons cloloc '(r . 2))))
 
   (define (get-req-moves curr-idx rem-regs moves pushed)
     (if (< curr-idx 0)
@@ -666,7 +671,10 @@
 
   (let ((pushed/moves (get-req-moves (- nb-args 1) args-regs '() '())))
     (cons (car pushed/moves)
-          (steps (cdr pushed/moves)))))
+          (if clomove
+              (steps (append (cdr pushed/moves) (list clomove)))
+              (steps (cdr pushed/moves))))))
+
 
 ;;
 ;;
