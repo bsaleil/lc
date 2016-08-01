@@ -1,12 +1,23 @@
 
-(define (fib n)
-  (if (< n 2)
-    n
-    (+ (fib (- n 1))
-       (fib (- n 2)))))
 
-(fib 40)
 
+
+(define myfun (lambda () vector))
+
+
+(pp (myfun))
+(pp ((myfun) 10 20))
+
+
+
+
+
+
+;(define (foo)
+;  (make-vector 5))
+;
+;(pp (foo))
+;(println (make-vector 5))
 
 ;; Au moment d'un binding d'un id, regarder si c'est une fonction non mutable.
 ;; Si c'est le cas:

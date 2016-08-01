@@ -254,7 +254,7 @@
                      (symbol->string      1  1  ,(prim-types 1 CTX_SYM)                     ())
                      (current-output-port 0  0  ,(prim-types 0 )                            ())
                      (current-input-port  0  0  ,(prim-types 0 )                            ())
-                     ;; These primitives are inlined during expansion but still here to check args and build lambda
+                     ;; These primitives are inlined during expansion but still here to check args and/or build lambda
                      (number?             1  1  ,(prim-types 1 CTX_ALL)                     ())
                      (real?               1  1  ,(prim-types 1 CTX_ALL)                     ())
                      (eqv?                2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ())
@@ -311,6 +311,8 @@
                  ;; TODO
                  ((and (eq? op 'write-char) (= (length ast) 2))
                     (gen-ast (append ast '((current-output-port))) succ))
+                 ;; Vector
+                 ((eq? op 'vector) (mlc-vector-p ast succ))
                  ;; Inlined primitive
                  ((assoc op primitives) (mlc-primitive ast succ))
                  ;; Quote
@@ -398,17 +400,6 @@
           (apply-moves cgc ctx moves)
           (codegen-flonum cgc immediate reg)
           (jump-to-version cgc succ (ctx-push ctx CTX_FLO reg))))))
-
-;;
-;; Make lazy code from symbol literal
-;;
-(define (mlc-symbol ast succ)
-  (make-lazy-code
-    (lambda (cgc ctx)
-      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
-        (apply-moves cgc ctx moves)
-        (codegen-symbol cgc ast reg)
-        (jump-to-version cgc succ (ctx-push ctx CTX_SYM reg))))))
 
 ;;
 ;; Make lazy code from vector literal
@@ -525,11 +516,17 @@
               ;; Primitive
               ((assoc ast primitives) =>
                  (lambda (r)
-                   (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
-                     (jump-to-version
-                       cgc
-                       (gen-ast (expand `(lambda ,args (,ast ,@args))) succ)
-                       ctx))))
+                   (let ((ast
+                           ;; primitive with fixed number of args
+                           (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
+                             `(lambda ,args (,ast ,@args)))))
+                     (jump-to-version cgc (gen-ast (expand ast) succ) ctx))))
+              ;; Vector
+              ((eq? ast 'vector)
+                 (jump-to-version
+                   cgc
+                   (gen-ast (expand `(lambda l (list->vector l))) succ)
+                   ctx))
               (else (gen-error cgc (ERR_UNKNOWN_VAR ast))))))))
 
 ;; TODO: merge with gen-get-localvar, it's now the same code!
@@ -1350,7 +1347,9 @@
   (let* ((init-value? (= (length args) 2))
          (llen (ctx-get-loc ctx (if init-value? 1 0)))
          (lval (if init-value? (ctx-get-loc ctx 0) #f)))
-    (codegen-make-vector cgc (ctx-fs ctx) reg llen lval)
+    (if (and (fixnum? (car args)) (< (car args) MSECTION_BIGGEST))
+        (codegen-make-vector-cst cgc (ctx-fs ctx) reg (car args) lval)
+        (codegen-make-vector cgc (ctx-fs ctx) reg llen lval))
     (jump-to-version cgc succ (ctx-push (if init-value?
                                             (ctx-pop-n ctx 2)
                                             (ctx-pop ctx))
@@ -1689,6 +1688,33 @@
                             (gen-fatal-type-test (car types) 0 lazy-next ast)))))))
 
   (check-types-h types args 0))
+
+;;
+;; Vector primitive (not in primitives because we need >1 LCO)
+(define (mlc-vector-p ast succ)
+
+  (define (get-chain i exprs)
+    (if (null? exprs)
+        succ
+        (let ((lco-set
+                (make-lazy-code
+                  (lambda (cgc ctx)
+                    (let ((succ (get-chain (+ i 1) (cdr exprs)))
+                          (lval (ctx-get-loc ctx 0))
+                          (lvec (ctx-get-loc ctx 1)))
+
+                      (let ((opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval))
+                            (opvec (codegen-loc-to-x86opnd (ctx-fs ctx) lvec)))
+                        (if (x86-mem? opvec)
+                            (begin (x86-mov cgc (x86-rax) opvec)
+                                   (x86-mov cgc (x86-mem (- (+ 8 (* 8 i)) TAG_MEMOBJ) (x86-rax)) opval))
+                            (x86-mov cgc (x86-mem (- (+ 8 (* 8 i)) TAG_MEMOBJ) opvec) opval)))
+                      (jump-to-version cgc succ (ctx-pop ctx)))))))
+          (gen-ast (car exprs) lco-set))))
+
+  (gen-ast
+    (list 'make-vector (length (cdr ast)))
+    (get-chain 0 (cdr ast))))
 
 ;;-----------------------------------------------------------------------------
 ;; Branches

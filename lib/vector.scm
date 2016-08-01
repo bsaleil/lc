@@ -27,8 +27,6 @@
 ;;
 ;;---------------------------------------------------------------------------
 
-(define (vector . l) (list->vector l))
-
 (define (vector-fill! v val)
   (vector-fill!-h v 0 val (vector-length v)))
 

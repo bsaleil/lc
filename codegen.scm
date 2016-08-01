@@ -1254,6 +1254,30 @@
       (x86-mov cgc dest (x86-rax))
       (x86-mov cgc selector-reg (x86-imm-int 0)))))
 
+(define (codegen-make-vector-cst cgc fs reg len lval)
+
+  (let ((loop     (asm-make-label #f (new-sym 'make-vector-loop)))
+        (loop-end (asm-make-label #f (new-sym 'make-vector-end)))
+        (opval (if lval
+                   (codegen-loc-to-x86opnd fs lval)
+                   (x86-imm-int 0)))
+        (dest  (codegen-reg-to-x86reg reg)))
+
+    ;; Primitive code
+    (gen-allocation-imm cgc STAG_VECTOR (* len 8))
+
+    ;; dest contains encoded vector
+    (x86-lea cgc dest (x86-mem (- (* len -8) (- 8 TAG_MEMOBJ)) alloc-ptr))
+    (x86-mov cgc (x86-rax) (x86-imm-int (* len 8)))
+    (x86-label cgc loop)
+    (x86-cmp cgc (x86-rax) (x86-imm-int 0))
+    (x86-je cgc loop-end)
+      (x86-mov cgc (x86-mem (* -1 TAG_MEMOBJ) (x86-rax) dest) opval 64)
+      (x86-sub cgc (x86-rax) (x86-imm-int 8))
+      (x86-jmp cgc loop)
+    (x86-label cgc loop-end)))
+
+
 ;;-----------------------------------------------------------------------------
 ;; vector/string-length
 (define (codegen-vector-length cgc fs reg lval)
