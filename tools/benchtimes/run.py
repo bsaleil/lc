@@ -198,10 +198,11 @@ l2 = System("LC-new",
             "(\d+.\d+) ms real time\\n\(",
             "accounting for (\d+) ms real time")
 
+systems.append(l2)
 systems.append(g1)
 systems.append(g2)
 #systems.append(l1)
-systems.append(l2)
+
 
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))

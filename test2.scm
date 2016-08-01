@@ -3761,8 +3761,15 @@
   (let ((opnd (jump-opnd branch))) (if (lbl? opnd) (lbl-num opnd) #f)))
 (define put-poll-on-ifjump? #f)
 (set! put-poll-on-ifjump? #t)
+
+(define (direct-jump to-bb from-bb)
+  (error "OK"))
+
+;; mtn
 (define (bbs-remove-dead-code! bbs)
-  (let ((new-bb-queue (queue-empty)) (scan-queue (queue-empty)))
+
+  (let ((new-bb-queue (cons '() '())) (scan-queue (cons '() '())))
+
     (define (reachable ref bb)
       (if bb (bb-add-reference! bb ref))
       (if (not (memq ref (queue->list new-bb-queue)))
@@ -3771,53 +3778,32 @@
             (bb-precedents-set! ref '())
             (queue-put! new-bb-queue ref)
             (queue-put! scan-queue ref))))
-    (define (direct-jump to-bb from-bb)
-      (reachable to-bb from-bb)
-      (bb-add-precedent! to-bb from-bb))
+
     (define (scan-instr gvm-instr bb)
       (define (scan-opnd gvm-opnd)
         (cond ((lbl? gvm-opnd)
                (reachable (lbl-num->bb (lbl-num gvm-opnd) bbs) bb))
               ((clo? gvm-opnd) (scan-opnd (clo-base gvm-opnd)))))
+
       (case (gvm-instr-type gvm-instr)
-        ((label) '())
-        ((apply)
-         (for-each scan-opnd (apply-opnds gvm-instr))
-         (if (apply-loc gvm-instr) (scan-opnd (apply-loc gvm-instr))))
-        ((copy)
-         (scan-opnd (copy-opnd gvm-instr))
-         (scan-opnd (copy-loc gvm-instr)))
-        ((close)
-         (for-each
-          (lambda (parm)
-            (reachable (lbl-num->bb (closure-parms-lbl parm) bbs) bb)
-            (scan-opnd (closure-parms-loc parm))
-            (for-each scan-opnd (closure-parms-opnds parm)))
-          (close-parms gvm-instr)))
-        ((ifjump)
-         (for-each scan-opnd (ifjump-opnds gvm-instr))
-         (direct-jump (lbl-num->bb (ifjump-true gvm-instr) bbs) bb)
-         (direct-jump (lbl-num->bb (ifjump-false gvm-instr) bbs) bb))
+        ((label) (pp "c1") '())
+
         ((jump)
          (let ((opnd (jump-opnd gvm-instr)))
            (if (lbl? opnd)
-               (direct-jump (lbl-num->bb (lbl-num opnd) bbs) bb)
-               (scan-opnd (jump-opnd gvm-instr)))))
-        (else
-         (compiler-internal-error
-          "bbs-remove-dead-code!, unknown GVM instruction type"))))
+           (begin
+               (direct-jump (lbl-num->bb (lbl-num opnd) bbs) bb))
+               (begin (pp 2) (scan-opnd (jump-opnd gvm-instr))))))))
+
     (reachable (lbl-num->bb (bbs-entry-lbl-num bbs) bbs) #f)
-    (let loop ()
-      (if (not (queue-empty? scan-queue))
-          (let ((bb (queue-get! scan-queue)))
-            (begin
-              (scan-instr (bb-label-instr bb) bb)
-              (for-each
-               (lambda (gvm-instr) (scan-instr gvm-instr bb))
-               (bb-non-branch-instrs bb))
-              (scan-instr (bb-branch-instr bb) bb)
-              (loop)))))
-    (bbs-bb-queue-set! bbs new-bb-queue)))
+
+    (let ((bb (queue-get! scan-queue)))
+
+      (scan-instr (bb-label-instr bb) bb)
+      (pp "AV BRAC")
+      (scan-instr (bb-branch-instr bb) bb)
+      (pp "AP BRAC"))))
+
 (define (bbs-remove-useless-jumps! bbs)
   (let ((changed? #f))
     (define (remove-useless-jump bb)
@@ -4727,6 +4713,7 @@
                   module-name
                   dest
                   info-port)))
+
     (if (and info-port (not (eq? info-port (current-output-port))))
         (close-output-port info-port))
     result))
@@ -4761,6 +4748,7 @@
                               port)
                              (loop (cdr l)))))
                      (newline port)))
+
                (let ((module-init-proc
                       (compile-parsed-program
                        module-name
@@ -4780,7 +4768,9 @@
           (virtual.end!)
           (ptree.end!)
           #t)))
+
   (let ((successful (with-exception-handling compiler-body)))
+
     (if info-port
         (if successful
             (begin
@@ -5012,6 +5002,7 @@
           (make-bb (make-label-entry entry-lbl 0 0 #f #f frame comment) *bbs*))
     (bb-put-branch! entry-bb (make-jump (make-lbl body-lbl) #f #f frame #f))
     (set! *bb* (make-bb (make-label-simple body-lbl frame comment) *bbs*))
+
     (let loop1 ((l (c-intf-procs c-intf)))
       (if (not (null? l))
           (let* ((x (car l))
@@ -5022,24 +5013,9 @@
              var
              (make-obj (make-proc-obj name #t #f 0 #t '() '(#f))))
             (loop1 (cdr l)))))
-    (let loop2 ((l program))
-      (if (not (null? l))
-          (let ((node (car l)))
-            (if (def? node)
-                (let* ((var (def-var node)) (val (global-val var)))
-                  (if (and val (prc? val))
-                      (add-constant-var
-                       var
-                       (make-obj
-                        (make-proc-obj
-                         (symbol->string (var-name var))
-                         #t
-                         #f
-                         (call-pattern val)
-                         #t
-                         '()
-                         '(#f)))))))
-            (loop2 (cdr l)))))
+
+
+
     (let loop3 ((l program))
       (if (null? l)
           (let ((ret-opnd (var->opnd ret-var)))
@@ -5065,7 +5041,9 @@
             (gen-proc (car x) (cadr x) (caddr x) info-port)
             (trace-unindent info-port)
             (loop4))))
+
     (if info-port (begin (newline info-port) (newline info-port)))
+
     (bbs-purify! *bbs*)
     (let ((proc (make-proc-obj
                  (string-append "#!" module-name)
@@ -7110,15 +7088,15 @@
 (define subtype-cpxnum 4)
 (define subtype-string 16)
 (define subtype-bignum 17)
-(define data-false (- 33686019))
-(define data-null (- 67372037))
+(define data-false (- 0 33686019))
+(define data-null (- 0 67372037))
 (define data-true -2)
 (define data-undef -3)
 (define data-unass -4)
 (define data-unbound -5)
 (define data-eof -6)
 (define data-max-fixnum 268435455)
-(define data-min-fixnum (- 268435456))
+(define data-min-fixnum (- 0 268435456))
 (define (make-encoding data type) (+ (* data 8) type))
 (define (obj-type obj)
   (cond ((false-object? obj) 'special)
@@ -11134,562 +11112,7 @@
   (put-target targ))
 
 (define input-source-code '
-(begin
-(declare (standard-bindings) (fixnum) (not safe) (block))
+1
+)
 
-(define (fib n)
-  (if (< n 2)
-      n
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
-
-(define (tak x y z)
-  (if (not (< y x))
-      z
-      (tak (tak (- x 1) y z)
-           (tak (- y 1) z x)
-           (tak (- z 1) x y))))
-
-(define (ack m n)
-  (cond ((= m 0) (+ n 1))
-        ((= n 0) (ack (- m 1) 1))
-        (else (ack (- m 1) (ack m (- n 1))))))
-
-(define (create-x n)
-  (define result (make-vector n))
-  (do ((i 0 (+ i 1)))
-      ((>= i n) result)
-    (vector-set! result i i)))
-
-(define (create-y x)
-  (let* ((n (vector-length x))
-         (result (make-vector n)))
-    (do ((i (- n 1) (- i 1)))
-        ((< i 0) result)
-      (vector-set! result i (vector-ref x i)))))
-
-(define (my-try n)
-  (vector-length (create-y (create-x n))))
-
-(define (go n)
-  (let loop ((repeat 100)
-             (result 0))
-    (if (> repeat 0)
-        (loop (- repeat 1) (my-try n))
-        result)))
-
-(+ (fib 20)
-   (tak 18 12 6)
-   (ack 3 9)
-   (go 200000))
-))
-
-(define output-expected '(
-"|------------------------------------------------------"
-"| #[primitive #!program] ="
-"L1:"
-" cmpw #1,d0"
-" beq L1000"
-" TRAP1(9,0)"
-" LBL_PTR(L1)"
-"L1000:"
-" MOVE_PROC(1,a1)"
-" movl a1,GLOB(fib)"
-" MOVE_PROC(2,a1)"
-" movl a1,GLOB(tak)"
-" MOVE_PROC(3,a1)"
-" movl a1,GLOB(ack)"
-" MOVE_PROC(4,a1)"
-" movl a1,GLOB(create-x)"
-" MOVE_PROC(5,a1)"
-" movl a1,GLOB(create-y)"
-" MOVE_PROC(6,a1)"
-" movl a1,GLOB(my-try)"
-" MOVE_PROC(7,a1)"
-" movl a1,GLOB(go)"
-" movl a0,sp@-"
-" movl #160,d1"
-" lea L2,a0"
-" dbra d5,L1001"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1001"
-" TRAP2(24)"
-" RETURN(L1,1,1)"
-"L1002:"
-"L1001:"
-" JMP_PROC(1,10)"
-" RETURN(L1,1,1)"
-"L2:"
-" movl d1,sp@-"
-" moveq #48,d3"
-" moveq #96,d2"
-" movl #144,d1"
-" lea L3,a0"
-" JMP_PROC(2,14)"
-" RETURN(L1,2,1)"
-"L3:"
-" movl d1,sp@-"
-" moveq #72,d2"
-" moveq #24,d1"
-" lea L4,a0"
-" JMP_PROC(3,10)"
-" RETURN(L1,3,1)"
-"L4:"
-" movl d1,sp@-"
-" movl #1600000,d1"
-" lea L5,a0"
-" JMP_PROC(7,10)"
-" RETURN(L1,4,1)"
-"L5:"
-" dbra d5,L1003"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1003"
-" TRAP2(24)"
-" RETURN(L1,4,1)"
-"L1004:"
-"L1003:"
-"L6:"
-" addl sp@(8),d1"
-" addl sp@(4),d1"
-" addl sp@+,d1"
-" addql #8,sp"
-" rts"
-"L0:"
-"|------------------------------------------------------"
-"| #[primitive fib] ="
-"L1:"
-" bmi L1000"
-" TRAP1(9,1)"
-" LBL_PTR(L1)"
-"L1000:"
-" moveq #16,d0"
-" cmpl d1,d0"
-" ble L3"
-" bra L4"
-" RETURN(L1,2,1)"
-"L2:"
-" movl d1,sp@-"
-" movl sp@(4),d1"
-" moveq #-16,d0"
-" addl d0,d1"
-" lea L5,a0"
-" moveq #16,d0"
-" cmpl d1,d0"
-" bgt L4"
-"L3:"
-" movl a0,sp@-"
-" movl d1,sp@-"
-" subql #8,d1"
-" lea L2,a0"
-" dbra d5,L1001"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1001"
-" TRAP2(24)"
-" RETURN(L1,2,1)"
-"L1002:"
-"L1001:"
-" moveq #16,d0"
-" cmpl d1,d0"
-" ble L3"
-"L4:"
-" jmp a0@"
-" RETURN(L1,3,1)"
-"L5:"
-" addl sp@+,d1"
-" dbra d5,L1003"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1003"
-" TRAP2(24)"
-" RETURN(L1,2,1)"
-"L1004:"
-"L1003:"
-" addql #4,sp"
-" rts"
-"L0:"
-"|------------------------------------------------------"
-"| #[primitive tak] ="
-"L1:"
-" cmpw #4,d0"
-" beq L1000"
-" TRAP1(9,3)"
-" LBL_PTR(L1)"
-"L1000:"
-" cmpl d1,d2"
-" bge L4"
-" bra L3"
-" RETURN(L1,6,1)"
-"L2:"
-" movl d1,d3"
-" movl sp@(20),a0"
-" movl sp@+,d2"
-" movl sp@+,d1"
-" dbra d5,L1001"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1001"
-" movl a0,sp@(12)"
-" TRAP2(24)"
-" RETURN(L1,4,1)"
-"L1002:"
-" movl sp@(12),a0"
-"L1001:"
-" cmpl d1,d2"
-" lea sp@(16),sp"
-" bge L4"
-"L3:"
-" movl a0,sp@-"
-" movl d1,sp@-"
-" movl d2,sp@-"
-" movl d3,sp@-"
-" subql #8,d1"
-" lea L5,a0"
-" dbra d5,L1003"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1003"
-" TRAP2(24)"
-" RETURN(L1,4,1)"
-"L1004:"
-"L1003:"
-" cmpl d1,d2"
-" blt L3"
-"L4:"
-" movl d3,d1"
-" jmp a0@"
-" RETURN(L1,4,1)"
-"L5:"
-" movl d1,sp@-"
-" movl sp@(12),d3"
-" movl sp@(4),d2"
-" movl sp@(8),d1"
-" subql #8,d1"
-" lea L6,a0"
-" cmpl d1,d2"
-" bge L4"
-" bra L3"
-" RETURN(L1,5,1)"
-"L6:"
-" movl d1,sp@-"
-" movl sp@(12),d3"
-" movl sp@(16),d2"
-" movl sp@(8),d1"
-" subql #8,d1"
-" lea L2,a0"
-" cmpl d1,d2"
-" bge L4"
-" bra L3"
-"L0:"
-"|------------------------------------------------------"
-"| #[primitive ack] ="
-"L1:"
-" beq L1000"
-" TRAP1(9,2)"
-" LBL_PTR(L1)"
-"L1000:"
-" movl d1,d0"
-" bne L3"
-" bra L5"
-" RETURN(L1,2,1)"
-"L2:"
-" movl d1,d2"
-" movl sp@+,d1"
-" subql #8,d1"
-" movl sp@+,a0"
-" dbra d5,L1001"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1001"
-" movl a0,sp@-"
-" TRAP2(24)"
-" RETURN(L1,1,1)"
-"L1002:"
-" movl sp@+,a0"
-"L1001:"
-" movl d1,d0"
-" beq L5"
-"L3:"
-" movl d2,d0"
-" bne L6"
-"L4:"
-" subql #8,d1"
-" moveq #8,d2"
-" dbra d5,L1003"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1003"
-" movl a0,sp@-"
-" TRAP2(24)"
-" RETURN(L1,1,1)"
-"L1004:"
-" movl sp@+,a0"
-"L1003:"
-" movl d1,d0"
-" bne L3"
-"L5:"
-" movl d2,d1"
-" addql #8,d1"
-" jmp a0@"
-"L6:"
-" movl a0,sp@-"
-" movl d1,sp@-"
-" movl d2,d1"
-" subql #8,d1"
-" movl d1,d2"
-" movl sp@,d1"
-" lea L2,a0"
-" dbra d5,L1005"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1005"
-" TRAP2(24)"
-" RETURN(L1,2,1)"
-"L1006:"
-"L1005:"
-" movl d1,d0"
-" bne L3"
-" bra L5"
-"L0:"
-"|------------------------------------------------------"
-"| #[primitive create-x] ="
-"L1:"
-" bmi L1000"
-" TRAP1(9,1)"
-" LBL_PTR(L1)"
-"L1000:"
-" movl a0,sp@-"
-" movl d1,sp@-"
-" lea L2,a0"
-" dbra d5,L1001"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1001"
-" TRAP2(24)"
-" RETURN(L1,2,1)"
-"L1002:"
-"L1001:"
-" moveq #-1,d0"
-" JMP_PRIM(make-vector,0)"
-" RETURN(L1,2,1)"
-"L2:"
-" movl d1,d2"
-" movl sp@+,d1"
-" moveq #0,d3"
-" movl sp@+,a0"
-" dbra d5,L1003"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1003"
-" movl a0,sp@-"
-" TRAP2(24)"
-" RETURN(L1,1,1)"
-"L1004:"
-" movl sp@+,a0"
-"L1003:"
-" cmpl d1,d3"
-" bge L4"
-"L3:"
-" movl d3,d0"
-" asrl #1,d0"
-" movl d2,a1"
-" movl d3,a1@(1,d0:l)"
-" addql #8,d3"
-" dbra d5,L1005"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1005"
-" movl a0,sp@-"
-" TRAP2(24)"
-" RETURN(L1,1,1)"
-"L1006:"
-" movl sp@+,a0"
-"L1005:"
-" cmpl d1,d3"
-" blt L3"
-"L4:"
-" movl d2,d1"
-" jmp a0@"
-"L0:"
-"|------------------------------------------------------"
-"| #[primitive create-y] ="
-"L1:"
-" bmi L1000"
-" TRAP1(9,1)"
-" LBL_PTR(L1)"
-"L1000:"
-" movl d1,a1"
-" movl a1@(-3),d2"
-" lsrl #7,d2"
-" movl a0,sp@-"
-" movl d1,sp@-"
-" movl d2,sp@-"
-" movl d2,d1"
-" lea L2,a0"
-" dbra d5,L1001"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1001"
-" TRAP2(24)"
-" RETURN(L1,3,1)"
-"L1002:"
-"L1001:"
-" moveq #-1,d0"
-" JMP_PRIM(make-vector,0)"
-" RETURN(L1,3,1)"
-"L2:"
-" movl sp@+,d2"
-" subql #8,d2"
-" movl d2,d3"
-" movl d1,d2"
-" movl sp@+,d1"
-" movl sp@+,a0"
-" dbra d5,L1003"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1003"
-" movl a0,sp@-"
-" TRAP2(24)"
-" RETURN(L1,1,1)"
-"L1004:"
-" movl sp@+,a0"
-"L1003:"
-" movl d3,d0"
-" blt L4"
-"L3:"
-" movl d3,d0"
-" asrl #1,d0"
-" movl d1,a1"
-" movl a1@(1,d0:l),d4"
-" movl d3,d0"
-" asrl #1,d0"
-" movl d2,a1"
-" movl d4,a1@(1,d0:l)"
-" subql #8,d3"
-" dbra d5,L1005"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1005"
-" movl a0,sp@-"
-" TRAP2(24)"
-" RETURN(L1,1,1)"
-"L1006:"
-" movl sp@+,a0"
-"L1005:"
-" movl d3,d0"
-" bge L3"
-"L4:"
-" movl d2,d1"
-" jmp a0@"
-"L0:"
-"|------------------------------------------------------"
-"| #[primitive my-try] ="
-"L1:"
-" bmi L1000"
-" TRAP1(9,1)"
-" LBL_PTR(L1)"
-"L1000:"
-" movl a0,sp@-"
-" lea L2,a0"
-" dbra d5,L1001"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1001"
-" TRAP2(24)"
-" RETURN(L1,1,1)"
-"L1002:"
-"L1001:"
-" JMP_PROC(4,10)"
-" RETURN(L1,1,1)"
-"L2:"
-" lea L3,a0"
-" JMP_PROC(5,10)"
-" RETURN(L1,1,1)"
-"L3:"
-" movl d1,a1"
-" movl a1@(-3),d1"
-" lsrl #7,d1"
-" dbra d5,L1003"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1003"
-" TRAP2(24)"
-" RETURN(L1,1,1)"
-"L1004:"
-"L1003:"
-" rts"
-"L0:"
-"|------------------------------------------------------"
-"| #[primitive go] ="
-"L1:"
-" bmi L1000"
-" TRAP1(9,1)"
-" LBL_PTR(L1)"
-"L1000:"
-" moveq #0,d3"
-" movl #800,d2"
-" dbra d5,L1001"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1001"
-" movl a0,sp@-"
-" TRAP2(24)"
-" RETURN(L1,1,1)"
-"L1002:"
-" movl sp@+,a0"
-"L1001:"
-" movl d2,d0"
-" ble L4"
-" bra L3"
-" RETURN(L1,3,1)"
-"L2:"
-" movl d1,d3"
-" movl sp@+,d1"
-" subql #8,d1"
-" movl d1,d2"
-" movl sp@+,d1"
-" movl sp@+,a0"
-" dbra d5,L1003"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1003"
-" movl a0,sp@-"
-" TRAP2(24)"
-" RETURN(L1,1,1)"
-"L1004:"
-" movl sp@+,a0"
-"L1003:"
-" movl d2,d0"
-" ble L4"
-"L3:"
-" movl a0,sp@-"
-" movl d1,sp@-"
-" movl d2,sp@-"
-" lea L2,a0"
-" dbra d5,L1005"
-" moveq #9,d5"
-" cmpl a5@,sp"
-" bcc L1005"
-" TRAP2(24)"
-" RETURN(L1,3,1)"
-"L1006:"
-"L1005:"
-" JMP_PROC(6,10)"
-"L4:"
-" movl d3,d1"
-" jmp a0@"
-"L0:"
-""))
-
-(define (main . args)
-  (run-benchmark
-    "compiler"
-    compiler-iters
-    (lambda (result)
-      (equal? result output-expected))
-    (lambda (expr target opt) (lambda () (ce expr target opt) (asm-output-get)))
-    input-source-code
-    'm68000
-    'asm))
+(ce input-source-code 'm68000 'asm)

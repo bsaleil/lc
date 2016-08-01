@@ -1,11 +1,26 @@
 
-(define (run n)
-  (let loop ((i n) (sum 0))
-    (if (< i 0)
-      sum
-      (loop (- i 1) (+ i sum)))))
+(define (fib n)
+  (if (< n 2)
+    n
+    (+ (fib (- n 1))
+       (fib (- n 2)))))
 
-(run 10000)
+(fib 30)
+
+
+;; Au moment d'un binding d'un id, regarder si c'est une fonction non mutable.
+;; Si c'est le cas:
+;;   - stocker dans le ctx l'id de fn global
+;;   - à l'appel, on peut vérifier ça et utiliser l'info
+
+;
+;(define (run n)
+;  (let loop ((i n) (sum 0))
+;    (if (< i 0)
+;      sum
+;      (loop (- i 1) (+ i sum)))))
+;
+;(run 10000)
 
 ;(apply do-loop (list 100000000))
 

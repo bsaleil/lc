@@ -35,6 +35,7 @@
 (define (list . l) l)
 
 (define (append . lsts)
+
   (define (append-two lst1 lst2)
     (if (null? lst1)
       lst2
@@ -46,9 +47,8 @@
   (append-h lsts))
 
 (define (list? n)
-  (cond ((null? n) #t)
-        ((pair? n) (list? (cdr n)))
-        (else #f)))
+  (or (null? n)
+      (and (pair? n) (list? (cdr n)))))
 
 (define (list-ref lst i)
   (if (= i 0)

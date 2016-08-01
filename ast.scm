@@ -475,7 +475,7 @@
                       (x86-mov cgc dest (x86-imm-int (obj-encoding ast)))
                       (x86-mov cgc dest (x86-mem (cst-get ast)))))
                 (jump-to-version cgc succ (ctx-push ctx type reg))))))
-        (else (error "Internal error mlc-quote"))))
+        (else (pp ast) (error "Internal error mlc-quote"))))
 
 ;;-----------------------------------------------------------------------------
 ;; VARIABLES GET
