@@ -5,7 +5,7 @@
     (+ (fib (- n 1))
        (fib (- n 2)))))
 
-(fib 30)
+(fib 40)
 
 
 ;; Au moment d'un binding d'un id, regarder si c'est une fonction non mutable.

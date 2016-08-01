@@ -1970,9 +1970,11 @@
         (apply-moves cgc fctx moves)
         ;; Generate & push continuation
         ;; gen-continuation-* needs ctx without return address slot
+
         (if opt-return-points
             (gen-continuation-cr cgc ast succ nctx '() apply?) ;; TODO: remove '() arg
             (gen-continuation-rp cgc ast succ nctx '() apply?))
+
         fctx)))
 
 ;; Push closure, put it in rax, and return updated ctx

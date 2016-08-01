@@ -735,7 +735,7 @@
   (x86-label cgc label-load-ret)
   (x86-mov cgc (x86-rax) (x86-imm-int (vector-ref label-cont-stub 1)))
   (assert (= (modulo (vector-ref label-cont-stub 1) 4) 0) "Internal error")
-  (x86-mov cgc (x86-mem 0 (x86-usp)) cgc (x86-rax)))
+  (x86-mov cgc (x86-mem 0 (x86-usp)) (x86-rax)))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
