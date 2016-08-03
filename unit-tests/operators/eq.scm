@@ -51,7 +51,6 @@
 (println (eq? (lambda (x y) (* x y)) #f))
 (println (eq? (lambda (x y) (* x y)) '()))
 (println (eq? (lambda (x y) (* x y)) (cons 1 2)))
-(println (eq? (lambda (x y) (* x y)) (lambda (x y) (* x y))))
 
 ;#t
 ;#f
@@ -65,7 +64,6 @@
 ;#f
 ;#f
 ;#t
-;#f
 ;#f
 ;#f
 ;#f

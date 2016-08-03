@@ -492,29 +492,28 @@
 (define (codegen-pair cgc fs reg lcar lcdr car-cst? cdr-cst?)
 
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opcar (lambda () (and (not car-cst?) (codegen-loc-to-x86opnd fs lcar))))
-        (opcdr (lambda () (and (not cdr-cst?) (codegen-loc-to-x86opnd fs lcdr)))))
+        (opcar (and (not car-cst?) (codegen-loc-to-x86opnd fs lcar)))
+        (opcdr (and (not cdr-cst?) (codegen-loc-to-x86opnd fs lcdr))))
 
-    (begin-with-cg-macro
+    (gen-allocation-imm cgc STAG_PAIR 16)
 
-      ;;
-      (if (not car-cst?)
-          (chk-pick-unmem! (opcar) (list dest (opcar) (opcdr))))
-      (if (not cdr-cst?)
-          (chk-pick-unmem! (opcdr) (list dest (opcar) (opcdr))))
+    (cond (car-cst?
+            (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-imm-int (obj-encoding lcar)) 64))
+          ((x86-mem? opcar)
+            (x86-mov cgc (x86-rax) opcar)
+            (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax)))
+          (else
+            (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) opcar)))
 
-      ;; Get end of scheme pair in alloc-ptr
-      (gen-allocation-imm cgc STAG_PAIR 16)
+    (cond (cdr-cst?
+            (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-imm-int (obj-encoding lcdr)) 64))
+          ((x86-mem? opcdr)
+            (x86-mov cgc (x86-rax) opcdr)
+            (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-rax)))
+          (else
+            (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) opcdr)))
 
-      (if car-cst?
-          (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-imm-int (obj-encoding lcar)) 64)
-          (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (opcar)))
-
-      (if cdr-cst?
-          (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-imm-int (obj-encoding lcdr)) 64)
-          (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (opcdr)))
-
-      (x86-lea cgc dest (x86-mem (+ -24 TAG_PAIR) alloc-ptr)))))
+    (x86-lea cgc dest (x86-mem (+ -24 TAG_PAIR) alloc-ptr))))
 
 ;;-----------------------------------------------------------------------------
 ;; Functions
