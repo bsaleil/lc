@@ -30,9 +30,6 @@
 (define (integer? n)
   (fixnum? n)) ;; TODO flonum
 
-(define (zero? x)
-  (= x 0))
-
 (define (positive? x)
   (> x 0))
 

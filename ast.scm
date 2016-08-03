@@ -235,6 +235,7 @@
                      (cdr                 1  1  ,(prim-types 1 CTX_PAI)                     ())
                      (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL)          (0 1))
                      (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR)        (0 1))
+                     (zero?               1  1  ,(prim-types 1 CTX_INT)                     ())
                      (not                 1  1  ,(prim-types 1 CTX_ALL)                     ()) ;; + efficace cst TODO
                      (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1))
                      (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL)            (1))
@@ -1559,12 +1560,19 @@
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_INT reg))))
 
 ;;
-(define (mlc-primitive ast succ)
 
+(define (mlc-primitive ast succ)
   (let ((op (car ast)))
     (cond ((and (= (length ast) 2)
                 (member op '(##fx-? ##fl-)))
-             (set! ast (list op 0 (cadr ast))))))
+             (mlc-primitive-d (list op 0 (cadr ast)) succ))
+          ((and (= (length ast) 2)
+                (eq? op 'zero?))
+             (gen-ast (list '= (cadr ast) 0) succ))
+          (else
+             (mlc-primitive-d ast succ)))))
+
+(define (mlc-primitive-d ast succ)
 
   ;; Assert primitive nb args
   (assert-p-nbargs ast)

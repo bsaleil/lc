@@ -28,9 +28,10 @@
 ;;---------------------------------------------------------------------------
 
 (define (length l)
-  (if (null? l)
-      0
-      (+ 1 (length (cdr l)))))
+  (let loop ((l l) (len 0))
+    (cond ((null? l) len)
+          ((pair? l) (loop (cdr l) (+ 1 len)))
+          (else (error "LIST expected")))))
 
 (define (list . l) l)
 
@@ -38,12 +39,15 @@
 
   (define (append-two lst1 lst2)
     (if (null? lst1)
-      lst2
-      (cons (car lst1) (append-two (cdr lst1) lst2))))
+        lst2
+        (cons (car lst1)
+              (append-two (cdr lst1) lst2))))
+
   (define (append-h lsts)
     (if (null? lsts)
       '()
       (append-two (car lsts) (append-h (cdr lsts)))))
+
   (append-h lsts))
 
 (define (list? n)
@@ -55,11 +59,11 @@
     (car lst)
     (list-ref (cdr lst) (- i 1))))
 
-(define (reverse lst)
-   (if (null? lst)
-       '()
-       (append (reverse (cdr lst))
-               (list (car lst)))))
+(define (reverse l)
+  (let loop ((l l) (r '()))
+    (cond ((null? l) r)
+          ((pair? l) (loop (cdr l) (cons (car l) r)))
+          (else (error "LIST expected")))))
 
 (define (for-each f lst)
    (if (not (null? lst))
