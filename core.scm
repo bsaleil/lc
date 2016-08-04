@@ -1234,8 +1234,8 @@
 
   (define (fn-patch label-dest new-version?)
     (cond ((not opt-entry-points)
-           (error "NYI"))
-           ;(patch-closure-ep ast closure entry-obj label-dest ep-loc)) ;; TODO WIP multiple patch for same closure(?)
+             (let ((closure (if global-opt-sym #f closure)))
+               (patch-closure-ep ast closure entry-obj label-dest)))
           (generic
            (let ((cctable-loc (- (obj-encoding entry-obj) 1)))
              (patch-generic ast cctable-loc call-stack label-dest)))
@@ -1450,17 +1450,19 @@
     label-addr))
 
 ;; Patch closure when opt-entry-points is #f (only one ep)
-(define (patch-closure-ep ast closure entry-iden label ep-loc)
+(define (patch-closure-ep ast closure entryvec label)
 
   (define label-addr (asm-label-pos label))
 
+  ;; Patch entry vector
+  (vector-set! entryvec 0 (quotient label-addr 4))
+
   ;; Patch current closure
-  (if ep-loc
-      ;; Static call, patch global closure
-      (put-i64 (+ (- (obj-encoding ep-loc) TAG_MEMOBJ) 8) label-addr)
-      ;; Dynamic call, patch current closure and entry-iden
-      (begin (put-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8) label-addr)
-             (vector-set! entry-iden 0 (quotient label-addr 4))))
+  (if closure
+      (put-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8) label-addr))
+
+  ;;
+  (patch-direct-jmp-labels entryvec 0 label)
 
   label-addr)
 

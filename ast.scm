@@ -2229,11 +2229,21 @@
   ;; TODO: eploc -> entry-obj-loc
   (define eploc (and entry-obj (- (obj-encoding entry-obj) 1)))
 
+  (define (get-cc-direct cc-idx)
+    (if (and cc-idx entry-obj)
+        (get-xx-direct cc-idx)
+        #f))
+
+  (define (get-ep-direct)
+    (if entry-obj
+        (get-xx-direct 0)
+        #f))
+
   (define (get-xx-direct idx)
     (let ((r (asc-entry-stub-get entry-obj))
           (ep (if opt-entry-points
                   (s64vector-ref entry-obj (+ idx 1))
-                  (vector-ref entry-obj 0))))
+                  (* 4 (vector-ref entry-obj 0)))))
       (cond ;; It's a call to an already generated entry point
             ((and (not (= ep (car r)))
                   (not (= ep (cdr r))))
@@ -2247,16 +2257,6 @@
             ;;
             (else
                #f))))
-
-  (define (get-cc-direct cc-idx)
-    (if (and cc-idx entry-obj)
-        (get-xx-direct cc-idx)
-        #f))
-
-  (define (get-ep-direct)
-    (if entry-obj
-        (get-xx-direct 0)
-        #f))
 
   (cond ((not opt-entry-points)
            (let ((direct (get-ep-direct)))
