@@ -837,6 +837,7 @@
 (define (mlc-lambda ast succ global-opt #!optional (bound-id #f) (fvars-imm #f) (fvars-late '()))
 
   ;; ---------------------------------------------------------------------------
+  ;; TODO !pair
   ;; Return pair (entry-iden . entry-loc)
   ;; entry-iden is an object used as unique (eq?) identifier for the entry point
   ;; entry-addr is the actual address sotres in the closure
@@ -851,12 +852,18 @@
            (cctable-loc (- (obj-encoding cctable) 1)))
       ;; The compiler needs to fill cctable if it is a new cctable
       (if cctable-new?
-          (cctable-fill cctable stub-addr generic-addr))
+          (begin
+            ;; Add cctable->stub-addrs assoc
+            (asc-cc-stub-add (- (obj-encoding cctable) 1) generic-addr stub-addr)
+            (cctable-fill cctable stub-addr generic-addr)))
       cctable-loc))
   ;; In the case of -ep, entry-iden is the still vector of size 1 which contains
   ;; entry-point, and entry-loc is the value stored in this vector
   (define (entry-iden/addr-ep ctx stub-addr generic-addr)
-    (get-entry-points-loc ast stub-addr))
+    (let ((v (get-entry-points-loc ast stub-addr)))
+      (asc-cc-stub-add v generic-addr stub-addr)
+      v))
+
   ;; ---------------------------------------------------------------------------
 
   ;; Lazy closure generation
@@ -2221,8 +2228,27 @@
 
   (define eploc (and fn-num (asc-globalfn-entry-get fn-num)))
 
-  (define (get-ep-direct cc-idx)
-    (if (and opt-entry-points cc-idx eploc)
+  (define (get-ep-direct)
+    (if eploc
+        (let ((r (asc-cc-stub-get eploc))
+              (ep (* 4 (vector-ref eploc 0))))
+          (cond ;; It's a call to an already generated entry point
+                ((and (not (= ep (car r)))
+                      (not (= ep (cdr r))))
+                   (list 'ep ep))
+                ;; It's a call to a known stub
+                ((or (= ep (car r))
+                     (= ep (cdr r)))
+                   (let ((label (asm-make-label #f (new-sym 'stub_load_))))
+                     (asc-entry-load-add (obj-encoding eploc) 0 label)
+                     (list 'stub ep label)))
+                ;;
+                (else
+                  #f)))
+        #f))
+
+  (define (get-cc-direct cc-idx)
+    (if (and cc-idx eploc)
         (let ((r  (asc-cc-stub-get eploc))
               (ep (get-i64 (+ eploc (* 8 (+ 2 cc-idx))))))
           (cond ;; It's a call to an already generated entry point
@@ -2230,7 +2256,8 @@
                       (not (= ep (cdr r))))
                    (list 'ep ep))
                 ;; It's a call to a known stub
-                ((= ep (cdr r))
+                ((or (= ep (car r))
+                     (= ep (cdr r)))
                    (let ((label (asm-make-label #f (new-sym 'stub_load_))))
                      (asc-entry-load-add eploc cc-idx label)
                      (list 'stub ep label)))
@@ -2240,12 +2267,13 @@
         #f))
 
   (cond ((not opt-entry-points)
-           (codegen-call-ep cgc nb-args eploc))
+           (let ((direct (get-ep-direct)))
+             (codegen-call-ep cgc nb-args eploc direct)))
         ((not nb-args) ;; apply
            (codegen-call-cc-gen cgc #f eploc))
         (else
            (let* ((idx (get-closure-index (ctx-stack call-ctx)))
-                  (direct (get-ep-direct idx)))
+                  (direct (get-cc-direct idx)))
              (if idx
                  (codegen-call-cc-spe cgc idx nb-args eploc direct)
                  (codegen-call-cc-gen cgc nb-args eploc))))))
@@ -2592,8 +2620,6 @@
 
 ;; Fill cctable with stub and generic addresses
 (define (cctable-fill cctable stub-addr generic-addr)
-  ;; Add cctable->stub-addrs assoc (TODO: move where cctable-fill is called (?))
-  (asc-cc-stub-add (- (obj-encoding cctable) 1) generic-addr stub-addr)
   ;; Fill cctable
   (put-i64 (+ 8 (- (obj-encoding cctable) 1)) generic-addr) ;; Write generic after header
   (let loop ((i 1))

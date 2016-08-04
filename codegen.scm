@@ -673,16 +673,23 @@
 
 ;; Generate function call using a single entry point
 ;; eploc is the cctable or entry points if it's known
-(define (codegen-call-ep cgc nb-args eploc)
+(define (codegen-call-ep cgc nb-args eploc direct-eploc)
   ;; TODO: use call/ret if opt-entry-points opt-return-points are #f
   (if nb-args ;; If nb-args given, move encoded in rdi, else nb-args is already encoded in rdi (apply)
       (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args))))
 
-  (if eploc
-      (x86-jmp cgc (x86-mem (+ (obj-encoding eploc) 7) #f))
-      (begin
-        (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
-        (x86-jmp cgc (x86-rdx)))))
+  (cond (direct-eploc
+          ;; If it's a direct call to a not yet generated entry point, add stub_load label
+          (if (eq? (car direct-eploc) 'stub)
+              (let ((load-label (caddr direct-eploc)))
+                (x86-label cgc load-label)))
+          (let ((label (asm-make-label #f (new-sym 'known_dest_) (cadr direct-eploc))))
+            (x86-jmp cgc label)))
+        (eploc
+          (x86-jmp cgc (x86-mem (+ (obj-encoding eploc) 7) #f)))
+        (else
+          (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
+          (x86-jmp cgc (x86-rdx)))))
 
 ;; Generate function call using a cctable and generic entry point
 ;; eploc is the cctable or entry points if it's known
