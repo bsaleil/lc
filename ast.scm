@@ -140,7 +140,7 @@
 ;; This structure is used to determine if an entry of the cctable is a stub
 ;; address or a version address
 ;;
-(define asc-cc-stub (make-table))
+(define asc-cc-stub (make-table test: eq?))
 ;; Add an entry to the table
 (define (asc-cc-stub-add cctable generic-addr stub-addr)
   (table-set! asc-cc-stub cctable (cons generic-addr stub-addr)))
@@ -156,7 +156,11 @@
 ;; When the stub generate a version stored in this cctable with a ctx represented by 'ctxidx',
 ;; it patches all stored labels and clear the table entry
 ;;
-(define asc-entry-load (make-table))
+(define asc-entry-load
+  (make-table
+    test: (lambda (k1 k2)
+            (and (eq? (car k1) (car k2))     ;; eq? on cctables
+                 (=   (cdr k1) (cdr k2)))))) ;; = on idx
 ;; Add an entry to the table
 (define (asc-entry-load-add cctable ctxidx label)
   (let ((r (table-ref asc-entry-load (cons cctable ctxidx) '())))
@@ -847,19 +851,21 @@
            (cctable-key (get-cctable-key ast ctx fvars-imm fvars-late))
            (cctable     (let ((table (cctable-get cctable-key)))
                           (or table
-                              (begin (set! cctable-new? #t) (cctable-make cctable-key))))))
+                              (begin (set! cctable-new? #t) (cctable-make cctable-key)))))
+           (cctable-loc (- (obj-encoding cctable) 1)))
       ;; The compiler needs to fill cctable if it is a new cctable
       (if cctable-new?
           (begin
             ;; Add cctable->stub-addrs assoc
-            (asc-cc-stub-add (- (obj-encoding cctable) 1) generic-addr stub-addr)
+            (asc-cc-stub-add cctable generic-addr stub-addr)
             (cctable-fill cctable stub-addr generic-addr)))
       cctable))
   ;; In the case of -ep, entry object is the still vector of size 1 that contain the single entry point
   (define (entry-obj-ep ctx stub-addr generic-addr)
-    (let ((v (get-entry-points-loc ast stub-addr)))
-      (asc-cc-stub-add v generic-addr stub-addr)
-      v))
+    (let* ((entryvec (get-entry-points-loc ast stub-addr))
+           (entryvec-loc (- (obj-encoding entryvec) 1)))
+      (asc-cc-stub-add entryvec generic-addr stub-addr)
+      entryvec))
 
   ;; ---------------------------------------------------------------------------
 
@@ -905,7 +911,7 @@
             (gen-inc-slot cgc 'closures))
 
           ;; Add association fn-num -> entry point
-          (asc-globalfn-entry-add fn-num entry-obj-loc)
+          (asc-globalfn-entry-add fn-num entry-obj)
 
           ;; If there is no fvars, and only one late bind which is self
           (if (and (null? fvars-imm)
@@ -2222,31 +2228,17 @@
 ;; (compile time lookup)
 (define (gen-call-sequence ast cgc call-ctx nb-args fn-num)
 
-  (define eploc (and fn-num (asc-globalfn-entry-get fn-num)))
+  (define entry-obj (and fn-num (asc-globalfn-entry-get fn-num)))
+  ;; TODO: eploc -> entry-obj-loc
+  (define eploc (and entry-obj (- (obj-encoding entry-obj) 1)))
 
   (define (get-ep-direct)
-    (if eploc
-        (let ((r (asc-cc-stub-get eploc))
-              (ep (* 4 (vector-ref eploc 0))))
-          (cond ;; It's a call to an already generated entry point
-                ((and (not (= ep (car r)))
-                      (not (= ep (cdr r))))
-                   (list 'ep ep))
-                ;; It's a call to a known stub
-                ((or (= ep (car r))
-                     (= ep (cdr r)))
-                   (let ((label (asm-make-label #f (new-sym 'stub_load_))))
-                     (asc-entry-load-add (obj-encoding eploc) 0 label)
-                     (list 'stub ep label)))
-                ;;
-                (else
-                  #f)))
-        #f))
+    (error "NYI"))
 
   (define (get-cc-direct cc-idx)
-    (if (and cc-idx eploc)
-        (let ((r  (asc-cc-stub-get eploc))
-              (ep (get-i64 (+ eploc (* 8 (+ 2 cc-idx))))))
+    (if (and cc-idx entry-obj)
+        (let ((r  (asc-cc-stub-get entry-obj))
+              (ep (s64vector-ref entry-obj (+ cc-idx 1))))
           (cond ;; It's a call to an already generated entry point
                 ((and (not (= ep (car r)))
                       (not (= ep (cdr r))))
@@ -2255,7 +2247,7 @@
                 ((or (= ep (car r))
                      (= ep (cdr r)))
                    (let ((label (asm-make-label #f (new-sym 'stub_load_))))
-                     (asc-entry-load-add eploc cc-idx label)
+                     (asc-entry-load-add entry-obj cc-idx label)
                      (list 'stub ep label)))
                 ;;
                 (else

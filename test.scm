@@ -1,12 +1,12 @@
 
 (define (fib n)
   (if (< n 2)
-    n
+    1
     (+ (fib (- n 1))
        (fib (- n 2)))))
 
 ;(apply fib (list 35))
-(fib 35)
+(fib 40)
 
 ;(define (foo)
 ;  (make-vector 5))
