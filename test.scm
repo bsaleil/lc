@@ -1,5 +1,10 @@
 
 
+(define (fib n)
+  (+ 10 n))
+
+(fib 10)
+
 ;(define (foo)
 ;  (make-vector 5))
 ;

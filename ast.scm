@@ -1281,8 +1281,6 @@
                    (ctx-get-loc ctx 1))))
          (n-pop (count (list lcst rcst) not)))
 
-    ;; Si les deux types sont différents (et connus)
-    ;; on peut sauter direct à #f
     (if (and (not (eq? tleft CTX_UNK))
              (not (eq? tright CTX_UNK))
              (not (eq? tleft tright)))

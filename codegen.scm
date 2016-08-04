@@ -679,10 +679,10 @@
       (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args))))
 
   (if eploc
-      (x86-jmp cgc (x86-mem (+ (obj-encoding eploc) 7) #f)))
+      (x86-jmp cgc (x86-mem (+ (obj-encoding eploc) 7) #f))
       (begin
         (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
-        (x86-jmp cgc (x86-rdx))))
+        (x86-jmp cgc (x86-rdx)))))
 
 ;; Generate function call using a cctable and generic entry point
 ;; eploc is the cctable or entry points if it's known
