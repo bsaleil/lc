@@ -135,42 +135,43 @@
           (+ (obj-encoding box) (- 8 TAG_MEMOBJ))))))
 
 ;;
-;; CCTable -> stubs
-;; Associate a pair generic,stub to a cctable
-;; This structure is used to determine if an entry of the cctable is a stub
+;; entry-object -> stubs
+;; Associate a pair generic,stub to an entry object
+;; This structure is used to determine if an entry point is a stub
 ;; address or a version address
 ;;
-(define asc-cc-stub (make-table test: eq?))
+(define asc-entry-stub (make-table test: eq?))
 ;; Add an entry to the table
-(define (asc-cc-stub-add cctable generic-addr stub-addr)
-  (table-set! asc-cc-stub cctable (cons generic-addr stub-addr)))
+(define (asc-entry-stub-add cctable generic-addr stub-addr)
+  (table-set! asc-entry-stub cctable (cons generic-addr stub-addr)))
 ;; Read an entry from the table
-(define (asc-cc-stub-get cctable)
-  (table-ref asc-cc-stub cctable #f))
+(define (asc-entry-stub-get cctable)
+  (table-ref asc-entry-stub cctable #f))
 
 ;;
-;; CCTable/CtxIdx -> label list
-;; Associate a list of label to a pair cctable/ctxidx
+;; (entry-obj . idx) -> label list
+;; Associate a list of label to a pair entry-obj/idx
 ;; This structure is used to store all addresses where the compiler generated a
 ;; direct jump to a stub.
-;; When the stub generate a version stored in this cctable with a ctx represented by 'ctxidx',
+;; When the stub generate a version stored in this entry object
 ;; it patches all stored labels and clear the table entry
 ;;
+;; idx is the ctx idx if using cctable, 0 otherwise
 (define asc-entry-load
   (make-table
     test: (lambda (k1 k2)
             (and (eq? (car k1) (car k2))     ;; eq? on cctables
                  (=   (cdr k1) (cdr k2)))))) ;; = on idx
 ;; Add an entry to the table
-(define (asc-entry-load-add cctable ctxidx label)
-  (let ((r (table-ref asc-entry-load (cons cctable ctxidx) '())))
-    (table-set! asc-entry-load (cons cctable ctxidx) (cons label r))))
-;; Get all labels from cctable and ctxidx
-(define (asc-entry-load-get cctable ctxidx)
-  (table-ref asc-entry-load (cons cctable ctxidx) '()))
-;; Clear the entry for the cctable/ctxidx
-(define (asc-entry-load-clear cctable ctxidx)
-  (table-set! asc-entry-load (cons cctable ctxidx) '())) ;; TODO: remove table entry
+(define (asc-entry-load-add entry-obj ctxidx label)
+  (let ((r (table-ref asc-entry-load (cons entry-obj ctxidx) '())))
+    (table-set! asc-entry-load (cons entry-obj ctxidx) (cons label r))))
+;; Get all labels from entry object and ctxidx
+(define (asc-entry-load-get entry-obj ctxidx)
+  (table-ref asc-entry-load (cons entry-obj ctxidx) '()))
+;; Clear the entry for the entry-object/ctxidx
+(define (asc-entry-load-clear entry-obj ctxidx)
+  (table-set! asc-entry-load (cons entry-obj ctxidx) '())) ;; TODO: remove table entry
 
 ;;
 ;; Global closures
@@ -841,7 +842,6 @@
 (define (mlc-lambda ast succ global-opt #!optional (bound-id #f) (fvars-imm #f) (fvars-late '()))
 
   ;; ---------------------------------------------------------------------------
-  ;; TODO !pair
   ;; Return 'entry-obj' (entry object)
   ;; An entry object is the object that contains entry-points-locs
   ;; In the case of -cc, entry object is the cctable
@@ -851,20 +851,18 @@
            (cctable-key (get-cctable-key ast ctx fvars-imm fvars-late))
            (cctable     (let ((table (cctable-get cctable-key)))
                           (or table
-                              (begin (set! cctable-new? #t) (cctable-make cctable-key)))))
-           (cctable-loc (- (obj-encoding cctable) 1)))
+                              (begin (set! cctable-new? #t) (cctable-make cctable-key))))))
       ;; The compiler needs to fill cctable if it is a new cctable
       (if cctable-new?
           (begin
             ;; Add cctable->stub-addrs assoc
-            (asc-cc-stub-add cctable generic-addr stub-addr)
+            (asc-entry-stub-add cctable generic-addr stub-addr)
             (cctable-fill cctable stub-addr generic-addr)))
       cctable))
   ;; In the case of -ep, entry object is the still vector of size 1 that contain the single entry point
   (define (entry-obj-ep ctx stub-addr generic-addr)
-    (let* ((entryvec (get-entry-points-loc ast stub-addr))
-           (entryvec-loc (- (obj-encoding entryvec) 1)))
-      (asc-cc-stub-add entryvec generic-addr stub-addr)
+    (let ((entryvec (get-entry-points-loc ast stub-addr)))
+      (asc-entry-stub-add entryvec generic-addr stub-addr)
       entryvec))
 
   ;; ---------------------------------------------------------------------------
@@ -2224,34 +2222,40 @@
     (codegen-load-cont-cr cgc crtable-loc)))
 
 ;; Gen call sequence (call instructions)
-;; Global-id contains global identifier if it is an optimized global call
-;; (compile time lookup)
+;; fn-num is fn identifier or #f
 (define (gen-call-sequence ast cgc call-ctx nb-args fn-num)
 
   (define entry-obj (and fn-num (asc-globalfn-entry-get fn-num)))
   ;; TODO: eploc -> entry-obj-loc
   (define eploc (and entry-obj (- (obj-encoding entry-obj) 1)))
 
-  (define (get-ep-direct)
-    (error "NYI"))
+  (define (get-xx-direct idx)
+    (let ((r (asc-entry-stub-get entry-obj))
+          (ep (if opt-entry-points
+                  (s64vector-ref entry-obj (+ idx 1))
+                  (vector-ref entry-obj 0))))
+      (cond ;; It's a call to an already generated entry point
+            ((and (not (= ep (car r)))
+                  (not (= ep (cdr r))))
+               (list 'ep ep))
+            ;; It's a call to a known stub
+            ((or (= ep (car r))
+                 (= ep (cdr r)))
+               (let ((label (asm-make-label #f (new-sym 'stub_load_))))
+                 (asc-entry-load-add entry-obj idx label)
+                 (list 'stub ep label)))
+            ;;
+            (else
+               #f))))
 
   (define (get-cc-direct cc-idx)
     (if (and cc-idx entry-obj)
-        (let ((r  (asc-cc-stub-get entry-obj))
-              (ep (s64vector-ref entry-obj (+ cc-idx 1))))
-          (cond ;; It's a call to an already generated entry point
-                ((and (not (= ep (car r)))
-                      (not (= ep (cdr r))))
-                   (list 'ep ep))
-                ;; It's a call to a known stub
-                ((or (= ep (car r))
-                     (= ep (cdr r)))
-                   (let ((label (asm-make-label #f (new-sym 'stub_load_))))
-                     (asc-entry-load-add entry-obj cc-idx label)
-                     (list 'stub ep label)))
-                ;;
-                (else
-                   #f)))
+        (get-xx-direct cc-idx)
+        #f))
+
+  (define (get-ep-direct)
+    (if entry-obj
+        (get-xx-direct 0)
         #f))
 
   (cond ((not opt-entry-points)
