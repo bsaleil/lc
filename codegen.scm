@@ -637,9 +637,9 @@
     (gen-allocation-imm cgc STAG_PROCEDURE (* 8 closure-size))))
 
 ;; Write entry point in closure (do not use cctable)
-(define (codegen-closure-ep cgc ep-loc nb-free)
+(define (codegen-closure-ep cgc entryvec-loc nb-free)
   (let ((offset (+ OFFSET_PROC_EP (* -8 (+ nb-free 2)))))
-    (x86-mov cgc (x86-rax) (x86-mem (+ 8 (- (obj-encoding ep-loc) 1))))
+    (x86-mov cgc (x86-rax) (x86-mem (+ 8 entryvec-loc)))
     (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))))
 
 ;; Write cctable ptr in closure (use multiple entry points)

@@ -838,28 +838,25 @@
 
   ;; ---------------------------------------------------------------------------
   ;; TODO !pair
-  ;; Return pair (entry-iden . entry-loc)
-  ;; entry-iden is an object used as unique (eq?) identifier for the entry point
-  ;; entry-addr is the actual address sotres in the closure
-  ;; In the case of -cc, entry-iden and entry-loc are both cctable address
-  (define (entry-iden/addr-cc ctx stub-addr generic-addr)
+  ;; Return 'entry-obj' (entry object)
+  ;; An entry object is the object that contains entry-points-locs
+  ;; In the case of -cc, entry object is the cctable
+  (define (entry-obj-cc ctx stub-addr generic-addr)
     (let* (;; Is the cctable new or existed before ?
            (cctable-new? #f)
            (cctable-key (get-cctable-key ast ctx fvars-imm fvars-late))
            (cctable     (let ((table (cctable-get cctable-key)))
                           (or table
-                              (begin (set! cctable-new? #t) (cctable-make cctable-key)))))
-           (cctable-loc (- (obj-encoding cctable) 1)))
+                              (begin (set! cctable-new? #t) (cctable-make cctable-key))))))
       ;; The compiler needs to fill cctable if it is a new cctable
       (if cctable-new?
           (begin
             ;; Add cctable->stub-addrs assoc
             (asc-cc-stub-add (- (obj-encoding cctable) 1) generic-addr stub-addr)
             (cctable-fill cctable stub-addr generic-addr)))
-      cctable-loc))
-  ;; In the case of -ep, entry-iden is the still vector of size 1 which contains
-  ;; entry-point, and entry-loc is the value stored in this vector
-  (define (entry-iden/addr-ep ctx stub-addr generic-addr)
+      cctable))
+  ;; In the case of -ep, entry object is the still vector of size 1 that contain the single entry point
+  (define (entry-obj-ep ctx stub-addr generic-addr)
     (let ((v (get-entry-points-loc ast stub-addr)))
       (asc-cc-stub-add v generic-addr stub-addr)
       v))
@@ -889,16 +886,15 @@
                (fn-generator
                  (lambda (closure prologue stack generic?)
                    (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) global-opt fvars-late fn-num bound-id)))
-                     (gen-version-fn ast closure entry-iden prologue ctx stack generic? global-opt))))
+                     (gen-version-fn ast closure entry-obj prologue ctx stack generic? global-opt))))
                ;;
                (stub-labels  (create-fn-stub cgc ast fn-num fn-generator))
                (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
                (generic-addr (asm-label-pos (list-ref stub-labels 1)))
-               (entry-iden (if opt-entry-points
-                               (entry-iden/addr-cc ctx stub-addr generic-addr)
-                               (entry-iden/addr-ep ctx stub-addr generic-addr))))
-
-          (set! liden entry-iden)
+               (entry-obj (if opt-entry-points
+                               (entry-obj-cc ctx stub-addr generic-addr)
+                               (entry-obj-ep ctx stub-addr generic-addr)))
+               (entry-obj-loc (- (obj-encoding entry-obj) 1)))
 
           ;; Add compile time identity if known
           (if global-opt
@@ -909,7 +905,7 @@
             (gen-inc-slot cgc 'closures))
 
           ;; Add association fn-num -> entry point
-          (asc-globalfn-entry-add fn-num entry-iden)
+          (asc-globalfn-entry-add fn-num entry-obj-loc)
 
           ;; If there is no fvars, and only one late bind which is self
           (if (and (null? fvars-imm)
@@ -917,14 +913,14 @@
                        (and (= (length fvars-late) 1)
                             (eq? (car fvars-late) bound-id))))
               ;; then use a global closure
-              (gen-global-closure cgc ctx ast succ entry-iden fvars-late)
+              (gen-global-closure cgc ctx ast succ entry-obj-loc fvars-late)
               ;; else use a local closure
-              (gen-local-closure cgc ctx ast succ entry-iden fvars-late fvars-imm))))))
+              (gen-local-closure cgc ctx ast succ entry-obj-loc fvars-late fvars-imm))))))
 
 ;; Create or use an existing global closure, and load it in dest register
 ;; A global closure is a closure without any free vars which can be use as a single instance
 (define (gen-global-closure cgc ctx ast succ ep fvars-late)
-  (let* ((ep-qword (if opt-entry-points ep (* 4 (vector-ref ep 0))))
+  (let* ((ep-qword (if opt-entry-points ep (get-i64 (+ ep 8))))
          (qword (global-closures-add ast ep-qword (length fvars-late))))
     (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
       (apply-moves cgc ctx moves)
@@ -933,7 +929,7 @@
 
 ;; Create a local closure, and load it in dest register
 ;; A local closure is a closure with free variables which needs to be instantiated
-(define (gen-local-closure cgc ctx ast succ ep fvars-late fvars-imm)
+(define (gen-local-closure cgc ctx ast succ entry-obj-loc fvars-late fvars-imm)
 
   (define close-length (+ (length fvars-imm) (length fvars-late)))
 
@@ -944,9 +940,9 @@
   ;; Write entry point or cctable location
   (if opt-entry-points
       ;; If opt-entry-points generate a closure using cctable
-      (codegen-closure-cc cgc ep close-length)
+      (codegen-closure-cc cgc entry-obj-loc close-length)
       ;; Else, generate a closure using a single entry point
-      (codegen-closure-ep cgc ep close-length))
+      (codegen-closure-ep cgc entry-obj-loc close-length))
 
   ;; Write free variables
   (let* ((free-offset (* -1 (+ (length fvars-imm) (length fvars-late))))
