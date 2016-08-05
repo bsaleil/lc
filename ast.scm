@@ -202,8 +202,11 @@
             (put-i64 (+ addr 0) (mem-header 8 STAG_PROCEDURE LIFE_PERM))
             (put-i64 (+ addr 8) ep)
             (set! global-closures-ptr (+ global-closures-ptr 16 (* 8 nblate)))
-            (assert (< global-closures-ptr global-closures-lim) "NYI: global-closures limimit reached.")
+            (assert (< global-closures-ptr global-closures-lim) "NYI: global-closures limit reached.")
             (+ addr TAG_MEMOBJ)))))) ;; Return encoded closure
+;;
+(define (global-closures-get ast)
+  (table-ref global-closures-table ast #f))
 
 ;;-----------------------------------------------------------------------------
 ;; Type predicates
@@ -800,28 +803,29 @@
 ;;
 ;; Create fn entry stub
 (define (create-fn-stub cgc ast fn-num fn-generator)
+
+  ;; Function use rest param ?
+  (define rest-param (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
+                         (and (pair? (cadr ast)) (not (list? (cadr ast)))))) ;; (foo a..z . rest)
+  ;; List of formal params
+  (define params
+    (if rest-param
+        (formal-params (cadr ast))
+        (cadr ast)))
+  ;; Lazy lambda return
+  (define lazy-ret (get-lazy-return))
+  ;; Lazy lambda body
+  (define lazy-body (gen-ast (caddr ast) lazy-ret))
+  ;; Lazy function prologue
+  (define lazy-prologue (get-lazy-prologue ast lazy-body rest-param))
+  ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
+  (define lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params)))
+
   (add-fn-callback
     cgc
     1
     fn-num
     (lambda (stack ret-addr selector closure)
-
-      ;; Function use rest param ?
-      (define rest-param (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
-                             (and (pair? (cadr ast)) (not (list? (cadr ast)))))) ;; (foo a..z . rest)
-      ;; List of formal params
-      (define params
-        (if rest-param
-            (formal-params (cadr ast))
-            (cadr ast)))
-      ;; Lazy lambda return
-      (define lazy-ret (get-lazy-return))
-      ;; Lazy lambda body
-      (define lazy-body (gen-ast (caddr ast) lazy-ret))
-      ;; Lazy function prologue
-      (define lazy-prologue (get-lazy-prologue ast lazy-body rest-param))
-      ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
-      (define lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params)))
 
       (cond ;; CASE 1 - Use entry point (no cctable)
             ((eq? opt-entry-points #f)

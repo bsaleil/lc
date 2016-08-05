@@ -66,6 +66,7 @@
 (define asc-entry-load-get #f)
 (define asc-entry-load-clear #f)
 (define asc-globalfn-entry-get #f)
+(define global-closures-get #f)
 
 (define init-mss #f)
 (define get___heap_limit-addr  #f)
@@ -1228,6 +1229,7 @@
 
   (define (fn-verbose)
     (print "GEN VERSION FN")
+    (pp lazy-code)
     (print " >>> ")
     (pp gen-ctx)
     (pp call-stack))
@@ -1459,7 +1461,11 @@
 
   ;; Patch current closure
   (if closure
-      (put-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8) label-addr))
+      ;; if known closure, patch it
+      (put-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8) label-addr)
+      ;; else, it's a global closure, find it and patch it
+      (let ((cl (global-closures-get ast))) ;; get encoded closure
+        (put-i64 (+ (- cl TAG_MEMOBJ) 8) label-addr)))
 
   ;;
   (patch-direct-jmp-labels entryvec 0 label)

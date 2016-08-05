@@ -686,7 +686,8 @@
           (let ((label (asm-make-label #f (new-sym 'known_dest_) (cadr direct-eploc))))
             (x86-jmp cgc label)))
         (eploc
-          (x86-jmp cgc (x86-mem (+ (obj-encoding eploc) 7) #f)))
+          (error "NYI codegen-call-ep"))
+          ;(x86-jmp cgc (x86-mem (+ eploc 8) #f)))
         (else
           (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
           (x86-jmp cgc (x86-rdx)))))
