@@ -33,8 +33,6 @@
           ((pair? l) (loop (cdr l) (+ 1 len)))
           (else (error "LIST expected")))))
 
-(define (list . l) l)
-
 (define (append . lsts)
 
   (define (append-two lst1 lst2)

@@ -1,10 +1,13 @@
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
+(pp (list 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15))
 
-(fib 40)
+;list 1 2 3 4
+;
+;mov r1, 1
+;mov r2, 2
+;mov r3, 3
+;mov r4, 4
+
+
 
 
 ;(define (foo)

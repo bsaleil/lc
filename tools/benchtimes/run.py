@@ -191,16 +191,40 @@ g2 = System("GambitS",
             "(\d+) ms real time\\n",
             "accounting for (\d+) ms real time")
 
-l2 = System("LC-new",
+l1 = System("LC-ep-rp",
             "",
             ".scm",
             ["lazy-comp","{0}","--time"],
             "(\d+.\d+) ms real time\\n\(",
             "accounting for (\d+) ms real time")
 
-systems.append(l2)
+l2 = System("LC-rp",
+            "",
+            ".scm",
+            ["lazy-comp","{0}","--time","--disable-entry-points"],
+            "(\d+.\d+) ms real time\\n\(",
+            "accounting for (\d+) ms real time")
+
+l3 = System("LC-ep",
+            "",
+            ".scm",
+            ["lazy-comp","{0}","--time","--disable-return-points"],
+            "(\d+.\d+) ms real time\\n\(",
+            "accounting for (\d+) ms real time")
+
+l4 = System("LC-nep-nrp",
+            "",
+            ".scm",
+            ["lazy-comp","{0}","--time","--disable-entry-points","--disable-return-points"],
+            "(\d+.\d+) ms real time\\n\(",
+            "accounting for (\d+) ms real time")
+
+systems.append(l1)
 systems.append(g1)
+systems.append(l2)
 systems.append(g2)
+systems.append(l3)
+systems.append(l4)
 #systems.append(l1)
 
 

@@ -322,6 +322,8 @@
                     (gen-ast (append ast '((current-output-port))) succ))
                  ;; Vector
                  ((eq? op 'vector) (mlc-vector-p ast succ))
+                 ;; List
+                 ((eq? op 'list) (mlc-list-p ast succ))
                  ;; Inlined primitive
                  ((assoc op primitives) (mlc-primitive ast succ))
                  ;; Quote
@@ -535,6 +537,12 @@
                  (jump-to-version
                    cgc
                    (gen-ast (expand `(lambda l (list->vector l))) succ)
+                   ctx))
+              ;; List
+              ((eq? ast 'list)
+                 (jump-to-version
+                   cgc
+                   (gen-ast `(lambda n n) succ)
                    ctx))
               (else (gen-error cgc (ERR_UNKNOWN_VAR ast))))))))
 
@@ -1732,6 +1740,69 @@
   (gen-ast
     (list 'make-vector (length (cdr ast)))
     (get-chain 0 (cdr ast))))
+
+;;
+;; List primitive (not in primitives because we need >1 LCO)
+(define (mlc-list-p ast succ)
+
+  (define len (length (cdr ast)))
+
+  (define (build-chain n)
+    (if (= n 0)
+        (make-lazy-code
+          (lambda (cgc ctx)
+            (let ((loc (ctx-get-loc ctx n)))
+              (let ((pair-offset (* -3 8 n)))
+                ;; Write header
+                (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
+                ;; Write null in cdr
+                (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-imm-int (obj-encoding '())) 64)
+                ;; Write value in car
+                (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
+                (mlet ((moves/reg/ctx (ctx-get-free-reg (ctx-pop-n ctx len))))
+                   (apply-moves cgc ctx moves)
+                   ;; Load first pair in dest register
+                   (let ((dest (codegen-reg-to-x86reg reg)))
+                     (let ((offset (+ (* len 3 -8) TAG_PAIR)))
+                       (x86-lea cgc dest (x86-mem offset alloc-ptr))
+                       (jump-to-version cgc succ (ctx-push ctx CTX_PAI reg)))))))))
+        (make-lazy-code
+          (lambda (cgc ctx)
+            (let ((loc (ctx-get-loc ctx n)))
+              (let ((pair-offset (* -3 8 n)))
+                ;; Write header
+                (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
+                ;; Write encoded next pair in cdr
+                (x86-lea cgc (x86-rax) (x86-mem (+ pair-offset TAG_PAIR) alloc-ptr))
+                (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-rax))
+                ;; Write value in car
+                (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
+                  (if (x86-mem? opnd)
+                      (begin (x86-mov cgc (x86-rax) opnd)
+                             (set! opnd (x86-rax))))
+                  (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) opnd))
+                ;; Continue
+                (jump-to-version cgc (build-chain (- n 1)) ctx)))))))
+
+  (cond ;; (list)
+        ((= len 0)
+          (gen-ast '() succ))
+        ((> (* len 3 8) MSECTION_BIGGEST)
+          (gen-ast
+            (let ((sym (gensym)))
+              `(let ((,sym list))
+                 (,sym ,@(cdr ast))))
+            succ))
+        ;; (list ..)
+        (else
+        (let* ((lazy-list
+                 (make-lazy-code
+                   (lambda (cgc ctx)
+                     (let ((size (- (* len 3 8) 8)))
+                       ;; One alloc for all pairs
+                       (gen-allocation-imm cgc STAG_PAIR size)
+                       (jump-to-version cgc (build-chain (- len 1)) ctx))))))
+          (gen-ast-l (cdr ast) lazy-list)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Branches
