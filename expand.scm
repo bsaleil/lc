@@ -538,10 +538,11 @@
         ((eq? (length expr) 2) (expand (cadr expr))) ;; (or e1)
         (else
           (let ((sym (gensym)))
-             `(let ((,sym ,(expand (cadr expr))))
-                (if ,sym
-                   ,sym
-                   ,(expand `(or ,@(cddr expr))))))))) ;; (or e1 ... en)
+             (expand
+               `(let ((,sym ,(cadr expr)))
+                  (if ,sym
+                     ,sym
+                     (or ,@(cddr expr))))))))) ;; (or e1 ... en)
 
 ;; AND
 (define (expand-and expr)
@@ -570,18 +571,19 @@
   (cond ((null? (cdr (cadr expr)))
             ;; (cond (e1))
             (let ((sym (gensym)))
-              `(let ((,sym ,(expand (car (cadr expr)))))
-                 (if ,sym
-                    ,sym
-                    ,el))))
-
+              (expand
+                `(let ((,sym ,(car (cadr expr))))
+                   (if ,sym
+                      ,sym
+                      ,el)))))
         ((eq? (cadr (cadr expr)) '=>)
             ;; (cond (e1 => e2))
             (let ((sym (gensym)))
-              `(let ((,sym ,(expand (car (cadr expr)))))
-                  (if ,sym
-                    (,(expand (caddr (cadr expr))) ,sym)
-                    ,el))))
+              (expand
+                `(let ((,sym ,(car (cadr expr))))
+                    (if ,sym
+                      (,(caddr (cadr expr)) ,sym)
+                      ,el)))))
         (else
             ;; (cond (e1 ...))
             (expand
