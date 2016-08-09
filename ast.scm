@@ -1320,8 +1320,8 @@
                       (ctx-pop-n ctx n-pop) ;; if it's an if inlined condition, no push required
                       (ctx-push (ctx-pop-n ctx n-pop) CTX_BOOL reg))))
             (if inlined-if-cond?
-                (lazy-code-tmpdata-set! succ x86-jne))
-            (jump-to-version cgc succ ctx))))))
+                ((lazy-code-generator succ) cgc ctx x86-jne)
+                (jump-to-version cgc succ ctx)))))))
 
 ;; primitive number?
 (define (prim-number? cgc ctx reg succ cst-infos)
@@ -1821,11 +1821,7 @@
              (make-lazy-code-cond
                lazy-code1
                lazy-code0
-               (lambda (cgc ctx)
-
-                 (define x86-op (lazy-code-tmpdata lazy-code-test))
-                 ;; Reset tmpdta
-                 (lazy-code-tmpdata-set! lazy-code-test #f)
+               (lambda (cgc ctx #!optional x86-op)
 
                  (let* ((ctx0 (if x86-op ctx (ctx-pop ctx)))   ;; Pop condition result
 
@@ -2488,17 +2484,15 @@
           (apply-moves cgc ctx moves)
 
           (cond (num-op?
-                  (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #t))
+                  (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #t)
+                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg)))
                 (inlined-if-cond?
                   (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #t)))
-                    (lazy-code-tmpdata-set! succ x86-op)))
+                    ((lazy-code-generator succ) cgc (ctx-pop-n ctx n-pop) x86-op)))
                 (else
-                    (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #f)))
+                    (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #f)
+                    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg))))))))
 
-
-          (if inlined-if-cond?
-              (jump-to-version cgc succ (ctx-pop-n ctx n-pop))
-              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg)))))))
 
   ;;
   (define (get-op-ff leftint? rightint?)
@@ -2518,16 +2512,14 @@
                (n-pop (count (list lcst rcst) not)))
           (apply-moves cgc ctx moves)
           (cond (num-op?
-                  (codegen-num-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst #t))
+                  (codegen-num-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst #t)
+                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg)))
                 (inlined-if-cond?
                   (let ((x86-op (codegen-cmp-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst #t)))
-                    (lazy-code-tmpdata-set! succ x86-op)))
+                    ((lazy-code-generator succ) cgc (ctx-pop-n ctx n-pop) x86-op)))
                 (else
-                  (codegen-cmp-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst #f)))
-
-          (if inlined-if-cond?
-              (jump-to-version cgc succ (ctx-pop-n ctx n-pop))
-              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg)))))))
+                  (codegen-cmp-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst #f)
+                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg))))))))
 
   (assert (not (and inlined-if-cond? (member op '(+ - * /))))
           "Internal compiler error")

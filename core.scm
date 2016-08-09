@@ -985,7 +985,6 @@
   generator
   versions
   flags
-  tmpdata ;; Temporary data used to give parameter to successor
   lco-true  ;; lco of true branch if it's a cond lco
   lco-false ;; lco of false branch if it's a cond lco
   generic-ctx
@@ -996,27 +995,27 @@
   (table-length (lazy-code-versions lazy-code)))
 
 (define (make-lazy-code generator)
-  (let ((lc (make-lazy-code* generator (make-table) '() #f #f #f #f #f)))
+  (let ((lc (make-lazy-code* generator (make-table) '() #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-cont generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(cont) #f #f #f #f #f)))
+  (let ((lc (make-lazy-code* generator (make-table) '(cont) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-entry generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(entry) #f #f #f #f #f)))
+  (let ((lc (make-lazy-code* generator (make-table) '(entry) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-ret generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(ret) #f #f #f #f #f)))
+  (let ((lc (make-lazy-code* generator (make-table) '(ret) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-cond lco-true lco-false generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(cond) #f lco-true lco-false #f #f)))
+  (let ((lc (make-lazy-code* generator (make-table) '(cond) lco-true lco-false #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
@@ -1296,7 +1295,6 @@
 
 
       (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos)))
-  ;(gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
 
 ;; TODO WIP
 (define (gen-generic cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos)
