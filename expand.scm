@@ -418,7 +418,7 @@
            (let ((c (cadadr expr))
                  (t (cadddr expr))
                  (f (caddr expr)))
-             `(if ,(expand c) ,(expand t) ,(expand f))))
+             (expand `(if ,c ,t ,f))))
         ;;
         (else
            `(if ,(expand (cadr expr)) ,(expand (caddr expr)) ,(expand (cadddr expr))))))
@@ -547,7 +547,7 @@
 (define (expand-and expr)
   (cond ((eq? (length expr) 1) '#t) ;; (and)
         ((eq? (length expr) 2) (expand (cadr expr))) ;; (and e1)
-        (else `(if ,(expand (cadr expr)) ,(expand `(and ,@(cddr expr))) #f)))) ;; (and e1 ... en)
+        (else (expand `(if ,(cadr expr) (and ,@(cddr expr)) #f))))) ;; (and e1 ... en)
 
 ;; COND
 (define (expand-cond expr)
@@ -584,9 +584,10 @@
                     ,el))))
         (else
             ;; (cond (e1 ...))
-            `(if ,(expand (caadr expr))
-                ,(expand `(begin ,@(cdr (cadr expr))))
-                ,el))))
+            (expand
+              `(if ,(caadr expr)
+                  (begin ,@(cdr (cadr expr)))
+                  ,el)))))
 
 ;; CASE
 (define (expand-case expr)
@@ -605,15 +606,17 @@
            (let ((clause (car clauses)))
              (if (eq? (car clause) 'else)
                 (expand (cons 'begin (cdr clause)))
-                `(if (memv ,sym (quote ,(car clause)))
-                    ,(expand (cons 'begin (cdr clause)))
-                    #f))))
+                (expand
+                  `(if (memv ,sym (quote ,(car clause)))
+                      ,(cons 'begin (cdr clause))
+                      #f)))))
         ;; >1 clauses
         (else
           (let ((clause (car clauses)))
-            `(if (memv ,sym (quote ,(car clause)))
-                ,(expand (cons 'begin (cdr clause)))
-                ,(expand-case-clauses sym (cdr clauses)))))))
+            (expand
+              `(if (memv ,sym (quote ,(car clause)))
+                  ,(expand (cons 'begin (cdr clause)))
+                  ,(expand-case-clauses sym (cdr clauses))))))))
 
 ;;----------
 

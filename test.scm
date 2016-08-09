@@ -1,11 +1,27 @@
-(pp (list 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15))
 
-;list 1 2 3 4
+(define l18 '(18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0))
+(define l12 '(12 11 10 9 8 7 6 5 4 3 2 1 0))
+
+(define (shorterp x y)
+  (and (not (null? y))
+       (or (null? x)
+           (shorterp (cdr x)
+                     (cdr y)))))
+
+(shorterp l18 l12)
+
+
+;(define shorterp
+;  (lambda (x y)
+;    (if (null? y)
+;        #f
+;        (let ((#:g0 (null? x)))
+;          (if #:g0
+;              #:g0
+;              (shorterp (cdr x) (cdr y)))))))
 ;
-;mov r1, 1
-;mov r2, 2
-;mov r3, 3
-;mov r4, 4
+;(shorterp '(18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0) '(12 11 10 9 8 7 6 5 4 3 2 1 0)))
+;
 
 
 
