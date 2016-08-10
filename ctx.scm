@@ -671,6 +671,7 @@
                 pushed)))))
 
   (let ((pushed/moves (get-req-moves (- nb-args 1) args-regs '() '())))
+    
     (cons (car pushed/moves)
           (if clomove
               (steps (append (cdr pushed/moves) (list clomove)))

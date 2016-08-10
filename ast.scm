@@ -1200,6 +1200,7 @@
                   (make-lazy-code
                     (lambda (cgc ctx)
                       (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+                        (apply-moves cgc ctx moves)
                         (codegen-literal cgc STAG_PAIR reg)
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_INT reg))))))
                 (lazy-subtype
@@ -1208,6 +1209,7 @@
                       ;; We know here that the value is not a pair
                       (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
                              (type (ctx-get-type ctx 0)))
+                        (apply-moves cgc ctx moves)
                         (if (eq? type CTX_UNK)
                             ;; type is unknown, get it from memory
                             (codegen-subtype cgc (ctx-fs ctx) reg (ctx-get-loc ctx 0))

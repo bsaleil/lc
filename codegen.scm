@@ -172,6 +172,10 @@
 (define-macro (neq? l r)
   `(not (eq? ,l ,r)))
 
+(define (int32? n)
+  (and (>= n (expt -2 31))
+       (<  n (expt 2 31))))
+
 (define (codegen-void cgc reg)
   (let ((opnd (codegen-reg-to-x86reg reg)))
     (x86-mov cgc opnd (x86-imm-int ENCODING_VOID))))
@@ -884,14 +888,22 @@
         (set! lright (##flonum->fixnum lright)))
 
     (if lcst?
-        (begin
-          (set! opl opr)
-          (set! opr (x86-imm-int (obj-encoding lleft)))
-          (set! selop x86-iop)
-          (set! selinop x86-inline-iop)))
+        (if (not (int32? (obj-encoding lleft)))
+            (begin
+              (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding lleft)))
+              (set! opl (x86-rax)))
+            (begin
+              (set! opl opr)
+              (set! opr (x86-imm-int (obj-encoding lleft)))
+              (set! selop x86-iop)
+              (set! selinop x86-inline-iop))))
 
     (if rcst?
-        (set! opr (x86-imm-int (obj-encoding lright))))
+        (if (not (int32? (obj-encoding lright)))
+            (begin
+              (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding lright)))
+              (set! opr (x86-rax)))
+            (set! opr (x86-imm-int (obj-encoding lright)))))
 
     (if (and (x86-mem? opl)
              (x86-mem? opr))
@@ -978,11 +990,12 @@
 
     (x86-mov cgc (x86-rax) lopnd)
 
-    (x86-mov cgc (x86-rcx) (x86-rdx))
-
-    (if (eq? ropnd (x86-rdx))
-        (begin (x86-ppush cgc (x86-rdx))
-               (set! ropnd (x86-rcx))))
+    (if save-rdx?
+        (begin
+          (x86-mov cgc (x86-rcx) (x86-rdx))
+          (if (eq? ropnd (x86-rdx))
+              (begin (x86-ppush cgc (x86-rdx))
+                     (set! ropnd (x86-rcx))))))
 
     (x86-cmp cgc ropnd (x86-imm-int 0))
     (x86-je cgc label-div0)
@@ -1006,11 +1019,12 @@
             (x86-shl cgc (x86-rdx) (x86-imm-int 2))
             (x86-mov cgc dest (x86-rdx))))
 
-    (if (eq? orig-ropnd (x86-rdx))
-        (x86-ppop cgc (x86-rdx))
-        (begin (x86-shl cgc orig-ropnd (x86-imm-int 2))
-               (x86-mov cgc (x86-rdx) (x86-rcx))))
-    (x86-mov cgc (x86-rcx) (x86-imm-int 0))))
+    (if save-rdx?
+        (begin (if (eq? orig-ropnd (x86-rdx))
+                   (x86-ppop cgc (x86-rdx))
+                   (begin (x86-shl cgc orig-ropnd (x86-imm-int 2))
+                          (x86-mov cgc (x86-rdx) (x86-rcx))))
+               (x86-mov cgc (x86-rcx) (x86-imm-int 0))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Primitives

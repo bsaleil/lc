@@ -3761,15 +3761,8 @@
   (let ((opnd (jump-opnd branch))) (if (lbl? opnd) (lbl-num opnd) #f)))
 (define put-poll-on-ifjump? #f)
 (set! put-poll-on-ifjump? #t)
-
-(define (direct-jump to-bb from-bb)
-  (error "OK"))
-
-;; mtn
 (define (bbs-remove-dead-code! bbs)
-
-  (let ((new-bb-queue (cons '() '())) (scan-queue (cons '() '())))
-
+  (let ((new-bb-queue (queue-empty)) (scan-queue (queue-empty)))
     (define (reachable ref bb)
       (if bb (bb-add-reference! bb ref))
       (if (not (memq ref (queue->list new-bb-queue)))
@@ -3778,32 +3771,53 @@
             (bb-precedents-set! ref '())
             (queue-put! new-bb-queue ref)
             (queue-put! scan-queue ref))))
-
+    (define (direct-jump to-bb from-bb)
+      (reachable to-bb from-bb)
+      (bb-add-precedent! to-bb from-bb))
     (define (scan-instr gvm-instr bb)
       (define (scan-opnd gvm-opnd)
         (cond ((lbl? gvm-opnd)
                (reachable (lbl-num->bb (lbl-num gvm-opnd) bbs) bb))
               ((clo? gvm-opnd) (scan-opnd (clo-base gvm-opnd)))))
-
       (case (gvm-instr-type gvm-instr)
-        ((label) (pp "c1") '())
-
+        ((label) '())
+        ((apply)
+         (for-each scan-opnd (apply-opnds gvm-instr))
+         (if (apply-loc gvm-instr) (scan-opnd (apply-loc gvm-instr))))
+        ((copy)
+         (scan-opnd (copy-opnd gvm-instr))
+         (scan-opnd (copy-loc gvm-instr)))
+        ((close)
+         (for-each
+          (lambda (parm)
+            (reachable (lbl-num->bb (closure-parms-lbl parm) bbs) bb)
+            (scan-opnd (closure-parms-loc parm))
+            (for-each scan-opnd (closure-parms-opnds parm)))
+          (close-parms gvm-instr)))
+        ((ifjump)
+         (for-each scan-opnd (ifjump-opnds gvm-instr))
+         (direct-jump (lbl-num->bb (ifjump-true gvm-instr) bbs) bb)
+         (direct-jump (lbl-num->bb (ifjump-false gvm-instr) bbs) bb))
         ((jump)
          (let ((opnd (jump-opnd gvm-instr)))
            (if (lbl? opnd)
-           (begin
-               (direct-jump (lbl-num->bb (lbl-num opnd) bbs) bb))
-               (begin (pp 2) (scan-opnd (jump-opnd gvm-instr))))))))
-
+               (direct-jump (lbl-num->bb (lbl-num opnd) bbs) bb)
+               (scan-opnd (jump-opnd gvm-instr)))))
+        (else
+         (compiler-internal-error
+          "bbs-remove-dead-code!, unknown GVM instruction type"))))
     (reachable (lbl-num->bb (bbs-entry-lbl-num bbs) bbs) #f)
-
-    (let ((bb (queue-get! scan-queue)))
-
-      (scan-instr (bb-label-instr bb) bb)
-      (pp "AV BRAC")
-      (scan-instr (bb-branch-instr bb) bb)
-      (pp "AP BRAC"))))
-
+    (let loop ()
+      (if (not (queue-empty? scan-queue))
+          (let ((bb (queue-get! scan-queue)))
+            (begin
+              (scan-instr (bb-label-instr bb) bb)
+              (for-each
+               (lambda (gvm-instr) (scan-instr gvm-instr bb))
+               (bb-non-branch-instrs bb))
+              (scan-instr (bb-branch-instr bb) bb)
+              (loop)))))
+    (bbs-bb-queue-set! bbs new-bb-queue)))
 (define (bbs-remove-useless-jumps! bbs)
   (let ((changed? #f))
     (define (remove-useless-jump bb)
@@ -4713,7 +4727,6 @@
                   module-name
                   dest
                   info-port)))
-
     (if (and info-port (not (eq? info-port (current-output-port))))
         (close-output-port info-port))
     result))
@@ -4748,7 +4761,6 @@
                               port)
                              (loop (cdr l)))))
                      (newline port)))
-
                (let ((module-init-proc
                       (compile-parsed-program
                        module-name
@@ -4768,9 +4780,7 @@
           (virtual.end!)
           (ptree.end!)
           #t)))
-
   (let ((successful (with-exception-handling compiler-body)))
-
     (if info-port
         (if successful
             (begin
@@ -5002,7 +5012,6 @@
           (make-bb (make-label-entry entry-lbl 0 0 #f #f frame comment) *bbs*))
     (bb-put-branch! entry-bb (make-jump (make-lbl body-lbl) #f #f frame #f))
     (set! *bb* (make-bb (make-label-simple body-lbl frame comment) *bbs*))
-
     (let loop1 ((l (c-intf-procs c-intf)))
       (if (not (null? l))
           (let* ((x (car l))
@@ -5013,9 +5022,24 @@
              var
              (make-obj (make-proc-obj name #t #f 0 #t '() '(#f))))
             (loop1 (cdr l)))))
-
-
-
+    (let loop2 ((l program))
+      (if (not (null? l))
+          (let ((node (car l)))
+            (if (def? node)
+                (let* ((var (def-var node)) (val (global-val var)))
+                  (if (and val (prc? val))
+                      (add-constant-var
+                       var
+                       (make-obj
+                        (make-proc-obj
+                         (symbol->string (var-name var))
+                         #t
+                         #f
+                         (call-pattern val)
+                         #t
+                         '()
+                         '(#f)))))))
+            (loop2 (cdr l)))))
     (let loop3 ((l program))
       (if (null? l)
           (let ((ret-opnd (var->opnd ret-var)))
@@ -5041,9 +5065,7 @@
             (gen-proc (car x) (cadr x) (caddr x) info-port)
             (trace-unindent info-port)
             (loop4))))
-
     (if info-port (begin (newline info-port) (newline info-port)))
-
     (bbs-purify! *bbs*)
     (let ((proc (make-proc-obj
                  (string-append "#!" module-name)
@@ -8682,6 +8704,7 @@
   (let ((n (obj-encoding obj)))
     (if n (move-n-to-loc68 n loc) (emit-move.l (emit-const obj) loc))))
 (define (move-n-to-loc68 n loc)
+  
   (cond ((= n bits-null) (emit-move.l null-reg loc))
         ((= n bits-false) (emit-move.l false-reg loc))
         ((and (dreg? loc) (>= n -128) (<= n 127)) (emit-moveq n loc))
@@ -11112,7 +11135,61 @@
   (put-target targ))
 
 (define input-source-code '
-1
-)
+(begin
+(declare (standard-bindings) (fixnum) (not safe) (block))
 
-(ce input-source-code 'm68000 'asm)
+(define (fib n)
+  (if (< n 2)
+      n
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
+
+(define (tak x y z)
+  (if (not (< y x))
+      z
+      (tak (tak (- x 1) y z)
+           (tak (- y 1) z x)
+           (tak (- z 1) x y))))
+
+(define (ack m n)
+  (cond ((= m 0) (+ n 1))
+        ((= n 0) (ack (- m 1) 1))
+        (else (ack (- m 1) (ack m (- n 1))))))
+
+(define (create-x n)
+  (define result (make-vector n))
+  (do ((i 0 (+ i 1)))
+      ((>= i n) result)
+    (vector-set! result i i)))
+
+(define (create-y x)
+  (let* ((n (vector-length x))
+         (result (make-vector n)))
+    (do ((i (- n 1) (- i 1)))
+        ((< i 0) result)
+      (vector-set! result i (vector-ref x i)))))
+
+(define (my-try n)
+  (vector-length (create-y (create-x n))))
+
+(define (go n)
+  (let loop ((repeat 100)
+             (result 0))
+    (if (> repeat 0)
+        (loop (- repeat 1) (my-try n))
+        result)))
+
+(+ (fib 20)
+   (tak 18 12 6)
+   (ack 3 9)
+   (go 200000))
+))
+
+;-----
+
+(define (pp-asm asm)
+  (if (not (null? asm))
+     (begin (pp (car asm))
+            (pp-asm (cdr asm)))))
+
+(apply ce (list input-source-code 'm68000 'asm))
