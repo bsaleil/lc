@@ -872,39 +872,33 @@
          (x86-inline-iop (cdr (assoc op `((< . ,x86-jle) (> . ,x86-jge) (<= . ,x86-jl) (>= . ,x86-jg) (= . ,x86-jne)))))
          (dest      (if-inline (codegen-reg-to-x86reg reg)))
          (label-end (if-inline (asm-make-label #f (new-sym 'label-end))))
-         (opl (lambda () (and (not lcst?) (codegen-loc-to-x86opnd fs lleft))))
-         (opr (lambda () (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
-         (oprax (lambda () (x86-rax)))
+         (opl (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
+         (opr (and (not rcst?) (codegen-loc-to-x86opnd fs lright)))
          (selop x86-op)
          (selinop x86-inline-op))
 
-    (begin-with-cg-macro
+    ;; Handle cases like 1. 2. etc...
+    (if (and lcst? (flonum? lleft))
+        (set! lleft (##flonum->fixnum lleft)))
+    (if (and rcst? (flonum? lright))
+        (set! lright (##flonum->fixnum lright)))
 
-      ;; if the operands are both in memory, use rax
-      (if (and (ctx-loc-is-memory? lleft)
-               (ctx-loc-is-memory? lright))
-          (unmem! (oprax) (opl)))
+    (if lcst?
+        (begin
+          (set! opl opr)
+          (set! opr (x86-imm-int (obj-encoding lleft)))
+          (set! selop x86-iop)
+          (set! selinop x86-inline-iop)))
 
-      ;;
-      ;; Primitive code
+    (if rcst?
+        (set! opr (x86-imm-int (obj-encoding lright))))
 
-      ;; If left is a cst, swap operands and use iop
-      (if lcst?
-          (begin
-            (set! opl opr)
-            (set! opr (lambda () (x86-imm-int (obj-encoding lleft))))
-            (set! selop x86-iop)
-            (set! selinop x86-inline-iop)))
-      (if rcst?
-          (set! opr (lambda () (x86-imm-int (obj-encoding lright)))))
-
-      ;; Handle cases like 1. 2. etc...
-      (if (and lcst? (flonum? lleft))
-          (set! lleft (##flonum->fixnum lleft)))
-      (if (and rcst? (flonum? lright))
-          (set! lright (##flonum->fixnum lright)))
-
-      (x86-cmp cgc (opl) (opr)))
+    (if (and (x86-mem? opl)
+             (x86-mem? opr))
+        (begin
+          (x86-mov cgc (x86-rax) opl)
+          (x86-cmp cgc (x86-rax) opr 64))
+        (x86-cmp cgc opl opr 64))
 
     (if inline-if-cond?
         selinop ;; Return x86-op

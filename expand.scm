@@ -204,6 +204,7 @@
     (,exact->inexact . exact->inexact)
     (,exact?         . exact?)
     (,##rational?    . NYIrational?)
+    (,rational?      . NYIrational?)
     (,peek-char    . NYIpeek-char)
     ;;
     ;; NYI
