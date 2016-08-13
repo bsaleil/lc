@@ -191,13 +191,12 @@
 ;;-----------------------------------------------------------------------------
 ;; Interactive mode (REPL)
 (define (repl lib)
-
   (error "NYI"))
 
 ;;-----------------------------------------------------------------------------
 ;; Bash mode
 
-(define (exec lib prog)
+(define (exec prog)
 
     (define (one-exec)
       (set! from-space init-from-space)
@@ -206,12 +205,12 @@
 
   (init)
 
-  (let ((lazy-lib (lazy-exprs (append lib prog) #f)))
-    (gen-version-first lazy-lib (ctx-init)))
+  (let ((lco (lazy-exprs prog #f)))
+    (gen-version-first lco (ctx-init)))
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)
-             (set! lazy-lib #f)
+             (set! lco #f)
              (set! all-lazy-code #f)
              (set! asc-cc-stub #f)
              (set! asc-entry-load #f)
@@ -248,65 +247,58 @@
     (cons status output)))
 
 (define (copy-with-declare src dst)
-  (run "./copy-with-declare.sh" src dst))
+  (run "./copy-with-declare.sh" src dst (if opt-use-lib "lib" "nolib")))
 
 (define (main . args)
 
   ;; Set options and get files from cl args
   (define files (parse-args args))
 
-  ;; Get library
-  (define lib
-    (if opt-use-lib
-        (expand-tl (read-all (open-input-file "./lib.scm")))
-        '()))
+  (cond ;; If no files specified then start REPL
+        ((null? files)
+          (error "NYI lib"))
+        ;; Can only exec 1 file
+        ((= (length files) 1)
+          (copy-with-declare (car files) "./tmp")
+          (let ((content (c#expand-program "./tmp")));(read-all (open-input-file (car files)))))
+              (define (get-global-type g)
+                (cond ((symbol? (cadr g))
+                          (cond ((symbol?  (caddr g)) CTX_UNK) ;; TODO si globale connue, mettre type
+                                ((integer? (caddr g)) CTX_INT)
+                                ((flonum?  (caddr g)) CTX_FLO)
+                                ((char?    (caddr g)) CTX_CHAR)
+                                ((string?  (caddr g)) CTX_STR)
+                                ((boolean? (caddr g)) CTX_BOOL)
+                                ((eq? (caaddr g) 'lambda) CTX_CLO)
+                                ((pair? (caddr g)) CTX_UNK)
+                                (else (error "NYI"))))
+                      ((pair? (cadr g)) CTX_CLO)
+                      (else (error "NYI"))))
 
-    (cond ;; If no files specified then start REPL
-          ((null? files)
-            (repl lib))
-          ;; Can only exec 1 file
-          ((= (length files) 1)
-            (copy-with-declare (car files) "./tmp")
-            (let ((content (c#expand-program "./tmp")));(read-all (open-input-file (car files)))))
-                (define (get-global-type g)
-                  (cond ((symbol? (cadr g))
-                            (cond ((symbol?  (caddr g)) CTX_UNK) ;; TODO si globale connue, mettre type
-                                  ((integer? (caddr g)) CTX_INT)
-                                  ((flonum?  (caddr g)) CTX_FLO)
-                                  ((char?    (caddr g)) CTX_CHAR)
-                                  ((string?  (caddr g)) CTX_STR)
-                                  ((boolean? (caddr g)) CTX_BOOL)
-                                  ((eq? (caaddr g) 'lambda) CTX_CLO)
-                                  ((pair? (caddr g)) CTX_UNK)
-                                  (else (error "NYI"))))
-                        ((pair? (cadr g)) CTX_CLO)
-                        (else (error "NYI"))))
+              ;; TODO
+              (define (get-gids expr)
+                (if (null? expr)
+                   #t
+                   (let ((el (car expr)))
+                     (if (and (pair? el)
+                              (eq? (car el) 'define))
+                        (if (pair? (cadr el))
+                            (table-set! gids (caadr el) (get-global-type el))
+                            (table-set! gids (cadr el)  (get-global-type el))))
+                     (get-gids (cdr expr)))))
 
-                ;; TODO
-                (define (get-gids lib)
-                  (if (null? lib)
-                     #t
-                     (let ((el (car lib)))
-                       (if (and (pair? el)
-                                (eq? (car el) 'define))
-                          (if (pair? (cadr el))
-                              (table-set! gids (caadr el) (get-global-type el))
-                              (table-set! gids (cadr el)  (get-global-type el))))
-                       (get-gids (cdr lib)))))
+              (get-gids content)
 
-                (get-gids lib)
-                (get-gids content)
+              (let ((exp-content (expand-tl content)))
+                ;(pp content))))
+                ;(pp exp-content))))
+                ;(exec content))))
+                (exec exp-content))))
+        (else (error "NYI")))
 
-                (let ((exp-content (expand-tl content)))
-                  ;(pp content))))
-                  ;(pp exp-content))))
-                  ;(exec lib content))))
-                  (exec lib exp-content))))
-          (else (error "NYI")))
-
-    (rt-print-opts)
-    (print-opts)
-    0)
+  (rt-print-opts)
+  (print-opts)
+  0)
 
 ;; TODO
 (define (get-versions-info lazy-codes)
