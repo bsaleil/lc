@@ -360,7 +360,7 @@
                  ((eq? op 'begin) (mlc-begin ast succ))
                  ;; Binding
                  ((eq? op 'let) (mlc-let ast succ)) ;; Also handles let* (let* is a macro)
-                 ; ((eq? op 'letrec) (mlc-letrec ast succ))
+                 ((eq? op 'letrec) (mlc-letrec ast succ))
                  ; ;; Operator num
                  ; ((member op '(FLOAT+ FLOAT- FLOAT* FLOAT/ FLOAT< FLOAT> FLOAT<= FLOAT>= FLOAT=))
                  ;  (let ((generic-op (list->symbol (list-tail (symbol->list op) 5))))
@@ -553,22 +553,21 @@
               ;; Primitive
               ((assoc sym primitives) =>
                  (lambda (r)
-                   (error "NYI atom")))
-                  ; (let ((sym
-                  ;         ;; primitive with fixed number of args
-                  ;         (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
-                  ;           `(lambda ,args (,ast ,@args)))))
-                  ;   (jump-to-version cgc (gen-ast (expand ast) succ) ctx))))
+                   (let ((ast
+                           ;; primitive with fixed number of args
+                           (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
+                             `(lambda ,args (,ast ,@args)))))
+                     (jump-to-version cgc (gen-ast (expand ast) succ) ctx))))
               ;; Vector
               ((eq? sym 'vector)
-                 (error "NYI atom"))
+                 (error "NYI atom 2"))
                 ; (jump-to-version
                 ;   cgc
                 ;   (gen-ast (expand `(lambda l (list->vector l))) succ)
                 ;   ctx))
               ;; List
               ((eq? sym 'list)
-                 (error "NYI atom"))
+                 (error "NYI atom 3"))
                 ; (jump-to-version
                 ;   cgc
                 ;   (gen-ast `(lambda n n) succ)
@@ -1824,7 +1823,7 @@
         ((= len 0)
           (gen-ast (atom-node-make '()) succ))
         ((> (* len 3 8) MSECTION_BIGGEST)
-          (error "NYI atom")
+          (error "NYI atom 4")
           (gen-ast
             (let ((sym (gensym)))
               `(let ((,sym list))

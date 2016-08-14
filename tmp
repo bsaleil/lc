@@ -1,129 +1,311 @@
 (declare (standard-bindings) (extended-bindings) (not inline-primitives) (block) (not safe))
+(define (equal? x y)
+  (cond ((pair? x)
+         (and (pair? y) (equal? (car x) (car y)) (equal? (cdr x) (cdr y))))
+        ((string? x) (and (string? y) (string=? x y)))
+        (else (eqv? x y))))
+(define (open-input-file path) (gambit$$open-input-file path))
+(define (open-output-file path) (gambit$$open-output-file path))
+(define (close-output-port port) (gambit$$close-output-port port))
+(define (close-input-port port) (gambit$$close-input-port port))
+(define (read-char port) (gambit$$read-char port))
+(define (write-char c p) (gambit$$write-char c p))
+(define (string->symbol str) (gambit$$string->symbol str))
+(define (string->list-h s pos)
+  (if (= (string-length s) pos)
+      '()
+      (cons (string-ref s pos) (string->list-h s (+ pos 1)))))
+(define (string->list s) (string->list-h s 0))
+(define (string-fill!-h str char pos len)
+  (if (< pos len)
+      (begin
+        (string-set! str pos char)
+        (string-fill!-h str char (+ pos 1) len))
+      str))
+(define (string-fill! str char)
+  (string-fill!-h str char 0 (string-length str)))
+(define (list->string-h l str pos)
+  (if (null? l)
+      str
+      (begin
+        (string-set! str pos (car l))
+        (list->string-h (cdr l) str (+ pos 1)))))
+(define (list->string l)
+  (let ((str (make-string (length l)))) (list->string-h l str 0)))
+(define (string-h str chars pos)
+  (if (null? chars)
+      str
+      (begin
+        (string-set! str pos (car chars))
+        (string-h str (cdr chars) (+ pos 1)))))
+(define (string . chars)
+  (if (null? chars)
+      ""
+      (let ((str (make-string (length chars)))) (string-h str chars 0))))
+(define (substring-h to from posf post end)
+  (if (= posf end)
+      to
+      (begin
+        (string-set! to post (string-ref from posf))
+        (substring-h to from (+ posf 1) (+ post 1) end))))
+(define (substring string start end)
+  (if (or (< start 0) (> end (string-length string)) (< end start))
+      (error "Substring")
+      (let ((new-str (make-string (- end start))))
+        (substring-h new-str string start 0 end))))
+(define (string-append-two str str2)
+  (list->string (append (string->list str) (string->list str2))))
+(define (string-append-h strings)
+  (cond ((null? strings) "")
+        ((null? (cdr strings)) (car strings))
+        (else
+         (string-append-h
+          (cons (string-append-two (car strings) (cadr strings))
+                (cddr strings))))))
+(define (string-append . strings) (string-append-h strings))
+(define (string-copy str) (list->string (string->list str)))
+(define (string=?-h str1 str2 pos)
+  (cond ((= pos (string-length str1)) (= pos (string-length str2)))
+        ((= pos (string-length str2)) #f)
+        (else
+         (if (char=? (string-ref str1 pos) (string-ref str2 pos))
+             (string=?-h str1 str2 (+ pos 1))
+             #f))))
+(define (string=? str1 str2) (string=?-h str1 str2 0))
+(define (string<? str1 str2)
+  (define (string<?-h str1 str2 pos)
+    (cond ((= pos (- (string-length str2) 1))
+           (char<? (string-ref str1 pos) (string-ref str2 pos)))
+          ((= pos (- (string-length str1) 1))
+           (char<=? (string-ref str1 pos) (string-ref str2 pos)))
+          (else
+           (and (char<=? (string-ref str1 pos) (string-ref str2 pos))
+                (string<?-h str1 str2 (+ pos 1))))))
+  (cond ((= (string-length str1) 0) (> (string-length str2) 0))
+        ((= (string-length str2) 0) #f)
+        (else (string<?-h str1 str2 0))))
+(define (print n) (gambit$$print n))
+(define (println n) (gambit$$println n))
+(define (pp n) (gambit$$pp n))
+(define (display . n)
+  (if (= (length n 1)) (display (car n)) (display (car n) (cadr n))))
+(define write (lambda (n) (pp n)))
+(define (newline) (gambit$$newline))
+(define (vector-fill! v val) (vector-fill!-h v 0 val (vector-length v)))
+(define (vector-fill!-h v pos val len)
+  (if (= pos len)
+      #f
+      (begin (vector-set! v pos val) (vector-fill!-h v (+ pos 1) val len))))
+(define (FLOATvector-const . l) (apply vector l))
+(define FLOATvector-length vector-length)
+(define FLOATvector-ref vector-ref)
+(define (port? p) (or (input-port? p) (output-port? p)))
+(define (boolean? n) (or (eq? n #t) (eq? n #f)))
+(define (vector->list v) (vector->list-h v 0 (vector-length v)))
+(define (vector->list-h vector idx length)
+  (if (= idx length)
+      '()
+      (cons (vector-ref vector idx) (vector->list-h vector (+ idx 1) length))))
+(define (list->vector l)
+  (let ((v (make-vector (length l)))) (list->vector-h l v 0 (length l))))
+(define (list->vector-h lst vec pos len)
+  (if (null? lst)
+      vec
+      (begin
+        (vector-set! vec pos (car lst))
+        (list->vector-h (cdr lst) vec (+ pos 1) len))))
+(define (number->string num)
+  (define (digit->string d) (make-string 1 (integer->char (+ d 48))))
+  (define (number->string-h num)
+    (if (= num 0)
+        ""
+        (string-append
+         (number->string-h (quotient num 10))
+         (digit->string (modulo num 10)))))
+  (cond ((= num 0) "0")
+        ((< num 0) (string-append "-" (number->string-h (* num -1))))
+        (else (number->string-h num))))
+(define (string->number str . l)
+  (define (s->n str pos)
+    (if (= pos (string-length str))
+        ""
+        (let ((c (string-ref str pos)))
+          (if (char-numeric? c)
+              (let ((r (s->n str (+ pos 1))))
+                (if r (string-append (make-string 1 c) r) #f))
+              #f))))
+  (if (= (string-length str) 0) #f (s->n str 0)))
+(define (char<? c1 c2) (< (char->integer c1) (char->integer c2)))
+(define (char>? c1 c2) (> (char->integer c1) (char->integer c2)))
+(define (char<=? c1 c2) (<= (char->integer c1) (char->integer c2)))
+(define (char>=? c1 c2) (>= (char->integer c1) (char->integer c2)))
+(define (char-alphabetic? c)
+  (let ((c (char->integer c)))
+    (or (and (> c 64) (< c 91)) (and (> c 96) (< c 123)))))
+(define (char-numeric? c)
+  (let ((c (char->integer c))) (and (> c 47) (< c 58))))
+(define (char-whitespace? c)
+  (let ((c (char->integer c)))
+    (or (= c 32) (= c 9) (= c 10) (= c 12) (= c 13))))
+(define (char-upper-case? c)
+  (let ((c (char->integer c))) (and (> c 64) (< c 91))))
+(define (char-lower-case? c)
+  (let ((c (char->integer c))) (and (> c 96) (< c 123))))
+(define (char-upcase c)
+  (let ((v (char->integer c)))
+    (if (and (> v 96) (< v 123)) (integer->char (- v 32)) c)))
+(define (char-downcase c)
+  (let ((v (char->integer c)))
+    (if (and (> v 64) (< v 91)) (integer->char (+ v 32)) c)))
+(define (char-ci=? c1 c2)
+  (= (char->integer (char-downcase c1)) (char->integer (char-downcase c2))))
+(define (char-ci<? c1 c2)
+  (< (char->integer (char-downcase c1)) (char->integer (char-downcase c2))))
+(define (char-ci>? c1 c2)
+  (> (char->integer (char-downcase c1)) (char->integer (char-downcase c2))))
+(define (char-ci<=? c1 c2)
+  (<= (char->integer (char-downcase c1)) (char->integer (char-downcase c2))))
+(define (char-ci>=? c1 c2)
+  (>= (char->integer (char-downcase c1)) (char->integer (char-downcase c2))))
+(define (length l)
+  (let loop ((l l) (len 0))
+    (cond ((null? l) len)
+          ((pair? l) (loop (cdr l) (+ 1 len)))
+          (else (error "LIST expected")))))
+(define (append . lsts)
+  (define (append-two lst1 lst2)
+    (if (null? lst1) lst2 (cons (car lst1) (append-two (cdr lst1) lst2))))
+  (define (append-h lsts)
+    (if (null? lsts) '() (append-two (car lsts) (append-h (cdr lsts)))))
+  (append-h lsts))
+(define (list? n) (or (null? n) (and (pair? n) (list? (cdr n)))))
+(define (list-ref lst i) (if (= i 0) (car lst) (list-ref (cdr lst) (- i 1))))
+(define (reverse l)
+  (let loop ((l l) (r '()))
+    (cond ((null? l) r)
+          ((pair? l) (loop (cdr l) (cons (car l) r)))
+          (else (error "LIST expected")))))
+(define (for-each f lst)
+  (if (not (null? lst)) (begin (f (car lst)) (for-each f (cdr lst)))))
+(define (assq el lst)
+  (cond ((null? lst) #f)
+        ((eq? el (car (car lst))) (car lst))
+        (else (assq el (cdr lst)))))
+(define (assv el lst)
+  (cond ((null? lst) #f)
+        ((eqv? el (car (car lst))) (car lst))
+        (else (assv el (cdr lst)))))
+(define (assoc el lst)
+  (cond ((null? lst) #f)
+        ((equal? el (car (car lst))) (car lst))
+        (else (assoc el (cdr lst)))))
+(define (memq el lst)
+  (cond ((null? lst) #f) ((eq? el (car lst)) lst) (else (memq el (cdr lst)))))
+(define (memv el lst)
+  (cond ((null? lst) #f) ((eqv? el (car lst)) lst) (else (memv el (cdr lst)))))
+(define (member el lst)
+  (cond ((null? lst) #f)
+        ((equal? el (car lst)) lst)
+        (else (member el (cdr lst)))))
+(define (map fn lst)
+  (if (null? lst) '() (cons (fn (car lst)) (map fn (cdr lst)))))
+(define (error msg . msgs)
+  (define (print-msgs msgs)
+    (if (null? msgs)
+        (newline)
+        (begin (print (car msgs)) (print " ") (print-msgs (cdr msgs)))))
+  (print "!!! ERROR - ")
+  (print-msgs (cons msg msgs))
+  (exit))
+(define fatal-error (lambda (msg . msgs) (apply error (cons msg msgs))))
+(define (apply fn args . r)
+  (define (gen-args l)
+    (if (= (length l) 1)
+        (if (list? (car l)) (car l) (error "APPLY ERROR"))
+        (cons (car l) (gen-args (cdr l)))))
+  (if (null? r) ($apply fn args) ($apply fn (gen-args (cons args r)))))
+(define (integer? n) (fixnum? n))
+(define (positive? x) (> x 0))
+(define (negative? x) (< x 0))
+(define (even? x) (= (modulo x 2) 0))
+(define (odd? x) (= (modulo x 2) 1))
+(define (expt n m) (if (= m 0) 1 (* n (expt n (- m 1)))))
+(define (max a . l)
+  (define (max-h els m)
+    (if (null? els)
+        m
+        (let ((c (car els)))
+          (if (> c m) (max-h (cdr els) c) (max-h (cdr els) m)))))
+  (max-h l a))
+(define (min a . l)
+  (define (min-h els m)
+    (if (null? els)
+        m
+        (let ((c (car els)))
+          (if (< (car els) m)
+              (min-h (cdr els) (car els))
+              (min-h (cdr els) m)))))
+  (min-h l a))
+(define (exact? n) #t)
+(define exact->inexact (lambda (x) x))
+(define (call/cc . n)
+  (let ((l (length n)))
+    (cond ((= l 1) ((car n) #f))
+          ((= l 2) ((car n) #f (cadr n)))
+          (else (error "call/cc")))))
+(define abs (lambda (x) (if (< x 0) (- x) x)))
+(define (read)
+  (define port (current-input-port))
+  (define (syntax-error msg) (error msg))
+  (define (objread-char o) (car o))
+  (define (objread-line o) (cadr o))
+  (define (objread-col o) (caddr o))
+  (define (objread-next o)
+    (if (char=? (objread-char o) #\newline)
+        (list (read-char port) (+ (objread-line o) 1) 1)
+        (list (read-char port) (objread-line o) (+ (objread-col o) 1))))
+  (define (objret-new o val) (list val (objread-line o) (objread-col o)))
+  (define (objret-val o) (car o))
+  (define (read-num o num)
+    (if (and (char>=? (objread-char o) #\0) (char<=? (objread-char o) #\9))
+        (if (not num)
+            (read-num
+             (objread-next o)
+             (objret-new o (- (char->integer (objread-char o)) 48)))
+            (read-num
+             (objread-next o)
+             (objret-new
+              num
+              (+ (* (objret-val num) 10)
+                 (char->integer (objread-char o))
+                 -48))))
+        num))
+  (let ((r (read-num (list (read-char port) 1 1) #f))) (objret-val r)))
+;;; ARRAY1 -- One of the Kernighan and Van Wyk benchmarks.
 
-;(define (foo n)
-;  (if (< n 10)
-;      100
-;      200))
-;
-;(foo 333)
+(define (create-x n)
+  (define result (make-vector n))
+  (do ((i 0 (+ i 1)))
+      ((>= i n) result)
+    (vector-set! result i i)))
 
-(define (gg n)
-  (gambit$$pp 11)
-  (caar n)
-  (+ n 11))
+(define (create-y x)
+  (let* ((n (vector-length x))
+         (result (make-vector n)))
+    (do ((i (- n 1) (- i 1)))
+        ((< i 0) result)
+      (vector-set! result i (vector-ref x i)))))
 
+(define (my-try n)
+  (vector-length (create-y (create-x n))))
 
-(gambit$$pp ($apply gg '(1454)))
+(define (go n)
+  (let loop ((repeat 100)
+             (result '()))
+    (if (> repeat 0)
+        (loop (- repeat 1) (my-try n))
+        result)))
 
-;(define shorterp
-;  (lambda (x y)
-;    (if (null? y)
-;        #f
-;        (let ((#:g0 (null? x)))
-;          (if #:g0
-;              #:g0
-;              (shorterp (cdr x) (cdr y)))))))
-;
-;(shorterp '(18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0) '(12 11 10 9 8 7 6 5 4 3 2 1 0)))
-;
+(println (go 5))
 
-
-
-
-;(define (foo)
-;  (make-vector 5))
-;
-;(pp (foo))
-;(println (make-vector 5))
-
-;; Au moment d'un binding d'un id, regarder si c'est une fonction non mutable.
-;; Si c'est le cas:
-;;   - stocker dans le ctx l'id de fn global
-;;   - à l'appel, on peut vérifier ça et utiliser l'info
-
-;
-;(define (run n)
-;  (let loop ((i n) (sum 0))
-;    (if (< i 0)
-;      sum
-;      (loop (- i 1) (+ i sum)))))
-;
-;(run 10000)
-
-;(apply do-loop (list 100000000))
-
-;(define (fib n)
-;  (if (< n 2)
-;      1
-;      (+ (fib (- n 2))
-;         (fib (- n 1)))))
-;
-;(fib 40)
-
-;(define (fibfp n)
-;  (if (< n 2.)
-;    n
-;    (+ (fibfp (- n 1.))
-;       (fibfp (- n 2.)))))
-;
-;(time
-;(apply fibfp (list 30.)))
-
-
-;(define sum 0)
-;
-;(define (do-loop n)
-;  (set! sum 0)
-;  (do ((i 0 (+ i 1)))
-;      ((>= i n) sum)
-;    (set! sum (+ sum 1))))
-;
-;($apply do-loop '(100000000))
-
-
-;; gen-version-fn:
-;;   * on génère le code avec le générateur
-;;   * on va lire le premier octet du code généré
-;;   * si l'octet est 0xeb, c'est un jmp rel8
-;;   * si l'octet est 0xe9, c'est un jmp rel32
-;;   * les autres jumps ne sont pas optimisables
-;;
-;;   -> si on obtient un jump
-;;   -> on va lire l'opérande pour récupérer l'adresse de destination qu'on stocke dans un label
-;;   -> on remet code-alloc à la position de ce jump, on peut écraser son contenu
-;;   -> on retourne se label comme étant le label de la version
-
-;(define (foo n)
-;  (eq? n 10))
-;
-;(pp (foo #f))
-;(pp (foo 10))
-;(pp (foo 1))
-;(define (fib n)
-;  (if (< n 2)
-;      1
-;      (+ (fib (- n 1))
-;         (fib (- n 2)))))
-;
-;($apply fib '(40))
-
-;; TODO: optimization: pour un pt entrée:
-;;       * si on génère un pt entrée dont la 1ere instruction est un jump,
-;;       * on peut patcher le pt d'entrée pour sauter directement au bon endroit
-
-;; TODO: utiliser les informations de type pour:
-;;       * eq?
-;;       * equal?
-;;       * eqv?
-;; TODO: inliner les primitives + inliner en fonction des types pour:
-;;       * eq?
-;;       * equal?
-;;       * eqv?
-
-;(define (fib n)
-;  (if (< n 2)
-;    n
-;    (+ (fib (- n 1))
-;       (fib (- n 2)))))
-;
-;(fib 40)
+;5

@@ -7,12 +7,11 @@
 ;(foo 333)
 
 (define (gg n)
-  (gambit$$pp 11)
-  (caar n)
+  (pp 11)
   (+ n 11))
 
 
-(gambit$$pp ($apply gg '(1454)))
+(pp (apply gg '(1454)))
 
 ;(define shorterp
 ;  (lambda (x y)
