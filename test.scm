@@ -1,11 +1,15 @@
 
-(define (foo n)
-  (if (< n 10)
-      100
-      200))
+;(define (foo n)
+;  (if (< n 10)
+;      100
+;      200))
+;
+;(foo 333)
 
-(foo 333)
 
+(define gg (lambda (n) (gambit$$pp 11) (gambit$$pp 20) (gambit$$pp (string? n)) (vector 1 2 3)))
+
+(gambit$$pp (gg "kk"))
 
 ;(define shorterp
 ;  (lambda (x y)

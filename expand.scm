@@ -300,9 +300,9 @@
 ;; Expand function called outside top-level
 (define (expand expr)
   (resolve-symalias expr)
-  (cond ((void? expr) #f)
+  (cond ((void? expr) (atom-node-make #f))
         ((or (null? expr) (vector? expr) (symbol? expr) (number? expr) (char? expr) (string? expr) (boolean? expr))
-         expr)
+         (atom-node-make expr))
         (else
           (let ((op (car expr)))
             (resolve-alias op expr)
@@ -496,6 +496,10 @@
 ;; letn and let with internal defs are not handled by compiler (mlc-let)
 (define (expand-let expr)
 
+  (define (expand-bindings bindings)
+    (map (lambda (n) (cons (car n) (expand (cdr n))))
+         bindings))
+
   ;; NAMED LET
   (define (expand-letn expr)
     (let ((id (cadr expr))
@@ -509,8 +513,9 @@
       ;; let
       (if (null? (cadr expr))
           (expand `(begin ,@(cddr expr)))
-          `(let ,(expand (cadr expr))
-             ,(expand (cons 'begin (cddr expr)))))))
+          (let ((bindings (expand-bindings (cadr expr))))
+            `(let ,bindings
+               ,(expand (cons 'begin (cddr expr))))))))
 
 ;; LETREC
 (define (expand-letrec expr)
