@@ -284,13 +284,13 @@
                      (##unbox             1  1  ,(prim-types 1 CTX_ALL)                     ())
                      (##set-box!          2  2  ,(prim-types 2 CTX_ALL CTX_ALL)             ())))
 
-(define (assert-p-nbargs ast)
-  (let ((infos (cdr (assoc (car ast) primitives))))
+(define (assert-p-nbargs prim ast)
+  (let ((infos (cdr (assoc prim primitives))))
     (assert (or (not (car infos)) ;; nb args and types are not fixed
                 (and (>= (length (cdr ast))
-                         (cadr (assoc (car ast) primitives)))
+                         (cadr (assoc prim primitives)))
                      (<= (length (cdr ast))
-                         (caddr (assoc (car ast) primitives)))))
+                         (caddr (assoc prim primitives)))))
             ERR_WRONG_NUM_ARGS)))
 
 ;;-----------------------------------------------------------------------------
@@ -315,7 +315,6 @@
 
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
-
   (cond ;; Pair
         ((pair? ast)
          (let ((op (car ast)))
@@ -334,43 +333,43 @@
                            ((and (eq? val 'write-char) (= (length ast) 2))
                              (error "NYI gen-ast atom"))
                              ;(gen-ast (append ast '((current-output-port))) succ))
+                           ;; Inlined primitive
+                           ((assoc val primitives) (mlc-primitive val ast succ))
                            ;; List
                            ((eq? val 'list)
                               (mlc-list-p ast succ))
                            ;; Vector
                            ((eq? val 'vector) (mlc-vector-p ast succ))
+                           ;; Apply
+                           ((eq? val '$apply) (mlc-apply ast succ))
                            ;; Type predicate
                            ((type-predicate? val) (mlc-test val ast succ))
                            ;; Operator num
                            ((member val '(quotient modulo remainder)) (mlc-op-bin ast succ val)) ;; binary operator
+                           ((member val '(+ - * < > <= >= = /))       (mlc-op-n ast succ val))   ;; nary operator
                            ;; Call
                            (else (mlc-call ast succ)))))
-                ; ;; TODO
-                ; ;; Inlined primitive
-                ; ((assoc op primitives) (mlc-primitive ast succ))
-                ;; Quote
-                ((eq? 'quote (car ast)) (mlc-quote (cadr ast) ast succ))
-                ;; Set!
-                ((eq? 'set! (car ast)) (mlc-set! ast succ))
-                ;; Lambda
-                ((eq? op 'lambda) (mlc-lambda ast succ #f))
-                ;; Begin
-                ((eq? op 'begin) (mlc-begin ast succ))
-                ;; Binding
-                ((eq? op 'let) (mlc-let ast succ)) ;; Also handles let* (let* is a macro)
-                ; ((eq? op 'letrec) (mlc-letrec ast succ))
-                ; ;; Operator num
-                ; ((member op '(FLOAT+ FLOAT- FLOAT* FLOAT/ FLOAT< FLOAT> FLOAT<= FLOAT>= FLOAT=))
-                ;  (let ((generic-op (list->symbol (list-tail (symbol->list op) 5))))
-                ;    (gen-ast (cons generic-op (cdr ast))
-                ;             succ)))
-                ; ((member op '(+ - * < > <= >= = /))         (mlc-op-n ast succ op)) ;; nary operator
-                ; ;; If
-                ; ((eq? op 'if) (mlc-if ast succ))
+                 ; ;; TODO
+                 ;; Quote
+                 ((eq? 'quote (car ast)) (mlc-quote (cadr ast) ast succ))
+                 ;; Set!
+                 ((eq? 'set! (car ast)) (mlc-set! ast succ))
+                 ;; Lambda
+                 ((eq? op 'lambda) (mlc-lambda ast succ #f))
+                 ;; Begin
+                 ((eq? op 'begin) (mlc-begin ast succ))
+                 ;; Binding
+                 ((eq? op 'let) (mlc-let ast succ)) ;; Also handles let* (let* is a macro)
+                 ; ((eq? op 'letrec) (mlc-letrec ast succ))
+                 ; ;; Operator num
+                 ; ((member op '(FLOAT+ FLOAT- FLOAT* FLOAT/ FLOAT< FLOAT> FLOAT<= FLOAT>= FLOAT=))
+                 ;  (let ((generic-op (list->symbol (list-tail (symbol->list op) 5))))
+                 ;    (gen-ast (cons generic-op (cdr ast))
+                 ;             succ)))
+                 ;; If
+                 ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
                  ((eq? op 'define) (mlc-define ast succ))
-                ; ;; Apply
-                ; ((eq? op '$apply) (mlc-apply ast succ))
                  ;; Call expr
                  (else (mlc-call ast succ)))))
         ;; *unknown*
@@ -489,8 +488,7 @@
 (define (mlc-quote val ast succ)
 
   (cond ((null? val)
-          (error "NYI mlc-quote atom"))
-          ;(mlc-literal ast succ))
+          (mlc-literal '() ast succ))
         ((or (pair? val) (symbol? val) (vector? val))
           (make-lazy-code
             (lambda (cgc ctx)
@@ -1614,40 +1612,41 @@
 
 ;;
 
-(define (mlc-primitive ast succ)
-  (let ((op (car ast)))
-    (cond ((and (= (length ast) 2)
-                (member op '(##fx-? ##fl-)))
-             (mlc-primitive-d (list op 0 (cadr ast)) succ))
-          ((and (= (length ast) 2)
-                (eq? op 'zero?))
-             (gen-ast (list '= (cadr ast) 0) succ))
-          (else
-             (mlc-primitive-d ast succ)))))
+(define (mlc-primitive prim ast succ)
+  (cond ((and (= (length ast) 2)
+              (member prim '(##fx-? ##fl-)))
+           (error "NYI atom mlc-primitive"))
+          ; (mlc-primitive-d (list op 0 (cadr ast)) succ))
+        ((and (= (length ast) 2)
+              (eq? prim 'zero?))
+           (error "NYI atom mlc-primitive"))
+           ;(gen-ast (list '= (cadr ast) 0) succ))
+        (else
+           (mlc-primitive-d prim ast succ))))
 
-(define (mlc-primitive-d ast succ)
+(define (mlc-primitive-d prim ast succ)
 
   ;; Assert primitive nb args
-  (assert-p-nbargs ast)
+  (assert-p-nbargs prim ast)
 
   ;;
-  (let* ((cst-infos (get-prim-cst-infos ast))
+  (let* ((cst-infos (get-prim-cst-infos prim ast))
          (lazy-primitive
            (cond
-             ((eq? (car ast) 'exit) (get-lazy-error ""))
-             ((eq? (car ast) 'cons) (mlc-pair succ cst-infos))
+             ((eq? prim 'exit) (get-lazy-error ""))
+             ((eq? prim 'cons) (mlc-pair succ cst-infos))
              (else
                (make-lazy-code
                  (lambda (cgc ctx)
                    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
                      (apply-moves cgc ctx moves)
                      ;; TODO: add function in 'primitives' set
-                     (case (car ast)
+                     (case prim
                        ((not)               (prim-not            cgc ctx reg succ cst-infos))
                        ((eq?)               (prim-eq?            cgc ctx reg succ cst-infos))
                        ((char=?)            (prim-eq?            cgc ctx reg succ cst-infos))
                        ((number?)           (prim-number?        cgc ctx reg succ cst-infos))
-                       ((car cdr)           (prim-cxr            cgc ctx reg succ cst-infos (car ast)))
+                       ((car cdr)           (prim-cxr            cgc ctx reg succ cst-infos prim))
                        ((eof-object?)       (prim-eof-object?    cgc ctx reg succ cst-infos))
                        ((make-string)       (prim-make-string    cgc ctx reg succ cst-infos (cdr ast)))
                        ((make-vector)       (prim-make-vector    cgc ctx reg succ cst-infos (cdr ast)))
@@ -1677,7 +1676,7 @@
                        ((vector-length string-length)            (prim-x-length       cgc ctx reg succ cst-infos (car ast)))
                        (else (error "Unknown primitive"))))))))))
 
-    (let* ((primitive (assoc (car ast) primitives))
+    (let* ((primitive (assoc prim primitives))
            ;; Get list of types required by this primitive
            (types (if (cadr primitive)
                       (cdr (assoc (length (cdr ast))
@@ -1692,7 +1691,7 @@
       (check-types types (cdr ast) lazy-primitive ast cst-infos))))
 
 ;; TODO WIP
-(define (get-prim-cst-infos ast)
+(define (get-prim-cst-infos prim ast)
 
   (define (get-prim-cst-infos-h args cst-positions curr-pos)
     (if (or (null? args)
@@ -1708,7 +1707,7 @@
                 (get-prim-cst-infos-h (cdr args) (cdr cst-positions) (+ curr-pos 1)))
             (get-prim-cst-infos-h (cdr args) cst-positions (+ curr-pos 1)))))
 
-  (let ((primitive (assoc (car ast) primitives)))
+  (let ((primitive (assoc prim primitives)))
     (get-prim-cst-infos-h
       (cdr ast)
       (cadddr (cdr primitive))
@@ -2051,9 +2050,11 @@
           (make-lazy-code
             (lambda (cgc ctx)
               (let* ((global-opt
-                       (and (symbol? (cadr ast))
-                            (not (assoc (cadr ast) (ctx-env ctx)))
-                            (eq? (table-ref gids (cadr ast) #f) CTX_CLO)))
+                       (and (atom-node? (cadr ast))
+                            (symbol? (atom-node-val (cadr ast)))
+                            (let ((sym (atom-node-val (cadr ast))))
+                              (and (not (assoc sym (ctx-env ctx)))
+                                   (eq? (table-ref gids sym #f) CTX_CLO)))))
                      (fn-num (call-get-eploc ctx global-opt (cadr ast))))
                 (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
                 (x86-mov cgc (x86-rsi) (x86-rax)) ;; Move closure in closure reg
@@ -2420,24 +2421,34 @@
 ;;
 (define (mlc-op-n ast succ op) ;; '(+ - * < > <= >= = /)
 
+  (define (int-val-cst n)
+    (and (atom-node? n)
+         (integer? (atom-node-val n))
+         (atom-node-val n)))
+
   ;; Ast if 0 opnd
   (define (ast0 op)
     (case op
-      ((+) 0)
-      ((*) 1)
-      ((< <= > >= =) #t)))
+      ((+) (atom-node-make 0))
+      ((*) (atom-node-make 1))
+      ((< <= > >= =)  (atom-node-make #t))))
 
   ;; Ast if 1 opnd
   (define (ast1 op opnd)
     (case op
       ((+ *) opnd)
-      ((-)   `(- 0 ,opnd))
-      ((/)   `(/ 1 ,opnd))
-      ((< <= > >= =) #t)))
+      ((-)   (list (atom-node-make '-)
+                   (atom-node-make 0)
+                   opnd))
+      ((/)   (list (atom-node-make '/)
+                   (atom-node-make 1)
+                   opnd))
+      ((< <= > >= =) (atom-node-make #t))))
 
   ;; Transform numeric operator
   ;; (+ 1 2 3) -> (+ (+ 1 2) 3)
   (define (trans-num-op ast)
+    (error "NYI atom nodes (mlc-op-n)")
     `(,(car ast)
        ,(list (car ast) (cadr ast) (caddr ast))
        ,@(cdddr ast)))
@@ -2450,20 +2461,18 @@
            (gen-ast (trans-num-op ast) succ)
            (error "Internal error (mlc-op-n)"))) ;; comparisons are handled by macro expander
     (else
-      (let ((lcst (integer? (cadr ast)))
-            (rcst (integer? (caddr ast))))
+      (let ((lcst (int-val-cst (cadr ast)))
+            (rcst (int-val-cst (caddr ast))))
 
         (cond
           ((and lcst rcst)
-             (if (eq? op '/)
-                 (gen-ast (exact->inexact (eval ast)) succ)
-                 (gen-ast (eval ast) succ)))
+             (error "Internal error, unexpected expr (mlc-op-n)"))
           (lcst
              (gen-ast (caddr ast)
-                      (get-lazy-n-binop ast op (cadr ast) #f succ)))
+                      (get-lazy-n-binop ast op lcst #f succ)))
           (rcst
              (gen-ast (cadr ast)
-                      (get-lazy-n-binop ast op #f (caddr ast) succ)))
+                      (get-lazy-n-binop ast op #f rcst succ)))
           (else
             (gen-ast (cadr ast)
                      (gen-ast (caddr ast)

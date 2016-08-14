@@ -6,10 +6,13 @@
 ;
 ;(foo 333)
 
+(define (gg n)
+  (gambit$$pp 11)
+  (caar n)
+  (+ n 11))
 
-(define gg (lambda (n) (gambit$$pp 11) (gambit$$pp 20) (gambit$$pp (string? n)) (vector 1 2 3)))
 
-(gambit$$pp (gg "kk"))
+(gambit$$pp ($apply gg '(1454)))
 
 ;(define shorterp
 ;  (lambda (x y)
