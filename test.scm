@@ -1,17 +1,9 @@
 
-;(define (foo n)
-;  (if (< n 10)
-;      100
-;      200))
-;
-;(foo 333)
+(define (map fn l) (fn l))
 
-(define (gg n)
-  (pp 11)
-  (+ n 11))
+(define a '((1 . 11)))
 
-
-(pp (apply gg '(1454)))
+(gambit$$println (map cdr a))
 
 ;(define shorterp
 ;  (lambda (x y)

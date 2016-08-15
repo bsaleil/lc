@@ -315,6 +315,7 @@
 
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
+
   (cond ;; Pair
         ((pair? ast)
          (let ((op (car ast)))
@@ -331,8 +332,9 @@
                            ((member val '(##subtype breakpoint $$sys-clock-gettime-ns)) (mlc-special val ast succ))
                            ;; TODO
                            ((and (eq? val 'write-char) (= (length ast) 2))
-                             (error "NYI gen-ast atom"))
-                             ;(gen-ast (append ast '((current-output-port))) succ))
+                             (let* ((cop-node (atom-node-make 'current-output-port))
+                                    (ast (append ast (list (list cop-node)))))
+                               (gen-ast ast succ)))
                            ;; Inlined primitive
                            ((assoc val primitives) (mlc-primitive val ast succ))
                            ;; List
@@ -347,6 +349,12 @@
                            ;; Operator num
                            ((member val '(quotient modulo remainder)) (mlc-op-bin ast succ val)) ;; binary operator
                            ((member val '(+ - * < > <= >= = /))       (mlc-op-n ast succ val))   ;; nary operator
+                           ;; Operator num
+                           ((member val '(FLOAT+ FLOAT- FLOAT* FLOAT/ FLOAT< FLOAT> FLOAT<= FLOAT>= FLOAT=))
+                              (let* ((generic-op (list->symbol (list-tail (symbol->list val) 5)))
+                                     (opnode (atom-node-make generic-op)))
+                                (gen-ast (cons opnode (cdr ast))
+                                         succ)))
                            ;; Call
                            (else (mlc-call ast succ)))))
                  ; ;; TODO
@@ -361,11 +369,6 @@
                  ;; Binding
                  ((eq? op 'let) (mlc-let ast succ)) ;; Also handles let* (let* is a macro)
                  ((eq? op 'letrec) (mlc-letrec ast succ))
-                 ; ;; Operator num
-                 ; ((member op '(FLOAT+ FLOAT- FLOAT* FLOAT/ FLOAT< FLOAT> FLOAT<= FLOAT>= FLOAT=))
-                 ;  (let ((generic-op (list->symbol (list-tail (symbol->list op) 5))))
-                 ;    (gen-ast (cons generic-op (cdr ast))
-                 ;             succ)))
                  ;; If
                  ((eq? op 'if) (mlc-if ast succ))
                  ;; Define
@@ -555,23 +558,22 @@
                  (lambda (r)
                    (let ((ast
                            ;; primitive with fixed number of args
-                           (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
-                             `(lambda ,args (,ast ,@args)))))
-                     (jump-to-version cgc (gen-ast (expand ast) succ) ctx))))
+                           (let* ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x))))))
+                                  (args-nodes (map atom-node-make args)))
+                             `(lambda ,args (,ast ,@args-nodes)))))
+                     (jump-to-version cgc (gen-ast ast succ) ctx))))
               ;; Vector
               ((eq? sym 'vector)
-                 (error "NYI atom 2"))
-                ; (jump-to-version
-                ;   cgc
-                ;   (gen-ast (expand `(lambda l (list->vector l))) succ)
-                ;   ctx))
+                 (let* ((lv (atom-node-make 'list->vector))
+                        (lco (gen-ast `(lambda l (,lv l)) succ)))
+                   (jump-to-version cgc lco ctx)))
               ;; List
               ((eq? sym 'list)
-                 (error "NYI atom 3"))
-                ; (jump-to-version
-                ;   cgc
-                ;   (gen-ast `(lambda n n) succ)
-                ;   ctx))
+                 (let ((node (atom-node-make 'n)))
+                   (jump-to-version
+                     cgc
+                     (gen-ast `(lambda n ,node) succ)
+                     ctx)))
               (else (gen-error cgc (ERR_UNKNOWN_VAR sym))))))))
 
 ;; TODO: merge with gen-get-localvar, it's now the same code!
@@ -1580,8 +1582,9 @@
                (ctx (ctx-set-type ctx 0 stag)))
           (jump-to-version cgc succ ctx)))))
   (define lazy-current
-    (let ((sym (string->symbol (string-append "gambit$$" (symbol->string op)))))
-      (gen-ast (list sym) lazy-out)))
+    (let* ((sym (string->symbol (string-append "gambit$$" (symbol->string op))))
+           (node (atom-node-make sym)))
+      (gen-ast (list node) lazy-out)))
   (jump-to-version cgc lazy-current ctx))
 
 ;; primitives char->integer & integer->char
@@ -1614,12 +1617,14 @@
 (define (mlc-primitive prim ast succ)
   (cond ((and (= (length ast) 2)
               (member prim '(##fx-? ##fl-)))
-           (error "NYI atom mlc-primitive"))
+           (error "NYI atom mlc-primitive 1"))
           ; (mlc-primitive-d (list op 0 (cadr ast)) succ))
         ((and (= (length ast) 2)
               (eq? prim 'zero?))
-           (error "NYI atom mlc-primitive"))
-           ;(gen-ast (list '= (cadr ast) 0) succ))
+           (let ((ast (list (atom-node-make '=)
+                            (cadr ast)
+                            (atom-node-make 0))))
+             (gen-ast ast succ)))
         (else
            (mlc-primitive-d prim ast succ))))
 
@@ -1669,10 +1674,10 @@
                        ((##box)             (prim-box            cgc ctx reg succ cst-infos))
                        ((##unbox)           (prim-unbox          cgc ctx reg succ cst-infos))
                        ((##set-box!)        (prim-set-box!       cgc ctx reg succ cst-infos))
-                       ((set-car! set-cdr!)                      (prim-set-cxr!       cgc ctx reg succ cst-infos (car ast)))
-                       ((current-input-port current-output-port) (prim-current-x-port cgc ctx reg succ cst-infos (car ast)))
-                       ((char->integer integer->char)            (prim-char<->int     cgc ctx reg succ cst-infos (car ast)))
-                       ((vector-length string-length)            (prim-x-length       cgc ctx reg succ cst-infos (car ast)))
+                       ((set-car! set-cdr!)                      (prim-set-cxr!       cgc ctx reg succ cst-infos prim))
+                       ((current-input-port current-output-port) (prim-current-x-port cgc ctx reg succ cst-infos prim))
+                       ((char->integer integer->char)            (prim-char<->int     cgc ctx reg succ cst-infos prim))
+                       ((vector-length string-length)            (prim-x-length       cgc ctx reg succ cst-infos prim))
                        (else (error "Unknown primitive"))))))))))
 
     (let* ((primitive (assoc prim primitives))
@@ -1823,11 +1828,12 @@
         ((= len 0)
           (gen-ast (atom-node-make '()) succ))
         ((> (* len 3 8) MSECTION_BIGGEST)
-          (error "NYI atom 4")
           (gen-ast
-            (let ((sym (gensym)))
-              `(let ((,sym list))
-                 (,sym ,@(cdr ast))))
+            (let* ((sym (gensym))
+                   (lnode (atom-node-make 'list))
+                   (snode (atom-node-make sym)))
+              `(let ((,sym ,lnode))
+                 (,snode ,@(cdr ast))))
             succ))
         ;; (list ..)
         (else
