@@ -1,10 +1,4 @@
 
-(define (foo n)
-  (if (< n 10)
-      100
-      200))
-
-(foo 333)
 
 
 ;(define shorterp

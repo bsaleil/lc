@@ -300,9 +300,9 @@
 ;; Expand function called outside top-level
 (define (expand expr)
   (resolve-symalias expr)
-  (cond ((void? expr) #f)
+  (cond ((void? expr) (atom-node-make #f))
         ((or (null? expr) (vector? expr) (symbol? expr) (number? expr) (char? expr) (string? expr) (boolean? expr))
-         expr)
+         (atom-node-make expr))
         (else
           (let ((op (car expr)))
             (resolve-alias op expr)
@@ -329,18 +329,20 @@
                         (cons (expand (car expr)) (expand (cdr expr)))))))))) ;; (e1 . e2)
 
 (define (expand-accessor expr)
-    (let ((op   (car expr))
-          (opnd (expand (cdr expr))))
+    (define (CAR) (atom-node-make 'car))
+    (define (CDR) (atom-node-make 'cdr))
+
+    (let ((opnd (expand (cdr expr))))
       (case (car expr)
-         ((caar)  `(car (car ,@opnd)))
-         ((cadr)  `(car (cdr ,@opnd)))
-         ((cadar) `(car (cdr (car ,@opnd))))
-         ((caddar) `(car (cdr (cdr (car ,@opnd)))))
-         ((cdar)  `(cdr (car ,@opnd)))
-         ((cddr)  `(cdr (cdr ,@opnd)))
-         ((caddr) `(car (cdr (cdr ,@opnd))))
-         ((cdddr) `(cdr (cdr (cdr ,@opnd))))
-         ((cadddr) `(car (cdr (cdr (cdr ,@opnd))))))))
+         ((caar)   `(,(CAR) (,(CAR) ,@opnd)))
+         ((cadr)   `(,(CAR) (,(CDR) ,@opnd)))
+         ((cadar)  `(,(CAR) (,(CDR) (,(CAR) ,@opnd))))
+         ((caddar) `(,(CAR) (,(CDR) (,(CDR) (,(CAR) ,@opnd)))))
+         ((cdar)   `(,(CDR) (,(CAR) ,@opnd)))
+         ((cddr)   `(,(CDR) (,(CDR) ,@opnd)))
+         ((caddr)  `(,(CAR) (,(CDR) (,(CDR) ,@opnd))))
+         ((cdddr)  `(,(CDR) (,(CDR) (,(CDR) ,@opnd))))
+         ((cadddr) `(,(CAR) (,(CDR) (,(CDR) (,(CDR) ,@opnd))))))))
 
 (define (expand-set! expr)
   (let ((r (table-ref gids (cadr expr) #f)))
@@ -366,7 +368,7 @@
                   (cons sym symbols)))))))
 
 
-  (assert-p-nbargs expr)
+  (assert-p-nbargs (car expr) expr)
   (let ((op (car expr)))
     (cond ;; real?
           ((eq? op 'real?)
@@ -384,29 +386,31 @@
 
 (define (expand-cmp expr)
 
-  (define (expand-cmp-n op expr prev)
+  (define op-node (atom-node-make (car expr)))
+
+  (define (expand-cmp-n expr prev)
     (cond ;;
           ((= (length expr) 1)
              (let ((s (gensym)))
                `(let ((,s ,(car expr)))
-                  (,op ,prev ,s))))
+                  (,op-node ,prev ,s))))
           ;; prev
           (prev
              (let ((s (gensym)))
                `(let ((,s ,(car expr)))
-                  (and (,op ,prev ,s)
-                       ,(expand-cmp-n op (cdr expr) s)))))
+                  (and (,op-node ,prev ,s)
+                       ,(expand-cmp-n (cdr expr) s)))))
           ;;
           (else
              (let ((s1 (gensym))
                    (s2 (gensym)))
                `(let ((,s1 ,(car expr)) (,s2 ,(cadr expr)))
-                  (and (,op ,s1 ,s2)
-                       ,(expand-cmp-n op (cddr expr) s2)))))))
+                  (and (,op-node ,s1 ,s2)
+                       ,(expand-cmp-n (cddr expr) s2)))))))
 
   (if (<= (length (cdr expr)) 2)
-      (cons (car expr) (expand (cdr expr)))
-      (expand (expand-cmp-n (car expr) (cdr expr) #f))))
+      (cons op-node (expand (cdr expr)))
+      (expand (expand-cmp-n (cdr expr) #f))))
 
 ;; DEFINE
 (define (expand-define expr)
@@ -496,6 +500,10 @@
 ;; letn and let with internal defs are not handled by compiler (mlc-let)
 (define (expand-let expr)
 
+  (define (expand-bindings bindings)
+    (map (lambda (n) (cons (car n) (expand (cdr n))))
+         bindings))
+
   ;; NAMED LET
   (define (expand-letn expr)
     (let ((id (cadr expr))
@@ -509,8 +517,9 @@
       ;; let
       (if (null? (cadr expr))
           (expand `(begin ,@(cddr expr)))
-          `(let ,(expand (cadr expr))
-             ,(expand (cons 'begin (cddr expr)))))))
+          (let ((bindings (expand-bindings (cadr expr))))
+            `(let ,bindings
+               ,(expand (cons 'begin (cddr expr))))))))
 
 ;; LETREC
 (define (expand-letrec expr)
