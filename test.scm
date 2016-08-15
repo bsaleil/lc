@@ -1,9 +1,5 @@
 
-(define (map fn l) (fn l))
 
-(define a '((1 . 11)))
-
-(gambit$$println (map cdr a))
 
 ;(define shorterp
 ;  (lambda (x y)

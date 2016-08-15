@@ -564,8 +564,9 @@
                      (jump-to-version cgc (gen-ast ast succ) ctx))))
               ;; Vector
               ((eq? sym 'vector)
-                 (let* ((lv (atom-node-make 'list->vector))
-                        (lco (gen-ast `(lambda l (,lv l)) succ)))
+                 (let* ((node-lv (atom-node-make 'list->vector))
+                        (node-l  (atom-node-make 'l))
+                        (lco (gen-ast `(lambda l (,node-lv ,node-l)) succ)))
                    (jump-to-version cgc lco ctx)))
               ;; List
               ((eq? sym 'list)
@@ -2453,7 +2454,6 @@
   ;; Transform numeric operator
   ;; (+ 1 2 3) -> (+ (+ 1 2) 3)
   (define (trans-num-op ast)
-    (error "NYI atom nodes (mlc-op-n)")
     `(,(car ast)
        ,(list (car ast) (cadr ast) (caddr ast))
        ,@(cdddr ast)))
@@ -2471,7 +2471,11 @@
 
         (cond
           ((and lcst rcst)
-             (error "Internal error, unexpected expr (mlc-op-n)"))
+             (if (not (member op '(+ - * /)))
+                 (error "NYI mlc-op-n"))
+             (let ((r (eval (list op lcst rcst))))
+               (gen-ast (atom-node-make r)
+                        succ)))
           (lcst
              (gen-ast (caddr ast)
                       (get-lazy-n-binop ast op lcst #f succ)))
