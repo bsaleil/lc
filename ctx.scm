@@ -178,14 +178,14 @@
                   (loop (cdr sl)))
                 (loop (cdr sl)))))))
   (let* ((req (get-req-moves))
-         (rrr
+         (req-clean ;; remove wrong moves (e.g. '(r1 . r1))
            (foldr (lambda (el r)
                     (if (equal? (car el) (cdr el))
                         r
                         (cons el r)))
                   '()
                   req))
-         (moves (steps rrr))
+         (moves (steps req-clean))
          (fs-move
            (cons 'fs (- (ctx-fs dst-ctx)
                         (ctx-fs src-ctx)))))
