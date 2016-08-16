@@ -32,6 +32,7 @@
 (define CTX_CLO #f)
 (define CTX_RETAD #f)
 (define regalloc-regs #f)
+(define lazy-code-flags #f)
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx
