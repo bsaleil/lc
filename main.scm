@@ -365,8 +365,8 @@
         (newline)
         (let ((byte (get-u8 pos)))
           (if (< byte #x10)
-              (print "0" (number->string (get-u8 pos) 16) " ")
-              (print (number->string (get-u8 pos) 16) " "))
+              (print "\\x0" (number->string (get-u8 pos) 16) "")
+              (print "\\x"  (number->string (get-u8 pos) 16) ""))
           (print-mcb-h (+ pos 1) lim))))
   (print-mcb-h code-addr code-alloc))
 

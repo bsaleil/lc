@@ -341,7 +341,15 @@
 
 ;;
 ;; GET FREE REG
-(define (ctx-get-free-reg ctx)
+(define (ctx-get-free-reg ctx succ)
+
+  ;; Preferred register is used if it's member of free registers
+  ;; 'return-reg' register is preferred if the successor lco is a return lco
+  ;; TODO: also use preferred register if a register need to be spilled
+  (define preferred
+    (if (member 'ret (lazy-code-flags succ))
+        return-reg
+        #f))
 
   (define (get-spilled-reg)
     (let ((sl
@@ -369,9 +377,12 @@
                                (list (cons spill-reg mloc)))))
 
             (list moves spill-reg ctx)))
-        (list '()
-              (car free-regs)
-              (ctx-copy ctx #f #f (cdr free-regs))))))
+        (let* ((r (and preferred (member preferred free-regs)))
+               (reg (if r (car r) (car free-regs)))
+               (free (set-sub free-regs (list reg) '())))
+          (list '()
+                reg
+                (ctx-copy ctx #f #f free))))))
 
 ;;
 ;;
@@ -687,7 +698,14 @@
 ;; cloloc is the location of the closure.
 ;; If cloloc is #f, no need to move the closure to the closure reg.
 ;; If cloloc is not #f, we add an extra move to required moves set which is closure -> closure reg
-(define args-regs '((r . 0) (r . 1) (r . 4) (r . 6) (r . 7) (r . 8))) ;; TODO
+(define args-regs '((r . 0) (r . 1) (r . 4) (r . 6) (r . 7) (r . 8))) ;; TODO move
+;; TODO: move
+;; TODO: we need to use only loc notation to use regs. Here we do not use r9 because r9 is rdx
+;;       and rdx already is used in return code sequence. But we SHOULD use r9 instead of rdx directly in lazy-ret
+;; Return reg is one of the last registers to increase the chances it is chosen
+;; if it is preferred register in ctx-get-free-reg (which is the case each time succ lco is a 'ret lco)
+(define return-reg '(r . 8)) ;; TODO move
+
 (define (ctx-get-call-args-moves ctx nb-args cloloc)
 
   (define clomove (and cloloc (cons cloloc '(r . 2))))

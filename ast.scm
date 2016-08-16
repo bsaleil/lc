@@ -409,7 +409,7 @@
     (mlc-flonum lit ast succ)
     (make-lazy-code
       (lambda (cgc ctx)
-        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
           (apply-moves cgc ctx moves)
           (codegen-literal cgc lit reg)
           (jump-to-version cgc
@@ -429,7 +429,7 @@
 
   (make-lazy-code
       (lambda (cgc ctx)
-        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ))
                (immediate
                 (if (< flo 0)
                     (let* ((ieee-rep (ieee754 (abs flo) 'double))
@@ -463,7 +463,7 @@
           (gen-allocation-imm cgc STAG_VECTOR (* 8 len))
           (let loop ((pos 0))
             (if (= pos len)
-              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
                 (apply-moves cgc ctx moves)
                 (x86-lea cgc (codegen-reg-to-x86reg reg) (x86-mem (+ (* -8 (+ len 1)) TAG_MEMOBJ) alloc-ptr))
                 (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx len) CTX_VECT reg)))
@@ -479,7 +479,7 @@
 (define (mlc-string str ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
         (apply-moves cgc ctx moves)
         (codegen-string cgc str reg)
         (jump-to-version cgc succ (ctx-push ctx CTX_STR reg))))))
@@ -499,7 +499,7 @@
                 (cond ((pair? val)   CTX_PAI)
                       ((symbol? val) CTX_SYM)
                       ((vector? val) CTX_VECT)))
-              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
                 (apply-moves cgc ctx moves)
                 (let ((dest (codegen-reg-to-x86reg reg)))
                   (if (permanent-object? val)
@@ -589,7 +589,7 @@
              (codegen-load-loc cgc (ctx-fs ctx) loc))
           ((or (ctx-loc-is-register? loc)
                (ctx-loc-is-memory? loc))
-             (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
+             (mlet ((moves/reg/nctx (ctx-get-free-reg ctx succ)))
                (apply-moves cgc nctx moves)
                (apply-moves cgc nctx (list (cons loc reg)))
                (jump-to-version cgc succ (ctx-push nctx type reg (car local)))))
@@ -604,7 +604,7 @@
                        (begin
                          (x86-mov cgc (x86-rax) copnd)
                          (x86-mov cgc (x86-rax) (x86-mem coffset (x86-rax))))))
-                 (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
+                 (mlet ((moves/reg/nctx (ctx-get-free-reg ctx succ)))
                    (apply-moves cgc nctx moves)
                    (let* ((fs (ctx-fs nctx))
                           (cloc (ctx-get-loc ctx (- (length (ctx-stack ctx)) 2)))
@@ -628,7 +628,7 @@
     (if for-set?
         (codegen-load-loc cgc (ctx-fs ctx) loc)
         ;;
-        (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
+        (mlet ((moves/reg/nctx (ctx-get-free-reg ctx succ)))
           (apply-moves cgc nctx moves)
           (apply-moves cgc nctx (list (cons loc reg)))
           (jump-to-version cgc succ (ctx-push nctx type reg (car local)))))))
@@ -639,7 +639,7 @@
          (r (table-ref gids (car global) #f))
          (type (or r CTX_UNK))
          ;; Get free register (dest)
-         (moves/reg/ctx (ctx-get-free-reg ctx)))
+         (moves/reg/ctx (ctx-get-free-reg ctx succ)))
     (apply-moves cgc ctx moves)
     ;; Generate code to get global var from memory
     (codegen-get-global cgc (cdr global) reg)
@@ -676,7 +676,7 @@
     ;; Get mobject in tmp register
     (get-function cgc ctx local #f #t)
 
-    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
+    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ))
            (lval (ctx-get-loc ctx 0))
            (type (ctx-get-type ctx 0)))
       (apply-moves cgc ctx moves)
@@ -689,7 +689,7 @@
 
 (define (gen-set-globalvar cgc ctx global succ)
   (mlet ((pos (cdr global))
-         (moves/reg/ctx (ctx-get-free-reg ctx))
+         (moves/reg/ctx (ctx-get-free-reg ctx succ))
          (lval (ctx-get-loc ctx 0)))
     (apply-moves cgc ctx moves)
     (codegen-set-global cgc reg pos lval (ctx-fs ctx))
@@ -709,7 +709,7 @@
                         (mlet ((res (table-ref globals identifier)) ;; Lookup in globals
                                (pos (cdr res))                  ;; Get global pos
                                ;;
-                               (moves/reg/ctx (ctx-get-free-reg ctx))
+                               (moves/reg/ctx (ctx-get-free-reg ctx succ))
                                (lvalue (ctx-get-loc ctx 0)))
                           (apply-moves cgc ctx moves)
                           (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue)
@@ -809,9 +809,7 @@
              ;; Retval loc
              (lres  (ctx-get-loc ctx 0))
              (opres (codegen-loc-to-x86opnd (ctx-fs ctx) lres))
-             ;; Retreg loc
-             (lret  (car (ctx-init-free-regs)))
-             (opret (codegen-reg-to-x86reg lret))
+             (opret (codegen-reg-to-x86reg return-reg))
              ;; Retaddr loc
              (laddr (ctx-get-loc ctx (- (length (ctx-stack ctx)) 1)))
              (opaddr (codegen-loc-to-x86opnd (ctx-fs ctx) laddr)))
@@ -965,7 +963,7 @@
 (define (gen-global-closure cgc ctx ast succ ep fvars-late)
   (let* ((ep-qword (if opt-entry-points ep (get-i64 (+ ep 8))))
          (qword (global-closures-add ast ep-qword (length fvars-late))))
-    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
       (apply-moves cgc ctx moves)
       (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int qword))
       (jump-to-version cgc succ (ctx-push ctx CTX_CLO reg)))))
@@ -992,7 +990,7 @@
          (clo-offset  (- free-offset 2)))
     (gen-free-vars cgc fvars-imm fvars-late ctx free-offset clo-offset))
 
-  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
     (apply-moves cgc ctx moves)
 
     ;; Put closure
@@ -1210,7 +1208,7 @@
   (cond ((eq? sym 'breakpoint)
          (make-lazy-code
            (lambda (cgc ctx)
-             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
                (apply-moves cgc ctx moves)
                (x86-call cgc label-breakpoint-handler)
                (codegen-void cgc reg)
@@ -1218,7 +1216,7 @@
         ((eq? sym '$$sys-clock-gettime-ns)
          (make-lazy-code
            (lambda (cgc ctx)
-             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
                (apply-moves cgc ctx moves)
                (codegen-sys-clock-gettime-ns cgc reg)
                (jump-to-version cgc succ (ctx-push ctx CTX_INT reg))))))
@@ -1226,7 +1224,7 @@
          (let* ((lazy-imm
                   (make-lazy-code
                     (lambda (cgc ctx)
-                      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+                      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
                         (apply-moves cgc ctx moves)
                         (codegen-literal cgc STAG_PAIR reg)
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_INT reg))))))
@@ -1234,7 +1232,7 @@
                   (make-lazy-code
                     (lambda (cgc ctx)
                       ;; We know here that the value is not a pair
-                      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
+                      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ))
                              (type (ctx-get-type ctx 0)))
                         (apply-moves cgc ctx moves)
                         (if (eq? type CTX_UNK)
@@ -1278,7 +1276,7 @@
   (let* ((lazy-call
            (make-lazy-code
              (lambda (cgc ctx)
-               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
+               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ))
                       (gsym (get-gambit-sym (atom-node-val (car ast))))
                       (nargs (length (cdr ast))))
                  (apply-moves cgc ctx moves)
@@ -1639,7 +1637,7 @@
              (else
                (make-lazy-code
                  (lambda (cgc ctx)
-                   (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+                   (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
                      (apply-moves cgc ctx moves)
                      ;; TODO: add function in 'primitives' set
                      (case prim
@@ -1796,7 +1794,7 @@
                 (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-imm-int (obj-encoding '())) 64)
                 ;; Write value in car
                 (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
-                (mlet ((moves/reg/ctx (ctx-get-free-reg (ctx-pop-n ctx len))))
+                (mlet ((moves/reg/ctx (ctx-get-free-reg (ctx-pop-n ctx len) succ)))
                    (apply-moves cgc ctx moves)
                    ;; Load first pair in dest register
                    (let ((dest (codegen-reg-to-x86reg reg)))
@@ -2283,12 +2281,12 @@
                                              (if apply?
                                                  (ctx-pop-n ctx 2) ;; Pop operator and args
                                                  (ctx-pop-n ctx (+ (length args) 1)))))
-                                      (let ((reg (car (ctx-init-free-regs))))
-                                        (set! gen-flag
-                                              (gen-version-continuation
-                                                load-ret-label
-                                                lazy-continuation
-                                                (ctx-push ctx CTX_UNK reg))))))
+
+                                      (set! gen-flag
+                                            (gen-version-continuation
+                                              load-ret-label
+                                              lazy-continuation
+                                              (ctx-push ctx CTX_UNK return-reg)))))
                                 gen-flag))))
    ;; Generate code
    (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0))))
@@ -2323,13 +2321,13 @@
                           (generic?
                             (and opt-max-versions
                                  (>= (lazy-code-nb-versions lazy-continuation) opt-max-versions))))
-                     (let ((reg (car (ctx-init-free-regs))))
-                       (gen-version-continuation-cr
-                         lazy-continuation
-                         (ctx-push ctx (if generic? CTX_UNK type) reg)
-                         type
-                         generic?
-                         table))))))
+
+                     (gen-version-continuation-cr
+                       lazy-continuation
+                       (ctx-push ctx (if generic? CTX_UNK type) return-reg)
+                       type
+                       generic?
+                       table)))))
          ;; CRtable
          (crtable-key (get-crtable-key ast ctx))
          (stub-addr (vector-ref (list-ref stub-labels 0) 1))
@@ -2404,7 +2402,7 @@
                (make-lazy-code
                  (lambda (cgc ctx)
                    (mlet ((label-div0 (get-label-error ERR_DIVIDE_ZERO))
-                          (moves/reg/ctx (ctx-get-free-reg ctx))
+                          (moves/reg/ctx (ctx-get-free-reg ctx succ))
                           (lleft (ctx-get-loc ctx 1))
                           (lright (ctx-get-loc ctx 0)))
                      (apply-moves cgc ctx moves)
@@ -2528,7 +2526,7 @@
     (make-lazy-code
       (lambda (cgc ctx)
         (let* ((type (if num-op? CTX_INT CTX_BOOL))
-               (res (if inlined-if-cond? #f (ctx-get-free-reg ctx)))
+               (res (if inlined-if-cond? #f (ctx-get-free-reg ctx succ)))
                (moves (if res (car res) '()))
                (reg   (if res (cadr res) #f))
                (ctx   (if res (caddr res) ctx))
@@ -2557,7 +2555,7 @@
     (make-lazy-code
       (lambda (cgc ctx)
         (let* ((type (if num-op? CTX_FLO CTX_BOOL))
-               (res (if inlined-if-cond? #f (ctx-get-free-reg ctx)))
+               (res (if inlined-if-cond? #f (ctx-get-free-reg ctx succ)))
                (moves (if res (car res) '()))
                (reg (if res (cadr res) #f))
                (ctx (if res (caddr res) ctx))
@@ -2597,7 +2595,7 @@
   (define (get-lazy-res bool)
     (make-lazy-code
       (lambda (cgc ctx)
-        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx)))
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
           (apply-moves cgc ctx moves)
           (codegen-set-bool cgc bool reg)
           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL reg))))))
@@ -2644,7 +2642,7 @@
 (define (mlc-pair succ #!optional (cst-infos '()))
   (make-lazy-code
     (lambda (cgc ctx)
-      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx))
+      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ))
              (car-cst (assoc 0 cst-infos))
              (cdr-cst (assoc 1 cst-infos))
              (lcdr (if cdr-cst (cdr cdr-cst) (ctx-get-loc ctx 0)))

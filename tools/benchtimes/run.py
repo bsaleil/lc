@@ -221,10 +221,10 @@ l4 = System("LC-nep-nrp",
 
 systems.append(l1)
 systems.append(g1)
-systems.append(l2)
+#systems.append(l2)
 systems.append(g2)
-systems.append(l3)
-systems.append(l4)
+#systems.append(l3)
+#systems.append(l4)
 #systems.append(l1)
 
 
