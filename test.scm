@@ -1,5 +1,22 @@
 
+(define (append-two lst1 lst2)
+  (if (null? lst1)
+      lst2
+      (cons (car lst1)
+            (append-two (cdr lst1) lst2))))
 
+(gambit$$pp (append-two
+  '(#\D #\a #\r #\k #\P)
+  '(#\V)))
+
+
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1))
+;         (fib (- n 2)))))
+;
+;(gambit$$pp (fib 40))
 
 ;(define shorterp
 ;  (lambda (x y)

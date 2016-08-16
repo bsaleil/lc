@@ -990,32 +990,43 @@
   generic-ctx
   generic-vers)
 
+;; Create table of versions for a lazy-code
+(define (make-versions-table)
+  ;; If we do not use regalloc to specialize code,
+  ;; we need to check for the same ctx without considering reg alloc information
+  (if opt-vers-regalloc
+      (make-table)
+      (let ((test
+              (lambda (ctx1 ctx2)
+                (equal? (ctx-rm-regalloc ctx1)
+                        (ctx-rm-regalloc ctx2)))))
+        (make-table test: test))))
 
 (define (lazy-code-nb-versions lazy-code)
   (table-length (lazy-code-versions lazy-code)))
 
 (define (make-lazy-code generator)
-  (let ((lc (make-lazy-code* generator (make-table) '() #f #f #f #f)))
+  (let ((lc (make-lazy-code* generator (make-versions-table) '() #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-cont generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(cont) #f #f #f #f)))
+  (let ((lc (make-lazy-code* generator (make-versions-table) '(cont) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-entry generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(entry) #f #f #f #f)))
+  (let ((lc (make-lazy-code* generator (make-versions-table) '(entry) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-ret generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(ret) #f #f #f #f)))
+  (let ((lc (make-lazy-code* generator (make-versions-table) '(ret) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-cond lco-true lco-false generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(cond) lco-true lco-false #f #f)))
+  (let ((lc (make-lazy-code* generator (make-versions-table) '(cond) lco-true lco-false #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
@@ -1026,6 +1037,17 @@
 (define (put-version lazy-code ctx v)
   (let ((versions (lazy-code-versions lazy-code)))
     (table-set! versions ctx v)))
+
+;; Return ctx associated to the version
+(define (get-version-ctx lazy-code version)
+  (let ((versions (lazy-code-versions lazy-code)))
+    (let loop ((lst (table->list versions)))
+      (if (null? lst)
+          (error "Internal error")
+          (if (eq? (cdar lst)
+                   version)
+              (caar lst)
+              (loop (cdr lst)))))))
 
 ;;-----------------------------------------------------------------------------
 ;; ctx regalloc
@@ -1086,10 +1108,11 @@
 
   (let ((r (filter-fs moves 0 '())))
     ;; Update sp
-    (if (> (car r) 0)
+    (if (not (= (car r) 0))
         (x86-sub cgc (x86-usp) (x86-imm-int (* 8 (car r)))))
     ;; Apply other moves
     (apply-filtered (cdr r))))
+
 
 ;;-----------------------------------------------------------------------------
 
@@ -1110,12 +1133,48 @@
 
 (define (gen-version-* cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos #!optional fn-opt-label)
 
+  ;; When an existing version is used, it may be necessary to generate
+  ;; code to merge ctx, regalloc, etc...
+  ;; This function generate this extra code to use the version
+  ;; and return first label
+  ;; return a pair:
+  ;; car is #t if new code is generated, #f if version label can be used directly
+  ;; cdr is the first label (or version label if no code generated)
+  (define (get-first-label label-version)
+    (if opt-vers-regalloc
+        (cons #f label-version)
+        (let ((vctx (get-version-ctx lazy-code label-version)))
+          (if (and (equal? (ctx-slot-loc ctx)
+                           (ctx-slot-loc vctx))
+                   (equal? (ctx-fs ctx)
+                           (ctx-fs vctx)))
+            ;; No merge code needed, return label-version
+            (cons #f label-version)
+            ;; Merge code needed
+            (let* ((label (asm-make-label #f (new-sym 'regalloc_merge_)))
+                   (moves (ctx-regalloc-merge-moves ctx vctx))
+                   (gen   (lambda (cgc)
+                            (x86-label cgc label)
+                            (apply-moves cgc vctx moves)
+                            (x86-jmp cgc label-version))))
+              (if cgc
+                  (gen cgc)
+                  (code-add
+                    (lambda (cgc)
+                      (asm-align cgc 4 0 #x90)
+                      (gen cgc))))
+              (cons #t label))))))
+
   (if opt-verbose-jit
       (fn-verbose))
 
   (let* ((label-dest (get-version lazy-code ctx))
          (new-version? (not label-dest)))
-    (if (not label-dest)
+    (if label-dest
+        ;; Existing version
+        (let ((r (get-first-label label-dest)))
+          (set! new-version? (car r))
+          (set! label-dest (cdr r)))
         ;; That version is not yet generated, so generate it
         (let ((version-label (asm-make-label #f (new-sym label-sym))))
           (set! code-alloc (fn-codepos))
