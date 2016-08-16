@@ -583,17 +583,16 @@
   (let ((loc (ctx-identifier-loc ctx (cdr local)))
         (type (ctx-identifier-type ctx (cdr local))))
 
-    (cond ((ctx-loc-is-register? loc)
-             (if for-set?
-                 (codegen-load-loc cgc (ctx-fs ctx) loc)
-                 (jump-to-version cgc succ (ctx-push ctx type loc (car local)))))
-          ((ctx-loc-is-memory? loc)
-             (if for-set?
-                 (codegen-load-loc cgc (ctx-fs ctx) loc)
-                 (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
-                   (apply-moves cgc nctx moves)
-                   (apply-moves cgc nctx (list (cons loc reg)))
-                   (jump-to-version cgc succ (ctx-push nctx type reg (car local))))))
+    (cond ((and for-set?
+                (or (ctx-loc-is-register? loc)
+                    (ctx-loc-is-memory? loc)))
+             (codegen-load-loc cgc (ctx-fs ctx) loc))
+          ((or (ctx-loc-is-register? loc)
+               (ctx-loc-is-memory? loc))
+             (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
+               (apply-moves cgc nctx moves)
+               (apply-moves cgc nctx (list (cons loc reg)))
+               (jump-to-version cgc succ (ctx-push nctx type reg (car local)))))
           ((ctx-loc-is-freemem? loc)
              (if for-set?
                  (let* ((fs (ctx-fs ctx))
@@ -628,14 +627,11 @@
 
     (if for-set?
         (codegen-load-loc cgc (ctx-fs ctx) loc)
-        (if (ctx-loc-is-register? loc)
-            ;;
-            (jump-to-version cgc succ (ctx-push ctx type loc (car local)))
-            ;;
-            (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
-              (apply-moves cgc nctx moves)
-              (apply-moves cgc nctx (list (cons loc reg)))
-              (jump-to-version cgc succ (ctx-push nctx type reg (car local))))))))
+        ;;
+        (mlet ((moves/reg/nctx (ctx-get-free-reg ctx)))
+          (apply-moves cgc nctx moves)
+          (apply-moves cgc nctx (list (cons loc reg)))
+          (jump-to-version cgc succ (ctx-push nctx type reg (car local)))))))
 
 (define (gen-get-globalvar cgc ctx global succ)
 
