@@ -215,6 +215,8 @@
   (string-append (string-upcase type)
                  " EXPECTED"))
 
+(define ERR_NUMBER_EXPECTED "NUMBER EXPECTED")
+
 (define (ERR_UNKNOWN_VAR var)
   (if (string? var)
       (string-append "Can't find variable: " var)
@@ -1540,7 +1542,7 @@
           (make-lazy-code
              (lambda (cgc ctx)
                 (if (or (eq? type CTX_FLO) (eq? type CTX_INT))
-                  (gen-error cgc (ERR_TYPE_EXPECTED CTX_INT))
+                  (gen-error cgc ERR_NUMBER_EXPECTED)
                   (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
    (gen-dyn-type-test type stack-idx succ lazy-error ast)))
 

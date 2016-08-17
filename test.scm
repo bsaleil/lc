@@ -1,17 +1,49 @@
 
 ;* Liveness
 ;* Allocation groupées
-;* Regalloc: registre préféré
+;* Regalloc: registre préféré (opérandes)
 ;* Regalloc: pb des movs en trop (voir fib.s)
 
 
+;; Si juste bbv
+;;  * on découvre le type à n < 2
+;;  * pas de test généré pour n-1 et n-2
+;;  * mais toujours test +
+
+;; Si pt entrée
+;;  * on connait le type pas de test à < n 2
+;;  * pas de test a n-1 et n-2
+;;  * mais toujours à +
+
+;; Si pt de retour
+;;  * on connait le type pas de test à < n 2
+;;  * pas de test a n-1 et n-2
+;;  * pas de test à +
+;;  -> plus aucun test
+;; sauf le tout tout premier <2
+
+;; Si pr entrée
+;; on connait déjà le type de
+
 (define (fib n)
   (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
+      n
+      (+ (fib (- n 2))
+         (fib (- n 1)))))
 
-(fib 40)
+(print ">")
+(pp (fib (read)))
+
+(print ">")
+(pp (fib (read)))
+
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1))
+;         (fib (- n 2)))))
+;
+;(fib 40)
 
 ;(define shorterp
 ;  (lambda (x y)

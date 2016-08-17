@@ -98,6 +98,8 @@
     (,vector? . vector?)
     (,##char<? . char<?)
     (,char<? . char<?)
+    (,char<=? . char<=?)
+    (,char>=? . char>=?)
     (,##char=? . char=?)
     (,char=? . char=?)
     (,##eof-object? . eof-object?)
