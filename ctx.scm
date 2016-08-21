@@ -340,9 +340,21 @@
     (init-fs (length args))
     eploc))
 
+;; TODO WIP MOVE
+(define (ctx-loc-used ctx loc . excluded-idx)
+  (let loop ((sls (ctx-slot-loc ctx)))
+    (cond ((null? sls)
+             #f)
+          ((and (eq? (cdar sls) loc)
+                (not (member (slot-to-stack-idx ctx (car sls))
+                             excluded-idx)))
+             #f)
+          (else
+             (loop (cdr sls))))))
+
 ;;
 ;; GET FREE REG
-(define (ctx-get-free-reg ctx succ)
+(define (ctx-get-free-reg ctx succ #!optional (nb-opnds 0))
 
   ;; Preferred register is used if it's member of free registers
   ;; 'return-reg' register is preferred if the successor lco is a return lco
@@ -351,6 +363,18 @@
     (if (member 'ret (lazy-code-flags succ))
         return-reg
         #f))
+
+  (define deep-opnd-reg
+    (let loop ((idx (- nb-opnds 1)))
+      (if (< idx 0)
+          #f
+          (let ((r (ctx-get-loc ctx idx)))
+            ;; We keep the the loc associated to this opnd if
+            ;; (i) it's a register and (ii) this register is not used elsewhere
+            (if (and (ctx-loc-is-register? r)
+                     (not (ctx-loc-used ctx idx)))
+                r
+                (loop (- idx 1)))))))
 
   (define (get-spilled-reg)
     (let ((sl
@@ -364,26 +388,30 @@
       (assert sl "Internal error (ctx-get-free-reg)")
       (cdr sl)))
 
-  (let ((free-regs (ctx-free-regs ctx)))
-    (if (null? free-regs)
-        (let* ((moves/mloc/ctx (ctx-get-free-mem ctx))
-               (moves (car moves/mloc/ctx))
-               (mloc  (cadr moves/mloc/ctx))
-               (ctx   (caddr moves/mloc/ctx))
-               (spill-reg (get-spilled-reg))
-               (reg-slots (ctx-get-slots ctx spill-reg)))
-          ;; 1: changer tous les slots pour r -> m
-          (let ((ctx (ctx-set-loc-n ctx reg-slots mloc))
-                (moves (append moves
-                               (list (cons spill-reg mloc)))))
+  (if deep-opnd-reg
+      ;; TODO WIP comment
+      (list '() deep-opnd-reg ctx)
+      (let ((free-regs (ctx-free-regs ctx)))
+      ;; TODO WIP comment
+        (if (null? free-regs)
+            (let* ((moves/mloc/ctx (ctx-get-free-mem ctx))
+                   (moves (car moves/mloc/ctx))
+                   (mloc  (cadr moves/mloc/ctx))
+                   (ctx   (caddr moves/mloc/ctx))
+                   (spill-reg (get-spilled-reg))
+                   (reg-slots (ctx-get-slots ctx spill-reg)))
+              ;; 1: changer tous les slots pour r -> m
+              (let ((ctx (ctx-set-loc-n ctx reg-slots mloc))
+                    (moves (append moves
+                                   (list (cons spill-reg mloc)))))
 
-            (list moves spill-reg ctx)))
-        (let* ((r (and preferred (member preferred free-regs)))
-               (reg (if r (car r) (car free-regs)))
-               (free (set-sub free-regs (list reg) '())))
-          (list '()
-                reg
-                (ctx-copy ctx #f #f free))))))
+                (list moves spill-reg ctx)))
+            (let* ((r (and preferred (member preferred free-regs)))
+                   (reg (if r (car r) (car free-regs)))
+                   (free (set-sub free-regs (list reg) '())))
+              (list '()
+                    reg
+                    (ctx-copy ctx #f #f free)))))))
 
 ;;
 ;;

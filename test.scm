@@ -1,6 +1,31 @@
+;
+;WIP:
+;  - si nb-opnds est passé,
+;  - on récupère les registres associés depuis la pile
+;  - on récupère le registre lié au plus profond dans la pile (opérande la plus à gauche)
+;  - on le retourne
+;
+;Donc au moment de générer le résultats:
+;  - quand on fait (ctx-pop n nb-opnds), ca va clean le ctx
+;  - puis on push la nouvelle valeur avec le nouveau registre
+
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1)) (fib (- n 2)))))
+
+(fib 43)
+
+;(define (fibo n)
+;   (if (or (= n 0) (= n 1))
+;      n
+;      (+ (fibo (- n 1)) (fibo (- n 2)))))
+;
+;(println (fibo 35))
 
 ;* Liveness
 ;* Allocation groupées
+;* Propagation des constantes
 ;* Regalloc: registre préféré (opérandes)
 ;* Regalloc: pb des movs en trop (voir fib.s)
 
@@ -25,17 +50,6 @@
 ;; Si pr entrée
 ;; on connait déjà le type de
 
-(define (fib n)
-  (if (< n 2)
-      n
-      (+ (fib (- n 2))
-         (fib (- n 1)))))
-
-(print ">")
-(pp (fib (read)))
-
-(print ">")
-(pp (fib (read)))
 
 ;(define (fib n)
 ;  (if (< n 2)
