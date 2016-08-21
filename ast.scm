@@ -463,7 +463,7 @@
           (gen-allocation-imm cgc STAG_VECTOR (* 8 len))
           (let loop ((pos 0))
             (if (= pos len)
-              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
+              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ (vector-length ast))))
                 (apply-moves cgc ctx moves)
                 (x86-lea cgc (codegen-reg-to-x86reg reg) (x86-mem (+ (* -8 (+ len 1)) TAG_MEMOBJ) alloc-ptr))
                 (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx len) CTX_VECT reg)))
@@ -709,7 +709,7 @@
                         (mlet ((res (table-ref globals identifier)) ;; Lookup in globals
                                (pos (cdr res))                  ;; Get global pos
                                ;;
-                               (moves/reg/ctx (ctx-get-free-reg ctx succ))
+                               (moves/reg/ctx (ctx-get-free-reg ctx succ 1))
                                (lvalue (ctx-get-loc ctx 0)))
                           (apply-moves cgc ctx moves)
                           (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue)
@@ -1208,7 +1208,7 @@
   (cond ((eq? sym 'breakpoint)
          (make-lazy-code
            (lambda (cgc ctx)
-             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
+             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
                (apply-moves cgc ctx moves)
                (x86-call cgc label-breakpoint-handler)
                (codegen-void cgc reg)
@@ -1216,7 +1216,7 @@
         ((eq? sym '$$sys-clock-gettime-ns)
          (make-lazy-code
            (lambda (cgc ctx)
-             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
+             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
                (apply-moves cgc ctx moves)
                (codegen-sys-clock-gettime-ns cgc reg)
                (jump-to-version cgc succ (ctx-push ctx CTX_INT reg))))))
@@ -1224,7 +1224,7 @@
          (let* ((lazy-imm
                   (make-lazy-code
                     (lambda (cgc ctx)
-                      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
+                      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1)))
                         (apply-moves cgc ctx moves)
                         (codegen-literal cgc STAG_PAIR reg)
                         (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_INT reg))))))
@@ -1232,7 +1232,7 @@
                   (make-lazy-code
                     (lambda (cgc ctx)
                       ;; We know here that the value is not a pair
-                      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ))
+                      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1))
                              (type (ctx-get-type ctx 0)))
                         (apply-moves cgc ctx moves)
                         (if (eq? type CTX_UNK)

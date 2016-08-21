@@ -836,8 +836,6 @@
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
 (define (codegen-num-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst? overflow?)
 
-  ;; TODO: overflow
-
   (assert (not (and lcst? rcst?)) "Internal codegen error")
 
   (let ((dest    (codegen-reg-to-x86reg reg))
