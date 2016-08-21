@@ -36,17 +36,6 @@
 "
 // TODO: remove signal stack when gambit accepts new flag
 #include <stdlib.h> // exit
-#include <signal.h>
-stack_t mss;
-void initmss()
-{
-  if ((mss.ss_sp = malloc(SIGSTKSZ)) == NULL)
-      exit(0);
-  mss.ss_size = SIGSTKSZ;
-  mss.ss_flags = 0;
-  if (sigaltstack(&mss,(stack_t *)0) < 0)
-      exit(0);
-}
 
 ___U64 alloc_still(___U64 stag, ___U64 bytes)
 {
@@ -77,11 +66,27 @@ ___WORD get_hp_addr()                { return (___WORD)&___PSTATE->hp;         }
 ___WORD get_heap_limit_addr()        { return (___WORD)&___PSTATE->heap_limit; }
 ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
 
+#include <signal.h>
+
+void lcIntHandler(int p) {
+  // Write is reentrant
+  write(1, \"*** INTERRUPTED IN ASM (SIGINT)\\n\",32);
+  exit(0);
+}
+
+void initc()
+{
+  signal(SIGINT, lcIntHandler);
+}
+
+
+
+
 ")
 
 ;; TODO: remove signal stack when gambit accepts new flag
-(define (init-mss)
-  ((c-lambda () void "initmss")))
+(define (init-c)
+  ((c-lambda () void "initc")))
 
 (define (get___heap_limit-addr)
   ((c-lambda () long "get___heap_limit_addr")))

@@ -68,7 +68,7 @@
 (define asc-globalfn-entry-get #f)
 (define global-closures-get #f)
 
-(define init-mss #f)
+(define init-c #f)
 (define get___heap_limit-addr  #f)
 (define get___alloc_still-addr #f)
 (define get-pstate-addr #f)
@@ -523,7 +523,6 @@
 (define (init-mcb)
   (set! mcb (make-mcb code-len))
   (set! code-addr (##foreign-address mcb))
-  (init-mss)
   (set! ustack (make-vector (/ ustack-len 8)))
   (set! ustack-init (+ (- (obj-encoding ustack) 1) 8 ustack-len)))
 
@@ -869,17 +868,8 @@
 
 (define (init)
 
+  (init-c)
   (init-code-allocator)
-
-  ;;; Create default ports in 'block'
-  ;(let ((output-header (mem-header 2 STAG_OPORT))
-  ;      (input-header  (mem-header 2 STAG_IPORT)))
-  ;  ;; output
-  ;  (put-i64 (+ block-addr 8) output-header)
-  ;  (put-i64 (+ block-addr 16) 1)
-  ;  ;; input
-  ;  (put-i64 (+ block-addr 24) input-header)
-  ;  (put-i64 (+ block-addr 32) 0))
 
   (code-add
    (lambda (cgc)
