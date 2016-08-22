@@ -354,7 +354,9 @@
 
 ;;
 ;; GET FREE REG
-(define (ctx-get-free-reg ctx succ #!optional (nb-opnds 0))
+(define (ctx-get-free-reg ctx succ nb-opnds)
+
+  ;; TODO: prefer 'preferred' to 'deep-opnd-reg' ?
 
   ;; Preferred register is used if it's member of free registers
   ;; 'return-reg' register is preferred if the successor lco is a return lco
@@ -391,8 +393,8 @@
   (if deep-opnd-reg
       ;; TODO WIP comment
       (list '() deep-opnd-reg ctx)
-      (let ((free-regs (ctx-free-regs ctx)))
       ;; TODO WIP comment
+      (let ((free-regs (ctx-free-regs ctx)))
         (if (null? free-regs)
             (let* ((moves/mloc/ctx (ctx-get-free-mem ctx))
                    (moves (car moves/mloc/ctx))

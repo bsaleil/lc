@@ -1637,7 +1637,8 @@
              (else
                (make-lazy-code
                  (lambda (cgc ctx)
-                   (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ)))
+                   (define nb-opnds (- (length (cdr ast)) (length cst-infos)))
+                   (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ nb-opnds)))
                      (apply-moves cgc ctx moves)
                      ;; TODO: add function in 'primitives' set
                      (case prim

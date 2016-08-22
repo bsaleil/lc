@@ -1075,11 +1075,17 @@
         (dest (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-    (x86-cmp cgc opval dest)
+    (if (eq? dest opval)
+        (begin
+          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+          (x86-cmp cgc opval (x86-rax))
+          (x86-mov cgc dest (x86-imm-int (obj-encoding #f))))
+        (begin
+          (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+          (x86-cmp cgc opval dest)))
+
+    (x86-jne cgc label-done)
     (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-    (x86-je  cgc label-done)
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #f))) ;; TODO: useless ?
     (x86-label cgc label-done)))
 
 ;;-----------------------------------------------------------------------------
@@ -1418,46 +1424,37 @@
 
 ;;-----------------------------------------------------------------------------
 ;; vector-set!
-;; TODO: rewrite
 (define (codegen-vector-set! cgc fs reg lvec lidx lval)
+
   (let* ((dest (codegen-reg-to-x86reg reg))
          (opvec (codegen-loc-to-x86opnd fs lvec))
          (opidx (codegen-loc-to-x86opnd fs lidx))
-         (opval (codegen-loc-to-x86opnd fs lval))
-         (regsaved #f)
-         (REG1
-           (foldr (lambda (curr res)
-                    (if (not (member curr (list opvec opidx opvec)))
-                        curr
-                        res))
-                  #f
-                  regalloc-regs)))
+         (opval (codegen-loc-to-x86opnd fs lval)))
 
-   (assert (not (or (eq? dest opvec)
-                    (eq? dest opval)))
-           "Internal error")
+    (if (x86-mem? opidx)
+        (begin
+          (x86-mov cgc (x86-rcx) opidx)
+          (set! opidx (x86-rcx))))
 
-   (cond ((and (ctx-loc-is-memory? lvec)
-               (ctx-loc-is-memory? lval))
-          (set! regsaved REG1)
-          (x86-mov cgc dest opvec)
-          (x86-mov cgc REG1 opval)
-          (set! opvec dest)
-          (set! opval REG1))
-         ((ctx-loc-is-memory? lvec)
-          (x86-mov cgc dest opvec)
-          (set! opvec dest))
-         ((ctx-loc-is-memory? lval)
-          (x86-mov cgc dest opval)
-          (set! opval dest)))
+    (x86-shl cgc opidx (x86-imm-int 1))
 
-   (x86-mov cgc (x86-rax) opidx)
-   (x86-shl cgc (x86-rax) (x86-imm-int 1))
-   (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opvec (x86-rax)) opval)
-   (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+    (cond ((and (x86-mem? opval)
+                (x86-mem? opvec))
+             (x86-mov cgc dest opval)
+             (x86-mov cgc (x86-rax) opvec)
+             (set! opval dest)
+             (set! opvec (x86-rax)))
+          ((x86-mem? opval)
+             (x86-mov cgc (x86-rax) opval)
+             (set! opval (x86-rax)))
+          ((x86-mem? opvec)
+             (x86-mov cgc (x86-rax) opvec)
+             (set! opvec (x86-rax))))
 
-   (if regsaved
-       (x86-upop cgc regsaved))))
+    (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opvec opidx) opval)
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
+    (if (eq? opidx (x86-rcx))
+        (x86-mov cgc (x86-rcx) (x86-imm-int 0)))))
 
 ;;-----------------------------------------------------------------------------
 ;; string-set!
