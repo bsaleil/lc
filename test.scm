@@ -10,9 +10,7 @@
 ;  - puis on push la nouvelle valeur avec le nouveau registre
 
 (define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1)) (fib (- n 2)))))
+  (eq? n 33))
 
 (fib 43)
 
