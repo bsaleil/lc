@@ -327,7 +327,7 @@
                    (let ((val (atom-node-val op)))
                      (cond ;; Gambit call
                            ((gambit-call? op)
-                              (mlc-gambit-call ast succ))
+                              (mlc-gambit-call ast succ #f))
                            ;; Special
                            ((member val '(##subtype breakpoint $$sys-clock-gettime-ns)) (mlc-special val ast succ))
                            ;; TODO
@@ -1259,7 +1259,8 @@
               (equal? (list-head lstsym (length lstprefix))
                       lstprefix)))))
 
-(define (mlc-gambit-call ast succ)
+;; generated-arg? is #t if call take 1 arg and this arg already is generated
+(define (mlc-gambit-call ast succ generated-arg?)
 
   (define (get-gambit-sym sym)
     (let* ((lstprefix (string->list "gambit$$"))
@@ -1295,7 +1296,9 @@
                  (x86-upop cgc (codegen-reg-to-x86reg reg))
                  (x86-add cgc (x86-usp) (x86-imm-int (* 8 (+ nargs 1))))
                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) CTX_UNK reg)))))))
-    (gen-ast-l (cdr ast) lazy-call)))
+    (if generated-arg?
+        lazy-call
+        (gen-ast-l (cdr ast) lazy-call))))
 
 ;;-----------------------------------------------------------------------------
 ;; PRIMITIVES

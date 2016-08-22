@@ -190,8 +190,34 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Interactive mode (REPL)
-(define (repl lib)
-  (error "NYI"))
+
+(define (repl prog)
+
+
+  (println "  _     ____       ")
+  (println " | |   / ___|      ")
+  (println " | |  | |          ")
+  (println " | |__| |___       ")
+  (println " |_____\\____| REPL")
+  (println "")
+
+  (init)
+
+  (let ((lco (lazy-exprs prog lazy-repl-call)))
+    (gen-version-first lco (ctx-init)))
+
+  (##machine-code-block-exec mcb))
+
+(define lazy-repl-call
+  (make-lazy-code
+    (lambda (cgc ctx)
+      ;; Generate call to repl handler defined in core.scm
+      ;; This handler read from stdin, build lco chain,
+      ;; and generate a version of the first lco of the chain.
+      ;; The address of this version is returned in rax
+      ;; then, jump to the version
+      (x86-pcall cgc label-repl-handler)
+      (x86-jmp cgc (x86-rax)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Bash mode
@@ -256,7 +282,9 @@
 
   (cond ;; If no files specified then start REPL
         ((null? files)
-          (error "NYI lib"))
+          (copy-with-declare "" "./tmp")
+          (let ((content (c#expand-program "./tmp")))
+            (repl (expand-tl content))))
         ;; Can only exec 1 file
         ((= (length files) 1)
           (copy-with-declare (car files) "./tmp")

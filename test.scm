@@ -9,13 +9,9 @@
 ;  - quand on fait (ctx-pop n nb-opnds), ca va clean le ctx
 ;  - puis on push la nouvelle valeur avec le nouveau registre
 
-;; vector-length primitive
-(let ((a (make-vector 10 #\A)))
-  (print (vector-length a))
-  (set! a (make-vector 15 #\B))
-  (print (vector-length a))
-  (newline))
+(define foo 33)
 
+(gambit$$lceval '(println foo))
 
 ;(define (fibo n)
 ;   (if (or (= n 0) (= n 1))

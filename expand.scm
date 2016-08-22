@@ -424,7 +424,7 @@
 (define (expand-if expr)
   (cond ;; (if A B) -> (if A B #f)
         ((eq? (length expr) 3)
-           (expand `(if ,(expand (cadr expr)) ,(expand (caddr expr)) #f)))
+           (expand `(if ,(cadr expr) ,(caddr expr) #f)))
         ;; (if (not A) B C) -> (if A C D)
         ((and (pair? (cadr expr))
               (eq? (get-alias (caadr expr)) 'not))

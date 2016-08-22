@@ -8,4 +8,6 @@ if [ "$3" == "lib" ]; then
 fi
 
 # Code
-cat "$1" >> "$2"
+if [ "$1" != "" ]; then
+  cat "$1" >> "$2"
+fi

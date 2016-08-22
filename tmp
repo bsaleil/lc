@@ -253,8 +253,3 @@
           (else (error "call/cc")))))
 (define abs (lambda (x) (if (< x 0) (- x) x)))
 (define (read) (gambit$$read))
-(println #f)
-(println #t)
-
-;#f
-;#t

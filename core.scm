@@ -80,6 +80,9 @@
 (define entry-points-locs #f)
 (define codegen-loc-to-x86opnd #f)
 (define ctime-entries-get #f)
+(define atom-node-make #f)
+(define mlc-gambit-call #f)
+(define lazy-repl-call #f)
 
 (define get-heap_limit-addr #f)
 (define get-hp-addr #f)
@@ -302,6 +305,40 @@
 
     (and (print msg) (force-output) newline? (newline))))
 
+(c-define (repl sp) (long) long "repl" ""
+
+  (print "lc> ")
+
+  ;; READ
+  (let ((sexpr (read)))
+
+    (if (or (eq? sexpr 'q)
+            (eq? sexpr 'quit)
+            (eof-object? sexpr))
+        (begin
+          (newline)
+          (exit 0)))
+
+    (let* (;;
+           (ast-print (list (atom-node-make 'gambit$$println)
+                            (atom-node-make 0)))
+           ;; LOOP
+           (lazy-clean
+             (make-lazy-code
+               (lambda (cgc ctx)
+                 ;; We need to clean the stack before executing lazy-repl-call again
+                 (jump-to-version cgc lazy-repl-call (ctx-pop ctx)))))
+           ;; PRINT
+           (lazy-print
+             (mlc-gambit-call ast-print lazy-clean #t))
+           ;; Expand sexpr
+           (ast (car (expand-tl (list sexpr)))) ;; TODO: use gambit frontend (c#expand-program) before expand-tl to generate better code
+           ;; EVAL
+           (lazy-eval (gen-ast ast lazy-print))
+           ;; Generate version of first lco
+           (addr (gen-version-first lazy-eval (ctx-init))))
+        addr)))
+
 ;;-----------------------------------------------------------------------------
 
 ;; TODO WIP
@@ -494,6 +531,7 @@
                        ,c-code))))))
 
 (define (init-labels cgc)
+  (set-cdef-label! label-repl             'repl             "___result = ___CAST(void*,repl);")
   (set-cdef-label! label-print-msg        'print-msg        "___result = ___CAST(void*,print_msg);")
   (set-cdef-label! label-print-msg-val    'print-msg-val    "___result = ___CAST(void*,print_msg_val);")
   (set-cdef-label! label-rt-error         'rt_error         "___result = ___CAST(void*,rt_error);")
@@ -668,6 +706,7 @@
 (define label-rt-error-handler         #f)
 (define label-print-msg-handler        #f)
 (define label-print-msg-val-handler    #f)
+(define label-repl-handler             #f)
 
 (define label-err-wrong-num-args       #f)
 
@@ -826,6 +865,11 @@
     ;; Print msg val
     (set! label-print-msg-val-handler
           (gen-handler cgc 'print_msg_val_handler label-print-msg-val))
+    (x86-ret cgc)
+
+    ;; Repl
+    (set! label-repl-handler
+          (gen-handler cgc 'repl label-repl))
     (x86-ret cgc)
 
     (set! label-err-wrong-num-args (asm-make-label #f 'err_wrong_num_args))
