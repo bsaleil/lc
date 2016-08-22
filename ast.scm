@@ -676,7 +676,7 @@
     ;; Get mobject in tmp register
     (get-function cgc ctx local #f #t)
 
-    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ))
+    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1))
            (lval (ctx-get-loc ctx 0))
            (type (ctx-get-type ctx 0)))
       (apply-moves cgc ctx moves)
@@ -689,7 +689,7 @@
 
 (define (gen-set-globalvar cgc ctx global succ)
   (mlet ((pos (cdr global))
-         (moves/reg/ctx (ctx-get-free-reg ctx succ))
+         (moves/reg/ctx (ctx-get-free-reg ctx succ 1))
          (lval (ctx-get-loc ctx 0)))
     (apply-moves cgc ctx moves)
     (codegen-set-global cgc reg pos lval (ctx-fs ctx))
@@ -1276,7 +1276,7 @@
   (let* ((lazy-call
            (make-lazy-code
              (lambda (cgc ctx)
-               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ))
+               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ (length (cdr ast))))
                       (gsym (get-gambit-sym (atom-node-val (car ast))))
                       (nargs (length (cdr ast))))
                  (apply-moves cgc ctx moves)
@@ -1794,7 +1794,7 @@
                 (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-imm-int (obj-encoding '())) 64)
                 ;; Write value in car
                 (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
-                (mlet ((moves/reg/ctx (ctx-get-free-reg (ctx-pop-n ctx len) succ)))
+                (mlet ((moves/reg/ctx (ctx-get-free-reg (ctx-pop-n ctx len) succ 0)))
                    (apply-moves cgc ctx moves)
                    ;; Load first pair in dest register
                    (let ((dest (codegen-reg-to-x86reg reg)))
@@ -2554,7 +2554,8 @@
     (make-lazy-code
       (lambda (cgc ctx)
         (let* ((type (if num-op? CTX_FLO CTX_BOOL))
-               (res (if inlined-if-cond? #f (ctx-get-free-reg ctx succ)))
+               (n-pop (count (list lcst rcst) not))
+               (res (if inlined-if-cond? #f (ctx-get-free-reg ctx succ n-pop)))
                (moves (if res (car res) '()))
                (reg (if res (cadr res) #f))
                (ctx (if res (caddr res) ctx))
@@ -2563,8 +2564,7 @@
                (lleft
                  (if rcst
                      (or lcst (ctx-get-loc ctx 0))
-                     (or lcst (ctx-get-loc ctx 1))))
-               (n-pop (count (list lcst rcst) not)))
+                     (or lcst (ctx-get-loc ctx 1)))))
           (apply-moves cgc ctx moves)
           (cond (num-op?
                   (codegen-num-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst #t)
@@ -2638,19 +2638,20 @@
 ;; Make lazy code to create pair
 ;; Create pair with the too values on top of the stack
 ;;
+;; TODO: move in primitives
 (define (mlc-pair succ #!optional (cst-infos '()))
   (make-lazy-code
     (lambda (cgc ctx)
-      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ))
-             (car-cst (assoc 0 cst-infos))
+      (mlet ((car-cst (assoc 0 cst-infos))
              (cdr-cst (assoc 1 cst-infos))
+             (n-pop (count (list car-cst cdr-cst) not))
+             (moves/reg/ctx (ctx-get-free-reg ctx succ n-pop))
              (lcdr (if cdr-cst (cdr cdr-cst) (ctx-get-loc ctx 0)))
              (car-idx (if cdr-cst 0 1))
              (lcar
                (if car-cst
                    (cdr car-cst)
-                   (ctx-get-loc ctx car-idx)))
-             (n-pop (count (list car-cst cdr-cst) not)))
+                   (ctx-get-loc ctx car-idx))))
       (apply-moves cgc ctx moves)
       (codegen-pair cgc (ctx-fs ctx) reg lcar lcdr car-cst cdr-cst)
       (jump-to-version cgc
