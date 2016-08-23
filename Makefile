@@ -1,6 +1,6 @@
 GSC_FLAGS= -prelude "(declare (not safe))"
 
-all: float.o1 utils.o1 main.o1 native.o1 mem.o1 codegen.o1 ast.o1 core.o1 expand.o1 ctx.o1 lib
+all: float.o1 utils.o1 main.o1 native.o1 mem.o1 codegen.o1 ast.o1 core.o1 expand.o1 ctx.o1 analyses.o1 lib
 	cp lazy-comp.template lazy-comp
 	chmod u+x lazy-comp
 
@@ -39,6 +39,9 @@ core.o1: core.scm
 	gsc $(GSC_FLAGS) -o $@ $<
 
 expand.o1: expand.scm
+	gsc $(GSC_FLAGS) -o $@ $<
+
+analyses.o1: analyses.scm
 	gsc $(GSC_FLAGS) -o $@ $<
 
 # Run unit tests

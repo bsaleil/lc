@@ -1,7 +1,7 @@
 #!/bin/bash
 
 GSC="gsc -:m8000"
-LC_FILES="float.o1 utils.o1 ctx.o1 core.o1 native.o1 mem.o1 codegen.o1 ast.o1 expand.o1 main.o1"
+LC_FILES="float.o1 utils.o1 ctx.o1 core.o1 native.o1 mem.o1 codegen.o1 ast.o1 expand.o1 analyses.o1 main.o1"
 ARGS=()
 
 for i in "$@" ; do

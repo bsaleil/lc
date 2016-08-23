@@ -1,24 +1,63 @@
-;
-;WIP:
-;  - si nb-opnds est passé,
-;  - on récupère les registres associés depuis la pile
-;  - on récupère le registre lié au plus profond dans la pile (opérande la plus à gauche)
-;  - on le retourne
-;
-;Donc au moment de générer le résultats:
-;  - quand on fait (ctx-pop n nb-opnds), ca va clean le ctx
-;  - puis on push la nouvelle valeur avec le nouveau registre
 
-(define foo 33)
+;;
+;; TODO: ##set-box! -> cas spécial, c'est un kill
 
-(gambit$$lceval '(println foo))
-
-;(define (fibo n)
-;   (if (or (= n 0) (= n 1))
-;      n
-;      (+ (fibo (- n 1)) (fibo (- n 2)))))
+;(define (liveness ast succs)
 ;
-;(println (fibo 35))
+;  (define (compute-in-out ast succs)
+;    (let* ((out
+;             (foldr (lambda (succ live)
+;                      (set-union
+;                        (liveness-in succ)
+;                        live))
+;                    '()
+;                    succs))
+;           (in
+;             (set-union
+;               (ast-use ast)
+;               (set-sub out (ast-def ast)))))
+;      (liveness-in-set! ast in)
+;      (liveness-in-set! ast out)))
+;
+;  (cond ;; ATOM node
+;        ((atom-node? ast)
+;           (compute-in-out ast succs))
+;        ((eq? (car ast) 'lambda)
+;           (error "NYI"))
+;        ((eq? (car ast) 'let)
+;           (error "NYI"))
+;        ((eq? (car ast) 'letrec)
+;           (error "NYI"))
+;        ((or (eq? (car ast) 'define)
+;             (eq? (car ast) 'set!))
+;           (compute-in-out ast succs)
+;           (liveness (caddr ast) (list ast)))
+;        ;; IF node
+;        ((if-expr? ast)
+;           (liveness (caddr ast) succs)
+;           (liveness (cadddr ast) succs)
+;           (liveness (cadr ast) (list (caddr ast) (cadddr ast)))
+;           (compute-in-out ast succs))
+;        ;; Others
+;        (else
+;           (compute-in-out ast succs)
+;           (let loop ((exprs (reverse ast))
+;                      (succs (list ast)))
+;             (if (not (null? exprs))
+;                 (begin (liveness (car exprs) succs)
+;                        (loop (cdr exprs) (list (car exprs)))))))))
+
+(let ((a 44)
+      (b 55))
+  (begin a c b))
+
+;(define (foo n)
+;  (pp n)
+;  (set! n 10)
+;  (pp n))
+;
+;(foo 33)
+
 
 ;* Liveness
 ;* Allocation groupées

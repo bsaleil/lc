@@ -231,6 +231,15 @@
 
   (init)
 
+  ;(println "--------------- PROG:")
+  ;(pp prog)
+  ;(println "--------------- TABLE:")
+  ;(liveness-prog prog)
+  ;(for-each (lambda (el)
+  ;            (pp el))
+  ;          (table->list liveness-out))
+  ;(error "OK")
+
   (let ((lco (lazy-exprs prog #f)))
     (gen-version-first lco (ctx-init)))
 
