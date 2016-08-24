@@ -300,16 +300,16 @@
         (let ((content (c#expand-program "./tmp")));(read-all (open-input-file (car files)))))
               (define (get-global-type g)
                 (cond ((symbol? (cadr g))
-                          (cond ((symbol?  (caddr g)) CTX_UNK) ;; TODO si globale connue, mettre type
-                                ((integer? (caddr g)) CTX_INT)
-                                ((flonum?  (caddr g)) CTX_FLO)
-                                ((char?    (caddr g)) CTX_CHAR)
-                                ((string?  (caddr g)) CTX_STR)
-                                ((boolean? (caddr g)) CTX_BOOL)
-                                ((eq? (caaddr g) 'lambda) CTX_CLO)
-                                ((pair? (caddr g)) CTX_UNK)
+                          (cond ((symbol?  (caddr g)) (make-t-unk)) ;; TODO si globale connue, mettre type
+                                ((integer? (caddr g)) (make-t-int))
+                                ((flonum?  (caddr g)) (make-t-flo))
+                                ((char?    (caddr g)) (make-t-cha))
+                                ((string?  (caddr g)) (make-t-str))
+                                ((boolean? (caddr g)) (make-t-boo))
+                                ((eq? (caaddr g) 'lambda) (make-t-clo))
+                                ((pair? (caddr g)) (make-t-unk))
                                 (else (error "NYI"))))
-                      ((pair? (cadr g)) CTX_CLO)
+                      ((pair? (cadr g)) (make-t-clo))
                       (else (error "NYI"))))
 
               ;; TODO

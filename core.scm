@@ -125,77 +125,147 @@
 (define STAG_STRING    19)
 (define STAG_FLONUM    30)
 
+(define-type t-all)
+(define-type t-unk)
+(define-type t-cha)
+(define-type t-voi)
+(define-type t-nul)
+(define-type t-ret)
+(define-type t-int)
+(define-type t-boo)
+(define-type t-box)
+(define-type t-pai)
+(define-type t-vec)
+(define-type t-str)
+(define-type t-sym)
+(define-type t-ipo)
+(define-type t-flo)
+(define-type t-opo)
+(define-type t-clo)
+
+(define (t-test->type t)
+  (cond ((eq? t t-all?) (make-t-all))
+        ((eq? t t-unk?) (make-t-unk))
+        ((eq? t t-cha?) (make-t-cha))
+        ((eq? t t-voi?) (make-t-voi))
+        ((eq? t t-nul?) (make-t-nul))
+        ((eq? t t-ret?) (make-t-ret))
+        ((eq? t t-int?) (make-t-int))
+        ((eq? t t-boo?) (make-t-boo))
+        ((eq? t t-box?) (make-t-box))
+        ((eq? t t-pai?) (make-t-pai))
+        ((eq? t t-vec?) (make-t-vec))
+        ((eq? t t-str?) (make-t-str))
+        ((eq? t t-sym?) (make-t-sym))
+        ((eq? t t-ipo?) (make-t-ipo))
+        ((eq? t t-flo?) (make-t-flo))
+        ((eq? t t-opo?) (make-t-opo))
+        ((eq? t t-clo?) (make-t-clo))))
+
+(define (ctx-type-teq? t1 t2)
+  (eq? (ctx-type->symbol t1)
+       (ctx-type->symbol t2)))
+
+(define (ctx-type->symbol t)
+  (cond ((t-all? t) '*)
+        ((t-unk? t) 'unknown)
+        ((t-cha? t) 'char)
+        ((t-voi? t) 'void)
+        ((t-nul? t) 'null)
+        ((t-ret? t) 'retaddr)
+        ((t-int? t) 'integer)
+        ((t-boo? t) 'boolean)
+        ((t-box? t) 'box)
+        ((t-pai? t) 'pair)
+        ((t-vec? t) 'vector)
+        ((t-str? t) 'string)
+        ((t-sym? t) 'symbol)
+        ((t-ipo? t) 'iport)
+        ((t-flo? t) 'float)
+        ((t-opo? t) 'oport)
+        ((t-clo? t) 'closure)
+        (else (error "Internal error"))))
+
+;; TODO: use constant instance for efficiency
 ;; Context types
-(define CTX_ALL   '*) ; Represents all ctx types
-(define CTX_UNK   'unknown)
+(define ATX_ALL   (make-t-all)) ; Represents all ctx types
+(define ATX_UNK   (make-t-unk))
 ;; !mem allocated
-(define CTX_CHAR  'char)
-(define CTX_VOID  'void)
-(define CTX_NULL  'null)
-(define CTX_RETAD 'retAddr)
-(define CTX_INT   'integer)
-(define CTX_BOOL  'boolean)
+(define ATX_CHAR  (make-t-cha))
+(define ATX_VOID  (make-t-voi))
+(define ATX_NULL  (make-t-nul))
+(define ATX_RETAD (make-t-ret))
+(define ATX_INT   (make-t-int))
+(define ATX_BOOL  (make-t-boo))
 ;; mem allocated
-(define CTX_BOX   'box)
-(define CTX_PAI   'pair)
-(define CTX_VECT  'vector)
-(define CTX_STR   'string)
-(define CTX_SYM   'symbol)
-(define CTX_IPORT 'inport)
-(define CTX_FLO   'float)
-(define CTX_OPORT 'outport)
-(define CTX_CLO   'procedure)
+(define ATX_BOX   (make-t-box))
+(define ATX_PAI   (make-t-pai))
+(define ATX_VECT  (make-t-vec))
+(define ATX_STR   (make-t-str))
+(define ATX_SYM   (make-t-sym))
+(define ATX_IPORT (make-t-ipo))
+(define ATX_FLO   (make-t-flo))
+(define ATX_OPORT (make-t-opo))
+(define ATX_CLO   (make-t-clo))
 
 (define (memtype-to-stag type)
-  (cond ((eq? type CTX_BOX)  STAG_MOBJECT)
-        ((eq? type CTX_PAI)  STAG_PAIR)
-        ((eq? type CTX_VECT) STAG_VECTOR)
-        ((eq? type CTX_STR)  STAG_STRING)
-        ((eq? type CTX_SYM)  STAG_SYMBOL)
-        ((eq? type CTX_FLO)  STAG_FLONUM)
-        ((eq? type CTX_CLO)  STAG_PROCEDURE)
+  (cond ((t-box? type) STAG_MOBJECT)
+        ((t-pai? type) STAG_PAIR)
+        ((t-vec? type) STAG_VECTOR)
+        ((t-str? type) STAG_STRING)
+        ((t-sym? type) STAG_SYMBOL)
+        ((t-flo? type) STAG_FLONUM)
+        ((t-clo? type) STAG_PROCEDURE)
         (else (pp type) (error "Internal error (memtype-to-stag)"))))
 
 (define (mem-allocated-type? type)
-  (member type (list CTX_BOX CTX_PAI   CTX_VECT  CTX_STR CTX_CLO
-                     CTX_SYM CTX_IPORT CTX_OPORT CTX_FLO)))
+  (or (t-box? type) (t-pai? type)
+      (t-vec? type) (t-str? type)
+      (t-flo? type) (t-sym? type)
+      (t-ipo? type) (t-opo? type)
+      (t-clo? type)))
 
 (define (literal-ctxtype l)
   (cond
-    ((char?    l) CTX_CHAR)
-    ((null?    l) CTX_NULL)
-    ((fixnum?  l) CTX_INT)
-    ((boolean? l) CTX_BOOL)
-    ((pair?    l) CTX_PAI)
-    ((vector?  l) CTX_VECT)
-    ((string?  l) CTX_STR)
-    ((symbol?  l) CTX_SYM)
-    ((flonum?  l) CTX_FLO)
+    ((char?    l) (make-t-cha))
+    ((null?    l) (make-t-nul))
+    ((fixnum?  l) (make-t-int))
+    ((boolean? l) (make-t-boo))
+    ((pair?    l) (make-t-pai))
+    ((vector?  l) (make-t-vec))
+    ((string?  l) (make-t-str))
+    ((symbol?  l) (make-t-sym))
+    ((flonum?  l) (make-t-flo))
     (else (error "Internal error (literal-ctxtype)"))))
 
 
-(define type-cridx
-  `((,CTX_INT  .  8) ;; Start from 8 because of header
-    (,CTX_CHAR . 16)
-    (,CTX_BOOL . 24)
-    (,CTX_CLO  . 32)
-    (,CTX_PAI  . 40)
-    (,CTX_VOID . 48)
-    (,CTX_NULL . 56)
-    (,CTX_VECT . 64)
-    (,CTX_STR  . 72)
-    (,CTX_SYM  . 80)
-    (,CTX_IPORT . 88)
-    (,CTX_OPORT . 96)
-    (,CTX_FLO   . 104)
-    (,CTX_UNK   . 112)))
+(define cridx-type
+  `(( 8  ,t-int? ,make-t-int) ;; Start from 8 because of header
+    (16  ,t-cha? ,make-t-cha)
+    (24  ,t-boo? ,make-t-boo)
+    (32  ,t-clo? ,make-t-clo)
+    (40  ,t-pai? ,make-t-pai)
+    (48  ,t-voi? ,make-t-voi)
+    (56  ,t-nul? ,make-t-nul)
+    (64  ,t-vec? ,make-t-vec)
+    (72  ,t-str? ,make-t-str)
+    (80  ,t-sym? ,make-t-sym)
+    (88  ,t-ipo? ,make-t-ipo)
+    (96  ,t-opo? ,make-t-opo)
+    (104 ,t-flo? ,make-t-flo)
+    (112 ,t-unk? ,make-t-unk)))
 
 (define (type-to-cridx type)
-  (cdr (assoc type type-cridx)))
+  (let loop ((l cridx-type))
+    (let ((test (cadar l)))
+      (if (test type)
+          (caar l)
+          (loop (cdr l))))))
 
 (define (cridx-to-type cridx)
-  (car (find (lambda (el) (= (cdr el) cridx))
-             type-cridx)))
+  (let* ((r (assoc cridx cridx-type))
+         (ctor (caddr r)))
+    (ctor)))
 
 ;;-----------------------------------------------------------------------------
 
@@ -215,7 +285,7 @@
 (define ERR_LETREC           "ILL-FORMED LETREC")
 
 (define (ERR_TYPE_EXPECTED type)
-  (string-append (string-upcase type)
+  (string-append (string-upcase (ctx-type->symbol type))
                  " EXPECTED"))
 
 (define ERR_NUMBER_EXPECTED "NUMBER EXPECTED")
@@ -1467,7 +1537,7 @@
 (define (patch-continuation-cr continuation-label type generic? table)
   ;; TODO: msg if opt-verbose-jit (see patch-continuation)
   (if generic?
-      (put-i64 (+ (type-to-cridx CTX_UNK) table) (asm-label-pos continuation-label)))
+      (put-i64 (+ (type-to-cridx ATX_UNK) table) (asm-label-pos continuation-label)))
   (put-i64 (+ (type-to-cridx type) table) (asm-label-pos continuation-label))
   (asm-label-pos continuation-label))
 
@@ -1571,35 +1641,35 @@
 ;; Gen fatal dynamic type test
 ;; fatal means that if type test fails, it stops execution
 ;; Check type 'type' for stack slot at 'stack-idx' and jump to 'succ' if succeess
-(define (gen-fatal-type-test type stack-idx succ #!optional ast)
+(define (gen-fatal-type-test t-test stack-idx succ #!optional ast)
  (let ((lazy-error
           (make-lazy-code
              (lambda (cgc ctx)
-                (if (or (eq? type CTX_FLO) (eq? type CTX_INT))
+                (if (or (eq? t-test t-flo?) (eq? t-test t-int?))
                   (gen-error cgc ERR_NUMBER_EXPECTED)
-                  (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
-   (gen-dyn-type-test type stack-idx succ lazy-error ast)))
+                  (gen-error cgc (ERR_TYPE_EXPECTED (t-test->type t-test))))))))
+   (gen-dyn-type-test t-test stack-idx succ lazy-error ast)))
 
 ;; Create lazy code for type test of stack slot (stack-idx)
 ;; jump to lazy-success if test succeeds
 ;; jump to lazy-fail if test fails
-(define (gen-dyn-type-test type stack-idx lazy-success lazy-fail #!optional ast)
+;; TODO: give actual type instead of type test function (t-test)
+(define (gen-dyn-type-test t-test stack-idx lazy-success lazy-fail #!optional ast)
 
   (make-lazy-code
      (lambda (cgc ctx)
 
        ;; TODO: plus nettoyer tout ca
-       (let* ((ctx-success (ctx-set-type ctx stack-idx type))
+       (let* ((ctx-success (ctx-set-type ctx stack-idx (t-test->type t-test)))
               (ctx-success-known ctx);; If know type is tested type, do not change ctx (TODO?)
               (ctx-fail ctx)
               (known-type (list-ref (ctx-stack ctx) stack-idx)))
 
          (cond ;; known == expected
-               ((or (eq? known-type type)
-                    (and (pair? known-type) (eq? (car known-type) type)))
+               ((t-test known-type)
                 (jump-to-version cgc lazy-success ctx-success-known))
                ;; known != expected && known != unknown
-               ((not (eq? known-type CTX_UNK))
+               ((not (t-unk? known-type))
                 (jump-to-version cgc lazy-fail ctx-fail))
                ;; known == unknown
                (else
@@ -1666,20 +1736,20 @@
                          (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
 
                     (cond ;; Number type check
-                          ((eq? type CTX_INT)
+                          ((eq? t-test t-int?)
                            (x86-mov cgc (x86-rax) (x86-imm-int 3))
                            (x86-and cgc (x86-rax) opval))
                           ;; Null type test
-                          ((eq? type CTX_NULL)
+                          ((eq? t-test t-nul?)
                            (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
                            (x86-cmp cgc (x86-rax) opval))
                           ;; Pair type test
-                          ((eq? type CTX_PAI)
+                          ((eq? t-test t-pai?)
                            (x86-mov cgc (x86-rax) (x86-imm-int 3))
                            (x86-and cgc (x86-rax) opval)
                            (x86-cmp cgc (x86-rax) (x86-imm-int TAG_PAIR)))
                           ;; Char type check
-                          ((eq? type CTX_CHAR)
+                          ((eq? t-test t-cha?)
                            ;; char if val is tagged with TAG_SPECIAL and val > 0
                            (x86-mov cgc (x86-rax) opval)
                            (x86-mov cgc selector-reg (x86-imm-int SPECIAL_MASK))
@@ -1687,7 +1757,7 @@
                            (x86-mov cgc selector-reg (x86-imm-int 0))
                            (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
                           ;; Procedure type test
-                          ((member type (list CTX_FLO CTX_CLO CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))
+                          ((mem-allocated-type? (t-test->type t-test))
                            ;; Vérifier le tag memobj
                            ;; extraire le tag du header
                            ;; Vérifier le tag stag
@@ -1705,15 +1775,9 @@
                                (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) opval)))
                            (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
                            ;; stag xxx << 3
-                           (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_FLO)  STAG_FLONUM)
-                                                                          ((eq? type CTX_CLO)  STAG_PROCEDURE)
-                                                                          ((eq? type CTX_SYM)  STAG_SYMBOL)
-                                                                          ((eq? type CTX_STR)  STAG_STRING)
-                                                                          ((eq? type CTX_IPORT) STAG_IPORT)
-                                                                          ((eq? type CTX_OPORT) STAG_OPORT)
-                                                                          ((eq? type CTX_VECT) STAG_VECTOR))))))
+                           (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (memtype-to-stag (t-test->type t-test))))))
                           ;; Other
-                          (else (error "Unknown type " type)))
+                          (else (error "Unknown type " t-test)))
 
                     (x86-label cgc label-jump)
                     (x86-je cgc (list-ref stub-labels 0))
@@ -1724,7 +1788,7 @@
 
 ;; Current fixed global-cc-table max size
 (define global-cc-table-maxsize 500) ;; 500
-(define global-cr-table-maxsize (length type-cridx)) ;; TODO number of types
+(define global-cr-table-maxsize (length cridx-type)) ;; TODO number of types
 ;; Holds the current shape of the global cc table
 (define global-cc-table (make-table))
 

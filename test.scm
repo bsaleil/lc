@@ -47,9 +47,7 @@
 ;                 (begin (liveness (car exprs) succs)
 ;                        (loop (cdr exprs) (list (car exprs)))))))))
 
-(let ((a 44)
-      (b 55))
-  (begin a c b))
+(println (make-vector 10 #t))
 
 ;(define (foo n)
 ;  (pp n)

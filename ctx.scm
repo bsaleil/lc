@@ -28,9 +28,6 @@
 ;;---------------------------------------------------------------------------
 
 (define mem-header #f)
-(define CTX_UNK #f)
-(define CTX_CLO #f)
-(define CTX_RETAD #f)
 (define regalloc-regs #f)
 (define lazy-code-flags #f)
 
@@ -276,7 +273,7 @@
           '()
           (if (member id late-fbinds)
               ;; If id is a late-fbind, type it's a function
-              CTX_CLO
+              (make-t-clo)
               ;; Else, get type from enclosing ctx
               (let ((ident (ctx-ident enclosing-ctx id)))
                 (ctx-identifier-type enclosing-ctx (cdr ident))))
@@ -331,7 +328,7 @@
   ;;
   (make-ctx
     (or stack
-        (append (make-list (length args) CTX_UNK) (list CTX_CLO CTX_RETAD)))
+        (append (make-list (length args) (make-t-unk)) (list (make-t-clo) (make-t-ret))))
     (init-slot-loc)
     (init-free-regs)
     '()
