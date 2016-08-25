@@ -125,144 +125,67 @@
 (define STAG_STRING    19)
 (define STAG_FLONUM    30)
 
-(define-type t-all)
-(define-type t-unk)
-(define-type t-cha)
-(define-type t-voi)
-(define-type t-nul)
-(define-type t-ret)
-(define-type t-int)
-(define-type t-boo)
-(define-type t-box)
-(define-type t-pai)
-(define-type t-vec)
-(define-type t-str)
-(define-type t-sym)
-(define-type t-ipo)
-(define-type t-flo)
-(define-type t-opo)
-(define-type t-clo)
+;;-----------------------------------------------------------------------------
+;; ctx-types jit implementation
 
-(define (t-test->type t)
-  (cond ((eq? t t-all?) (make-t-all))
-        ((eq? t t-unk?) (make-t-unk))
-        ((eq? t t-cha?) (make-t-cha))
-        ((eq? t t-voi?) (make-t-voi))
-        ((eq? t t-nul?) (make-t-nul))
-        ((eq? t t-ret?) (make-t-ret))
-        ((eq? t t-int?) (make-t-int))
-        ((eq? t t-boo?) (make-t-boo))
-        ((eq? t t-box?) (make-t-box))
-        ((eq? t t-pai?) (make-t-pai))
-        ((eq? t t-vec?) (make-t-vec))
-        ((eq? t t-str?) (make-t-str))
-        ((eq? t t-sym?) (make-t-sym))
-        ((eq? t t-ipo?) (make-t-ipo))
-        ((eq? t t-flo?) (make-t-flo))
-        ((eq? t t-opo?) (make-t-opo))
-        ((eq? t t-clo?) (make-t-clo))))
+;; Generic ctx-type instances
+;; Used to avoid type creation for simple operations
+;; MUST NOT BE MUTATED
+;; NOTE: we need to reorganize 'primitives' data structure in ast.scm
+;; to replace ATX_* uses by symbols uses to identify types (e.g. in ctx-type-teq?)
+(define ATX_ALL (make-ctx-tall)) ; Represents all ctx types
+(define ATX_UNK (make-ctx-tunk))
+(define ATX_CHA (make-ctx-tcha))
+(define ATX_VOI (make-ctx-tvoi))
+(define ATX_NUL (make-ctx-tnul))
+(define ATX_RET (make-ctx-tret))
+(define ATX_INT (make-ctx-tint))
+(define ATX_BOO (make-ctx-tboo))
+(define ATX_BOX (make-ctx-tbox))
+(define ATX_PAI (make-ctx-tpai))
+(define ATX_VEC (make-ctx-tvec))
+(define ATX_STR (make-ctx-tstr))
+(define ATX_SYM (make-ctx-tsym))
+(define ATX_IPO (make-ctx-tipo))
+(define ATX_FLO (make-ctx-tflo))
+(define ATX_OPO (make-ctx-topo))
+(define ATX_CLO (make-ctx-tclo))
 
-(define (ctx-type-teq? t1 t2)
-  (eq? (ctx-type->symbol t1)
-       (ctx-type->symbol t2)))
+(define (ctx-type->stag type)
+  (cond ((ctx-tbox? type) STAG_MOBJECT)
+        ((ctx-tpai? type) STAG_PAIR)
+        ((ctx-tvec? type) STAG_VECTOR)
+        ((ctx-tstr? type) STAG_STRING)
+        ((ctx-tsym? type) STAG_SYMBOL)
+        ((ctx-tflo? type) STAG_FLONUM)
+        ((ctx-tclo? type) STAG_PROCEDURE)
+        (else (pp type) (error "Internal error (ctx-type->stag)"))))
 
-(define (ctx-type->symbol t)
-  (cond ((t-all? t) '*)
-        ((t-unk? t) 'unknown)
-        ((t-cha? t) 'char)
-        ((t-voi? t) 'void)
-        ((t-nul? t) 'null)
-        ((t-ret? t) 'retaddr)
-        ((t-int? t) 'integer)
-        ((t-boo? t) 'boolean)
-        ((t-box? t) 'box)
-        ((t-pai? t) 'pair)
-        ((t-vec? t) 'vector)
-        ((t-str? t) 'string)
-        ((t-sym? t) 'symbol)
-        ((t-ipo? t) 'iport)
-        ((t-flo? t) 'float)
-        ((t-opo? t) 'oport)
-        ((t-clo? t) 'closure)
-        (else (error "Internal error"))))
-
-;; TODO: use constant instance for efficiency
-;; Context types
-(define ATX_ALL   (make-t-all)) ; Represents all ctx types
-(define ATX_UNK   (make-t-unk))
-;; !mem allocated
-(define ATX_CHAR  (make-t-cha))
-(define ATX_VOID  (make-t-voi))
-(define ATX_NULL  (make-t-nul))
-(define ATX_RETAD (make-t-ret))
-(define ATX_INT   (make-t-int))
-(define ATX_BOOL  (make-t-boo))
-;; mem allocated
-(define ATX_BOX   (make-t-box))
-(define ATX_PAI   (make-t-pai))
-(define ATX_VECT  (make-t-vec))
-(define ATX_STR   (make-t-str))
-(define ATX_SYM   (make-t-sym))
-(define ATX_IPORT (make-t-ipo))
-(define ATX_FLO   (make-t-flo))
-(define ATX_OPORT (make-t-opo))
-(define ATX_CLO   (make-t-clo))
-
-(define (memtype-to-stag type)
-  (cond ((t-box? type) STAG_MOBJECT)
-        ((t-pai? type) STAG_PAIR)
-        ((t-vec? type) STAG_VECTOR)
-        ((t-str? type) STAG_STRING)
-        ((t-sym? type) STAG_SYMBOL)
-        ((t-flo? type) STAG_FLONUM)
-        ((t-clo? type) STAG_PROCEDURE)
-        (else (pp type) (error "Internal error (memtype-to-stag)"))))
-
-(define (mem-allocated-type? type)
-  (or (t-box? type) (t-pai? type)
-      (t-vec? type) (t-str? type)
-      (t-flo? type) (t-sym? type)
-      (t-ipo? type) (t-opo? type)
-      (t-clo? type)))
-
-(define (literal-ctxtype l)
-  (cond
-    ((char?    l) (make-t-cha))
-    ((null?    l) (make-t-nul))
-    ((fixnum?  l) (make-t-int))
-    ((boolean? l) (make-t-boo))
-    ((pair?    l) (make-t-pai))
-    ((vector?  l) (make-t-vec))
-    ((string?  l) (make-t-str))
-    ((symbol?  l) (make-t-sym))
-    ((flonum?  l) (make-t-flo))
-    (else (error "Internal error (literal-ctxtype)"))))
-
-
+;; cridx<->ctx-type table
 (define cridx-type
-  `(( 8  ,t-int? ,make-t-int) ;; Start from 8 because of header
-    (16  ,t-cha? ,make-t-cha)
-    (24  ,t-boo? ,make-t-boo)
-    (32  ,t-clo? ,make-t-clo)
-    (40  ,t-pai? ,make-t-pai)
-    (48  ,t-voi? ,make-t-voi)
-    (56  ,t-nul? ,make-t-nul)
-    (64  ,t-vec? ,make-t-vec)
-    (72  ,t-str? ,make-t-str)
-    (80  ,t-sym? ,make-t-sym)
-    (88  ,t-ipo? ,make-t-ipo)
-    (96  ,t-opo? ,make-t-opo)
-    (104 ,t-flo? ,make-t-flo)
-    (112 ,t-unk? ,make-t-unk)))
+  `(( 8  ,ctx-tint? ,make-ctx-tint) ;; Start from 8 because of header
+    (16  ,ctx-tcha? ,make-ctx-tcha)
+    (24  ,ctx-tboo? ,make-ctx-tboo)
+    (32  ,ctx-tclo? ,make-ctx-tclo)
+    (40  ,ctx-tpai? ,make-ctx-tpai)
+    (48  ,ctx-tvoi? ,make-ctx-tvoi)
+    (56  ,ctx-tnul? ,make-ctx-tnul)
+    (64  ,ctx-tvec? ,make-ctx-tvec)
+    (72  ,ctx-tstr? ,make-ctx-tstr)
+    (80  ,ctx-tsym? ,make-ctx-tsym)
+    (88  ,ctx-tipo? ,make-ctx-tipo)
+    (96  ,ctx-topo? ,make-ctx-topo)
+    (104 ,ctx-tflo? ,make-ctx-tflo)
+    (112 ,ctx-tunk? ,make-ctx-tunk)))
 
-(define (type-to-cridx type)
+(define (ctx-type->cridx type)
   (let loop ((l cridx-type))
     (let ((test (cadar l)))
       (if (test type)
           (caar l)
           (loop (cdr l))))))
 
-(define (cridx-to-type cridx)
+(define (cridx->ctx-type cridx)
   (let* ((r (assoc cridx cridx-type))
          (ctor (caddr r)))
     (ctor)))
@@ -285,7 +208,7 @@
 (define ERR_LETREC           "ILL-FORMED LETREC")
 
 (define (ERR_TYPE_EXPECTED type)
-  (string-append (string-upcase (ctx-type->symbol type))
+  (string-append (string-upcase (ctx-type-sym type))
                  " EXPECTED"))
 
 (define ERR_NUMBER_EXPECTED "NUMBER EXPECTED")
@@ -540,7 +463,7 @@
          (table
           (get-i64 (+ usp (reg-sp-offset-r (x86-rdx)))))
 
-         (type (cridx-to-type type-idx))
+         (type (cridx->ctx-type type-idx))
 
          (new-ret-addr
            (callback-fn ret-addr selector type table)))
@@ -1537,8 +1460,8 @@
 (define (patch-continuation-cr continuation-label type generic? table)
   ;; TODO: msg if opt-verbose-jit (see patch-continuation)
   (if generic?
-      (put-i64 (+ (type-to-cridx ATX_UNK) table) (asm-label-pos continuation-label)))
-  (put-i64 (+ (type-to-cridx type) table) (asm-label-pos continuation-label))
+      (put-i64 (+ (ctx-type->cridx ATX_UNK) table) (asm-label-pos continuation-label)))
+  (put-i64 (+ (ctx-type->cridx type) table) (asm-label-pos continuation-label))
   (asm-label-pos continuation-label))
 
 ;; Patch jump at jump-addr: change jump destination to dest-addr
@@ -1641,35 +1564,36 @@
 ;; Gen fatal dynamic type test
 ;; fatal means that if type test fails, it stops execution
 ;; Check type 'type' for stack slot at 'stack-idx' and jump to 'succ' if succeess
-(define (gen-fatal-type-test t-test stack-idx succ #!optional ast)
+(define (gen-fatal-type-test ctx-type stack-idx succ #!optional ast)
  (let ((lazy-error
           (make-lazy-code
              (lambda (cgc ctx)
-                (if (or (eq? t-test t-flo?) (eq? t-test t-int?))
+                (if (or (ctx-tflo? ctx-type) (ctx-tint? ctx-type))
                   (gen-error cgc ERR_NUMBER_EXPECTED)
-                  (gen-error cgc (ERR_TYPE_EXPECTED (t-test->type t-test))))))))
-   (gen-dyn-type-test t-test stack-idx succ lazy-error ast)))
+                  (gen-error cgc (ERR_TYPE_EXPECTED ctx-type)))))))
+   (gen-dyn-type-test ctx-type stack-idx succ lazy-error ast)))
 
 ;; Create lazy code for type test of stack slot (stack-idx)
 ;; jump to lazy-success if test succeeds
 ;; jump to lazy-fail if test fails
-;; TODO: give actual type instead of type test function (t-test)
-(define (gen-dyn-type-test t-test stack-idx lazy-success lazy-fail #!optional ast)
+(define (gen-dyn-type-test ctx-type stack-idx lazy-success lazy-fail #!optional ast)
 
   (make-lazy-code
      (lambda (cgc ctx)
 
+       (define type-ctor (ctx-type-ctor ctx-type))
+
        ;; TODO: plus nettoyer tout ca
-       (let* ((ctx-success (ctx-set-type ctx stack-idx (t-test->type t-test)))
+       (let* ((ctx-success (ctx-set-type ctx stack-idx (type-ctor)))
               (ctx-success-known ctx);; If know type is tested type, do not change ctx (TODO?)
               (ctx-fail ctx)
               (known-type (list-ref (ctx-stack ctx) stack-idx)))
 
          (cond ;; known == expected
-               ((t-test known-type)
+               ((ctx-type-teq? ctx-type known-type)
                 (jump-to-version cgc lazy-success ctx-success-known))
                ;; known != expected && known != unknown
-               ((not (t-unk? known-type))
+               ((not (ctx-tunk? known-type))
                 (jump-to-version cgc lazy-fail ctx-fail))
                ;; known == unknown
                (else
@@ -1736,20 +1660,20 @@
                          (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
 
                     (cond ;; Number type check
-                          ((eq? t-test t-int?)
+                          ((ctx-tint? ctx-type)
                            (x86-mov cgc (x86-rax) (x86-imm-int 3))
                            (x86-and cgc (x86-rax) opval))
                           ;; Null type test
-                          ((eq? t-test t-nul?)
+                          ((ctx-tnul? ctx-type)
                            (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
                            (x86-cmp cgc (x86-rax) opval))
                           ;; Pair type test
-                          ((eq? t-test t-pai?)
+                          ((ctx-tpai? ctx-type)
                            (x86-mov cgc (x86-rax) (x86-imm-int 3))
                            (x86-and cgc (x86-rax) opval)
                            (x86-cmp cgc (x86-rax) (x86-imm-int TAG_PAIR)))
                           ;; Char type check
-                          ((eq? t-test t-cha?)
+                          ((ctx-tcha? ctx-type)
                            ;; char if val is tagged with TAG_SPECIAL and val > 0
                            (x86-mov cgc (x86-rax) opval)
                            (x86-mov cgc selector-reg (x86-imm-int SPECIAL_MASK))
@@ -1757,7 +1681,7 @@
                            (x86-mov cgc selector-reg (x86-imm-int 0))
                            (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
                           ;; Procedure type test
-                          ((mem-allocated-type? (t-test->type t-test))
+                          ((ctx-type-mem-allocated? ctx-type)
                            ;; Vérifier le tag memobj
                            ;; extraire le tag du header
                            ;; Vérifier le tag stag
@@ -1775,9 +1699,9 @@
                                (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) opval)))
                            (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
                            ;; stag xxx << 3
-                           (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (memtype-to-stag (t-test->type t-test))))))
+                           (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (ctx-type->stag ctx-type)))))
                           ;; Other
-                          (else (error "Unknown type " t-test)))
+                          (else (error "Unknown type " ctx-type)))
 
                     (x86-label cgc label-jump)
                     (x86-je cgc (list-ref stub-labels 0))

@@ -1,4 +1,10 @@
 
+;; Constantes:
+;;   - Propagation des constantes dans le ctx (cas spéciaux au merge)
+;;   - Propagation des constantes sûres (aucun cas spéciaux, cette constante est valable pour toutes les versions)
+;; Liveness:
+
+
 ;;
 ;; TODO: ##set-box! -> cas spécial, c'est un kill
 

@@ -212,23 +212,24 @@
 ;; Type predicates
 
 (define type-predicates `(
-  (output-port? . ,t-opo?)
-  (input-port?  . ,t-ipo?)
-  (symbol?      . ,t-sym?)
-  (string?      . ,t-str?)
-  (char?        . ,t-cha?)
-  (vector?      . ,t-vec?)
-  (fixnum?      . ,t-int?)
-  (flonum?      . ,t-flo?)
-  (procedure?   . ,t-clo?)
-  (pair?        . ,t-pai?)
-  (null?        . ,t-nul?)
+  (output-port? . ,ATX_OPO)
+  (input-port?  . ,ATX_IPO)
+  (symbol?      . ,ATX_SYM)
+  (string?      . ,ATX_STR)
+  (char?        . ,ATX_CHA)
+  (vector?      . ,ATX_VEC)
+  (fixnum?      . ,ATX_INT)
+  (flonum?      . ,ATX_FLO)
+  (procedure?   . ,ATX_CLO)
+  (pair?        . ,ATX_PAI)
+  (null?        . ,ATX_NUL)
 ))
 
 (define (type-predicate? sym)
   (assq sym type-predicates))
 
-(define (predicate-to-typetest predicate)
+;; WARNING: this function return constant instance ATX_* do not modify it!
+(define (predicate->ctx-type predicate)
   (let ((r (assq predicate type-predicates)))
     (if r
       (cdr r)
@@ -239,50 +240,50 @@
 
 ;; Primitives: name, nb args min, nb args max, args types, cst positions to check
 (define primitives `(
-                     (car                 1  1  ,(prim-types 1 t-pai?)                     ())
-                     (cdr                 1  1  ,(prim-types 1 t-pai?)                     ())
-                     (eq?                 2  2  ,(prim-types 2 t-all? t-all?)          (0 1))
-                     (char=?              2  2  ,(prim-types 2 t-cha? t-cha?)        (0 1))
-                     (zero?               1  1  ,(prim-types 1 t-int?)                     ())
-                     (not                 1  1  ,(prim-types 1 t-all?)                     ()) ;; + efficace cst TODO
-                     (set-car!            2  2  ,(prim-types 2 t-pai? t-all?)            (1))
-                     (set-cdr!            2  2  ,(prim-types 2 t-pai? t-all?)            (1))
-                     (cons                2  2  ,(prim-types 2 t-all? t-all?)          (0 1))
-                     (vector-length       1  1  ,(prim-types 1 t-vec?)                    ())
-                     (vector-ref          2  2  ,(prim-types 2 t-vec? t-int?)           (1))
-                     (char->integer       1  1  ,(prim-types 1 t-cha?)                   (0))
-                     (integer->char       1  1  ,(prim-types 1 t-int?)                    (0))
-                     (string-ref          2  2  ,(prim-types 2 t-str? t-int?)            (1))
-                     (string-set!         3  3  ,(prim-types 3 t-str? t-int? t-cha?) (1 2))
-                     (vector-set!         3  3  ,(prim-types 3 t-vec? t-int? t-all?)    ()) ;; + efficace cst TODO
-                     (string-length       1  1  ,(prim-types 1 t-str?)                     ())
+                     (car                 1  1  ,(prim-types 1 ATX_PAI)                     ())
+                     (cdr                 1  1  ,(prim-types 1 ATX_PAI)                     ())
+                     (eq?                 2  2  ,(prim-types 2 ATX_ALL ATX_ALL)          (0 1))
+                     (char=?              2  2  ,(prim-types 2 ATX_CHA ATX_CHA)        (0 1))
+                     (zero?               1  1  ,(prim-types 1 ATX_INT)                     ())
+                     (not                 1  1  ,(prim-types 1 ATX_ALL)                     ()) ;; + efficace cst TODO
+                     (set-car!            2  2  ,(prim-types 2 ATX_PAI ATX_ALL)            (1))
+                     (set-cdr!            2  2  ,(prim-types 2 ATX_PAI ATX_ALL)            (1))
+                     (cons                2  2  ,(prim-types 2 ATX_ALL ATX_ALL)          (0 1))
+                     (vector-length       1  1  ,(prim-types 1 ATX_VEC)                    ())
+                     (vector-ref          2  2  ,(prim-types 2 ATX_VEC ATX_INT)           (1))
+                     (char->integer       1  1  ,(prim-types 1 ATX_CHA)                   (0))
+                     (integer->char       1  1  ,(prim-types 1 ATX_INT)                    (0))
+                     (string-ref          2  2  ,(prim-types 2 ATX_STR ATX_INT)            (1))
+                     (string-set!         3  3  ,(prim-types 3 ATX_STR ATX_INT ATX_CHA) (1 2))
+                     (vector-set!         3  3  ,(prim-types 3 ATX_VEC ATX_INT ATX_ALL)    ()) ;; + efficace cst TODO
+                     (string-length       1  1  ,(prim-types 1 ATX_STR)                     ())
                      (exit                0  0  ,(prim-types 0 )                            ())
-                     (make-vector         1  2  ,(prim-types 1 t-int? 2 t-int? t-all?)   ())
-                     (make-string         1  2  ,(prim-types 1 t-int? 2 t-int? t-cha?)  ())
-                     (eof-object?         1  1  ,(prim-types 1 t-all?)                     ())
-                     (symbol->string      1  1  ,(prim-types 1 t-sym?)                     ())
+                     (make-vector         1  2  ,(prim-types 1 ATX_INT 2 ATX_INT ATX_ALL)   ())
+                     (make-string         1  2  ,(prim-types 1 ATX_INT 2 ATX_INT ATX_CHA)  ())
+                     (eof-object?         1  1  ,(prim-types 1 ATX_ALL)                     ())
+                     (symbol->string      1  1  ,(prim-types 1 ATX_SYM)                     ())
                      (current-output-port 0  0  ,(prim-types 0 )                            ())
                      (current-input-port  0  0  ,(prim-types 0 )                            ())
                      ;; These primitives are inlined during expansion but still here to check args and/or build lambda
-                     (number?             1  1  ,(prim-types 1 t-all?)                     ())
-                     (real?               1  1  ,(prim-types 1 t-all?)                     ())
-                     (eqv?                2  2  ,(prim-types 2 t-all? t-all?)             ())
+                     (number?             1  1  ,(prim-types 1 ATX_ALL)                     ())
+                     (real?               1  1  ,(prim-types 1 ATX_ALL)                     ())
+                     (eqv?                2  2  ,(prim-types 2 ATX_ALL ATX_ALL)             ())
                      ;;
-                     (##fx+               2  2  ,(prim-types 2 t-all? t-all?)          (0 1))
-                     (##fx-               2  2  ,(prim-types 2 t-all? t-all?)          (0 1))
-                     (##fx*               2  2  ,(prim-types 2 t-all? t-all?)          (0 1))
-                     (##fx+?              2  2  ,(prim-types 2 t-all? t-all?)          (0 1))
-                     (##fx-?              2  2  ,(prim-types 2 t-all? t-all?)          (0 1))
-                     (##fx*?              2  2  ,(prim-types 2 t-all? t-all?)          (0 1))
-                     (##fl+               2  2  ,(prim-types 2 t-all? t-all?)          (0 1))
-                     (##fl-               2  2  ,(prim-types 2 t-all? t-all?)          (0 1))
-                     (##fl*               2  2  ,(prim-types 2 t-all? t-all?)          (0 1))
-                     (##fixnum->flonum    1  1  ,(prim-types 1 t-all?)                     ())
-                     (##mem-allocated?    1  1  ,(prim-types 1 t-all?)                     ())
-                     (##subtyped?         1  1  ,(prim-types 1 t-all?)                     ())
-                     (##box               1  1  ,(prim-types 1 t-all?)                     ())
-                     (##unbox             1  1  ,(prim-types 1 t-all?)                     ())
-                     (##set-box!          2  2  ,(prim-types 2 t-all? t-all?)             ())))
+                     (##fx+               2  2  ,(prim-types 2 ATX_ALL ATX_ALL)          (0 1))
+                     (##fx-               2  2  ,(prim-types 2 ATX_ALL ATX_ALL)          (0 1))
+                     (##fx*               2  2  ,(prim-types 2 ATX_ALL ATX_ALL)          (0 1))
+                     (##fx+?              2  2  ,(prim-types 2 ATX_ALL ATX_ALL)          (0 1))
+                     (##fx-?              2  2  ,(prim-types 2 ATX_ALL ATX_ALL)          (0 1))
+                     (##fx*?              2  2  ,(prim-types 2 ATX_ALL ATX_ALL)          (0 1))
+                     (##fl+               2  2  ,(prim-types 2 ATX_ALL ATX_ALL)          (0 1))
+                     (##fl-               2  2  ,(prim-types 2 ATX_ALL ATX_ALL)          (0 1))
+                     (##fl*               2  2  ,(prim-types 2 ATX_ALL ATX_ALL)          (0 1))
+                     (##fixnum->flonum    1  1  ,(prim-types 1 ATX_ALL)                     ())
+                     (##mem-allocated?    1  1  ,(prim-types 1 ATX_ALL)                     ())
+                     (##subtyped?         1  1  ,(prim-types 1 ATX_ALL)                     ())
+                     (##box               1  1  ,(prim-types 1 ATX_ALL)                     ())
+                     (##unbox             1  1  ,(prim-types 1 ATX_ALL)                     ())
+                     (##set-box!          2  2  ,(prim-types 2 ATX_ALL ATX_ALL)             ())))
 
 (define (assert-p-nbargs prim ast)
   (let ((infos (cdr (assoc prim primitives))))
@@ -415,7 +416,7 @@
           (jump-to-version cgc
                            succ
                            (ctx-push ctx
-                                     (literal-ctxtype lit)
+                                     (literal->ctx-type lit)
                                      reg)))))))
 
 ;;
@@ -435,7 +436,7 @@
                     (ieee754 flo 'double))))
           (apply-moves cgc ctx moves)
           (codegen-flonum cgc immediate reg)
-          (jump-to-version cgc succ (ctx-push ctx (make-t-flo) reg))))))
+          (jump-to-version cgc succ (ctx-push ctx (make-ctx-tflo) reg))))))
 
 ;;
 ;; Make lazy code from vector literal
@@ -462,7 +463,7 @@
               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ (vector-length ast))))
                 (apply-moves cgc ctx moves)
                 (x86-lea cgc (codegen-reg-to-x86reg reg) (x86-mem (+ (* -8 (+ len 1)) TAG_MEMOBJ) alloc-ptr))
-                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx len) (make-t-vec) reg)))
+                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx len) (make-ctx-tvec) reg)))
               (begin
                 (gen-set cgc ctx pos)
                 (loop (+ pos 1)))))))))
@@ -478,7 +479,7 @@
       (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
         (apply-moves cgc ctx moves)
         (codegen-string cgc str reg)
-        (jump-to-version cgc succ (ctx-push ctx (make-t-str) reg))))))
+        (jump-to-version cgc succ (ctx-push ctx (make-ctx-tstr) reg))))))
 
 ;;
 ;; Make lazy code from QUOTE
@@ -491,7 +492,7 @@
         ((or (pair? val) (symbol? val) (vector? val))
           (make-lazy-code
             (lambda (cgc ctx)
-              (define type (literal-ctxtype val))
+              (define type (literal->ctx-type val))
               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
                 (apply-moves cgc ctx moves)
                 (let ((dest (codegen-reg-to-x86reg reg)))
@@ -517,8 +518,8 @@
          (let ((type (type-fn)))
            (and
              type
-             (not (t-boo? type))     ;; If it's a bool, we must check the value
-             (not (t-unk? type)))))) ;; If it's a unk, we must check the type
+             (not (ctx-tboo? type))     ;; If it's a bool, we must check the value
+             (not (ctx-tunk? type)))))) ;; If it's a unk, we must check the type
 
   (define (lcl-inlined-cond? ctx identifier)
     (inlined-cond? (lambda () (ctx-identifier-type ctx identifier))))
@@ -630,7 +631,7 @@
 
   (mlet (;; Get variable type if known
          (r (table-ref gids (car global) #f))
-         (type (or r (make-t-unk)))
+         (type (or r (make-ctx-tunk)))
          ;; Get free register (dest)
          (moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
     (apply-moves cgc ctx moves)
@@ -674,7 +675,7 @@
            (type (ctx-get-type ctx 0)))
       (apply-moves cgc ctx moves)
       (codegen-set-non-global cgc reg lval (ctx-fs ctx))
-      (let ((ctx (ctx-push (ctx-pop ctx) (make-t-voi) reg)))
+      (let ((ctx (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg)))
         (jump-to-version cgc succ (ctx-set-type ctx local type))))))
 
 (define gen-set-localvar (get-non-global-setter gen-get-localvar))
@@ -686,7 +687,7 @@
          (lval (ctx-get-loc ctx 0)))
     (apply-moves cgc ctx moves)
     (codegen-set-global cgc reg pos lval (ctx-fs ctx))
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-voi) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))
 
 ;;-----------------------------------------------------------------------------
 ;; INTERNAL FORMS
@@ -706,9 +707,9 @@
                                (lvalue (ctx-get-loc ctx 0)))
                           (apply-moves cgc ctx moves)
                           (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue)
-                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-voi) reg))))))
+                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))))
          (lazy-val
-           (if (t-clo? (table-ref gids (cadr ast) #f))
+           (if (ctx-tclo? (table-ref gids (cadr ast) #f))
                (mlc-lambda (caddr ast) lazy-bind (cadr ast))
                (gen-ast (caddr ast) lazy-bind))))
 
@@ -744,7 +745,7 @@
              (nb-formal (ctx-nb-args ctx)))
         (cond ;; rest AND actual == formal
               ((and rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
-               (set! ctx (ctx-stack-push ctx (make-t-nul)))
+               (set! ctx (ctx-stack-push ctx (make-ctx-tnul)))
                (let ((reg
                        (if (<= nb-formal (length args-regs))
                            (list-ref args-regs (- nb-formal 1))
@@ -756,7 +757,7 @@
               ((and rest-param (> nb-actual (- nb-formal 1)))
                (let* ((nb-extra (- nb-actual (- nb-formal 1)))
                       (nctx (ctx-stack-pop-n ctx (- nb-extra 1)))
-                      (nctx (ctx-set-type nctx 0 (make-t-pai))))
+                      (nctx (ctx-set-type nctx 0 (make-ctx-tpai))))
                  (set! ctx nctx)
                  (let* ((nb-formal-stack
                           (if (> (- nb-formal 1) (length args-regs))
@@ -822,7 +823,7 @@
         ;; Gen return
         (if opt-return-points
             (let* ((ret-type (car (ctx-stack ctx)))
-                   (crtable-offset (type-to-cridx ret-type)))
+                   (crtable-offset (ctx-type->cridx ret-type)))
               (codegen-return-cr cgc crtable-offset))
               (codegen-return-rp cgc))))))
 
@@ -959,7 +960,7 @@
     (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
       (apply-moves cgc ctx moves)
       (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int qword))
-      (jump-to-version cgc succ (ctx-push ctx (make-t-clo) reg)))))
+      (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg)))))
 
 ;; Create a local closure, and load it in dest register
 ;; A local closure is a closure with free variables which needs to be instantiated
@@ -990,7 +991,7 @@
     (codegen-closure-put cgc reg close-length)
 
     ;; Trigger the next object
-    (jump-to-version cgc succ (ctx-push ctx (make-t-clo) reg))))
+    (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg))))
 
 
 ;;
@@ -1205,14 +1206,14 @@
                (apply-moves cgc ctx moves)
                (x86-call cgc label-breakpoint-handler)
                (codegen-void cgc reg)
-               (jump-to-version cgc succ (ctx-push ctx (make-t-voi) reg))))))
+               (jump-to-version cgc succ (ctx-push ctx (make-ctx-tvoi) reg))))))
         ((eq? sym '$$sys-clock-gettime-ns)
          (make-lazy-code
            (lambda (cgc ctx)
              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
                (apply-moves cgc ctx moves)
                (codegen-sys-clock-gettime-ns cgc reg)
-               (jump-to-version cgc succ (ctx-push ctx (make-t-int) reg))))))
+               (jump-to-version cgc succ (ctx-push ctx (make-ctx-tint) reg))))))
         ((eq? sym '##subtype)
          (let* ((lazy-imm
                   (make-lazy-code
@@ -1220,7 +1221,7 @@
                       (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1)))
                         (apply-moves cgc ctx moves)
                         (codegen-literal cgc STAG_PAIR reg)
-                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-int) reg))))))
+                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tint) reg))))))
                 (lazy-subtype
                   (make-lazy-code
                     (lambda (cgc ctx)
@@ -1228,14 +1229,14 @@
                       (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1))
                              (type (ctx-get-type ctx 0)))
                         (apply-moves cgc ctx moves)
-                        (if (t-unk? type)
+                        (if (ctx-tunk? type)
                             ;; type is unknown, get it from memory
                             (codegen-subtype cgc (ctx-fs ctx) reg (ctx-get-loc ctx 0))
                             ;; type is known, gen literal
-                            (codegen-literal cgc (memtype-to-stag type) reg))
-                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-int) reg))))))
+                            (codegen-literal cgc (ctx-type->stag type) reg))
+                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tint) reg))))))
                 (lazy-pair-check
-                         (gen-dyn-type-test t-pai? 0 lazy-imm lazy-subtype ast)))
+                         (gen-dyn-type-test ATX_PAI 0 lazy-imm lazy-subtype ast)))
 
            (gen-ast (cadr ast) lazy-pair-check)))))
 
@@ -1288,7 +1289,7 @@
                  (x86-pcall cgc label-gambit-call-handler)
                  (x86-upop cgc (codegen-reg-to-x86reg reg))
                  (x86-add cgc (x86-usp) (x86-imm-int (* 8 (+ nargs 1))))
-                 (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) (make-t-unk) reg)))))))
+                 (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) (make-ctx-tunk) reg)))))))
     (if generated-arg?
         lazy-call
         (gen-ast-l (cdr ast) lazy-call))))
@@ -1300,7 +1301,7 @@
 (define (prim-not cgc ctx reg succ cst-infos)
   (let ((lval (ctx-get-loc ctx 0)))
     (codegen-not cgc (ctx-fs ctx) reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-boo) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg))))
 
 ;; primitive eq?
 (define (prim-eq? cgc ctx reg succ cst-infos)
@@ -1310,11 +1311,11 @@
 
   (let* ((lcst (assoc 0 cst-infos))
          (rcst (assoc 1 cst-infos))
-         (tright (if rcst (literal-ctxtype (cdr rcst)) (ctx-get-type ctx 0)))
+         (tright (if rcst (literal->ctx-type (cdr rcst)) (ctx-get-type ctx 0)))
          (lright (if rcst (cdr rcst) (ctx-get-loc ctx 0)))
          (tleft
            (if lcst
-               (literal-ctxtype (cdr lcst))
+               (literal->ctx-type (cdr lcst))
                (if rcst
                    (ctx-get-type ctx 0)
                    (ctx-get-type ctx 1))))
@@ -1326,8 +1327,8 @@
                    (ctx-get-loc ctx 1))))
          (n-pop (count (list lcst rcst) not)))
 
-    (if (and (not (t-unk? tleft))
-             (not (t-unk? tright))
+    (if (and (not (ctx-tunk? tleft))
+             (not (ctx-tunk? tright))
              (not (ctx-type-teq? tleft tright)))
         ;; Both types are known and !=
         (if inlined-if-cond?
@@ -1337,14 +1338,14 @@
             ;; Then if it's not an if cond, result is #f
             (begin
               (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int (obj-encoding #f)))
-              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-t-boo) reg))))
+              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tboo) reg))))
         ;; Both types are not known
         (begin
           (codegen-eq? cgc (ctx-fs ctx) reg lleft lright lcst rcst inlined-if-cond?)
           (let ((ctx
                   (if inlined-if-cond?
                       (ctx-pop-n ctx n-pop) ;; if it's an if inlined condition, no push required
-                      (ctx-push (ctx-pop-n ctx n-pop) (make-t-boo) reg))))
+                      (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tboo) reg))))
             (if inlined-if-cond?
                 ((lazy-code-generator succ) cgc ctx x86-jne)
                 (jump-to-version cgc succ ctx)))))))
@@ -1356,23 +1357,23 @@
     (make-lazy-code
       (lambda (cgc ctx)
         (codegen-set-bool cgc r reg)
-        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-boo) reg)))))
+        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg)))))
 
-  (let* ((lazy-flo (gen-dyn-type-test t-flo? 0 (get-lazy-res #t) (get-lazy-res #f) #f))
-         (lazy-fix (gen-dyn-type-test t-int? 0 (get-lazy-res #t) lazy-flo #f)))
+  (let* ((lazy-flo (gen-dyn-type-test ATX_FLO 0 (get-lazy-res #t) (get-lazy-res #f) #f))
+         (lazy-fix (gen-dyn-type-test ATX_INT 0 (get-lazy-res #t) lazy-flo #f)))
     (jump-to-version cgc lazy-fix ctx)))
 
 ;; primitives car & cdr
 (define (prim-cxr cgc ctx reg succ cst-infos op)
   (let ((lval (ctx-get-loc ctx 0)))
     (codegen-car/cdr cgc (ctx-fs ctx) op reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-unk) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tunk) reg))))
 
 ;; primitive eof-object?
 (define (prim-eof-object? cgc ctx reg succ cst-infos)
   (let ((lval (ctx-get-loc ctx 0)))
     (codegen-eof? cgc (ctx-fs ctx) reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-boo) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg))))
 
 ;; primitive make-string
 (define (prim-make-string cgc ctx reg succ cst-infos args)
@@ -1383,7 +1384,7 @@
     (jump-to-version cgc succ (ctx-push (if init-value?
                                             (ctx-pop-n ctx 2)
                                             (ctx-pop ctx))
-                                        (make-t-str)
+                                        (make-ctx-tstr)
                                         reg))))
 
 ;; primitive make-vector
@@ -1397,7 +1398,7 @@
     (jump-to-version cgc succ (ctx-push (if init-value?
                                             (ctx-pop-n ctx 2)
                                             (ctx-pop ctx))
-                                        (make-t-vec)
+                                        (make-ctx-tvec)
                                         reg))))
 
 ;; primitive vector-ref
@@ -1412,7 +1413,7 @@
          (n-pop (if poscst 1 2)))
 
     (codegen-vector-ref cgc (ctx-fs ctx) reg lvec lidx poscst)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-t-unk) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tunk) reg))))
 
 ;; primitive string-ref
 (define (prim-string-ref cgc ctx reg succ cst-infos)
@@ -1425,7 +1426,7 @@
                (ctx-get-loc ctx 1)))
          (n-pop (if poscst 1 2)))
     (codegen-string-ref cgc (ctx-fs ctx) reg lstr lidx poscst)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-t-cha) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tcha) reg))))
 
 ;; primitive vector-set!
 (define (prim-vector-set! cgc ctx reg succ cst-infos)
@@ -1433,7 +1434,7 @@
         (lidx (ctx-get-loc ctx 1))
         (lvec (ctx-get-loc ctx 2)))
     (codegen-vector-set! cgc (ctx-fs ctx) reg lvec lidx lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) (make-t-voi) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) (make-ctx-tvoi) reg))))
 
 ;; primitive string-set!
 (define (prim-string-set! cgc ctx reg succ cst-infos)
@@ -1450,31 +1451,31 @@
          (n-pop (+ (count (list idx-cst chr-cst) not) 1))
          (lstr (ctx-get-loc ctx (- n-pop 1))))
     (codegen-string-set! cgc (ctx-fs ctx) reg lstr lidx lchr idx-cst chr-cst)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-t-voi) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tvoi) reg))))
 
 ;;
 (define (prim-symbol->string cgc ctx reg succ cst-infos)
   (let* ((lsym  (ctx-get-loc ctx 0)))
     (codegen-symbol->string cgc (ctx-fs ctx) reg lsym)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-str) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tstr) reg))))
 
 ;;
 (define (prim-mem-allocated? cgc ctx reg succ cst-infos)
   (let ((type (ctx-get-type ctx 0)))
-    (cond ((t-unk? type)
+    (cond ((ctx-tunk? type)
              (let ((lval (ctx-get-loc ctx 0)))
                (codegen-mem-allocated? cgc (ctx-fs ctx) reg lval)))
-          ((mem-allocated-type? type)
+          ((ctx-type-mem-allocated? type)
              (codegen-set-bool cgc #t reg))
           (else
              (codegen-set-bool cgc #f reg))))
-  (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-boo) reg)))
+  (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg)))
 
 ;;
 (define (prim-subtyped? cgc ctx reg succ cst-infos)
   (let ((lval (ctx-get-loc ctx 0)))
     (codegen-subtyped? cgc (ctx-fs ctx) reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-boo) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg))))
 
 ;;
 (define (prim-fxl-op cgc ctx reg succ cst-infos op cgcfn fx?)
@@ -1491,7 +1492,7 @@
         (if (eq? cgcfn codegen-num-ii)
             (cgcfn cgc (ctx-fs ctx) op reg lleft lright lcst rcst #f)
             (cgcfn cgc (ctx-fs ctx) op reg lleft #f lright #f lcst rcst #f)))
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (if fx? (make-t-int) (make-t-flo)) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (if fx? (make-ctx-tint) (make-ctx-tflo)) reg))))
 
 (define (prim-fxl?-op cgc ctx reg succ cst-infos op cgcfn)
 
@@ -1510,14 +1511,14 @@
              (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #f)))
          ;; No overflow, next is succ
          (lazy-false succ)
-         (ctx-false (ctx-push (ctx-pop-n ctx n-pop) (make-t-int) reg))
+         (ctx-false (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tint) reg))
          ;; Overflow, next is a new lco
          (lazy-true
            (make-lazy-code
              (lambda (cgc ctx)
                (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int (obj-encoding #f)))
                (jump-to-version cgc succ ctx))))
-         (ctx-true (ctx-push (ctx-pop-n ctx n-pop) (make-t-boo) reg)))
+         (ctx-true (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tboo) reg)))
 
   (assert (not (and lcst rcst)) "Internal error (prim-fxl-op?)")
 
@@ -1530,26 +1531,26 @@
 (define (prim-fixnum->flonum cgc ctx reg succ cst-infos)
   (let ((lval (ctx-get-loc ctx 0)))
     (codegen-fixnum->flonum cgc (ctx-fs ctx) reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-flo) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tflo) reg))))
 
 ;;
 (define (prim-box cgc ctx reg succ cst-infos)
   (let ((lval (ctx-get-loc ctx 0)))
     (codegen-box cgc (ctx-fs ctx) reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-box) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tbox) reg))))
 
 ;;
 (define (prim-set-box! cgc ctx reg succ cst-infos)
   (let ((lval (ctx-get-loc ctx 0))
         (lbox (ctx-get-loc ctx 1)))
     (codegen-set-box cgc (ctx-fs ctx) reg lbox lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) (make-t-voi) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) (make-ctx-tvoi) reg))))
 
 ;;
 (define (prim-unbox cgc ctx reg succ cst-infos)
   (let ((lbox (ctx-get-loc ctx 0)))
     (codegen-unbox cgc (ctx-fs ctx) reg lbox)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-unk) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tunk) reg))))
 
 ;; primitives set-car! & set-cdr!
 (define (prim-set-cxr! cgc ctx reg succ cst-infos op)
@@ -1562,7 +1563,7 @@
                (ctx-get-loc ctx 1)))
          (n-pop (if valcst 1 2)))
     (codegen-scar/scdr cgc (ctx-fs ctx) op reg lpair lval valcst)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-t-voi) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tvoi) reg))))
 
 ;; primitives current-input-port & current-output-port
 (define (prim-current-x-port cgc ctx reg succ cst-infos op)
@@ -1589,8 +1590,8 @@
     (codegen-ch<->int cgc (ctx-fs ctx) op reg lval cst-arg)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop)
                                         (if (eq? op 'char->integer)
-                                            (make-t-int)
-                                            (make-t-cha))
+                                            (make-ctx-tint)
+                                            (make-ctx-tcha))
                                         reg))))
 
 ;; primitives vector-length & string-length
@@ -1601,7 +1602,7 @@
               codegen-vector-length
               codegen-string-length)))
     (codegen-fn cgc (ctx-fs ctx) reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-int) reg))))
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tint) reg))))
 
 ;;
 
@@ -1677,7 +1678,7 @@
            (types (if (cadr primitive)
                       (cdr (assoc (length (cdr ast))
                                   (cadddr primitive)))
-                      (build-list (length (cdr ast)) (lambda (el) t-all?)))))
+                      (build-list (length (cdr ast)) (lambda (el) ctx-tall?)))))
 
       (assert (= (length types)
                  (length (cdr ast)))
@@ -1718,11 +1719,11 @@
 
   (define (check-cst-type type cst)
     (cond
-      ((eq? type t-int?) (integer? cst))
-      ((eq? type t-flo?) (flonum? cst))
-      ((eq? type t-nul?) (null? cst))
-      ((eq? type t-boo?) (boolean? cst))
-      ((eq? type t-cha?) (char? cst))
+      ((eq? type ATX_INT) (integer? cst))
+      ((eq? type ATX_FLO) (flonum? cst))
+      ((eq? type ATX_NUL) (null? cst))
+      ((eq? type ATX_BOO) (boolean? cst))
+      ((eq? type ATX_CHA) (char? cst))
       (else #f)))
 
   (define (check-types-h types args curr-pos)
@@ -1732,14 +1733,14 @@
         (let* ((lazy-next (check-types-h (cdr types) (cdr args) (+ curr-pos 1)))
                (r (assoc curr-pos cst-infos)))
           (cond ;;
-                ((or (and r (eq? (car types) t-all?))
+                ((or (and r (eq? (car types) ATX_ALL))
                      (and r (check-cst-type (car types) (cdr r))))
                    lazy-next)
                 ;;
                 (r
                    (get-lazy-error "NYI ERROR WRONG TYPE"))
                 ;;
-                ((eq? (car types) t-all?)
+                ((eq? (car types) ATX_ALL)
                    (gen-ast (car args) lazy-next))
                 ;;
                 (else
@@ -1800,7 +1801,7 @@
                    (let ((dest (codegen-reg-to-x86reg reg)))
                      (let ((offset (+ (* len 3 -8) TAG_PAIR)))
                        (x86-lea cgc dest (x86-mem offset alloc-ptr))
-                       (jump-to-version cgc succ (ctx-push ctx (make-t-pai) reg)))))))))
+                       (jump-to-version cgc succ (ctx-push ctx (make-ctx-tpai) reg)))))))))
         (make-lazy-code
           (lambda (cgc ctx)
             (let ((loc (ctx-get-loc ctx n)))
@@ -2054,7 +2055,7 @@
                             (symbol? (atom-node-val (cadr ast)))
                             (let ((sym (atom-node-val (cadr ast))))
                               (and (not (assoc sym (ctx-env ctx)))
-                                   (t-clo? (table-ref gids sym #f))))))
+                                   (ctx-tclo? (table-ref gids sym #f))))))
                      (fn-num (call-get-eploc ctx global-opt (cadr ast))))
                 (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
                 (x86-mov cgc (x86-rsi) (x86-rax)) ;; Move closure in closure reg
@@ -2200,7 +2201,7 @@
          ;; Call arguments
          (args (cdr ast))
          ;; Lazy fail
-         (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED (make-t-clo))))
+         (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED ATX_CLO)))
          ;; Lazy call
          (lazy-call
            (make-lazy-code
@@ -2221,11 +2222,11 @@
                        (ctx-copy
                          (ctx-init)
                          (append (list-head (ctx-stack ctx) (length (cdr ast)))
-                                 (list (make-t-clo) (make-t-ret)))))
+                                 (list (make-ctx-tclo) (make-ctx-tret)))))
                      (fn-num (call-get-eploc ctx global-opt (car ast))))
                  (gen-call-sequence ast cgc call-ctx (length args) fn-num)))))
          ;; Lazy code object to build the continuation
-         (lazy-tail-operator (check-types (list t-clo?) (list (car ast)) lazy-call ast)))
+         (lazy-tail-operator (check-types (list ATX_CLO) (list (car ast)) lazy-call ast)))
 
     ;; Gen and check types of args
     (make-lazy-code
@@ -2235,17 +2236,17 @@
                    (symbol? (atom-node-val (car ast)))
                    (let ((sym (atom-node-val (car ast))))
                      (and (not (assoc sym (ctx-env ctx)))
-                          (t-clo? (table-ref gids sym #f))))))
+                          (ctx-tclo? (table-ref gids sym #f))))))
 
         (if global-opt
             (jump-to-version
               cgc
               (gen-ast-l (cdr ast) lazy-call)
-              (ctx-push ctx (make-t-clo) #f))
+              (ctx-push ctx (make-ctx-tclo) #f))
             (jump-to-version
               cgc
               (check-types
-                (list t-clo?)
+                (list ATX_CLO)
                 (list (car ast))
                 (gen-ast-l (cdr ast) lazy-call)
                 ast)
@@ -2286,7 +2287,7 @@
                                             (gen-version-continuation
                                               load-ret-label
                                               lazy-continuation
-                                              (ctx-push ctx (make-t-unk) return-reg)))))
+                                              (ctx-push ctx (make-ctx-tunk) return-reg)))))
                                 gen-flag))))
    ;; Generate code
    (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0))))
@@ -2324,7 +2325,7 @@
 
                      (gen-version-continuation-cr
                        lazy-continuation
-                       (ctx-push ctx (if generic? (make-t-unk) type) return-reg)
+                       (ctx-push ctx (if generic? (make-ctx-tunk) type) return-reg)
                        type
                        generic?
                        table)))))
@@ -2409,9 +2410,9 @@
                      (codegen-binop cgc (ctx-fs ctx) op label-div0 reg lleft lright)
                      (jump-to-version cgc
                                       succ
-                                      (ctx-push (ctx-pop-n ctx 2) (make-t-int) reg)))))))
+                                      (ctx-push (ctx-pop-n ctx 2) (make-ctx-tint) reg)))))))
          ;; Check operands type
-         (check-types (list t-int? t-int?)
+         (check-types (list ATX_INT ATX_INT)
                       (list (car opnds) (cadr opnds))
                       lazy-op
                       ast)))))
@@ -2496,8 +2497,8 @@
                  (get-op-ii)))
            (lazy-op-f (get-op-ff (integer? lcst) (integer? rcst)))
            ;; Checks
-           (lazy-float (gen-fatal-type-test t-flo? 0 lazy-op-f ast))
-           (lazy-int (gen-dyn-type-test t-int? 0 lazy-op-i lazy-float ast)))
+           (lazy-float (gen-fatal-type-test ATX_FLO 0 lazy-op-f ast))
+           (lazy-int (gen-dyn-type-test ATX_INT 0 lazy-op-i lazy-float ast)))
       lazy-int))
 
   ;; Build chain to check type of two values (no cst)
@@ -2511,21 +2512,21 @@
            (lazy-op-fi (get-op-ff #f #t))
            (lazy-op-ff (get-op-ff #f #f))
            ;; Right branch
-           (lazy-yfloat2 (gen-fatal-type-test t-flo? 0 lazy-op-ff ast))
-           (lazy-yint2   (gen-dyn-type-test t-int? 0 lazy-op-fi lazy-yfloat2 ast))
-           (lazy-xfloat  (gen-fatal-type-test t-flo? 1 lazy-yint2 ast))
+           (lazy-yfloat2 (gen-fatal-type-test ATX_FLO 0 lazy-op-ff ast))
+           (lazy-yint2   (gen-dyn-type-test ATX_INT 0 lazy-op-fi lazy-yfloat2 ast))
+           (lazy-xfloat  (gen-fatal-type-test ATX_FLO 1 lazy-yint2 ast))
            ;; Left branch
-           (lazy-yfloat  (gen-fatal-type-test t-flo? 0 lazy-op-if ast))
-           (lazy-yint    (gen-dyn-type-test t-int? 0 lazy-op-ii lazy-yfloat ast))
+           (lazy-yfloat  (gen-fatal-type-test ATX_FLO 0 lazy-op-if ast))
+           (lazy-yint    (gen-dyn-type-test ATX_INT 0 lazy-op-ii lazy-yfloat ast))
            ;; Root node
-           (lazy-xint    (gen-dyn-type-test t-int? 1 lazy-yint lazy-xfloat ast)))
+           (lazy-xint    (gen-dyn-type-test ATX_INT 1 lazy-yint lazy-xfloat ast)))
     lazy-xint))
 
   ;; TODO: Merge with get-op-ff
   (define (get-op-ii)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((type (if num-op? (make-t-int) (make-t-boo)))
+        (let* ((type (if num-op? (make-ctx-tint) (make-ctx-tboo)))
                (n-pop (count (list lcst rcst) not))
                (res (if inlined-if-cond? #f (ctx-get-free-reg ctx succ n-pop)))
                (moves (if res (car res) '()))
@@ -2553,7 +2554,7 @@
   (define (get-op-ff leftint? rightint?)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((type (if num-op? (make-t-flo) (make-t-boo)))
+        (let* ((type (if num-op? (make-ctx-tflo) (make-ctx-tboo)))
                (n-pop (count (list lcst rcst) not))
                (res (if inlined-if-cond? #f (ctx-get-free-reg ctx succ n-pop)))
                (moves (if res (car res) '()))
@@ -2597,7 +2598,7 @@
         (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1)))
           (apply-moves cgc ctx moves)
           (codegen-set-bool cgc bool reg)
-          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-t-boo) reg))))))
+          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg))))))
 
   (define (get-lazy-inline bool)
     (make-lazy-code
@@ -2606,7 +2607,7 @@
                              (lazy-code-lco-false succ))))
           (jump-to-version cgc next (ctx-pop ctx))))))
 
-  (let ((t-test (predicate-to-typetest sym))
+  (let ((type (predicate->ctx-type sym))
         (stack-idx 0)
         (lazy-fail
           (if next-is-cond
@@ -2617,7 +2618,7 @@
               (get-lazy-inline #t)
               (get-lazy-res #t))))
 
-    (let ((check (gen-dyn-type-test t-test stack-idx lazy-success lazy-fail ast)))
+    (let ((check (gen-dyn-type-test type stack-idx lazy-success lazy-fail ast)))
 
       (if (and next-is-cond
                (atom-node? (cadr ast))
@@ -2626,9 +2627,9 @@
             (lambda (cgc ctx)
               (define sym (atom-node-val (cadr ast)))
               (define vartype (ctx-id-type ctx sym))
-              (cond ((or (not vartype) (t-unk? vartype))
+              (cond ((or (not vartype) (ctx-tunk? vartype))
                        (jump-to-version cgc (gen-ast (cadr ast) check) ctx))
-                    ((t-test vartype)
+                    ((ctx-type-teq? type vartype)
                        (jump-to-version cgc (lazy-code-lco-true succ) ctx))
                     (else
                        (jump-to-version cgc (lazy-code-lco-false succ) ctx)))))
@@ -2656,7 +2657,7 @@
       (codegen-pair cgc (ctx-fs ctx) reg lcar lcdr car-cst cdr-cst)
       (jump-to-version cgc
                        succ
-                       (ctx-push (ctx-pop-n ctx n-pop) (make-t-pai) reg))))))
+                       (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tpai) reg))))))
 
 ;;-----------------------------------------------------------------------------
 

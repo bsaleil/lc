@@ -80,6 +80,82 @@
             0
             #f))
 
+;;-----------------------------------------------------------------------------
+;; Ctx types
+
+;; Represent all ctx-types
+;; sym must be different for each type because it is used to test if two types
+;; represents the same type (symbol, integer, etc...)
+(define-type ctx-type
+  extender: define-ctx-type
+  sym
+  mem-allocated?)
+
+;; Define a new ctx type based on ctx-type
+;; (def-ctx-type closure #f ident) expand to:
+;;   (define-ctx-type ctx-tclo constructor: ctx-tclo* ident)
+;;   (define (make-ctx-tclo ident) (make-ctx-tclo* 'closure #f ident))
+(define-macro (def-ctx-type sym mem-allocated? . fields)
+  (let* ((short (substring (symbol->string sym) 0 3))
+         (typename  (string->symbol (string-append "ctx-t" short)))
+         (typector  (string->symbol (string-append "make-ctx-t" short)))
+         (typector* (string->symbol (string-append "make-ctx-t" short "*")))
+         (typepred  (string->symbol (string-append "ctx-t" short "?"))))
+  `(begin (define-ctx-type ,typename constructor: ,typector* ,@fields)
+          (define (,typector ,@fields) (,typector* (quote ,sym) ,mem-allocated? ,@fields))
+          (set! ctx-type-ctors
+                (cons (cons ,typepred ,typector) ctx-type-ctors)))))
+
+;; associate ctx type predicate to ctx type constructor
+;; (filled by def-ctx-type macro)
+(define ctx-type-ctors `())
+
+;; Define all used ctx-types
+(def-ctx-type all     #f)
+(def-ctx-type unknown #f)
+(def-ctx-type char    #f)
+(def-ctx-type void    #f)
+(def-ctx-type null    #f)
+(def-ctx-type retaddr #f)
+(def-ctx-type integer #f)
+(def-ctx-type boolean #f)
+(def-ctx-type box     #t)
+(def-ctx-type pair    #t)
+(def-ctx-type vector  #t)
+(def-ctx-type string  #t)
+(def-ctx-type symbol  #t)
+(def-ctx-type iport   #t)
+(def-ctx-type float   #t)
+(def-ctx-type oport   #t)
+(def-ctx-type closure #t)
+
+(define (ctx-type-ctor t)
+  (let loop ((l ctx-type-ctors))
+    (let ((pred (caar l)))
+      (if (pred t)
+          (cdar l)
+          (loop (cdr l))))))
+
+;; Check if two ctx-type objects represent the same type
+(define (ctx-type-teq? t1 t2)
+  (eq? (ctx-type-sym t1)
+       (ctx-type-sym t2)))
+
+;; Build and return a ctx type from a literal
+(define (literal->ctx-type l)
+  (cond
+    ((char?    l) (make-ctx-tcha))
+    ((null?    l) (make-ctx-tnul))
+    ((fixnum?  l) (make-ctx-tint))
+    ((boolean? l) (make-ctx-tboo))
+    ((pair?    l) (make-ctx-tpai))
+    ((vector?  l) (make-ctx-tvec))
+    ((string?  l) (make-ctx-tstr))
+    ((symbol?  l) (make-ctx-tsym))
+    ((flonum?  l) (make-ctx-tflo))
+    (else (error "Internal error (literal->ctx-type)"))))
+
+;;-----------------------------------------------------------------------------
 
 ;;; TODO public api
 ;; L'api ne doit fonctionner qu'avec un index de pile. Les slots sont propre à l'implantation.
@@ -273,7 +349,7 @@
           '()
           (if (member id late-fbinds)
               ;; If id is a late-fbind, type it's a function
-              (make-t-clo)
+              (make-ctx-tclo)
               ;; Else, get type from enclosing ctx
               (let ((ident (ctx-ident enclosing-ctx id)))
                 (ctx-identifier-type enclosing-ctx (cdr ident))))
@@ -328,7 +404,7 @@
   ;;
   (make-ctx
     (or stack
-        (append (make-list (length args) (make-t-unk)) (list (make-t-clo) (make-t-ret))))
+        (append (make-list (length args) (make-ctx-tunk)) (list (make-ctx-tclo) (make-ctx-tret))))
     (init-slot-loc)
     (init-free-regs)
     '()
