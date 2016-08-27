@@ -1,8 +1,40 @@
 
 ;; Constantes:
-;;   - Propagation des constantes dans le ctx (cas spéciaux au merge)
-;;   - Propagation des constantes sûres (aucun cas spéciaux, cette constante est valable pour toutes les versions)
-;; Liveness:
+;;   (1) - Propagation des constantes dans le ctx (cas spéciaux au merge)
+;;   (2) - Propagation des constantes sûres (aucun cas spéciaux, cette constante est valable pour toutes les versions)
+
+
+;(define foo (lambda () 1))
+
+
+
+;; (1) Changements au ctx:
+;;  * quand on stocke l'identifiant, si a un moment il a une loc mémoire, la garder pour lui et le noter dans l'objet identifier
+;;    -> chaque id a donc sa loc de la pile + son emplacement mémoire. (voir si viable avec le regallocs désactivé)
+;;  * ajouter un nouveau flag aux identifiants "cstfun" pour les fonctions constantes et stocker l'adresse de son epobj
+;;    -> (voir si viable avec le regallocs désactivé)
+
+;; (2) Liveness:
+;;  * ajouter une alpha conversion pour gérer les noms de variables identiques
+;;  * continuer avec la stratégie utilisée dans liveness.scm
+
+;; (3) Grouper allocations letrec (reprendre et continuer le travail)
+
+;; (?) Repenser completement la manière de représenter un contexte ?
+;;  * En pensant à la fusion,
+;;  * Aux positions multiples
+;;  * Aux constantes statiques
+;;  * Aux constantes dynamiques
+;;  * Aux types de manière générale
+
+(define fib
+  (lambda (n)
+    (if (< n 2)
+        1
+        (+ (fib (- n 1))
+           (fib (- n 2))))))
+
+(fib 40)
 
 
 ;;
@@ -53,7 +85,6 @@
 ;                 (begin (liveness (car exprs) succs)
 ;                        (loop (cdr exprs) (list (car exprs)))))))))
 
-(println (make-vector 10 #t))
 
 ;(define (foo n)
 ;  (pp n)

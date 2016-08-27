@@ -2871,6 +2871,7 @@
 
 ;; Return all free vars used by ast knowing env 'clo-env'
 (define (free-vars body params enc-ids)
+  ;; TODO: memoize result with given input to avoid multiple calls (analyses.scm & ast.scm)
   (cond ;; Keyword
         ((symbol? body) '())
         ;; Atom node

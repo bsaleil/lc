@@ -158,84 +158,9 @@
 ;;-----------------------------------------------------------------------------
 
 ;;; TODO public api
-;; L'api ne doit fonctionner qu'avec un index de pile. Les slots sont propre à l'implantation.
-;;
 
-;; TODO WIP:
-;; Return a pair (ctx, moves)
-;; ctx: generic version of ctx context
-;; moves: moves generated to create generic ctx
 (define (ctx-generic ctx)
   (error "NYI"))
-
-  ;;; 1 stack
-  ;(define (stack-gen)
-  ;  (if (< (ctx-nb-args ctx) 0)
-  ;      (make-list (length (ctx-stack ctx)) CTX_UNK)
-  ;      (append (make-list (- (length (ctx-stack ctx)) 2) CTX_UNK) (list CTX_CLO CTX_RETAD))))
-  ;
-  ;;; 2 env
-  ;(define (env-gen)
-  ;  (foldr (lambda (el r)
-  ;           (let* ((ss  (identifier-sslots (cdr el)))
-  ;                  (id (cdr el))
-  ;                  (free? (eq? (identifier-kind id) 'free))
-  ;                  (nss
-  ;                    (if free?
-  ;                        '()
-  ;                        (list-tail ss (- (length ss) 1))))
-  ;                  (env
-  ;                    (cons (cons (car el)
-  ;                                ;; (identifier-copy identifier kind sslots flags stype cloc)
-  ;                                (identifier-copy (cdr el) #f nss #f #f #f))
-  ;                          r)))
-  ;             env))
-  ;         '()
-  ;         (ctx-env ctx)))
-  ;
-  ;;; TODO WIP
-  ;(define (get-mult-sloc slot-loc)
-  ;  (if (null? slot-loc)
-  ;      #f
-  ;      (let ((loc (cdar slot-loc)))
-  ;        (or (and loc (loc-used? loc (cdr slot-loc)) (car slot-loc))
-  ;            (get-mult-sloc (cdr slot-loc))))))
-  ;
-  ;;; TODO WIP (already a function for this?)
-  ;(define (get-available-loc ctx)
-  ;  (cond ((not (null? (ctx-free-regs ctx)))
-  ;           (car (ctx-free-regs ctx)))
-  ;        ((not (null? (ctx-free-mems ctx)))
-  ;           (car (ctx-free-mems ctx)))
-  ;        (else #f)))
-  ;
-  ;;; 3 slot-loc
-  ;(define (sl-gen ctx moves)
-  ;  (let ((mult (get-mult-sloc (ctx-slot-loc ctx))))
-  ;    ;; Si r, alors on a un doublon
-  ;    (if mult
-  ;        (let ((avail (get-available-loc ctx)))
-  ;          (if avail
-  ;              ;; A reg or mem slot is available and free, use it
-  ;              (sl-gen (ctx-set-loc ctx (car mult) avail)
-  ;                      (append moves (list (cons (cdr mult) avail))))
-  ;              ;; There is no reg or mem available,
-  ;              ;; Get a free loc and call sl-gen
-  ;              (let* ((r (ctx-get-free-reg ctx))
-  ;                     (nmoves (car r))
-  ;                     (ctx (caddr r)))
-  ;                (sl-gen ctx (append moves nmoves)))))
-  ;              ;(error "NYI-ctx-generic")))
-  ;        (cons ctx moves))))
-  ;
-  ;(let* ((stack (stack-gen))
-  ;       (env   (env-gen)))
-  ;  (let* ((r (sl-gen (ctx-copy ctx stack #f #f #f env) '()))
-  ;         (ctx (car r))
-  ;         (moves (cdr r)))
-  ;
-  ;    (cons ctx
-  ;          (steps moves)))))
 
 ;; Compute and returns moves needed to merge reg alloc from src-ctx to dst-ctx
 (define (ctx-regalloc-merge-moves src-ctx dst-ctx)

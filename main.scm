@@ -231,6 +231,7 @@
 
   (init)
 
+  ;(liveness-prog prog)
   ;(println "--------------- PROG:")
   ;(pp prog)
   ;(println "--------------- TABLE:")
@@ -297,7 +298,7 @@
         ;; Can only exec 1 file
         ((= (length files) 1)
           (copy-with-declare (car files) "./tmp")
-        (let ((content (c#expand-program "./tmp")));(read-all (open-input-file (car files)))))
+        (let ((content (c#expand-program "./tmp"))) ;(read-all (open-input-file (car files)))))
               (define (get-global-type g)
                 (cond ((symbol? (cadr g))
                           (cond ((symbol?  (caddr g)) (make-ctx-tunk)) ;; TODO si globale connue, mettre type
