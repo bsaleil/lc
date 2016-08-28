@@ -8,6 +8,7 @@ install:
   - make -j4 latest-release
   - ./configure --prefix=$TRAVIS_BUILD_DIR/gambit/build/ --enable-single-host
   - make -j4 from-scratch
+  - make install
   - export PATH=$TRAVIS_BUILD_DIR/gambit/build/bin/:$PATH
 
 script:
