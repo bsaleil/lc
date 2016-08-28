@@ -94,7 +94,7 @@
 ;; Define a new ctx type based on ctx-type
 ;; (def-ctx-type closure #f ident) expand to:
 ;;   (define-ctx-type ctx-tclo constructor: ctx-tclo* ident)
-;;   (define (make-ctx-tclo ident) (make-ctx-tclo* 'closure #f ident))
+;;   (define (make-ctx-tclo #!optional ident) (make-ctx-tclo* 'closure #f ident))
 (define-macro (def-ctx-type sym mem-allocated? . fields)
   (let* ((short (substring (symbol->string sym) 0 3))
          (typename  (string->symbol (string-append "ctx-t" short)))
@@ -102,7 +102,7 @@
          (typector* (string->symbol (string-append "make-ctx-t" short "*")))
          (typepred  (string->symbol (string-append "ctx-t" short "?"))))
   `(begin (define-ctx-type ,typename constructor: ,typector* ,@fields)
-          (define (,typector ,@fields) (,typector* (quote ,sym) ,mem-allocated? ,@fields))
+          (define (,typector #!optional ,@fields) (,typector* (quote ,sym) ,mem-allocated? ,@fields))
           (set! ctx-type-ctors
                 (cons (cons ,typepred ,typector) ctx-type-ctors)))))
 
@@ -127,7 +127,7 @@
 (def-ctx-type iport   #t)
 (def-ctx-type float   #t)
 (def-ctx-type oport   #t)
-(def-ctx-type closure #t)
+(def-ctx-type closure #t loc)
 
 (define (ctx-type-ctor t)
   (let loop ((l ctx-type-ctors))
@@ -189,9 +189,6 @@
            (cons 'fs (- (ctx-fs dst-ctx)
                         (ctx-fs src-ctx)))))
     (cons fs-move moves)))
-
-
-
 
 ;; CTX IDENTIFIER LOC
 ;; Return best loc for identifier. (Register if available, memory otherwise)
@@ -430,6 +427,33 @@
               (else
                  (get (cdr env))))))
   (get (ctx-env ctx)))
+
+;;
+;; BIND CONSTANTS
+(define (ctx-bind-consts ctx cst-set)
+
+  (define (build-env cst-set env)
+    (if (null? cst-set)
+        env
+        (let ((id  (caar   cst-set))
+              (ast (cadar  cst-set))
+              (cst (caddar cst-set)))
+          (assert (and (pair? ast)
+                       (eq? (car ast) 'lambda))
+                  "Internal error")
+          (build-env (cdr cst-set)
+                     (cons (cons id
+                                 (make-identifier
+                                   'local
+                                   '()
+                                   '(cst)
+                                   (make-ctx-tclo cst)
+                                   #f
+                                   #f))
+                           env)))))
+
+  (let ((env (build-env cst-set (ctx-env ctx))))
+   (ctx-copy ctx #f #f #f #f env)))
 
 ;;
 ;; BIND LOCALS

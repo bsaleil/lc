@@ -829,7 +829,7 @@
 
 ;;
 ;; Create fn entry stub
-(define (create-fn-stub cgc ast fn-num fn-generator)
+(define (create-fn-stub ast fn-num fn-generator)
 
   ;; Function use rest param ?
   (define rest-param (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
@@ -849,7 +849,6 @@
   (define lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params)))
 
   (add-fn-callback
-    cgc
     1
     fn-num
     (lambda (stack ret-addr selector closure)
@@ -868,15 +867,24 @@
             (else
                (fn-generator closure lazy-prologue stack #f))))))
 
-;;
-;; Create closure generation lco
-(define (mlc-lambda ast succ global-opt #!optional (bound-id #f) (fvars-imm #f) (fvars-late '()))
+(define (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params global-opt bound-id)
+
+  ;; Generator used to generate function code waiting for runtime data
+  ;; First create function entry ctx
+  ;; Then generate function prologue code
+  (define (fn-generator closure prologue stack generic?)
+    (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) global-opt fvars-late fn-num bound-id)))
+      (gen-version-fn ast closure entry-obj prologue ctx stack generic? global-opt)))
+  ;;
+  (define stub-labels  (create-fn-stub ast fn-num fn-generator))
+  (define stub-addr    (asm-label-pos (list-ref stub-labels 0)))
+  (define generic-addr (asm-label-pos (list-ref stub-labels 1)))
 
   ;; ---------------------------------------------------------------------------
   ;; Return 'entry-obj' (entry object)
   ;; An entry object is the object that contains entry-points-locs
   ;; In the case of -cc, entry object is the cctable
-  (define (entry-obj-cc ctx stub-addr generic-addr)
+  (define (get-entry-obj-cc)
     (let* (;; Is the cctable new or existed before ?
            (cctable-new? #f)
            (cctable-key (get-cctable-key ast ctx fvars-imm fvars-late))
@@ -891,12 +899,21 @@
             (cctable-fill cctable stub-addr generic-addr)))
       cctable))
   ;; In the case of -ep, entry object is the still vector of size 1 that contain the single entry point
-  (define (entry-obj-ep ctx stub-addr generic-addr)
+  (define (get-entry-obj-ep)
     (let ((entryvec (get-entry-points-loc ast stub-addr)))
       (asc-entry-stub-add entryvec generic-addr stub-addr)
       entryvec))
 
-  ;; ---------------------------------------------------------------------------
+  (define entry-obj
+    (if opt-entry-points
+        (get-entry-obj-cc)
+        (get-entry-obj-ep)))
+
+  entry-obj)
+
+;;
+;; Create closure generation lco
+(define (mlc-lambda ast succ global-opt #!optional (bound-id #f) (fvars-imm #f) (fvars-late '()))
 
   ;; Lazy closure generation
   (make-lazy-code
@@ -915,20 +932,7 @@
 
       (letrec (;; Closure unique number
                (fn-num (new-fn-num))
-               ;; Generator used to generate function code waiting for runtime data
-               ;; First create function entry ctx
-               ;; Then generate function prologue code
-               (fn-generator
-                 (lambda (closure prologue stack generic?)
-                   (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) global-opt fvars-late fn-num bound-id)))
-                     (gen-version-fn ast closure entry-obj prologue ctx stack generic? global-opt))))
-               ;;
-               (stub-labels  (create-fn-stub cgc ast fn-num fn-generator))
-               (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
-               (generic-addr (asm-label-pos (list-ref stub-labels 1)))
-               (entry-obj (if opt-entry-points
-                               (entry-obj-cc ctx stub-addr generic-addr)
-                               (entry-obj-ep ctx stub-addr generic-addr)))
+               (entry-obj (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params global-opt bound-id))
                (entry-obj-loc (- (obj-encoding entry-obj) 1)))
 
           ;; Add compile time identity if known
@@ -1039,7 +1043,7 @@
   (let* ((ids       (map car (cadr ast)))
          (values    (map cadr (cadr ast)))
          (body      (cddr ast))
-         (lazy-out  (get-lazy-lets-out ids succ))
+         (lazy-out  (get-lazy-lets-out ids 0 succ))
          (lazy-body (gen-ast (cons 'begin body) lazy-out))
          (lazy-binds
            (make-lazy-code
@@ -1141,7 +1145,7 @@
   (define late-info #f)
   (define imm-info #f)
 
-  (let* ((lazy-out (get-lazy-lets-out (map car (cadr ast)) succ))
+  (let* ((lazy-out (get-lazy-lets-out (map car (cadr ast)) 0 succ))
          (lazy-body (gen-ast (caddr ast) lazy-out))
          (lazy-set
           (make-lazy-code
@@ -1179,7 +1183,7 @@
 
 ;; Create and return out lazy code object of let/letrec
 ;; Unbind locals, unbox result, and update ctx
-(define (get-lazy-lets-out ids succ)
+(define (get-lazy-lets-out ids nb-cst succ)
   (let ((make-lc (if (member 'ret (lazy-code-flags succ))
                      make-lazy-code-ret
                      make-lazy-code)))
@@ -1188,7 +1192,7 @@
         (let* ((type (car (ctx-stack ctx)))
                (loc  (ctx-get-loc ctx 0))
                (ctx  (ctx-unbind-locals ctx ids))
-               (ctx  (ctx-pop-n ctx (+ (length ids) 1)))
+               (ctx  (ctx-pop-n ctx (+ (- (length ids) nb-cst) 1)))
                (ctx  (ctx-push ctx type loc)))
           (jump-to-version cgc succ ctx))))))
 

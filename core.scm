@@ -1150,7 +1150,7 @@
   (create-stub label-do-callback-handler max-selector callback-fn))
 
 ;; Add function callback
-(define (add-fn-callback cgc max-selector fn-num callback-fn)
+(define (add-fn-callback max-selector fn-num callback-fn)
   (create-stub label-do-callback-fn-handler max-selector callback-fn fn-num))
 
 ;; Add continuation callback

@@ -27,14 +27,13 @@
 ;;  * Aux constantes dynamiques
 ;;  * Aux types de manière générale
 
-(define fib
-  (lambda (n)
-    (if (< n 2)
-        1
-        (+ (fib (- n 1))
-           (fib (- n 2))))))
-
-(fib 40)
+(let ((AA (lambda () 4))
+      (BB 100)
+      (CC (lambda () 3))
+      (DD #f))
+  (gambit$$pp BB)
+  (gambit$$pp (AA))
+  (gambit$$pp DD))
 
 
 ;;
