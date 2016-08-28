@@ -14,5 +14,4 @@ install:
   - make -j4 from-scratch
   - export PATH=$TRAVIS_BUILD_DIR/gambit/bin/:$PATH
 
-  - cd bsaleil/lazy-comp
-  - make && make test
+  - ls
