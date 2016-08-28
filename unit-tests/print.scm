@@ -43,9 +43,6 @@
 ;; Null
 (println '())
 
-;; Procedure
-(println (lambda (x) (* x x)))
-
 ;; Pair
 (println (cons 10 20))
 (println (cons 10 (cons 20 '())))
@@ -92,7 +89,6 @@
 ;#f
 ;#f
 ;
-;#<procedure #4>
 ;1020
 ;1020
 ;99#f

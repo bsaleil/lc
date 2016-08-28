@@ -10,7 +10,7 @@ for i in "$@" ; do
         GSC="gdb -ex run --args gsc"
     # scm file, then use realpath
     elif [[ $i == *.scm ]] ; then
-        ARGS+=($(realpath $i))
+        ARGS+=($(readlink -f $i))
     # else, keep unchanged
     else
         ARGS+=($i)
