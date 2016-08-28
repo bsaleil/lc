@@ -1,10 +1,5 @@
 language: c
 
-before_script:
-  - wget
-  - tar -xvf /tmp/gambit.tar.gz
-  - export PATH=$PATH:/tmp/gambit-4.8.5/bin/
-
 install:
   - git clone https://github.com/gambit/gambit.git
   - cd gambit
@@ -13,5 +8,6 @@ install:
   - ./configure --enable-single-host
   - make -j4 from-scratch
   - export PATH=$TRAVIS_BUILD_DIR/gambit/bin/:$PATH
-
+  
+script:
   - ls
