@@ -8,7 +8,7 @@ before_script:
 install:
   - wget https://github.com/gambit/gambit/archive/v4.8.5.tar.gz -O /tmp/gambit.tar.gz
   - tar -xvf /tmp/gambit.tar.gz
-  - cd /tmp/gambit-4.8.5
+  - cd gambit-4.8.5
   - ./configure
   - make -j4 latest-release
   - ./configure --enable-single-host --prefix=/usr
