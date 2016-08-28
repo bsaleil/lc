@@ -43,7 +43,6 @@
   env       ;; alist which associates a variable symbol to an identifier object
   nb-args   ;; number of arguments of function of the current stack frame
   fs        ;; current frame size
-  eploc     ;;
 )
 
 ;(define (make-regalloc-ctx slot-loc free-regs fs)
@@ -58,8 +57,7 @@
     (or free-mems  (ctx-free-mems ctx))
     (or env       (ctx-env ctx))
     (or nb-args   (ctx-nb-args ctx))
-    (or fs        (ctx-fs ctx))
-    (or eploc     (ctx-eploc ctx))))
+    (or fs        (ctx-fs ctx))))
 
 ;; Return ctx that only contains regalloc information
 (define (ctx-rm-regalloc ctx)
@@ -77,8 +75,7 @@
             '()
             '()
             -1
-            0
-            #f))
+            0))
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx types
@@ -228,7 +225,7 @@
 
 ;;
 ;; CTX INIT FN
-(define (ctx-init-fn stack enclosing-ctx args free-vars global-opt? late-fbinds eploc bound-id)
+(define (ctx-init-fn stack enclosing-ctx args free-vars global-opt? late-fbinds)
 
   ;;
   ;; FREE REGS
@@ -275,8 +272,7 @@
               ;; Else, get type from enclosing ctx
               (let ((ident (ctx-ident enclosing-ctx id)))
                 (ctx-identifier-type enclosing-ctx (cdr ident))))
-          (cons 'f nvar)
-          (eq? id bound-id)))))
+          (cons 'f nvar)))))
 
   (define (init-env-local)
     (init-env-*
@@ -288,7 +284,6 @@
           'local
           (list slot)
           '()
-          #f
           #f
           #f))))
 
@@ -332,8 +327,7 @@
     '()
     (init-env)
     (length args)
-    (init-fs (length args))
-    eploc))
+    (init-fs (length args))))
 
 ;; TODO WIP MOVE
 (define (ctx-loc-used ctx loc . excluded-idx)
@@ -413,20 +407,7 @@
 ;;
 ;;
 (define (ctx-get-eploc ctx id)
-  (define (get env)
-    (if (null? env)
-        #f
-        (cond ;; Identifier represents current function
-              ((and (eq? (caar env) id)
-                    (identifier-thisid (cdar env)))
-                 (ctx-eploc ctx))
-              ;; Identifier does not represent current function, stop
-              ((eq? (caar env) id)
-                 #f)
-              ;; Else continue
-              (else
-                 (get (cdr env))))))
-  (get (ctx-env ctx)))
+  #f)
 
 ;;
 ;; BIND CONSTANTS
@@ -448,7 +429,6 @@
                                    '()
                                    '(cst)
                                    (make-ctx-tclo cst)
-                                   #f
                                    #f))
                            env)))))
 
@@ -477,7 +457,6 @@
                         'local   ;; symbol 'free or 'local
                         (list (stack-idx-to-slot ctx (cdr first)))
                         '()
-                        #f
                         #f
                         #f))
                 (gen-env env (cdr id-idx))))))
@@ -1009,7 +988,6 @@
   flags  ;; list of variable
   stype  ;; ctx type (copied to virtual stack)
   cloc   ;; closure slot if free variable
-  thisid ;;
 )
 
 ;; TODO USE IT ! remove all make-ctx which are only copies and use ctx-copy
@@ -1019,5 +997,4 @@
     (or sslots (identifier-sslots identifier))
     (or flags  (identifier-flags identifier))
     (or stype  (identifier-stype identifier))
-    (or cloc   (identifier-cloc identifier))
-    (or thisid (identifier-thisid identifier))))
+    (or cloc   (identifier-cloc identifier))))

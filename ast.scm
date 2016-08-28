@@ -867,13 +867,13 @@
             (else
                (fn-generator closure lazy-prologue stack #f))))))
 
-(define (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params global-opt bound-id)
+(define (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params global-opt)
 
   ;; Generator used to generate function code waiting for runtime data
   ;; First create function entry ctx
   ;; Then generate function prologue code
   (define (fn-generator closure prologue stack generic?)
-    (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) global-opt fvars-late fn-num bound-id)))
+    (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) global-opt fvars-late)))
       (gen-version-fn ast closure entry-obj prologue ctx stack generic? global-opt)))
   ;;
   (define stub-labels  (create-fn-stub ast fn-num fn-generator))
@@ -920,7 +920,7 @@
 
   (letrec (;; Closure unique number
            (fn-num (new-fn-num))
-           (entry-obj (get-entry-obj ast ctx fn-num '() '() all-params #f #f))
+           (entry-obj (get-entry-obj ast ctx fn-num '() '() all-params #f))
            (entry-obj-loc (- (obj-encoding entry-obj) 1)))
 
       ;; Add association fn-num -> entry point
@@ -931,14 +931,14 @@
 
 ;;
 ;; Init non constant lambda
-(define (init-entry ast ctx fvars-imm fvars-late global-opt bound-id)
+(define (init-entry ast ctx fvars-imm fvars-late global-opt)
 
   ;; Flatten list of param (include rest param)
   (define all-params (flatten (cadr ast)))
 
   (letrec (;; Closure unique number
            (fn-num (new-fn-num))
-           (entry-obj (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params global-opt bound-id))
+           (entry-obj (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params global-opt))
            (entry-obj-loc (- (obj-encoding entry-obj) 1)))
 
       ;; Add compile time identity if known
@@ -952,7 +952,7 @@
 
 ;;
 ;; Create closure generation lco
-(define (mlc-lambda ast succ global-opt #!optional (bound-id #f) (fvars-imm #f) (fvars-late '()))
+(define (mlc-lambda ast succ global-opt #!optional (fvars-imm #f) (fvars-late '()))
 
   ;; Lazy closure generation
   (make-lazy-code
@@ -972,25 +972,23 @@
       (if opt-stats
         (gen-inc-slot cgc 'closures))
 
-      (let ((entry-obj (init-entry ast ctx fvars-imm fvars-late global-opt bound-id)))
+      (let ((entry-obj (init-entry ast ctx fvars-imm fvars-late global-opt)))
 
         ;; Gen code to create closure
         (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
           (apply-moves cgc ctx moves)
-          (gen-closure cgc reg ctx ast entry-obj fvars-imm fvars-late bound-id)
+          (gen-closure cgc reg ctx ast entry-obj fvars-imm fvars-late)
           ;;
           (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg)))))))
 
 ;;
-(define (gen-closure cgc reg ctx ast entry-obj fvars-imm fvars-late bound-id)
+(define (gen-closure cgc reg ctx ast entry-obj fvars-imm fvars-late)
 
   (define entry-obj-loc (- (obj-encoding entry-obj) 1))
 
   ;; If there is no fvars, and only one late bind which is self
   (if (and (null? fvars-imm)
-           (or (null? fvars-late)
-               (and (= (length fvars-late) 1)
-                    (eq? (car fvars-late) bound-id))))
+           (null? fvars-late))
       ;; then use a global closure
       (gen-global-closure cgc reg ast entry-obj-loc fvars-late)
       ;; else use a local closure
@@ -1091,7 +1089,7 @@
            (late  (cadddr info))
            (code  (cadddr (cdr info)))
            (next  (mlc-lambdas imm-infos (cdr late-infos) succ)))
-      (mlc-lambda code next #f (car info) fvars late)))
+      (mlc-lambda code next #f fvars late)))
 
   (define (gen-imm info)
     (let ((next (mlc-lambdas (cdr imm-infos) late-infos succ)))
