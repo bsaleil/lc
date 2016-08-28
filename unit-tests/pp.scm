@@ -40,8 +40,6 @@
 
 (pp '())
 
-(pp (lambda (x) (* x x)))
-
 (pp (cons 10 20))
 (pp (cons 10 (cons 20 '())))
 (pp (cons 99 (cons #f (cons '() '()))))
@@ -75,7 +73,6 @@
 ;#f
 ;#f
 ;()
-;#<procedure #4>
 ;(10 . 20)
 ;(10 20)
 ;(99 #f ())
