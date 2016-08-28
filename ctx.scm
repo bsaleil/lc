@@ -127,7 +127,7 @@
 (def-ctx-type iport   #t)
 (def-ctx-type float   #t)
 (def-ctx-type oport   #t)
-(def-ctx-type closure #t loc)
+(def-ctx-type closure #t fn-num)
 
 (define (ctx-type-ctor t)
   (let loop ((l ctx-type-ctors))

@@ -31,9 +31,9 @@
       (BB 100)
       (CC (lambda () 3))
       (DD #f))
-  (gambit$$pp BB)
-  (gambit$$pp (AA))
-  (gambit$$pp DD))
+  ;(gambit$$pp BB)
+  (AA))
+  ;(gambit$$pp DD))
 
 
 ;;

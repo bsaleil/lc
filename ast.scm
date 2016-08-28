@@ -912,6 +912,45 @@
   entry-obj)
 
 ;;
+;; Init constant lambda
+(define (init-entry-cst ast ctx)
+
+  ;; Flatten list of param (include rest param)
+  (define all-params (flatten (cadr ast)))
+
+  (letrec (;; Closure unique number
+           (fn-num (new-fn-num))
+           (entry-obj (get-entry-obj ast ctx fn-num '() '() all-params #f #f))
+           (entry-obj-loc (- (obj-encoding entry-obj) 1)))
+
+      ;; Add association fn-num -> entry point
+      (asc-globalfn-entry-add fn-num entry-obj)
+
+      ;; Return lambda identity
+      fn-num))
+
+;;
+;; Init non constant lambda
+(define (init-entry ast ctx fvars-imm fvars-late global-opt bound-id)
+
+  ;; Flatten list of param (include rest param)
+  (define all-params (flatten (cadr ast)))
+
+  (letrec (;; Closure unique number
+           (fn-num (new-fn-num))
+           (entry-obj (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params global-opt bound-id))
+           (entry-obj-loc (- (obj-encoding entry-obj) 1)))
+
+      ;; Add compile time identity if known
+      (if global-opt
+          (ctime-entries-set global-opt fn-num))
+
+      ;; Add association fn-num -> entry point
+      (asc-globalfn-entry-add fn-num entry-obj)
+
+      entry-obj))
+
+;;
 ;; Create closure generation lco
 (define (mlc-lambda ast succ global-opt #!optional (bound-id #f) (fvars-imm #f) (fvars-late '()))
 
@@ -919,7 +958,6 @@
   (make-lazy-code
     (lambda (cgc ctx)
 
-      ;; Flatten list of param (include rest param)
       (define all-params (flatten (cadr ast)))
 
       ;; If fvars-imm set not given, compute it from ast
@@ -930,45 +968,44 @@
                   all-params
                   (map car (ctx-env ctx)))))
 
-      (letrec (;; Closure unique number
-               (fn-num (new-fn-num))
-               (entry-obj (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params global-opt bound-id))
-               (entry-obj-loc (- (obj-encoding entry-obj) 1)))
+      ;; If 'stats' option, then inc closures slot
+      (if opt-stats
+        (gen-inc-slot cgc 'closures))
 
-          ;; Add compile time identity if known
-          (if global-opt
-              (ctime-entries-set global-opt fn-num))
+      (let ((entry-obj (init-entry ast ctx fvars-imm fvars-late global-opt bound-id)))
 
-          ;; If 'stats' option, then inc closures slot
-          (if opt-stats
-            (gen-inc-slot cgc 'closures))
+        ;; Gen code to create closure
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
+          (apply-moves cgc ctx moves)
+          (gen-closure cgc reg ctx ast entry-obj fvars-imm fvars-late bound-id)
+          ;;
+          (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg)))))))
 
-          ;; Add association fn-num -> entry point
-          (asc-globalfn-entry-add fn-num entry-obj)
+;;
+(define (gen-closure cgc reg ctx ast entry-obj fvars-imm fvars-late bound-id)
 
-          ;; If there is no fvars, and only one late bind which is self
-          (if (and (null? fvars-imm)
-                   (or (null? fvars-late)
-                       (and (= (length fvars-late) 1)
-                            (eq? (car fvars-late) bound-id))))
-              ;; then use a global closure
-              (gen-global-closure cgc ctx ast succ entry-obj-loc fvars-late)
-              ;; else use a local closure
-              (gen-local-closure cgc ctx ast succ entry-obj-loc fvars-late fvars-imm))))))
+  (define entry-obj-loc (- (obj-encoding entry-obj) 1))
+
+  ;; If there is no fvars, and only one late bind which is self
+  (if (and (null? fvars-imm)
+           (or (null? fvars-late)
+               (and (= (length fvars-late) 1)
+                    (eq? (car fvars-late) bound-id))))
+      ;; then use a global closure
+      (gen-global-closure cgc reg ast entry-obj-loc fvars-late)
+      ;; else use a local closure
+      (gen-local-closure cgc reg ctx entry-obj-loc fvars-late fvars-imm)))
 
 ;; Create or use an existing global closure, and load it in dest register
 ;; A global closure is a closure without any free vars which can be use as a single instance
-(define (gen-global-closure cgc ctx ast succ ep fvars-late)
+(define (gen-global-closure cgc reg ast ep fvars-late)
   (let* ((ep-qword (if opt-entry-points ep (get-i64 (+ ep 8))))
          (qword (global-closures-add ast ep-qword (length fvars-late))))
-    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
-      (apply-moves cgc ctx moves)
-      (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int qword))
-      (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg)))))
+    (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int qword))))
 
 ;; Create a local closure, and load it in dest register
 ;; A local closure is a closure with free variables which needs to be instantiated
-(define (gen-local-closure cgc ctx ast succ entry-obj-loc fvars-late fvars-imm)
+(define (gen-local-closure cgc reg ctx entry-obj-loc fvars-late fvars-imm)
 
   (define close-length (+ (length fvars-imm) (length fvars-late)))
 
@@ -988,15 +1025,8 @@
          (clo-offset  (- free-offset 2)))
     (gen-free-vars cgc fvars-imm fvars-late ctx free-offset clo-offset))
 
-  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
-    (apply-moves cgc ctx moves)
-
     ;; Put closure
-    (codegen-closure-put cgc reg close-length)
-
-    ;; Trigger the next object
-    (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg))))
-
+    (codegen-closure-put cgc reg close-length))
 
 ;;
 ;; Make lazy code from BEGIN
@@ -2235,6 +2265,7 @@
     ;; Gen and check types of args
     (make-lazy-code
       (lambda (cgc ctx)
+
         (set! global-opt
               (and (atom-node? (car ast))
                    (symbol? (atom-node-val (car ast)))
