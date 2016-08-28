@@ -10,5 +10,5 @@ install:
   - export PATH=$TRAVIS_BUILD_DIR/gambit/bin/:$PATH
 
 script:
-  - ls
-  - ls $TRAVIS_BUILD_DIR
+  - cd $TRAVIS_BUILD_DIR
+  - make && make test 
