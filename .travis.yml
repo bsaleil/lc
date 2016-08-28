@@ -3,11 +3,12 @@ language: c
 install:
   - git clone https://github.com/gambit/gambit.git
   - cd gambit
-  - ./configure
+  - mkdir build
+  - ./configure --prefix=$TRAVIS_BUILD_DIR/gambit/build/
   - make -j4 latest-release
-  - ./configure --enable-single-host
+  - ./configure --prefix=$TRAVIS_BUILD_DIR/gambit/build/ --enable-single-host
   - make -j4 from-scratch
-  - export PATH=$TRAVIS_BUILD_DIR/gambit/gsc/:$PATH
+  - export PATH=$TRAVIS_BUILD_DIR/gambit/build/bin/:$PATH
 
 script:
   - cd $TRAVIS_BUILD_DIR
