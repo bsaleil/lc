@@ -27,13 +27,15 @@
 ;;  * Aux constantes dynamiques
 ;;  * Aux types de manière générale
 
-(let ((AA (lambda () 4))
-      (BB 100)
-      (CC (lambda () 3))
-      (DD #f))
-  ;(gambit$$pp BB)
-  (AA))
-  ;(gambit$$pp DD))
+
+
+;(let ((AA (lambda () 4))
+;      (BB 100)
+;      (CC (lambda () 3))
+;      (DD #f))
+;  ;(gambit$$pp BB)
+;  (AA))
+;  ;(gambit$$pp DD))
 
 
 ;;

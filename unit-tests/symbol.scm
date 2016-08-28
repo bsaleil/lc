@@ -35,7 +35,6 @@
 
 (let* ((sym 'OTHER)
        (str (symbol->string sym)))
-  (string-set! str 0 #\A)
   (pp sym)
   (pp str))
 
@@ -46,6 +45,6 @@
 ;TEST
 ;TEST
 ;OTHER
-;"ATHER"
+;"OTHER"
 ;Hello
 ;"World"
