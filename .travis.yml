@@ -12,4 +12,6 @@ install:
   - make -j4 latest-release
   - ./configure --enable-single-host
   - make -j4 from-scratch
-  - sudo make install
+  - export PATH=$TRAVIS_BUILD_DIR/gambit/bin/:$PATH
+
+  - make && make test
