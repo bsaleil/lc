@@ -51,10 +51,38 @@
 ;      (b ($$atom "kk")))
 ; ($$atom a))
 
-(letrec ((a (lambda () 1))
-         (b (lambda () (a)))
-         (c (lambda () b)))
-  (b))
+
+
+;; 1 on sépare les lambdas des autres -> nor-nf définitif, les autres dans nor-fn
+
+;; init du pt fixe
+;; 2 pour chaque nor-fn, si toutes free et toutes lates sont dans cst
+;;   (ou 0 free 0 late)
+;;   -> on le range dans cst
+;; loop while sets are changing
+
+;; TODO: phase 3 opti
+
+;; Pour chaque binding de cst, on construit un objet const clo
+;; on les ajoute au contexte
+
+;(let ((aa 111))
+;
+;
+;  (letrec ((c (lambda () c))
+;           (b (lambda () (a)))
+;           (g (lambda () p))
+;           (t (lambda ()  (+ (a) aa)))
+;           (p (lambda () aa))
+;           (a (lambda () 1)))
+;
+;    (pp "----- RES EXEC")
+;    (pp (p))
+;    (pp (a))
+;    (pp ((g)))
+;    (pp (c))
+;    (pp (t))
+;    (pp (b))))
 
 
 ;(define (gambit$$pp n) (pp n))

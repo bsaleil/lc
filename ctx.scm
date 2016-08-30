@@ -494,6 +494,18 @@
 
     (ctx-copy ctx #f #f #f #f env)))
 
+;; This is one of the few ctx function with side effect!
+;; The side effect is used to update letrec constant bindings
+(define (ctx-cst-fnnum-set! ctx id fn-num)
+  (let ((r (assoc id (ctx-env ctx))))
+    (assert (and r
+                 (member 'cst (identifier-flags (cdr r)))
+                 (ctx-tclo? (identifier-stype (cdr r))))
+            "Internal error (ctx-cst-fnnum-set!)")
+    (let ((stype (identifier-stype (cdr r))))
+      (ctx-tclo-fn-num-set! stype fn-num)
+      ctx)))
+
 ;;
 ;; UNBIND LOCALS
 (define (ctx-unbind-locals ctx ids)
@@ -664,7 +676,8 @@
         (let ((ident (car env)))
           (if (member slot (identifier-sslots (cdr ident)))
               (if (and (= (length (identifier-sslots (cdr ident))) 1)
-                       (not (eq? (identifier-kind (cdr ident)) 'free)))
+                       (not (eq? (identifier-kind (cdr ident)) 'free))
+                       (not (member 'cst (identifier-flags (cdr ident)))))
                   ;; It is the only position of the identifier, then remove identifier from env
                   (env-remove-slot (cdr env) slot)
                   ;; Else, just remove this slot
