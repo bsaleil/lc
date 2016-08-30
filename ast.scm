@@ -364,7 +364,7 @@
                  ;; Set!
                  ((eq? 'set! (car ast)) (mlc-set! ast succ))
                  ;; Lambda
-                 ((eq? op 'lambda) (mlc-lambda ast succ #f))
+                 ((eq? op 'lambda) (mlc-lambda-ast ast succ #f))
                  ;; Begin
                  ((eq? op 'begin) (mlc-begin ast succ))
                  ;; Binding
@@ -538,6 +538,10 @@
               ((or (and local  (lcl-inlined-cond? ctx (cdr local)))
                    (and global (gbl-inlined-cond? sym)))
                 (jump-to-version cgc (lazy-code-lco-true succ) ctx))
+              ;; Identifier is a local const function
+              ((and local
+                    (member 'cst (identifier-flags (cdr local))))
+                 (error "PO"))
               ;; Identifier is a free variable
               ((and local (eq? (identifier-kind (cdr local)) 'free))
                 (gen-get-freevar cgc ctx local succ #f))
@@ -710,7 +714,7 @@
                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))))
          (lazy-val
            (if (ctx-tclo? (table-ref gids (cadr ast) #f))
-               (mlc-lambda (caddr ast) lazy-bind (cadr ast))
+               (mlc-lambda-ast (caddr ast) lazy-bind (cadr ast))
                (gen-ast (caddr ast) lazy-bind))))
 
     (table-set! globals identifier (cons identifier nb-globals))
@@ -950,34 +954,50 @@
 
       entry-obj))
 
-;;
-;; Create closure generation lco
-(define (mlc-lambda ast succ global-opt #!optional (fvars-imm #f) (fvars-late '()))
+;; Compute free var sets for given lambda ast
+;; return list (cst imm late) with:
+;; cst:  list of cst free variables
+;; imm:  immediate non cst free variables
+;; late: late free variables
+(define (get-free-infos ast bound-ids ctx)
 
-  ;; Lazy closure generation
+  (let* ((body (caddr ast))
+         (params (cadr ast))
+         (enc-ids (append bound-ids (map car (ctx-env ctx))))
+         (free-ids (free-vars body params enc-ids)))
+
+    (define late (set-inter bound-ids free-ids))
+
+    (let loop ((ids (set-sub free-ids late '()))
+               (imm '())
+               (cst '()))
+      (if (null? ids)
+          (list cst imm late)
+          (let ((id (car ids)))
+            (let ((identifier (cdr (assoc id (ctx-env ctx)))))
+              (if (member 'cst (identifier-flags identifier))
+                  (loop (cdr ids) imm (cons id cst))
+                  (loop (cdr ids) (cons id imm) cst))))))))
+
+(define (mlc-lambda-ast ast succ global-opt)
+
   (make-lazy-code
     (lambda (cgc ctx)
 
       (define all-params (flatten (cadr ast)))
 
-      ;; If fvars-imm set not given, compute it from ast
-      (if (not fvars-imm)
-          (set! fvars-imm
-                (free-vars
-                  (caddr ast)
-                  all-params
-                  (map car (ctx-env ctx)))))
+      (define fvars-imm
+              (free-vars
+                (caddr ast)
+                all-params
+                (map car (ctx-env ctx))))
 
-      ;; If 'stats' option, then inc closures slot
-      (if opt-stats
-        (gen-inc-slot cgc 'closures))
-
-      (let ((entry-obj (init-entry ast ctx fvars-imm fvars-late global-opt)))
+      (let ((entry-obj (init-entry ast ctx fvars-imm '() global-opt)))
 
         ;; Gen code to create closure
         (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
           (apply-moves cgc ctx moves)
-          (gen-closure cgc reg ctx ast entry-obj fvars-imm fvars-late)
+          (gen-closure cgc reg ctx ast entry-obj fvars-imm '())
           ;;
           (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg)))))))
 
@@ -985,6 +1005,10 @@
 (define (gen-closure cgc reg ctx ast entry-obj fvars-imm fvars-late)
 
   (define entry-obj-loc (- (obj-encoding entry-obj) 1))
+
+  ;; If 'stats' option, then inc closures slot
+  (if opt-stats
+    (gen-inc-slot cgc 'closures))
 
   ;; If there is no fvars, and only one late bind which is self
   (if (and (null? fvars-imm)
@@ -1005,10 +1029,22 @@
 ;; A local closure is a closure with free variables which needs to be instantiated
 (define (gen-local-closure cgc reg ctx entry-obj-loc fvars-late fvars-imm)
 
-  (define close-length (+ (length fvars-imm) (length fvars-late)))
+  (define free-imm-identifiers
+    ;; Get identifier associated to ids of fvars-imm
+    ;; (only identifiers not representing constant variables)
+    (foldr (lambda (el r)
+             (let ((identifier (cdr (assoc el (ctx-env ctx)))))
+               (if (not (member 'cst (identifier-flags identifier)))
+                   (cons identifier r)
+                   r)))
+           '()
+           fvars-imm))
+
+  ;;
+  (define close-length (+ (length free-imm-identifiers) (length fvars-late)))
 
   ;; Create closure
-  ;; Closure size = lenght of free variables
+  ;; Closure size = length of free variables
   (codegen-closure-create cgc close-length)
 
   ;; Write entry point or cctable location
@@ -1019,9 +1055,9 @@
       (codegen-closure-ep cgc entry-obj-loc close-length))
 
   ;; Write free variables
-  (let* ((free-offset (* -1 (+ (length fvars-imm) (length fvars-late))))
+  (let* ((free-offset (* -1 (+ (length free-imm-identifiers) (length fvars-late))))
          (clo-offset  (- free-offset 2)))
-    (gen-free-vars cgc fvars-imm fvars-late ctx free-offset clo-offset))
+    (gen-free-vars cgc free-imm-identifiers (length fvars-late) ctx free-offset clo-offset))
 
     ;; Put closure
     (codegen-closure-put cgc reg close-length))
@@ -1062,156 +1098,225 @@
 ;;
 (define (mlc-let ast succ)
 
+  (define cst '())
+  (define nor '())
+
   (define (build-id-idx ids l)
     (if (null? ids)
         '()
         (cons (cons (car ids) l)
               (build-id-idx (cdr ids) (- l 1)))))
 
-  (let* ((ids       (map car (cadr ast)))
-         (values    (map cadr (cadr ast)))
-         (body      (cddr ast))
-         (lazy-out  (get-lazy-lets-out ids 0 succ))
-         (lazy-body (gen-ast (cons 'begin body) lazy-out))
-         (lazy-binds
-           (make-lazy-code
-             (lambda (cgc ctx)
-               (let* ((id-idx (build-id-idx ids (- (length ids) 1)))
-                      (ctx (ctx-bind-locals ctx id-idx)))
-                 (jump-to-version cgc lazy-body ctx))))))
-   (gen-ast-l values lazy-binds)))
+  (define (reset-sets!)
+    (set! cst '())
+    (set! nor '()))
 
-;; TODO: rename
-(define (mlc-lambdas imm-infos late-infos succ)
+  (define (compute-sets! ctx)
+    (let loop ((bindings (cadr ast)))
+      (if (not (null? bindings))
+          (let* ((binding (car bindings))
+                 (id  (car binding))
+                 (val (cadr binding)))
+            (if (and (pair? val)
+                     (eq? (car val) 'lambda)
+                     (let ((finfo (get-free-infos val '() ctx)))
+                       (= (length (cadr finfo)) 0)))
+                (let ((c (init-entry-cst val ctx)))
+                  (set! cst (cons (cons id c) cst)))
+                (set! nor (cons binding nor)))
+            (loop (cdr bindings))))))
 
-  (define (gen-late info)
-    (let* ((fvars (caddr info))
-           (late  (cadddr info))
-           (code  (cadddr (cdr info)))
-           (next  (mlc-lambdas imm-infos (cdr late-infos) succ)))
-      (mlc-lambda code next #f fvars late)))
 
-  (define (gen-imm info)
-    (let ((next (mlc-lambdas (cdr imm-infos) late-infos succ)))
-      (gen-ast (caddr info) next)))
-
-  (cond ((and (null? imm-infos)
-              (null? late-infos))
-           succ)
-        ((or (null? imm-infos)
-             (and (not (null? late-infos))
-                  (> (cadar late-infos) (caar imm-infos))))
-           (gen-late (car late-infos)))
-        (else
-           (gen-imm  (car imm-infos)))))
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (reset-sets!)
+      (compute-sets! ctx)
+      (let* ((lazy-let-out  (get-lazy-lets-out ast (map car (cadr ast)) (length cst) succ))
+             (lazy-body (gen-ast (caddr ast) lazy-let-out))
+             (lazy-bind
+               (make-lazy-code
+                 (lambda (cgc ctx)
+                   (let* ((id-idx (build-id-idx (map car nor)
+                                                (- (length nor) 1)))
+                          (ctx (ctx-bind-consts ctx cst))
+                          (ctx (ctx-bind-locals ctx id-idx)))
+                     (jump-to-version cgc lazy-body ctx)))))
+             (lazy-exprs
+               (gen-ast-l (map cadr nor) lazy-bind)))
+        (jump-to-version cgc lazy-exprs ctx)))))
 
 ;;
-;; Make lazy code from LETREC
-;;
+;; TODO
 (define (mlc-letrec ast succ)
-  ;; We need the free info here TODO
-  (define (get-infos bindings i enc-ids imm late)
-    (if (null? bindings)
-        (cons imm late)
-        (let* ((b (car bindings))
-               (id (car b))
-               (v  (cadr b)))
-          (if (and (pair? v)
-                   (eq? (car v) 'lambda))
-              ;; Add binding to late set
-              (let* ((free (free-vars (caddr v) (cadr v) enc-ids))
-                     (free-imm  (set-sub   free (map car (cadr ast)) '()))
-                     (free-late (set-inter free (map car (cadr ast))))
-                     (late
-                       (cons (list id i free-imm free-late v)
-                             late)))
-                (get-infos
-                  (cdr bindings)
-                  (+ i 1)
-                  enc-ids
-                  imm
-                  late))
-              ;; Add binding to imm set
-              (get-infos
-                (cdr bindings)
-                (+ i 1)
-                enc-ids
-                (cons (cons i b) imm)
-                late)))))
 
-  (define (write-late cgc ctx start-slot closure-idx lates-idx)
-    (let* ((cloc (ctx-get-loc ctx closure-idx))
-           (llocs (map (lambda (n) (ctx-get-loc ctx n))
-                       lates-idx))
-           (dst (codegen-loc-to-x86opnd (ctx-fs ctx) cloc)))
-      (define use-selector #f)
-      (let loop ((locs llocs) (slot start-slot))
-        (if (not (null? locs))
-            (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (car locs))))
-              (cond ((and (x86-mem? opnd)
-                          (x86-mem? dst))
-                       (x86-mov cgc (x86-rax) dst)
-                       (x86-mov cgc selector-reg opnd)
-                       (set! dst (x86-rax))
-                       (set! opnd  selector-reg)
-                       (set! use-selector #t))
-                    ((x86-mem? opnd)
-                       (if (eq? dst (x86-rax))
-                           (begin (x86-mov cgc selector-reg opnd)
-                                  (set! opnd selector-reg)
-                                  (set! use-selector #t))
-                           (begin (x86-mov cgc (x86-rax) opnd)
-                                  (set! opnd (x86-rax)))))
-                    ((x86-mem? dst)
-                       (x86-mov cgc (x86-rax) dst)
-                       (set! dst (x86-rax))))
-              (x86-mov cgc (x86-mem (+ (* 8 slot) (- 16 TAG_MEMOBJ)) dst) opnd)
-              (loop (cdr locs) (+ slot 1)))))
-      (if use-selector
-          (x86-mov cgc selector-reg (x86-imm-int 0)))))
+  (define cst '())
+  (define nor-f '())
+  (define nor-nf '())
 
-  (define late-info #f)
-  (define imm-info #f)
+  (define (reset-sets!)
+    (set! cst '())
+    (set! nor-f '())
+    (set! nor-nf '()))
 
-  (let* ((lazy-out (get-lazy-lets-out (map car (cadr ast)) 0 succ))
-         (lazy-body (gen-ast (caddr ast) lazy-out))
-         (lazy-set
-          (make-lazy-code
-            (lambda (cgc ctx)
-              ;; Set late
-              (for-each
-                (lambda (n)
-                  (let ((closure-idx (cadr n))
-                        (lates-idx (map (lambda (n) (cadr (assoc n late-info)))
-                                        (cadddr n)))
-                        (start-slot (length (caddr n))))
-                    (write-late cgc ctx start-slot closure-idx lates-idx)))
-                late-info)
-              (let* ((bind-lst
-                      (foldr (lambda (e r)
-                               (cons (cons (car e) (length r))
-                                     r))
-                             '()
-                             (reverse (cadr ast))))
-                     (ctx (ctx-bind-locals ctx bind-lst '())))
+  (define (get-f-size fset)
+    (if (null? fset)
+        0
+        (let ((prev-finfo (cadddr (car fset))))
+          (+ (cadar fset) ;; pos previous
+             2 ;; header, entry
+             (length (cadr prev-finfo)) ;; nb imm !cst free
+             (length (caddr prev-finfo)))))) ;; nb late free
 
-                (jump-to-version cgc lazy-body ctx))))))
+  (define (compute-sets! ctx)
+    (let ((bound-ids (map car (cadr ast))))
+      (let loop ((bindings (cadr ast)))
+        (if (not (null? bindings))
+            (let* ((binding (car bindings))
+                   (id  (car binding))
+                   (val (cadr binding)))
 
-  ;;
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (let* ((ids (append (map car (ctx-env ctx))
-                            (map car (cadr ast))))
-               (infos
-                 (get-infos (cadr ast) 0 ids '() '())))
+              (if (and (pair? val)
+                       (eq? (car val) 'lambda))
+                  (let ((finfo (get-free-infos val bound-ids ctx)))
+                    (if (and (= (length (cadr finfo)) 0)   ;;
+                             (= (length (caddr finfo)) 0)) ;;
+                        (let ((c (init-entry-cst val ctx)))
+                          (set! cst (cons (cons id c) cst)))
+                        (let ((pos (get-f-size nor-f)))
+                          (set! nor-f (cons (list (car binding) pos (cadr binding) finfo) nor-f)))))
+                  (set! nor-nf (cons binding nor-nf)))
+              (loop (cdr bindings)))))))
 
-          (set! imm-info  (car infos))
-          (set! late-info (cdr infos))
-          (jump-to-version cgc (mlc-lambdas imm-info late-info lazy-set) ctx))))))
+  ;; Bind letrec ids to:
+  ;; no location if !cst
+  ;; cst type if cst
+  (define (bind-ids cgc succ ctx)
+    (let* ((ids (map car (cadr ast)))
+           ;; Bind cst
+           (ctx (ctx-bind-consts ctx cst))
+           ;; Bind others
+           (id-idx (map (lambda (el) (cons (car el) #f))
+                        (append nor-f nor-nf)))
+           (ctx (ctx-bind-locals ctx id-idx #t)))
+      (jump-to-version cgc succ ctx)))
+
+  ;; Eval & bind each !cst !fun bindings
+  (define (eval-nf nor-nf succ)
+
+    (define (bind-last id succ)
+      (make-lazy-code
+        (lambda (cgc ctx)
+          (let ((ctx (ctx-id-add-idx ctx id 0)))
+            (jump-to-version cgc succ ctx)))))
+
+    (let loop ((bindings nor-nf))
+      (if (null? bindings)
+          succ
+          (let ((binding (car bindings))
+                (next (loop (cdr bindings))))
+            (gen-ast (cadr binding)
+                     (bind-last (car binding) next))))))
+
+  ;; Create !cst fun closures
+  (define (create-fun succ)
+
+    (define (mlc-lambda-letrec id ast succ closures-size clo-offset free-cst free-imm free-late)
+      (make-lazy-code
+        (lambda (cgc ctx)
+          (define offset-start (* -8 (- closures-size clo-offset)))
+          (define offset-header offset-start)
+          (define offset-entry  (+ offset-header 8))
+          (define offset-free   (+ offset-entry 8))
+          (define offset-free-h (* -1 (- closures-size clo-offset 2)))
+          (define offset-late   (+ offset-free (* 8 (length free-imm))))
+          ;; Write header
+          (let ((clo-size
+                  (* 8
+                     (+ (length free-imm)
+                        (length free-late)
+                        1))))
+            (x86-mov cgc (x86-rax) (x86-imm-int (mem-header clo-size STAG_PROCEDURE)))
+            (x86-mov cgc (x86-mem offset-header alloc-ptr) (x86-rax)))
+          ;; Write entry
+          (let* ((entry-obj (init-entry ast ctx (append free-cst free-imm) free-late #f))
+                 (entry-obj-loc (- (obj-encoding entry-obj) 1)))
+            (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
+            (x86-mov cgc (x86-mem offset-entry alloc-ptr) (x86-rax)))
+          ;; Write free vars
+          ;; TODO: remove 0 arg from gen-free-vars
+          ;; TODO: remove #f arg from gen-free-vars
+          (let ((identifiers
+                  (map (lambda (el) (cdr (assoc el (ctx-env ctx))))
+                       free-imm)))
+            (gen-free-vars cgc identifiers 0 ctx offset-free-h #f))
+          ;; Write late vars
+          ;; TODO: late !fun ?
+          (let loop ((lates free-late)
+                     (offset offset-late))
+            (if (not (null? lates))
+                (let* ((late-inf (assoc (car lates) nor-f))
+                       (rrr (begin (pp "###### LOOKING FOR") (pp (car lates)) (pp nor-f) (pp cst)))
+                       (late-off (+ (* -8 (- closures-size (cadr late-inf))) TAG_MEMOBJ)))
+                  (x86-lea cgc (x86-rax) (x86-mem late-off alloc-ptr))
+                  (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
+                  (loop (cdr lates) (+ offset 8)))))
+          ;; Update ctx and load closure
+          (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
+            (apply-moves cgc ctx moves)
+            (let ((dest (codegen-reg-to-x86reg reg)))
+              (x86-lea cgc dest (x86-mem (+ offset-start TAG_MEMOBJ) alloc-ptr)))
+            (let* ((ctx (ctx-push ctx (make-ctx-tclo) reg))
+                   (ctx (ctx-id-add-idx ctx id 0)))
+              (jump-to-version cgc succ ctx))))))
+
+    ;; 1! alloc big closure
+    (define closures-size
+            (let* ((last (car nor-f))
+                   (last-finfo (cadddr last)))
+              (+ 2
+                 (cadr last)
+                 (length (cadr last-finfo)) ;; nb imm !cst free
+                 (length (caddr last-finfo))))) ;; nb late free
+
+    (let ((lazy-write-closures
+            (let loop ((lst (reverse nor-f)))
+              (if (null? lst)
+                  succ
+                  (let* ((l (car lst))
+                         (id (car l))
+                         (offset (cadr l))
+                         (ast (caddr l))
+                         (free-info (cadddr l))
+                         (fvars-cst  (car free-info))
+                         (fvars-imm  (cadr free-info))
+                         (fvars-late (caddr free-info))
+                         (next (loop (cdr lst))))
+                    ;; closures-size clo-offset free-imm free-late
+                    (mlc-lambda-letrec id ast next closures-size offset fvars-cst fvars-imm fvars-late))))))
+      (make-lazy-code
+        (lambda (cgc ctx)
+          (gen-allocation-imm cgc STAG_PROCEDURE (* 8 (- closures-size 1)))
+          (jump-to-version cgc lazy-write-closures ctx)))))
+
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (reset-sets!)
+      (compute-sets! ctx)
+      (pp cst)
+      (pp nor-f)
+      (pp nor-nf)
+      (error "OK")
+      (let* ((lazy-let-out (get-lazy-lets-out ast (map car (cadr ast)) (length cst) succ))
+             (lazy-body    (gen-ast (caddr ast) lazy-let-out))
+             (lazy-fun  (create-fun lazy-body))
+             (lazy-eval (eval-nf nor-nf lazy-fun)))
+
+        (bind-ids cgc lazy-eval ctx)))))
 
 ;; Create and return out lazy code object of let/letrec
 ;; Unbind locals, unbox result, and update ctx
-(define (get-lazy-lets-out ids nb-cst succ)
+(define (get-lazy-lets-out ast ids nb-cst succ)
+
   (let ((make-lc (if (member 'ret (lazy-code-flags succ))
                      make-lazy-code-ret
                      make-lazy-code)))
@@ -2061,17 +2166,22 @@
 ;;-----------------------------------------------------------------------------
 ;; APPLY & CALL
 
-(define (call-get-eploc ctx global-opt? op)
+(define (call-get-eploc ctx op)
 
   (if (and (atom-node? op)
            (symbol? (atom-node-val op)))
       ;; Op is an atom node with a symbol
       (let ((sym (atom-node-val op)))
+
+        (define global-opt?
+          (and (not (assoc sym (ctx-env ctx)))
+               (ctx-tclo? (table-ref gids sym #f))))
+
         (if global-opt?
             (let ((fn-num (ctime-entries-get sym)))
               (if (not fn-num) (error "Internal error (call-get-eploc)"))
               fn-num)
-            (ctx-get-eploc ctx op)))
+            (ctx-get-eploc ctx sym)))
       #f))
 
 ;;
@@ -2082,13 +2192,7 @@
   (let* ((lazy-call
           (make-lazy-code
             (lambda (cgc ctx)
-              (let* ((global-opt
-                       (and (atom-node? (cadr ast))
-                            (symbol? (atom-node-val (cadr ast)))
-                            (let ((sym (atom-node-val (cadr ast))))
-                              (and (not (assoc sym (ctx-env ctx)))
-                                   (ctx-tclo? (table-ref gids sym #f))))))
-                     (fn-num (call-get-eploc ctx global-opt (cadr ast))))
+              (let ((fn-num (call-get-eploc ctx (cadr ast))))
                 (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
                 (x86-mov cgc (x86-rsi) (x86-rax)) ;; Move closure in closure reg
                 (gen-call-sequence ast cgc #f #f fn-num)))))
@@ -2170,9 +2274,9 @@
     (codegen-load-closure cgc fs loc)))
 
 ;; Move args in regs or mem following calling convention
-(define (call-prep-args cgc ctx ast nbargs global-opt)
+(define (call-prep-args cgc ctx ast nbargs const-fn)
 
-  (let* ((cloloc (if global-opt #f (ctx-get-loc ctx nbargs)))
+  (let* ((cloloc (if const-fn #f (ctx-get-loc ctx nbargs)))
          (stackp/moves (ctx-get-call-args-moves ctx nbargs cloloc))
          (stackp (car stackp/moves))
          (moves (cdr stackp/moves)))
@@ -2226,8 +2330,10 @@
 ;; Make lazy code from CALL EXPR
 ;;
 (define (mlc-call ast succ)
-  (let* (;; TODO wip change to global-opt-sym or global-opt? (?)
-         (global-opt #f)
+  (let* (;; fn-num. Computed when ctx is available
+         ;; #f is called function is unknown at compile time
+         ;; contains fn-num if called function is known at compile time
+         (fn-num #f)
          ;; Tail call if successor's flags set contains 'ret flag
          (tail? (member 'ret (lazy-code-flags succ)))
          ;; Call arguments
@@ -2243,7 +2349,7 @@
                (set! ctx (call-save/cont cgc ctx ast succ tail? (+ (length args) 1) #f))
 
                ;; Move args to regs or stack following calling convention
-               (set! ctx (call-prep-args cgc ctx ast (length args) global-opt))
+               (set! ctx (call-prep-args cgc ctx ast (length args) fn-num))
 
                ;; Shift args and closure for tail call
                (call-tail-shift cgc ctx ast tail? (length args))
@@ -2254,8 +2360,7 @@
                        (ctx-copy
                          (ctx-init)
                          (append (list-head (ctx-stack ctx) (length (cdr ast)))
-                                 (list (make-ctx-tclo) (make-ctx-tret)))))
-                     (fn-num (call-get-eploc ctx global-opt (car ast))))
+                                 (list (make-ctx-tclo) (make-ctx-tret))))))
                  (gen-call-sequence ast cgc call-ctx (length args) fn-num)))))
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list ATX_CLO) (list (car ast)) lazy-call ast)))
@@ -2264,25 +2369,17 @@
     (make-lazy-code
       (lambda (cgc ctx)
 
-        (set! global-opt
-              (and (atom-node? (car ast))
-                   (symbol? (atom-node-val (car ast)))
-                   (let ((sym (atom-node-val (car ast))))
-                     (and (not (assoc sym (ctx-env ctx)))
-                          (ctx-tclo? (table-ref gids sym #f))))))
+        ;; Check if the identity of called function is available
+        (set! fn-num (call-get-eploc ctx (car ast)))
 
-        (if global-opt
+        (if fn-num
             (jump-to-version
               cgc
               (gen-ast-l (cdr ast) lazy-call)
               (ctx-push ctx (make-ctx-tclo) #f))
             (jump-to-version
               cgc
-              (check-types
-                (list ATX_CLO)
-                (list (car ast))
-                (gen-ast-l (cdr ast) lazy-call)
-                ast)
+              (check-types (list ATX_CLO) (list (car ast)) (gen-ast-l (cdr ast) lazy-call) ast)
               ctx))))))
 
 ;; TODO regalloc: merge -rp and -cr + comments
@@ -2818,7 +2915,8 @@
                 (foldr (lambda (n r)
                          (if (member (car n) fvars-imm) ;; If this id is a free var of future lambda
                              (cons (cons (car n)
-                                         (if (eq? (identifier-kind (cdr n)) 'local)
+                                         (if (and (eq? (identifier-kind (cdr n)) 'local)
+                                                  (not (member 'cst (identifier-flags (cdr n)))))
                                              ;; If local, get type from stack
                                              (let ((type (ctx-identifier-type ctx (cdr n))))
                                                type)
@@ -2860,15 +2958,15 @@
 
 ;; free-offset is the current free variable offset position from alloc-ptr
 ;; clo-offset is the closure offset position from alloc-ptr
-(define (gen-free-vars cgc ids fvars-imm ctx free-offset clo-offset)
-  (if (null? ids)
+(define (gen-free-vars cgc identifiers nb-late ctx free-offset clo-offset)
+  (if (null? identifiers)
       ;; Write 0 in all late slots (to keep the GC happy!)
-      (let loop ((n (length fvars-imm)) (off free-offset))
+      (let loop ((n nb-late) (off free-offset))
         (if (> n 0)
             (begin
               (x86-mov cgc (x86-mem (* 8 off) alloc-ptr) (x86-imm-int 0) 64)
               (loop (- n 1) (+ off 1)))))
-      (let* ((identifier (cdr (assoc (car ids) (ctx-env ctx))))
+      (let* ((identifier (car identifiers))
              (loc (ctx-identifier-loc ctx identifier))
              (opn
                (cond ;; No loc, free variable which is only in closure
@@ -2893,7 +2991,7 @@
                      (else
                        (codegen-reg-to-x86reg loc)))))
         (x86-mov cgc (x86-mem (* 8 free-offset) alloc-ptr) opn)
-        (gen-free-vars cgc (cdr ids) fvars-imm ctx (+ free-offset 1) clo-offset))))
+        (gen-free-vars cgc (cdr identifiers) nb-late ctx (+ free-offset 1) clo-offset))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst params enc-ids)

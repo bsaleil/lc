@@ -1,4 +1,6 @@
 
+;; TODO: pb $$atom sur '() ?
+
 ;; Constantes:
 ;;   (1) - Propagation des constantes dans le ctx (cas spéciaux au merge)
 ;;   (2) - Propagation des constantes sûres (aucun cas spéciaux, cette constante est valable pour toutes les versions)
@@ -28,14 +30,97 @@
 ;;  * Aux types de manière générale
 
 
+;; -> au let ((lst2 ...)), c'est le lst2 global qui est retourné, pb ctx let
 
-;(let ((AA (lambda () 4))
-;      (BB 100)
-;      (CC (lambda () 3))
-;      (DD #f))
-;  ;(gambit$$pp BB)
-;  (AA))
-;  ;(gambit$$pp DD))
+
+;(define append
+;   (lambda lsts
+;     (letrec ((append-h
+;               (lambda (lsts)
+;                 (if (null? lsts)
+;                     '()
+;                     (let ((lst2 (append-h (cdr lsts))))
+;                       lst2)))))
+;       (append-h lsts))))
+
+;(define ($$atom l) l)
+;(define (gambit$$pp l) (pp l))
+
+
+;(let ((a ($$atom 1))
+;      (b ($$atom "kk")))
+; ($$atom a))
+
+(letrec ((a (lambda () 1))
+         (b (lambda () (a)))
+         (c (lambda () b)))
+  (b))
+
+
+;(define (gambit$$pp n) (pp n))
+;
+;(let ((aa 11))
+;  (let ((bb (lambda () (gambit$$pp "bb")))
+;        (cc (lambda () (gambit$$pp aa))))
+;    (letrec ((dd (lambda (i) (if (= i 0) 1 (begin (bb) (cc) (dd (- i 1))))))
+;             (oo (lambda (i) dd))
+;             (ee 100)
+;             (ii "jjj")
+;             (ff (lambda () (gambit$$pp "ff"))))
+;      (gambit$$pp ee)
+;      (gambit$$pp ii)
+;      (ff)
+;      (bb)
+;      (cc)
+;      ((oo 1) 4)
+;      (dd 0))))
+
+;
+;(let ((init (lambda () ($$atom #f))))
+; (letrec ((for-aux (lambda (lo)
+;                     (if (($$atom <) ($$atom lo) ($$atom 2))
+;                         (($$atom cons)
+;                          (($$atom init))
+;                          (let ((lo (($$atom +) ($$atom lo) ($$atom 1))))
+;                            (if (($$atom <) ($$atom lo) ($$atom 2))
+;                                (($$atom cons)
+;                                 ($$atom 2)
+;                                 (($$atom for-aux) (($$atom +) ($$atom lo) ($$atom 1))))
+;                                '())))
+;                         '()))))
+;   (($$atom for-aux) ($$atom 0))))
+
+
+
+
+
+;(define for
+;  (lambda (lo hi f)
+;
+;    (define for-aux
+;      (lambda (lo)
+;        (if (< lo hi)
+;            (cons (f lo) (for-aux (+ lo 1)))
+;            '())))
+;
+;    (for-aux lo)))
+;
+;(define make-matrix
+;  (lambda (init)
+;    (for 0 0 (lambda (i) (init 0)))))
+;
+;
+;(define make-maze
+;  (lambda (n m) ; n and m must be odd
+;    (make-matrix (lambda (i)
+;                       (if (and (even? i) (even? 0))
+;                           (cons i 0)
+;                           #f)))))
+;
+;(make-maze 1 1)
+
+
+
 
 
 ;;

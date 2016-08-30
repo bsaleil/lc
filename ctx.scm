@@ -247,45 +247,48 @@
     (append (init-env-free)
             (init-env-local)))
 
-  (define (init-env-* ids slot nvar fn-make)
-    (if (null? ids)
-        '()
-        (let* ((id (car ids))
-               (identifier (fn-make id slot nvar)))
-          (cons (cons id identifier)
-                (init-env-* (cdr ids) (+ slot 1) (+ nvar 1) fn-make)))))
+  (define (init-env-local)
+    (define (init-env-local-h ids slot)
+      (if (null? ids)
+          '()
+          (let* ((id (car ids))
+                 (identifier
+                   (make-identifier
+                     'local (list slot) '() #f #f)))
+            (cons (cons id identifier)
+                  (init-env-local-h (cdr ids) (+ slot 1))))))
+    (init-env-local-h args 2))
 
   (define (init-env-free)
-    ;; Create environment entries for free variables
-    (init-env-*
-      free-vars
-      2
-      0
-      (lambda (id slot nvar)
-        (make-identifier
-          'free
+    (define (init-env-free-h ids nvar)
+      (if (null? ids)
           '()
-          '()
-          (if (member id late-fbinds)
-              ;; If id is a late-fbind, type it's a function
-              (make-ctx-tclo)
-              ;; Else, get type from enclosing ctx
-              (let ((ident (ctx-ident enclosing-ctx id)))
-                (ctx-identifier-type enclosing-ctx (cdr ident))))
-          (cons 'f nvar)))))
-
-  (define (init-env-local)
-    (init-env-*
-      args
-      2
-      0
-      (lambda (id slot nvar)
-        (make-identifier
-          'local
-          (list slot)
-          '()
-          #f
-          #f))))
+          (let* ((id (car ids))
+                 ;; is id a late binding ?
+                 (late? (member id late-fbinds))
+                 (enc-identifier (and (not late?) (cdr (ctx-ident enclosing-ctx id))))
+                 ;; id enclosing id a cst variable ?
+                 (cst? (and (not late?) (member 'cst (identifier-flags enc-identifier))))
+                 (identifier
+                   (make-identifier
+                     (if cst? 'local 'free) ;; if it's a cst variable, we create a local variable
+                     '()
+                     (if cst? '(cst) '())
+                     (cond (late?
+                             (make-ctx-tclo))
+                           (cst?
+                             (identifier-stype enc-identifier))
+                           (else
+                             (ctx-identifier-type enclosing-ctx enc-identifier)))
+                     (if cst? ;; if cst?, we created a local variable, then don't write cloc
+                         #f
+                         (cons 'f nvar)))))
+            (cons (cons id identifier)
+                  ;; Update slot and nvar only if we created a real free variable (non const)
+                  (if (eq? (identifier-kind identifier) 'local)
+                      (init-env-free-h (cdr ids) nvar)
+                      (init-env-free-h (cdr ids) (+ nvar 1)))))))
+    (init-env-free-h free-vars 0))
 
   ;;
   ;; SLOT-LOC
@@ -407,7 +410,28 @@
 ;;
 ;;
 (define (ctx-get-eploc ctx id)
-  #f)
+  (let ((r (assoc id (ctx-env ctx))))
+    (and r
+         (ctx-tclo? (identifier-stype (cdr r)))
+         (ctx-tclo-fn-num (identifier-stype (cdr r))))))
+
+;;
+;; TODO: change to bind-top
+(define (ctx-id-add-idx ctx id stack-idx)
+  (define slot (stack-idx-to-slot ctx stack-idx))
+  (define (build-env env)
+    (if (null? env)
+        (error "Internal error")
+        (if (eq? (caar env) id)
+            (cons (cons id
+                        (identifier-copy (cdar env) #f (cons slot (identifier-sslots (cdar env)))))
+                  (cdr env))
+            (cons (car env)
+                  (build-env (cdr env))))))
+
+  (let ((env (build-env (ctx-env ctx))))
+
+    (ctx-copy ctx #f #f #f #f env)))
 
 ;;
 ;; BIND CONSTANTS
@@ -416,12 +440,8 @@
   (define (build-env cst-set env)
     (if (null? cst-set)
         env
-        (let ((id  (caar   cst-set))
-              (ast (cadar  cst-set))
-              (cst (caddar cst-set)))
-          (assert (and (pair? ast)
-                       (eq? (car ast) 'lambda))
-                  "Internal error")
+        (let ((id  (caar cst-set))
+              (cst (cdar cst-set)))
           (build-env (cdr cst-set)
                      (cons (cons id
                                  (make-identifier
@@ -455,16 +475,20 @@
           (cons (cons (car first)
                       (make-identifier
                         'local   ;; symbol 'free or 'local
-                        (list (stack-idx-to-slot ctx (cdr first)))
+                        (if letrec-bind?
+                            '()
+                            (list (stack-idx-to-slot ctx (cdr first))))
                         '()
                         #f
                         #f))
                 (gen-env env (cdr id-idx))))))
 
   (let* ((env
-           (clean-env (ctx-env ctx)
-                      (map (lambda (el) (stack-idx-to-slot ctx el))
-                           (map cdr id-idx))))
+           (if letrec-bind?
+               (ctx-env ctx)
+               (clean-env (ctx-env ctx)
+                          (map (lambda (el) (stack-idx-to-slot ctx el))
+                               (map cdr id-idx)))))
          (env
            (gen-env env id-idx)))
 
@@ -489,12 +513,13 @@
 ;;
 ;; IDENTIFIER TYPE
 (define (ctx-identifier-type ctx identifier)
-  (if (eq? (identifier-kind identifier) 'free)
-      (identifier-stype identifier)
-      (let* ((sslots (identifier-sslots identifier))
-             (sidx (slot-to-stack-idx ctx (car sslots))))
-        (list-ref (ctx-stack ctx) sidx))))
 
+  (let ((stype (identifier-stype identifier)))
+    (if stype
+        stype
+        (let* ((sslots (identifier-sslots identifier))
+               (sidx (slot-to-stack-idx ctx (car sslots))))
+          (list-ref (ctx-stack ctx) sidx)))))
 
 ;;
 ;; SAVE CALL

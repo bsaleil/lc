@@ -1568,6 +1568,9 @@
  (let ((lazy-error
           (make-lazy-code
              (lambda (cgc ctx)
+               (pp "FAIL TEST")
+               (pp ctx-type)
+               (pp ast)
                 (if (or (ctx-tflo? ctx-type) (ctx-tint? ctx-type))
                   (gen-error cgc ERR_NUMBER_EXPECTED)
                   (gen-error cgc (ERR_TYPE_EXPECTED ctx-type)))))))
