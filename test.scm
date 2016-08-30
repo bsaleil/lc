@@ -1,13 +1,11 @@
 
 ;; TODO: pb $$atom sur '() ?
+;; TODO phase opti pour détecter plus de cst (bindings aux bindings cst)
+;; TODO: ##set-box! -> cas spécial, c'est un kill
 
 ;; Constantes:
 ;;   (1) - Propagation des constantes dans le ctx (cas spéciaux au merge)
 ;;   (2) - Propagation des constantes sûres (aucun cas spéciaux, cette constante est valable pour toutes les versions)
-
-
-;(define foo (lambda () 1))
-
 
 
 ;; (1) Changements au ctx:
@@ -28,131 +26,6 @@
 ;;  * Aux constantes statiques
 ;;  * Aux constantes dynamiques
 ;;  * Aux types de manière générale
-
-
-;; -> au let ((lst2 ...)), c'est le lst2 global qui est retourné, pb ctx let
-
-
-;(define append
-;   (lambda lsts
-;     (letrec ((append-h
-;               (lambda (lsts)
-;                 (if (null? lsts)
-;                     '()
-;                     (let ((lst2 (append-h (cdr lsts))))
-;                       lst2)))))
-;       (append-h lsts))))
-
-;(define ($$atom l) l)
-;(define (gambit$$pp l) (pp l))
-
-
-;(let ((a ($$atom 1))
-;      (b ($$atom "kk")))
-; ($$atom a))
-
-
-
-;; 1 on sépare les lambdas des autres -> nor-nf définitif, les autres dans nor-fn
-
-;; init du pt fixe
-;; 2 pour chaque nor-fn, si toutes free et toutes lates sont dans cst
-;;   (ou 0 free 0 late)
-;;   -> on le range dans cst
-;; loop while sets are changing
-
-;; TODO: phase 3 opti
-
-;; Pour chaque binding de cst, on construit un objet const clo
-;; on les ajoute au contexte
-
-;(let ((aa 111))
-;
-;
-;  (letrec ((c (lambda () c))
-;           (b (lambda () (a)))
-;           (g (lambda () p))
-;           (t (lambda ()  (+ (a) aa)))
-;           (p (lambda () aa))
-;           (a (lambda () 1)))
-;
-;    (pp "----- RES EXEC")
-;    (pp (p))
-;    (pp (a))
-;    (pp ((g)))
-;    (pp (c))
-;    (pp (t))
-;    (pp (b))))
-
-
-;(define (gambit$$pp n) (pp n))
-;
-;(let ((aa 11))
-;  (let ((bb (lambda () (gambit$$pp "bb")))
-;        (cc (lambda () (gambit$$pp aa))))
-;    (letrec ((dd (lambda (i) (if (= i 0) 1 (begin (bb) (cc) (dd (- i 1))))))
-;             (oo (lambda (i) dd))
-;             (ee 100)
-;             (ii "jjj")
-;             (ff (lambda () (gambit$$pp "ff"))))
-;      (gambit$$pp ee)
-;      (gambit$$pp ii)
-;      (ff)
-;      (bb)
-;      (cc)
-;      ((oo 1) 4)
-;      (dd 0))))
-
-;
-;(let ((init (lambda () ($$atom #f))))
-; (letrec ((for-aux (lambda (lo)
-;                     (if (($$atom <) ($$atom lo) ($$atom 2))
-;                         (($$atom cons)
-;                          (($$atom init))
-;                          (let ((lo (($$atom +) ($$atom lo) ($$atom 1))))
-;                            (if (($$atom <) ($$atom lo) ($$atom 2))
-;                                (($$atom cons)
-;                                 ($$atom 2)
-;                                 (($$atom for-aux) (($$atom +) ($$atom lo) ($$atom 1))))
-;                                '())))
-;                         '()))))
-;   (($$atom for-aux) ($$atom 0))))
-
-
-
-
-
-;(define for
-;  (lambda (lo hi f)
-;
-;    (define for-aux
-;      (lambda (lo)
-;        (if (< lo hi)
-;            (cons (f lo) (for-aux (+ lo 1)))
-;            '())))
-;
-;    (for-aux lo)))
-;
-;(define make-matrix
-;  (lambda (init)
-;    (for 0 0 (lambda (i) (init 0)))))
-;
-;
-;(define make-maze
-;  (lambda (n m) ; n and m must be odd
-;    (make-matrix (lambda (i)
-;                       (if (and (even? i) (even? 0))
-;                           (cons i 0)
-;                           #f)))))
-;
-;(make-maze 1 1)
-
-
-
-
-
-;;
-;; TODO: ##set-box! -> cas spécial, c'est un kill
 
 ;(define (liveness ast succs)
 ;
