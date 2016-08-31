@@ -173,41 +173,6 @@
 (define (asc-entry-load-clear entry-obj ctxidx)
   (table-set! asc-entry-load (cons entry-obj ctxidx) '())) ;; TODO: remove table entry
 
-;;
-;; Global closures
-;;
-
-;; The compiler use global objects for functions without free variables
-;; or with 1 free variable which is self
-
-;; Max size of global closures space (number of machine words)
-(define global-closures-size 4000)
-;; Space used to store closures
-(define global-closures (make-u64vector global-closures-size))
-;(define global-closures (alloc-still-vector global-closures-size))
-;; Pointer to next free slot
-(define global-closures-ptr (+ (- 8 1) (obj-encoding global-closures)))
-;; Limit value for global-closures-ptr
-(define global-closures-lim (+ global-closures-ptr (* 16 global-closures-size)))
-;; Table used to store closure for given ast
-(define global-closures-table (make-table))
-;; If a closure already exist for this ast, return it
-;; else, create a new global closure, update space & pointer and return it
-(define (global-closures-add ast ep nblate)
-  (let ((existing (table-ref global-closures-table ast #f)))
-    (or existing
-        (begin
-          (table-set! global-closures-table ast (+ global-closures-ptr TAG_MEMOBJ))
-          (let ((addr global-closures-ptr))
-            (put-i64 (+ addr 0) (mem-header 8 STAG_PROCEDURE LIFE_PERM))
-            (put-i64 (+ addr 8) ep)
-            (set! global-closures-ptr (+ global-closures-ptr 16 (* 8 nblate)))
-            (assert (< global-closures-ptr global-closures-lim) "NYI: global-closures limit reached.")
-            (+ addr TAG_MEMOBJ)))))) ;; Return encoded closure
-;;
-(define (global-closures-get ast)
-  (table-ref global-closures-table ast #f))
-
 ;;-----------------------------------------------------------------------------
 ;; Type predicates
 
@@ -581,7 +546,7 @@
          (fn-num (ctx-tclo-fn-num stype))
          (entry-obj (asc-globalfn-entry-get fn-num)))
     (apply-moves cgc ctx moves)
-    (gen-closure cgc reg #f #f entry-obj '() '())
+    (gen-closure cgc reg #f #f entry-obj '())
     (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg (car local)))))
 
 ;; TODO: merge with gen-get-localvar, it's now the same code!
@@ -1001,17 +966,23 @@
                 all-params
                 (map car (ctx-env ctx))))
 
+      (define fvars-ncst
+        (keep (lambda (el)
+                (let ((identifier (cdr (assoc el (ctx-env ctx)))))
+                  (not (member 'cst (identifier-flags identifier)))))
+              fvars-imm))
+
       (let ((entry-obj (init-entry ast ctx fvars-imm '() global-opt)))
 
         ;; Gen code to create closure
         (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
           (apply-moves cgc ctx moves)
-          (gen-closure cgc reg ctx ast entry-obj fvars-imm '())
+          (gen-closure cgc reg ctx ast entry-obj fvars-ncst)
           ;;
           (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg)))))))
 
 ;;
-(define (gen-closure cgc reg ctx ast entry-obj fvars-imm fvars-late)
+(define (gen-closure cgc reg ctx ast entry-obj fvars-ncst)
 
   (define entry-obj-loc (- (obj-encoding entry-obj) 1))
 
@@ -1019,39 +990,14 @@
   (if opt-stats
     (gen-inc-slot cgc 'closures))
 
-  ;; If there is no fvars, and only one late bind which is self
-  (if (and (null? fvars-imm)
-           (null? fvars-late)
-           ctx)
-      ;; then use a global closure
-      (gen-global-closure cgc reg ast entry-obj-loc fvars-late)
-      ;; else use a local closure
-      (gen-local-closure cgc reg ctx entry-obj-loc fvars-late fvars-imm)))
-
-;; Create or use an existing global closure, and load it in dest register
-;; A global closure is a closure without any free vars which can be use as a single instance
-(define (gen-global-closure cgc reg ast ep fvars-late)
-  (let* ((ep-qword (if opt-entry-points ep (get-i64 (+ ep 8))))
-         (qword (global-closures-add ast ep-qword (length fvars-late))))
-    (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int qword))))
+  ;; TODO (refactoring): inline here
+  (gen-local-closure cgc reg ctx entry-obj-loc fvars-ncst))
 
 ;; Create a local closure, and load it in dest register
-;; A local closure is a closure with free variables which needs to be instantiated
-(define (gen-local-closure cgc reg ctx entry-obj-loc fvars-late fvars-imm)
-
-  (define free-imm-identifiers
-    ;; Get identifier associated to ids of fvars-imm
-    ;; (only identifiers not representing constant variables)
-    (foldr (lambda (el r)
-             (let ((identifier (cdr (assoc el (ctx-env ctx)))))
-               (if (not (member 'cst (identifier-flags identifier)))
-                   (cons identifier r)
-                   r)))
-           '()
-           fvars-imm))
+(define (gen-local-closure cgc reg ctx entry-obj-loc fvars-ncst)
 
   ;;
-  (define close-length (+ (length free-imm-identifiers) (length fvars-late)))
+  (define close-length (length fvars-ncst))
 
   ;; Create closure
   ;; Closure size = length of free variables
@@ -1065,9 +1011,8 @@
       (codegen-closure-ep cgc entry-obj-loc close-length))
 
   ;; Write free variables
-  (let* ((free-offset (* -1 (+ (length free-imm-identifiers) (length fvars-late))))
-         (clo-offset  (- free-offset 2)))
-    (gen-free-vars cgc free-imm-identifiers (length fvars-late) ctx free-offset clo-offset))
+  (let* ((free-offset (* -1 (length fvars-ncst))))
+    (gen-free-vars cgc fvars-ncst ctx free-offset alloc-ptr))
 
     ;; Put closure
     (codegen-closure-put cgc reg close-length))
@@ -1320,34 +1265,33 @@
     (define (mlc-lambda-letrec id ast succ closures-size clo-offset free-cst free-imm free-late)
       (make-lazy-code
         (lambda (cgc ctx)
+
+          ;; TODO: supprimer les références à MSECTION_BIGGEST, utilie mem-still-required? à la place
+          ;; TODO: restaurer rcx si il est utilisé (donc si still? est vrai)
+          (define still? #f) ;; TODO
+          (define clo-reg  (if still? (x86-rcx) alloc-ptr))
+          (define clo-life (if still? LIFE_STILL LIFE_MOVE))
+
           (define offset-start (* -8 (- closures-size clo-offset)))
           (define offset-header offset-start)
           (define offset-entry  (+ offset-header 8))
           (define offset-free   (+ offset-entry 8))
           (define offset-free-h (* -1 (- closures-size clo-offset 2)))
           (define offset-late   (+ offset-free (* 8 (length free-imm))))
+          ;; TODO: comment
+          (if still?
+              (x86-lea cgc (x86-rcx) (x86-mem (* 8 closures-size) (x86-rax))))
           ;; Write header
-          (let ((clo-size
-                  (* 8
-                     (+ (length free-imm)
-                        (length free-late)
-                        1))))
-            (x86-mov cgc (x86-rax) (x86-imm-int (mem-header clo-size STAG_PROCEDURE)))
-            (x86-mov cgc (x86-mem offset-header alloc-ptr) (x86-rax)))
+          (let ((clo-size (* 8 (+ (length (append free-imm free-late)) 1))))
+            (x86-mov cgc (x86-rax) (x86-imm-int (mem-header clo-size STAG_PROCEDURE clo-life)))
+            (x86-mov cgc (x86-mem offset-header clo-reg) (x86-rax)))
           ;; Write entry
-
           (let* ((entry-obj (init-entry ast ctx (append free-cst free-imm) free-late #f))
                  (entry-obj-loc (- (obj-encoding entry-obj) 1)))
-
             (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
-            (x86-mov cgc (x86-mem offset-entry alloc-ptr) (x86-rax)))
+            (x86-mov cgc (x86-mem offset-entry clo-reg) (x86-rax)))
           ;; Write free vars
-          ;; TODO: remove 0 arg from gen-free-vars
-          ;; TODO: remove #f arg from gen-free-vars
-          (let ((identifiers
-                  (map (lambda (el) (cdr (assoc el (ctx-env ctx))))
-                       free-imm)))
-            (gen-free-vars cgc identifiers 0 ctx offset-free-h #f))
+          (gen-free-vars cgc free-imm ctx offset-free-h clo-reg)
           ;; Write late vars
           ;; TODO: late !fun ?
           (let loop ((lates free-late)
@@ -1357,20 +1301,20 @@
                        (late-off (and late-inf (+ (* -8 (- closures-size (cadr late-inf))) TAG_MEMOBJ)))
                        (opnd
                          (if late-off
-                             (x86-mem late-off alloc-ptr)
+                             (x86-mem late-off clo-reg)
                              (begin
                                (assert (assoc (car lates) other-vars) "Internal error")
                                (x86-imm-int (obj-encoding #f))))))
                   (if (x86-mem? opnd)
                       (x86-lea cgc (x86-rax) opnd)
                       (x86-mov cgc (x86-rax) opnd))
-                  (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))
+                  (x86-mov cgc (x86-mem offset clo-reg) (x86-rax))
                   (loop (cdr lates) (+ offset 8)))))
           ;; Update ctx and load closure
           (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
             (apply-moves cgc ctx moves)
             (let ((dest (codegen-reg-to-x86reg reg)))
-              (x86-lea cgc dest (x86-mem (+ offset-start TAG_MEMOBJ) alloc-ptr)))
+              (x86-lea cgc dest (x86-mem (+ offset-start TAG_MEMOBJ) clo-reg)))
             (let* ((ctx (ctx-push ctx (make-ctx-tclo) reg))
                    (ctx (ctx-id-add-idx ctx id 0)))
               (jump-to-version cgc succ ctx))))))
@@ -3076,15 +3020,11 @@
 
 ;; free-offset is the current free variable offset position from alloc-ptr
 ;; clo-offset is the closure offset position from alloc-ptr
-(define (gen-free-vars cgc identifiers nb-late ctx free-offset clo-offset)
-  (if (null? identifiers)
-      ;; Write 0 in all late slots (to keep the GC happy!)
-      (let loop ((n nb-late) (off free-offset))
-        (if (> n 0)
-            (begin
-              (x86-mov cgc (x86-mem (* 8 off) alloc-ptr) (x86-imm-int 0) 64)
-              (loop (- n 1) (+ off 1)))))
-      (let* ((identifier (car identifiers))
+(define (gen-free-vars cgc ids ctx free-offset base-reg)
+  (if (null? ids)
+      #f
+      (let* ((id (car ids))
+             (identifier (cdr (assoc id (ctx-env ctx))))
              (loc (ctx-identifier-loc ctx identifier))
              (opn
                (cond ;; No loc, free variable which is only in closure
@@ -3108,8 +3048,8 @@
                      ;;
                      (else
                        (codegen-reg-to-x86reg loc)))))
-        (x86-mov cgc (x86-mem (* 8 free-offset) alloc-ptr) opn)
-        (gen-free-vars cgc (cdr identifiers) nb-late ctx (+ free-offset 1) clo-offset))))
+        (x86-mov cgc (x86-mem (* 8 free-offset) base-reg) opn)
+        (gen-free-vars cgc (cdr ids) ctx (+ free-offset 1) base-reg))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst params enc-ids)

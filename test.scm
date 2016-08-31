@@ -209,13 +209,13 @@
 ;
 ;($apply fib '(40))
 
-(define (foo)
-  (letrec ((b (lambda () 11))
-           (c 11))
-    (lambda () (begin (b) c))))
-
-;(pp ((foo)))
-(gambit$$pp ((foo)))
+;(define (foo)
+;  (letrec ((b (lambda () 11))
+;           (c 11))
+;    (lambda () (begin (b) c))))
+;
+;;(pp ((foo)))
+;(gambit$$pp ((foo)))
 
 ;; TODO: optimization: pour un pt entrée:
 ;;       * si on génère un pt entrée dont la 1ere instruction est un jump,

@@ -32,6 +32,9 @@
 
 (define MSECTION_BIGGEST 255)
 
+(define (mem-still-required? nbytes)
+  (> nbytes MSECTION_BIGGEST))
+
 (c-declare
 "
 // TODO: remove signal stack when gambit accepts new flag
@@ -140,13 +143,11 @@ void initc()
   ;; Save aligned size
   (x86-upush cgc sizeloc)
 
-  ;; see TODO
   (x86-cmp cgc sizeloc (x86-imm-int MSECTION_BIGGEST))
   (x86-jl cgc label-not-still) ;; TODO jl or jle ?
     ;; TODO: write comments, and rewrite optimized code sequence
     (x86-ppush cgc (x86-imm-int stag)) ;; stag is not encoded, push it to pstack
     (x86-pcall cgc label-alloc-still-handler)
-    (x86-mov cgc (x86-mem 0 (x86-usp)) (x86-imm-int 0) 64) ;; 0
     (x86-add cgc (x86-rsp) (x86-imm-int 8)) ;; remove stag
     (x86-jmp cgc label-alloc-still-end)
   (x86-label cgc label-not-still)
@@ -185,17 +186,19 @@ void initc()
   ;; Remove saved values
   (x86-add cgc (x86-usp) (x86-imm-int 16)))
 
+(define (gen-allocation-imm cgc stag nbytes)
+  (if (mem-still-required? nbytes)
+      (gen-allocation-imm-sti cgc stag nbytes)
+      (gen-allocation-imm-mov cgc stag nbytes)))
+
 ;; Alloc object of type stag of size nbytes + 8 (header)
 ;; For performance reason, unlike gen-allocation-rt,
 ;; this function does *not* return encoded object in rax.
 ;; Caller need to load address of object
-(define (gen-allocation-imm cgc stag nbytes)
+(define (gen-allocation-imm-mov cgc stag nbytes)
 
   (define label-alloc-beg (asm-make-label #f (new-sym 'alloc_begin_)))
   (define label-alloc-end (asm-make-label #f (new-sym 'alloc_end_)))
-
-  (if (> nbytes MSECTION_BIGGEST)
-      (error "NYI - ALLOC STILL OBJ"))
 
   (assert (= (modulo nbytes 4) 0) "GC internal error")
 
@@ -216,13 +219,12 @@ void initc()
 
   (x86-mov cgc (x86-mem (- 0 nbytes 8) alloc-ptr) (x86-imm-int (mem-header nbytes stag)) 64))
 
-;; TODO remove when all implemented
-(define (gen-allocation cgc ctx stag length rt-size?)
-  (error "NYI, use gen-allocation-imm for now"))
+(define (gen-allocation-imm-sti cgc stag nbytes)
+
+  (error "NYI alloc"))
 
 ;; Generate an heap object header
 ;; using layout used by Gambit.
-;; NOTE : 'life' field is not used and set to 0.
 (define (mem-header length stag #!optional (life LIFE_MOVE))
     ;; => Length (56 bits) | sTag (5 bits) | Life (3 bits)
     (+ (arithmetic-shift length 8) (arithmetic-shift stag 3) life))
