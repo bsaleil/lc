@@ -8704,7 +8704,6 @@
   (let ((n (obj-encoding obj)))
     (if n (move-n-to-loc68 n loc) (emit-move.l (emit-const obj) loc))))
 (define (move-n-to-loc68 n loc)
-  
   (cond ((= n bits-null) (emit-move.l null-reg loc))
         ((= n bits-false) (emit-move.l false-reg loc))
         ((and (dreg? loc) (>= n -128) (<= n 127)) (emit-moveq n loc))

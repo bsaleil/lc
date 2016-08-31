@@ -1128,11 +1128,12 @@
                  (id  (car binding))
                  (val (cadr binding)))
             (if (and (pair? val)
-                     (eq? (car val) 'lambda)
-                     (let ((finfo (get-free-infos val '() ctx)))
-                       (= (length (cadr finfo)) 0)))
-                (let ((c (init-entry-cst val '() ctx)))
-                  (set! cst (cons (cons id c) cst)))
+                     (eq? (car val) 'lambda))
+                (let ((finfo (get-free-infos val '() ctx)))
+                  (if (= (length (cadr finfo)) 0)
+                      (let ((c (init-entry-cst val (car finfo) ctx)))
+                        (set! cst (cons (cons id c) cst)))
+                      (set! nor (cons binding nor))))
                 (set! nor (cons binding nor)))
             (loop (cdr bindings))))))
 
@@ -1334,8 +1335,10 @@
             (x86-mov cgc (x86-rax) (x86-imm-int (mem-header clo-size STAG_PROCEDURE)))
             (x86-mov cgc (x86-mem offset-header alloc-ptr) (x86-rax)))
           ;; Write entry
+
           (let* ((entry-obj (init-entry ast ctx (append free-cst free-imm) free-late #f))
                  (entry-obj-loc (- (obj-encoding entry-obj) 1)))
+
             (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
             (x86-mov cgc (x86-mem offset-entry alloc-ptr) (x86-rax)))
           ;; Write free vars
@@ -1374,12 +1377,14 @@
 
     ;; 1! alloc big closure
     (define closures-size
-            (let* ((last (car proc-vars))
-                   (last-finfo (cadddr last)))
-              (+ 2
-                 (cadr last)
-                 (length (cadr last-finfo)) ;; nb imm !cst free
-                 (length (caddr last-finfo))))) ;; nb late free
+            (if (null? proc-vars)
+                0
+                (let* ((last (car proc-vars))
+                       (last-finfo (cadddr last)))
+                  (+ 2
+                     (cadr last)
+                     (length (cadr last-finfo)) ;; nb imm !cst free
+                     (length (caddr last-finfo)))))) ;; nb late free
 
     (let ((lazy-write-closures
             (let loop ((lst (reverse proc-vars)))
@@ -1405,6 +1410,20 @@
     (lambda (cgc ctx)
       (reset-sets!)
       (compute-sets! ctx)
+      ;(if (member 'payoff-if-removed (map car (cadr ast)))
+          ;(begin (println "###########################################################")
+          ;       (println "################ CONST")
+          ;       (println "###########################################################")
+          ;       (pp const-proc-vars)
+          ;       (println "###########################################################")
+          ;       (println "################ OTHER")
+          ;       (println "###########################################################")
+          ;       (pp other-vars)
+          ;       (println "###########################################################")
+          ;       (println "################ FUN")
+          ;       (println "###########################################################")
+          ;       (pp proc-vars)
+          ;       (error "oK"))
       (let* ((lazy-let-out (get-lazy-lets-out ast (map car (cadr ast)) (length const-proc-vars) succ))
              (lazy-body    (gen-ast (caddr ast) lazy-let-out))
              (lazy-fun  (create-fun lazy-body))
