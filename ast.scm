@@ -1046,11 +1046,8 @@
         (else (build-chain (cdr ast) succ))))
 
 ;;-----------------------------------------------------------------------------
-;; Bindings (let, letrec, let*)
+;; LET Binding
 
-;;
-;; Make lazy code from LET
-;;
 (define (mlc-let ast succ)
 
   (define cst '())
@@ -1101,31 +1098,56 @@
                (gen-ast-l (map cadr nor) lazy-bind)))
         (jump-to-version cgc lazy-exprs ctx)))))
 
-;;
-;; TODO
+;;-----------------------------------------------------------------------------
+;; LETREC Binding
+
 (define (mlc-letrec ast succ)
 
-  (define const-proc-vars '()) ;; (id free-info ast)
-  (define proc-vars '()) ;; (id pos ast free-info)
-  (define other-vars '()) ;; (id ast)
+  ;; Letrec info
+  (define ids (map car (cadr ast)))
+  (define bindings (cadr ast))
+  (define body (caddr ast))
 
-  (define (reset-sets!)
-    (set! const-proc-vars '())
-    (set! proc-vars '())
-    (set! other-vars '()))
+  ;; ---------------------------------------------------------------------------
+  ;; ANALYSES
 
-  (define (get-f-size fset)
-    (if (null? fset)
-        0
-        (let ((prev-finfo (cadddr (car fset))))
-          (+ (cadar fset) ;; pos previous
-             2 ;; header, entry
-             (length (cadr prev-finfo)) ;; nb imm !cst free
-             (length (caddr prev-finfo)))))) ;; nb late free
+  ;; Group bindings, return list (proc-vars const-proc-var other-vars) with:
+  ;; proc-vars represents procedure bindings, with the form (id pos ast free-info)
+  ;; const-proc-vars represents constant procedure bindings, with the form (id ast free-info)
+  ;; other-vars represents non procedure bindings, with the forms (id ast)
+  (define (group-bindings ctx)
+    (mlet ((proc/other      (group-proc-others ctx ids bindings))
+           (const-proc/proc (group-const-proc proc))
+           (proc            (proc-vars-insert-pos proc (map car const-proc))))
+        (list proc const-proc other)))
 
-  ;; Group bindings, return list (proc-vars, other-vars)
+  ;; Take proc-vars objects.
+  ;; For each proc-var object, compute pos field and insert it in object
+  ;; (id ast free-info) -> (id pos ast free-info)
+  (define (proc-vars-insert-pos proc-vars const-proc-vars-ids)
+    (let loop ((l proc-vars) (res '()))
+       (if (null? l)
+           res
+           (let* (;; Compute proc info object (id pos ast free-info)
+                  ;; pos is the position of the closure in the big allocated object
+                  (obj (car l))
+                  (id (car obj))
+                  (pos (get-f-size res))
+                  (ast (cadr obj))
+                  (old-free-info (caddr obj))
+                  (free-info
+                    (list (append (car old-free-info)
+                                  (set-inter const-proc-vars-ids
+                                             (caddr old-free-info)))
+                          (cadr old-free-info)
+                          (set-sub (caddr old-free-info) const-proc-vars-ids '()))))
+             (loop (cdr l)
+                   (cons (list id pos ast free-info)
+                         res))))))
+
+  ;; Group bindings, return list (proc-vars other-vars)
   ;; proc-vars represent procedure bindings, with (id free-info val)
-  ;; other-vars represent other bindings
+  ;; other-vars represent other bindings (id ast)
   (define (group-proc-others ctx bound-ids bindings)
     (let loop ((bindings bindings)
                (proc-vars '())
@@ -1139,13 +1161,16 @@
                      (eq? (car val) 'lambda))
                 (loop (cdr bindings)
                       (let ((free-info (get-free-infos val bound-ids ctx)))
-                        (cons (list id free-info val) proc-vars))
+                        (cons (list id val free-info) proc-vars))
                       other-vars)
                 (loop (cdr bindings)
                       proc-vars
                       (cons binding other-vars)))))))
 
-  (define (find-cons-proc-vars proc-vars)
+  ;; Group proc-vars, return list (const-proc-vars proc-vars)
+  ;; const-proc-vars represent constant procedure bindings
+  ;; proc-vars represent non constant procedure bindings
+  (define (group-const-proc proc-vars)
 
     (let loop ((const-proc-vars '())
                (proc-vars proc-vars))
@@ -1154,12 +1179,13 @@
                   (new-const-proc-vars const-proc-vars)
                   (new-proc-vars '()))
         (if (null? l)
+            ;; Fuxed point condition, if there is a change, continue else stop and return
             (if (= (length const-proc-vars)
                    (length new-const-proc-vars))
                 (list new-const-proc-vars new-proc-vars)
                 (loop new-const-proc-vars new-proc-vars))
             (let* ((proc-var (car l))
-                   (free-info (cadr proc-var))
+                   (free-info (caddr proc-var))
                    (all-free (append (cadr free-info) (caddr free-info))))
               (if (= (length (set-inter all-free
                                         (map car const-proc-vars)))
@@ -1167,83 +1193,11 @@
                   (loop2 (cdr l) (cons proc-var new-const-proc-vars) new-proc-vars)
                   (loop2 (cdr l) new-const-proc-vars (cons proc-var new-proc-vars))))))))
 
-  (define (bind-const-proc-vars ctx const-proc-vars)
-    (let* (;; Gen cst-set to bind constants with a cst type with a fake fn-num (-1)
-           (cst-set
-             (map (lambda (c)
-                    (cons (car c) -1))
-                  const-proc-vars))
-           ;; Bind const ids using fake cst-set
-           (ctx (ctx-bind-consts ctx cst-set)))
-      ;; Init entry and update fn-num
-      ;; of each new const variable
-      (let loop ((l const-proc-vars)
-                 (ctx ctx))
-        (if (null? l)
-            ctx
-            (let* ((free-inf (cadr (car l)))
-                   (free-late (caddr free-inf))
-                   (fn-num (init-entry-cst (caddr (car l)) free-late ctx)))
-              (loop (cdr l)
-                    (ctx-cst-fnnum-set! ctx (caar l) fn-num)))))))
+  ;; ---------------------------------------------------------------------------
+  ;; LAZY CODE OBJECTS
 
-
-  (define (compute-sets! ctx)
-    ;; 1 group proc-vars and other-vars
-    (mlet ((proc/other (group-proc-others ctx (map car (cadr ast)) (cadr ast)))
-           (const-proc/proc (find-cons-proc-vars proc)))
-           ;;
-           ;(ctx (bind-const-proc-vars ctx const-proc-vars)))
-
-      ;; TODO: match api
-      ;; TODO: Keed current layout and only compute pos + cst-late
-      (let ((r '())
-            (cst-ids (map car const-proc)))
-        (let loop ((l proc))
-          (if (null? l)
-              '()
-              (let* ((obj (car l))
-                     (id (car obj))
-                     (pos
-                       (if (null? r)
-                           0
-                           (let* ((last (car r))
-                                  (last-finfo (cadddr last)))
-                             (+ 2
-                                (cadr last)
-                                (length (cadr last-finfo)) ;;
-                                (length (caddr last-finfo)))))) ;;
-                     (ast (caddr obj))
-                     (old-free-info (cadr obj))
-                     (free-info
-                       (list (append (car old-free-info)
-                                     (set-inter cst-ids
-                                                (caddr old-free-info)))
-                             (cadr old-free-info)
-                             (set-sub (caddr old-free-info) cst-ids '()))))
-                (set! r
-                      (cons (list id pos ast free-info)
-                            r))
-                (loop (cdr l)))))
-        (set! proc-vars r)
-        (set! const-proc-vars const-proc)
-        (set! other-vars other))))
-
-  ;; Bind letrec ids to:
-  ;; no location if !cst
-  ;; cst type if cst
-  (define (bind-ids cgc succ ctx)
-    (let* ((ids (map car (cadr ast)))
-           ;; Bind cst
-           (ctx (bind-const-proc-vars ctx const-proc-vars))
-           ;; Bind others
-           (id-idx (map (lambda (el) (cons (car el) #f))
-                        (append proc-vars other-vars)))
-           (ctx (ctx-bind-locals ctx id-idx #t)))
-      (jump-to-version cgc succ ctx)))
-
-  ;; Eval & bind each !cst !fun bindings
-  (define (eval-nf other-vars succ)
+  ;; Eval each !fun binding
+  (define (get-lazy-eval other-vars succ)
 
     (define (bind-last id succ)
       (make-lazy-code
@@ -1259,8 +1213,38 @@
             (gen-ast (cadr binding)
                      (bind-last (car binding) next))))))
 
+  ;; ---------------------------------------------------------------------------
+
+  (define (get-f-size fset)
+    (if (null? fset)
+        0
+        (let ((prev-finfo (cadddr (car fset))))
+          (+ (cadar fset) ;; pos previous
+             2 ;; header, entry
+             (length (cadr prev-finfo)) ;; nb imm !cst free
+             (length (caddr prev-finfo)))))) ;; nb late free
+
+  ;; Add constant procedure bindings information to context
+  (define (bind-const-proc-vars ctx const-proc-vars)
+    (let* (;; We first add identifier to ctx with a fake fn-num value
+           (cst-set
+             (map (lambda (c) (cons (car c) -1))
+                  const-proc-vars))
+           ;; Bind const ids using fake cst-set
+           (ctx (ctx-bind-consts ctx cst-set)))
+      ;; Then, we init all entries and write fn-num values
+      (let loop ((l const-proc-vars)
+                 (ctx ctx))
+        (if (null? l)
+            ctx
+            (let* ((free-inf (caddr (car l)))
+                   (free-late (caddr free-inf))
+                   (fn-num (init-entry-cst (cadr (car l)) free-late ctx)))
+              (loop (cdr l)
+                    (ctx-cst-fnnum-set! ctx (caar l) fn-num)))))))
+
   ;; Create !cst fun closures
-  (define (create-fun succ)
+  (define (create-fun succ proc-vars other-vars)
 
     (define (mlc-lambda-letrec id ast succ closures-size clo-offset free-cst free-imm free-late)
       (make-lazy-code
@@ -1347,14 +1331,23 @@
 
   (make-lazy-code
     (lambda (cgc ctx)
-      (reset-sets!)
-      (compute-sets! ctx)
-      (let* ((lazy-let-out (get-lazy-lets-out ast (map car (cadr ast)) (length const-proc-vars) succ))
-             (lazy-body    (gen-ast (caddr ast) lazy-let-out))
-             (lazy-fun  (create-fun lazy-body))
-             (lazy-eval (eval-nf other-vars lazy-fun)))
+      (let* ((r (group-bindings ctx))
+             (proc-vars (car r))
+             (const-proc-vars (cadr r))
+             (other-vars (caddr r)))
+        (let* (;; LCO
+               (lazy-let-out (get-lazy-lets-out ast ids (length const-proc-vars) succ))
+               (lazy-body    (gen-ast body lazy-let-out))
+               (lazy-fun     (create-fun lazy-body proc-vars other-vars))
+               (lazy-eval    (get-lazy-eval other-vars lazy-fun)))
 
-        (bind-ids cgc lazy-eval ctx)))))
+          (let* (;; Bind cst bindings
+                 (ctx (bind-const-proc-vars ctx const-proc-vars))
+                 ;; Bind others
+                 (id-idx (map (lambda (el) (cons (car el) #f))
+                              (append proc-vars other-vars)))
+                 (ctx (ctx-bind-locals ctx id-idx #t)))
+            (jump-to-version cgc lazy-eval ctx)))))))
 
 ;; Create and return out lazy code object of let/letrec
 ;; Unbind locals, unbox result, and update ctx
