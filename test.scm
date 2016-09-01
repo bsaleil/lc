@@ -209,6 +209,12 @@
 ;
 ;($apply fib '(40))
 
+(letrec ((a 100)
+         (b (lambda () a))
+         (c (lambda () a)))
+
+  a)
+
 ;(define (foo)
 ;  (letrec ((b (lambda () 11))
 ;           (c 11))

@@ -30,14 +30,17 @@
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
-(define MSECTION_BIGGEST 255)
+(define MSECTION_BIGGEST 255) ;; words
+(define MSECTION_FUDGE  8192) ;; words
 
 (define (mem-still-required? nbytes)
-  (> nbytes MSECTION_BIGGEST))
+  (>= nbytes (* MSECTION_BIGGEST 8)))
+
+(define (mem-can-alloc-group? nbytes)
+  (< nbytes (* MSECTION_FUDGE 8)))
 
 (c-declare
 "
-// TODO: remove signal stack when gambit accepts new flag
 #include <stdlib.h> // exit
 
 ___U64 alloc_still(___U64 stag, ___U64 bytes)
@@ -143,7 +146,7 @@ void initc()
   ;; Save aligned size
   (x86-upush cgc sizeloc)
 
-  (x86-cmp cgc sizeloc (x86-imm-int MSECTION_BIGGEST))
+  (x86-cmp cgc sizeloc (x86-imm-int (* 8 MSECTION_BIGGEST)))
   (x86-jl cgc label-not-still) ;; TODO jl or jle ?
     ;; TODO: write comments, and rewrite optimized code sequence
     (x86-ppush cgc (x86-imm-int stag)) ;; stag is not encoded, push it to pstack
@@ -186,6 +189,7 @@ void initc()
   ;; Remove saved values
   (x86-add cgc (x86-usp) (x86-imm-int 16)))
 
+;; TODO: allocate words
 (define (gen-allocation-imm cgc stag nbytes)
   (if (mem-still-required? nbytes)
       (gen-allocation-imm-sti cgc stag nbytes)
@@ -220,8 +224,7 @@ void initc()
   (x86-mov cgc (x86-mem (- 0 nbytes 8) alloc-ptr) (x86-imm-int (mem-header nbytes stag)) 64))
 
 (define (gen-allocation-imm-sti cgc stag nbytes)
-
-  (error "NYI alloc"))
+  (error "NYI gen-allocation-imm-sti"))
 
 ;; Generate an heap object header
 ;; using layout used by Gambit.

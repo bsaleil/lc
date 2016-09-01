@@ -1266,11 +1266,8 @@
       (make-lazy-code
         (lambda (cgc ctx)
 
-          ;; TODO: supprimer les références à MSECTION_BIGGEST, utilie mem-still-required? à la place
-          ;; TODO: restaurer rcx si il est utilisé (donc si still? est vrai)
-          (define still? #f) ;; TODO
-          (define clo-reg  (if still? (x86-rcx) alloc-ptr))
-          (define clo-life (if still? LIFE_STILL LIFE_MOVE))
+          (define clo-reg alloc-ptr)
+          (define clo-life LIFE_MOVE)
 
           (define offset-start (* -8 (- closures-size clo-offset)))
           (define offset-header offset-start)
@@ -1278,9 +1275,7 @@
           (define offset-free   (+ offset-entry 8))
           (define offset-free-h (* -1 (- closures-size clo-offset 2)))
           (define offset-late   (+ offset-free (* 8 (length free-imm))))
-          ;; TODO: comment
-          (if still?
-              (x86-lea cgc (x86-rcx) (x86-mem (* 8 closures-size) (x86-rax))))
+
           ;; Write header
           (let ((clo-size (* 8 (+ (length (append free-imm free-late)) 1))))
             (x86-mov cgc (x86-rax) (x86-imm-int (mem-header clo-size STAG_PROCEDURE clo-life)))
@@ -1330,44 +1325,30 @@
                      (length (cadr last-finfo)) ;; nb imm !cst free
                      (length (caddr last-finfo)))))) ;; nb late free
 
-    (let ((lazy-write-closures
-            (let loop ((lst (reverse proc-vars)))
-              (if (null? lst)
-                  succ
-                  (let* ((l (car lst))
-                         (id (car l))
-                         (offset (cadr l))
-                         (ast (caddr l))
-                         (free-info (cadddr l))
-                         (fvars-cst  (car free-info))
-                         (fvars-imm  (cadr free-info))
-                         (fvars-late (caddr free-info))
-                         (next (loop (cdr lst))))
-                    ;; closures-size clo-offset free-imm free-late
-                    (mlc-lambda-letrec id ast next closures-size offset fvars-cst fvars-imm fvars-late))))))
-      (make-lazy-code
-        (lambda (cgc ctx)
-          (gen-allocation-imm cgc STAG_PROCEDURE (* 8 (- closures-size 1)))
-          (jump-to-version cgc lazy-write-closures ctx)))))
+    (let* ((lazy-write-closures
+             (let loop ((lst (reverse proc-vars)))
+               (if (null? lst)
+                   succ
+                   (let* ((l (car lst))
+                          (id (car l))
+                          (offset (cadr l))
+                          (ast (caddr l))
+                          (free-info (cadddr l))
+                          (fvars-cst  (car free-info))
+                          (fvars-imm  (cadr free-info))
+                          (fvars-late (caddr free-info))
+                          (next (loop (cdr lst))))
+                     ;; closures-size clo-offset free-imm free-late
+                     (mlc-lambda-letrec id ast next closures-size offset fvars-cst fvars-imm fvars-late))))))
+       (make-lazy-code
+         (lambda (cgc ctx)
+           (gen-allocation-imm cgc STAG_PROCEDURE (* 8 (- closures-size 1)))
+           (jump-to-version cgc lazy-write-closures ctx)))))
 
   (make-lazy-code
     (lambda (cgc ctx)
       (reset-sets!)
       (compute-sets! ctx)
-      ;(if (member 'payoff-if-removed (map car (cadr ast)))
-          ;(begin (println "###########################################################")
-          ;       (println "################ CONST")
-          ;       (println "###########################################################")
-          ;       (pp const-proc-vars)
-          ;       (println "###########################################################")
-          ;       (println "################ OTHER")
-          ;       (println "###########################################################")
-          ;       (pp other-vars)
-          ;       (println "###########################################################")
-          ;       (println "################ FUN")
-          ;       (println "###########################################################")
-          ;       (pp proc-vars)
-          ;       (error "oK"))
       (let* ((lazy-let-out (get-lazy-lets-out ast (map car (cadr ast)) (length const-proc-vars) succ))
              (lazy-body    (gen-ast (caddr ast) lazy-let-out))
              (lazy-fun  (create-fun lazy-body))
@@ -1591,7 +1572,8 @@
   (let* ((init-value? (= (length args) 2))
          (llen (ctx-get-loc ctx (if init-value? 1 0)))
          (lval (if init-value? (ctx-get-loc ctx 0) #f)))
-    (if (and (fixnum? (car args)) (< (car args) MSECTION_BIGGEST))
+    (if (and (fixnum? (car args))
+             (not (mem-still-required? (* 8 (car args)))))
         (codegen-make-vector-cst cgc (ctx-fs ctx) reg (car args) lval)
         (codegen-make-vector cgc (ctx-fs ctx) reg llen lval))
     (jump-to-version cgc succ (ctx-push (if init-value?
@@ -2022,7 +2004,7 @@
   (cond ;; (list)
         ((= len 0)
           (gen-ast (atom-node-make '()) succ))
-        ((> (* len 3 8) MSECTION_BIGGEST)
+        ((mem-still-required? (* 8 len 3))
           (gen-ast
             (let* ((sym (gensym))
                    (lnode (atom-node-make 'list))
