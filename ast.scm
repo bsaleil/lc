@@ -1132,7 +1132,7 @@
                   ;; pos is the position of the closure in the big allocated object
                   (obj (car l))
                   (id (car obj))
-                  (pos (get-f-size res))
+                  (pos (get-closures-size res))
                   (ast (cadr obj))
                   (old-free-info (caddr obj))
                   (free-info
@@ -1213,16 +1213,103 @@
             (gen-ast (cadr binding)
                      (bind-last (car binding) next))))))
 
-  ;; ---------------------------------------------------------------------------
+  ;; Alloc space for all non const closures
+  ;; Init all closures by writing headers, entry points, free & late variables
+  (define (get-lazy-make-closures succ proc-vars other-vars)
 
-  (define (get-f-size fset)
-    (if (null? fset)
-        0
-        (let ((prev-finfo (cadddr (car fset))))
-          (+ (cadar fset) ;; pos previous
-             2 ;; header, entry
-             (length (cadr prev-finfo)) ;; nb imm !cst free
-             (length (caddr prev-finfo)))))) ;; nb late free
+    ;; Alloc all closures
+    (define (get-lazy-alloc succ)
+      (make-lazy-code
+        (lambda (cgc ctx)
+          (gen-allocation-imm cgc STAG_PROCEDURE (* 8 (- closures-size 1)))
+          (jump-to-version cgc (get-lazy-init-closures succ) ctx))))
+
+    ;; Init all closures. Write headers, entry points, and free & late variables
+    (define (get-lazy-init-closures succ)
+      (let loop ((lst (reverse proc-vars)))
+        (if (null? lst)
+            succ
+            (let* ((l (car lst))
+                   (id (car l))
+                   (offset (cadr l))
+                   (ast (caddr l))
+                   (free-info (cadddr l))
+                   (fvars-cst  (car free-info))
+                   (fvars-imm  (cadr free-info))
+                   (fvars-late (caddr free-info))
+                   (next (loop (cdr lst))))
+
+              (get-lazy-init-closure id ast next offset fvars-cst fvars-imm fvars-late)))))
+
+    ;; Init a closure. Write header, entry point, and free & late variables
+    (define (get-lazy-init-closure id ast succ clo-offset free-cst free-imm free-late)
+
+      (make-lazy-code
+        (lambda (cgc ctx)
+
+          (define clo-reg alloc-ptr)
+          (define clo-life LIFE_MOVE)
+
+          (define offset-start (* -8 (- closures-size clo-offset)))
+          (define offset-header offset-start)
+          (define offset-entry  (+ offset-header 8))
+          (define offset-free   (+ offset-entry 8))
+          (define offset-free-h (* -1 (- closures-size clo-offset 2)))
+          (define offset-late   (+ offset-free (* 8 (length free-imm))))
+
+          ;; Write header
+          (let ((clo-size (* 8 (+ (length (append free-imm free-late)) 1))))
+            (x86-mov cgc (x86-rax) (x86-imm-int (mem-header clo-size STAG_PROCEDURE clo-life)))
+            (x86-mov cgc (x86-mem offset-header clo-reg) (x86-rax)))
+
+          ;; Write entry
+          (let* ((entry-obj (init-entry ast ctx (append free-cst free-imm) free-late #f))
+                 (entry-obj-loc (- (obj-encoding entry-obj) 1)))
+            (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
+            (x86-mov cgc (x86-mem offset-entry clo-reg) (x86-rax)))
+
+          ;; Write free vars
+          (gen-free-vars cgc free-imm ctx offset-free-h clo-reg)
+
+          ;; Write late vars
+          ;; TODO: late !fun ?
+          (let loop ((lates free-late)
+                     (offset offset-late))
+            (if (not (null? lates))
+                (let* ((late-inf (assoc (car lates) proc-vars))
+                       (late-off (and late-inf (+ (* -8 (- closures-size (cadr late-inf))) TAG_MEMOBJ)))
+                       (opnd
+                         (if late-off
+                             (x86-mem late-off clo-reg)
+                             (begin
+                               (assert (assoc (car lates) other-vars) "Internal error")
+                               (x86-imm-int (obj-encoding #f))))))
+                  (if (x86-mem? opnd)
+                      (x86-lea cgc (x86-rax) opnd)
+                      (x86-mov cgc (x86-rax) opnd))
+                  (x86-mov cgc (x86-mem offset clo-reg) (x86-rax))
+                  (loop (cdr lates) (+ offset 8)))))
+
+          ;; Update ctx and load closure
+          (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
+            (apply-moves cgc ctx moves)
+            (let ((dest (codegen-reg-to-x86reg reg)))
+              (x86-lea cgc dest (x86-mem (+ offset-start TAG_MEMOBJ) clo-reg)))
+            (let* ((ctx (ctx-push ctx (make-ctx-tclo) reg))
+                   (ctx (ctx-id-add-idx ctx id 0)))
+              (jump-to-version cgc succ ctx))))))
+
+    ;; Total alloc size
+    (define closures-size (get-closures-size proc-vars))
+
+    ;; TODO: check each procedure does not require still object
+    (if (not (mem-can-alloc-group? (* 8 closures-size)))
+        (error "Letrec: NYI, alloc group > MSECTION_FUDGE"))
+
+    ;; Return first LCO: closures alloc
+    (get-lazy-alloc succ))
+
+  ;; ---------------------------------------------------------------------------
 
   ;; Add constant procedure bindings information to context
   (define (bind-const-proc-vars ctx const-proc-vars)
@@ -1243,111 +1330,45 @@
               (loop (cdr l)
                     (ctx-cst-fnnum-set! ctx (caar l) fn-num)))))))
 
-  ;; Create !cst fun closures
-  (define (create-fun succ proc-vars other-vars)
+  ;; Compute current closures total size
+  ;; If proc-vars set contains no function, size is 0
+  ;; If proc-vars set contains at least one function,
+  ;; size is:
+  ;; position of previously computed proc + size of previously computed proc
+  ;; with size of previous proc is:
+  ;; 2 (header & entry) + number of non const free vars + number of late vars
+  (define (get-closures-size proc-set)
+    (if (null? proc-set)
+        0
+        (let ((prev-finfo (cadddr (car proc-set))))
+          (+ (cadar proc-set)
+             2
+             (length (cadr prev-finfo))
+             (length (caddr prev-finfo))))))
 
-    (define (mlc-lambda-letrec id ast succ closures-size clo-offset free-cst free-imm free-late)
-      (make-lazy-code
-        (lambda (cgc ctx)
-
-          (define clo-reg alloc-ptr)
-          (define clo-life LIFE_MOVE)
-
-          (define offset-start (* -8 (- closures-size clo-offset)))
-          (define offset-header offset-start)
-          (define offset-entry  (+ offset-header 8))
-          (define offset-free   (+ offset-entry 8))
-          (define offset-free-h (* -1 (- closures-size clo-offset 2)))
-          (define offset-late   (+ offset-free (* 8 (length free-imm))))
-
-          ;; Write header
-          (let ((clo-size (* 8 (+ (length (append free-imm free-late)) 1))))
-            (x86-mov cgc (x86-rax) (x86-imm-int (mem-header clo-size STAG_PROCEDURE clo-life)))
-            (x86-mov cgc (x86-mem offset-header clo-reg) (x86-rax)))
-          ;; Write entry
-          (let* ((entry-obj (init-entry ast ctx (append free-cst free-imm) free-late #f))
-                 (entry-obj-loc (- (obj-encoding entry-obj) 1)))
-            (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
-            (x86-mov cgc (x86-mem offset-entry clo-reg) (x86-rax)))
-          ;; Write free vars
-          (gen-free-vars cgc free-imm ctx offset-free-h clo-reg)
-          ;; Write late vars
-          ;; TODO: late !fun ?
-          (let loop ((lates free-late)
-                     (offset offset-late))
-            (if (not (null? lates))
-                (let* ((late-inf (assoc (car lates) proc-vars))
-                       (late-off (and late-inf (+ (* -8 (- closures-size (cadr late-inf))) TAG_MEMOBJ)))
-                       (opnd
-                         (if late-off
-                             (x86-mem late-off clo-reg)
-                             (begin
-                               (assert (assoc (car lates) other-vars) "Internal error")
-                               (x86-imm-int (obj-encoding #f))))))
-                  (if (x86-mem? opnd)
-                      (x86-lea cgc (x86-rax) opnd)
-                      (x86-mov cgc (x86-rax) opnd))
-                  (x86-mov cgc (x86-mem offset clo-reg) (x86-rax))
-                  (loop (cdr lates) (+ offset 8)))))
-          ;; Update ctx and load closure
-          (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
-            (apply-moves cgc ctx moves)
-            (let ((dest (codegen-reg-to-x86reg reg)))
-              (x86-lea cgc dest (x86-mem (+ offset-start TAG_MEMOBJ) clo-reg)))
-            (let* ((ctx (ctx-push ctx (make-ctx-tclo) reg))
-                   (ctx (ctx-id-add-idx ctx id 0)))
-              (jump-to-version cgc succ ctx))))))
-
-    ;; 1! alloc big closure
-    (define closures-size
-            (if (null? proc-vars)
-                0
-                (let* ((last (car proc-vars))
-                       (last-finfo (cadddr last)))
-                  (+ 2
-                     (cadr last)
-                     (length (cadr last-finfo)) ;; nb imm !cst free
-                     (length (caddr last-finfo)))))) ;; nb late free
-
-    (let* ((lazy-write-closures
-             (let loop ((lst (reverse proc-vars)))
-               (if (null? lst)
-                   succ
-                   (let* ((l (car lst))
-                          (id (car l))
-                          (offset (cadr l))
-                          (ast (caddr l))
-                          (free-info (cadddr l))
-                          (fvars-cst  (car free-info))
-                          (fvars-imm  (cadr free-info))
-                          (fvars-late (caddr free-info))
-                          (next (loop (cdr lst))))
-                     ;; closures-size clo-offset free-imm free-late
-                     (mlc-lambda-letrec id ast next closures-size offset fvars-cst fvars-imm fvars-late))))))
-       (make-lazy-code
-         (lambda (cgc ctx)
-           (gen-allocation-imm cgc STAG_PROCEDURE (* 8 (- closures-size 1)))
-           (jump-to-version cgc lazy-write-closures ctx)))))
-
+  ;; Main lco
   (make-lazy-code
     (lambda (cgc ctx)
-      (let* ((r (group-bindings ctx))
+
+      (let* (;; Compute binding groups
+             (r (group-bindings ctx))
              (proc-vars (car r))
              (const-proc-vars (cadr r))
-             (other-vars (caddr r)))
-        (let* (;; LCO
-               (lazy-let-out (get-lazy-lets-out ast ids (length const-proc-vars) succ))
-               (lazy-body    (gen-ast body lazy-let-out))
-               (lazy-fun     (create-fun lazy-body proc-vars other-vars))
-               (lazy-eval    (get-lazy-eval other-vars lazy-fun)))
+             (other-vars (caddr r))
+             ;; Build LCO chain
+             (lazy-let-out (get-lazy-lets-out ast ids (length const-proc-vars) succ))
+             (lazy-body    (gen-ast body lazy-let-out))
+             (lazy-fun     (get-lazy-make-closures lazy-body proc-vars other-vars))
+             (lazy-eval    (get-lazy-eval other-vars lazy-fun)))
 
-          (let* (;; Bind cst bindings
-                 (ctx (bind-const-proc-vars ctx const-proc-vars))
-                 ;; Bind others
-                 (id-idx (map (lambda (el) (cons (car el) #f))
-                              (append proc-vars other-vars)))
-                 (ctx (ctx-bind-locals ctx id-idx #t)))
-            (jump-to-version cgc lazy-eval ctx)))))))
+        (let* (;; Bind cst bindings
+               (ctx (bind-const-proc-vars ctx const-proc-vars))
+               ;; Bind others
+               (id-idx (map (lambda (el) (cons (car el) #f))
+                            (append proc-vars other-vars)))
+               (ctx (ctx-bind-locals ctx id-idx #t)))
+          ;;
+          (jump-to-version cgc lazy-eval ctx))))))
 
 ;; Create and return out lazy code object of let/letrec
 ;; Unbind locals, unbox result, and update ctx
