@@ -36,6 +36,8 @@
 (define-macro (string-bold str)
     `(string-append "\033[1m" ,str "\033[0m"))
 
+(define nglobals 0)
+
 ;;--------------------------------------------------------------------------------
 ;; Compiler options
 
@@ -320,14 +322,28 @@
                    (let ((el (car expr)))
                      (if (and (pair? el)
                               (eq? (car el) 'define))
-                        (if (pair? (cadr el))
-                            (table-set! gids (caadr el) (get-global-type el))
-                            (table-set! gids (cadr el)  (get-global-type el))))
+                        (begin
+                          (if (pair? (cadr el))
+                              (table-set! gids (caadr el) (cons nglobals (get-global-type el)))
+                              (table-set! gids (cadr el)  (cons nglobals (get-global-type el))))
+                          (set! nglobals (+ nglobals 1))))
                      (get-gids (cdr expr)))))
 
-              (get-gids content)
+              (define (fix-gids expr)
+                (if (not (pair? expr))
+                    #f
+                    (let ((op (car expr)))
+                      (if (eq? op 'set!)
+                          (let ((r (table-ref gids (cadr expr) #f)))
+                            (if r
+                                (set-cdr! r (make-ctx-tunk))))
+                          (map fix-gids expr)))))
+
+
 
               (let ((exp-content (expand-tl content)))
+                (get-gids exp-content)
+                (fix-gids exp-content)
                 ;(pp content))))
                 ;(pp exp-content))))
                 ;(exec content))))

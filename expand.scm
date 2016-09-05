@@ -347,10 +347,6 @@
          ((cadddr) `(,(CAR) (,(CDR) (,(CDR) (,(CDR) ,@opnd))))))))
 
 (define (expand-set! expr)
-  (let ((r (table-ref gids (cadr expr) #f)))
-     (if r
-         (table-set! gids (cadr expr) #f)))
-
   `(set! ,(cadr expr) ,(expand (caddr expr))))
 
 (define (expand-prim expr)

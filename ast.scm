@@ -490,13 +490,15 @@
     (inlined-cond? (lambda () (ctx-identifier-type ctx identifier))))
 
   (define (gbl-inlined-cond? id)
-    (inlined-cond? (lambda () (table-ref gids id #f))))
+    (inlined-cond? (lambda ()
+                     (let ((r (table-ref gids id #f)))
+                       (and r (cdr r))))))
 
   (make-lazy-code
     (lambda (cgc ctx)
 
       (let ((local  (assoc sym (ctx-env ctx)))
-            (global (table-ref globals sym #f)))
+            (global (table-ref gids sym #f)))
 
         ;;
         (cond ;; Identifier local or global and inlined condition
@@ -608,13 +610,12 @@
 (define (gen-get-globalvar cgc ctx global succ)
 
   (mlet (;; Get variable type if known
-         (r (table-ref gids (car global) #f))
-         (type (or r (make-ctx-tunk)))
+         (type (or (cdr global) (make-ctx-tunk)))
          ;; Get free register (dest)
          (moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
     (apply-moves cgc ctx moves)
     ;; Generate code to get global var from memory
-    (codegen-get-global cgc (cdr global) reg)
+    (codegen-get-global cgc (car global) reg)
     ;; Jump with updated ctx
     (jump-to-version cgc succ (ctx-push ctx type reg))))
 
@@ -630,7 +631,7 @@
          (lazy-set!
            (make-lazy-code
              (lambda (cgc ctx)
-               (let ((gres (table-ref globals id #f)))
+               (let ((gres (table-ref gids id #f)))
                  (if gres
                      (gen-set-globalvar cgc ctx gres succ)
                      (let ((lres (assoc id (ctx-env ctx))))
@@ -660,7 +661,7 @@
 (define gen-set-freevar  (get-non-global-setter gen-get-freevar))
 
 (define (gen-set-globalvar cgc ctx global succ)
-  (mlet ((pos (cdr global))
+  (mlet ((pos (car global))
          (moves/reg/ctx (ctx-get-free-reg ctx succ 1))
          (lval (ctx-get-loc ctx 0)))
     (apply-moves cgc ctx moves)
@@ -678,8 +679,7 @@
   (let* ((identifier (cadr ast))
          (lazy-bind (make-lazy-code
                       (lambda (cgc ctx)
-                        (mlet ((res (table-ref globals identifier)) ;; Lookup in globals
-                               (pos (cdr res))                  ;; Get global pos
+                        (mlet ((pos (car (table-ref gids identifier))) ;; Lookup in globals
                                ;;
                                (moves/reg/ctx (ctx-get-free-reg ctx succ 1))
                                (lvalue (ctx-get-loc ctx 0)))
@@ -687,13 +687,11 @@
                           (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue)
                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))))
          (lazy-val
-           (if (ctx-tclo? (table-ref gids (cadr ast) #f))
+           (if (ctx-tclo? (cdr (table-ref gids (cadr ast))))
                (mlc-lambda-ast (caddr ast) lazy-bind (cadr ast))
                (gen-ast (caddr ast) lazy-bind))))
 
-    (table-set! globals identifier (cons identifier nb-globals))
-    (put-i64 (+ globals-addr (* 8 nb-globals)) ENCODING_VOID)
-    (set! nb-globals (+ nb-globals 1))
+    (put-i64 (+ globals-addr (* 8 (car (table-ref gids (cadr ast))))) ENCODING_VOID)
     lazy-val))
 
 ;;
@@ -2233,7 +2231,8 @@
 
         (define global-opt?
           (and (not (assoc sym (ctx-env ctx)))
-               (ctx-tclo? (table-ref gids sym #f))))
+               (let ((r (table-ref gids sym #f)))
+                 (and r (ctx-tclo? (cdr r))))))
 
         (if global-opt?
             (let ((fn-num (ctime-entries-get sym)))

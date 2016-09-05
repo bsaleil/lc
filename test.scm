@@ -1,4 +1,11 @@
 
+(define foo (lambda () 1))
+
+(define bar (lambda () (set! foo (lambda (a) 100))))
+
+(bar)
+(foo 2)
+
 ;; TODO: pb $$atom sur '() ?
 ;; TODO phase opti pour détecter plus de cst (bindings aux bindings cst)
 ;; TODO: ##set-box! -> cas spécial, c'est un kill
