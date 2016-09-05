@@ -225,7 +225,7 @@
 
 ;;
 ;; CTX INIT FN
-(define (ctx-init-fn stack enclosing-ctx args free-vars global-opt? late-fbinds)
+(define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds)
 
   ;;
   ;; FREE REGS
@@ -235,10 +235,7 @@
              (if (<= (length args) (length args-regs))
                  (list-head args-regs (length args))
                  args-regs))
-           (used
-             (if global-opt?
-                 used-args
-                 (cons '(r . 2) used-args))))
+           (used (cons '(r . 2) used-args)))
       (set-sub all used '())))
 
   ;;
@@ -309,10 +306,7 @@
                     (init-slot-loc-local mem (cdr avail-regs) (+ slot 1) (+ nvar 1)))))))
 
   (define (init-slot-loc-base)
-    (if global-opt?
-        ;; If global optimized call, closure is still on vstack but loc is #f
-        '((1 . #f) (0 m . 0))
-        '((1 r . 2) (0 m . 0))))
+    '((1 r . 2) (0 m . 0)))
 
   ;;
   ;; FS

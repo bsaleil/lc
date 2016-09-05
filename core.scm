@@ -79,7 +79,6 @@
 (define global-ptr #f)
 (define entry-points-locs #f)
 (define codegen-loc-to-x86opnd #f)
-(define ctime-entries-get #f)
 (define atom-node-make #f)
 (define mlc-gambit-call #f)
 (define lazy-repl-call #f)
@@ -1263,13 +1262,7 @@
 
 ;; #### FUNCTION ENTRY
 ;; Generate an entry point
-(define (gen-version-fn ast closure entry-obj lazy-code gen-ctx call-stack generic global-opt-sym)
-
-  (define (label-entry-sym opt?)
-    (if global-opt-sym
-        (string->symbol
-          (string-append "fn_" (symbol->string global-opt-sym) "_" (if opt? "opt_" "")))
-        'fn_entry_))
+(define (gen-version-fn ast closure entry-obj lazy-code gen-ctx call-stack generic)
 
   (define (fn-verbose)
     (print "GEN VERSION FN")
@@ -1280,8 +1273,7 @@
 
   (define (fn-patch label-dest new-version?)
     (cond ((not opt-entry-points)
-             (let ((closure (if global-opt-sym #f closure)))
-               (patch-closure-ep ast closure entry-obj label-dest)))
+           (patch-closure-ep ast closure entry-obj label-dest))
           (generic
            (let ((cctable-loc (- (obj-encoding entry-obj) 1)))
              (patch-generic ast cctable-loc call-stack label-dest)))
@@ -1305,15 +1297,15 @@
                ;; Get destination from jump instruction
                (let ((jmpdest (+ entry-pos (get-i8 (+ entry-pos 1)) 2)))
                  ;; The new version label is a new label built from jmp destination address
-                 (asm-make-label #f (new-sym (label-entry-sym #t)) jmpdest)))
+                 (asm-make-label #f (new-sym 'fn_entry_) jmpdest)))
             ;; First instruction is a jmp rel32
             ((= opcode #xe9)
                (let ((jmpdest (+ entry-pos (get-i32 (+ entry-pos 1)) 5)))
-                 (asm-make-label #f (new-sym (label-entry-sym #t)) jmpdest)))
+                 (asm-make-label #f (new-sym 'fn_entry_) jmpdest)))
             (else
                version-label))))
 
-  (gen-version-* #f lazy-code gen-ctx (label-entry-sym #f) fn-verbose fn-patch fn-codepos fn-opt-label))
+  (gen-version-* #f lazy-code gen-ctx 'fn_entry_ fn-verbose fn-patch fn-codepos fn-opt-label))
 
 
 ;; #### LAZY CODE OBJECT

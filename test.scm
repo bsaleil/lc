@@ -8,18 +8,13 @@
 
 
 
-(define length (lambda (a) ($$atom 100)))
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
- (define proper-length
-   (lambda (l)
-     (letrec ((length (lambda (l n)
-                        (if (($$atom pair?) ($$atom l))
-                            ($$atom 2)
-                            ($$atom 1)))))
-       (($$atom length) ($$atom l) ($$atom 0)))))
- (define foo (lambda (l) (($$atom proper-length) ($$atom l))))
-
-(($$atom foo) '(1 2 3))
+(fib 40)
 
 
 

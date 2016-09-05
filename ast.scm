@@ -341,7 +341,7 @@
                  ;; Set!
                  ((eq? 'set! (car ast)) (mlc-set! ast succ))
                  ;; Lambda
-                 ((eq? op 'lambda) (mlc-lambda-ast ast succ #f))
+                 ((eq? op 'lambda) (mlc-lambda-ast ast succ))
                  ;; Begin
                  ((eq? op 'begin) (mlc-begin ast succ))
                  ;; Binding
@@ -716,10 +716,7 @@
                                 (apply-moves cgc ctx moves)
                                 (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue)
                                 (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))))
-               (lazy-val
-                 (if #f;(ctx-tclo? (global-stype (asc-globals-get (cadr ast))))
-                     (mlc-lambda-ast (caddr ast) lazy-bind (cadr ast))
-                     (gen-ast (caddr ast) lazy-bind))))
+               (lazy-val (gen-ast (caddr ast) lazy-bind)))
 
           (put-i64 (+ globals-addr (* 8 (global-pos (asc-globals-get (cadr ast))))) ENCODING_VOID)
           lazy-val))))
@@ -873,14 +870,14 @@
             (else
                (fn-generator closure lazy-prologue stack #f))))))
 
-(define (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params global-opt)
+(define (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params)
 
   ;; Generator used to generate function code waiting for runtime data
   ;; First create function entry ctx
   ;; Then generate function prologue code
   (define (fn-generator closure prologue stack generic?)
-    (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) global-opt fvars-late)))
-      (gen-version-fn ast closure entry-obj prologue ctx stack generic? global-opt)))
+    (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) fvars-late)))
+      (gen-version-fn ast closure entry-obj prologue ctx stack generic?)))
   ;;
   (define stub-labels  (create-fn-stub ast fn-num fn-generator))
   (define stub-addr    (asm-label-pos (list-ref stub-labels 0)))
@@ -926,7 +923,7 @@
 
   (letrec (;; Closure unique number
            (fn-num (new-fn-num))
-           (entry-obj (get-entry-obj ast ctx fn-num free '() all-params #f))
+           (entry-obj (get-entry-obj ast ctx fn-num free '() all-params))
            (entry-obj-loc (- (obj-encoding entry-obj) 1)))
 
       ;; Add association fn-num -> entry point
@@ -937,19 +934,15 @@
 
 ;;
 ;; Init non constant lambda
-(define (init-entry ast ctx fvars-imm fvars-late global-opt)
+(define (init-entry ast ctx fvars-imm fvars-late)
 
   ;; Flatten list of param (include rest param)
   (define all-params (flatten (cadr ast)))
 
   (letrec (;; Closure unique number
            (fn-num (new-fn-num))
-           (entry-obj (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params global-opt))
+           (entry-obj (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params))
            (entry-obj-loc (- (obj-encoding entry-obj) 1)))
-
-      ;; Add compile time identity if known
-      (if global-opt
-          (ctime-entries-set global-opt fn-num))
 
       ;; Add association fn-num -> entry point
       (asc-globalfn-entry-add fn-num entry-obj)
@@ -981,7 +974,7 @@
                   (loop (cdr ids) imm (cons id cst))
                   (loop (cdr ids) (cons id imm) cst))))))))
 
-(define (mlc-lambda-ast ast succ global-opt)
+(define (mlc-lambda-ast ast succ)
 
   (make-lazy-code
     (lambda (cgc ctx)
@@ -1000,7 +993,7 @@
                   (not (member 'cst (identifier-flags identifier)))))
               fvars-imm))
 
-      (let ((entry-obj (init-entry ast ctx fvars-imm '() global-opt)))
+      (let ((entry-obj (init-entry ast ctx fvars-imm '())))
 
         ;; Gen code to create closure
         (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
@@ -1291,7 +1284,7 @@
             (x86-mov cgc (x86-mem offset-header clo-reg) (x86-rax)))
 
           ;; Write entry
-          (let* ((entry-obj (init-entry ast ctx (append free-cst free-imm) free-late #f))
+          (let* ((entry-obj (init-entry ast ctx (append free-cst free-imm) free-late))
                  (entry-obj-loc (- (obj-encoding entry-obj) 1)))
             (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
             (x86-mov cgc (x86-mem offset-entry clo-reg) (x86-rax)))
@@ -2963,21 +2956,6 @@
       (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding cctable) 1)) stub-addr)
              (loop (+ i 1)))
       cctable)))
-
-;;-----------------------------------------------------------------------------
-;; Compile time lookup optimization
-
-;; This table associates an entry point to each symbol representing a global
-;; immutable function.
-;; The entry point is the stub address or the machine code address if opt-entry-points is #f
-;; The entry point is the cc-table if opt-entry-points is #t
-(define ctime-entries (make-table))
-;; Set the entry point for given id
-(define (ctime-entries-set id fn-num)
-  (table-set! ctime-entries id fn-num))
-;; Get currently known entry point from given id
-(define (ctime-entries-get id)
-  (table-ref ctime-entries id #f))
 
 ;-----------------------------------------------------------------------------
 
