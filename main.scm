@@ -36,8 +36,6 @@
 (define-macro (string-bold str)
     `(string-append "\033[1m" ,str "\033[0m"))
 
-(define nglobals 0)
-
 ;;--------------------------------------------------------------------------------
 ;; Compiler options
 
@@ -301,49 +299,9 @@
         ((= (length files) 1)
           (copy-with-declare (car files) "./tmp")
         (let ((content (c#expand-program "./tmp"))); (read-all (open-input-file (car files)))))
-              (define (get-global-type g)
-                (cond ((symbol? (cadr g))
-                          (cond ((symbol?  (caddr g)) (make-ctx-tunk)) ;; TODO si globale connue, mettre type
-                                ((integer? (caddr g)) (make-ctx-tint))
-                                ((flonum?  (caddr g)) (make-ctx-tflo))
-                                ((char?    (caddr g)) (make-ctx-tcha))
-                                ((string?  (caddr g)) (make-ctx-tstr))
-                                ((boolean? (caddr g)) (make-ctx-tboo))
-                                ((eq? (caaddr g) 'lambda) (make-ctx-tclo))
-                                ((pair? (caddr g)) (make-ctx-tunk))
-                                (else (error "NYI"))))
-                      ((pair? (cadr g)) (make-ctx-tclo))
-                      (else (error "NYI"))))
-
-              ;; TODO
-              (define (get-gids expr)
-                (if (null? expr)
-                   #t
-                   (let ((el (car expr)))
-                     (if (and (pair? el)
-                              (eq? (car el) 'define))
-                        (begin
-                          (if (pair? (cadr el))
-                              (table-set! gids (caadr el) (cons nglobals (get-global-type el)))
-                              (table-set! gids (cadr el)  (cons nglobals (get-global-type el))))
-                          (set! nglobals (+ nglobals 1))))
-                     (get-gids (cdr expr)))))
-
-              (define (fix-gids expr)
-                (if (not (pair? expr))
-                    #f
-                    (let ((op (car expr)))
-                      (if (eq? op 'set!)
-                          (let ((r (table-ref gids (cadr expr) #f)))
-                            (if r
-                                (set-cdr! r (make-ctx-tunk))))
-                          (map fix-gids expr)))))
-
-
 
               (let ((exp-content (expand-tl content)))
-                (get-gids exp-content)
-                (fix-gids exp-content)
+                (analyses-find-global-types! exp-content)
                 ;(pp content))))
                 ;(pp exp-content))))
                 ;(exec content))))

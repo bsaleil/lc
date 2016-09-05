@@ -92,15 +92,6 @@
 
 ;;-----------------------------------------------------------------------------
 
-;; Global ids
-;; Contains a list of global ids with id,position
-;; ex. '((foo 1) (bar 2) (fun 3))
-(define globals (make-table))
-(define nb-globals 0)
-(define gids (make-table)) ;; TODO : merge with 'globals'
-
-;;-----------------------------------------------------------------------------
-
 ;; Object life
 (define LIFE_MOVE  0)
 (define LIFE_STILL 5)

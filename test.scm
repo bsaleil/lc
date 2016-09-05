@@ -1,4 +1,21 @@
 
+;; Globals:
+;; Add asc and type
+;; (asc-global-add ...)
+;; (asc-global-get ...)
+;; (global-pos ...)
+;; (global-stype ...)
+
+;; mlc-define:
+;; If it's a lambda, it's a cst lambda:
+;; -> do not generate code
+;; -> init entry and set stype of global
+;; mlc-call:
+;; -> check in global asc for stype and identity
+;; mlc-identifier:
+;; -> if closure does not exist, create it, store it in global slot, and put it
+
+
 ;; Liveness: terminer le travail
 ;; Letrec: attention aux lates !function
 ;; Letrec: détecter constantes récursives (a <-> b) (bindings aux bindings cst)

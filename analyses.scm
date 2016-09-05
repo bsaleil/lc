@@ -1,9 +1,64 @@
 
 ;;-----------------------------------------------------------------------------
+;; Globals passes
+;;-----------------------------------------------------------------------------
+
+(define (analyses-find-global-types! expr)
+
+  (define (find-types! expr)
+    (if (null? expr)
+       #t
+       (let ((el (car expr)))
+         (if (and (pair? el)
+                  (eq? (car el) 'define))
+             (let* ((id (if (pair? (cadr el))
+                            (caadr el)
+                            (cadr el)))
+                    (global (asc-globals-get id))
+                    (stype (get-global-type el)))
+               (if (and global
+                        (not (ctx-type-teq? stype (global-stype global))))
+                   (global-stype-set! global #f)
+                   (asc-globals-add id stype))))
+         (find-types! (cdr expr)))))
+
+   (define (remove-mutables! expr)
+     (if (or (not (pair? expr))
+             (eq? (car expr) 'quote))
+         #f
+         (let ((op (car expr)))
+           (if (eq? op 'set!)
+               (let ((r (asc-globals-get (cadr expr))))
+                 (if r
+                     (global-stype-set! r (make-ctx-tunk))))
+               (begin
+                 (remove-mutables! (car expr))
+                 (remove-mutables! (cdr expr)))))))
+
+  (define (get-global-type g)
+    (cond ((symbol? (cadr g))
+              (cond ((symbol?  (caddr g)) (make-ctx-tunk))
+                    ((integer? (caddr g)) (make-ctx-tint))
+                    ((flonum?  (caddr g)) (make-ctx-tflo))
+                    ((char?    (caddr g)) (make-ctx-tcha))
+                    ((string?  (caddr g)) (make-ctx-tstr))
+                    ((boolean? (caddr g)) (make-ctx-tboo))
+                    ((eq? (caaddr g) 'lambda) (make-ctx-tclo))
+                    ((pair? (caddr g)) (make-ctx-tunk))
+                    (else (error "NYI"))))
+          ((pair? (cadr g)) (make-ctx-tclo))
+          (else (error "NYI"))))
+
+  (find-types! expr)
+  (remove-mutables! expr))
+
+
+
+;;-----------------------------------------------------------------------------
 ;; Liveness
 ;;-----------------------------------------------------------------------------
 
-;; TODO: values with same name as existing var
+;; TODO: values with same name as existing var -> alpha conversion
 
 (define (ast-use node locals)
   (let ((op (car node)))

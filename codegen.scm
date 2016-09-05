@@ -262,10 +262,6 @@
 ;; Define
 ;;-----------------------------------------------------------------------------
 
-(define (codegen-define-id cgc)
-  (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_VOID))
-  (x86-mov cgc (x86-mem (* 8 nb-globals) global-ptr) (x86-rax)))
-
 (define (codegen-define-bind cgc fs pos reg lvalue)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lvalue)))
