@@ -468,40 +468,6 @@
              0)))
 
 ;;-----------------------------------------------------------------------------
-;; Interned symbols
-;; TODO
-
-(define sym-space-len 100000)
-(define sym-space (make-mcb sym-space-len))
-(define sym-alloc (##foreign-address sym-space))
-
-;; Allocate a new symbol and return encoded qword
-(define (alloc-symbol sym)
-
-  (define (copy-sym str pos offset)
-    ;; SI =pos, combler avec des 0 pour avoir la bonne adresse (alignee sur 8)
-    (if (= pos (string-length str))
-       #f
-       (begin (put-u8 (+ sym-alloc offset) (char->integer (string-ref str pos)))
-              (copy-sym str (+ pos 1) (+ offset 1)))))
-
-  (let* ((addr sym-alloc)
-         (str  (symbol->string sym))
-         (len  (string-length str))
-         (nbbytes (arithmetic-shift (bitwise-and (+ len 8) (bitwise-not 7)) -3)))
-
-    ;; Write header
-    (put-i64 sym-alloc (mem-header (+ 2 nbbytes) STAG_SYMBOL))
-    ;; Write encoded length
-    (put-i64 (+ sym-alloc 8) (* 4 len))
-    ;; Copy sym
-    (copy-sym str 0 16)
-    ;; Update sym alloc
-    (set! sym-alloc (+ sym-alloc 16 (* 8 nbbytes)))
-    ;; Return tagged symbol qword
-    (+ addr TAG_MEMOBJ)))
-
-;;-----------------------------------------------------------------------------
 
 ;; Create label used by generated machine code to call c-define functions
 (define-macro (set-cdef-label! label sym c-code)

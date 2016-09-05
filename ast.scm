@@ -560,7 +560,7 @@
          (fn-num (ctx-tclo-fn-num stype))
          (entry-obj (asc-globalfn-entry-get fn-num)))
     (apply-moves cgc ctx moves)
-    (gen-closure cgc reg #f #f entry-obj '())
+    (gen-closure cgc reg #f entry-obj '())
     (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg (car local)))))
 
 ;; TODO: merge with gen-get-localvar, it's now the same code!
@@ -625,9 +625,17 @@
          (type (or (global-stype global) (make-ctx-tunk)))
          ;; Get free register (dest)
          (moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
+
     (apply-moves cgc ctx moves)
-    ;; Generate code to get global var from memory
-    (codegen-get-global cgc (global-pos global) reg)
+
+    (if (and (ctx-tclo? type)
+             (ctx-tclo-fn-num type))
+      (let* ((fn-num (ctx-tclo-fn-num type))
+             (entry-obj (asc-globalfn-entry-get fn-num)))
+        (gen-closure cgc reg ctx entry-obj '()))
+      ;; Generate code to get global var from memory
+      (codegen-get-global cgc (global-pos global) reg))
+
     ;; Jump with updated ctx
     (jump-to-version cgc succ (ctx-push ctx type reg))))
 
@@ -688,23 +696,33 @@
 ;;
 (define (mlc-define ast succ)
 
-  (let* ((identifier (cadr ast))
-         (lazy-bind (make-lazy-code
-                      (lambda (cgc ctx)
-                        (mlet ((pos (global-pos (asc-globals-get identifier))) ;; Lookup in globals
-                               ;;
-                               (moves/reg/ctx (ctx-get-free-reg ctx succ 1))
-                               (lvalue (ctx-get-loc ctx 0)))
-                          (apply-moves cgc ctx moves)
-                          (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue)
-                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))))
-         (lazy-val
-           (if (ctx-tclo? (global-stype (asc-globals-get (cadr ast))))
-               (mlc-lambda-ast (caddr ast) lazy-bind (cadr ast))
-               (gen-ast (caddr ast) lazy-bind))))
+  (let ((global (asc-globals-get (cadr ast))))
+    (if (and global (ctx-tclo? (global-stype global)))
+        ;;
+        (let* ((identifier (cadr ast))
+               (fn-num (init-entry-cst (caddr ast) '() (ctx-init))))
+          (ctx-tclo-fn-num-set! (global-stype global) fn-num)
+          (make-lazy-code
+            (lambda (cgc ctx)
+              (jump-to-version cgc succ (ctx-push ctx #f #f)))))
+        ;;
+        (let* ((identifier (cadr ast))
+               (lazy-bind (make-lazy-code
+                            (lambda (cgc ctx)
+                              (mlet ((pos (global-pos (asc-globals-get identifier))) ;; Lookup in globals
+                                     ;;
+                                     (moves/reg/ctx (ctx-get-free-reg ctx succ 1))
+                                     (lvalue (ctx-get-loc ctx 0)))
+                                (apply-moves cgc ctx moves)
+                                (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue)
+                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))))
+               (lazy-val
+                 (if #f;(ctx-tclo? (global-stype (asc-globals-get (cadr ast))))
+                     (mlc-lambda-ast (caddr ast) lazy-bind (cadr ast))
+                     (gen-ast (caddr ast) lazy-bind))))
 
-    (put-i64 (+ globals-addr (* 8 (global-pos (asc-globals-get (cadr ast))))) ENCODING_VOID)
-    lazy-val))
+          (put-i64 (+ globals-addr (* 8 (global-pos (asc-globals-get (cadr ast))))) ENCODING_VOID)
+          lazy-val))))
 
 ;;
 ;; Make lazy code from LAMBDA
@@ -987,12 +1005,12 @@
         ;; Gen code to create closure
         (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
           (apply-moves cgc ctx moves)
-          (gen-closure cgc reg ctx ast entry-obj fvars-ncst)
+          (gen-closure cgc reg ctx entry-obj fvars-ncst)
           ;;
           (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg)))))))
 
 ;;
-(define (gen-closure cgc reg ctx ast entry-obj fvars-ncst)
+(define (gen-closure cgc reg ctx entry-obj fvars-ncst)
 
   (define entry-obj-loc (- (obj-encoding entry-obj) 1))
 
@@ -1892,7 +1910,6 @@
       ;; Build args lco chain with type checks
       (check-types types (cdr ast) lazy-primitive ast cst-infos))))
 
-;; TODO WIP
 (define (get-prim-cst-infos prim ast)
 
   (define (get-prim-cst-infos-h args cst-positions curr-pos)
@@ -2241,16 +2258,18 @@
       ;; Op is an atom node with a symbol
       (let ((sym (atom-node-val op)))
 
-        (define global-opt?
-          (and (not (assoc sym (ctx-env ctx)))
-               (let ((r (asc-globals-get sym)))
-                 (and r (ctx-tclo? (global-stype r))))))
+        ;; TODO: wip
+        (define global-opt
+          (let ((global (asc-globals-get sym)))
+            (if (and global
+                     (not (assoc sym (ctx-env ctx)))
+                     (ctx-tclo? (global-stype global))
+                     (ctx-tclo-fn-num (global-stype global)))
+                (ctx-tclo-fn-num (global-stype global))
+                #f)))
 
-        (if global-opt?
-            (let ((fn-num (ctime-entries-get sym)))
-              (if (not fn-num) (error "Internal error (call-get-eploc)"))
-              fn-num)
-            (ctx-get-eploc ctx sym)))
+        (or (ctx-get-eploc ctx sym)
+            global-opt))
       #f))
 
 ;;

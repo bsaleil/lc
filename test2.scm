@@ -1438,19 +1438,25 @@
     (if (null? program)
         (proc (reverse lst) env)
         (let ((source (car program)))
+          (pp "AV")
+          (begin-defs-expr? source)
+          (pp "AP")
           (cond ((macro-expr? source env)
+                 (pp "O")
                  (parse-prog
                   (cons (macro-expand source env) (cdr program))
                   env
                   lst
                   proc))
                 ((begin-defs-expr? source)
+                 (pp "I")
                  (parse-prog
                   (append (begin-defs-body source) (cdr program))
                   env
                   lst
                   proc))
                 ((include-expr? source)
+                 (pp "L")
                  (if *ptree-port* (display "  " *ptree-port*))
                  (let ((x (file->sources*
                            (include-filename source)
@@ -1459,12 +1465,14 @@
                    (if *ptree-port* (newline *ptree-port*))
                    (parse-prog (append x (cdr program)) env lst proc)))
                 ((define-macro-expr? source env)
+                 (pp "M")
                  (if *ptree-port*
                      (begin
                        (display "  \"macro\"" *ptree-port*)
                        (newline *ptree-port*)))
                  (parse-prog (cdr program) (add-macro source env) lst proc))
                 ((declare-expr? source)
+                 (pp "Z")
                  (if *ptree-port*
                      (begin
                        (display "  \"decl\"" *ptree-port*)
@@ -1475,6 +1483,7 @@
                   lst
                   proc))
                 ((define-expr? source env)
+                 (pp "U")
                  (let* ((var** (definition-variable source))
                         (var* (source-code var**))
                         (var (env-lookup-var env var* var**)))
@@ -1496,6 +1505,7 @@
                             lst)
                       proc))))
                 ((c-declaration-expr? source)
+                 (pp "G")
                  (if *ptree-port*
                      (begin
                        (display "  \"c-decl\"" *ptree-port*)
@@ -1503,6 +1513,7 @@
                  (add-c-declaration (source-code (cadr (source-code source))))
                  (parse-prog (cdr program) env lst proc))
                 ((c-init-expr? source)
+                 (pp "N")
                  (if *ptree-port*
                      (begin
                        (display "  \"c-init\"" *ptree-port*)
@@ -1510,6 +1521,7 @@
                  (add-c-init (source-code (cadr (source-code source))))
                  (parse-prog (cdr program) env lst proc))
                 (else
+                 (pp "DE")
                  (if *ptree-port*
                      (begin
                        (display "  \"expr\"" *ptree-port*)
@@ -1519,9 +1531,12 @@
                   env
                   (cons (cons (pt source env 'true) env) lst)
                   proc))))))
+
   (if *ptree-port*
       (begin (display "Parsing:" *ptree-port*) (newline *ptree-port*)))
+
   (c-interface-begin module-name)
+
   (parse-prog
    program
    env
@@ -2562,20 +2577,21 @@
 (define (include-expr? source) (mymatch **include-sym 1 source))
 (define (begin-defs-expr? source) (mymatch begin-sym 0 source))
 (define (mymatch keyword size source)
+  (pp "OK")
+
+
   (let ((code (source-code source)))
-    (and (pair? code)
-         (eq? (source-code (car code)) keyword)
-         (let ((length (proper-length (cdr code))))
-           (if length
-               (or (if (> size 0) (= length size) (>= length (- size)))
-                   (pt-syntax-error source "Ill-formed special form" keyword))
-               (pt-syntax-error
-                source
-                "Ill-terminated special form"
-                keyword))))))
+   (pp "AV")
+   (pp (proper-length (cdr code)))
+   (pp "AP")
+   (let ((length (proper-length (cdr code))))
+     (if length
+         (pp 1)
+         (pp 2)))))
 (define (proper-length l)
   (define (length l n)
     (cond ((pair? l) (length (cdr l) (+ n 1))) ((null? l) n) (else #f)))
+  (pp l)
   (length l 0))
 (define (proper-definition? source env)
   (let* ((code (source-code source))
@@ -4720,6 +4736,7 @@
   (let* ((dest "program")
          (module-name "program")
          (info-port (if (memq 'verbose opts) (current-output-port) #f))
+
          (result (compile-program
                   source
                   (if target-name target-name (default-target))
@@ -4741,6 +4758,7 @@
           (ptree.begin! info-port)
           (virtual.begin!)
           (select-target! target-name info-port)
+
           (parse-program
            (list (expression->source (wrap-program program) #f))
            (make-global-environment)
@@ -4781,6 +4799,7 @@
           (ptree.end!)
           #t)))
   (let ((successful (with-exception-handling compiler-body)))
+
     (if info-port
         (if successful
             (begin
@@ -11137,58 +11156,7 @@
 (begin
 (declare (standard-bindings) (fixnum) (not safe) (block))
 
-(define (fib n)
-  (if (< n 2)
-      n
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
-
-(define (tak x y z)
-  (if (not (< y x))
-      z
-      (tak (tak (- x 1) y z)
-           (tak (- y 1) z x)
-           (tak (- z 1) x y))))
-
-(define (ack m n)
-  (cond ((= m 0) (+ n 1))
-        ((= n 0) (ack (- m 1) 1))
-        (else (ack (- m 1) (ack m (- n 1))))))
-
-(define (create-x n)
-  (define result (make-vector n))
-  (do ((i 0 (+ i 1)))
-      ((>= i n) result)
-    (vector-set! result i i)))
-
-(define (create-y x)
-  (let* ((n (vector-length x))
-         (result (make-vector n)))
-    (do ((i (- n 1) (- i 1)))
-        ((< i 0) result)
-      (vector-set! result i (vector-ref x i)))))
-
-(define (my-try n)
-  (vector-length (create-y (create-x n))))
-
-(define (go n)
-  (let loop ((repeat 100)
-             (result 0))
-    (if (> repeat 0)
-        (loop (- repeat 1) (my-try n))
-        result)))
-
-(+ (fib 20)
-   (tak 18 12 6)
-   (ack 3 9)
-   (go 200000))
+2
 ))
 
-;-----
-
-(define (pp-asm asm)
-  (if (not (null? asm))
-     (begin (pp (car asm))
-            (pp-asm (cdr asm)))))
-
-(apply ce (list input-source-code 'm68000 'asm))
+(ce input-source-code 'm68000 'asm)

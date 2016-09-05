@@ -6,6 +6,24 @@
 ;; (global-pos ...)
 ;; (global-stype ...)
 
+
+
+(define length (lambda (a) ($$atom 100)))
+
+ (define proper-length
+   (lambda (l)
+     (letrec ((length (lambda (l n)
+                        (if (($$atom pair?) ($$atom l))
+                            ($$atom 2)
+                            ($$atom 1)))))
+       (($$atom length) ($$atom l) ($$atom 0)))))
+ (define foo (lambda (l) (($$atom proper-length) ($$atom l))))
+
+(($$atom foo) '(1 2 3))
+
+
+
+
 ;; mlc-define:
 ;; If it's a lambda, it's a cst lambda:
 ;; -> do not generate code
