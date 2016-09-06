@@ -7,18 +7,6 @@
 ;; (global-stype ...)
 
 
-
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
-
-(fib 40)
-
-
-
-
 ;; mlc-define:
 ;; If it's a lambda, it's a cst lambda:
 ;; -> do not generate code

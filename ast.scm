@@ -876,7 +876,7 @@
   ;; First create function entry ctx
   ;; Then generate function prologue code
   (define (fn-generator closure prologue stack generic?)
-    (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) fvars-late)))
+    (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num)))
       (gen-version-fn ast closure entry-obj prologue ctx stack generic?)))
   ;;
   (define stub-labels  (create-fn-stub ast fn-num fn-generator))
@@ -1200,7 +1200,7 @@
                   (new-const-proc-vars const-proc-vars)
                   (new-proc-vars '()))
         (if (null? l)
-            ;; Fuxed point condition, if there is a change, continue else stop and return
+            ;; Fixed point condition, if there is a change, continue else stop and return
             (if (= (length const-proc-vars)
                    (length new-const-proc-vars))
                 (list new-const-proc-vars new-proc-vars)

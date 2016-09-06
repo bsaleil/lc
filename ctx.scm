@@ -43,21 +43,23 @@
   env       ;; alist which associates a variable symbol to an identifier object
   nb-args   ;; number of arguments of function of the current stack frame
   fs        ;; current frame size
+  fn-num    ;; fn-num of current function
 )
 
 ;(define (make-regalloc-ctx slot-loc free-regs fs)
 ;  (make-ctx #f slot-loc free-regs #f #f fs))
 
 ;; TODO USE IT ! remove all make-ctx which are only copies and use ctx-copy
-(define (ctx-copy ctx #!optional stack slot-loc free-regs free-mems env nb-args fs eploc)
+(define (ctx-copy ctx #!optional stack slot-loc free-regs free-mems env nb-args fs fn-num)
   (make-ctx
-    (or stack     (ctx-stack ctx))
-    (or slot-loc  (ctx-slot-loc ctx))
-    (or free-regs (ctx-free-regs ctx))
+    (or stack      (ctx-stack ctx))
+    (or slot-loc   (ctx-slot-loc ctx))
+    (or free-regs  (ctx-free-regs ctx))
     (or free-mems  (ctx-free-mems ctx))
-    (or env       (ctx-env ctx))
-    (or nb-args   (ctx-nb-args ctx))
-    (or fs        (ctx-fs ctx))))
+    (or env        (ctx-env ctx))
+    (or nb-args    (ctx-nb-args ctx))
+    (or fs         (ctx-fs ctx))
+    (or fn-num     (ctx-fn-num ctx))))
 
 ;; Return ctx that only contains regalloc information
 (define (ctx-rm-regalloc ctx)
@@ -75,7 +77,8 @@
             '()
             '()
             -1
-            0))
+            0
+            #f))
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx types
@@ -225,7 +228,7 @@
 
 ;;
 ;; CTX INIT FN
-(define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds)
+(define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num)
 
   ;;
   ;; FREE REGS
@@ -324,7 +327,8 @@
     '()
     (init-env)
     (length args)
-    (init-fs (length args))))
+    (init-fs (length args))
+    fn-num))
 
 ;; TODO WIP MOVE
 (define (ctx-loc-used ctx loc . excluded-idx)
