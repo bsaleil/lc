@@ -6,6 +6,40 @@
 ;; (global-pos ...)
 ;; (global-stype ...)
 
+;; car/cdr primitive
+
+
+(define (permutations x)
+  (let ((x x)
+        (perms (list x)))
+    (define (P n)
+      (pp "A")
+      (if (> n 1)
+          (do ((j (- n 1) (- j 1)))
+              ((zero? j) (pp n)
+               (P (- n 1)))
+              (P (- n 1))
+              (F n))))
+    (define (F n)
+      (set! x (revloop x n (list-tail x n)))
+      (set! perms (cons x perms)))
+    (define (revloop x n y)
+      (if (zero? n)
+          y
+          (revloop (cdr x)
+                   (- n 1)
+                   (cons (car x) y))))
+    (define (list-tail x n)
+      (if (zero? n)
+          x
+          (list-tail (cdr x) (- n 1))))
+    (P (length x))
+    perms))
+
+;-----
+
+(permutations '(1 2))
+
 
 ;; mlc-define:
 ;; If it's a lambda, it's a cst lambda:

@@ -46,9 +46,6 @@
   fn-num    ;; fn-num of current function
 )
 
-;(define (make-regalloc-ctx slot-loc free-regs fs)
-;  (make-ctx #f slot-loc free-regs #f #f fs))
-
 ;; TODO USE IT ! remove all make-ctx which are only copies and use ctx-copy
 (define (ctx-copy ctx #!optional stack slot-loc free-regs free-mems env nb-args fs fn-num)
   (make-ctx
@@ -228,7 +225,7 @@
 
 ;;
 ;; CTX INIT FN
-(define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num)
+(define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
 
   ;;
   ;; FREE REGS
@@ -254,7 +251,7 @@
           (let* ((id (car ids))
                  (identifier
                    (make-identifier
-                     'local (list slot) '() #f #f)))
+                     'local (list slot) '() #f #f #f)))
             (cons (cons id identifier)
                   (init-env-local-h (cdr ids) (+ slot 1))))))
     (init-env-local-h args 2))
@@ -282,7 +279,10 @@
                              (ctx-identifier-type enclosing-ctx enc-identifier)))
                      (if cst? ;; if cst?, we created a local variable, then don't write cloc
                          #f
-                         (cons 'f nvar)))))
+                         (cons 'f nvar))
+                     (if (and cst? bound-id)
+                         #f
+                         (eq? id bound-id)))))
             (cons (cons id identifier)
                   ;; Update slot and nvar only if we created a real free variable (non const)
                   (if (eq? (identifier-kind identifier) 'local)
@@ -408,10 +408,23 @@
 ;;
 ;;
 (define (ctx-get-eploc ctx id)
+
   (let ((r (assoc id (ctx-env ctx))))
-    (and r
-         (ctx-tclo? (identifier-stype (cdr r)))
-         (ctx-tclo-fn-num (identifier-stype (cdr r))))))
+    (or
+      ;; Constant closure
+      (and r
+           (ctx-tclo? (identifier-stype (cdr r)))
+           (let ((r (ctx-tclo-fn-num (identifier-stype (cdr r)))))
+             (if r
+                 (cons #t r)
+                 #f)))
+      ;; This id
+      (and r
+           (identifier-thisid (cdr r))
+           (let ((r (ctx-fn-num ctx)))
+             (if r
+                 (cons #f r)
+                 #f))))))
 
 ;;
 ;; TODO: change to bind-top
@@ -447,6 +460,7 @@
                                    '()
                                    '(cst)
                                    (make-ctx-tclo cst)
+                                   #f
                                    #f))
                            env)))))
 
@@ -477,6 +491,7 @@
                             '()
                             (list (stack-idx-to-slot ctx (cdr first))))
                         '()
+                        #f
                         #f
                         #f))
                 (gen-env env (cdr id-idx))))))
@@ -1024,6 +1039,7 @@
   flags  ;; list of variable
   stype  ;; ctx type (copied to virtual stack)
   cloc   ;; closure slot if free variable
+  thisid ;;
 )
 
 ;; TODO USE IT ! remove all make-ctx which are only copies and use ctx-copy
@@ -1033,4 +1049,5 @@
     (or sslots (identifier-sslots identifier))
     (or flags  (identifier-flags identifier))
     (or stype  (identifier-stype identifier))
-    (or cloc   (identifier-cloc identifier))))
+    (or cloc   (identifier-cloc identifier))
+    (or thisid (identifier-thisid identifier))))

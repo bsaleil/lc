@@ -870,13 +870,13 @@
             (else
                (fn-generator closure lazy-prologue stack #f))))))
 
-(define (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params)
+(define (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params bound-id)
 
   ;; Generator used to generate function code waiting for runtime data
   ;; First create function entry ctx
   ;; Then generate function prologue code
   (define (fn-generator closure prologue stack generic?)
-    (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num)))
+    (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id)))
       (gen-version-fn ast closure entry-obj prologue ctx stack generic?)))
   ;;
   (define stub-labels  (create-fn-stub ast fn-num fn-generator))
@@ -923,7 +923,7 @@
 
   (letrec (;; Closure unique number
            (fn-num (new-fn-num))
-           (entry-obj (get-entry-obj ast ctx fn-num free '() all-params))
+           (entry-obj (get-entry-obj ast ctx fn-num free '() all-params #f))
            (entry-obj-loc (- (obj-encoding entry-obj) 1)))
 
       ;; Add association fn-num -> entry point
@@ -934,14 +934,14 @@
 
 ;;
 ;; Init non constant lambda
-(define (init-entry ast ctx fvars-imm fvars-late)
+(define (init-entry ast ctx fvars-imm fvars-late bound-id)
 
   ;; Flatten list of param (include rest param)
   (define all-params (flatten (cadr ast)))
 
   (letrec (;; Closure unique number
            (fn-num (new-fn-num))
-           (entry-obj (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params))
+           (entry-obj (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params bound-id))
            (entry-obj-loc (- (obj-encoding entry-obj) 1)))
 
       ;; Add association fn-num -> entry point
@@ -993,7 +993,7 @@
                   (not (member 'cst (identifier-flags identifier)))))
               fvars-imm))
 
-      (let ((entry-obj (init-entry ast ctx fvars-imm '())))
+      (let ((entry-obj (init-entry ast ctx fvars-imm '() #f)))
 
         ;; Gen code to create closure
         (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
@@ -1283,8 +1283,7 @@
             (x86-mov cgc (x86-rax) (x86-imm-int (mem-header clo-size STAG_PROCEDURE clo-life)))
             (x86-mov cgc (x86-mem offset-header clo-reg) (x86-rax)))
 
-          ;; Write entry
-          (let* ((entry-obj (init-entry ast ctx (append free-cst free-imm) free-late))
+          (let* ((entry-obj (init-entry ast ctx (append free-cst free-imm) free-late id))
                  (entry-obj-loc (- (obj-encoding entry-obj) 1)))
             (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
             (x86-mov cgc (x86-mem offset-entry clo-reg) (x86-rax)))
@@ -2258,7 +2257,7 @@
                      (not (assoc sym (ctx-env ctx)))
                      (ctx-tclo? (global-stype global))
                      (ctx-tclo-fn-num (global-stype global)))
-                (ctx-tclo-fn-num (global-stype global))
+                (cons #t (ctx-tclo-fn-num (global-stype global)))
                 #f)))
 
         (or (ctx-get-eploc ctx sym)
@@ -2273,10 +2272,10 @@
   (let* ((lazy-call
           (make-lazy-code
             (lambda (cgc ctx)
-              (let ((fn-num (call-get-eploc ctx (cadr ast))))
+              (let ((fn-id-inf (call-get-eploc ctx (cadr ast))))
                 (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
                 (x86-mov cgc (x86-rsi) (x86-rax)) ;; Move closure in closure reg
-                (gen-call-sequence ast cgc #f #f fn-num)))))
+                (gen-call-sequence ast cgc #f #f (and fn-id-inf (cdr fn-id-inf)))))))
         (lazy-args
           (make-lazy-code
             (lambda (cgc ctx)
@@ -2414,7 +2413,7 @@
   (let* (;; fn-num. Computed when ctx is available
          ;; #f is called function is unknown at compile time
          ;; contains fn-num if called function is known at compile time
-         (fn-num #f)
+         (fn-id-inf #f) ;; (cst? . fn-num) or #f
          ;; Tail call if successor's flags set contains 'ret flag
          (tail? (member 'ret (lazy-code-flags succ)))
          ;; Call arguments
@@ -2430,7 +2429,7 @@
                (set! ctx (call-save/cont cgc ctx ast succ tail? (+ (length args) 1) #f))
 
                ;; Move args to regs or stack following calling convention
-               (set! ctx (call-prep-args cgc ctx ast (length args) fn-num))
+               (set! ctx (call-prep-args cgc ctx ast (length args) (and fn-id-inf (car fn-id-inf))))
 
                ;; Shift args and closure for tail call
                (call-tail-shift cgc ctx ast tail? (length args))
@@ -2442,7 +2441,7 @@
                          (ctx-init)
                          (append (list-head (ctx-stack ctx) (length (cdr ast)))
                                  (list (make-ctx-tclo) (make-ctx-tret))))))
-                 (gen-call-sequence ast cgc call-ctx (length args) fn-num)))))
+                 (gen-call-sequence ast cgc call-ctx (length args) (and fn-id-inf (cdr fn-id-inf)))))))
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list ATX_CLO) (list (car ast)) lazy-call ast)))
 
@@ -2451,9 +2450,9 @@
       (lambda (cgc ctx)
 
         ;; Check if the identity of called function is available
-        (set! fn-num (call-get-eploc ctx (car ast)))
+        (set! fn-id-inf (call-get-eploc ctx (car ast)))
 
-        (if fn-num
+        (if (and fn-id-inf (car fn-id-inf))
             (jump-to-version
               cgc
               (gen-ast-l (cdr ast) lazy-call)
