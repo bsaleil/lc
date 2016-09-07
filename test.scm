@@ -1,44 +1,33 @@
 
-;; Globals:
-;; Add asc and type
-;; (asc-global-add ...)
-;; (asc-global-get ...)
-;; (global-pos ...)
-;; (global-stype ...)
+(define foo
+   (lambda ()
+     (letrec ((tmp1 (lambda (n)
+                   (if (($$atom >) ($$atom n) ($$atom 1))
+                       (letrec ((tmp2
+                                 (lambda (j) (($$atom tmp1) ($$atom 0)))))
+                         (($$atom tmp2) ($$atom 1)))
+                       ($$atom #f)))))
+       (($$atom tmp1) ($$atom 2)))))
+(($$atom foo))
 
-;; car/cdr primitive
 
 
-(define (permutations x)
-  (let ((x x)
-        (perms (list x)))
-    (define (P n)
-      (pp "A")
-      (if (> n 1)
-          (do ((j (- n 1) (- j 1)))
-              ((zero? j) (pp n)
-               (P (- n 1)))
-              (P (- n 1))
-              (F n))))
-    (define (F n)
-      (set! x (revloop x n (list-tail x n)))
-      (set! perms (cons x perms)))
-    (define (revloop x n y)
-      (if (zero? n)
-          y
-          (revloop (cdr x)
-                   (- n 1)
-                   (cons (car x) y))))
-    (define (list-tail x n)
-      (if (zero? n)
-          x
-          (list-tail (cdr x) (- n 1))))
-    (P (length x))
-    perms))
 
-;-----
 
-(permutations '(1 2))
+;(i)
+;Point fixe:
+;Pour chaque binding !cst
+;S'il a pas de free mais des lates,
+;on l'ajoute à la liste des possibles
+;
+;(ii)
+;new-possibles = '()
+;pour chaque id de possible
+;si toutes ses lates sont dans possibles, on l'ajoute au new-possible
+;sinon on l'ignore
+;si len(new-possibles) != len(new-possibles), (ii)
+
+
 
 
 ;; mlc-define:

@@ -1139,6 +1139,7 @@
   (define (group-bindings ctx)
     (mlet ((proc/other      (group-proc-others ctx ids bindings))
            (const-proc/proc (group-const-proc proc))
+           (const-proc/proc (group-recursive-const-proc const-proc proc))
            (proc            (proc-vars-insert-pos proc (map car const-proc))))
         (list proc const-proc other)))
 
@@ -1213,6 +1214,33 @@
                      (length all-free))
                   (loop2 (cdr l) (cons proc-var new-const-proc-vars) new-proc-vars)
                   (loop2 (cdr l) new-const-proc-vars (cons proc-var new-proc-vars))))))))
+
+  ;; Use and refine the result of group-const-proc
+  ;; Fixed point to find recursively const procedures in bindigs refering others const bindings
+  (define (group-recursive-const-proc const-proc-vars proc-vars)
+
+    ;; Init fixed point set is all proc-vars with no imm free (only cst and late)
+    (define const-init
+      (keep (lambda (el)
+              (null? (cadr (caddr el)))) ;; No imm free vars, only late
+            proc-vars))
+
+    (let loop ((const-set const-init))
+      ;; Compute new set, only keep binding if all of its late vars
+      ;; are members of const-set
+      (let ((new-const-set
+              (keep (lambda (el)
+                      (let ((late-ids (caddr (caddr el))))
+                        (= (length late-ids)
+                           (length (set-inter late-ids (map car const-set))))))
+                    const-set)))
+        ;; Fixed point condition, if there is a change, continue else stop and return
+        (if (= (length const-set)
+               (length new-const-set))
+            (list (append new-const-set
+                          const-proc-vars)
+                  (set-sub proc-vars new-const-set '()))
+            (loop new-const-set)))))
 
   ;; ---------------------------------------------------------------------------
   ;; LAZY CODE OBJECTS
@@ -1346,7 +1374,8 @@
             ctx
             (let* ((free-inf (caddr (car l)))
                    (free-late (caddr free-inf))
-                   (fn-num (init-entry-cst (cadr (car l)) free-late ctx)))
+                   (free-cst (car free-inf))
+                   (fn-num (init-entry-cst (cadr (car l)) (append free-cst free-late) ctx)))
               (loop (cdr l)
                     (ctx-cst-fnnum-set! ctx (caar l) fn-num)))))))
 
