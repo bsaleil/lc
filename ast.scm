@@ -40,18 +40,6 @@
         (println "!!! ERROR : " ,err)
         (exit 1))))
 
-;; Generate primitive types lists from types pattern (used in 'primitives' set)
-(define-macro (prim-types . args)
-  (define (list-head l n)
-    (if (= n 0)
-       '()
-       (cons (car l)
-             (list-head (cdr l) (- n 1)))))
-  (if (= (length args) (+ (car args) 1))
-     `(list (list ,(car args) ,@(cdr args)))
-     `(cons (list ,(car args) ,@(list-head (cdr args) (car args)))
-            (prim-types ,@(list-tail args (+ (car args) 1))))))
-
 ;; Multiple bindings let
 ;; ex: (let ((a/b/c (foo))) (println a b c))
 ;;     -> (let ((#sym (foo))
@@ -215,58 +203,69 @@
 ;;-----------------------------------------------------------------------------
 ;; Primitives
 
+(define (primitive-get sym)
+  (assoc sym primitives))
+(define (primitive-sym prim)
+  (car prim))
+(define (primitive-rettype prim)
+  (cadr prim))
+(define (primitive-nbargs prim)
+  (caddr prim))
+(define (primitive-argtypes prim)
+  (cdddr prim))
+
 ;; Primitives: name, nb args min, nb args max, args types, cst positions to check
 (define primitives `(
-  (car                 1 ,ATX_PAI)
-  (cdr                 1 ,ATX_PAI)
-  (eq?                 2 ,ATX_ALL ,ATX_ALL)
-  (char=?              2 ,ATX_CHA ,ATX_CHA)
-  (zero?               1 ,ATX_INT)
-  (not                 1 ,ATX_ALL)
-  (set-car!            2 ,ATX_PAI ,ATX_ALL)
-  (set-cdr!            2 ,ATX_PAI ,ATX_ALL)
-  (cons                2 ,ATX_ALL ,ATX_ALL)
-  (vector-length       1 ,ATX_VEC)
-  (vector-ref          2 ,ATX_VEC ,ATX_INT)
-  (char->integer       1 ,ATX_CHA)
-  (integer->char       1 ,ATX_INT)
-  (string-ref          2 ,ATX_STR ,ATX_INT)
-  (string-set!         3 ,ATX_STR ,ATX_INT ,ATX_CHA)
-  (vector-set!         3 ,ATX_VEC ,ATX_INT ,ATX_ALL)
-  (string-length       1 ,ATX_STR)
-  (exit                0)
-  (make-vector         2 ,ATX_INT ,ATX_ALL)
-  (make-string         2 ,ATX_INT ,ATX_CHA)
-  (eof-object?         1 ,ATX_ALL)
-  (symbol->string      1 ,ATX_SYM)
-  (current-output-port 0)
-  (current-input-port  0)
+  (car                 ,ATX_UNK 1 ,ATX_PAI)
+  (cdr                 ,ATX_UNK 1 ,ATX_PAI)
+  (eq?                 ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL)
+  (char=?              ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA)
+  (zero?               ,ATX_BOO 1 ,ATX_INT)
+  (not                 ,ATX_BOO 1 ,ATX_ALL)
+  (set-car!            ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL)
+  (set-cdr!            ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL)
+  (cons                ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL)
+  (vector-length       ,ATX_INT 1 ,ATX_VEC)
+  (vector-ref          ,ATX_UNK 2 ,ATX_VEC ,ATX_INT)
+  (char->integer       ,ATX_INT 1 ,ATX_CHA)
+  (integer->char       ,ATX_CHA 1 ,ATX_INT)
+  (string-ref          ,ATX_CHA 2 ,ATX_STR ,ATX_INT)
+  (string-set!         ,ATX_VOI 3 ,ATX_STR ,ATX_INT ,ATX_CHA)
+  (vector-set!         ,ATX_VOI 3 ,ATX_VEC ,ATX_INT ,ATX_ALL)
+  (string-length       ,ATX_INT 1 ,ATX_STR)
+  (exit                ,ATX_VOI 0)
+  (make-vector         ,ATX_VEC 2 ,ATX_INT ,ATX_ALL)
+  (make-string         ,ATX_STR 2 ,ATX_INT ,ATX_CHA)
+  (eof-object?         ,ATX_BOO 1 ,ATX_ALL)
+  (symbol->string      ,ATX_STR 1 ,ATX_SYM)
+  (current-output-port ,ATX_OPO 0)
+  (current-input-port  ,ATX_IPO 0)
   ;; These primitives are inlined during expansion but still here to check args and/or build lambda
-  (number?             1 ,ATX_ALL)
-  (real?               1 ,ATX_ALL)
-  (eqv?                2 ,ATX_ALL ,ATX_ALL)
+  (number?             ,ATX_BOO 1 ,ATX_ALL)
+  (real?               ,ATX_BOO 1 ,ATX_ALL)
+  (eqv?                ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL)
   ;;
-  (##fx+               2 ,ATX_ALL ,ATX_ALL)
-  (##fx-               2 ,ATX_ALL ,ATX_ALL)
-  (##fx*               2 ,ATX_ALL ,ATX_ALL)
-  (##fx+?              2 ,ATX_ALL ,ATX_ALL)
-  (##fx-?              2 ,ATX_ALL ,ATX_ALL)
-  (##fx*?              2 ,ATX_ALL ,ATX_ALL)
-  (##fl+               2 ,ATX_ALL ,ATX_ALL)
-  (##fl-               2 ,ATX_ALL ,ATX_ALL)
-  (##fl*               2 ,ATX_ALL ,ATX_ALL)
-  (##fixnum->flonum    1 ,ATX_ALL)
-  (##mem-allocated?    1 ,ATX_ALL)
-  (##subtyped?         1 ,ATX_ALL)
-  (##box               1 ,ATX_ALL)
-  (##unbox             1 ,ATX_ALL)
-  (##set-box!          2 ,ATX_ALL ,ATX_ALL)))
+  ;(##fx+               ,ATX_INT 2 ,ATX_ALL ,ATX_ALL)
+  ;(##fx-               ,ATX_INT 2 ,ATX_ALL ,ATX_ALL)
+  ;(##fx*               ,ATX_INT 2 ,ATX_ALL ,ATX_ALL)
+  ;(##fx+?              2 ,ATX_ALL ,ATX_ALL)
+  ;(##fx-?              2 ,ATX_ALL ,ATX_ALL)
+  ;(##fx*?              2 ,ATX_ALL ,ATX_ALL)
+  ;(##fl+               2 ,ATX_ALL ,ATX_ALL)
+  ;(##fl-               2 ,ATX_ALL ,ATX_ALL)
+  ;(##fl*               2 ,ATX_ALL ,ATX_ALL)
+  (##fixnum->flonum    ,ATX_FLO 1 ,ATX_ALL)
+  (##mem-allocated?    ,ATX_BOO 1 ,ATX_ALL)
+  (##subtyped?         ,ATX_BOO 1 ,ATX_ALL)
+  (##box               ,ATX_BOX 1 ,ATX_ALL)
+  (##unbox             ,ATX_UNK 1 ,ATX_ALL)
+  (##set-box!          ,ATX_VOI 2 ,ATX_ALL ,ATX_ALL)))
 
-(define (assert-p-nbargs prim ast)
-  (let ((infos (cdr (assoc prim primitives))))
-    (assert (or (not (car infos)) ;; nb args and types are not fixed
+(define (assert-p-nbargs sym ast)
+  (let ((prim (primitive-get sym)))
+    (assert (or (not (primitive-nbargs prim))
                 (and (= (length (cdr ast))
-                        (car infos))))
+                        (primitive-nbargs prim))))
             ERR_WRONG_NUM_ARGS)))
 
 ;;-----------------------------------------------------------------------------
@@ -312,7 +311,7 @@
                                     (ast (append ast (list (list cop-node)))))
                                (gen-ast ast succ)))
                            ;; Inlined primitive
-                           ((assoc val primitives) (mlc-primitive val ast succ))
+                           ((primitive-get val) (mlc-primitive val ast succ))
                            ;; List
                            ((eq? val 'list)
                               (mlc-list-p ast succ))
@@ -529,11 +528,11 @@
               (global
                 (gen-get-globalvar cgc ctx global succ))
               ;; Primitive
-              ((assoc sym primitives) =>
+              ((primitive-get sym) =>
                  (lambda (r)
                    (let ((ast
                            ;; primitive with fixed number of args
-                           (let* ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x))))))
+                           (let* ((args (build-list (primitive-nbargs r) (lambda (x) (string->symbol (string-append "arg" (number->string x))))))
                                   (args-nodes (map atom-node-make args)))
                              `(lambda ,args (,ast ,@args-nodes)))))
                      (jump-to-version cgc (gen-ast ast succ) ctx))))
@@ -1868,13 +1867,27 @@
         (else
            (mlc-primitive-d prim ast succ))))
 
+
+;(define (gen-primitive ...)
+;
+;  (let ((codegen-fun (GET_CODEGEN_FUN))
+;        (fs (ctx-fs ctx))
+;        (locs (build-list nb-opnds
+;                          (lambda (n) (ctx-get-loc ctx n))))
+;        (args (append (list cgc fs prim reg)
+;                      locs)))
+;
+;    (apply codegen-fun args)
+;    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nb-opnds) GET_RET_T reg))))
+
+
 (define (mlc-primitive-d prim ast succ)
 
   ;; Assert primitive nb args
   (assert-p-nbargs prim ast)
 
   ;;
-  (let* ((cst-infos '()) ;;TODO wip (get-prim-cst-infos prim ast))
+  (let* ((cst-infos '())
          (lazy-primitive
            (cond
              ((eq? prim 'exit) (get-lazy-error ""))
@@ -1921,10 +1934,10 @@
                        ((vector-length string-length)            (prim-x-length       cgc ctx reg succ cst-infos prim))
                        (else (error "Unknown primitive"))))))))))
 
-    (let* ((primitive (assoc prim primitives))
+    (let* ((primitive (primitive-get prim))
            ;; Get list of types required by this primitive
-           (types (if (cadr primitive)
-                      (cddr primitive)
+           (types (if (primitive-nbargs primitive)
+                      (primitive-argtypes primitive)
                       (build-list (length (cdr ast)) (lambda (el) ctx-tall?)))))
 
       (assert (= (length types)
@@ -1933,30 +1946,6 @@
 
       ;; Build args lco chain with type checks
       (check-types types (cdr ast) lazy-primitive ast cst-infos))))
-
-(define (get-prim-cst-infos prim ast)
-
-  (define (get-prim-cst-infos-h args cst-positions curr-pos)
-    (if (or (null? args)
-            (null? cst-positions))
-        '()
-        (if (eq? curr-pos (car cst-positions))
-            (if (and (atom-node? (car args))
-                     (let ((v (atom-node-val (car args))))
-                       (or (integer? v)
-                           (boolean? v)
-                           (char?    v)
-                           (null?    v))))
-              (cons (cons curr-pos (atom-node-val (car args)))
-                    (get-prim-cst-infos-h (cdr args) (cdr cst-positions) (+ curr-pos 1)))
-              (get-prim-cst-infos-h (cdr args) (cdr cst-positions) (+ curr-pos 1)))
-            (get-prim-cst-infos-h (cdr args) cst-positions (+ curr-pos 1)))))
-
-  (let ((primitive (assoc prim primitives)))
-    (get-prim-cst-infos-h
-      (cdr ast)
-      (cadddr (cdr primitive))
-      0)))
 
 ;; Build lazy objects chain of 'args' list
 ;; and insert type check for corresponding 'types'
