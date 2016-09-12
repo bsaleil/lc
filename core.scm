@@ -124,6 +124,7 @@
 ;; NOTE: we need to reorganize 'primitives' data structure in ast.scm
 ;; to replace ATX_* uses by symbols uses to identify types (e.g. in ctx-type-teq?)
 (define ATX_ALL (make-ctx-tall)) ; Represents all ctx types
+(define ATX_NUM (make-ctx-tnum)) ; Represents number types
 (define ATX_UNK (make-ctx-tunk))
 (define ATX_CHA (make-ctx-tcha))
 (define ATX_VOI (make-ctx-tvoi))
@@ -1517,12 +1518,9 @@
  (let ((lazy-error
           (make-lazy-code
              (lambda (cgc ctx)
-               (pp "FAIL TEST")
-               (pp ctx-type)
-               (pp ast)
-                (if (or (ctx-tflo? ctx-type) (ctx-tint? ctx-type))
-                  (gen-error cgc ERR_NUMBER_EXPECTED)
-                  (gen-error cgc (ERR_TYPE_EXPECTED ctx-type)))))))
+               (if (or (ctx-tflo? ctx-type) (ctx-tint? ctx-type))
+                   (gen-error cgc ERR_NUMBER_EXPECTED)
+                   (gen-error cgc (ERR_TYPE_EXPECTED ctx-type)))))))
    (gen-dyn-type-test ctx-type stack-idx succ lazy-error ast)))
 
 ;; Create lazy code for type test of stack slot (stack-idx)

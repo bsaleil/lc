@@ -108,7 +108,8 @@
 (define ctx-type-ctors `())
 
 ;; Define all used ctx-types
-(def-ctx-type all     #f)
+(def-ctx-type all     #f) ;; Special type used for primitives
+(def-ctx-type number  #f) ;; Special type used for primitives
 (def-ctx-type unknown #f)
 (def-ctx-type char    #f)
 (def-ctx-type void    #f)

@@ -203,63 +203,62 @@
 ;;-----------------------------------------------------------------------------
 ;; Primitives
 
-(define (primitive-get sym)
-  (assoc sym primitives))
-(define (primitive-sym prim)
-  (car prim))
-(define (primitive-rettype prim)
-  (cadr prim))
-(define (primitive-nbargs prim)
-  (caddr prim))
-(define (primitive-argtypes prim)
-  (cdddr prim))
+(define (primitive-get sym)         (assoc sym primitives))
+(define (primitive-sym prim)        (list-ref  prim 0))
+(define (primitive-codegen prim)    (list-ref  prim 1))
+(define (primitive-rettype prim)    (list-ref  prim 2))
+(define (primitive-nbargs prim)     (list-ref  prim 3))
+(define (primitive-argtypes prim)   (list-tail prim 4))
 
 ;; Primitives: name, nb args min, nb args max, args types, cst positions to check
+;; TODO: remove or add ?/! from codegen-p functions
 (define primitives `(
-  (car                 ,ATX_UNK 1 ,ATX_PAI)
-  (cdr                 ,ATX_UNK 1 ,ATX_PAI)
-  (eq?                 ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL)
-  (char=?              ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA)
-  (zero?               ,ATX_BOO 1 ,ATX_INT)
-  (not                 ,ATX_BOO 1 ,ATX_ALL)
-  (set-car!            ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL)
-  (set-cdr!            ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL)
-  (cons                ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL)
-  (vector-length       ,ATX_INT 1 ,ATX_VEC)
-  (vector-ref          ,ATX_UNK 2 ,ATX_VEC ,ATX_INT)
-  (char->integer       ,ATX_INT 1 ,ATX_CHA)
-  (integer->char       ,ATX_CHA 1 ,ATX_INT)
-  (string-ref          ,ATX_CHA 2 ,ATX_STR ,ATX_INT)
-  (string-set!         ,ATX_VOI 3 ,ATX_STR ,ATX_INT ,ATX_CHA)
-  (vector-set!         ,ATX_VOI 3 ,ATX_VEC ,ATX_INT ,ATX_ALL)
-  (string-length       ,ATX_INT 1 ,ATX_STR)
-  (exit                ,ATX_VOI 0)
-  (make-vector         ,ATX_VEC 2 ,ATX_INT ,ATX_ALL)
-  (make-string         ,ATX_STR 2 ,ATX_INT ,ATX_CHA)
-  (eof-object?         ,ATX_BOO 1 ,ATX_ALL)
-  (symbol->string      ,ATX_STR 1 ,ATX_SYM)
-  (current-output-port ,ATX_OPO 0)
-  (current-input-port  ,ATX_IPO 0)
-  ;; These primitives are inlined during expansion but still here to check args and/or build lambda
-  (number?             ,ATX_BOO 1 ,ATX_ALL)
-  (real?               ,ATX_BOO 1 ,ATX_ALL)
-  (eqv?                ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL)
-  ;;
-  ;(##fx+               ,ATX_INT 2 ,ATX_ALL ,ATX_ALL)
-  ;(##fx-               ,ATX_INT 2 ,ATX_ALL ,ATX_ALL)
-  ;(##fx*               ,ATX_INT 2 ,ATX_ALL ,ATX_ALL)
-  ;(##fx+?              2 ,ATX_ALL ,ATX_ALL)
-  ;(##fx-?              2 ,ATX_ALL ,ATX_ALL)
-  ;(##fx*?              2 ,ATX_ALL ,ATX_ALL)
-  ;(##fl+               2 ,ATX_ALL ,ATX_ALL)
-  ;(##fl-               2 ,ATX_ALL ,ATX_ALL)
-  ;(##fl*               2 ,ATX_ALL ,ATX_ALL)
-  (##fixnum->flonum    ,ATX_FLO 1 ,ATX_ALL)
-  (##mem-allocated?    ,ATX_BOO 1 ,ATX_ALL)
-  (##subtyped?         ,ATX_BOO 1 ,ATX_ALL)
-  (##box               ,ATX_BOX 1 ,ATX_ALL)
-  (##unbox             ,ATX_UNK 1 ,ATX_ALL)
-  (##set-box!          ,ATX_VOI 2 ,ATX_ALL ,ATX_ALL)))
+  ;; Symbol            Codegen-function         Return-type Nb-args Args-type
+  (car                 ,codegen-p-cxr           ,ATX_UNK 1 ,ATX_PAI)
+  (cdr                 ,codegen-p-cxr           ,ATX_UNK 1 ,ATX_PAI)
+  (cons                ,codegen-p-cons          ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL)
+  (eq?                 #f                       ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL)
+  (char=?              #f                       ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA)
+  (zero?               #f                       ,ATX_BOO 1 ,ATX_NUM)
+  (not                 ,codegen-p-not           ,ATX_BOO 1 ,ATX_ALL)
+  (set-car!            ,codegen-p-set-cxr!      ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL)
+  (set-cdr!            ,codegen-p-set-cxr!      ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL)
+  (cons                #f                       ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL)
+  (vector-length       ,codegen-p-vector-length ,ATX_INT 1 ,ATX_VEC)
+  (vector-ref          ,codegen-p-vector-ref    ,ATX_UNK 2 ,ATX_VEC ,ATX_INT)
+  (char->integer       ,codegen-p-ch<->int      ,ATX_INT 1 ,ATX_CHA)
+  (integer->char       ,codegen-p-ch<->int      ,ATX_CHA 1 ,ATX_INT)
+  (string-ref          ,codegen-p-string-ref    ,ATX_CHA 2 ,ATX_STR ,ATX_INT)
+  (string-set!         ,codegen-p-string-set!   ,ATX_VOI 3 ,ATX_STR ,ATX_INT ,ATX_CHA)
+  (vector-set!         ,codegen-p-vector-set!   ,ATX_VOI 3 ,ATX_VEC ,ATX_INT ,ATX_ALL)
+  (string-length       ,codegen-p-string-length ,ATX_INT 1 ,ATX_STR)
+  (exit                #f ,ATX_VOI 0)
+  (make-vector         ,codegen-p-make-vector   ,ATX_VEC 2 ,ATX_INT ,ATX_ALL)
+  (make-string         ,codegen-p-make-string   ,ATX_STR 2 ,ATX_INT ,ATX_CHA)
+  (eof-object?         ,codegen-p-eof-object?   ,ATX_BOO 1 ,ATX_ALL)
+  (symbol->string      ,codegen-p-symbol->string ,ATX_STR 1 ,ATX_SYM)
+  (current-output-port #f ,ATX_OPO 0)
+  (current-input-port  #f ,ATX_IPO 0)
+  ;;; These primitives are inlined during expansion but still here to check args and/or build lambda
+  (number?             #f ,ATX_BOO 1 ,ATX_ALL)
+  (real?               #f ,ATX_BOO 1 ,ATX_ALL)
+  (eqv?                #f ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL)
+  ;;;
+  ;;(##fx+               ,ATX_INT 2 ,ATX_ALL ,ATX_ALL)
+  ;;(##fx-               ,ATX_INT 2 ,ATX_ALL ,ATX_ALL)
+  ;;(##fx*               ,ATX_INT 2 ,ATX_ALL ,ATX_ALL)
+  ;;(##fx+?              2 ,ATX_ALL ,ATX_ALL)
+  ;;(##fx-?              2 ,ATX_ALL ,ATX_ALL)
+  ;;(##fx*?              2 ,ATX_ALL ,ATX_ALL)
+  ;;(##fl+               2 ,ATX_ALL ,ATX_ALL)
+  ;;(##fl-               2 ,ATX_ALL ,ATX_ALL)
+  ;;(##fl*               2 ,ATX_ALL ,ATX_ALL)
+  ;(##fixnum->flonum    ,ATX_FLO 1 ,ATX_ALL)
+  ;(##mem-allocated?    ,codegen-p-mem-allocated? ,ATX_BOO 1 ,ATX_ALL)
+  ;(##subtyped?         ,codegen-p-subtyped? ,ATX_BOO 1 ,ATX_ALL)
+  (##box               ,codegen-p-box ,ATX_BOX 1 ,ATX_ALL)
+  (##unbox             ,codegen-p-unbox ,ATX_UNK 1 ,ATX_ALL)
+  (##set-box!          ,codegen-p-set-box ,ATX_VOI 2 ,ATX_ALL ,ATX_ALL)))
 
 (define (assert-p-nbargs sym ast)
   (let ((prim (primitive-get sym)))
@@ -1537,327 +1536,19 @@
 ;;-----------------------------------------------------------------------------
 ;; PRIMITIVES
 
-;; primitive not
-(define (prim-not cgc ctx reg succ cst-infos)
-  (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-not cgc (ctx-fs ctx) reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg))))
-
-;; primitive eq?
-(define (prim-eq? cgc ctx reg succ cst-infos)
-;; NOTE: if inlined-if-cond? is #t, reg register is uselessly freed
-
-  (define inlined-if-cond? (member 'cond (lazy-code-flags succ)))
-
-  (let* ((lcst (assoc 0 cst-infos))
-         (rcst (assoc 1 cst-infos))
-         (tright (if rcst (literal->ctx-type (cdr rcst)) (ctx-get-type ctx 0)))
-         (lright (if rcst (cdr rcst) (ctx-get-loc ctx 0)))
-         (tleft
-           (if lcst
-               (literal->ctx-type (cdr lcst))
-               (if rcst
-                   (ctx-get-type ctx 0)
-                   (ctx-get-type ctx 1))))
-         (lleft
-           (if lcst
-               (cdr lcst)
-               (if rcst
-                   (ctx-get-loc ctx 0)
-                   (ctx-get-loc ctx 1))))
-         (n-pop (count (list lcst rcst) not)))
-
-    (if (and (not (ctx-tunk? tleft))
-             (not (ctx-tunk? tright))
-             (not (ctx-type-teq? tleft tright)))
-        ;; Both types are known and !=
-        (if inlined-if-cond?
-            ;; Then if it's an if cond, jump directly to false branch
-            (let ((lco-false (lazy-code-lco-false succ)))
-              (jump-to-version cgc lco-false (ctx-pop-n ctx n-pop)))
-            ;; Then if it's not an if cond, result is #f
-            (begin
-              (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int (obj-encoding #f)))
-              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tboo) reg))))
-        ;; Both types are not known
-        (begin
-          (codegen-eq? cgc (ctx-fs ctx) reg lleft lright lcst rcst inlined-if-cond?)
-          (let ((ctx
-                  (if inlined-if-cond?
-                      (ctx-pop-n ctx n-pop) ;; if it's an if inlined condition, no push required
-                      (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tboo) reg))))
-            (if inlined-if-cond?
-                ((lazy-code-generator succ) cgc ctx x86-jne)
-                (jump-to-version cgc succ ctx)))))))
-
-;; primitive number?
-(define (prim-number? cgc ctx reg succ cst-infos)
-
-  (define (get-lazy-res r)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (codegen-set-bool cgc r reg)
-        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg)))))
-
-  (let* ((lazy-flo (gen-dyn-type-test ATX_FLO 0 (get-lazy-res #t) (get-lazy-res #f) #f))
-         (lazy-fix (gen-dyn-type-test ATX_INT 0 (get-lazy-res #t) lazy-flo #f)))
-    (jump-to-version cgc lazy-fix ctx)))
-
-;; primitives car & cdr
-(define (prim-cxr cgc ctx reg succ cst-infos op)
-  (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-car/cdr cgc (ctx-fs ctx) op reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tunk) reg))))
-
-;; primitive eof-object?
-(define (prim-eof-object? cgc ctx reg succ cst-infos)
-  (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-eof? cgc (ctx-fs ctx) reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg))))
-
-;; primitive make-string
-(define (prim-make-string cgc ctx reg succ cst-infos args)
-  (let* ((init-value? (= (length args) 2))
-         (llen (ctx-get-loc ctx (if init-value? 1 0)))
-         (lval (if init-value? (ctx-get-loc ctx 0) #f)))
-    (codegen-make-string cgc (ctx-fs ctx) reg llen lval)
-    (jump-to-version cgc succ (ctx-push (if init-value?
-                                            (ctx-pop-n ctx 2)
-                                            (ctx-pop ctx))
-                                        (make-ctx-tstr)
-                                        reg))))
-
-;; primitive make-vector
-(define (prim-make-vector cgc ctx reg succ cst-infos args)
-  (let* ((init-value? (= (length args) 2))
-         (llen (ctx-get-loc ctx (if init-value? 1 0)))
-         (lval (if init-value? (ctx-get-loc ctx 0) #f)))
-    (if (and (fixnum? (car args))
-             (not (mem-still-required? (* 8 (car args)))))
-        (codegen-make-vector-cst cgc (ctx-fs ctx) reg (car args) lval)
-        (codegen-make-vector cgc (ctx-fs ctx) reg llen lval))
-    (jump-to-version cgc succ (ctx-push (if init-value?
-                                            (ctx-pop-n ctx 2)
-                                            (ctx-pop ctx))
-                                        (make-ctx-tvec)
-                                        reg))))
-
-;; primitive vector-ref
-(define (prim-vector-ref cgc ctx reg succ cst-infos)
-
-  (let* ((poscst (assoc 1 cst-infos))
-         (lidx (if poscst (cdr poscst) (ctx-get-loc ctx 0)))
-         (lvec
-           (if poscst
-               (ctx-get-loc ctx 0)
-               (ctx-get-loc ctx 1)))
-         (n-pop (if poscst 1 2)))
-
-    (codegen-vector-ref cgc (ctx-fs ctx) reg lvec lidx poscst)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tunk) reg))))
-
-;; primitive string-ref
-(define (prim-string-ref cgc ctx reg succ cst-infos)
-
-  (let* ((poscst (assoc 1 cst-infos))
-         (lidx (if poscst (cdr poscst) (ctx-get-loc ctx 0)))
-         (lstr
-           (if poscst
-               (ctx-get-loc ctx 0)
-               (ctx-get-loc ctx 1)))
-         (n-pop (if poscst 1 2)))
-    (codegen-string-ref cgc (ctx-fs ctx) reg lstr lidx poscst)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tcha) reg))))
-
-;; primitive vector-set!
-(define (prim-vector-set! cgc ctx reg succ cst-infos)
-  (let ((lval (ctx-get-loc ctx 0))
-        (lidx (ctx-get-loc ctx 1))
-        (lvec (ctx-get-loc ctx 2)))
-    (codegen-vector-set! cgc (ctx-fs ctx) reg lvec lidx lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 3) (make-ctx-tvoi) reg))))
-
-;; primitive string-set!
-(define (prim-string-set! cgc ctx reg succ cst-infos)
-
-  (let* ((idx-cst (assoc 1 cst-infos))
-         (chr-cst (assoc 2 cst-infos))
-         (lchr (if chr-cst (cdr chr-cst) (ctx-get-loc ctx 0)))
-         (lidx
-           (if idx-cst
-               (cdr idx-cst)
-               (if chr-cst
-                   (ctx-get-loc ctx 0)
-                   (ctx-get-loc ctx 1))))
-         (n-pop (+ (count (list idx-cst chr-cst) not) 1))
-         (lstr (ctx-get-loc ctx (- n-pop 1))))
-    (codegen-string-set! cgc (ctx-fs ctx) reg lstr lidx lchr idx-cst chr-cst)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tvoi) reg))))
-
-;;
-(define (prim-symbol->string cgc ctx reg succ cst-infos)
-  (let* ((lsym  (ctx-get-loc ctx 0)))
-    (codegen-symbol->string cgc (ctx-fs ctx) reg lsym)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tstr) reg))))
-
-;;
-(define (prim-mem-allocated? cgc ctx reg succ cst-infos)
-  (let ((type (ctx-get-type ctx 0)))
-    (cond ((ctx-tunk? type)
-             (let ((lval (ctx-get-loc ctx 0)))
-               (codegen-mem-allocated? cgc (ctx-fs ctx) reg lval)))
-          ((ctx-type-mem-allocated? type)
-             (codegen-set-bool cgc #t reg))
-          (else
-             (codegen-set-bool cgc #f reg))))
-  (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg)))
-
-;;
-(define (prim-subtyped? cgc ctx reg succ cst-infos)
-  (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-subtyped? cgc (ctx-fs ctx) reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg))))
-
-;;
-(define (prim-fxl-op cgc ctx reg succ cst-infos op cgcfn fx?)
-  (let* ((rcst  (assoc 1 cst-infos))
-         (lcst  (assoc 0 cst-infos))
-         (n-pop  (count (list lcst rcst) not))
-         (lright (or (and rcst (cdr rcst)) (ctx-get-loc ctx 0)))
-         (lleft  (or (and lcst (cdr lcst))
-                     (if rcst
-                         (ctx-get-loc ctx 0)
-                         (ctx-get-loc ctx 1)))))
-    (if (and lcst rcst)
-        (codegen-literal cgc (+ (cdr lcst) (cdr rcst)) reg)
-        (if (eq? cgcfn codegen-num-ii)
-            (cgcfn cgc (ctx-fs ctx) op reg lleft lright lcst rcst #f)
-            (cgcfn cgc (ctx-fs ctx) op reg lleft #f lright #f lcst rcst #f)))
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (if fx? (make-ctx-tint) (make-ctx-tflo)) reg))))
-
-(define (prim-fxl?-op cgc ctx reg succ cst-infos op cgcfn)
-
-  (let* (;; Primitive
-         (rcst  (assoc 1 cst-infos))
-         (lcst  (assoc 0 cst-infos))
-         (n-pop  (count (list lcst rcst) not))
-         (lright (or (and rcst (cdr rcst)) (ctx-get-loc ctx 0)))
-         (lleft  (or (and lcst (cdr lcst))
-                     (if rcst
-                         (ctx-get-loc ctx 0)
-                         (ctx-get-loc ctx 1))))
-         ;; Branch generator
-         (generator
-           (lambda (cgc)
-             (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #f)))
-         ;; No overflow, next is succ
-         (lazy-false succ)
-         (ctx-false (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tint) reg))
-         ;; Overflow, next is a new lco
-         (lazy-true
-           (make-lazy-code
-             (lambda (cgc ctx)
-               (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int (obj-encoding #f)))
-               (jump-to-version cgc succ ctx))))
-         (ctx-true (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tboo) reg)))
-
-  (assert (not (and lcst rcst)) "Internal error (prim-fxl-op?)")
-
-  (jump-to-version
-    cgc
-    (mlc-branch x86-jo generator lazy-true lazy-false ctx-true ctx-false)
-    ctx)))
-
-;;
-(define (prim-fixnum->flonum cgc ctx reg succ cst-infos)
-  (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-fixnum->flonum cgc (ctx-fs ctx) reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tflo) reg))))
-
-;;
-(define (prim-box cgc ctx reg succ cst-infos)
-  (let ((lval (ctx-get-loc ctx 0)))
-    (codegen-box cgc (ctx-fs ctx) reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tbox) reg))))
-
-;;
-(define (prim-set-box! cgc ctx reg succ cst-infos)
-  (let ((lval (ctx-get-loc ctx 0))
-        (lbox (ctx-get-loc ctx 1)))
-    (codegen-set-box cgc (ctx-fs ctx) reg lbox lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) (make-ctx-tvoi) reg))))
-
-;;
-(define (prim-unbox cgc ctx reg succ cst-infos)
-  (let ((lbox (ctx-get-loc ctx 0)))
-    (codegen-unbox cgc (ctx-fs ctx) reg lbox)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tunk) reg))))
-
-;; primitives set-car! & set-cdr!
-(define (prim-set-cxr! cgc ctx reg succ cst-infos op)
-
-  (let* ((valcst (assoc 1 cst-infos))
-         (lval  (if valcst (cdr valcst) (ctx-get-loc ctx 0)))
-         (lpair
-           (if valcst
-               (ctx-get-loc ctx 0)
-               (ctx-get-loc ctx 1)))
-         (n-pop (if valcst 1 2)))
-    (codegen-scar/scdr cgc (ctx-fs ctx) op reg lpair lval valcst)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tvoi) reg))))
-
-;; primitives current-input-port & current-output-port
-(define (prim-current-x-port cgc ctx reg succ cst-infos op)
-  (define lazy-out
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (let* ((stag (if (eq? op 'current-input-port) STAG_IPORT STAG_OPORT))
-               (ctx (ctx-set-type ctx 0 stag)))
-          (jump-to-version cgc succ ctx)))))
-  (define lazy-current
-    (let* ((sym (string->symbol (string-append "gambit$$" (symbol->string op))))
-           (node (atom-node-make sym)))
-      (gen-ast (list node) lazy-out)))
-  (jump-to-version cgc lazy-current ctx))
-
-;; primitives char->integer & integer->char
-(define (prim-char<->int cgc ctx reg succ cst-infos op)
-  (let* ((cst-arg (assoc 0 cst-infos))
-         (lval
-          (if cst-arg
-              (cdr cst-arg)
-              (ctx-get-loc ctx 0)))
-         (n-pop (if cst-arg 0 1)))
-    (codegen-ch<->int cgc (ctx-fs ctx) op reg lval cst-arg)
-    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop)
-                                        (if (eq? op 'char->integer)
-                                            (make-ctx-tint)
-                                            (make-ctx-tcha))
-                                        reg))))
-
-;; primitives vector-length & string-length
-(define (prim-x-length cgc ctx reg succ cst-infos op)
-  (let ((lval (ctx-get-loc ctx 0))
-        (codegen-fn
-          (if (eq? op 'vector-length)
-              codegen-vector-length
-              codegen-string-length)))
-    (codegen-fn cgc (ctx-fs ctx) reg lval)
-    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tint) reg))))
-
-;;
-
 (define (mlc-primitive prim ast succ)
   (cond ((and (= (length ast) 2)
               (member prim '(##fx-? ##fl-)))
            (error "NYI atom mlc-primitive 1"))
-          ; (mlc-primitive-d (list op 0 (cadr ast)) succ))
-        ((and (= (length ast) 2)
-              (eq? prim 'zero?))
-           (let ((ast (list (atom-node-make '=)
-                            (cadr ast)
-                            (atom-node-make 0))))
-             (gen-ast ast succ)))
+        ((eq? prim 'exit)
+           (get-lazy-error ""))
+        ;; TODO: this can be removed when = is implemented as a primitive (in primitives set)
+        ;; TODO: zero? will then be handled by prim-p-zero?
+        ((eq? prim 'zero?)
+           (gen-ast (list (atom-node-make '=)
+                          (cadr ast)
+                          (atom-node-make 0))
+                    succ))
         ((and (eq? prim 'make-vector)
               (eq? (length ast) 2))
            (mlc-primitive-d prim (append ast (list (atom-node-make 0))) succ))
@@ -1867,90 +1558,155 @@
         (else
            (mlc-primitive-d prim ast succ))))
 
+(define (gen-primitive cgc ctx succ reg op)
 
-;(define (gen-primitive ...)
-;
-;  (let ((codegen-fun (GET_CODEGEN_FUN))
-;        (fs (ctx-fs ctx))
-;        (locs (build-list nb-opnds
-;                          (lambda (n) (ctx-get-loc ctx n))))
-;        (args (append (list cgc fs prim reg)
-;                      locs)))
-;
-;    (apply codegen-fun args)
-;    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nb-opnds) GET_RET_T reg))))
+  (define inlined-cond? (member 'cond (lazy-code-flags succ)))
 
+  (let* ((prim (primitive-get op))
+        (gen  (primitive-codegen prim))
+        (fs (ctx-fs ctx))
+        (nargs (primitive-nbargs prim))
+        (locs (build-list nargs
+                          (lambda (n) (ctx-get-loc ctx n))))
+        (args (append (list cgc fs op reg inlined-cond?)
+                      (reverse locs)))
+        (rtype (primitive-rettype prim)))
+
+    (apply gen args)
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) rtype reg))))
+
+;;
+;; TODO
+(define (lco-p-number? ast op succ)
+  (define (get-lazy-res r)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1)))
+          (apply-moves cgc ctx moves)
+          (codegen-set-bool cgc r reg)
+          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg))))))
+
+  (let* ((lazy-flo (gen-dyn-type-test ATX_FLO 0 (get-lazy-res #t) (get-lazy-res #f) #f))
+         (lazy-fix (gen-dyn-type-test ATX_INT 0 (get-lazy-res #t) lazy-flo #f)))
+    lazy-fix))
+
+;; TODO wip move
+(define (lco-p-current-x-port ast op succ)
+  (define lazy-out
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (let* ((stag (if (eq? op 'current-input-port) STAG_IPORT STAG_OPORT))
+               (ctx (ctx-set-type ctx 0 stag)))
+          (jump-to-version cgc succ ctx)))))
+  (let* ((sym (string->symbol (string-append "gambit$$" (symbol->string op))))
+         (node (atom-node-make sym)))
+    (gen-ast (list node) lazy-out)))
+
+(define (lco-p-zero? ast op succ)
+  (let ((zero-node (atom-node-make 0))
+        (=-node    (atom-node-make '=)))
+  (gen-ast (list =-node (cadr ast) zero-node)
+           succ)))
+
+(define (lco-p-char=? ast op succ)
+  (let ((node (atom-node-make 'eq?)))
+    (gen-ast (cons node (cdr ast))
+             succ)))
+
+(define (lco-p-eq? ast op succ)
+
+  ;; Inlined if cond eq?
+  (define (lco-eq?-if)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (let ((tl (ctx-get-type ctx 1))
+              (tr (ctx-get-type ctx 0))
+              (ll (ctx-get-loc  ctx 1))
+              (lr (ctx-get-loc  ctx 0))
+              (nctx (ctx-pop-n ctx 2)))
+          (if (and (not (ctx-tunk? tl))
+                   (not (ctx-tunk? tr))
+                   (not (ctx-type-teq? tl tr)))
+              ;; Types are known and !=
+              (jump-to-version cgc (lazy-code-lco-false succ) nctx)
+              ;;
+              (begin
+                (codegen-p-eq? cgc (ctx-fs ctx) 'eq? #f #t ll lr)
+                ((lazy-code-generator succ) cgc nctx x86-jne)))))))
+
+  (define (lco-eq?)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 2))
+               (tl (ctx-get-type ctx 1))
+               (tr (ctx-get-type ctx 0))
+               (ll (ctx-get-loc  ctx 1))
+               (lr (ctx-get-loc  ctx 0))
+               (nctx (ctx-push (ctx-pop-n ctx 2) (make-ctx-tboo) reg)))
+          (apply-moves cgc ctx moves)
+          (if (and (not (ctx-tunk? tl))
+                   (not (ctx-tunk? tr))
+                   (not (ctx-type-teq? tl tr)))
+              ;; Types are known and !=
+              (codegen-set-bool cgc #f reg)
+              ;;
+              (codegen-p-eq? cgc (ctx-fs ctx) 'eq? reg #f ll lr))
+          (jump-to-version cgc succ nctx)))))
+
+
+  (if (member 'cond (lazy-code-flags succ))
+      (lco-eq?-if)
+      (lco-eq?)))
+
+
+;; TODO: move to specific fn in primitives set
+(define (get-other-prim-lco ast primitive succ)
+  (let ((op (primitive-sym primitive)))
+    (case op
+      ((number?) (lco-p-number? ast op succ))
+      ((zero?)   (lco-p-zero?   ast op succ))
+      ((char=?)  (lco-p-char=?  ast op succ))
+      ((eq?)     (lco-p-eq?     ast op succ))
+      ((current-input-port
+        current-output-port)
+                 (lco-p-current-x-port ast op succ))
+      (else (pp op) (error "NYI")))))
 
 (define (mlc-primitive-d prim ast succ)
+
+  ;;
+  (define (get-prim-lco primitive)
+    (if (primitive-codegen primitive)
+        (make-lazy-code
+          (lambda (cgc ctx)
+            (define nb-opnds (length (cdr ast)))
+            (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ nb-opnds)))
+              (apply-moves cgc ctx moves)
+              (gen-primitive cgc ctx succ reg prim))))
+        (get-other-prim-lco ast primitive succ)))
 
   ;; Assert primitive nb args
   (assert-p-nbargs prim ast)
 
   ;;
-  (let* ((cst-infos '())
-         (lazy-primitive
-           (cond
-             ((eq? prim 'exit) (get-lazy-error ""))
-             ((eq? prim 'cons) (mlc-pair succ cst-infos))
-             (else
-               (make-lazy-code
-                 (lambda (cgc ctx)
-                   (define nb-opnds (- (length (cdr ast)) (length cst-infos)))
-                   (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ nb-opnds)))
-                     (apply-moves cgc ctx moves)
-                     ;; TODO: add function in 'primitives' set
-                     (case prim
-                       ((not)               (prim-not            cgc ctx reg succ cst-infos))
-                       ((eq?)               (prim-eq?            cgc ctx reg succ cst-infos))
-                       ((char=?)            (prim-eq?            cgc ctx reg succ cst-infos))
-                       ((number?)           (prim-number?        cgc ctx reg succ cst-infos))
-                       ((car cdr)           (prim-cxr            cgc ctx reg succ cst-infos prim))
-                       ((eof-object?)       (prim-eof-object?    cgc ctx reg succ cst-infos))
-                       ((make-string)       (prim-make-string    cgc ctx reg succ cst-infos (cdr ast)))
-                       ((make-vector)       (prim-make-vector    cgc ctx reg succ cst-infos (cdr ast)))
-                       ((vector-ref)        (prim-vector-ref     cgc ctx reg succ cst-infos))
-                       ((string-ref)        (prim-string-ref     cgc ctx reg succ cst-infos))
-                       ((vector-set!)       (prim-vector-set!    cgc ctx reg succ cst-infos))
-                       ((string-set!)       (prim-string-set!    cgc ctx reg succ cst-infos))
-                       ((symbol->string)    (prim-symbol->string cgc ctx reg succ cst-infos))
-                       ((##fx+)             (prim-fxl-op         cgc ctx reg succ cst-infos '+ codegen-num-ii #t))
-                       ((##fx-)             (prim-fxl-op         cgc ctx reg succ cst-infos '- codegen-num-ii #t))
-                       ((##fx*)             (prim-fxl-op         cgc ctx reg succ cst-infos '* codegen-num-ii #t))
-                       ((##fx+?)            (prim-fxl?-op        cgc ctx reg succ cst-infos '+ codegen-num-ii))
-                       ((##fx-?)            (prim-fxl?-op        cgc ctx reg succ cst-infos '- codegen-num-ii))
-                       ((##fx*?)            (prim-fxl?-op        cgc ctx reg succ cst-infos '* codegen-num-ii))
-                       ((##fl+)             (prim-fxl-op         cgc ctx reg succ cst-infos '+ codegen-num-ff #f))
-                       ((##fl-)             (prim-fxl-op         cgc ctx reg succ cst-infos '- codegen-num-ff #f))
-                       ((##fl*)             (prim-fxl-op         cgc ctx reg succ cst-infos '* codegen-num-ff #f))
-                       ((##fixnum->flonum)  (prim-fixnum->flonum cgc ctx reg succ cst-infos))
-                       ((##mem-allocated?)  (prim-mem-allocated? cgc ctx reg succ cst-infos))
-                       ((##subtyped?)       (prim-subtyped?      cgc ctx reg succ cst-infos))
-                       ((##box)             (prim-box            cgc ctx reg succ cst-infos))
-                       ((##unbox)           (prim-unbox          cgc ctx reg succ cst-infos))
-                       ((##set-box!)        (prim-set-box!       cgc ctx reg succ cst-infos))
-                       ((set-car! set-cdr!)                      (prim-set-cxr!       cgc ctx reg succ cst-infos prim))
-                       ((current-input-port current-output-port) (prim-current-x-port cgc ctx reg succ cst-infos prim))
-                       ((char->integer integer->char)            (prim-char<->int     cgc ctx reg succ cst-infos prim))
-                       ((vector-length string-length)            (prim-x-length       cgc ctx reg succ cst-infos prim))
-                       (else (error "Unknown primitive"))))))))))
+  (let* ((primitive (primitive-get prim))
+         (lazy-primitive (get-prim-lco primitive))
+         ;; Get list of types required by this primitive
+         (types (if (primitive-nbargs primitive)
+                    (primitive-argtypes primitive)
+                    (build-list (length (cdr ast)) (lambda (el) ctx-tall?)))))
 
-    (let* ((primitive (primitive-get prim))
-           ;; Get list of types required by this primitive
-           (types (if (primitive-nbargs primitive)
-                      (primitive-argtypes primitive)
-                      (build-list (length (cdr ast)) (lambda (el) ctx-tall?)))))
+    (assert (= (length types)
+               (length (cdr ast)))
+            "Primitive error")
 
-      (assert (= (length types)
-                 (length (cdr ast)))
-              "Primitive error")
-
-      ;; Build args lco chain with type checks
-      (check-types types (cdr ast) lazy-primitive ast cst-infos))))
+    ;; Build args lco chain with type checks
+    (check-types types (cdr ast) lazy-primitive ast)))
 
 ;; Build lazy objects chain of 'args' list
 ;; and insert type check for corresponding 'types'
 ;; TODO: rename types -> type-tests-fn
-(define (check-types types args succ ast #!optional (cst-infos '()))
+(define (check-types types args succ ast)
 
   (define (check-cst-type type cst)
     (cond
@@ -1965,18 +1721,16 @@
 
     (if (null? types)
         succ
-        (let* ((lazy-next (check-types-h (cdr types) (cdr args) (+ curr-pos 1)))
-               (r (assoc curr-pos cst-infos)))
-          (cond ;;
-                ((or (and r (eq? (car types) ATX_ALL))
-                     (and r (check-cst-type (car types) (cdr r))))
-                   lazy-next)
-                ;;
-                (r
-                   (get-lazy-error "NYI ERROR WRONG TYPE"))
-                ;;
+        (let* ((lazy-next (check-types-h (cdr types) (cdr args) (+ curr-pos 1))))
+          (cond ;; special type all
                 ((eq? (car types) ATX_ALL)
                    (gen-ast (car args) lazy-next))
+                ;; special type number
+                ((eq? (car types) ATX_NUM)
+                   (let* ((lazy-flo (gen-fatal-type-test ATX_FLO 0 lazy-next ast))
+                          (lazy-fix (gen-dyn-type-test   ATX_INT 0 lazy-next lazy-flo ast)))
+                     (gen-ast (car args)
+                              lazy-fix)))
                 ;;
                 (else
                    (gen-ast (car args)
@@ -2865,30 +2619,6 @@
                     (else
                        (jump-to-version cgc (lazy-code-lco-false succ) ctx)))))
           (gen-ast (cadr ast) check)))))
-
-;;
-;; Make lazy code to create pair
-;; Create pair with the too values on top of the stack
-;;
-;; TODO: move in primitives
-(define (mlc-pair succ #!optional (cst-infos '()))
-  (make-lazy-code
-    (lambda (cgc ctx)
-      (mlet ((car-cst (assoc 0 cst-infos))
-             (cdr-cst (assoc 1 cst-infos))
-             (n-pop (count (list car-cst cdr-cst) not))
-             (moves/reg/ctx (ctx-get-free-reg ctx succ n-pop))
-             (lcdr (if cdr-cst (cdr cdr-cst) (ctx-get-loc ctx 0)))
-             (car-idx (if cdr-cst 0 1))
-             (lcar
-               (if car-cst
-                   (cdr car-cst)
-                   (ctx-get-loc ctx car-idx))))
-      (apply-moves cgc ctx moves)
-      (codegen-pair cgc (ctx-fs ctx) reg lcar lcdr car-cst cdr-cst)
-      (jump-to-version cgc
-                       succ
-                       (ctx-push (ctx-pop-n ctx n-pop) (make-ctx-tpai) reg))))))
 
 ;;-----------------------------------------------------------------------------
 

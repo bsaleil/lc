@@ -340,7 +340,7 @@
     (x86-and cgc dest (x86-imm-int 248))
     (x86-shr cgc dest (x86-imm-int 1))))
 
-(define (codegen-mem-allocated? cgc fs reg lval)
+(define (codegen-p-mem-allocated? cgc fs op reg inlined-cond? lval)
   (let ((dest (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval))
         (label-next (asm-make-label #f (new-sym 'next_))))
@@ -352,7 +352,7 @@
     (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
     (x86-label cgc label-next)))
 
-(define (codegen-subtyped? cgc fs reg lval)
+(define (codegen-p-subtyped? cgc fs op reg inlined-cond? lval)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval))
         (label-end (asm-make-label #f (new-sym 'subtyped_end_))))
@@ -381,7 +381,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; box
-(define (codegen-box cgc fs reg lval)
+(define (codegen-p-box cgc fs op reg inlined-cond? lval)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
@@ -396,7 +396,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; unbox
-(define (codegen-unbox cgc fs reg lbox)
+(define (codegen-p-unbox cgc fs op reg inlined-cond? lbox)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opbox (codegen-loc-to-x86opnd fs lbox)))
 
@@ -408,7 +408,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; box-set!
-(define (codegen-set-box cgc fs reg lbox lval)
+(define (codegen-p-set-box cgc fs op reg inlined-cond? lbox lval)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opbox (codegen-loc-to-x86opnd fs lbox))
         (opval (codegen-loc-to-x86opnd fs lval))
@@ -489,7 +489,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Pair
-(define (codegen-pair cgc fs reg lcar lcdr car-cst? cdr-cst?)
+(define (codegen-p-cons cgc fs op reg inlined-cond? lcar lcdr #!optional car-cst? cdr-cst?)
 
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opcar (and (not car-cst?) (codegen-loc-to-x86opnd fs lcar)))
@@ -1065,7 +1065,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; not
-(define (codegen-not cgc fs reg lval)
+(define (codegen-p-not cgc fs op reg inlined-cond? lval)
   (let ((label-done
           (asm-make-label cgc (new-sym 'done)))
         (dest (codegen-reg-to-x86reg reg))
@@ -1086,12 +1086,12 @@
 
 ;;-----------------------------------------------------------------------------
 ;; eq?
-(define (codegen-eq? cgc fs reg lleft lright lcst? rcst? inline-if-cond?)
+(define (codegen-p-eq? cgc fs op reg inlined-cond? lleft lright #!optional lcst? rcst?)
 
   ;; (eq? cst1 cst2) is handled by code expansion
   (assert (not (and lcst? rcst?)) "Internal error (codegen-eq?)")
 
-  (let ((dest (codegen-reg-to-x86reg reg))
+  (let ((dest (and reg (codegen-reg-to-x86reg reg)))
         (label-done (asm-make-label #f (new-sym 'eq?_end_)))
         (lopnd (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
         (ropnd (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
@@ -1114,7 +1114,7 @@
                      (set! lopnd (x86-rax))))
           (x86-cmp cgc lopnd ropnd)))
 
-   (if (not inline-if-cond?)
+   (if (not inlined-cond?)
        (begin
          (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
          (x86-je  cgc label-done)
@@ -1123,7 +1123,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; car/cdr
-(define (codegen-car/cdr cgc fs op reg lval)
+(define (codegen-p-cxr cgc fs op reg inlined-cond? lval)
   (let ((offset
           (if (eq? op 'car)
               (- OFFSET_PAIR_CAR TAG_PAIR)
@@ -1139,7 +1139,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; symbol->string
-(define (codegen-symbol->string cgc fs reg lsym)
+(define (codegen-p-symbol->string cgc fs op reg inlined-cond? lsym)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opsym (codegen-loc-to-x86opnd fs lsym)))
 
@@ -1152,7 +1152,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; set-car!/set-cdr!
-(define (codegen-scar/scdr cgc fs op reg lpair lval val-cst?)
+(define (codegen-p-set-cxr! cgc fs op reg inlined-cond? lpair lval #!optional val-cst?)
   (let ((offset
           (if (eq? op 'set-car!)
               (- OFFSET_PAIR_CAR TAG_PAIR)
@@ -1178,7 +1178,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; eof-object?
-(define (codegen-eof? cgc fs reg lval)
+(define (codegen-p-eof-object? cgc fs op reg inlined-cond? lval)
   (let ((label-end (asm-make-label #f (new-sym 'label-end)))
         (dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
@@ -1195,7 +1195,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; char->integer/integer->char
-(define (codegen-ch<->int cgc fs op reg lval cst?)
+(define (codegen-p-ch<->int cgc fs op reg inlined-cond? lval #!optional cst?)
 
   (let ((dest (codegen-reg-to-x86reg reg)))
 
@@ -1216,7 +1216,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; make-string
-(define (codegen-make-string cgc fs reg llen lval)
+(define (codegen-p-make-string cgc fs op reg inlined-cond? llen lval)
   (let* ((header-word (mem-header 24 STAG_STRING))
          (dest  (codegen-reg-to-x86reg reg))
          (oplen (lambda () (codegen-loc-to-x86opnd fs llen)))
@@ -1266,7 +1266,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; make-vector
-(define (codegen-make-vector cgc fs reg llen lval)
+(define (codegen-p-make-vector cgc fs op reg inlined-cond? llen lval)
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (oplen (lambda () (codegen-loc-to-x86opnd fs llen)))
          (opval (lambda () (if lval (codegen-loc-to-x86opnd fs lval) #f)))
@@ -1334,7 +1334,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; vector/string-length
-(define (codegen-vector-length cgc fs reg lval)
+(define (codegen-p-vector-length cgc fs op reg inlined-cond? lval)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
@@ -1345,7 +1345,7 @@
     (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opval))
     (x86-shr cgc dest (x86-imm-int 9))))
 
-(define (codegen-string-length cgc fs reg lval)
+(define (codegen-p-string-length cgc fs op reg inlined-cond? lval)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
@@ -1359,8 +1359,7 @@
 ;;-----------------------------------------------------------------------------
 ;; vector-ref
 ;; TODO val-cst? -> idx-cst?
-
-(define (codegen-vector-ref cgc fs reg lvec lidx val-cst?)
+(define (codegen-p-vector-ref cgc fs op reg inlined-cond? lvec lidx #!optional val-cst?)
 
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (opvec (codegen-loc-to-x86opnd fs lvec))
@@ -1389,7 +1388,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; string-ref
-(define (codegen-string-ref cgc fs reg lstr lidx idx-cst?)
+(define (codegen-p-string-ref cgc fs op reg inlined-cond? lstr lidx #!optional idx-cst?)
 
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opstr (codegen-loc-to-x86opnd fs lstr))
@@ -1420,7 +1419,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; vector-set!
-(define (codegen-vector-set! cgc fs reg lvec lidx lval)
+(define (codegen-p-vector-set! cgc fs op reg inlined-cond? lvec lidx lval)
 
   (let* ((dest (codegen-reg-to-x86reg reg))
          (opvec (codegen-loc-to-x86opnd fs lvec))
@@ -1454,7 +1453,7 @@
 
 ;;-----------------------------------------------------------------------------
 ;; string-set!
-(define (codegen-string-set! cgc fs reg lstr lidx lchr idx-cst? chr-cst?)
+(define (codegen-p-string-set! cgc fs op reg inlined-cond? lstr lidx lchr #!optional idx-cst? chr-cst?)
 
   (let ((dest (codegen-reg-to-x86reg reg))
         (opstr (lambda () (codegen-loc-to-x86opnd fs lstr)))

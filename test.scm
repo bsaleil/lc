@@ -1,5 +1,15 @@
 
-(println 100)
+;(define gambit$$pp pp)
+
+
+(define (foo a b)
+  (gambit$$pp (zero? a))
+  (gambit$$pp (zero? b)))
+
+(foo 10 0)
+(foo 1 #t)
+
+
 
 
 ;; Liveness: terminer le travail
