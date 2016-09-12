@@ -219,6 +219,9 @@
   (cons                ,codegen-p-cons          ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL)
   (eq?                 #f                       ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL)
   (char=?              #f                       ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA)
+  (quotient            #f                       ,ATX_INT 2 ,ATX_INT ,ATX_INT)
+  (modulo              #f                       ,ATX_INT 2 ,ATX_INT ,ATX_INT)
+  (remainder           #f                       ,ATX_INT 2 ,ATX_INT ,ATX_INT)
   (zero?               #f                       ,ATX_BOO 1 ,ATX_NUM)
   (not                 ,codegen-p-not           ,ATX_BOO 1 ,ATX_ALL)
   (set-car!            ,codegen-p-set-cxr!      ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL)
@@ -321,7 +324,6 @@
                            ;; Type predicate
                            ((type-predicate? val) (mlc-test val ast succ))
                            ;; Operator num
-                           ((member val '(quotient modulo remainder)) (mlc-op-bin ast succ val)) ;; binary operator
                            ((member val '(+ - * < > <= >= = /))       (mlc-op-n ast succ val))   ;; nary operator
                            ;; Operator num
                            ((member val '(FLOAT+ FLOAT- FLOAT* FLOAT/ FLOAT< FLOAT> FLOAT<= FLOAT>= FLOAT=))
@@ -1613,6 +1615,19 @@
     (gen-ast (cons node (cdr ast))
              succ)))
 
+(define (lco-p-binop ast op succ)
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (mlet ((label-div0 (get-label-error ERR_DIVIDE_ZERO))
+             (moves/reg/ctx (ctx-get-free-reg ctx succ 2))
+             (lleft (ctx-get-loc ctx 1))
+             (lright (ctx-get-loc ctx 0)))
+        (apply-moves cgc ctx moves)
+        (codegen-binop cgc (ctx-fs ctx) op label-div0 reg lleft lright)
+        (jump-to-version cgc
+                         succ
+                         (ctx-push (ctx-pop-n ctx 2) (make-ctx-tint) reg))))))
+
 (define (lco-p-eq? ast op succ)
 
   ;; Inlined if cond eq?
@@ -1667,8 +1682,9 @@
       ((zero?)   (lco-p-zero?   ast op succ))
       ((char=?)  (lco-p-char=?  ast op succ))
       ((eq?)     (lco-p-eq?     ast op succ))
-      ((current-input-port
-        current-output-port)
+      ((quotient modulo remainder)
+                 (lco-p-binop   ast op succ))
+      ((current-input-port current-output-port)
                  (lco-p-current-x-port ast op succ))
       (else (pp op) (error "NYI")))))
 
@@ -2374,33 +2390,6 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
-
-;;
-;; Make lazy code from BINARY OPERATOR
-;;
-(define (mlc-op-bin ast succ op)
-  (let ((opnds (cdr ast)))
-    (if (not (= (length opnds) 2))
-      ;; != 2 operands, error
-      (get-lazy-error ERR_WRONG_NUM_ARGS)
-      ;; == 2 operands
-      (let* ((lazy-op
-               (make-lazy-code
-                 (lambda (cgc ctx)
-                   (mlet ((label-div0 (get-label-error ERR_DIVIDE_ZERO))
-                          (moves/reg/ctx (ctx-get-free-reg ctx succ 2))
-                          (lleft (ctx-get-loc ctx 1))
-                          (lright (ctx-get-loc ctx 0)))
-                     (apply-moves cgc ctx moves)
-                     (codegen-binop cgc (ctx-fs ctx) op label-div0 reg lleft lright)
-                     (jump-to-version cgc
-                                      succ
-                                      (ctx-push (ctx-pop-n ctx 2) (make-ctx-tint) reg)))))))
-         ;; Check operands type
-         (check-types (list ATX_INT ATX_INT)
-                      (list (car opnds) (cadr opnds))
-                      lazy-op
-                      ast)))))
 
 ;;
 ;; Make lazy code from N-ARY OPERATOR
