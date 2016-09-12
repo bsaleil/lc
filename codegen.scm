@@ -298,6 +298,20 @@
   (let ((dest  (codegen-reg-to-x86reg reg)))
     (x86-mov cgc dest (x86-mem (* 8 pos) global-ptr))))
 
+;; get free
+;; Get free variable directly from closure.
+(define (codegen-get-free cgc fs reg lclo lvar)
+
+  (let ((copnd (codegen-loc-to-x86opnd fs lclo))
+        (coffset (- (* 8 (+ (cdr lvar) 2)) TAG_MEMOBJ))
+        (dest (codegen-reg-to-x86reg reg)))
+
+  (if (x86-reg? copnd)
+      (x86-mov cgc dest (x86-mem coffset copnd))
+      (begin
+        (x86-mov cgc (x86-rax) copnd) ;; Get closure
+        (x86-mov cgc dest (x86-mem coffset (x86-rax)))))))
+
 ;;-----------------------------------------------------------------------------
 ;; set
 (define (codegen-set-global cgc reg pos lval fs)
@@ -321,30 +335,6 @@
 
     (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) (x86-rax)) opval)
     (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
-
-(define (codegen-subtype cgc fs reg lval)
-  (let ((dest  (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd fs lval)))
-
-    (if (x86-mem? opval)
-        (begin (x86-mov cgc (x86-rax) opval)
-               (set! opval (x86-rax))))
-
-    ;; Get header
-    (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opval))
-    ;; Get stype
-    (x86-and cgc dest (x86-imm-int 248))
-    (x86-shr cgc dest (x86-imm-int 1))))
-
-(define (codegen-fixnum->flonum cgc fs reg lval)
-  (let ((dest  (codegen-reg-to-x86reg reg))
-        (lval  (codegen-loc-to-x86opnd fs lval)))
-
-    (gen-allocation-imm cgc STAG_FLONUM 8)
-
-    (x86-cvtsi2sd cgc (x86-xmm0) lval)
-    (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-xmm0))
-    (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))))
 
 ;;-----------------------------------------------------------------------------
 ;; Values
@@ -1471,6 +1461,31 @@
 ;;-----------------------------------------------------------------------------
 ;; Others
 ;;-----------------------------------------------------------------------------
+
+(define (codegen-subtype cgc fs reg lval)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opval (codegen-loc-to-x86opnd fs lval)))
+
+    (if (x86-mem? opval)
+        (begin (x86-mov cgc (x86-rax) opval)
+               (set! opval (x86-rax))))
+
+    ;; Get header
+    (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opval))
+    ;; Get stype
+    (x86-and cgc dest (x86-imm-int 248))
+    (x86-shr cgc dest (x86-imm-int 1))))
+
+(define (codegen-fixnum->flonum cgc fs reg lval)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (lval  (codegen-loc-to-x86opnd fs lval)))
+
+    (gen-allocation-imm cgc STAG_FLONUM 8)
+
+    (x86-cvtsi2sd cgc (x86-xmm0) lval)
+    (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-xmm0))
+    (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))))
+
 
 (define (codegen-make-vector-cst cgc fs reg len lval)
 

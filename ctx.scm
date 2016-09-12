@@ -46,7 +46,6 @@
   fn-num    ;; fn-num of current function
 )
 
-;; TODO USE IT ! remove all make-ctx which are only copies and use ctx-copy
 (define (ctx-copy ctx #!optional stack slot-loc free-regs free-mems env nb-args fs fn-num)
   (make-ctx
     (or stack      (ctx-stack ctx))
@@ -152,41 +151,6 @@
     ((symbol?  l) (make-ctx-tsym))
     ((flonum?  l) (make-ctx-tflo))
     (else (error "Internal error (literal->ctx-type)"))))
-
-;;-----------------------------------------------------------------------------
-
-;;; TODO public api
-
-(define (ctx-generic ctx)
-  (error "NYI"))
-
-;; Compute and returns moves needed to merge reg alloc from src-ctx to dst-ctx
-(define (ctx-regalloc-merge-moves src-ctx dst-ctx)
-  (define sl-dst (ctx-slot-loc dst-ctx))
-  (define (get-req-moves)
-    (let loop ((sl (ctx-slot-loc src-ctx)))
-      (if (null? sl)
-          '()
-          (let ((first (car sl)))
-            (if (cdr first)
-                (cons
-                  (cons (cdr first)
-                        (cdr (assoc (car first) sl-dst)))
-                  (loop (cdr sl)))
-                (loop (cdr sl)))))))
-  (let* ((req (get-req-moves))
-         (req-clean ;; remove wrong moves (e.g. '(r1 . r1))
-           (foldr (lambda (el r)
-                    (if (equal? (car el) (cdr el))
-                        r
-                        (cons el r)))
-                  '()
-                  req))
-         (moves (steps req-clean))
-         (fs-move
-           (cons 'fs (- (ctx-fs dst-ctx)
-                        (ctx-fs src-ctx)))))
-    (cons fs-move moves)))
 
 ;; CTX IDENTIFIER LOC
 ;; Return best loc for identifier. (Register if available, memory otherwise)
@@ -790,31 +754,6 @@
 ;; if it is preferred register in ctx-get-free-reg (which is the case each time succ lco is a 'ret lco)
 (define return-reg '(r . 8)) ;; TODO move
 
-(define (ctx-get-call-args-moves ctx nb-args cloloc)
-
-  (define clomove (and cloloc (cons cloloc '(r . 2))))
-
-  (define (get-req-moves curr-idx rem-regs moves pushed)
-    (if (< curr-idx 0)
-        (cons (reverse pushed) moves)
-        (let ((loc (ctx-get-loc ctx curr-idx)))
-          (if (null? rem-regs)
-              (get-req-moves (- curr-idx 1) '() moves (cons loc pushed))
-              (get-req-moves
-                (- curr-idx 1)
-                (cdr rem-regs)
-                (cons (cons loc (car rem-regs))
-                      moves)
-                pushed)))))
-
-  (let ((pushed/moves (get-req-moves (- nb-args 1) args-regs '() '())))
-
-    (cons (car pushed/moves)
-          (if clomove
-              (steps (append (cdr pushed/moves) (list clomove)))
-              (steps (cdr pushed/moves))))))
-
-
 ;;
 ;;
 ;;
@@ -946,6 +885,86 @@
     (ctx-env ctx)
     (stack-idx-to-slot ctx stack-idx)))
 
+;;-----------------------------------------------------------------------------
+;; Ctx
+
+;; Identifier object
+(define-type identifier
+  kind   ;; symbol 'free or 'local
+  sslots ;; list of stack slots where the variable is
+  flags  ;; list of variable
+  stype  ;; ctx type (copied to virtual stack)
+  cloc   ;; closure slot if free variable
+  thisid ;;
+)
+
+;; TODO USE IT ! remove all make-ctx which are only copies and use ctx-copy
+(define (identifier-copy identifier #!optional kind sslots flags stype cloc thisid)
+  (make-identifier
+    (or kind   (identifier-kind identifier))
+    (or sslots (identifier-sslots identifier))
+    (or flags  (identifier-flags identifier))
+    (or stype  (identifier-stype identifier))
+    (or cloc   (identifier-cloc identifier))
+    (or thisid (identifier-thisid identifier))))
+
+
+;;-----------------------------------------------------------------------------
+;; Merge code
+;;-----------------------------------------------------------------------------
+
+;; Compute and returns moves needed to merge reg alloc from src-ctx to dst-ctx
+(define (ctx-regalloc-merge-moves src-ctx dst-ctx)
+  (define sl-dst (ctx-slot-loc dst-ctx))
+  (define (get-req-moves)
+    (let loop ((sl (ctx-slot-loc src-ctx)))
+      (if (null? sl)
+          '()
+          (let ((first (car sl)))
+            (if (cdr first)
+                (cons
+                  (cons (cdr first)
+                        (cdr (assoc (car first) sl-dst)))
+                  (loop (cdr sl)))
+                (loop (cdr sl)))))))
+  (let* ((req (get-req-moves))
+         (req-clean ;; remove wrong moves (e.g. '(r1 . r1))
+           (foldr (lambda (el r)
+                    (if (equal? (car el) (cdr el))
+                        r
+                        (cons el r)))
+                  '()
+                  req))
+         (moves (steps req-clean))
+         (fs-move
+           (cons 'fs (- (ctx-fs dst-ctx)
+                        (ctx-fs src-ctx)))))
+    (cons fs-move moves)))
+
+(define (ctx-get-call-args-moves ctx nb-args cloloc)
+
+  (define clomove (and cloloc (cons cloloc '(r . 2))))
+
+  (define (get-req-moves curr-idx rem-regs moves pushed)
+    (if (< curr-idx 0)
+        (cons (reverse pushed) moves)
+        (let ((loc (ctx-get-loc ctx curr-idx)))
+          (if (null? rem-regs)
+              (get-req-moves (- curr-idx 1) '() moves (cons loc pushed))
+              (get-req-moves
+                (- curr-idx 1)
+                (cdr rem-regs)
+                (cons (cons loc (car rem-regs))
+                      moves)
+                pushed)))))
+
+  (let ((pushed/moves (get-req-moves (- nb-args 1) args-regs '() '())))
+
+    (cons (car pushed/moves)
+          (if clomove
+              (steps (append (cdr pushed/moves) (list clomove)))
+              (steps (cdr pushed/moves))))))
+
 ;; TODO rename
 (define (steps required-moves)
 
@@ -1029,26 +1048,3 @@
                    (set-sub req-moves (list move) '())
                    (cons move pending-moves)
                    dst)))))
-
-;;-----------------------------------------------------------------------------
-;; Ctx
-
-;; Identifier object
-(define-type identifier
-  kind   ;; symbol 'free or 'local
-  sslots ;; list of stack slots where the variable is
-  flags  ;; list of variable
-  stype  ;; ctx type (copied to virtual stack)
-  cloc   ;; closure slot if free variable
-  thisid ;;
-)
-
-;; TODO USE IT ! remove all make-ctx which are only copies and use ctx-copy
-(define (identifier-copy identifier #!optional kind sslots flags stype cloc thisid)
-  (make-identifier
-    (or kind   (identifier-kind identifier))
-    (or sslots (identifier-sslots identifier))
-    (or flags  (identifier-flags identifier))
-    (or stype  (identifier-stype identifier))
-    (or cloc   (identifier-cloc identifier))
-    (or thisid (identifier-thisid identifier))))

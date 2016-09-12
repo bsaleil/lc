@@ -481,7 +481,6 @@
 ;;
 ;; Make lazy code from SYMBOL
 ;;
-;; TODO: réécrire: attention la recherche d'id met à jour le ctx
 (define (mlc-identifier sym ast succ)
 
   (define next-is-cond (member 'cond (lazy-code-flags succ)))
@@ -517,12 +516,9 @@
               ((and local
                     (member 'cst (identifier-flags (cdr local))))
                  (gen-closure-from-cst cgc ctx local succ))
-              ;; Identifier is a free variable
-              ((and local (eq? (identifier-kind (cdr local)) 'free))
-                (gen-get-freevar cgc ctx local succ #f))
               ;; Identifier is a local variable
               (local
-                (gen-get-localvar cgc ctx local succ #f))
+                (gen-get-localvar cgc ctx local succ))
               ;; Identifier is a global variable
               (global
                 (gen-get-globalvar cgc ctx global succ))
@@ -559,61 +555,22 @@
     (gen-closure cgc reg #f entry-obj '())
     (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg (car local)))))
 
-;; TODO: merge with gen-get-localvar, it's now the same code!
-(define (gen-get-freevar cgc ctx local succ for-set?)
+(define (gen-get-localvar cgc ctx local succ)
 
-  (let ((loc (ctx-identifier-loc ctx (cdr local)))
-        (type (ctx-identifier-type ctx (cdr local))))
+  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0))
+         (loc (ctx-identifier-loc ctx (cdr local)))
+         (type (ctx-identifier-type ctx (cdr local))))
 
-    (cond ((and for-set?
-                (or (ctx-loc-is-register? loc)
-                    (ctx-loc-is-memory? loc)))
-             (codegen-load-loc cgc (ctx-fs ctx) loc))
-          ((or (ctx-loc-is-register? loc)
-               (ctx-loc-is-memory? loc))
-             (mlet ((moves/reg/nctx (ctx-get-free-reg ctx succ 0)))
-               (apply-moves cgc nctx moves)
-               (apply-moves cgc nctx (list (cons loc reg)))
-               (jump-to-version cgc succ (ctx-push nctx type reg (car local)))))
-          ((ctx-loc-is-freemem? loc)
-             (if for-set?
-                 (let* ((fs (ctx-fs ctx))
-                        (cloc (ctx-get-loc ctx (- (length (ctx-stack ctx)) 2)))
-                        (copnd (codegen-loc-to-x86opnd fs cloc))
-                        (coffset (- (* 8 (+ (cdr loc) 2)) TAG_MEMOBJ)))
-                   (if (x86-reg? copnd)
-                       (x86-mov cgc (x86-rax) (x86-mem coffset copnd))
-                       (begin
-                         (x86-mov cgc (x86-rax) copnd)
-                         (x86-mov cgc (x86-rax) (x86-mem coffset (x86-rax))))))
-                 (mlet ((moves/reg/nctx (ctx-get-free-reg ctx succ 0)))
-                   (apply-moves cgc nctx moves)
-                   (let* ((fs (ctx-fs nctx))
-                          (cloc (ctx-get-loc ctx (- (length (ctx-stack ctx)) 2)))
-                          (copnd (codegen-loc-to-x86opnd fs cloc))
-                          (coffset (- (* 8 (+ (cdr loc) 2)) TAG_MEMOBJ))
-                          (dest (codegen-reg-to-x86reg reg)))
-                     (if (x86-reg? copnd)
-                         (x86-mov cgc dest (x86-mem coffset copnd))
-                         (begin
-                           (x86-mov cgc (x86-rax) copnd) ;; Get closure
-                           (x86-mov cgc dest (x86-mem coffset (x86-rax))))))
-                   (jump-to-version cgc succ (ctx-push nctx type reg (car local)))))))))
+    (apply-moves cgc ctx moves)
 
-;; TODO: + utiliser un appel récursif comme pour gen-get-freevar (??)
-;; TODO coment: si mobject? est vrai, c'est qu'on veut le mobject dans le tmp reg (rax)
-(define (gen-get-localvar cgc ctx local succ for-set?)
+    (if (ctx-loc-is-freemem? loc)
+        ;; It's a free var that is only in closure
+        (let ((lclo (ctx-get-loc ctx (- (length (ctx-stack ctx)) 2))))
+          (codegen-get-free cgc (ctx-fs ctx) reg lclo loc))
+        ;; The variable is in a register or in non closure memory
+        (apply-moves cgc ctx (list (cons loc reg))))
 
-  (let ((loc (ctx-identifier-loc ctx (cdr local)))
-        (type (ctx-identifier-type ctx (cdr local))))
-
-    (if for-set?
-        (codegen-load-loc cgc (ctx-fs ctx) loc)
-        ;;
-        (mlet ((moves/reg/nctx (ctx-get-free-reg ctx succ 0)))
-          (apply-moves cgc nctx moves)
-          (apply-moves cgc nctx (list (cons loc reg)))
-          (jump-to-version cgc succ (ctx-push nctx type reg (car local)))))))
+    (jump-to-version cgc succ (ctx-push ctx type reg (car local)))))
 
 (define (gen-get-globalvar cgc ctx global succ)
 
@@ -650,31 +607,9 @@
                (let ((global (asc-globals-get id)))
                  (if global
                      (gen-set-globalvar cgc ctx global succ)
-                     (let ((lres (assoc id (ctx-env ctx))))
-                       (if lres
-                           (if (eq? (identifier-kind (cdr lres)) 'free)
-                               (gen-set-freevar cgc ctx lres succ)
-                               (gen-set-localvar cgc ctx lres succ))
-                           (error (ERR_UNKNOWN_VAR id))))))))))
+                     (error "Internal error")))))))
 
     (gen-ast (caddr ast) lazy-set!)))
-
-(define (get-non-global-setter get-function)
-  (lambda (cgc ctx local succ)
-
-    ;; Get mobject in tmp register
-    (get-function cgc ctx local #f #t)
-
-    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1))
-           (lval (ctx-get-loc ctx 0))
-           (type (ctx-get-type ctx 0)))
-      (apply-moves cgc ctx moves)
-      (codegen-set-non-global cgc reg lval (ctx-fs ctx))
-      (let ((ctx (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg)))
-        (jump-to-version cgc succ (ctx-set-type ctx local type))))))
-
-(define gen-set-localvar (get-non-global-setter gen-get-localvar))
-(define gen-set-freevar  (get-non-global-setter gen-get-freevar))
 
 (define (gen-set-globalvar cgc ctx global succ)
   (mlet ((pos (global-pos global))
