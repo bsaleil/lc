@@ -193,6 +193,7 @@
 
 (define (repl prog)
 
+  (init-backend)
 
   (println "  _     ____       ")
   (println " | |   / ___|      ")
@@ -200,8 +201,6 @@
   (println " | |__| |___       ")
   (println " |_____\\____| REPL")
   (println "")
-
-  (init)
 
   (let ((lco (lazy-exprs prog lazy-repl-call)))
     (gen-version-first lco (ctx-init)))
@@ -229,7 +228,7 @@
       (set! to-space   init-to-space)
       (##machine-code-block-exec mcb))
 
-  (init)
+  (init-backend)
 
   ;(liveness-prog prog)
   ;(println "--------------- PROG:")
@@ -289,6 +288,8 @@
 
   ;; Set options and get files from cl args
   (define files (parse-args args))
+
+  (init-frontend)
 
   (cond ;; If no files specified then start REPL
         ((null? files)

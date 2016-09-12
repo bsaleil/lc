@@ -860,7 +860,7 @@
     (let ((label (asm-make-label #f (new-sym 'prog_begin))))
       (x86-label cgc label))))
 
-(define (init)
+(define (init-backend)
 
   (init-c)
   (init-code-allocator)
