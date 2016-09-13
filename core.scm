@@ -489,8 +489,7 @@
   (set-cdef-label! label-gambit-call      'gambit_call      "___result = ___CAST(void*,gambit_call);")
   (set-cdef-label! label-do-callback      'do_callback      "___result = ___CAST(void*,do_callback);")
   (set-cdef-label! label-do-callback-fn   'do_callback_fn   "___result = ___CAST(void*,do_callback_fn);")
-  (set-cdef-label! label-do-callback-cont 'do_callback_cont "___result = ___CAST(void*,do_callback_cont);")
-  (set-cdef-label! label-breakpoint       'break_point      "___result = ___CAST(void*,break_point);"))
+  (set-cdef-label! label-do-callback-cont 'do_callback_cont "___result = ___CAST(void*,do_callback_cont);"))
 
 ;;-----------------------------------------------------------------------------
 
@@ -653,7 +652,6 @@
 (define label-do-callback-handler      #f)
 (define label-do-callback-fn-handler   #f)
 (define label-do-callback-cont-handler #f)
-(define label-breakpoint-handler       #f)
 (define label-rt-error-handler         #f)
 (define label-print-msg-handler        #f)
 (define label-print-msg-val-handler    #f)
@@ -796,11 +794,6 @@
     ;; do_callback_cont
     (set! label-do-callback-cont-handler
           (gen-handler cgc 'do_callback_cont_handler label-do-callback-cont))
-    (x86-ret cgc)
-
-    ;; breakpoint
-    (set! label-breakpoint-handler
-          (gen-handler cgc 'breakpoint_handler label-breakpoint))
     (x86-ret cgc)
 
     ;; Runtime error

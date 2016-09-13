@@ -60,5 +60,5 @@
         (cons (car l) (gen-args (cdr l)))))
 
   (if (null? r)
-    ($apply fn args)
-    ($apply fn (gen-args (cons args r)))))
+    (##apply fn args)
+    (##apply fn (gen-args (cons args r)))))

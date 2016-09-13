@@ -257,6 +257,7 @@
     (##box               #f                ,codegen-p-box            ,ATX_BOX 1 ,ATX_ALL                   )
     (##unbox             #f                ,codegen-p-unbox          ,ATX_UNK 1 ,ATX_ALL                   )
     (##set-box!          #f                ,codegen-p-set-box        ,ATX_VOI 2 ,ATX_ALL ,ATX_ALL          )
+    (##gettime-ns        #f                ,codegen-p-gettime-ns     ,ATX_INT 0                            )
     ;; These primitives are inlined during expansion but still here to build lambda
     (real?               #f                #f                        ,ATX_BOO 1 ,ATX_ALL                   )
     (eqv?                #f                #f                        ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          ))))
@@ -291,67 +292,38 @@
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
 
-  (cond ;; Pair
-        ((pair? ast)
-         (let ((op (car ast)))
-           (cond ;; Atom
-                 ((atom-node? ast)
-                    (mlc-atom ast succ))
-                ;; Special
-                ((atom-node? op)
-                   (let ((val (atom-node-val op)))
-                     (cond ;; Gambit call
-                           ((gambit-call? op)
-                              (mlc-gambit-call ast succ #f))
-                           ;; Special
-                           ((member val '(##subtype breakpoint $$sys-clock-gettime-ns)) (mlc-special val ast succ))
-                           ;; TODO
-                           ((and (eq? val 'write-char) (= (length ast) 2))
-                             (let* ((cop-node (atom-node-make 'current-output-port))
-                                    (ast (append ast (list (list cop-node)))))
-                               (gen-ast ast succ)))
-                           ;; Inlined primitive
-                           ((primitive-get val) (mlc-primitive val ast succ))
-                           ;; List
-                           ((eq? val 'list)
-                              (mlc-list-p ast succ))
-                           ;; Vector
-                           ((eq? val 'vector) (mlc-vector-p ast succ))
-                           ;; Apply
-                           ((eq? val '$apply) (mlc-apply ast succ))
-                           ;; Type predicate
-                           ((type-predicate? val) (mlc-test val ast succ))
-                           ;; Operator num
-                           ((member val '(+ - * < > <= >= = /))       (mlc-op-n ast succ val))   ;; nary operator
-                           ;; Operator num
-                           ((member val '(FLOAT+ FLOAT- FLOAT* FLOAT/ FLOAT< FLOAT> FLOAT<= FLOAT>= FLOAT=))
-                              (let* ((generic-op (list->symbol (list-tail (symbol->list val) 5)))
-                                     (opnode (atom-node-make generic-op)))
-                                (gen-ast (cons opnode (cdr ast))
-                                         succ)))
-                           ;; Call
-                           (else (mlc-call ast succ)))))
-                 ; ;; TODO
-                 ;; Quote
-                 ((eq? 'quote (car ast)) (mlc-quote (cadr ast) ast succ))
-                 ;; Set!
-                 ((eq? 'set! (car ast)) (mlc-set! ast succ))
-                 ;; Lambda
-                 ((eq? op 'lambda) (mlc-lambda-ast ast succ))
-                 ;; Begin
-                 ((eq? op 'begin) (mlc-begin ast succ))
-                 ;; Binding
-                 ((eq? op 'let) (mlc-let ast succ)) ;; Also handles let* (let* is a macro)
-                 ((eq? op 'letrec) (mlc-letrec ast succ))
-                 ;; If
-                 ((eq? op 'if) (mlc-if ast succ))
-                 ;; Define
-                 ((eq? op 'define) (mlc-define ast succ))
-                 ;; Call expr
-                 (else (mlc-call ast succ)))))
-        ;; *unknown*
-        (else
-         (error "unknown ast" ast))))
+  (assert (pair? ast) "Internal error")
+
+  (let ((op (car ast)))
+    (cond
+      ;; Atom node
+      ((atom-node? ast) (mlc-atom ast succ))
+      ;; Special forms
+      ((eq? op 'begin)  (mlc-begin ast succ))
+      ((eq? op 'define) (mlc-define ast succ))
+      ((eq? op 'if)     (mlc-if ast succ))
+      ((eq? op 'lambda) (mlc-lambda-ast ast succ))
+      ((eq? op 'let)    (mlc-let ast succ)) ;; Also handles let* (let* is a macro)
+      ((eq? op 'letrec) (mlc-letrec ast succ))
+      ((eq? op 'quote)  (mlc-quote (cadr ast) ast succ))
+      ((eq? op 'set!)   (mlc-set! ast succ))
+      ;; Known operator
+      ((atom-node? op)
+         (let ((val (atom-node-val op)))
+           (cond
+             ;;
+             ((eq? val 'list)    (mlc-list-p ast succ))
+             ((eq? val 'vector)  (mlc-vector-p ast succ))
+             ((eq? val '##apply) (mlc-apply ast succ))
+             ;;
+             ((gambit-call? op)     (mlc-gambit-call ast succ #f))
+             ((type-predicate? val) (mlc-test val ast succ))
+             ((primitive-get val)   (mlc-primitive val ast succ))
+             ((member val '(+ - * < > <= >= = /)) (mlc-op-n ast succ val))
+             ;; Call
+             (else (mlc-call ast succ)))))
+      ;; Call expr
+      (else (mlc-call ast succ)))))
 
 ;;-----------------------------------------------------------------------------
 ;; ATOM
@@ -1357,51 +1329,6 @@
 
 ;;-----------------------------------------------------------------------------
 ;; SPECIAL
-
-;;
-;; Make lazy code from SPECIAL FORM
-;;
-(define (mlc-special sym ast succ)
-  (cond ((eq? sym 'breakpoint)
-         (make-lazy-code
-           (lambda (cgc ctx)
-             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
-               (apply-moves cgc ctx moves)
-               (x86-call cgc label-breakpoint-handler)
-               (codegen-void cgc reg)
-               (jump-to-version cgc succ (ctx-push ctx (make-ctx-tvoi) reg))))))
-        ((eq? sym '$$sys-clock-gettime-ns)
-         (make-lazy-code
-           (lambda (cgc ctx)
-             (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
-               (apply-moves cgc ctx moves)
-               (codegen-sys-clock-gettime-ns cgc reg)
-               (jump-to-version cgc succ (ctx-push ctx (make-ctx-tint) reg))))))
-        ((eq? sym '##subtype)
-         (let* ((lazy-imm
-                  (make-lazy-code
-                    (lambda (cgc ctx)
-                      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1)))
-                        (apply-moves cgc ctx moves)
-                        (codegen-literal cgc STAG_PAIR reg)
-                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tint) reg))))))
-                (lazy-subtype
-                  (make-lazy-code
-                    (lambda (cgc ctx)
-                      ;; We know here that the value is not a pair
-                      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1))
-                             (type (ctx-get-type ctx 0)))
-                        (apply-moves cgc ctx moves)
-                        (if (ctx-tunk? type)
-                            ;; type is unknown, get it from memory
-                            (codegen-subtype cgc (ctx-fs ctx) reg (ctx-get-loc ctx 0))
-                            ;; type is known, gen literal
-                            (codegen-literal cgc (ctx-type->stag type) reg))
-                        (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tint) reg))))))
-                (lazy-pair-check
-                         (gen-dyn-type-test ATX_PAI 0 lazy-imm lazy-subtype ast)))
-
-           (gen-ast (cadr ast) lazy-pair-check)))))
 
 ;;-----------------------------------------------------------------------------
 ;;

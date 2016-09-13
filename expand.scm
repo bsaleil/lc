@@ -157,6 +157,7 @@
     (,assv . assv)
     (,assq . assq)
     (,apply . apply)
+    (,##apply . ##apply)
     (,reverse . reverse)
     (,call/cc . call/cc)
     (,open-input-file  . open-input-file)
@@ -323,8 +324,12 @@
               ((equal? (car expr) 'case) (expand-case expr))
               ((equal? (car expr) 'quote) expr)
               ((equal? (car expr) 'set!) (expand-set! expr))
+              ((equal? (car expr) 'write-char) (expand-write-char expr))
               ((member (car expr) '(real? eqv?)) (expand-prim expr))
               ((member (car expr) '(> >= < <= =)) (expand-cmp expr))
+              ((member (car expr)
+                       '(FLOAT> FLOAT>= FLOAT< FLOAT<= FLOAT= FLOAT+ FLOAT- FLOAT* FLOAT/))
+                 (expand-fop expr))
               ((member (car expr) list-accessors) (expand-accessor expr))
               (else (if (list? (cdr expr))
                         (map expand expr)
@@ -348,6 +353,13 @@
 
 (define (expand-set! expr)
   `(set! ,(cadr expr) ,(expand (caddr expr))))
+
+(define (expand-write-char expr)
+  (if (= (length expr) 2)
+      (expand (append expr (list (list 'current-output-port))))
+      (list (expand 'write-char)
+            (expand (cadr expr))
+            (expand (caddr expr)))))
 
 (define (expand-prim expr)
 
@@ -409,6 +421,13 @@
   (if (<= (length (cdr expr)) 2)
       (cons op-node (expand (cdr expr)))
       (expand (expand-cmp-n (cdr expr) #f))))
+
+;; Expand fop (FLOAT<, FLOAT+, ...)
+(define (expand-fop expr)
+  (let* ((str (symbol->string (car expr)))
+         (opstr (substring str 5 (string-length str)))
+         (op (string->symbol opstr)))
+    (expand (cons op (cdr expr)))))
 
 ;; DEFINE
 (define (expand-define expr)

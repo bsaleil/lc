@@ -1475,6 +1475,13 @@
 
       (x86-mov cgc dest (x86-imm-int ENCODING_VOID)))))
 
+(define (codegen-p-gettime-ns cgc fs op reg inlined-cond?)
+  (let ((opnd (codegen-reg-to-x86reg reg)))
+    ;; Get monotonic time in rax
+    (gen-syscall-clock-gettime cgc)
+    (x86-mov cgc opnd (x86-rax))
+    (x86-shl cgc opnd (x86-imm-int 2))))
+
 ;;-----------------------------------------------------------------------------
 ;; Others
 ;;-----------------------------------------------------------------------------
@@ -1526,13 +1533,3 @@
       (x86-sub cgc (x86-rax) (x86-imm-int 8))
       (x86-jmp cgc loop)
     (x86-label cgc loop-end)))
-
-;;-----------------------------------------------------------------------------
-;; Time
-(define (codegen-sys-clock-gettime-ns cgc reg)
-  (let ((opnd (codegen-reg-to-x86reg reg)))
-
-    ;; Get monotonic time in rax
-    (gen-syscall-clock-gettime cgc)
-    (x86-mov cgc opnd (x86-rax))
-    (x86-shl cgc opnd (x86-imm-int 2))))
