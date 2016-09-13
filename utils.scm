@@ -196,7 +196,11 @@
     (if (>= n (expt 2 63)) (- n (expt 2 64)) n)))
 
 (define (encoding-obj encoding)
-  (##encoding->object encoding))
+  (let ((n
+          (if (< encoding 0)
+              (+ (expt 2 63) (bitwise-and encoding (- (expt 2 63) 1)))
+              encoding)))
+    (##encoding->object n)))
 
 (define (pp-flonum n #!optional (nfrac 2))
   (define (print-int-part n)

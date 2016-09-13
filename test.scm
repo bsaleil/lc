@@ -1,14 +1,12 @@
 
 ;(define gambit$$pp pp)
 
+(define (ack m n)
+  (cond ((= m 0) (+ n 1))
+        ((= n 0) (ack (- m 1) 1))
+        (else (ack (- m 1) (ack m (- n 1))))))
 
-(define (foo a b)
-  (gambit$$pp (zero? a))
-  (gambit$$pp (zero? b)))
-
-(foo 10 0)
-(foo 1 #t)
-
+(ack 2 1)
 
 
 

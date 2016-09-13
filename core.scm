@@ -420,7 +420,7 @@
          (nb-args
            (if (or (not opt-entry-points) (= selector 1))
                (let ((encoded (get-i64 (+ usp (reg-sp-offset-r (x86-rdi))))))
-                 (arithmetic-shift encoded -2))
+                 (encoding-obj encoded))
                (- (length stack) 2)))
 
          (callback-fn
@@ -1499,10 +1499,7 @@
   ;; Patch current closure
   (if closure
       ;; if known closure, patch it
-      (put-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8) label-addr)
-      ;; else, it's a global closure, find it and patch it
-      (let ((cl (global-closures-get ast))) ;; get encoded closure
-        (put-i64 (+ (- cl TAG_MEMOBJ) 8) label-addr)))
+      (put-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8) label-addr))
 
   ;;
   (patch-direct-jmp-labels entryvec 0 label)
@@ -1519,6 +1516,9 @@
  (let ((lazy-error
           (make-lazy-code
              (lambda (cgc ctx)
+               (pp "FAIL TEST")
+               (pp ctx-type)
+               (pp ctx)
                (if (or (ctx-tflo? ctx-type) (ctx-tint? ctx-type))
                    (gen-error cgc ERR_NUMBER_EXPECTED)
                    (gen-error cgc (ERR_TYPE_EXPECTED ctx-type)))))))

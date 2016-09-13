@@ -1997,7 +1997,9 @@
             (lambda (cgc ctx)
               (let ((fn-id-inf (call-get-eploc ctx (cadr ast))))
                 (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
-                (x86-mov cgc (x86-rsi) (x86-rax)) ;; Move closure in closure reg
+                (if fn-id-inf
+                    (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f)))
+                    (x86-mov cgc (x86-rsi) (x86-rax))) ;; Move closure in closure reg
                 (gen-call-sequence ast cgc #f #f (and fn-id-inf (cdr fn-id-inf)))))))
         (lazy-args
           (make-lazy-code
@@ -2106,6 +2108,10 @@
           (begin (apply-moves cgc ctx moves 'selector)
                  (x86-mov cgc selector-reg (x86-imm-int 0)))
           (apply-moves cgc ctx moves (car unused-regs)))
+
+      (if (and (not opt-entry-points)
+               const-fn)
+          (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f)))) ;; TODO wip: need #f in closure for do_callback_fn
 
       ctx)))
 
