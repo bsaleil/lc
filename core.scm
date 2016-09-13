@@ -352,6 +352,7 @@
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
 (c-define (do-callback usp psp) (long long) void "do_callback" ""
+
   (let* ((ret-addr (get-i64 psp))
 
          (callback-fn

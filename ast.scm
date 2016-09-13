@@ -1237,14 +1237,19 @@
           (define offset-free-h (* -1 (- closures-size clo-offset 2)))
           (define offset-late   (+ offset-free (* 8 (length free-imm))))
 
+          ;; TODO: use a gen-closure function (merge with existing gen-closure function)
+
           ;; Write header
           (let ((clo-size (* 8 (+ (length (append free-imm free-late)) 1))))
             (x86-mov cgc (x86-rax) (x86-imm-int (mem-header clo-size STAG_PROCEDURE clo-life)))
             (x86-mov cgc (x86-mem offset-header clo-reg) (x86-rax)))
 
+          ;; Write entry point
           (let* ((entry-obj (init-entry ast ctx (append free-cst free-imm) free-late id))
                  (entry-obj-loc (- (obj-encoding entry-obj) 1)))
-            (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
+            (if opt-entry-points
+                (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
+                (x86-mov cgc (x86-rax) (x86-mem (+ 8 entry-obj-loc))))
             (x86-mov cgc (x86-mem offset-entry clo-reg) (x86-rax)))
 
           ;; Write free vars
@@ -1997,7 +2002,7 @@
             (lambda (cgc ctx)
               (let ((fn-id-inf (call-get-eploc ctx (cadr ast))))
                 (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
-                (if fn-id-inf
+                (if (and (not opt-entry-points) fn-id-inf (car fn-id-inf))
                     (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f)))
                     (x86-mov cgc (x86-rsi) (x86-rax))) ;; Move closure in closure reg
                 (gen-call-sequence ast cgc #f #f (and fn-id-inf (cdr fn-id-inf)))))))

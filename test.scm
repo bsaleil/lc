@@ -1,12 +1,21 @@
 
-;(define gambit$$pp pp)
+(define (number->string num)
+  (define (digit->string d)
+    (make-string 1 (integer->char (+ d 48))))
+  (define (number->string-h num)
+    (if (= num 0)
+        ""
+        (string-append (number->string-h (quotient num 10))
+                       (digit->string    (modulo   num 10)))))
+  (number->string-h num))
 
-(define (ack m n)
-  (cond ((= m 0) (+ n 1))
-        ((= n 0) (ack (- m 1) 1))
-        (else (ack (- m 1) (ack m (- n 1))))))
+(gambit$$pp (number->string 1))
 
-(ack 2 1)
+;-----
+
+
+
+
 
 
 
