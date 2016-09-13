@@ -1,23 +1,4 @@
 
-(define (number->string num)
-  (define (digit->string d)
-    (make-string 1 (integer->char (+ d 48))))
-  (define (number->string-h num)
-    (if (= num 0)
-        ""
-        (string-append (number->string-h (quotient num 10))
-                       (digit->string    (modulo   num 10)))))
-  (number->string-h num))
-
-(gambit$$pp (number->string 1))
-
-;-----
-
-
-
-
-
-
 
 ;; Liveness: terminer le travail
 ;; Letrec: attention aux lates !function

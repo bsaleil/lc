@@ -535,17 +535,34 @@
         (offset (+ (* -8 (+ nb-free 2)) TAG_MEMOBJ)))
     (x86-lea cgc dest (x86-mem offset alloc-ptr))))
 
+;;
+(define (codegen-return-common cgc fs clean-nb lretobj lretval)
+  (let ((opretobj (codegen-loc-to-x86opnd fs lretobj))
+        (opretval (codegen-loc-to-x86opnd fs lretval))
+        (opret    (codegen-reg-to-x86reg return-reg)))
+    ;; Move return value to return register
+    (if (not (eq? opret opretval))
+        (x86-mov cgc opret opretval))
+    ;; Move return address (or cctable address) in rdx
+    (if (not (eq? opretobj (x86-rdx)))
+        (x86-mov cgc (x86-rdx) opretobj))
+    ;; Clean stack
+    (if (> clean-nb 0)
+        (x86-add cgc (x86-usp) (x86-imm-int (* 8 clean-nb 1))))))
+
 ;; Generate function return using a return address
 ;; Retaddr (or cctable) is in rdx
-(define (codegen-return-rp cgc)
-  (x86-jmp cgc (x86-rdx)))
+(define (codegen-return-rp cgc fs clean-nb lretobj lretval)
+    (codegen-return-common cgc fs clean-nb lretobj lretval)
+    (x86-jmp cgc (x86-rdx)))
 
 ;; Generate function return using a crtable
 ;; Retaddr (or cctable) is in rdx
-(define (codegen-return-cr cgc crtable-offset)
-  (x86-mov cgc (x86-rax) (x86-mem crtable-offset (x86-rdx)))
-  (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding crtable-offset))) ;; TODO (?)
-  (x86-jmp cgc (x86-rax)))
+(define (codegen-return-cr cgc fs clean-nb lretobj lretval crtable-offset)
+    (codegen-return-common cgc fs clean-nb lretobj lretval)
+    (x86-mov cgc (x86-rax) (x86-mem crtable-offset (x86-rdx)))
+    (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding crtable-offset)))
+    (x86-jmp cgc (x86-rax)))
 
 ;; Generate function call using a single entry point
 ;; eploc is the cctable or entry points if it's known
