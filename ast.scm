@@ -30,6 +30,8 @@
 (include "~~lib/_asm#.scm")
 (include "~~lib/_x86#.scm") ;; TODO regalloc remove when finished
 
+(define free-vars #f)
+
 ;;-----------------------------------------------------------------------------
 
 (define (init-frontend)
@@ -1797,63 +1799,12 @@
       (cadr ast)
       lazy-code-test)))
 
-(define (mlc-branch x86-jop generator lazy-true lazy-false ctx-true ctx-false)
-
-  (make-lazy-code
-    (lambda (cgc ctx)
-
-      (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
-             (stub-first-label-addr #f)
-             (stub-labels
-               (add-callback cgc 1
-                 (let ((prev-action #f))
-                   (lambda (ret-addr selector)
-                     (let ((stub-addr stub-first-label-addr)
-                           (jump-addr (asm-label-pos label-jump)))
-
-                       (if (not prev-action)
-                           (begin (set! prev-action 'no-swap)
-                                  (if (= selector 1)
-                                      ;; overwrite unconditional jump
-                                      (gen-version (+ jump-addr 6) lazy-false ctx-false)
-                                      (if (= (+ jump-addr 6 5) code-alloc)
-                                          (begin (if opt-verbose-jit (println ">>> swapping-branches"))
-                                                 (set! prev-action 'swap)
-                                                 ;; invert jump direction
-                                                 (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
-                                                 ;; make conditional jump to stub
-                                                 (patch-jump jump-addr stub-addr)
-                                                 ;; overwrite unconditional jump
-                                                 (gen-version
-                                                              (+ jump-addr 6)
-                                                              lazy-true
-                                                              ctx-true))
-
-                                          ;; make conditional jump to new version
-                                          (gen-version jump-addr lazy-true ctx-true))))
-
-                           (begin ;; one branch has already been patched
-                                  ;; reclaim the stub
-                                  (release-still-vector (get-scmobj ret-addr))
-                                  (stub-reclaim stub-addr)
-                                  (if (= selector 0)
-                                     (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-true ctx-true)
-                                     (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-false ctx-false))))))))))
-
-        (set! stub-first-label-addr
-              (min (asm-label-pos (list-ref stub-labels 0))
-                   (asm-label-pos (list-ref stub-labels 1))))
-
-        (generator cgc)
-
-        (x86-label cgc label-jump)
-        (x86-jop cgc (list-ref stub-labels 0))
-        (x86-jmp cgc (list-ref stub-labels 1))))))
-
-
 ;;-----------------------------------------------------------------------------
 ;; APPLY & CALL
 
+;; Return air (const? . fn-num)
+;; const? is #t if fn-num is an fn-num of a const function
+;; const? is #f if fn-num is an fn-num of a non const function
 (define (call-get-eploc ctx op)
 
   (if (and (atom-node? op)
@@ -1861,7 +1812,6 @@
       ;; Op is an atom node with a symbol
       (let ((sym (atom-node-val op)))
 
-        ;; TODO: wip
         (define global-opt
           (let ((global (asc-globals-get sym)))
             (if (and global
@@ -1942,7 +1892,6 @@
 
 ;; Save used registers and return updated ctx
 (define (call-save/cont cgc ctx ast succ tail? idx-offset apply?)
-
   (if tail?
       ;; Tail call, no register to save and no continuation to generate
       ctx
@@ -1953,10 +1902,9 @@
         (apply-moves cgc fctx moves)
         ;; Generate & push continuation
         ;; gen-continuation-* needs ctx without return address slot
-
         (if opt-return-points
-            (gen-continuation-cr cgc ast succ nctx '() apply?) ;; TODO: remove '() arg
-            (gen-continuation-rp cgc ast succ nctx '() apply?))
+            (gen-continuation-cr cgc ast succ nctx apply?)
+            (gen-continuation-rp cgc ast succ nctx apply?))
 
         fctx)))
 
@@ -2079,20 +2027,11 @@
               (check-types (list ATX_CLO) (list (car ast)) (gen-ast-l (cdr ast) lazy-call) ast)
               ctx))))))
 
-;; TODO regalloc: merge -rp and -cr + comments
-(define (gen-continuation-rp cgc ast succ ctx saved-regs apply?)
+(define (gen-continuation-rp cgc ast succ ctx apply?)
 
   (let* ((lazy-continuation
            (make-lazy-code-cont
              (lambda (cgc ctx)
-
-               ;; Restore registers
-               (for-each
-                 (lambda (i)
-                   (let ((opnd (codegen-reg-to-x86reg i)))
-                     (x86-upop cgc opnd)))
-                 (reverse saved-regs))
-
                (jump-to-version cgc succ ctx))))
          ;; Label for return address loading
          (load-ret-label (asm-make-label #f (new-sym 'load-ret-addr)))
@@ -2119,20 +2058,11 @@
    ;; Generate code
    (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0))))
 
-;; TODO regalloc: merge -rp and -cr + comments
-(define (gen-continuation-cr cgc ast succ ctx saved-regs apply?)
+(define (gen-continuation-cr cgc ast succ ctx apply?)
 
   (let* ((lazy-continuation
            (make-lazy-code-cont
              (lambda (cgc ctx)
-
-               ;; Restore registers
-               (for-each
-                 (lambda (i)
-                   (let ((opnd (codegen-reg-to-x86reg i)))
-                     (x86-upop cgc opnd)))
-                 (reverse saved-regs))
-
                (jump-to-version cgc succ ctx))))
          (stub-labels
            (add-cont-callback
@@ -2387,7 +2317,6 @@
 ;;
 ;; Make lazy code from TYPE TEST
 ;;
-;; TODO: explain if-cond-true
 (define (mlc-test sym ast succ)
 
   (define next-is-cond (member 'cond (lazy-code-flags succ)))
@@ -2626,39 +2555,6 @@
       '()
       (set-union (free-vars   (car lst) params enc-ids)
                  (free-vars-l (cdr lst) params enc-ids))))
-
-;; Return all free vars used by ast knowing env 'clo-env'
-(define (free-vars body params enc-ids)
-  ;; TODO: memoize result with given input to avoid multiple calls (analyses.scm & ast.scm)
-  (cond ;; Keyword
-        ((symbol? body) '())
-        ;; Atom node
-        ((atom-node? body)
-           (let ((val (atom-node-val body)))
-             (if (and (symbol? val)
-                      (member val enc-ids)
-                      (not (member val params)))
-                 (list val)
-                 '())))
-        ;; Pair
-        ((pair? body)
-          (let ((op (car body)))
-            (cond ;; If
-                  ((eq? op 'if) (set-union (free-vars (cadr body) params enc-ids)   ; cond
-                                           (set-union (free-vars  (caddr body) params enc-ids)    ; then
-                                                      (free-vars (cadddr body) params enc-ids)))) ; else
-                  ;; Quote
-                  ((eq? op 'quote) '())
-                  ;; Lambda
-                  ((eq? op 'lambda) (free-vars (caddr body)
-                                               (if (list? (cadr body))
-                                                  (append (cadr body) params)
-                                                  (cons (cadr body) params))
-                                               enc-ids))
-                  ;; Call
-                  (else (free-vars-l body params enc-ids)))))
-        ;;
-        (else (error "Unexpected expr (free-vars)"))))
 
 ;;
 ;; UTILS

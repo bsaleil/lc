@@ -1,5 +1,43 @@
 
 ;;-----------------------------------------------------------------------------
+;; Free variables
+;;-----------------------------------------------------------------------------
+
+;; Return all free vars used by ast knowing env 'clo-env'
+(define (free-vars body params enc-ids)
+  ;; TODO: memoize result with given input to avoid multiple calls (analyses.scm & ast.scm)
+  (cond
+    ;; Keyword
+    ((symbol? body) '())
+    ;; Atom node
+    ((atom-node? body)
+       (let ((val (atom-node-val body)))
+         (if (and (symbol? val)
+                  (member val enc-ids)
+                  (not (member val params)))
+             (list val)
+             '())))
+    ;; Pair
+    ((pair? body)
+      (let ((op (car body)))
+        (cond ;; If
+              ((eq? op 'if) (set-union (free-vars (cadr body) params enc-ids)                 ; cond
+                                       (set-union (free-vars  (caddr body) params enc-ids)    ; then
+                                                  (free-vars (cadddr body) params enc-ids)))) ; else
+              ;; Quote
+              ((eq? op 'quote) '())
+              ;; Lambda
+              ((eq? op 'lambda) (free-vars (caddr body)
+                                           (if (list? (cadr body))
+                                              (append (cadr body) params)
+                                              (cons (cadr body) params))
+                                           enc-ids))
+              ;; Call
+              (else (free-vars-l body params enc-ids)))))
+    ;;
+    (else (error "Unexpected expr (free-vars)"))))
+
+;;-----------------------------------------------------------------------------
 ;; Globals passes
 ;;-----------------------------------------------------------------------------
 
