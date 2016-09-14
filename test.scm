@@ -1,7 +1,7 @@
 
 
 (define (foo n)
-  (vector n n n n n n n n n n n n n n n n n n n))
+  (vector n (+ n 10) n n n n n n n n n n n n n n n n n))
 
 (gambit$$pp (foo 10))
 

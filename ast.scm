@@ -258,6 +258,7 @@
     (##unbox             #f                ,codegen-p-unbox          ,ATX_UNK 1 ,ATX_ALL                   )
     (##set-box!          #f                ,codegen-p-set-box        ,ATX_VOI 2 ,ATX_ALL ,ATX_ALL          )
     (##gettime-ns        #f                ,codegen-p-gettime-ns     ,ATX_INT 0                            )
+    (vector              ,lco-p-vector     #f                        ,ATX_VEC #f                           )
     ;; These primitives are inlined during expansion but still here to build lambda
     (real?               #f                #f                        ,ATX_BOO 1 ,ATX_ALL                   )
     (eqv?                #f                #f                        ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          ))))
@@ -313,7 +314,7 @@
            (cond
              ;;
              ((eq? val 'list)    (mlc-list-p ast succ))
-             ((eq? val 'vector)  (mlc-vector-p ast succ))
+             ;((eq? val 'vector)  (lco-p-vector ast succ))
              ((eq? val '##apply) (mlc-apply ast succ))
              ;;
              ((gambit-call? op)     (mlc-gambit-call ast succ #f))
@@ -382,38 +383,6 @@
           (apply-moves cgc ctx moves)
           (codegen-flonum cgc immediate reg)
           (jump-to-version cgc succ (ctx-push ctx (make-ctx-tflo) reg))))))
-
-;;
-;; Make lazy code from vector literal
-;;
-(define (mlc-vector ast succ)
-
-  (define len (vector-length ast))
-
-  (define (gen-set cgc ctx lidx)
-    (let* ((lval (ctx-get-loc ctx lidx))
-           (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
-      (if (ctx-loc-is-memory? lval)
-          (begin (x86-mov cgc (x86-rax) opval)
-                 (set! opval (x86-rax))))
-      (x86-mov cgc (x86-mem (+ (* -8 len) (* 8 lidx)) alloc-ptr) opval)))
-
-  (define lazy-vector
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (let ((len (vector-length ast)))
-          (gen-allocation-imm cgc STAG_VECTOR (* 8 len))
-          (let loop ((pos 0))
-            (if (= pos len)
-              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ (vector-length ast))))
-                (apply-moves cgc ctx moves)
-                (x86-lea cgc (codegen-reg-to-x86reg reg) (x86-mem (+ (* -8 (+ len 1)) TAG_MEMOBJ) alloc-ptr))
-                (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx len) (make-ctx-tvec) reg)))
-              (begin
-                (gen-set cgc ctx pos)
-                (loop (+ pos 1)))))))))
-
-  (gen-ast-l (reverse (vector->list ast)) lazy-vector))
 
 ;;
 ;; Make lazy code from string literal
@@ -494,6 +463,17 @@
               ;; Identifier is a global variable
               (global
                 (gen-get-globalvar cgc ctx global succ))
+              ;; Vector
+              ((eq? sym 'vector)
+                 (let* ((node-lv (atom-node-make 'list->vector))
+                        (node-l  (atom-node-make 'l))
+                        (lco     (gen-ast `(lambda l (,node-lv ,node-l)) succ)))
+                   (jump-to-version cgc lco ctx)))
+              ;; List
+              ((eq? sym 'list)
+                 (let* ((node (atom-node-make 'n))
+                        (lco  (gen-ast `(lambda n ,node) succ)))
+                   (jump-to-version cgc lco ctx)))
               ;; Primitive
               ((primitive-get sym) =>
                  (lambda (r)
@@ -503,19 +483,6 @@
                                   (args-nodes (map atom-node-make args)))
                              `(lambda ,args (,ast ,@args-nodes)))))
                      (jump-to-version cgc (gen-ast ast succ) ctx))))
-              ;; Vector
-              ((eq? sym 'vector)
-                 (let* ((node-lv (atom-node-make 'list->vector))
-                        (node-l  (atom-node-make 'l))
-                        (lco (gen-ast `(lambda l (,node-lv ,node-l)) succ)))
-                   (jump-to-version cgc lco ctx)))
-              ;; List
-              ((eq? sym 'list)
-                 (let ((node (atom-node-make 'n)))
-                   (jump-to-version
-                     cgc
-                     (gen-ast `(lambda n ,node) succ)
-                     ctx)))
               (else (gen-error cgc (ERR_UNKNOWN_VAR sym))))))))
 
 (define (gen-closure-from-cst cgc ctx local succ)
@@ -1535,6 +1502,40 @@
       (lco-eq?-if)
       (lco-eq?)))
 
+
+;;
+;; Special primitive 'vector'
+(define (lco-p-vector ast op succ)
+
+  (define nbargs (length (cdr ast)))
+
+  (let* ((lazy-set
+           (make-lazy-code
+             (lambda (cgc ctx)
+               (let* ((vec-loc  (ctx-get-loc ctx 0))
+                      (vec-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) vec-loc)))
+
+                 (let loop ((idx nbargs))
+                   (if (= idx 0)
+                       (let* ((ctx (ctx-pop-n ctx (+ nbargs 1)))
+                              (ctx (ctx-push ctx (make-ctx-tvec) vec-loc)))
+                         (jump-to-version cgc succ ctx))
+                       (let* ((val-loc  (ctx-get-loc ctx idx))
+                              (val-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) val-loc))
+                              (offset (- (* 8 (+ (- nbargs idx) 1)) TAG_MEMOBJ)))
+                         (if (x86-mem? val-opnd)
+                             (begin (x86-mov cgc (x86-rax) val-opnd)
+                                    (set! val-opnd (x86-rax))))
+                         (x86-mov cgc (x86-mem offset vec-opnd) val-opnd)
+                         (loop (- idx 1)))))))))
+
+         (lazy-vector
+           (gen-ast (list (atom-node-make 'make-vector)
+                          (atom-node-make nbargs))
+                    lazy-set)))
+
+    lazy-vector))
+
 (define (mlc-primitive-d prim ast succ)
 
   ;;
@@ -1554,18 +1555,17 @@
 
   ;;
   (let* ((primitive (primitive-get prim))
-         (lazy-primitive (get-prim-lco primitive))
-         ;; Get list of types required by this primitive
-         (types (if (primitive-nbargs primitive)
-                    (primitive-argtypes primitive)
-                    (build-list (length (cdr ast)) (lambda (el) ctx-tall?)))))
+         (lazy-primitive (get-prim-lco primitive)))
 
-    (assert (= (length types)
-               (length (cdr ast)))
-            "Primitive error")
-
-    ;; Build args lco chain with type checks
-    (check-types types (cdr ast) lazy-primitive ast)))
+    (if (primitive-nbargs primitive)
+        ;; Build args lco chain with type checks
+        (let ((types (primitive-argtypes primitive)))
+          (assert (= (length types)
+                     (length (cdr ast)))
+                  "Primitive error")
+          (check-types types (cdr ast) lazy-primitive ast))
+        ;; No need to check types
+        (gen-ast-l (cdr ast) lazy-primitive))))
 
 ;; Build lazy objects chain of 'args' list
 ;; and insert type check for corresponding 'types'
@@ -1601,41 +1601,6 @@
                             (gen-fatal-type-test (car types) 0 lazy-next ast)))))))
 
   (check-types-h types args 0))
-
-;;
-;; Vector primitive (not in primitives because we need >1 LCO)
-(define (mlc-vector-p ast succ)
-
-  (define nbargs (length (cdr ast)))
-
-  (let* ((lazy-set
-           (make-lazy-code
-             (lambda (cgc ctx)
-
-               (let* ((vec-loc  (ctx-get-loc ctx 0))
-                      (vec-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) vec-loc)))
-
-                 (let loop ((idx nbargs))
-                   (if (= idx 0)
-                       (let* ((ctx (ctx-pop-n ctx (+ nbargs 1)))
-                              (ctx (ctx-push ctx (make-ctx-tvec) vec-loc)))
-                         (jump-to-version cgc succ ctx))
-                       (let* ((val-loc  (ctx-get-loc ctx idx))
-                              (val-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) val-loc))
-                              (offset (- (* 8 (+ (- nbargs idx) 1)) TAG_MEMOBJ)))
-                         (if (x86-mem? val-opnd)
-                             (begin (x86-mov cgc (x86-rax) val-opnd)
-                                    (set! val-opnd (x86-rax))))
-                         (x86-mov cgc (x86-mem offset vec-opnd) val-opnd)
-                         (loop (- idx 1)))))))))
-
-         (lazy-vector
-           (gen-ast (list (atom-node-make 'make-vector)
-                          (atom-node-make nbargs))
-                    lazy-set)))
-
-    (gen-ast-l (cdr ast)
-               lazy-vector)))
 
 ;;
 ;; List primitive (not in primitives because we need >1 LCO)
