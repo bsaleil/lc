@@ -1,5 +1,11 @@
 
 
+(define (foo n)
+  (vector n n n n n n n n n n n n n n n n n n n))
+
+(gambit$$pp (foo 10))
+
+
 ;; Liveness: terminer le travail
 ;; Letrec: attention aux lates !function
 ;; Letrec: détecter constantes récursives (a <-> b) (bindings aux bindings cst)

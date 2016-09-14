@@ -1606,29 +1606,36 @@
 ;; Vector primitive (not in primitives because we need >1 LCO)
 (define (mlc-vector-p ast succ)
 
-  (define (get-chain i exprs)
-    (if (null? exprs)
-        succ
-        (let ((lco-set
-                (make-lazy-code
-                  (lambda (cgc ctx)
-                    (let ((succ (get-chain (+ i 1) (cdr exprs)))
-                          (lval (ctx-get-loc ctx 0))
-                          (lvec (ctx-get-loc ctx 1)))
+  (define nbargs (length (cdr ast)))
 
-                      (let ((opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval))
-                            (opvec (codegen-loc-to-x86opnd (ctx-fs ctx) lvec)))
-                        (if (x86-mem? opvec)
-                            (begin (x86-mov cgc (x86-rax) opvec)
-                                   (x86-mov cgc (x86-mem (- (+ 8 (* 8 i)) TAG_MEMOBJ) (x86-rax)) opval))
-                            (x86-mov cgc (x86-mem (- (+ 8 (* 8 i)) TAG_MEMOBJ) opvec) opval)))
-                      (jump-to-version cgc succ (ctx-pop ctx)))))))
-          (gen-ast (car exprs) lco-set))))
+  (let* ((lazy-set
+           (make-lazy-code
+             (lambda (cgc ctx)
 
-  (gen-ast
-    (list (atom-node-make 'make-vector)
-          (atom-node-make (length (cdr ast))))
-    (get-chain 0 (cdr ast))))
+               (let* ((vec-loc  (ctx-get-loc ctx 0))
+                      (vec-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) vec-loc)))
+
+                 (let loop ((idx nbargs))
+                   (if (= idx 0)
+                       (let* ((ctx (ctx-pop-n ctx (+ nbargs 1)))
+                              (ctx (ctx-push ctx (make-ctx-tvec) vec-loc)))
+                         (jump-to-version cgc succ ctx))
+                       (let* ((val-loc  (ctx-get-loc ctx idx))
+                              (val-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) val-loc))
+                              (offset (- (* 8 (+ (- nbargs idx) 1)) TAG_MEMOBJ)))
+                         (if (x86-mem? val-opnd)
+                             (begin (x86-mov cgc (x86-rax) val-opnd)
+                                    (set! val-opnd (x86-rax))))
+                         (x86-mov cgc (x86-mem offset vec-opnd) val-opnd)
+                         (loop (- idx 1)))))))))
+
+         (lazy-vector
+           (gen-ast (list (atom-node-make 'make-vector)
+                          (atom-node-make nbargs))
+                    lazy-set)))
+
+    (gen-ast-l (cdr ast)
+               lazy-vector)))
 
 ;;
 ;; List primitive (not in primitives because we need >1 LCO)
