@@ -30,9 +30,9 @@
 (define (print n)
   (gambit$$print n))
 
-(define (println n)
+(define (println . n)
   (gambit$$println n))
-
+  
 (define (pp n)
   (gambit$$pp n))
 

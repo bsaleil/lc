@@ -1,9 +1,8 @@
 
+(define (bar a b c d)
+  (println a b c d))
 
-(define (foo n)
-  (vector n (+ n 10) n n n n n n n n n n n n n n n n n))
-
-(gambit$$pp (foo 10))
+(apply bar 22)
 
 
 ;; Liveness: terminer le travail

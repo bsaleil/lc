@@ -256,11 +256,13 @@
     (current-output-port ,lco-p-cur-x-port #f                        ,ATX_OPO 0                            )
     (current-input-port  ,lco-p-cur-x-port #f                        ,ATX_IPO 0                            )
     (number?             ,lco-p-number?    #f                        ,ATX_BOO 1 ,ATX_ALL                   )
+    (##apply             ,lco-p-apply      #f                        ,ATX_UNK 2 ,ATX_CLO ,ATX_ALL          )
     (##box               #f                ,codegen-p-box            ,ATX_BOX 1 ,ATX_ALL                   )
     (##unbox             #f                ,codegen-p-unbox          ,ATX_UNK 1 ,ATX_ALL                   )
     (##set-box!          #f                ,codegen-p-set-box        ,ATX_VOI 2 ,ATX_ALL ,ATX_ALL          )
     (##gettime-ns        #f                ,codegen-p-gettime-ns     ,ATX_INT 0                            )
     (vector              ,lco-p-vector     #f                        ,ATX_VEC #f                           )
+    (list                ,lco-p-list       #f                        ,ATX_PAI #f                           )
     ;; These primitives are inlined during expansion but still here to build lambda
     (real?               #f                #f                        ,ATX_BOO 1 ,ATX_ALL                   )
     (eqv?                #f                #f                        ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          ))))
@@ -315,13 +317,9 @@
          (let ((val (atom-node-val op)))
            (cond
              ;;
-             ((eq? val 'list)    (mlc-list-p ast succ))
-             ;((eq? val 'vector)  (lco-p-vector ast succ))
-             ((eq? val '##apply) (mlc-apply ast succ))
-             ;;
-             ((gambit-call? op)     (mlc-gambit-call ast succ #f))
-             ((type-predicate? val) (mlc-test val ast succ))
              ((primitive-get val)   (mlc-primitive val ast succ))
+             ((type-predicate? val) (mlc-test val ast succ))
+             ((gambit-call? op)     (mlc-gambit-call ast succ #f))
              ((member val '(+ - * < > <= >= = /)) (mlc-op-n ast succ val))
              ;; Call
              (else (mlc-call ast succ)))))
@@ -333,10 +331,10 @@
 
 (define (mlc-atom ast succ)
   (let ((val (atom-node-val ast)))
-    (cond ((string? val) (mlc-string val ast succ))
-          ((symbol? val) (mlc-identifier val ast succ))
+    (cond ((string? val)          (mlc-string val ast succ))
+          ((symbol? val)          (mlc-identifier val ast succ))
           ((compiler-flonum? val) (mlc-flonum val ast succ))
-          ((literal? val) (mlc-literal val ast succ))
+          ((literal? val)         (mlc-literal val ast succ))
           (else (error "Internal error (mlc-atom)")))))
 
 ;;-----------------------------------------------------------------------------
@@ -618,6 +616,7 @@
     (lambda (cgc ctx)
       (let* ((nb-actual (- (length (ctx-stack ctx)) 2))
              (nb-formal (ctx-nb-args ctx)))
+
         (cond ;; rest AND actual == formal
               ((and rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
                (set! ctx (ctx-stack-push ctx (make-ctx-tnul)))
@@ -1538,7 +1537,109 @@
 
     lazy-vector))
 
+
+;;
+;; Special primitive 'list'
+(define (lco-p-list ast op succ)
+
+  (define len (length (cdr ast)))
+
+  (define (build-chain n)
+    (if (= n 0)
+        (make-lazy-code
+          (lambda (cgc ctx)
+            (let ((loc (ctx-get-loc ctx n)))
+              (let ((pair-offset (* -3 8 n)))
+                ;; Write header
+                (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
+                ;; Write null in cdr
+                (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-imm-int (obj-encoding '())) 64)
+                ;; Write value in car
+                (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
+                (mlet ((moves/reg/ctx (ctx-get-free-reg (ctx-pop-n ctx len) succ 0)))
+                   (apply-moves cgc ctx moves)
+                   ;; Load first pair in dest register
+                   (let ((dest (codegen-reg-to-x86reg reg)))
+                     (let ((offset (+ (* len 3 -8) TAG_PAIR)))
+                       (x86-lea cgc dest (x86-mem offset alloc-ptr))
+                       (jump-to-version cgc succ (ctx-push ctx (make-ctx-tpai) reg)))))))))
+        (make-lazy-code
+          (lambda (cgc ctx)
+            (let ((loc (ctx-get-loc ctx n)))
+              (let ((pair-offset (* -3 8 n)))
+                ;; Write header
+                (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
+                ;; Write encoded next pair in cdr
+                (x86-lea cgc (x86-rax) (x86-mem (+ pair-offset TAG_PAIR) alloc-ptr))
+                (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-rax))
+                ;; Write value in car
+                (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
+                  (if (x86-mem? opnd)
+                      (begin (x86-mov cgc (x86-rax) opnd)
+                             (set! opnd (x86-rax))))
+                  (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) opnd))
+                ;; Continue
+                (jump-to-version cgc (build-chain (- n 1)) ctx)))))))
+
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let ((size (- (* len 3 8) 8)))
+        ;; One alloc for all pairs
+        (gen-allocation-imm cgc STAG_PAIR size)
+        (jump-to-version cgc (build-chain (- len 1)) ctx)))))
+
+;;
+;; Special primitive 'apply'
+(define (lco-p-apply ast op succ)
+
+  (make-lazy-code
+    (lambda (cgc ctx)
+
+      ;; Save used registers, generate and push continuation stub
+      (set! ctx (call-save/cont cgc ctx ast succ #f 2 #t))
+      ;; Push closure
+      (call-get-closure cgc ctx 1)
+
+      (let* ((label-end (asm-make-label #f (new-sym 'apply-end-args)))
+             (llst (ctx-get-loc ctx 0))
+             (oplst (codegen-loc-to-x86opnd (ctx-fs ctx) llst)))
+        ;; r11, selector & r15 are used as tmp registers
+        ;; It is safe because they are not used for parameters.
+        ;; And if they are used after, they already are saved on the stack
+        (x86-mov cgc (x86-rdx) oplst)
+        (x86-mov cgc (x86-r11) (x86-imm-int 0))
+        (let loop ((args-regs args-regs))
+          (if (null? args-regs)
+              (let ((label-loop (asm-make-label #f (new-sym 'apply-loop-args))))
+                (x86-label cgc label-loop)
+                (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
+                (x86-je cgc label-end)
+                  (x86-add cgc (x86-r11) (x86-imm-int 4))
+                  (x86-mov cgc selector-reg (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
+                  (x86-upush cgc selector-reg)
+                  (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
+                  (x86-jmp cgc label-loop))
+              (begin
+                (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
+                (x86-je cgc label-end)
+                  (x86-add cgc (x86-r11) (x86-imm-int 4))
+                  (x86-mov cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (car args-regs)) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
+                  (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
+                (loop (cdr args-regs)))))
+        (x86-label cgc label-end)
+        ;; Reset selector used as tmp reg
+        (x86-mov cgc selector-reg (x86-imm-int 0))
+
+        (let ((fn-id-inf (call-get-eploc ctx (cadr ast))))
+          (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
+          (if (and (not opt-entry-points) fn-id-inf (car fn-id-inf))
+              (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f)))
+              (x86-mov cgc (x86-rsi) (x86-rax))) ;; Move closure in closure reg
+          (gen-call-sequence ast cgc #f #f (and fn-id-inf (cdr fn-id-inf))))))))
+
 (define (mlc-primitive-d prim ast succ)
+
+  ;; TODO: check alloc size (for still obj) if primitive nbargs is #f (list, vector)
 
   ;;
   (define (get-prim-lco primitive)
@@ -1603,71 +1704,6 @@
                             (gen-fatal-type-test (car types) 0 lazy-next ast)))))))
 
   (check-types-h types args 0))
-
-;;
-;; List primitive (not in primitives because we need >1 LCO)
-(define (mlc-list-p ast succ)
-
-  (define len (length (cdr ast)))
-
-  (define (build-chain n)
-    (if (= n 0)
-        (make-lazy-code
-          (lambda (cgc ctx)
-            (let ((loc (ctx-get-loc ctx n)))
-              (let ((pair-offset (* -3 8 n)))
-                ;; Write header
-                (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
-                ;; Write null in cdr
-                (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-imm-int (obj-encoding '())) 64)
-                ;; Write value in car
-                (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
-                (mlet ((moves/reg/ctx (ctx-get-free-reg (ctx-pop-n ctx len) succ 0)))
-                   (apply-moves cgc ctx moves)
-                   ;; Load first pair in dest register
-                   (let ((dest (codegen-reg-to-x86reg reg)))
-                     (let ((offset (+ (* len 3 -8) TAG_PAIR)))
-                       (x86-lea cgc dest (x86-mem offset alloc-ptr))
-                       (jump-to-version cgc succ (ctx-push ctx (make-ctx-tpai) reg)))))))))
-        (make-lazy-code
-          (lambda (cgc ctx)
-            (let ((loc (ctx-get-loc ctx n)))
-              (let ((pair-offset (* -3 8 n)))
-                ;; Write header
-                (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
-                ;; Write encoded next pair in cdr
-                (x86-lea cgc (x86-rax) (x86-mem (+ pair-offset TAG_PAIR) alloc-ptr))
-                (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-rax))
-                ;; Write value in car
-                (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-                  (if (x86-mem? opnd)
-                      (begin (x86-mov cgc (x86-rax) opnd)
-                             (set! opnd (x86-rax))))
-                  (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) opnd))
-                ;; Continue
-                (jump-to-version cgc (build-chain (- n 1)) ctx)))))))
-
-  (cond ;; (list)
-        ((= len 0)
-          (gen-ast (atom-node-make '()) succ))
-        ((mem-still-required? (* 8 len 3))
-          (gen-ast
-            (let* ((sym (gensym))
-                   (lnode (atom-node-make 'list))
-                   (snode (atom-node-make sym)))
-              `(let ((,sym ,lnode))
-                 (,snode ,@(cdr ast))))
-            succ))
-        ;; (list ..)
-        (else
-        (let* ((lazy-list
-                 (make-lazy-code
-                   (lambda (cgc ctx)
-                     (let ((size (- (* len 3 8) 8)))
-                       ;; One alloc for all pairs
-                       (gen-allocation-imm cgc STAG_PAIR size)
-                       (jump-to-version cgc (build-chain (- len 1)) ctx))))))
-          (gen-ast-l (cdr ast) lazy-list)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Branches
@@ -1824,67 +1860,6 @@
         (or (ctx-get-eploc ctx sym)
             global-opt))
       #f))
-
-;;
-;; Make lazy code from APPLY
-;;
-(define (mlc-apply ast succ)
-
-  (let* ((lazy-call
-          (make-lazy-code
-            (lambda (cgc ctx)
-              (let ((fn-id-inf (call-get-eploc ctx (cadr ast))))
-                (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
-                (if (and (not opt-entry-points) fn-id-inf (car fn-id-inf))
-                    (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f)))
-                    (x86-mov cgc (x86-rsi) (x86-rax))) ;; Move closure in closure reg
-                (gen-call-sequence ast cgc #f #f (and fn-id-inf (cdr fn-id-inf)))))))
-        (lazy-args
-          (make-lazy-code
-            (lambda (cgc ctx)
-              (let* ((label-end (asm-make-label #f (new-sym 'apply-end-args)))
-                     (llst (ctx-get-loc ctx 0))
-                     (oplst (codegen-loc-to-x86opnd (ctx-fs ctx) llst)))
-                ;; r11, selector & r15 are used as tmp registers
-                ;; It is safe because they are not used for parameters.
-                ;; And if they are used after, they already are saved on the stack
-                (x86-mov cgc (x86-rdx) oplst)
-                (x86-mov cgc (x86-r11) (x86-imm-int 0))
-                (let loop ((args-regs args-regs))
-                  (if (null? args-regs)
-                      (let ((label-loop (asm-make-label #f (new-sym 'apply-loop-args))))
-                        (x86-label cgc label-loop)
-                        (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
-                        (x86-je cgc label-end)
-                          (x86-add cgc (x86-r11) (x86-imm-int 4))
-                          (x86-mov cgc selector-reg (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
-                          (x86-upush cgc selector-reg)
-                          (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
-                          (x86-jmp cgc label-loop))
-                      (begin
-                        (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
-                        (x86-je cgc label-end)
-                          (x86-add cgc (x86-r11) (x86-imm-int 4))
-                          (x86-mov cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (car args-regs)) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
-                          (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
-                        (loop (cdr args-regs)))))
-                (x86-label cgc label-end)
-                ;; Reset selector used as tmp reg
-                (x86-mov cgc selector-reg (x86-imm-int 0))
-                (jump-to-version cgc lazy-call ctx)))))
-        (lazy-pre
-          (make-lazy-code
-            (lambda (cgc ctx)
-
-              ;; Save used registers, generate and push continuation stub
-              (set! ctx (call-save/cont cgc ctx ast succ #f 2 #t))
-
-              ;; Push closure
-              (call-get-closure cgc ctx 1)
-              (jump-to-version cgc lazy-args ctx)))))
-
-    (let ((lazy-lst (gen-ast (caddr ast) lazy-pre)))
-      (gen-ast (cadr ast) lazy-lst))))
 
 ;;
 ;; Call steps

@@ -325,6 +325,7 @@
               ((equal? (car expr) 'quote) expr)
               ((equal? (car expr) 'set!) (expand-set! expr))
               ((equal? (car expr) 'write-char) (expand-write-char expr))
+              ((equal? (car expr) 'list) (expand-list expr))
               ((member (car expr) '(real? eqv?)) (expand-prim expr))
               ((member (car expr) '(> >= < <= =)) (expand-cmp expr))
               ((member (car expr)
@@ -360,6 +361,14 @@
       (list (expand 'write-char)
             (expand (cadr expr))
             (expand (caddr expr)))))
+
+(define (expand-list expr)
+  (if (= (length expr) 1)
+      ;; (list)
+      (atom-node-make '())
+      ;;
+      (cons (atom-node-make 'list)
+            (map expand (cdr expr)))))
 
 (define (expand-prim expr)
 
