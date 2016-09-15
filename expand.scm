@@ -328,6 +328,7 @@
               ((equal? (car expr) 'list) (expand-list expr))
               ((member (car expr) '(real? eqv?)) (expand-prim expr))
               ((member (car expr) '(> >= < <= =)) (expand-cmp expr))
+              ((member (car expr) '(+ - * /)) (expand-numop expr))
               ((member (car expr)
                        '(FLOAT> FLOAT>= FLOAT< FLOAT<= FLOAT= FLOAT+ FLOAT- FLOAT* FLOAT/))
                  (expand-fop expr))
@@ -430,6 +431,24 @@
   (if (<= (length (cdr expr)) 2)
       (cons op-node (expand (cdr expr)))
       (expand (expand-cmp-n (cdr expr) #f))))
+
+;; Expand numop (+ - * /)
+(define (expand-numop expr)
+  (define op (car expr))
+  (cond ;; (- x) -> (* -1 x)
+        ((= (length expr) 2)
+          (cond ((eq? op '-) (expand `(* -1 ,(cadr expr))))
+                ((eq? op '/) (expand `(/  1 ,(cadr expr))))
+                (error "Internal error")))
+        ;; (op a b c) -> (op (op a b) c)
+        ((> (length expr) 3)
+          (expand
+            (let ((f (list op (cadr expr) (caddr expr))))
+              (cons op (cons f (cdddr expr))))))
+        ;; (op a b)
+        (else
+          (map expand expr))))
+
 
 ;; Expand fop (FLOAT<, FLOAT+, ...)
 (define (expand-fop expr)

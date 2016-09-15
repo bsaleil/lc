@@ -1,8 +1,17 @@
 
-(define (bar a b c d)
-  (println a b c d))
 
-(apply bar 22)
+
+
+
+(define (bar n m o p q)
+  (+ n m o p q))
+
+(gambit$$pp (bar 10 20 30 40 50))
+
+;(define (bar a b c d)
+;  (println a b c d))
+;
+;(apply bar 22)
 
 
 ;; Liveness: terminer le travail

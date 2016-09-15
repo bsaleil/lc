@@ -2126,66 +2126,9 @@
 ;; Make lazy code from N-ARY OPERATOR
 ;;
 (define (mlc-op-n ast succ op) ;; '(+ - * < > <= >= = /)
-
-  (define (int-val-cst n)
-    (and (atom-node? n)
-         (integer? (atom-node-val n))
-         (atom-node-val n)))
-
-  ;; Ast if 0 opnd
-  (define (ast0 op)
-    (case op
-      ((+) (atom-node-make 0))
-      ((*) (atom-node-make 1))
-      ((< <= > >= =)  (atom-node-make #t))))
-
-  ;; Ast if 1 opnd
-  (define (ast1 op opnd)
-    (case op
-      ((+ *) opnd)
-      ((-)   (list (atom-node-make '-)
-                   (atom-node-make 0)
-                   opnd))
-      ((/)   (list (atom-node-make '/)
-                   (atom-node-make 1)
-                   opnd))
-      ((< <= > >= =) (atom-node-make #t))))
-
-  ;; Transform numeric operator
-  ;; (+ 1 2 3) -> (+ (+ 1 2) 3)
-  (define (trans-num-op ast)
-    `(,(car ast)
-       ,(list (car ast) (cadr ast) (caddr ast))
-       ,@(cdddr ast)))
-
-  (cond
-    ((= (length ast) 1) (gen-ast (ast0 op) succ))
-    ((= (length ast) 2) (gen-ast (ast1 op (cadr ast)) succ))
-    ((> (length ast) 3)
-       (if (member op '(+ - * /))
-           (gen-ast (trans-num-op ast) succ)
-           (error "Internal error (mlc-op-n)"))) ;; comparisons are handled by macro expander
-    (else
-      (let ((lcst (int-val-cst (cadr ast)))
-            (rcst (int-val-cst (caddr ast))))
-
-        (cond
-          ((and lcst rcst)
-             (if (not (member op '(+ - * /)))
-                 (error "NYI mlc-op-n"))
-             (let ((r (eval (list op lcst rcst))))
-               (gen-ast (atom-node-make r)
-                        succ)))
-          (lcst
-             (gen-ast (caddr ast)
-                      (get-lazy-n-binop ast op lcst #f succ)))
-          (rcst
-             (gen-ast (cadr ast)
-                      (get-lazy-n-binop ast op #f rcst succ)))
-          (else
-            (gen-ast (cadr ast)
-                     (gen-ast (caddr ast)
-                              (get-lazy-n-binop ast op #f #f succ)))))))))
+  (assert (= (length ast) 3) "Internal error")
+  (gen-ast-l (cdr ast)
+             (get-lazy-n-binop ast op #f #f succ)))
 
 (define (get-lazy-n-binop ast op lcst rcst succ)
 
