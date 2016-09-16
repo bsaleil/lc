@@ -166,9 +166,13 @@
 
               ;; TODO regalloc: opt-time
               (let ((loc (ctx-get-loc ctx 0))) ;; Get loc of value in top of stack
-                (if (ctx-loc-is-register? loc)
-                    (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc))
-                    (error "NYI regalloc")))
+                (cond ((not loc)
+                        (let* ((type (ctx-get-type ctx 0))
+                               (cst  (ctx-type-cst type)))
+                          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding cst)))))
+                      ((ctx-loc-is-register? loc)
+                        (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc)))
+                      (else (error "NYI main"))))
 
               ;; Restore registers values from pstack
               (ppop-regs-reverse cgc all-regs)
@@ -299,7 +303,7 @@
         ;; Can only exec 1 file
         ((= (length files) 1)
           (copy-with-declare (car files) "./tmp")
-        (let ((content (c#expand-program "./tmp"))); (read-all (open-input-file (car files)))))
+        (let ((content  (read-all (open-input-file (car files)))))
 
               (let ((exp-content (expand-tl content)))
                 (analyses-find-global-types! exp-content)

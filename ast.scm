@@ -350,20 +350,10 @@
 ;; Make lazy code from num/bool/char/null literal
 ;;
 (define (mlc-literal lit ast succ)
-  (if (and (number? lit)
-           (or (>= lit (expt 2 61))
-               (<  lit (* -1  (expt 2 60)))))
-    (mlc-flonum lit ast succ)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
-          (apply-moves cgc ctx moves)
-          (codegen-literal cgc lit reg)
-          (jump-to-version cgc
-                           succ
-                           (ctx-push ctx
-                                     (literal->ctx-type lit)
-                                     reg)))))))
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let ((ctx (ctx-push ctx (literal->ctx-type lit) #f)))
+        (jump-to-version cgc succ ctx)))))
 
 ;;
 ;; Make lazy code from flonum literal
@@ -450,10 +440,17 @@
 
         ;;
         (cond ;; Identifier local or global and inlined condition
-              ((or (and local  (lcl-inlined-cond? ctx (cdr local)))
+              ((or (and local  (lcl-inlined-cond? ctx (cdr local))) ;; TODO wip add bool cst
                    (and global (gbl-inlined-cond? sym)))
                 (jump-to-version cgc (lazy-code-lco-true succ) ctx))
-              ;; Identifier is a local const function
+              ;; Identifier local and cst literal
+              ((and local
+                    (ctx-type-cst (ctx-identifier-type ctx (cdr local))))
+                 ;; TODO use =>
+                 (let* ((cst (ctx-type-cst (ctx-identifier-type ctx (cdr local))))
+                        (ctx (ctx-push ctx (literal->ctx-type cst) #f sym)))
+                   (jump-to-version cgc succ ctx)))
+              ;; Identifier is a local const function ;; TODO: wip remove when all cst implemented
               ((and local
                     (member 'cst (identifier-flags (cdr local))))
                  (gen-closure-from-cst cgc ctx local succ))
@@ -954,7 +951,6 @@
                       (set! nor (cons binding nor))))
                 (set! nor (cons binding nor)))
             (loop (cdr bindings))))))
-
 
   (make-lazy-code
     (lambda (cgc ctx)
@@ -2175,26 +2171,34 @@
     (make-lazy-code
       (lambda (cgc ctx)
         (let* ((type (if num-op? (make-ctx-tint) (make-ctx-tboo)))
-               (n-pop (count (list lcst rcst) not))
-               (res (if inlined-if-cond? #f (ctx-get-free-reg ctx succ n-pop)))
+               (n-pop 2)
+               (res   (if inlined-if-cond? #f (ctx-get-free-reg ctx succ n-pop)))
                (moves (if res (car res) '()))
                (reg   (if res (cadr res) #f))
                (ctx   (if res (caddr res) ctx))
                ;; We need to get locs AFTER ctx-get-free-reg call
-               (lright (or rcst (ctx-get-loc ctx 0)))
-               (lleft
-                 (if rcst
-                     (or lcst (ctx-get-loc ctx 0))
-                     (or lcst (ctx-get-loc ctx 1)))))
+               (rloc (ctx-get-loc ctx 0))
+               (rcst (ctx-type-cst (ctx-get-type ctx 0)))
+               (lloc (ctx-get-loc ctx 1))
+               (lcst (ctx-type-cst (ctx-get-type ctx 1))))
           (apply-moves cgc ctx moves)
-          (cond (num-op?
-                  (codegen-num-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #t)
+          (cond ((and num-op? lcst rcst)
+                  (if inlined-if-cond?
+                      (error "NYI1");(jump-to-version cgc TRUE ctx)
+                      (let ((ctx (ctx-push (ctx-pop-n ctx n-pop)
+                                           (literal->ctx-type (eval (list op lcst rcst)))
+                                           #f)))
+                        (jump-to-version cgc succ ctx))))
+                ((and lcst rcst)
+                  (error "NYI2"))
+                (num-op?
+                  (codegen-num-ii cgc (ctx-fs ctx) op reg lloc rloc lcst rcst #t)
                   (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg)))
                 (inlined-if-cond?
-                  (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #t)))
+                  (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst rcst #t)))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx n-pop) x86-op)))
                 (else
-                    (codegen-cmp-ii cgc (ctx-fs ctx) op reg lleft lright lcst rcst #f)
+                    (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst rcst #f)
                     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg))))))))
 
 

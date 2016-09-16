@@ -1,12 +1,12 @@
 
 
+(cons 10 20)
 
 
+;; TODO: pour (dé)sactiver les cst interprocédural:
+;;   - Ajouter le support pour apply-moves et ctx-get-call-args-moves
+;;   - Dans ctx-init-fn, modifier la stack pour enlever la cst
 
-(define (bar n m o p q)
-  (+ n m o p q))
-
-(gambit$$pp (bar 10 20 30 40 50))
 
 ;(define (bar a b c d)
 ;  (println a b c d))
@@ -16,7 +16,6 @@
 
 ;; Liveness: terminer le travail
 ;; Letrec: attention aux lates !function
-;; Letrec: détecter constantes récursives (a <-> b) (bindings aux bindings cst)
 ;; Liveness: pb sur '() ?
 ;; Liveness: cas spécial, set-box! est un kill
 ;; Liveness: alpha conversion

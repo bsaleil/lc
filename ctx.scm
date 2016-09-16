@@ -85,7 +85,8 @@
 (define-type ctx-type
   extender: define-ctx-type
   sym
-  mem-allocated?)
+  mem-allocated?
+  cst)
 
 ;; Define a new ctx type based on ctx-type
 ;; (def-ctx-type closure #f ident) expand to:
@@ -98,7 +99,7 @@
          (typector* (string->symbol (string-append "make-ctx-t" short "*")))
          (typepred  (string->symbol (string-append "ctx-t" short "?"))))
   `(begin (define-ctx-type ,typename constructor: ,typector* ,@fields)
-          (define (,typector #!optional ,@fields) (,typector* (quote ,sym) ,mem-allocated? ,@fields))
+          (define (,typector #!optional cst ,@fields) (,typector* (quote ,sym) ,mem-allocated? cst ,@fields))
           (set! ctx-type-ctors
                 (cons (cons ,typepred ,typector) ctx-type-ctors)))))
 
@@ -138,18 +139,25 @@
   (eq? (ctx-type-sym t1)
        (ctx-type-sym t2)))
 
+;; Return a new type instance without any constant information
+(define (ctx-type-nocst t)
+  (if (ctx-type-cst t)
+      (let ((ctor (ctx-type-ctor t)))
+        (ctor))
+      t))
+
 ;; Build and return a ctx type from a literal
 (define (literal->ctx-type l)
   (cond
-    ((char?    l) (make-ctx-tcha))
-    ((null?    l) (make-ctx-tnul))
-    ((fixnum?  l) (make-ctx-tint))
-    ((boolean? l) (make-ctx-tboo))
-    ((pair?    l) (make-ctx-tpai))
-    ((vector?  l) (make-ctx-tvec))
-    ((string?  l) (make-ctx-tstr))
-    ((symbol?  l) (make-ctx-tsym))
-    ((flonum?  l) (make-ctx-tflo))
+    ((char?    l) (make-ctx-tcha l))
+    ((null?    l) (make-ctx-tnul l))
+    ((fixnum?  l) (make-ctx-tint l))
+    ((boolean? l) (make-ctx-tboo l))
+    ((pair?    l) (make-ctx-tpai l))
+    ((vector?  l) (make-ctx-tvec l))
+    ((string?  l) (make-ctx-tstr l))
+    ((symbol?  l) (make-ctx-tsym l))
+    ((flonum?  l) (make-ctx-tflo l))
     (else (error "Internal error (literal->ctx-type)"))))
 
 ;; CTX IDENTIFIER LOC
@@ -191,6 +199,16 @@
 ;;
 ;; CTX INIT FN
 (define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
+
+  ;;
+  ;; STACK
+  (define (init-stack stack)
+    (let loop ((i (length args))
+               (stack stack))
+      (if (= i 0)
+          stack
+          (cons (ctx-type-nocst (car stack))
+                (loop (- i 1) (cdr stack))))))
 
   ;;
   ;; FREE REGS
@@ -285,7 +303,7 @@
 
   ;;
   (make-ctx
-    (or stack
+    (or (and stack (init-stack stack))
         (append (make-list (length args) (make-ctx-tunk)) (list (make-ctx-tclo) (make-ctx-tret))))
     (init-slot-loc)
     (init-free-regs)
@@ -948,13 +966,17 @@
   (define (get-req-moves curr-idx rem-regs moves pushed)
     (if (< curr-idx 0)
         (cons (reverse pushed) moves)
-        (let ((loc (ctx-get-loc ctx curr-idx)))
+        (let* ((type (ctx-get-type ctx curr-idx))
+               (from
+                 (if (ctx-type-cst type)
+                     (cons 'const (ctx-type-cst type))
+                     (ctx-get-loc ctx curr-idx))))
           (if (null? rem-regs)
-              (get-req-moves (- curr-idx 1) '() moves (cons loc pushed))
+              (get-req-moves (- curr-idx 1) '() moves (cons from pushed))
               (get-req-moves
                 (- curr-idx 1)
                 (cdr rem-regs)
-                (cons (cons loc (car rem-regs))
+                (cons (cons from (car rem-regs))
                       moves)
                 pushed)))))
 

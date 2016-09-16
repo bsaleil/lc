@@ -710,14 +710,6 @@
                          (x86-mov cgc dest opleft)
                          (x86-sar cgc dest (x86-imm-int 2))
                          (x86-imul cgc dest opright)))))))
-      ; (if (not (eq? dest opleft))
-      ;     (x86-mov cgc dest opleft))
-      ; (cond ((eq? op '+) (x86-add cgc dest opright))
-      ;       ((eq? op '-) (x86-sub cgc dest opright))
-      ;       ((eq? op '*) (x86-sar cgc dest (x86-imm-int 2))
-      ;                    (x86-imul cgc dest opright)
-      ;                    (if (eq? dest opright)
-      ;                        (x86-shl cgc dest (x86-imm-int 2)))))))
 
    (if overflow?
        (x86-jo cgc (list-ref labels-overflow 0)))))

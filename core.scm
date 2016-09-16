@@ -1064,9 +1064,13 @@
         (let* ((move (car moves))
                ;; Compute x86 src operand
                (src
-                 (if (eq? (car move) 'rtmp)
-                     (get-tmp)
-                     (codegen-loc-to-x86opnd (ctx-fs ctx) (car move))))
+                 (cond ((and (pair? (car move))
+                             (eq? (caar move) 'const))
+                          (x86-imm-int (obj-encoding (cdar move))))
+                       ((eq? (car move) 'rtmp)
+                          (get-tmp))
+                       (else
+                          (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))))
                ;; Compute x86 dst operand
                (dst
                  (if (eq? (cdr move) 'rtmp)
