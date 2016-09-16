@@ -86,6 +86,7 @@
   extender: define-ctx-type
   sym
   mem-allocated?
+  is-cst
   cst)
 
 ;; Define a new ctx type based on ctx-type
@@ -99,7 +100,8 @@
          (typector* (string->symbol (string-append "make-ctx-t" short "*")))
          (typepred  (string->symbol (string-append "ctx-t" short "?"))))
   `(begin (define-ctx-type ,typename constructor: ,typector* ,@fields)
-          (define (,typector #!optional cst ,@fields) (,typector* (quote ,sym) ,mem-allocated? cst ,@fields))
+          (define (,typector #!optional is-cst cst ,@fields)
+            (,typector* (quote ,sym) ,mem-allocated? is-cst cst ,@fields))
           (set! ctx-type-ctors
                 (cons (cons ,typepred ,typector) ctx-type-ctors)))))
 
@@ -149,15 +151,15 @@
 ;; Build and return a ctx type from a literal
 (define (literal->ctx-type l)
   (cond
-    ((char?    l) (make-ctx-tcha l))
-    ((null?    l) (make-ctx-tnul l))
-    ((fixnum?  l) (make-ctx-tint l))
-    ((boolean? l) (make-ctx-tboo l))
-    ((pair?    l) (make-ctx-tpai l))
-    ((vector?  l) (make-ctx-tvec l))
-    ((string?  l) (make-ctx-tstr l))
-    ((symbol?  l) (make-ctx-tsym l))
-    ((flonum?  l) (make-ctx-tflo l))
+    ((char?    l) (make-ctx-tcha #t l))
+    ((null?    l) (make-ctx-tnul #t l))
+    ((fixnum?  l) (make-ctx-tint #t l))
+    ((boolean? l) (make-ctx-tboo #t l))
+    ((pair?    l) (make-ctx-tpai #t l))
+    ((vector?  l) (make-ctx-tvec #t l))
+    ((string?  l) (make-ctx-tstr #t l))
+    ((symbol?  l) (make-ctx-tsym #t l))
+    ((flonum?  l) (make-ctx-tflo #t l))
     (else (error "Internal error (literal->ctx-type)"))))
 
 ;; CTX IDENTIFIER LOC

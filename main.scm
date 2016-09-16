@@ -165,8 +165,13 @@
               (x86-mov cgc (x86-mem (get-hp-addr)) alloc-ptr)
 
               ;; TODO regalloc: opt-time
+
               (let ((loc (ctx-get-loc ctx 0))) ;; Get loc of value in top of stack
-                (cond ((not loc)
+                (cond ;; No return value
+                      ((and (not loc)
+                            (not (ctx-get-type ctx 0)))
+                        (x86-mov cgc (x86-rax) (x86-imm-int 0)))
+                      ((not loc)
                         (let* ((type (ctx-get-type ctx 0))
                                (cst  (ctx-type-cst type)))
                           (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding cst)))))
@@ -303,7 +308,7 @@
         ;; Can only exec 1 file
         ((= (length files) 1)
           (copy-with-declare (car files) "./tmp")
-        (let ((content  (read-all (open-input-file (car files)))))
+        (let ((content (c#expand-program "./tmp"))) ;(read-all (open-input-file (car files)))))
 
               (let ((exp-content (expand-tl content)))
                 (analyses-find-global-types! exp-content)

@@ -1,11 +1,10 @@
 
-
-(cons 10 20)
-
+(gambit$$println #f)
 
 ;; TODO: pour (dé)sactiver les cst interprocédural:
 ;;   - Ajouter le support pour apply-moves et ctx-get-call-args-moves
 ;;   - Dans ctx-init-fn, modifier la stack pour enlever la cst
+;; TODO: ajouter le support des constantes dans les globales non mutables
 
 
 ;(define (bar a b c d)
