@@ -1,5 +1,8 @@
 
-(gambit$$println #f)
+(define (foo j)
+  (cons 10 j))
+
+(println (foo 400))
 
 ;; TODO: pour (dé)sactiver les cst interprocédural:
 ;;   - Ajouter le support pour apply-moves et ctx-get-call-args-moves

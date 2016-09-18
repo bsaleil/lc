@@ -970,7 +970,7 @@
         (cons (reverse pushed) moves)
         (let* ((type (ctx-get-type ctx curr-idx))
                (from
-                 (if (ctx-type-cst type)
+                 (if (ctx-type-is-cst type)
                      (cons 'const (ctx-type-cst type))
                      (ctx-get-loc ctx curr-idx))))
           (if (null? rem-regs)

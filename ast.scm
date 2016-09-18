@@ -1312,6 +1312,7 @@
 ;; generated-arg? is #t if call take 1 arg and this arg already is generated
 (define (mlc-gambit-call ast succ generated-arg?)
 
+  ;; TODO wip cst
   (define (build-args-chain args succ)
     (if (null? args)
         succ
@@ -1322,7 +1323,10 @@
             (lambda (cgc ctx)
               (let ((type (ctx-get-type ctx 0)))
                 (if (ctx-type-is-cst type)
-                    (error "NYI gambit-call"))
+                    (mlet ((moves/reg/nctx (ctx-get-free-reg ctx succ (length (cdr ast)))))
+                      (apply-moves cgc nctx moves)
+                      (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int (obj-encoding (ctx-type-cst type))))
+                      (set! ctx (ctx-push (ctx-pop nctx) ((ctx-type-ctor type)) reg))))
                 (jump-to-version cgc next ctx))))))))
 
   (define (get-gambit-sym sym)
