@@ -1,8 +1,6 @@
 
-(define (foo j)
-  (cons 10 j))
-
-(println (foo 400))
+;; car/cdr primitive
+(write-char #\I)
 
 ;; TODO: pour (dé)sactiver les cst interprocédural:
 ;;   - Ajouter le support pour apply-moves et ctx-get-call-args-moves

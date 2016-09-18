@@ -550,9 +550,13 @@
 (define (gen-set-globalvar cgc ctx global succ)
   (mlet ((pos (global-pos global))
          (moves/reg/ctx (ctx-get-free-reg ctx succ 1))
-         (lval (ctx-get-loc ctx 0)))
+         (tval (ctx-get-type ctx 0))
+         (cst? (ctx-type-is-cst tval))
+         (lval (if cst?
+                   (ctx-type-cst tval)
+                   (ctx-get-loc ctx 0))))
     (apply-moves cgc ctx moves)
-    (codegen-set-global cgc reg pos lval (ctx-fs ctx))
+    (codegen-set-global cgc (ctx-fs ctx) reg pos lval cst?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))
 
 ;;-----------------------------------------------------------------------------
@@ -1401,14 +1405,27 @@
   (define inlined-cond? (member 'cond (lazy-code-flags succ)))
 
   (let* ((prim (primitive-get op))
-        (gen  (primitive-codegen prim))
-        (fs (ctx-fs ctx))
-        (nargs (primitive-nbargs prim))
-        (locs (build-list nargs
-                          (lambda (n) (ctx-get-loc ctx n))))
-        (args (append (list cgc fs op reg inlined-cond?)
-                      (reverse locs)))
-        (rtype (primitive-rettype prim)))
+         (gen  (primitive-codegen prim))
+         (fs (ctx-fs ctx))
+         (nargs (primitive-nbargs prim))
+         (r  (build-list
+                  nargs
+                  (lambda (n)
+                    (let ((type (ctx-get-type ctx n)))
+                      (if (ctx-type-is-cst type)
+                          (cons #t (ctx-type-cst type))
+                          (cons #f (ctx-get-loc ctx n)))))))
+         (cst? (map car r))
+         (locs (map cdr r))
+         (args (append (list cgc fs op reg inlined-cond?)
+                       (reverse locs)
+                       (reverse cst?)))
+         (rtype (primitive-rettype prim)))
+
+    ;; TODO WIP CST VERS: if all cst:
+    ;;  r = eval(...)
+    ;;  jump-to-version with ctx-push r
+    ;;  (Add pairs cst later)
 
     (apply gen args)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) rtype reg))))
@@ -1434,8 +1451,8 @@
   (define lazy-out
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((stag (if (eq? op 'current-input-port) STAG_IPORT STAG_OPORT))
-               (ctx (ctx-set-type ctx 0 stag)))
+        (let* ((type (if (eq? op 'current-input-port) (make-ctx-tipo) (make-ctx-topo)))
+               (ctx (ctx-set-type ctx 0 type)))
           (jump-to-version cgc succ ctx)))))
   (let* ((sym (string->symbol (string-append "gambit$$" (symbol->string op))))
          (node (atom-node-make sym)))
@@ -1476,48 +1493,56 @@
 (define (lco-p-eq? ast op succ)
 
   ;; Inlined if cond eq?
-  (define (lco-eq?-if)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (let ((tl (ctx-get-type ctx 1))
-              (tr (ctx-get-type ctx 0))
-              (ll (ctx-get-loc  ctx 1))
-              (lr (ctx-get-loc  ctx 0))
-              (nctx (ctx-pop-n ctx 2)))
-          (if (and (not (ctx-tunk? tl))
-                   (not (ctx-tunk? tr))
-                   (not (ctx-type-teq? tl tr)))
-              ;; Types are known and !=
-              (jump-to-version cgc (lazy-code-lco-false succ) nctx)
-              ;;
-              (begin
-                (codegen-p-eq? cgc (ctx-fs ctx) 'eq? #f #t ll lr)
-                ((lazy-code-generator succ) cgc nctx x86-jne)))))))
+  (define (gen-eq?-if cgc ctx typel typer lcst? rcst?)
+    (let ((ll (if lcst? (ctx-type-cst typel)
+                        (ctx-get-loc  ctx 1)))
+          (lr (if rcst? (ctx-type-cst typer)
+                        (ctx-get-loc  ctx 0)))
+          (nctx (ctx-pop-n ctx 2)))
+      (if (and (not (ctx-tunk? typel))
+               (not (ctx-tunk? typer))
+               (not (ctx-type-teq? typel typer)))
+          ;; Types are known and !=
+          (jump-to-version cgc (lazy-code-lco-false succ) nctx)
+          ;;
+          (begin
+            (codegen-p-eq? cgc (ctx-fs ctx) 'eq? #f #t ll lr lcst? rcst?)
+            ((lazy-code-generator succ) cgc nctx x86-jne)))))
 
-  (define (lco-eq?)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 2))
-               (tl (ctx-get-type ctx 1))
-               (tr (ctx-get-type ctx 0))
-               (ll (ctx-get-loc  ctx 1))
-               (lr (ctx-get-loc  ctx 0))
-               (nctx (ctx-push (ctx-pop-n ctx 2) (make-ctx-tboo) reg)))
-          (apply-moves cgc ctx moves)
-          (if (and (not (ctx-tunk? tl))
-                   (not (ctx-tunk? tr))
-                   (not (ctx-type-teq? tl tr)))
-              ;; Types are known and !=
-              (codegen-set-bool cgc #f reg)
-              ;;
-              (codegen-p-eq? cgc (ctx-fs ctx) 'eq? reg #f ll lr))
-          (jump-to-version cgc succ nctx)))))
+  (define (gen-eq? cgc ctx typel typer lcst? rcst?)
+    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 2))
+           (ll (if lcst? (ctx-type-cst typel)
+                               (ctx-get-loc  ctx 1)))
+           (lr (if rcst? (ctx-type-cst typer)
+                         (ctx-get-loc  ctx 0)))
+           (nctx (ctx-push (ctx-pop-n ctx 2) (make-ctx-tboo) reg)))
+      (apply-moves cgc ctx moves)
+      (if (and (not (ctx-tunk? typel))
+               (not (ctx-tunk? typer))
+               (not (ctx-type-teq? typel typer)))
+          ;; Types are known and !=
+          (codegen-set-bool cgc #f reg)
+          ;;
+          (codegen-p-eq? cgc (ctx-fs ctx) 'eq? reg #f ll lr lcst? rcst?))
+      (jump-to-version cgc succ nctx)))
 
-
-  (if (member 'cond (lazy-code-flags succ))
-      (lco-eq?-if)
-      (lco-eq?)))
-
+  (make-lazy-code
+    (lambda (cgc ctx)
+      (let* ((typel (ctx-get-type ctx 1))
+             (typer (ctx-get-type ctx 0))
+             (lcst? (ctx-type-is-cst typel))
+             (rcst? (ctx-type-is-cst typer))
+             (if-cond? (member 'cond (lazy-code-flags succ))))
+        (cond ((and lcst? rcst? if-cond?)
+                 (error "NYI"))
+              ((and lcst? rcst?)
+                 (let ((ctx (ctx-pop-n ctx 2))
+                       (r (eq? (ctx-type-cst typel) (ctx-type-cst typer))))
+                   (jump-to-version cgc succ (ctx-push ctx (literal->ctx-type r) #f))))
+              (if-cond?
+                 (gen-eq?-if cgc ctx typel typer lcst? rcst?))
+              (else
+                 (gen-eq? cgc ctx typel typer lcst? rcst?)))))))
 
 ;;
 ;; Special primitive 'vector'

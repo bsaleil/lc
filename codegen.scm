@@ -318,11 +318,14 @@
 
 ;;-----------------------------------------------------------------------------
 ;; set
-(define (codegen-set-global cgc reg pos lval fs)
+(define (codegen-set-global cgc fs reg pos lval cst?)
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd fs lval)))
+        (opval (if cst?
+                   (x86-imm-int (obj-encoding lval))
+                   (codegen-loc-to-x86opnd fs lval))))
 
-    (if (x86-mem? opval)
+    (if (or (x86-imm? opval)
+            (x86-mem? opval))
         (begin (x86-mov cgc (x86-rax) opval)
                (set! opval (x86-rax))))
 
@@ -931,19 +934,24 @@
 
 ;;
 ;; box
-(define (codegen-p-box cgc fs op reg inlined-cond? lval)
+(define (codegen-p-box cgc fs op reg inlined-cond? lval cst?)
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd fs lval)))
+        (opval (if cst?
+                   (x86-imm-int (obj-encoding lval))
+                   (codegen-loc-to-x86opnd fs lval))))
     (gen-allocation-imm cgc STAG_MOBJECT 8)
-    (if (x86-mem? opval)
-        (begin (x86-mov cgc (x86-rax) opval)
-               (set! opval (x86-rax))))
+    (if (or (x86-mem? opval)
+            (x86-imm? opval))
+        (begin
+          (x86-mov cgc (x86-rax) opval)
+          (set! opval (x86-rax))))
     (x86-mov cgc (x86-mem (+ -16 OFFSET_BOX) alloc-ptr) opval)
     (x86-lea cgc dest (x86-mem (+ -16 TAG_MEMOBJ) alloc-ptr))))
 
 ;;
 ;; unbox
-(define (codegen-p-unbox cgc fs op reg inlined-cond? lbox)
+(define (codegen-p-unbox cgc fs op reg inlined-cond? lbox cst?)
+  (assert (not cst?) "Internal error, box can't be cst")
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opbox (codegen-loc-to-x86opnd fs lbox)))
     (if (x86-mem? opbox)
@@ -953,23 +961,28 @@
 
 ;;
 ;; box-set!
-(define (codegen-p-set-box cgc fs op reg inlined-cond? lbox lval)
+(define (codegen-p-set-box cgc fs op reg inlined-cond? lbox lval cst-box? cst-val?)
+  (assert (not cst-box?) "Internal error, unexpected cst operand")
+
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opbox (codegen-loc-to-x86opnd fs lbox))
-        (opval (codegen-loc-to-x86opnd fs lval))
+        (opval (if cst-val?
+                   (x86-imm-int (obj-encoding lval))
+                   (codegen-loc-to-x86opnd fs lval)))
         (use-selector? #f))
 
     (if (x86-mem? opbox)
         (begin (x86-mov cgc (x86-rax) opbox)
                (set! opbox (x86-rax))))
 
-    (if (x86-mem? opval)
+    (if (or (x86-imm? opval)
+            (x86-mem? opval))
         (if (eq? opbox (x86-rax))
-            (begin (x86-mov cgc selector-reg opbox)
+            (begin (x86-mov cgc selector-reg opval)
                    (set! opval selector-reg)
                    (set! use-selector? #t))
-            (begin (x86-mov cgc (x86-rax) opbox)
-                   (set! opbox (x86-rax)))))
+            (begin (x86-mov cgc (x86-rax) opval)
+                   (set! opval (x86-rax)))))
 
     (x86-mov cgc (x86-mem (- OFFSET_BOX TAG_MEMOBJ) opbox) opval)
     (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
@@ -979,7 +992,7 @@
 
 ;;
 ;; cons
-(define (codegen-p-cons cgc fs op reg inlined-cond? lcar lcdr #!optional car-cst? cdr-cst?)
+(define (codegen-p-cons cgc fs op reg inlined-cond? lcar lcdr car-cst? cdr-cst?)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opcar (and (not car-cst?) (codegen-loc-to-x86opnd fs lcar)))
         (opcdr (and (not cdr-cst?) (codegen-loc-to-x86opnd fs lcdr))))
@@ -1051,7 +1064,7 @@
 
 ;;
 ;; not
-(define (codegen-p-not cgc fs op reg inlined-cond? lval)
+(define (codegen-p-not cgc fs op reg inlined-cond? lval #!optional unused)
   (let ((label-done
           (asm-make-label cgc (new-sym 'done)))
         (dest (codegen-reg-to-x86reg reg))
@@ -1072,7 +1085,7 @@
 
 ;;
 ;; eq?
-(define (codegen-p-eq? cgc fs op reg inlined-cond? lleft lright #!optional lcst? rcst?)
+(define (codegen-p-eq? cgc fs op reg inlined-cond? lleft lright lcst? rcst?)
 
   ;; (eq? cst1 cst2) is handled by code expansion
   (assert (not (and lcst? rcst?)) "Internal error (codegen-eq?)")
@@ -1109,7 +1122,8 @@
 
 ;;
 ;; car/cdr
-(define (codegen-p-cxr cgc fs op reg inlined-cond? lval)
+(define (codegen-p-cxr cgc fs op reg inlined-cond? lval cst?)
+  (assert (not cst?) "Internal error")
   (let ((offset
           (if (eq? op 'car)
               (- OFFSET_PAIR_CAR TAG_PAIR)
@@ -1138,7 +1152,8 @@
 
 ;;
 ;; set-car!/set-cdr!
-(define (codegen-p-set-cxr! cgc fs op reg inlined-cond? lpair lval #!optional val-cst?)
+(define (codegen-p-set-cxr! cgc fs op reg inlined-cond? lpair lval pair-cst? val-cst?)
+  (assert (not pair-cst?) "Internal error, unexpected cst operand")
   (let ((offset
           (if (eq? op 'set-car!)
               (- OFFSET_PAIR_CAR TAG_PAIR)
