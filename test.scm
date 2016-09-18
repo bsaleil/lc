@@ -1,12 +1,7 @@
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
 
-(println (fib 40))
 
+;; TODO: GERER tous les cas ou les opérandes sont toutes cst, donc le résultat l'est aussi
 ;; TODO: pour (dé)sactiver les cst interprocédural:
 ;;   - Ajouter le support pour apply-moves et ctx-get-call-args-moves
 ;;   - Dans ctx-init-fn, modifier la stack pour enlever la cst

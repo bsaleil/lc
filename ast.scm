@@ -584,10 +584,13 @@
                                   (mlet ((pos (global-pos (asc-globals-get identifier))) ;; Lookup in globals
                                          ;;
                                          (moves/reg/ctx (ctx-get-free-reg ctx succ 1))
-                                         (lvalue (ctx-get-loc ctx 0))
-                                         (valcst (ctx-type-cst (ctx-get-type ctx 0))))
+                                         (type (ctx-get-type ctx 0))
+                                         (cst? (ctx-type-is-cst type))
+                                         (lvalue (if cst?
+                                                     (ctx-type-cst type)
+                                                     (ctx-get-loc ctx 0))))
                                     (apply-moves cgc ctx moves)
-                                    (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue valcst)
+                                    (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue cst?)
                                     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))))
                    (lazy-val (gen-ast (caddr ast) lazy-bind)))
 
@@ -1483,10 +1486,16 @@
     (lambda (cgc ctx)
       (mlet ((label-div0 (get-label-error ERR_DIVIDE_ZERO))
              (moves/reg/ctx (ctx-get-free-reg ctx succ 2))
-             (lleft (ctx-get-loc ctx 1))
-             (lright (ctx-get-loc ctx 0)))
+             (tleft  (ctx-get-type ctx 1))
+             (tright (ctx-get-type ctx 0))
+             (lcst?  (ctx-type-is-cst tleft))
+             (rcst?  (ctx-type-is-cst tright))
+             (lleft  (if lcst? (ctx-type-cst tleft)  (ctx-get-loc ctx 1)))
+             (lright (if rcst? (ctx-type-cst tright) (ctx-get-loc ctx 0))))
         (apply-moves cgc ctx moves)
-        (codegen-p-binop cgc (ctx-fs ctx) op label-div0 reg lleft lright)
+        (if (and lcst? rcst?)
+            (error "NN"))
+        (codegen-p-binop cgc (ctx-fs ctx) op label-div0 reg lleft lright lcst? rcst?)
         (jump-to-version cgc
                          succ
                          (ctx-push (ctx-pop-n ctx 2) (make-ctx-tint) reg))))))

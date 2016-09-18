@@ -262,14 +262,13 @@
 ;; Define
 ;;-----------------------------------------------------------------------------
 
-(define (codegen-define-bind cgc fs pos reg lvalue valcst)
+(define (codegen-define-bind cgc fs pos reg lvalue cst?)
 
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opval (and (not valcst) (codegen-loc-to-x86opnd fs lvalue))))
-    (cond (valcst
-             (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding opval)))
-             (x86-mov cgc (x86-mem (* 8 pos) global-ptr) (x86-rax)))
-          ((ctx-loc-is-register? lvalue)
+        (opval (if cst?
+                   (x86-imm-int (obj-encoding lvalue))
+                   (codegen-loc-to-x86opnd fs lvalue))))
+    (cond ((x86-reg? opval)
              (x86-mov cgc (x86-mem (* 8 pos) global-ptr) opval))
           (else (x86-mov cgc (x86-rax) opval)
                 (x86-mov cgc (x86-mem (* 8 pos) global-ptr) (x86-rax))))
