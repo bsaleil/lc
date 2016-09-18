@@ -678,15 +678,18 @@
     (lambda (cgc ctx)
       (let* ((fs (ctx-fs ctx))
              ;; Return value loc
-             (lret  (ctx-get-loc ctx 0))
+             (type-ret (ctx-get-type ctx 0))
+             (cst? (ctx-type-is-cst type-ret))
+             (lret (if cst?
+                       (ctx-type-cst type-ret)
+                       (ctx-get-loc ctx 0)))
              ;; Return address object loc
              (laddr (ctx-get-loc ctx (- (length (ctx-stack ctx)) 1))))
         ;; Gen return
         (if opt-return-points
-            (let* ((ret-type (car (ctx-stack ctx)))
-                   (crtable-offset (ctx-type->cridx ret-type)))
-              (codegen-return-cr cgc fs fs laddr lret crtable-offset))
-            (codegen-return-rp cgc fs fs laddr lret))))))
+            (let* ((crtable-offset (ctx-type->cridx type-ret)))
+              (codegen-return-cr cgc fs fs laddr lret cst? crtable-offset))
+            (codegen-return-rp cgc fs fs laddr lret cst?))))))
 
 ;;
 ;; Create fn entry stub
@@ -2242,9 +2245,7 @@
                   (codegen-num-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t)
                   (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg)))
                 (inlined-if-cond?
-                  (if (or lcst? rcst?)
-                      (error "NYI cmp-ff cst"))
-                  (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst rcst #t)))
+                  (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t)))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx n-pop) x86-op)))
                 (else
                     (if (or lcst? rcst?)
