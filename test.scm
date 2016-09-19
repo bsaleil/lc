@@ -3,21 +3,19 @@
 ;;; Returns the wrong answer for quotients.
 ;;; Fortunately these aren't used in the benchmark.
 
-(define BAR
-   (lambda (fn lst)
-     (if (($$atom null?) ($$atom lst))
-         '()
-         (($$atom cons) (($$atom fn) (($$atom car) ($$atom lst)))
-                        ($$atom 3)))))
+(define (foo fn)
+  (fn))
 
-(define foo (lambda (n) ($$atom 1)))
 
-(($$atom BAR) ($$atom foo) (($$atom cdr) '(1 2 3 4)))
+(define bar (lambda () 1))
+
+(foo bar)
 
 
 
 
-
+;; TODO: #<ctx-tclo #3 sym: closure mem-allocated?: #t is-cst: (lambda () ($$atom 1)) cst: #f fn-num: 0>
+;;       pourquoi l'ast dans is-cst? 
 ;; TODO: cas spéciaux comme not, eof?, ... si l'opérande est constante, on connait le résultat
 ;;       pour le moment traité dans codegen, mais movs inutiles, et on perd l'info cst
 ;; TODO: merde de regalloc

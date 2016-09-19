@@ -310,7 +310,7 @@
       ((eq? op 'lambda) (mlc-lambda-ast ast succ))
       ((eq? op 'let)    (mlc-let ast succ)) ;; Also handles let* (let* is a macro)
       ((eq? op 'letrec) (mlc-letrec ast succ))
-      ((eq? op 'quote)  (mlc-quote (cadr ast) ast succ))
+      ((eq? op 'quote)  (mlc-literal (cadr ast) ast succ))
       ((eq? op 'set!)   (mlc-set! ast succ))
       ;; Known operator
       ((atom-node? op)
@@ -352,7 +352,7 @@
 (define (mlc-literal lit ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (let ((ctx (ctx-push ctx (literal->ctx-type lit #t) #f)))
+      (let ((ctx (ctx-push ctx (literal->ctx-type lit) #f)))
         (jump-to-version cgc succ ctx)))))
 
 ;;
@@ -384,27 +384,6 @@
         (apply-moves cgc ctx moves)
         (codegen-string cgc str reg)
         (jump-to-version cgc succ (ctx-push ctx (make-ctx-tstr) reg))))))
-
-;;
-;; Make lazy code from QUOTE
-;;
-
-(define (mlc-quote val ast succ)
-
-  (cond ((null? val)
-          (mlc-literal '() ast succ))
-        ((or (pair? val) (symbol? val) (vector? val))
-          (make-lazy-code
-            (lambda (cgc ctx)
-              (define type (literal->ctx-type val #f))
-              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
-                (apply-moves cgc ctx moves)
-                (let ((dest (codegen-reg-to-x86reg reg)))
-                  (if (permanent-object? val)
-                      (x86-mov cgc dest (x86-imm-int (obj-encoding val)))
-                      (x86-mov cgc dest (x86-mem (cst-get val)))))
-                (jump-to-version cgc succ (ctx-push ctx type reg))))))
-        (else (pp val) (error "Internal error mlc-quote"))))
 
 ;;-----------------------------------------------------------------------------
 ;; VARIABLES GET
@@ -448,7 +427,7 @@
                     (ctx-type-is-cst (ctx-identifier-type ctx (cdr local))))
                  ;; TODO use =>
                  (let* ((cst (ctx-type-cst (ctx-identifier-type ctx (cdr local))))
-                        (ctx (ctx-push ctx (literal->ctx-type cst #t) #f sym)))
+                        (ctx (ctx-push ctx (literal->ctx-type cst) #f sym)))
                    (jump-to-version cgc succ ctx)))
               ;; Identifier is a local const function ;; TODO: wip remove when all cst implemented
               ((and local
@@ -1550,7 +1529,7 @@
               ((and lcst? rcst?)
                  (let ((ctx (ctx-pop-n ctx 2))
                        (r (eq? (ctx-type-cst typel) (ctx-type-cst typer))))
-                   (jump-to-version cgc succ (ctx-push ctx (literal->ctx-type r #t) #f))))
+                   (jump-to-version cgc succ (ctx-push ctx (literal->ctx-type r) #f))))
               (if-cond?
                  (gen-eq?-if cgc ctx typel typer lcst? rcst?))
               (else
@@ -2279,7 +2258,7 @@
                   (if inlined-if-cond?
                       (error "NYI1");(jump-to-version cgc TRUE ctx)
                       (let ((ctx (ctx-push (ctx-pop-n ctx n-pop)
-                                           (literal->ctx-type (eval (list op lloc rloc)) #t)
+                                           (literal->ctx-type (eval (list op lloc rloc)))
                                            #f)))
                         (jump-to-version cgc succ ctx))))
                 ((and lcst? rcst?)

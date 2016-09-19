@@ -143,27 +143,23 @@
 
 ;; Return a new type instance without any constant information
 (define (ctx-type-nocst t)
-  (if (ctx-type-cst t)
+  (if (ctx-type-is-cst t)
       (let ((ctor (ctx-type-ctor t)))
         (ctor))
       t))
 
 ;; Build and return a ctx type from a literal
-(define (literal->ctx-type l cst?)
-  (define (make fn)
-    (if cst?
-        (fn #t l)
-        (fn)))
+(define (literal->ctx-type l)
   (cond
-    ((char?    l) (make make-ctx-tcha))
-    ((null?    l) (make make-ctx-tnul))
-    ((fixnum?  l) (make make-ctx-tint))
-    ((boolean? l) (make make-ctx-tboo))
-    ((pair?    l) (make make-ctx-tpai))
-    ((vector?  l) (make make-ctx-tvec))
-    ((string?  l) (make make-ctx-tstr))
-    ((symbol?  l) (make make-ctx-tsym))
-    ((flonum?  l) (make make-ctx-tflo))
+    ((char?    l) (make-ctx-tcha #t l))
+    ((null?    l) (make-ctx-tnul #t l))
+    ((fixnum?  l) (make-ctx-tint #t l))
+    ((boolean? l) (make-ctx-tboo #t l))
+    ((pair?    l) (make-ctx-tpai #t l))
+    ((vector?  l) (make-ctx-tvec #t l))
+    ((string?  l) (make-ctx-tstr #t l))
+    ((symbol?  l) (make-ctx-tsym #t l))
+    ((flonum?  l) (make-ctx-tflo #t l))
     (else (error "Internal error (literal->ctx-type)"))))
 
 ;; CTX IDENTIFIER LOC
@@ -974,9 +970,11 @@
         (cons (reverse pushed) moves)
         (let* ((type (ctx-get-type ctx curr-idx))
                (from
-                 (if (ctx-type-is-cst type)
-                     (cons 'const (ctx-type-cst type))
-                     (ctx-get-loc ctx curr-idx))))
+                 (let ((loc (ctx-get-loc ctx curr-idx)))
+                   (or loc
+                       (if (ctx-type-is-cst type)
+                           (cons 'const (ctx-type-cst type))
+                           (error "NYI")))))) ;; closure cst without loc ?
           (if (null? rem-regs)
               (get-req-moves (- curr-idx 1) '() moves (cons from pushed))
               (get-req-moves
