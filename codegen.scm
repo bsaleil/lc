@@ -155,6 +155,25 @@
 (define selector-reg-32 (x86-ecx))
 (define (x86-usp) (x86-rbp)) ;; user stack pointer is rbp
 
+(define (x86-r64->r32 r64)
+  (assert (x86-reg64? r64) "Internal error")
+  (cond ((eq? r64 (x86-rax)) (x86-eax))
+        ((eq? r64 (x86-rbx)) (x86-ebx))
+        ((eq? r64 (x86-rcx)) (x86-ecx))
+        ((eq? r64 (x86-rdx)) (x86-edx))
+        ((eq? r64 (x86-rsi)) (x86-esi))
+        ((eq? r64 (x86-rdi)) (x86-edi))
+        ((eq? r64 (x86-rbp)) (x86-ebp))
+        ((eq? r64 (x86-rsp)) (x86-esp))
+        ((eq? r64 (x86-r8 )) (x86-r8d))
+        ((eq? r64 (x86-r9 )) (x86-r9d))
+        ((eq? r64 (x86-r10)) (x86-r10d))
+        ((eq? r64 (x86-r11)) (x86-r11d))
+        ((eq? r64 (x86-r12)) (x86-r12d))
+        ((eq? r64 (x86-r13)) (x86-r13d))
+        ((eq? r64 (x86-r14)) (x86-r14d))
+        ((eq? r64 (x86-r15)) (x86-r15d))))
+
 ;; NOTE: temporary register is always rax
 ;; NOTE: selector is always rcx
 
@@ -1016,29 +1035,45 @@
 
 ;;
 ;; quotient/modulo/remainder
-(define (codegen-p-binop cgc fs op label-div0 reg lleft lright)
+(define (codegen-p-binop cgc fs op label-div0 reg lleft lright lcst? rcst?)
 
-  (let* ((dest (codegen-reg-to-x86reg reg))
-         (lopnd (codegen-loc-to-x86opnd fs lleft))
-         (orig-ropnd (codegen-loc-to-x86opnd fs lright))
-         (ropnd (codegen-loc-to-x86opnd fs lright))
-         (save-rdx? (neq? dest (x86-rdx))))
+  (assert (not (and lcst? rcst?)) "Internal error")
 
-    (x86-mov cgc (x86-rax) lopnd)
+  (let* ((dest  (codegen-reg-to-x86reg reg))
+         (lopnd (if lcst?
+                    (x86-imm-int (obj-encoding lleft))
+                    (codegen-loc-to-x86opnd fs lleft)))
+         (ropnd (if rcst?
+                    (x86-imm-int (obj-encoding lright))
+                    (codegen-loc-to-x86opnd fs lright)))
+         (save-rdx? (neq? dest (x86-rdx)))
+         (restore-fn #f)
+         (selector-used #f))
 
+    ;; If ropnd is imm or rdx, use selector
+    (if (or (x86-imm? ropnd)
+            (eq? ropnd (x86-rdx)))
+        (begin (x86-mov cgc selector-reg ropnd)
+               (set! ropnd selector-reg)
+               (set! selector-used #t)))
+
+    ;; If rdx must be saved
     (if save-rdx?
-        (begin
-          (x86-mov cgc (x86-rcx) (x86-rdx))
-          (if (eq? ropnd (x86-rdx))
-              (begin (x86-ppush cgc (x86-rdx))
-                     (set! ropnd (x86-rcx))))))
+        (if (eq? ropnd selector-reg)
+            ;; If selector used, use pstack
+            (begin (x86-ppush cgc (x86-rdx))
+                   (set! restore-fn (lambda (cgc) (x86-ppop cgc (x86-rdx)))))
+            ;; Else, use selector
+            (begin (x86-mov cgc selector-reg (x86-rdx))
+                   (set! restore-fn (lambda (cgc) (x86-mov cgc (x86-rdx) selector-reg)))
+                   (set! selector-used #t))))
 
     (x86-cmp cgc ropnd (x86-imm-int 0))
     (x86-je cgc label-div0)
 
-    (x86-sar cgc ropnd (x86-imm-int 2))
-    (x86-sar cgc (x86-rax) (x86-imm-int 2))
+    (x86-mov cgc (x86-rax) lopnd)
     (x86-cqo cgc)
+
     (x86-idiv cgc ropnd)
 
     (cond ((eq? op 'quotient)
@@ -1055,13 +1090,11 @@
             (x86-shl cgc (x86-rdx) (x86-imm-int 2))
             (x86-mov cgc dest (x86-rdx))))
 
-    (if save-rdx?
-        (begin (if (eq? orig-ropnd (x86-rdx))
-                   (x86-ppop cgc (x86-rdx))
-                   (if (not (eq? orig-ropnd dest))
-                       (begin (x86-shl cgc orig-ropnd (x86-imm-int 2))
-                              (x86-mov cgc (x86-rdx) (x86-rcx)))))
-               (x86-mov cgc (x86-rcx) (x86-imm-int 0))))))
+    ;; Restore rdx
+    (restore-fn cgc)
+    ;; Restore selector
+    (if selector-used
+        (x86-xor cgc selector-reg selector-reg))))
 
 ;;
 ;; not
@@ -1262,7 +1295,36 @@
 ;;
 ;; make-vector with !cst len
 (define (codegen-p-make-string-opn cgc fs reg llen lval val-cst?)
-  (error "NN"))
+
+  (let* ((dest  (codegen-reg-to-x86reg reg))
+         (oplen (codegen-loc-to-x86opnd fs llen))
+         (opval (if val-cst?
+                    (x86-imm-int (obj-encoding lval))
+                    (codegen-loc-to-x86opnd fs lval)))
+         (label-loop (asm-make-label #f (new-sym 'make-string-loop)))
+         (label-end  (asm-make-label #f (new-sym 'make-string-end))))
+
+    (x86-mov cgc (x86-rax) oplen)
+    (gen-allocation-rt cgc STAG_STRING (x86-rax))
+
+    (x86-mov cgc selector-reg oplen)
+    (if val-cst?
+        (x86-mov cgc dest (x86-imm-int (char->integer lval)))
+        (begin
+          (if (not (eq? dest opval)) (x86-mov cgc dest opval))
+          (x86-shr cgc dest (x86-imm-int 2))))
+    (x86-label cgc label-loop)
+    (x86-cmp cgc selector-reg (x86-imm-int 0))
+    (x86-je cgc label-end)
+
+      (let ((memop (x86-mem (- 4 TAG_MEMOBJ) (x86-rax) selector-reg)))
+        (x86-mov cgc memop (x86-r64->r32 dest))
+        (x86-sub cgc selector-reg (x86-imm-int 4))
+        (x86-jmp cgc label-loop))
+
+    (x86-label cgc label-end)
+    (x86-mov cgc dest (x86-rax))
+    (x86-mov cgc selector-reg (x86-imm-int 0))))
 
   ;(let* ((header-word (mem-header 24 STAG_STRING))
   ;       (dest  (codegen-reg-to-x86reg reg))

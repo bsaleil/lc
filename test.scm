@@ -1,58 +1,15 @@
-;;; TRIANGL -- Board game benchmark.
 
-(define *board*
-  (list->vector '(1 1 1 1 1 0 1 1 1 1 1 1 1 1 1 1)))
+(define ss (make-string (car (cons 4 4)) #\T))
 
-(define *sequence*
-  (list->vector '(0 0 0 0 0 0 0 0 0 0 0 0 0 0)))
+(pp ss)
 
-(define *a*
-  (list->vector '(1 2 4 3 5 6 1 3 6 2 5 4 11 12
-                  13 7 8 4 4 7 11 8 12 13 6 10
-                  15 9 14 13 13 14 15 9 10
-                  6 6)))
+(string-set! ss 0 #\U)
 
-(define *b*
-  (list->vector '(2 4 7 5 8 9 3 6 10 5 9 8
-                  12 13 14 8 9 5 2 4 7 5 8
-                  9 3 6 10 5 9 8 12 13 14
-                  8 9 5 5)))
+(pp ss)
 
-(define *c*
-  (list->vector '(4 7 11 8 12 13 6 10 15 9 14 13
-                  13 14 15 9 10 6 1 2 4 3 5 6 1
-                  3 6 2 5 4 11 12 13 7 8 4 4)))
 
-(define *answer* '())
-
-(define (attempt i depth)
-  (cond ((= depth 14)
-         (set! *answer*
-               (cons (cdr (vector->list *sequence*)) *answer*))
-         #t)
-        ((and (= 1 (vector-ref *board* (vector-ref *a* i)))
-              (= 1 (vector-ref *board* (vector-ref *b* i)))
-              (= 0 (vector-ref *board* (vector-ref *c* i))))
-         (vector-set! *board* (vector-ref *a* i) 0)
-         (vector-set! *board* (vector-ref *b* i) 0)
-         (vector-set! *board* (vector-ref *c* i) 1)
-         (vector-set! *sequence* depth i)
-         (do ((j 0 (+ j 1))
-              (depth (+ depth 1)))
-             ((or (= j 36) (attempt j depth)) #f))
-         (vector-set! *board* (vector-ref *a* i) 1)
-         (vector-set! *board* (vector-ref *b* i) 1)
-         (vector-set! *board* (vector-ref *c* i) 0) #f)
-        (else #f)))
-
-(define (test i depth)
-  (set! *answer* '())
-  (attempt i depth))
-  
-;-----
-
-(test 22 1)
-
+;; TODO: merde de regalloc
+;; TODO: jitter le alloc-rt pour ne pas générer de code si la taille ne nécessite pas un still
 ;; TODO: Quote cst
 ;; TODO: attention aux constantes qui sont mem-allocated pour les primitives et appels, etc...
 ;; TODO: GERER tous les cas ou les opérandes sont toutes cst, donc le résultat l'est aussi
