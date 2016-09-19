@@ -1,6 +1,20 @@
 
 
+(gambit$$pp (make-vector 4 "kk"))
 
+(gambit$$pp (make-vector (+ 3 (car (cons 1 2))) "pp"))
+
+(define vv (make-vector 4 "kk"))
+
+
+(pp vv)
+
+(vector-set! vv 3 #\E)
+
+(pp vv)
+
+;; TODO: Quote cst
+;; TODO: attention aux constantes qui sont mem-allocated pour les primitives et appels, etc...
 ;; TODO: GERER tous les cas ou les opérandes sont toutes cst, donc le résultat l'est aussi
 ;; TODO: pour (dé)sactiver les cst interprocédural:
 ;;   - Ajouter le support pour apply-moves et ctx-get-call-args-moves

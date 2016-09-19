@@ -1266,61 +1266,105 @@
       (x86-mov cgc dest (x86-rax))
       (x86-mov cgc selector-reg (x86-imm-int 0)))))
 
+
 ;;
 ;; make-vector
-(define (codegen-p-make-vector cgc fs op reg inlined-cond? llen lval)
+(define (codegen-p-make-vector cgc fs op reg inlined-cond? llen lval cst-len? cst-val?)
+
+  (assert (or (not cst-val?)
+              (not (##mem-allocated? lval)))
+          "Internal error. Unexpected cst operand")
+
+  (if cst-len?
+      (codegen-p-make-vector-imm cgc fs reg llen lval cst-val?)
+      (codegen-p-make-vector-opn cgc fs reg llen lval cst-val?)))
+
+;; make-vector with cst len
+(define (codegen-p-make-vector-imm cgc fs reg llen lval cst-val?)
+
   (let* ((dest  (codegen-reg-to-x86reg reg))
-         (oplen (lambda () (codegen-loc-to-x86opnd fs llen)))
-         (opval (lambda () (if lval (codegen-loc-to-x86opnd fs lval) #f)))
+         (oplen (x86-imm-int (obj-encoding llen)))
+         (opval (if cst-val?
+                    (x86-imm-int (obj-encoding lval))
+                    (codegen-loc-to-x86opnd fs lval)))
          (label-loop (asm-make-label #f (new-sym 'make-vector-loop)))
          (label-end  (asm-make-label #f (new-sym 'make-vector-end))))
 
-    (begin-with-cg-macro
+    ;; Alloc vector
+    (gen-allocation-imm cgc STAG_VECTOR (* 8 llen))
+    ;; Loop counter
+    (x86-mov cgc selector-reg (x86-imm-int (* -8 llen)))
+    ;; Loop
+    (if cst-val?
+        (x86-mov cgc dest (x86-imm-int (obj-encoding lval))))
+    (x86-label cgc label-loop)
+    (x86-cmp cgc selector-reg (x86-imm-int 0))
+    (x86-je cgc label-end)
 
-      ;; Unmem
-      (chk-pick-unmem! (oplen) (list (oplen) (opval) dest))
-      (if lval
-          (chk-pick-unmem! (opval) (list (oplen) (opval) dest)))
+      (let ((memop (x86-mem 0 alloc-ptr selector-reg)))
+        (if cst-val?
+            (x86-mov cgc memop dest)
+            (x86-mov cgc memop opval))
+        (x86-add cgc selector-reg (x86-imm-int 8))
+        (x86-jmp cgc label-loop))
 
-      ;; Primitive code
-      (x86-mov cgc (x86-rax) (oplen))
-      (x86-shl cgc (x86-rax) (x86-imm-int 1))
-      (gen-allocation-rt cgc STAG_VECTOR (x86-rax))
+    (x86-label cgc label-end)
+    (x86-lea cgc dest (x86-mem (+ (* (+ llen 1) -8) TAG_MEMOBJ) alloc-ptr))
+    (x86-mov cgc selector-reg (x86-imm-int 0))))
 
-      (x86-mov cgc selector-reg (oplen))
-      (x86-shl cgc selector-reg (x86-imm-int 1))
+;; make-vector with !cst len
+(define (codegen-p-make-vector-opn cgc fs reg llen lval cst-val?)
 
-      (x86-label cgc label-loop)
-      (x86-cmp cgc selector-reg (x86-imm-int 0))
-      (x86-je cgc label-end)
+  (let* ((dest  (codegen-reg-to-x86reg reg))
+         (oplen (codegen-loc-to-x86opnd fs llen))
+         (opval (if cst-val?
+                    (x86-imm-int (obj-encoding lval))
+                    (codegen-loc-to-x86opnd fs lval)))
+         (label-loop (asm-make-label #f (new-sym 'make-vector-loop)))
+         (label-end  (asm-make-label #f (new-sym 'make-vector-end))))
 
-        (let ((memop
-                (x86-mem (- TAG_MEMOBJ) (x86-rax) selector-reg)))
+    ;; Alloc
+    (x86-mov cgc (x86-rax) oplen)
+    (x86-shl cgc (x86-rax) (x86-imm-int 1))
+    (gen-allocation-rt cgc STAG_VECTOR (x86-rax))
 
-          (if lval
-              (x86-mov cgc memop (opval))
-              (x86-mov cgc memop (x86-imm-int 0) 64))
-          (x86-sub cgc selector-reg (x86-imm-int 8))
-          (x86-jmp cgc label-loop))
+    ;; Loop
+    (x86-mov cgc selector-reg oplen)
+    (x86-shl cgc selector-reg (x86-imm-int 1))
+    (if cst-val?
+        (x86-mov cgc dest (x86-imm-int (obj-encoding lval))))
+    (x86-label cgc label-loop)
+    (x86-cmp cgc selector-reg (x86-imm-int 0))
+    (x86-je cgc label-end)
 
-      (x86-label cgc label-end)
-      (x86-mov cgc selector-reg (oplen))
-      (x86-shl cgc selector-reg (x86-imm-int 9))
-      (x86-or cgc (x86-mem (- TAG_MEMOBJ) (x86-rax)) selector-reg)
-      (x86-mov cgc dest (x86-rax))
-      (x86-mov cgc selector-reg (x86-imm-int 0)))))
+      (let ((memop (x86-mem (- TAG_MEMOBJ) (x86-rax) selector-reg)))
+
+        (if cst-val?
+            (x86-mov cgc memop dest)
+            (x86-mov cgc memop opval))
+
+        (x86-sub cgc selector-reg (x86-imm-int 8))
+        (x86-jmp cgc label-loop))
+
+    ;;
+    (x86-label cgc label-end)
+    (x86-mov cgc dest (x86-rax))
+    (x86-mov cgc selector-reg (x86-imm-int 0))))
 
 ;;
 ;; vector-length
-(define (codegen-p-vector-length cgc fs op reg inlined-cond? lval)
+(define (codegen-p-vector-length cgc fs op reg inlined-cond? lvec cst-vec?)
+
+  (assert (not cst-vec?) "Internal error")
+
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd fs lval)))
+        (opvec (codegen-loc-to-x86opnd fs lvec)))
 
-    (if (ctx-loc-is-memory? lval)
-        (begin (x86-mov cgc (x86-rax) opval)
-               (set! opval (x86-rax))))
+    (if (ctx-loc-is-memory? lvec)
+        (begin (x86-mov cgc (x86-rax) opvec)
+               (set! opvec (x86-rax))))
 
-    (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opval))
+    (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opvec))
     (x86-shr cgc dest (x86-imm-int 9))))
 
 ;;
@@ -1339,7 +1383,9 @@
 ;;
 ;; vector-ref
 ;; TODO val-cst? -> idx-cst?
-(define (codegen-p-vector-ref cgc fs op reg inlined-cond? lvec lidx #!optional val-cst?)
+(define (codegen-p-vector-ref cgc fs op reg inlined-cond? lvec lidx vec-cst? val-cst?)
+
+  (assert (not vec-cst?) "Internal error")
 
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (opvec (codegen-loc-to-x86opnd fs lvec))
@@ -1399,37 +1445,60 @@
 
 ;;
 ;; vector-set!
-(define (codegen-p-vector-set! cgc fs op reg inlined-cond? lvec lidx lval)
+(define (codegen-p-vector-set! cgc fs op reg inlined-cond? lvec lidx lval vec-cst? idx-cst? val-cst?)
+
+  (assert (not vec-cst?) "Internal error")
+  (assert (or (not val-cst?)
+              (not (##mem-allocated? lval)))
+          "Internal error")
 
   (let* ((dest (codegen-reg-to-x86reg reg))
          (opvec (codegen-loc-to-x86opnd fs lvec))
-         (opidx (codegen-loc-to-x86opnd fs lidx))
-         (opval (codegen-loc-to-x86opnd fs lval)))
+         (opidx (if idx-cst?
+                    (x86-imm-int (obj-encoding lidx))
+                    (codegen-loc-to-x86opnd fs lidx)))
+         (opval (if val-cst?
+                    (x86-imm-int (obj-encoding lval))
+                    (codegen-loc-to-x86opnd fs lval))))
 
-    (if (x86-mem? opidx)
-        (begin
-          (x86-mov cgc (x86-rcx) opidx)
-          (set! opidx (x86-rcx))))
+    (if (x86-mem? opvec)
+        (begin (x86-mov cgc (x86-rax) opvec)
+               (set! opvec (x86-rax))))
 
-    (x86-shl cgc opidx (x86-imm-int 1))
+    (cond ;; cst/cst
+          ;; cst/mem
+          ((or (and idx-cst? val-cst?)
+               (and idx-cst? (x86-mem? opval)))
+             (x86-mov cgc selector-reg opval)
+             (x86-mov cgc (x86-mem (+ (* 8 lidx) (- 8 TAG_MEMOBJ)) opvec) selector-reg)
+             (x86-mov cgc selector-reg (x86-imm-int 0)))
+          ;; cst/reg
+          (idx-cst?
+             (x86-mov cgc (x86-mem (+ (* 8 lidx) (- 8 TAG_MEMOBJ)) opvec) opval))
+          ;; mem/cst
+          ;; mem/mem
+          ;; reg/cst
+          ;; reg/mem
+          ((or (and (x86-mem? opidx) val-cst?)
+               (and (x86-mem? opidx) (x86-mem? opval))
+               (and (x86-reg? lidx) val-cst?)
+               (and (x86-reg? lidx) (x86-mem? lval)))
+             (if (eq? opvec (x86-rax))
+                 (error "NYI"))
+             (x86-mov cgc selector-reg opval)
+             (x86-mov cgc (x86-rax) opidx)
+             (x86-shl cgc (x86-rax) (x86-imm-int 1))
+             (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opvec (x86-rax)) selector-reg)
+             (x86-mov cgc selector-reg (x86-imm-int 0)))
+          ;; reg/reg
+          ;; mem/reg
+          (else
+             (x86-mov cgc selector-reg opidx)
+             (x86-shl cgc selector-reg (x86-imm-int 1))
+             (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opvec selector-reg) opval)
+             (x86-mov cgc selector-reg (x86-imm-int 0))))
 
-    (cond ((and (x86-mem? opval)
-                (x86-mem? opvec))
-             (x86-mov cgc dest opval)
-             (x86-mov cgc (x86-rax) opvec)
-             (set! opval dest)
-             (set! opvec (x86-rax)))
-          ((x86-mem? opval)
-             (x86-mov cgc (x86-rax) opval)
-             (set! opval (x86-rax)))
-          ((x86-mem? opvec)
-             (x86-mov cgc (x86-rax) opvec)
-             (set! opvec (x86-rax))))
-
-    (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opvec opidx) opval)
-    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
-    (if (eq? opidx (x86-rcx))
-        (x86-mov cgc (x86-rcx) (x86-imm-int 0)))))
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
 
 ;;
 ;; string-set!
