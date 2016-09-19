@@ -1,14 +1,25 @@
+;;; DERIV -- Symbolic derivation.
 
-(define (foo8 a b c d e f . g)
-	(pp a)
-	(pp f)
-	(pp g))
+;;; Returns the wrong answer for quotients.
+;;; Fortunately these aren't used in the benchmark.
 
-(foo8 0 1 2 3 4 5 6 7 8 9)
+(define BAR
+   (lambda (fn lst)
+     (if (($$atom null?) ($$atom lst))
+         '()
+         (($$atom cons) (($$atom fn) (($$atom car) ($$atom lst)))
+                        ($$atom 3)))))
+
+(define foo (lambda (n) ($$atom 1)))
+
+(($$atom BAR) ($$atom foo) (($$atom cdr) '(1 2 3 4)))
 
 
 
 
+
+;; TODO: cas spéciaux comme not, eof?, ... si l'opérande est constante, on connait le résultat
+;;       pour le moment traité dans codegen, mais movs inutiles, et on perd l'info cst
 ;; TODO: merde de regalloc
 ;; TODO: jitter le alloc-rt pour ne pas générer de code si la taille ne nécessite pas un still
 ;; TODO: Quote cst

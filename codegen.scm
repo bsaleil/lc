@@ -1099,24 +1099,33 @@
 
 ;;
 ;; not
-(define (codegen-p-not cgc fs op reg inlined-cond? lval #!optional unused)
-  (let ((label-done
-          (asm-make-label cgc (new-sym 'done)))
-        (dest (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd fs lval)))
+(define (codegen-p-not cgc fs op reg inlined-cond? lval val-cst?)
 
-    (if (eq? dest opval)
-        (begin
-          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
-          (x86-cmp cgc opval (x86-rax))
-          (x86-mov cgc dest (x86-imm-int (obj-encoding #f))))
-        (begin
-          (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-          (x86-cmp cgc opval dest)))
+  (define dest (codegen-reg-to-x86reg reg))
 
-    (x86-jne cgc label-done)
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-    (x86-label cgc label-done)))
+  (cond
+    ((and val-cst? lval)
+      (x86-mov cgc dest (x86-imm-int (obj-encoding #f))))
+    (val-cst?
+      (x86-mov cgc dest (x86-imm-int (obj-encoding #t))))
+    (else
+      (let ((label-done
+              (asm-make-label cgc (new-sym 'done)))
+            (dest (codegen-reg-to-x86reg reg))
+            (opval (codegen-loc-to-x86opnd fs lval)))
+
+        (if (eq? dest opval)
+            (begin
+              (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding #f)))
+              (x86-cmp cgc opval (x86-rax))
+              (x86-mov cgc dest (x86-imm-int (obj-encoding #f))))
+            (begin
+              (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+              (x86-cmp cgc opval dest)))
+
+        (x86-jne cgc label-done)
+        (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+        (x86-label cgc label-done)))))
 
 ;;
 ;; eq?
