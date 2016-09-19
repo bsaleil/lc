@@ -1516,6 +1516,7 @@
              (lambda (cgc ctx)
                (pp "FAIL TEST")
                (pp ctx-type)
+               (pp stack-idx)
                (pp ctx)
                (if (or (ctx-tflo? ctx-type) (ctx-tint? ctx-type))
                    (gen-error cgc ERR_NUMBER_EXPECTED)

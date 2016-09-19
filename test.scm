@@ -1,11 +1,12 @@
 
-(define ss (make-string (car (cons 4 4)) #\T))
+(define (foo8 a b c d e f . g)
+	(pp a)
+	(pp f)
+	(pp g))
 
-(pp ss)
+(foo8 0 1 2 3 4 5 6 7 8 9)
 
-(string-set! ss 0 #\U)
 
-(pp ss)
 
 
 ;; TODO: merde de regalloc

@@ -149,17 +149,21 @@
       t))
 
 ;; Build and return a ctx type from a literal
-(define (literal->ctx-type l)
+(define (literal->ctx-type l cst?)
+  (define (make fn)
+    (if cst?
+        (fn #t l)
+        (fn)))
   (cond
-    ((char?    l) (make-ctx-tcha #t l))
-    ((null?    l) (make-ctx-tnul #t l))
-    ((fixnum?  l) (make-ctx-tint #t l))
-    ((boolean? l) (make-ctx-tboo #t l))
-    ((pair?    l) (make-ctx-tpai #t l))
-    ((vector?  l) (make-ctx-tvec #t l))
-    ((string?  l) (make-ctx-tstr #t l))
-    ((symbol?  l) (make-ctx-tsym #t l))
-    ((flonum?  l) (make-ctx-tflo #t l))
+    ((char?    l) (make make-ctx-tcha))
+    ((null?    l) (make make-ctx-tnul))
+    ((fixnum?  l) (make make-ctx-tint))
+    ((boolean? l) (make make-ctx-tboo))
+    ((pair?    l) (make make-ctx-tpai))
+    ((vector?  l) (make make-ctx-tvec))
+    ((string?  l) (make make-ctx-tstr))
+    ((symbol?  l) (make make-ctx-tsym))
+    ((flonum?  l) (make make-ctx-tflo))
     (else (error "Internal error (literal->ctx-type)"))))
 
 ;; CTX IDENTIFIER LOC

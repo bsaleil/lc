@@ -352,7 +352,7 @@
 (define (mlc-literal lit ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (let ((ctx (ctx-push ctx (literal->ctx-type lit) #f)))
+      (let ((ctx (ctx-push ctx (literal->ctx-type lit #t) #f)))
         (jump-to-version cgc succ ctx)))))
 
 ;;
@@ -396,7 +396,7 @@
         ((or (pair? val) (symbol? val) (vector? val))
           (make-lazy-code
             (lambda (cgc ctx)
-              (define type (literal->ctx-type val))
+              (define type (literal->ctx-type val #f))
               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
                 (apply-moves cgc ctx moves)
                 (let ((dest (codegen-reg-to-x86reg reg)))
@@ -448,7 +448,7 @@
                     (ctx-type-is-cst (ctx-identifier-type ctx (cdr local))))
                  ;; TODO use =>
                  (let* ((cst (ctx-type-cst (ctx-identifier-type ctx (cdr local))))
-                        (ctx (ctx-push ctx (literal->ctx-type cst) #f sym)))
+                        (ctx (ctx-push ctx (literal->ctx-type cst #t) #f sym)))
                    (jump-to-version cgc succ ctx)))
               ;; Identifier is a local const function ;; TODO: wip remove when all cst implemented
               ((and local
@@ -1550,7 +1550,7 @@
               ((and lcst? rcst?)
                  (let ((ctx (ctx-pop-n ctx 2))
                        (r (eq? (ctx-type-cst typel) (ctx-type-cst typer))))
-                   (jump-to-version cgc succ (ctx-push ctx (literal->ctx-type r) #f))))
+                   (jump-to-version cgc succ (ctx-push ctx (literal->ctx-type r #t) #f))))
               (if-cond?
                  (gen-eq?-if cgc ctx typel typer lcst? rcst?))
               (else
@@ -1605,14 +1605,27 @@
     (if (= n 0)
         (make-lazy-code
           (lambda (cgc ctx)
-            (let ((loc (ctx-get-loc ctx n)))
+            (let* ((type (ctx-get-type ctx n))
+                   (cst? (ctx-type-is-cst type))
+                   (loc (if cst?
+                            (ctx-type-cst type)
+                            (ctx-get-loc ctx n))))
               (let ((pair-offset (* -3 8 n)))
                 ;; Write header
                 (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
                 ;; Write null in cdr
                 (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-imm-int (obj-encoding '())) 64)
                 ;; Write value in car
-                (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
+                (let ((opnd
+                        (if cst?
+                            (x86-imm-int (obj-encoding loc))
+                            (codegen-loc-to-x86opnd (ctx-fs ctx) loc))))
+                  (if (or (x86-mem? opnd)
+                          (x86-imm? opnd))
+                      (begin
+                        (x86-mov cgc (x86-rax) opnd)
+                        (set! opnd (x86-rax))))
+                  (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) opnd))
                 (mlet ((moves/reg/ctx (ctx-get-free-reg (ctx-pop-n ctx len) succ 0)))
                    (apply-moves cgc ctx moves)
                    ;; Load first pair in dest register
@@ -1622,7 +1635,11 @@
                        (jump-to-version cgc succ (ctx-push ctx (make-ctx-tpai) reg)))))))))
         (make-lazy-code
           (lambda (cgc ctx)
-            (let ((loc (ctx-get-loc ctx n)))
+            (let* ((type (ctx-get-type ctx n))
+                   (cst? (ctx-type-is-cst type))
+                   (loc (if cst?
+                            (ctx-type-cst type)
+                            (ctx-get-loc ctx n))))
               (let ((pair-offset (* -3 8 n)))
                 ;; Write header
                 (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
@@ -1630,8 +1647,12 @@
                 (x86-lea cgc (x86-rax) (x86-mem (+ pair-offset TAG_PAIR) alloc-ptr))
                 (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-rax))
                 ;; Write value in car
-                (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
-                  (if (x86-mem? opnd)
+                (let ((opnd
+                        (if cst?
+                            (x86-imm-int (obj-encoding loc))
+                            (codegen-loc-to-x86opnd (ctx-fs ctx) loc))))
+                  (if (or (x86-imm? opnd)
+                          (x86-mem? opnd))
                       (begin (x86-mov cgc (x86-rax) opnd)
                              (set! opnd (x86-rax))))
                   (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) opnd))
@@ -1881,12 +1902,18 @@
                            (min (asm-label-pos label-false)
                                 (asm-label-pos label-true)))
 
-                     ;; Si on reconnait le pattern (if SYM SYM X) et que succ est cond
-
                      (if x86-op
                          (codegen-inlined-if cgc label-jump label-false label-true x86-op)
-                         (let* ((lcond (ctx-get-loc ctx 0)))
-                           (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond)))))))))
+                         (let* ((type (ctx-get-type ctx 0))
+                                (cst? (ctx-type-is-cst type)))
+                           ;; TODO WIP: do *not* create stub in the first two cases
+                           (cond ((and cst? (ctx-type-cst type))
+                                    (jump-to-version cgc lazy-code1 (ctx-pop ctx)))
+                                 (cst?
+                                    (jump-to-version cgc lazy-code0 (ctx-pop ctx)))
+                                 (else
+                                    (let ((lcond (ctx-get-loc ctx 0)))
+                                      (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond))))))))))))
 
     (gen-ast
       (cadr ast)
@@ -1958,8 +1985,10 @@
                (locs stackp))
       (if (null? locs)
           (set! ctx (ctx-fs-update ctx fs))
-          (let ((opnd (codegen-loc-to-x86opnd fs (car locs))))
-            (x86-upush cgc opnd)
+          (begin
+            (if (eq? (caar locs) 'const)
+                (x86-upush cgc (x86-imm-int (obj-encoding (cdar locs))))
+                (x86-upush cgc (codegen-loc-to-x86opnd fs (car locs))))
             (loop (+ fs 1) (cdr locs)))))
 
     (let* ((used-regs
@@ -2250,7 +2279,7 @@
                   (if inlined-if-cond?
                       (error "NYI1");(jump-to-version cgc TRUE ctx)
                       (let ((ctx (ctx-push (ctx-pop-n ctx n-pop)
-                                           (literal->ctx-type (eval (list op lloc rloc)))
+                                           (literal->ctx-type (eval (list op lloc rloc)) #t)
                                            #f)))
                         (jump-to-version cgc succ ctx))))
                 ((and lcst? rcst?)
@@ -2262,9 +2291,7 @@
                   (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t)))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx n-pop) x86-op)))
                 (else
-                    (if (or lcst? rcst?)
-                        (error "NYI cmp-ff cst"))
-                    (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst rcst #f)
+                    (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #f)
                     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg))))))))
 
 

@@ -192,7 +192,8 @@
   `(not (eq? ,l ,r)))
 
 (define (int32? n)
-  (and (>= n (expt -2 31))
+  (and (integer? n)
+       (>= n (expt -2 31))
        (<  n (expt 2 31))))
 
 (define (codegen-void cgc reg)
@@ -1157,7 +1158,9 @@
 ;;
 ;; car/cdr
 (define (codegen-p-cxr cgc fs op reg inlined-cond? lval cst?)
+
   (assert (not cst?) "Internal error")
+
   (let ((offset
           (if (eq? op 'car)
               (- OFFSET_PAIR_CAR TAG_PAIR)
@@ -1216,20 +1219,28 @@
 
 ;;
 ;; eof-object?
-(define (codegen-p-eof-object? cgc fs op reg inlined-cond? lval)
-  (let ((label-end (asm-make-label #f (new-sym 'label-end)))
-        (dest  (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd fs lval)))
+(define (codegen-p-eof-object? cgc fs op reg inlined-cond? lval cst?)
 
-    ;; ENCODING_EOF is a a imm64 and cmp r/m64, imm32 is not possible
-    ;; then use a r64
-    (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_EOF))
+  (define dest (codegen-reg-to-x86reg reg))
 
-    (x86-cmp cgc opval (x86-rax))
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-    (x86-jne cgc label-end)
-    (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-    (x86-label cgc label-end)))
+  (cond
+    ((and cst? (eof-object? lval))
+       (x86-mov cgc dest (x86-imm-int (obj-encoding #t))))
+    (cst?
+       (x86-mov cgc dest (x86-imm-int (obj-encoding #f))))
+    (else
+       (let ((label-end (asm-make-label #f (new-sym 'label-end)))
+             (opval (codegen-loc-to-x86opnd fs lval)))
+
+         ;; ENCODING_EOF is a a imm64 and cmp r/m64, imm32 is not possible
+         ;; then use a r64
+         (x86-mov cgc (x86-rax) (x86-imm-int ENCODING_EOF))
+
+         (x86-cmp cgc opval (x86-rax))
+         (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+         (x86-jne cgc label-end)
+         (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+         (x86-label cgc label-end)))))
 
 ;;
 ;; char->integer/integer->char
