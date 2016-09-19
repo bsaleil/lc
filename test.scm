@@ -1,17 +1,57 @@
+;;; TRIANGL -- Board game benchmark.
 
+(define *board*
+  (list->vector '(1 1 1 1 1 0 1 1 1 1 1 1 1 1 1 1)))
 
-(gambit$$pp (make-vector 4 "kk"))
+(define *sequence*
+  (list->vector '(0 0 0 0 0 0 0 0 0 0 0 0 0 0)))
 
-(gambit$$pp (make-vector (+ 3 (car (cons 1 2))) "pp"))
+(define *a*
+  (list->vector '(1 2 4 3 5 6 1 3 6 2 5 4 11 12
+                  13 7 8 4 4 7 11 8 12 13 6 10
+                  15 9 14 13 13 14 15 9 10
+                  6 6)))
 
-(define vv (make-vector 4 "kk"))
+(define *b*
+  (list->vector '(2 4 7 5 8 9 3 6 10 5 9 8
+                  12 13 14 8 9 5 2 4 7 5 8
+                  9 3 6 10 5 9 8 12 13 14
+                  8 9 5 5)))
 
+(define *c*
+  (list->vector '(4 7 11 8 12 13 6 10 15 9 14 13
+                  13 14 15 9 10 6 1 2 4 3 5 6 1
+                  3 6 2 5 4 11 12 13 7 8 4 4)))
 
-(pp vv)
+(define *answer* '())
 
-(vector-set! vv 3 #\E)
+(define (attempt i depth)
+  (cond ((= depth 14)
+         (set! *answer*
+               (cons (cdr (vector->list *sequence*)) *answer*))
+         #t)
+        ((and (= 1 (vector-ref *board* (vector-ref *a* i)))
+              (= 1 (vector-ref *board* (vector-ref *b* i)))
+              (= 0 (vector-ref *board* (vector-ref *c* i))))
+         (vector-set! *board* (vector-ref *a* i) 0)
+         (vector-set! *board* (vector-ref *b* i) 0)
+         (vector-set! *board* (vector-ref *c* i) 1)
+         (vector-set! *sequence* depth i)
+         (do ((j 0 (+ j 1))
+              (depth (+ depth 1)))
+             ((or (= j 36) (attempt j depth)) #f))
+         (vector-set! *board* (vector-ref *a* i) 1)
+         (vector-set! *board* (vector-ref *b* i) 1)
+         (vector-set! *board* (vector-ref *c* i) 0) #f)
+        (else #f)))
 
-(pp vv)
+(define (test i depth)
+  (set! *answer* '())
+  (attempt i depth))
+  
+;-----
+
+(test 22 1)
 
 ;; TODO: Quote cst
 ;; TODO: attention aux constantes qui sont mem-allocated pour les primitives et appels, etc...

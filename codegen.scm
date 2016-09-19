@@ -1140,7 +1140,10 @@
 
 ;;
 ;; symbol->string
-(define (codegen-p-symbol->string cgc fs op reg inlined-cond? lsym)
+(define (codegen-p-symbol->string cgc fs op reg inlined-cond? lsym sym-cst?)
+
+  (assert (not sym-cst?) "Internal error. Unexpected cst operand")
+
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opsym (codegen-loc-to-x86opnd fs lsym)))
 
@@ -1218,53 +1221,95 @@
 
 ;;
 ;; make-string
-(define (codegen-p-make-string cgc fs op reg inlined-cond? llen lval)
-  (let* ((header-word (mem-header 24 STAG_STRING))
-         (dest  (codegen-reg-to-x86reg reg))
-         (oplen (lambda () (codegen-loc-to-x86opnd fs llen)))
-         (opval (lambda () (if lval (codegen-loc-to-x86opnd fs lval) #f)))
-         (oprax (lambda () (x86-rax)))
+(define (codegen-p-make-string cgc fs op reg inlined-cond? llen lval len-cst? val-cst?)
+
+  (if len-cst?
+      (codegen-p-make-string-imm cgc fs reg llen lval val-cst?)
+      (codegen-p-make-string-opn cgc fs reg llen lval val-cst?)))
+
+;;
+;; make-vector with cst len
+(define (codegen-p-make-string-imm cgc fs reg llen lval val-cst?)
+
+  (let* ((dest  (codegen-reg-to-x86reg reg))
+         (opval (if val-cst?
+                    (x86-imm-int (obj-encoding lval))
+                    (codegen-loc-to-x86opnd fs lval)))
          (label-loop (asm-make-label #f (new-sym 'make-string-loop)))
          (label-end  (asm-make-label #f (new-sym 'make-string-end))))
 
-    (begin-with-cg-macro
+    (gen-allocation-imm cgc STAG_STRING (* 4 llen))
 
-      ;;
-      ;; Unmem
-      (chk-pick-unmem! (oplen) (list selector-reg (opval) (oplen) dest))
-      (if lval
-          (chk-pick-unmem! (opval) (list selector-reg (opval) (oplen) dest)))
+    (x86-mov cgc (x86-rax) (x86-imm-int (* -4 llen)))
+    (if val-cst?
+        (x86-mov cgc selector-reg (x86-imm-int (char->integer lval)))
+        (begin
+          (x86-mov cgc selector-reg opval)
+          (x86-shr cgc selector-reg (x86-imm-int 2))))
+    (x86-label cgc label-loop)
+    (x86-cmp cgc (x86-rax) (x86-imm-int 0))
+    (x86-je cgc label-end)
 
-      ;; Primitive code
-      (x86-mov cgc (x86-rax) (oplen))
-      (gen-allocation-rt cgc STAG_STRING (x86-rax))
+      (let ((memop (x86-mem 0 alloc-ptr (x86-rax))))
+        (x86-mov cgc memop selector-reg-32)
+        (x86-add cgc (x86-rax) (x86-imm-int 4))
+        (x86-jmp cgc label-loop))
 
-      (x86-upush cgc (oplen))
-      (if lval
-          (begin
-            (x86-mov cgc selector-reg (opval))
-            (x86-shr cgc selector-reg (x86-imm-int 2))))
+    (x86-label cgc label-end)
+    (x86-lea cgc dest (x86-mem (+ (- (* -4 llen) 8) TAG_MEMOBJ) 0 alloc-ptr))
+    (x86-mov cgc selector-reg (x86-imm-int 0))))
 
-      (x86-label cgc label-loop)
-      (x86-cmp cgc (oplen) (x86-imm-int 0))
-      (x86-je cgc label-end)
+;;
+;; make-vector with !cst len
+(define (codegen-p-make-string-opn cgc fs reg llen lval val-cst?)
+  (error "NN"))
 
-        (let ((memop
-                (x86-mem (- 4 TAG_MEMOBJ) (x86-rax) (oplen))))
-
-          (if lval
-              (x86-mov cgc memop selector-reg-32)
-              (x86-mov cgc memop (x86-imm-int (obj-encoding #\0)) 32))
-          (x86-sub cgc (oplen) (x86-imm-int 4))
-          (x86-jmp cgc label-loop))
-
-      (x86-label cgc label-end)
-      (x86-upop cgc (oplen))
-      (x86-mov cgc selector-reg (oplen))
-      (x86-shl cgc selector-reg (x86-imm-int 8))
-      (x86-or cgc (x86-mem (- TAG_MEMOBJ) (x86-rax)) selector-reg)
-      (x86-mov cgc dest (x86-rax))
-      (x86-mov cgc selector-reg (x86-imm-int 0)))))
+  ;(let* ((header-word (mem-header 24 STAG_STRING))
+  ;       (dest  (codegen-reg-to-x86reg reg))
+  ;       (oplen (lambda () (codegen-loc-to-x86opnd fs llen)))
+  ;       (opval (lambda () (if lval (codegen-loc-to-x86opnd fs lval) #f)))
+  ;       (oprax (lambda () (x86-rax)))
+  ;       (label-loop (asm-make-label #f (new-sym 'make-string-loop)))
+  ;       (label-end  (asm-make-label #f (new-sym 'make-string-end))))
+  ;
+  ;  (begin-with-cg-macro
+  ;
+  ;    ;;
+  ;    ;; Unmem
+  ;    (chk-pick-unmem! (oplen) (list selector-reg (opval) (oplen) dest))
+  ;    (if lval
+  ;        (chk-pick-unmem! (opval) (list selector-reg (opval) (oplen) dest)))
+  ;
+  ;    ;; Primitive code
+  ;    (x86-mov cgc (x86-rax) (oplen))
+  ;    (gen-allocation-rt cgc STAG_STRING (x86-rax))
+  ;
+  ;    (x86-upush cgc (oplen))
+  ;    (if lval
+  ;        (begin
+  ;          (x86-mov cgc selector-reg (opval))
+  ;          (x86-shr cgc selector-reg (x86-imm-int 2))))
+  ;
+  ;    (x86-label cgc label-loop)
+  ;    (x86-cmp cgc (oplen) (x86-imm-int 0))
+  ;    (x86-je cgc label-end)
+  ;
+  ;      (let ((memop
+  ;              (x86-mem (- 4 TAG_MEMOBJ) (x86-rax) (oplen))))
+  ;
+  ;        (if lval
+  ;            (x86-mov cgc memop selector-reg-32)
+  ;            (x86-mov cgc memop (x86-imm-int (obj-encoding #\0)) 32))
+  ;        (x86-sub cgc (oplen) (x86-imm-int 4))
+  ;        (x86-jmp cgc label-loop))
+  ;
+  ;    (x86-label cgc label-end)
+  ;    (x86-upop cgc (oplen))
+  ;    (x86-mov cgc selector-reg (oplen))
+  ;    (x86-shl cgc selector-reg (x86-imm-int 8))
+  ;    (x86-or cgc (x86-mem (- TAG_MEMOBJ) (x86-rax)) selector-reg)
+  ;    (x86-mov cgc dest (x86-rax))
+  ;    (x86-mov cgc selector-reg (x86-imm-int 0)))))
 
 
 ;;
@@ -1369,15 +1414,18 @@
 
 ;;
 ;; string-length
-(define (codegen-p-string-length cgc fs op reg inlined-cond? lval)
+(define (codegen-p-string-length cgc fs op reg inlined-cond? lstr str-cst?)
+
+  (assert (not str-cst?) "Internal error. Unexpected cst operand")
+
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opval (codegen-loc-to-x86opnd fs lval)))
+        (opstr (codegen-loc-to-x86opnd fs lstr)))
 
-    (if (ctx-loc-is-memory? lval)
-        (begin (x86-mov cgc (x86-rax) opval)
-               (set! opval (x86-rax))))
+    (if (ctx-loc-is-memory? lstr)
+        (begin (x86-mov cgc (x86-rax) opstr)
+               (set! opstr (x86-rax))))
 
-    (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opval))
+    (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opstr))
     (x86-shr cgc dest (x86-imm-int 8))))
 
 ;;
@@ -1414,7 +1462,9 @@
 
 ;;
 ;; string-ref
-(define (codegen-p-string-ref cgc fs op reg inlined-cond? lstr lidx #!optional idx-cst?)
+(define (codegen-p-string-ref cgc fs op reg inlined-cond? lstr lidx str-cst? idx-cst?)
+
+  (assert (not str-cst?) "Internal error, unexpected cst operand")
 
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opstr (codegen-loc-to-x86opnd fs lstr))
@@ -1481,8 +1531,8 @@
           ;; reg/mem
           ((or (and (x86-mem? opidx) val-cst?)
                (and (x86-mem? opidx) (x86-mem? opval))
-               (and (x86-reg? lidx) val-cst?)
-               (and (x86-reg? lidx) (x86-mem? lval)))
+               (and (x86-reg? opidx) val-cst?)
+               (and (x86-reg? opidx) (x86-mem? opval)))
              (if (eq? opvec (x86-rax))
                  (error "NYI"))
              (x86-mov cgc selector-reg opval)
@@ -1502,7 +1552,9 @@
 
 ;;
 ;; string-set!
-(define (codegen-p-string-set! cgc fs op reg inlined-cond? lstr lidx lchr #!optional idx-cst? chr-cst?)
+(define (codegen-p-string-set! cgc fs op reg inlined-cond? lstr lidx lchr str-cst? idx-cst? chr-cst?)
+
+  (assert (not str-cst?) "Internal error. Unexpected cst operand")
 
   (let ((dest (codegen-reg-to-x86reg reg))
         (opstr (lambda () (codegen-loc-to-x86opnd fs lstr)))
