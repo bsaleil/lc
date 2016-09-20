@@ -229,8 +229,14 @@
 ;; TODO: remove lco-prim when implemented
 (define (dummy-cst-all cgc succ lco-prim ctx csts)
   (error "NYI")
+  ;; TODO NOTE: NEED TO HANDLE FUNCTION CONST DIFFERENTLY FOR PRIMITIVES TAKING ATX_ALL:
+  ;* not
+  ;* eof-object?
+  ;* real?
+  ;* eqv?
   (jump-to-version cgc lco-prim ctx))
 
+;; TODO: write note: lambda cst is considered as int, need to handle it
 ;; TODO: use macro for prim with one, two, ... args.
 ;;       give computation as a lambda
 ;; TODO: move to cst section
@@ -241,7 +247,8 @@
     (jump-to-version cgc succ ctx)))
 
 (define (cst-number? cgc succ lco-prim ctx csts)
-  (let* ((cst  (number? (ctx-type-cst (car csts))))
+  (let* ((cst  (and (not (ctx-tclo? (car csts)))
+                    (number? (ctx-type-cst (car csts)))))
          (type (literal->ctx-type cst))
          (ctx  (ctx-push (ctx-pop ctx) type #f #f)))
     (jump-to-version cgc succ ctx)))
@@ -259,8 +266,11 @@
     (jump-to-version cgc succ ctx)))
 
 (define (cst-eq? cgc succ lco-prim ctx csts)
-  (let* ((cst (eq? (ctx-type-cst (car csts))
-                   (ctx-type-cst (cadr csts))))
+  (let* ((cst
+           (and (not (ctx-tclo? (car  csts)))
+                (not (ctx-tclo? (cadr csts)))
+                (eq? (ctx-type-cst (car csts))
+                     (ctx-type-cst (cadr csts)))))
          (type (literal->ctx-type cst))
          (ctx  (ctx-push (ctx-pop-n ctx 2) type #f #f)))
     (jump-to-version cgc succ ctx)))
@@ -1766,11 +1776,19 @@
   (define (get-lazy-cst-check primitive lco-prim)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((lco-cst (primitive-lco-cst primitive))
+        (let* ((lco-alloc-cstfn (get-lazy-alloc-cstfn lco-prim))
+               (lco-cst (primitive-lco-cst primitive))
                (opnds (and lco-cst (get-all-cst-opnds ctx (length (cdr ast))))))
           (if opnds
               (lco-cst cgc succ lco-prim ctx opnds)
-              (jump-to-version cgc lco-prim ctx))))))
+              (jump-to-version cgc lco-alloc-cstfn ctx))))))
+
+  ;;
+  (define (get-lazy-alloc-cstfn succ)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (println "WIP")
+        (jump-to-version cgc succ ctx))))
 
   ;;
   (define (get-prim-lco primitive)

@@ -1,12 +1,27 @@
 
+
+(define (make-lattice elem-list cmp-func)
+    (cons elem-list cmp-func))
+
+
+
+
+(define (maps source target)
+    (pp source)
+    (pp target))
+
 (define (run)
   (let* ((l2
-            (cons '(low high)
+            (make-lattice '(low high)
                 (lambda (lhs rhs)
-                    1))))
-    (pp "OK")))
+                    100))))
+    (maps l2 l2)))
 
 (run)
+
+
+
+
 
 
 
