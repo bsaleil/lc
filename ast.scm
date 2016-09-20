@@ -239,7 +239,6 @@
     (not                 #f                ,codegen-p-not            ,ATX_BOO 1 ,ATX_ALL                   )
     (set-car!            #f                ,codegen-p-set-cxr!       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (set-cdr!            #f                ,codegen-p-set-cxr!       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
-    (cons                #f                #f                        ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL          )
     (vector-length       #f                ,codegen-p-vector-length  ,ATX_INT 1 ,ATX_VEC                   )
     (vector-ref          #f                ,codegen-p-vector-ref     ,ATX_UNK 2 ,ATX_VEC ,ATX_INT          )
     (char->integer       #f                ,codegen-p-ch<->int       ,ATX_INT 1 ,ATX_CHA                   )

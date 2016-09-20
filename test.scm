@@ -1,15 +1,11 @@
 
-(define (map fn lst)
-  (if (null? lst)
-    '()
-    (cons (fn (car lst)) (map fn (cdr lst)))))
-
-(define foo
-  (lambda (f mat)
-    (map f mat)))
-
-(foo (lambda (x) 1) '(1))
-
+(define (run)
+  (let* ((l2
+            (cons
+                '(low high)
+                (lambda (lhs rhs) 1))))
+    1))
+(run)
 
 
 
