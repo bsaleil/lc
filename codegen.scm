@@ -1225,7 +1225,8 @@
 
     (cond
       (val-cst?
-        (x86-mov cgc (x86-mem offset oppair) (x86-imm-int (obj-encoding lval)) 64))
+        (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding lval)))
+        (x86-mov cgc (x86-mem offset oppair) (x86-rax)))
       ((ctx-loc-is-memory? lval)
        (x86-mov cgc dest opval)
        (x86-mov cgc (x86-mem offset oppair) dest))

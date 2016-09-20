@@ -80,7 +80,7 @@
 
 (println "Set-car!/Set-cdr!")
 
-(define l2 '(1 #t (1 2 3) #\T "Hello"))
+(define l2 (list 1 #t (list 1 2 3) #\T "Hello"))
 (set-car! (caddr l2) #t)
 (pp l2)
 (set-cdr! (caddr l2) 10)
