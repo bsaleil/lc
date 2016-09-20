@@ -83,7 +83,7 @@
                     ((char?    val) (make-ctx-tcha val))
                     ((string?  val) (make-ctx-tstr val))
                     ((boolean? val) (make-ctx-tboo val))
-                    ((eq? (caaddr g) 'lambda) (make-ctx-tclo val))
+                    ((eq? (caaddr g) 'lambda) (make-ctx-tclo #t val))
                     ((pair? (caddr g)) (make-ctx-tunk))
                     (else (error "NYI"))))
           ((pair? (cadr g)) (make-ctx-tclo))

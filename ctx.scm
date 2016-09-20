@@ -127,7 +127,7 @@
 (def-ctx-type iport   #t)
 (def-ctx-type float   #t)
 (def-ctx-type oport   #t)
-(def-ctx-type closure #t fn-num)
+(def-ctx-type closure #t)
 
 (define (ctx-type-ctor t)
   (let loop ((l ctx-type-ctors))
@@ -399,10 +399,8 @@
       ;; Constant closure
       (and r
            (ctx-tclo? (identifier-stype (cdr r)))
-           (let ((r (ctx-tclo-fn-num (identifier-stype (cdr r)))))
-             (if r
-                 (cons #t r)
-                 #f)))
+           (ctx-type-is-cst (identifier-stype (cdr r)))
+           (cons #t (ctx-type-cst (identifier-stype (cdr r)))))
       ;; This id
       (and r
            (identifier-thisid (cdr r))
@@ -444,7 +442,7 @@
                                    'local
                                    '()
                                    '(cst)
-                                   (make-ctx-tclo cst)
+                                   (make-ctx-tclo #t cst)
                                    #f
                                    #f))
                            env)))))
@@ -501,7 +499,7 @@
                  (ctx-tclo? (identifier-stype (cdr r))))
             "Internal error (ctx-cst-fnnum-set!)")
     (let ((stype (identifier-stype (cdr r))))
-      (ctx-tclo-fn-num-set! stype fn-num)
+      (ctx-type-cst-set! stype fn-num)
       ctx)))
 
 ;;
@@ -972,9 +970,13 @@
                (from
                  (let ((loc (ctx-get-loc ctx curr-idx)))
                    (or loc
-                       (if (ctx-type-is-cst type)
-                           (cons 'const (ctx-type-cst type))
-                           (error "NYI")))))) ;; closure cst without loc ?
+                       (cond ((and (ctx-type-is-cst type)
+                                   (ctx-tclo? type))
+                                (error "NYI"))
+                             ((ctx-type-is-cst type)
+                                (cons 'const (ctx-type-cst type)))
+                             (else
+                                (error "Internal error")))))))
           (if (null? rem-regs)
               (get-req-moves (- curr-idx 1) '() moves (cons from pushed))
               (get-req-moves

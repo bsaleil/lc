@@ -1515,6 +1515,7 @@
           (make-lazy-code
              (lambda (cgc ctx)
                (pp "FAIL TEST")
+               (pp ast)
                (pp ctx-type)
                (pp stack-idx)
                (pp ctx)

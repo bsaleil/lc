@@ -427,7 +427,7 @@
                     (ctx-type-is-cst (ctx-identifier-type ctx (cdr local))))
                  ;; TODO use =>
                  (let* ((cst (ctx-type-cst (ctx-identifier-type ctx (cdr local))))
-                        (ctx (ctx-push ctx (literal->ctx-type cst) #f sym)))
+                        (ctx (ctx-push ctx (ctx-identifier-type ctx (cdr local)) #f sym)))
                    (jump-to-version cgc succ ctx)))
               ;; Identifier is a local const function ;; TODO: wip remove when all cst implemented
               ((and local
@@ -464,7 +464,7 @@
 (define (gen-closure-from-cst cgc ctx local succ)
   (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0))
          (stype (identifier-stype (cdr local)))
-         (fn-num (ctx-tclo-fn-num stype))
+         (fn-num (ctx-type-cst stype))
          (entry-obj (asc-globalfn-entry-get fn-num)))
     (apply-moves cgc ctx moves)
     (gen-closure cgc reg #f entry-obj '())
@@ -497,8 +497,8 @@
     (apply-moves cgc ctx moves)
 
     (if (and (ctx-tclo? type)
-             (ctx-tclo-fn-num type))
-      (let* ((fn-num (ctx-tclo-fn-num type))
+             (ctx-type-is-cst type))
+      (let* ((fn-num (ctx-type-cst type))
              (entry-obj (asc-globalfn-entry-get fn-num)))
         (gen-closure cgc reg ctx entry-obj '()))
       ;; Generate code to get global var from memory
@@ -551,7 +551,7 @@
             ;; CONST FN TODO: remove when const versioning implemented!
             (let* ((identifier (cadr ast))
                    (fn-num (init-entry-cst (caddr ast) '() (ctx-init))))
-              (ctx-tclo-fn-num-set! (global-stype global) fn-num)
+              (ctx-type-cst-set! (global-stype global) fn-num)
               (make-lazy-code
                 (lambda (cgc ctx)
                   (jump-to-version cgc succ (ctx-push ctx #f #f))))))
@@ -1527,6 +1527,9 @@
         (cond ((and lcst? rcst? if-cond?)
                  (error "NYI"))
               ((and lcst? rcst?)
+                 (if (or (ctx-tclo? typel)
+                         (ctx-tclo? typer))
+                     (error "NYI, can't use literal->ctx-type with fn-num"))
                  (let ((ctx (ctx-pop-n ctx 2))
                        (r (eq? (ctx-type-cst typel) (ctx-type-cst typer))))
                    (jump-to-version cgc succ (ctx-push ctx (literal->ctx-type r) #f))))
@@ -1916,8 +1919,8 @@
             (if (and global
                      (not (assoc sym (ctx-env ctx)))
                      (ctx-tclo? (global-stype global))
-                     (ctx-tclo-fn-num (global-stype global)))
-                (cons #t (ctx-tclo-fn-num (global-stype global)))
+                     (ctx-type-is-cst (global-stype global)))
+                (cons #t (ctx-type-cst (global-stype global)))
                 #f)))
 
         (or (ctx-get-eploc ctx sym)

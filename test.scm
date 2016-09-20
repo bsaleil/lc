@@ -1,21 +1,27 @@
-;;; DERIV -- Symbolic derivation.
 
-;;; Returns the wrong answer for quotients.
-;;; Fortunately these aren't used in the benchmark.
+(define (map fn lst)
+  (if (null? lst)
+    '()
+    (cons (fn (car lst)) (map fn (cdr lst)))))
 
-(define (foo fn)
-  (fn))
+(define foo
+  (lambda (f mat)
+    (map f mat)))
+
+(foo (lambda (x) 1) '(1))
 
 
-(define bar (lambda () 1))
 
-(foo bar)
+
+
+
+
 
 
 
 
 ;; TODO: #<ctx-tclo #3 sym: closure mem-allocated?: #t is-cst: (lambda () ($$atom 1)) cst: #f fn-num: 0>
-;;       pourquoi l'ast dans is-cst? 
+;;       pourquoi l'ast dans is-cst?
 ;; TODO: cas spéciaux comme not, eof?, ... si l'opérande est constante, on connait le résultat
 ;;       pour le moment traité dans codegen, mais movs inutiles, et on perd l'info cst
 ;; TODO: merde de regalloc
