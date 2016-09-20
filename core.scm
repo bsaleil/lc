@@ -67,6 +67,7 @@
 (define asc-entry-load-clear #f)
 (define asc-globalfn-entry-get #f)
 (define global-closures-get #f)
+(define gen-closure #f)
 
 (define init-c #f)
 (define get___heap_limit-addr  #f)
@@ -1062,20 +1063,24 @@
   (define (apply-filtered moves)
     (if (not (null? moves))
         (let* ((move (car moves))
+               ;; Compute x86 dst operand
+               (dst
+                 (if (eq? (cdr move) 'rtmp)
+                     (get-tmp)
+                     (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
                ;; Compute x86 src operand
                (src
                  (cond ((and (pair? (car move))
+                             (eq? (caar move) 'constfn))
+                          ;; If src is a constfn, create closure in move
+                          (car move))
+                       ((and (pair? (car move))
                              (eq? (caar move) 'const))
                           (x86-imm-int (obj-encoding (cdar move))))
                        ((eq? (car move) 'rtmp)
                           (get-tmp))
                        (else
-                          (codegen-loc-to-x86opnd (ctx-fs ctx) (car move)))))
-               ;; Compute x86 dst operand
-               (dst
-                 (if (eq? (cdr move) 'rtmp)
-                     (get-tmp)
-                     (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move)))))
+                          (codegen-loc-to-x86opnd (ctx-fs ctx) (car move))))))
 
           (cond ;; Same operands, useless move
                 ((eq? src dst) #f)
@@ -1084,6 +1089,12 @@
                       (x86-mem? dst))
                    (x86-mov cgc (x86-rax) src)
                    (x86-mov cgc dst (x86-rax)))
+                ;; Need to create an empty closure
+                ((and (pair? src) (eq? (car src) 'constfn))
+                   (let ((entry-obj (asc-globalfn-entry-get (cdr src))))
+                     (if (ctx-loc-is-register? (cdr move))
+                         (gen-closure cgc (cdr move) #f entry-obj '())
+                         (error "NYI"))))
                 ;; direct x86 mov is possible
                 (else
                    (x86-mov cgc dst src)))

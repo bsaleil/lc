@@ -1020,7 +1020,8 @@
         (opcdr (and (not cdr-cst?) (codegen-loc-to-x86opnd fs lcdr))))
     (gen-allocation-imm cgc STAG_PAIR 16)
     (cond (car-cst?
-            (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-imm-int (obj-encoding lcar)) 64))
+            (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding lcar)))
+            (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax)))
           ((x86-mem? opcar)
             (x86-mov cgc (x86-rax) opcar)
             (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax)))
@@ -1033,6 +1034,7 @@
             (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-rax)))
           (else
             (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) opcdr)))
+
     (x86-lea cgc dest (x86-mem (+ -24 TAG_PAIR) alloc-ptr))))
 
 ;;

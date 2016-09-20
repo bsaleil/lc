@@ -9,9 +9,9 @@
 
 (define (run-benchmark name count ok? run-maker . args)
   (let ((run (apply run-maker args)))
-    (set! ###TIME_BEFORE### ($$sys-clock-gettime-ns))
+    (set! ###TIME_BEFORE### (##gettime-ns))
     (let ((result (run-bench name count ok? run)))
-      (set! ###TIME_AFTER### ($$sys-clock-gettime-ns))
+      (set! ###TIME_AFTER### (##gettime-ns))
       (let ((ms (/ (- ###TIME_AFTER### ###TIME_BEFORE###) 1000000)))
         (print ms)
         (println " ms real time")

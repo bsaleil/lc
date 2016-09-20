@@ -972,7 +972,7 @@
                    (or loc
                        (cond ((and (ctx-type-is-cst type)
                                    (ctx-tclo? type))
-                                (cons 'constfn (ctx-type-cst type)))
+                              (cons 'constfn (ctx-type-cst type)))
                              ((ctx-type-is-cst type)
                                 (cons 'const (ctx-type-cst type)))
                              (else

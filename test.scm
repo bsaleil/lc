@@ -1,6 +1,14 @@
 
-(define ll (cons 1 2))
-(set-cdr! ll '(1 2 3))
+(define (run)
+  (let* ((l2
+            (cons '(low high)
+                (lambda (lhs rhs)
+                    1))))
+    (pp "OK")))
+
+(run)
+
+
 
 
 
