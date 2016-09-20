@@ -1407,10 +1407,6 @@
 ;; make-vector
 (define (codegen-p-make-vector cgc fs op reg inlined-cond? llen lval cst-len? cst-val?)
 
-  (assert (or (not cst-val?)
-              (not (##mem-allocated? lval)))
-          "Internal error. Unexpected cst operand")
-
   (if cst-len?
       (codegen-p-make-vector-imm cgc fs reg llen lval cst-val?)
       (codegen-p-make-vector-opn cgc fs reg llen lval cst-val?)))
