@@ -1355,54 +1355,6 @@
     (x86-mov cgc dest (x86-rax))
     (x86-mov cgc selector-reg (x86-imm-int 0))))
 
-  ;(let* ((header-word (mem-header 24 STAG_STRING))
-  ;       (dest  (codegen-reg-to-x86reg reg))
-  ;       (oplen (lambda () (codegen-loc-to-x86opnd fs llen)))
-  ;       (opval (lambda () (if lval (codegen-loc-to-x86opnd fs lval) #f)))
-  ;       (oprax (lambda () (x86-rax)))
-  ;       (label-loop (asm-make-label #f (new-sym 'make-string-loop)))
-  ;       (label-end  (asm-make-label #f (new-sym 'make-string-end))))
-  ;
-  ;  (begin-with-cg-macro
-  ;
-  ;    ;;
-  ;    ;; Unmem
-  ;    (chk-pick-unmem! (oplen) (list selector-reg (opval) (oplen) dest))
-  ;    (if lval
-  ;        (chk-pick-unmem! (opval) (list selector-reg (opval) (oplen) dest)))
-  ;
-  ;    ;; Primitive code
-  ;    (x86-mov cgc (x86-rax) (oplen))
-  ;    (gen-allocation-rt cgc STAG_STRING (x86-rax))
-  ;
-  ;    (x86-upush cgc (oplen))
-  ;    (if lval
-  ;        (begin
-  ;          (x86-mov cgc selector-reg (opval))
-  ;          (x86-shr cgc selector-reg (x86-imm-int 2))))
-  ;
-  ;    (x86-label cgc label-loop)
-  ;    (x86-cmp cgc (oplen) (x86-imm-int 0))
-  ;    (x86-je cgc label-end)
-  ;
-  ;      (let ((memop
-  ;              (x86-mem (- 4 TAG_MEMOBJ) (x86-rax) (oplen))))
-  ;
-  ;        (if lval
-  ;            (x86-mov cgc memop selector-reg-32)
-  ;            (x86-mov cgc memop (x86-imm-int (obj-encoding #\0)) 32))
-  ;        (x86-sub cgc (oplen) (x86-imm-int 4))
-  ;        (x86-jmp cgc label-loop))
-  ;
-  ;    (x86-label cgc label-end)
-  ;    (x86-upop cgc (oplen))
-  ;    (x86-mov cgc selector-reg (oplen))
-  ;    (x86-shl cgc selector-reg (x86-imm-int 8))
-  ;    (x86-or cgc (x86-mem (- TAG_MEMOBJ) (x86-rax)) selector-reg)
-  ;    (x86-mov cgc dest (x86-rax))
-  ;    (x86-mov cgc selector-reg (x86-imm-int 0)))))
-
-
 ;;
 ;; make-vector
 (define (codegen-p-make-vector cgc fs op reg inlined-cond? llen lval cst-len? cst-val?)
