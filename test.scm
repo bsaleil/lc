@@ -1,28 +1,8 @@
 
+;(define gambit$$pp pp)
 
-(define (make-lattice elem-list cmp-func)
-    (cons elem-list cmp-func))
-
-
-
-
-(define (maps source target)
-    (pp source)
-    (pp target))
-
-(define (run)
-  (let* ((l2
-            (make-lattice '(low high)
-                (lambda (lhs rhs)
-                    100))))
-    (maps l2 l2)))
-
-(run)
-
-
-
-
-
+(let ((a (lambda () 10)))
+  (gambit$$pp (cons a 100)))
 
 
 

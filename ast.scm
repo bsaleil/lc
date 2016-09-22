@@ -844,7 +844,7 @@
       ;; Add association fn-num -> entry point
       (asc-globalfn-entry-add fn-num entry-obj)
 
-      entry-obj))
+      (list fn-num entry-obj)))
 
 ;; Compute free var sets for given lambda ast
 ;; return list (cst imm late) with:
@@ -890,7 +890,9 @@
                   (not (member 'cst (identifier-flags identifier)))))
               fvars-imm))
 
-      (let ((entry-obj (init-entry ast ctx fvars-imm '() #f)))
+      ;; TODO
+
+      (mlet ((fn-num/entry-obj (init-entry ast ctx fvars-imm '() #f)))
 
         ;; Gen code to create closure
         (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
@@ -1210,7 +1212,7 @@
             (x86-mov cgc (x86-mem offset-header clo-reg) (x86-rax)))
 
           ;; Write entry point
-          (let* ((entry-obj (init-entry ast ctx (append free-cst free-imm) free-late id))
+          (mlet ((fn-num/entry-obj (init-entry ast ctx (append free-cst free-imm) free-late id))
                  (entry-obj-loc (- (obj-encoding entry-obj) 1)))
             (if opt-entry-points
                 (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
@@ -1772,23 +1774,43 @@
                   (loop (- idx 1) (cons type r)))
                 #f)))))
 
-  ;;
+  ;; TODO WIP CONST VER
   (define (get-lazy-cst-check primitive lco-prim)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((lco-alloc-cstfn (get-lazy-alloc-cstfn lco-prim))
+        (let* ((lco-alloc-cstfn (get-lazy-alloc-cstfn lco-prim (length (cdr ast))))
                (lco-cst (primitive-lco-cst primitive))
                (opnds (and lco-cst (get-all-cst-opnds ctx (length (cdr ast))))))
           (if opnds
               (lco-cst cgc succ lco-prim ctx opnds)
               (jump-to-version cgc lco-alloc-cstfn ctx))))))
 
-  ;;
-  (define (get-lazy-alloc-cstfn succ)
+  ;; TODO WIP CONST VER
+  ;; TODO rename
+  (define (alloc-cstfn cgc ctx type i)
+    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx #f 0))
+           (entry-obj (asc-globalfn-entry-get (ctx-type-cst type))))
+      (apply-moves cgc ctx moves)
+      (gen-closure cgc reg #f entry-obj '())
+      (let* ((ctx (ctx-set-type ctx i ((ctx-type-ctor type))))
+             (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx i) reg)))
+        ctx)))
+
+
+  ;; TODO WIP CONST VER
+  (define (get-lazy-alloc-cstfn succ nargs)
     (make-lazy-code
       (lambda (cgc ctx)
-        (println "WIP")
-        (jump-to-version cgc succ ctx))))
+        (let loop ((i nargs)
+                   (ctx ctx))
+          (if (= i 0)
+              (jump-to-version cgc succ ctx)
+              (let ((type (ctx-get-type ctx (- i 1))))
+                (if (and (ctx-type-is-cst type)
+                         (ctx-tclo? type))
+                    (let ((ctx (alloc-cstfn cgc ctx type (- i 1))))
+                      (loop (- i 1) ctx))
+                    (loop (- i 1) ctx))))))))
 
   ;;
   (define (get-prim-lco primitive)

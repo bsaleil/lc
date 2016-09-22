@@ -337,7 +337,8 @@
   ;; 'return-reg' register is preferred if the successor lco is a return lco
   ;; TODO: also use preferred register if a register need to be spilled
   (define preferred
-    (if (member 'ret (lazy-code-flags succ))
+    (if (and succ
+             (member 'ret (lazy-code-flags succ)))
         return-reg
         #f))
 
