@@ -1,18 +1,38 @@
 
-;(define gambit$$pp pp)
 
-(let ((a (lambda () 10)))
-  (gambit$$pp (cons a 100)))
+(define (foo n)
+  (let ((a (lambda () 1)))
+    (cons a n)))
 
-
-
-
+(gambit$$pp (foo 22))
 
 
+;(define (memq el lst)
+;  (gambit$$pp lst)
+;  (cond ((null? lst) #f)
+;        ((eq? el (car lst)) lst)
+;        (else (memq el (cdr lst)))))
+;
+;(define (foo n)
+; (gambit$$pp '(10 20 30 40 50 60 70 80 90 100)))
+;
+;(foo 22)
+;
+;(define a '(1 2 3))
+;
+;(let ((b (lambda () 1)))
+;
+;  (set-car! a b)
+;  (pp a))
 
 
 
 
+
+
+
+
+;; TODO: quand on récupère l'emplacement d'une variable, regarder les slots pour trouver la meilleure loc (cst > reg > mem)
 ;; TODO: #<ctx-tclo #3 sym: closure mem-allocated?: #t is-cst: (lambda () ($$atom 1)) cst: #f fn-num: 0>
 ;;       pourquoi l'ast dans is-cst?
 ;; TODO: cas spéciaux comme not, eof?, ... si l'opérande est constante, on connait le résultat

@@ -1357,22 +1357,16 @@
 ;; generated-arg? is #t if call take 1 arg and this arg already is generated
 (define (mlc-gambit-call ast succ generated-arg?)
 
-  ;; TODO wip cst
-  (define (build-args-chain args succ)
-    (if (null? args)
-        succ
-        (let ((next (build-args-chain (cdr args) succ)))
-        (gen-ast
-          (car args)
-          (make-lazy-code
-            (lambda (cgc ctx)
-              (let ((type (ctx-get-type ctx 0)))
-                (if (ctx-type-is-cst type)
-                    (mlet ((moves/reg/nctx (ctx-get-free-reg ctx succ (length (cdr ast)))))
-                      (apply-moves cgc nctx moves)
-                      (x86-mov cgc (codegen-reg-to-x86reg reg) (x86-imm-int (obj-encoding (ctx-type-cst type))))
-                      (set! ctx (ctx-push (ctx-pop nctx) ((ctx-type-ctor type)) reg))))
-                (jump-to-version cgc next ctx))))))))
+  ;; lco dropping all cst arguments
+  (define (get-lazy-drop-csts succ)
+    (make-lazy-code
+      (lambda (cgc ctx)
+        (let loop ((i (- (length (cdr ast)) 1))
+                   (ctx ctx))
+          (if (< i 0)
+              (jump-to-version cgc succ ctx)
+              (loop (- i 1)
+                    (drop-cst-value cgc ctx i)))))))
 
   (define (get-gambit-sym sym)
     (let* ((lstprefix (string->list "gambit$$"))
@@ -1410,7 +1404,9 @@
                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) (make-ctx-tunk) reg)))))))
     (if generated-arg?
         lazy-call
-        (build-args-chain (cdr ast) lazy-call))))
+        (gen-ast-l
+          (cdr ast)
+          (get-lazy-drop-csts lazy-call)))))
 
 ;;-----------------------------------------------------------------------------
 ;; PRIMITIVES
@@ -1778,38 +1774,25 @@
   (define (get-lazy-cst-check primitive lco-prim)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((lco-alloc-cstfn (get-lazy-alloc-cstfn lco-prim (length (cdr ast))))
+        (let* ((lco-alloc-cstfn (get-lazy-drop-cstfn lco-prim (length (cdr ast))))
                (lco-cst (primitive-lco-cst primitive))
                (opnds (and lco-cst (get-all-cst-opnds ctx (length (cdr ast))))))
           (if opnds
               (lco-cst cgc succ lco-prim ctx opnds)
               (jump-to-version cgc lco-alloc-cstfn ctx))))))
 
-  ;; TODO WIP CONST VER
-  ;; TODO rename
-  (define (alloc-cstfn cgc ctx type i)
-    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx #f 0))
-           (entry-obj (asc-globalfn-entry-get (ctx-type-cst type))))
-      (apply-moves cgc ctx moves)
-      (gen-closure cgc reg #f entry-obj '())
-      (let* ((ctx (ctx-set-type ctx i ((ctx-type-ctor type))))
-             (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx i) reg)))
-        ctx)))
-
-
-  ;; TODO WIP CONST VER
-  (define (get-lazy-alloc-cstfn succ nargs)
+  ;; Drop all const functions of primitive args
+  (define (get-lazy-drop-cstfn succ nargs)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let loop ((i nargs)
+        (let loop ((i (- nargs 1))
                    (ctx ctx))
-          (if (= i 0)
+          (if (< i 0)
               (jump-to-version cgc succ ctx)
-              (let ((type (ctx-get-type ctx (- i 1))))
+              (let ((type (ctx-get-type ctx i)))
                 (if (and (ctx-type-is-cst type)
                          (ctx-tclo? type))
-                    (let ((ctx (alloc-cstfn cgc ctx type (- i 1))))
-                      (loop (- i 1) ctx))
+                    (loop (- i 1) (drop-cst-value cgc ctx i))
                     (loop (- i 1) ctx))))))))
 
   ;;
@@ -2668,6 +2651,37 @@
 ;;
 ;; UTILS
 ;;
+
+;; Check if type at index ctx-idx represents a constant
+;; * If it is a constant, free a register, put it in a register,
+;;   update ctx, return updated ctx
+;; * Else return unmodified ctx
+(define (drop-cst-value cgc ctx ctx-idx)
+
+  (define (alloc-cstfn reg cst)
+    (let ((entry-obj (asc-globalfn-entry-get cst)))
+      (gen-closure cgc reg #f entry-obj '())))
+
+  (define (alloc-cst reg cst)
+    (let ((opnd (codegen-reg-to-x86reg reg)))
+      (x86-mov cgc opnd (x86-imm-int (obj-encoding cst)))))
+
+  (let* ((type (ctx-get-type ctx ctx-idx))
+         (cst? (ctx-type-is-cst type)))
+    (if cst?
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx #f 0))
+               (cst (ctx-type-cst type)))
+          (apply-moves cgc ctx moves)
+          ;; Move object to free register
+          (if (ctx-tclo? type)
+              (alloc-cstfn reg cst)
+              (alloc-cst   reg cst))
+          ;; Update & return ctx
+          (let* ((ntype ((ctx-type-ctor type)))
+                 (ctx (ctx-set-type ctx ctx-idx ntype))
+                 (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx ctx-idx) reg)))
+            ctx))
+        ctx)))
 
 ;; Get position of current closure in stack
 (define (closure-pos ctx)
