@@ -29,12 +29,16 @@
 
 (include "~~lib/_asm#.scm")
 (include "~~lib/_x86#.scm") ;; TODO regalloc remove when finished
+(include "extern/copy-permanent.scm")
 
 (define free-vars #f)
 
 ;;-----------------------------------------------------------------------------
 
+(define perm-domain #f)
+
 (define (init-frontend)
+  (set! perm-domain (make-perm-domain))
   (init-primitives))
 
 ;;-----------------------------------------------------------------------------
@@ -406,8 +410,13 @@
 (define (mlc-literal lit ast succ)
   (make-lazy-code
     (lambda (cgc ctx)
-      (let ((ctx (ctx-push ctx (literal->ctx-type lit) #f)))
-        (jump-to-version cgc succ ctx)))))
+      (let ((literal
+              (if (and (##mem-allocated? lit)
+                       (not (eq? (mem-allocated-kind lit) 'PERM)))
+                  (copy-permanent lit #f perm-domain)
+                  lit)))
+        (let ((ctx (ctx-push ctx (literal->ctx-type literal) #f)))
+          (jump-to-version cgc succ ctx))))))
 
 ;;
 ;; Make lazy code from flonum literal
@@ -601,14 +610,15 @@
 (define (mlc-define ast succ)
 
   (let ((global (asc-globals-get (cadr ast))))
-    (cond ((and global (ctx-tclo? (global-stype global)))
+    (cond
+          ((and global (ctx-tclo? (global-stype global)))
             ;; CONST FN TODO: remove when const versioning implemented!
             (let* ((identifier (cadr ast))
                    (fn-num (init-entry-cst (caddr ast) '() (ctx-init))))
               (ctx-type-cst-set! (global-stype global) fn-num)
               (make-lazy-code
                 (lambda (cgc ctx)
-                  (jump-to-version cgc succ (ctx-push ctx #f #f))))))
+                  (jump-to-version cgc succ (ctx-push ctx (global-stype global) #f))))))
           (else
             ;;
             (let* ((identifier (cadr ast))

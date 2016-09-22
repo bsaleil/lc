@@ -30,6 +30,7 @@
 (define mem-header #f)
 (define regalloc-regs #f)
 (define lazy-code-flags #f)
+(define mem-allocated-kind #f)
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx
@@ -629,6 +630,12 @@
               (cons ident
                     (get-env (cdr env) id slot))))))
 
+  ;; We do *NOT* want non permanent constant in ctx
+  (assert (not (and (ctx-type-is-cst type)
+                    (##mem-allocated? (ctx-type-cst type))
+                    (not (eq? (mem-allocated-kind (ctx-type-cst type)) 'PERM))))
+          "Internal error")
+
   (let* ((slot (length (ctx-stack ctx))))
 
    (ctx-copy
@@ -748,6 +755,12 @@
 ;; data could be a stack index
 ;; or an ident (id . identifier) object
 (define (ctx-set-type ctx data type)
+
+  ;; We do *NOT* want non permanent constant in ctx
+  (assert (not (and (ctx-type-is-cst type)
+                    (##mem-allocated? (ctx-type-cst type))
+                    (not (eq? (mem-allocated-kind (ctx-type-cst type)) 'PERM))))
+          "Internal error")
 
   (let ((ident (or (and (pair? data) (symbol? (car data)) (identifier? (cdr data)) data)
                    (ctx-ident-at ctx data))))

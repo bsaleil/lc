@@ -31,13 +31,13 @@
 
 
 
-
+;; TODO: mlc-lambda, détecter les fn const, et les ajouter au contexte sans générer de code
 ;; TODO: quand on récupère l'emplacement d'une variable, regarder les slots pour trouver la meilleure loc (cst > reg > mem)
 ;; TODO: #<ctx-tclo #3 sym: closure mem-allocated?: #t is-cst: (lambda () ($$atom 1)) cst: #f fn-num: 0>
 ;;       pourquoi l'ast dans is-cst?
 ;; TODO: cas spéciaux comme not, eof?, ... si l'opérande est constante, on connait le résultat
 ;;       pour le moment traité dans codegen, mais movs inutiles, et on perd l'info cst
-;; TODO: merde de regalloc
+;; TODO: merge de regalloc
 ;; TODO: jitter le alloc-rt pour ne pas générer de code si la taille ne nécessite pas un still
 ;; TODO: Quote cst
 ;; TODO: attention aux constantes qui sont mem-allocated pour les primitives et appels, etc...
