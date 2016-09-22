@@ -1361,9 +1361,13 @@
 ;; make-vector
 (define (codegen-p-make-vector cgc fs op reg inlined-cond? llen lval cst-len? cst-val?)
 
-  (if cst-len?
-      (codegen-p-make-vector-imm cgc fs reg llen lval cst-val?)
-      (codegen-p-make-vector-opn cgc fs reg llen lval cst-val?)))
+  (cond ((and cst-len?
+              (mem-still-required? (* 8 llen)))
+           (error "NYI cgc"))
+        (cst-len?
+           (codegen-p-make-vector-imm cgc fs reg llen lval cst-val?))
+        (else
+           (codegen-p-make-vector-opn cgc fs reg llen lval cst-val?))))
 
 ;; make-vector with cst len
 (define (codegen-p-make-vector-imm cgc fs reg llen lval cst-val?)

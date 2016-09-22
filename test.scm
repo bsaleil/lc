@@ -1,34 +1,11 @@
 
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-(define (foo n)
-  (let ((a (lambda () 1)))
-    (cons a n)))
-
-(gambit$$pp (foo 22))
-
-
-;(define (memq el lst)
-;  (gambit$$pp lst)
-;  (cond ((null? lst) #f)
-;        ((eq? el (car lst)) lst)
-;        (else (memq el (cdr lst)))))
-;
-;(define (foo n)
-; (gambit$$pp '(10 20 30 40 50 60 70 80 90 100)))
-;
-;(foo 22)
-;
-;(define a '(1 2 3))
-;
-;(let ((b (lambda () 1)))
-;
-;  (set-car! a b)
-;  (pp a))
-
-
-
-
-
+(pp (fib 40))
 
 
 ;; TODO: mlc-lambda, détecter les fn const, et les ajouter au contexte sans générer de code

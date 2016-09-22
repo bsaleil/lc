@@ -189,22 +189,17 @@ void initc()
   ;; Remove saved values
   (x86-add cgc (x86-usp) (x86-imm-int 16)))
 
-;; TODO: allocate words
-(define (gen-allocation-imm cgc stag nbytes)
-  (if (mem-still-required? nbytes)
-      (gen-allocation-imm-sti cgc stag nbytes)
-      (gen-allocation-imm-mov cgc stag nbytes)))
-
 ;; Alloc object of type stag of size nbytes + 8 (header)
 ;; For performance reason, unlike gen-allocation-rt,
 ;; this function does *not* return encoded object in rax.
 ;; Caller need to load address of object
-(define (gen-allocation-imm-mov cgc stag nbytes)
+(define (gen-allocation-imm cgc stag nbytes)
 
   (define label-alloc-beg (asm-make-label #f (new-sym 'alloc_begin_)))
   (define label-alloc-end (asm-make-label #f (new-sym 'alloc_end_)))
 
   (assert (= (modulo nbytes 4) 0) "GC internal error")
+  (assert (not (mem-still-required? nbytes)) "Internal error")
 
   (x86-label cgc label-alloc-beg)
   ;; hp += (nbytes + 8)
@@ -222,9 +217,6 @@ void initc()
   (x86-label cgc label-alloc-end)
 
   (x86-mov cgc (x86-mem (- 0 nbytes 8) alloc-ptr) (x86-imm-int (mem-header nbytes stag)) 64))
-
-(define (gen-allocation-imm-sti cgc stag nbytes)
-  (error "NYI gen-allocation-imm-sti"))
 
 ;; Generate an heap object header
 ;; using layout used by Gambit.
