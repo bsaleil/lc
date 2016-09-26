@@ -1102,7 +1102,8 @@
         (x86-shl cgc ropnd (x86-imm-int 2)))
 
     ;; Restore rdx
-    (restore-fn cgc)
+    (if restore-fn
+        (restore-fn cgc))
     ;; Restore selector
     (if selector-used
         (x86-xor cgc selector-reg selector-reg))))
