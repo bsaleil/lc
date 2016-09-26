@@ -1273,7 +1273,9 @@
         (error "Letrec: NYI, alloc group > MSECTION_FUDGE"))
 
     ;; Return first LCO: closures alloc
-    (get-lazy-alloc succ))
+    (if (= closures-size 0)
+        succ
+        (get-lazy-alloc succ)))
 
   ;; ---------------------------------------------------------------------------
 
@@ -2358,8 +2360,12 @@
                                        (literal->ctx-type (eval (list op lloc rloc)))
                                        #f)))
                     (jump-to-version cgc succ ctx)))
+                ;; Inlined if condition with both cst
                 ((and lcst? rcst?)
-                  (error "NYI"))
+                  (let* ((r (eval (list op lloc rloc)))
+                         (lco (if r (lazy-code-lco-true succ)
+                                    (lazy-code-lco-false succ))))
+                    (jump-to-version cgc lco (ctx-pop-n ctx 2))))
                 (num-op?
                   (codegen-num-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t)
                   (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
@@ -2388,8 +2394,10 @@
                (lcst? (ctx-type-is-cst ltype))
                (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
           (apply-moves cgc ctx moves)
-          (cond ((or lcst? rcst?)
-                  (error "NYI"))
+          (cond ((and (not inlined-if-cond?) lcst? rcst?)
+                  (error "NYI1"))
+                ((and lcst? rcst?)
+                  (error "NYI2"))
                 (num-op?
                   (codegen-num-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #t)
                   (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
