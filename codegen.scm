@@ -1512,16 +1512,23 @@
 ;; TODO val-cst? -> idx-cst?
 (define (codegen-p-vector-ref cgc fs op reg inlined-cond? lvec lidx vec-cst? val-cst?)
 
-  (assert (not vec-cst?) "Internal error")
+  (assert (not (and vec-cst? val-cst?)) "Internal error")
+  (assert (if vec-cst?
+              (permanent-object? lvec)
+              #t)
+          "Internal error")
 
   (let* ((dest  (codegen-reg-to-x86reg reg))
-         (opvec (codegen-loc-to-x86opnd fs lvec))
+         (opvec (and (not vec-cst?) (codegen-loc-to-x86opnd fs lvec)))
          (opidx (and (not val-cst?) (codegen-loc-to-x86opnd fs lidx)))
          (use-selector #f))
 
-    (if (x86-mem? opvec)
-        (begin (x86-mov cgc (x86-rax) opvec)
-               (set! opvec  (x86-rax))))
+    (cond (vec-cst?
+            (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding lvec)))
+            (set! opvec (x86-rax)))
+          ((x86-mem? opvec)
+            (x86-mov cgc (x86-rax) opvec)
+            (set! opvec  (x86-rax))))
 
     (if (and opidx
              (x86-mem? opidx))

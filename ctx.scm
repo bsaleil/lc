@@ -250,19 +250,16 @@
                  ;; is id a late binding ?
                  (late? (member id late-fbinds))
                  (enc-identifier (and (not late?) (cdr (ctx-ident enclosing-ctx id))))
-                 ;; id enclosing id a cst variable ?
-                 (cst? (and (not late?) (member 'cst (identifier-flags enc-identifier))))
+                 (enc-type       (and (not late?) (ctx-identifier-type enclosing-ctx enc-identifier)))
+                 (cst?           (and (not late?) (ctx-type-is-cst enc-type)))
                  (identifier
                    (make-identifier
                      (if cst? 'local 'free) ;; if it's a cst variable, we create a local variable
                      '()
                      (if cst? '(cst) '())
-                     (cond (late?
-                             (make-ctx-tclo))
-                           (cst?
-                             (identifier-stype enc-identifier))
-                           (else
-                             (ctx-identifier-type enclosing-ctx enc-identifier)))
+                     (if late?
+                         (make-ctx-tclo)
+                         enc-type)
                      (if cst? ;; if cst?, we created a local variable, then don't write cloc
                          #f
                          (cons 'f nvar))
@@ -495,10 +492,10 @@
 ;; This is one of the few ctx function with side effect!
 ;; The side effect is used to update letrec constant bindings
 (define (ctx-cst-fnnum-set! ctx id fn-num)
-  (let ((r (assoc id (ctx-env ctx))))
+  (let* ((r (assoc id (ctx-env ctx))))
     (assert (and r
-                 (member 'cst (identifier-flags (cdr r)))
-                 (ctx-tclo? (identifier-stype (cdr r))))
+                 (ctx-type-is-cst (identifier-stype (cdr r)))
+                 (ctx-tclo?       (identifier-stype (cdr r))))
             "Internal error (ctx-cst-fnnum-set!)")
     (let ((stype (identifier-stype (cdr r))))
       (ctx-type-cst-set! stype fn-num)
@@ -679,18 +676,12 @@
         '()
         (let ((ident (car env)))
           (if (member slot (identifier-sslots (cdr ident)))
-              (if (and (= (length (identifier-sslots (cdr ident))) 1)
-                       (not (eq? (identifier-kind (cdr ident)) 'free))
-                       (not (member 'cst (identifier-flags (cdr ident)))))
-                  ;; It is the only position of the identifier, then remove identifier from env
-                  (env-remove-slot (cdr env) slot)
-                  ;; Else, just remove this slot
-                  (cons (cons (car ident)
-                              (identifier-copy
-                                (cdr ident)
-                                #f
-                                (set-sub (identifier-sslots (cdr ident)) (list slot) '())))
-                        (env-remove-slot (cdr env) slot)))
+              (cons (cons (car ident)
+                          (identifier-copy
+                            (cdr ident)
+                            #f
+                            (set-sub (identifier-sslots (cdr ident)) (list slot) '())))
+                    (env-remove-slot (cdr env) slot))
               (cons ident (env-remove-slot (cdr env) slot))))))
 
   ;;
@@ -904,7 +895,6 @@
       ctx
       (change-stack (ctx-stack ctx) sslots))))
 
-
 (define (ctx-ident-at ctx stack-idx)
   (define (ident-at-slot env slot)
     (if (null? env)
@@ -916,6 +906,14 @@
   (ident-at-slot
     (ctx-env ctx)
     (stack-idx-to-slot ctx stack-idx)))
+
+;;
+(define (ctx-ids-keep-non-cst ctx ids)
+  (keep (lambda (el)
+          (let* ((identifier (cdr (assoc el (ctx-env ctx))))
+                 (type (ctx-identifier-type ctx identifier)))
+            (not (ctx-type-is-cst type))))
+        ids))
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx

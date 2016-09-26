@@ -231,7 +231,7 @@
 
 ;; TODO WIP const vers
 ;; TODO: remove lco-prim when implemented
-(define (dummy-cst-all cgc succ lco-prim ctx csts)
+(define (dummy-cst-all cgc succ op lco-prim ctx csts)
   (error "NYI")
   ;; TODO NOTE: NEED TO HANDLE FUNCTION CONST DIFFERENTLY FOR PRIMITIVES TAKING ATX_ALL:
   ;* not
@@ -244,32 +244,32 @@
 ;; TODO: use macro for prim with one, two, ... args.
 ;;       give computation as a lambda
 ;; TODO: move to cst section
-(define (cst-int->char cgc succ lco-prim ctx csts)
+(define (cst-int->char cgc succ op lco-prim ctx csts)
   (let* ((cst  (integer->char (ctx-type-cst (car csts))))
          (type (literal->ctx-type cst))
          (ctx  (ctx-push (ctx-pop ctx) type #f #f)))
     (jump-to-version cgc succ ctx)))
 
-(define (cst-number? cgc succ lco-prim ctx csts)
+(define (cst-number? cgc succ op lco-prim ctx csts)
   (let* ((cst  (and (not (ctx-tclo? (car csts)))
                     (number? (ctx-type-cst (car csts)))))
          (type (literal->ctx-type cst))
          (ctx  (ctx-push (ctx-pop ctx) type #f #f)))
     (jump-to-version cgc succ ctx)))
 
-(define (cst-car cgc succ lco-prim ctx csts)
+(define (cst-car cgc succ op lco-prim ctx csts)
   (let* ((cst  (car (ctx-type-cst (car csts))))
          (type (literal->ctx-type cst))
          (ctx  (ctx-push (ctx-pop ctx) type #f #f)))
     (jump-to-version cgc succ ctx)))
 
-(define (cst-cdr cgc succ lco-prim ctx csts)
+(define (cst-cdr cgc succ op lco-prim ctx csts)
   (let* ((cst  (cdr (ctx-type-cst (car csts))))
          (type (literal->ctx-type cst))
          (ctx  (ctx-push (ctx-pop ctx) type #f #f)))
     (jump-to-version cgc succ ctx)))
 
-(define (cst-eq? cgc succ lco-prim ctx csts)
+(define (cst-eq? cgc succ op lco-prim ctx csts)
   (let* ((cst
            (and (not (ctx-tclo? (car  csts)))
                 (not (ctx-tclo? (cadr csts)))
@@ -277,6 +277,14 @@
                      (ctx-type-cst (cadr csts)))))
          (type (literal->ctx-type cst))
          (ctx  (ctx-push (ctx-pop-n ctx 2) type #f #f)))
+    (jump-to-version cgc succ ctx)))
+
+(define (cst-binop cgc succ op lco-prim ctx csts)
+  (let* ((cst (eval (list op
+                          (ctx-type-cst (car csts))
+                          (ctx-type-cst (cadr csts)))))
+         (type (literal->ctx-type cst))
+         (ctx (ctx-push (ctx-pop-n ctx 2) type #f #f)))
     (jump-to-version cgc succ ctx)))
 
 ;; TODO CST APPLY ?
@@ -291,8 +299,8 @@
     (cons                #f             #f                ,codegen-p-cons           ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL          )
     (eq?                 ,cst-eq?       ,lco-p-eq?        #f                        ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          )
     (char=?              ,dummy-cst-all ,lco-p-char=?     #f                        ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA          )
-    (quotient            ,dummy-cst-all ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
-    (modulo              ,dummy-cst-all ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
+    (quotient            ,cst-binop     ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
+    (modulo              ,cst-binop     ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (remainder           ,dummy-cst-all ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (zero?               ,dummy-cst-all ,lco-p-zero?      #f                        ,ATX_BOO 1 ,ATX_NUM                   )
     (not                 ,dummy-cst-all #f                ,codegen-p-not            ,ATX_BOO 1 ,ATX_ALL                   )
@@ -498,10 +506,6 @@
                  (let* ((cst (ctx-type-cst (ctx-identifier-type ctx (cdr local))))
                         (ctx (ctx-push ctx (ctx-identifier-type ctx (cdr local)) #f sym)))
                    (jump-to-version cgc succ ctx)))
-              ;; Identifier is a local const function ;; TODO: wip remove when all cst implemented
-              ((and local
-                    (member 'cst (identifier-flags (cdr local))))
-                 (gen-closure-from-cst cgc ctx local succ))
               ;; Identifier is a local variable
               (local
                 (gen-get-localvar cgc ctx local succ))
@@ -882,8 +886,9 @@
       (if (null? ids)
           (list cst imm late)
           (let ((id (car ids)))
-            (let ((identifier (cdr (assoc id (ctx-env ctx)))))
-              (if (member 'cst (identifier-flags identifier))
+            (let* ((identifier (cdr (assoc id (ctx-env ctx))))
+                   (type (ctx-identifier-type ctx identifier)))
+              (if (ctx-type-is-cst type)
                   (loop (cdr ids) imm (cons id cst))
                   (loop (cdr ids) (cons id imm) cst))))))))
 
@@ -900,13 +905,7 @@
                 all-params
                 (map car (ctx-env ctx))))
 
-      (define fvars-ncst
-        (keep (lambda (el)
-                (let ((identifier (cdr (assoc el (ctx-env ctx)))))
-                  (not (member 'cst (identifier-flags identifier)))))
-              fvars-imm))
-
-      ;; TODO
+      (define fvars-ncst (ctx-ids-keep-non-cst ctx fvars-imm))
 
       (mlet ((fn-num/entry-obj (init-entry ast ctx fvars-imm '() #f)))
 
@@ -1775,7 +1774,7 @@
     (let loop ((idx (- nopnds 1))
                (r '()))
       (if (< idx 0)
-          r
+          (reverse r)
           (let ((type (ctx-get-type ctx idx)))
             (if (ctx-type-is-cst type)
                 (let ((cst (ctx-type-cst type)))
@@ -1794,7 +1793,7 @@
                (lco-cst (primitive-lco-cst primitive))
                (opnds (and lco-cst (get-all-cst-opnds ctx (length (cdr ast))))))
           (if opnds
-              (lco-cst cgc succ lco-prim ctx opnds)
+              (lco-cst cgc succ prim lco-prim ctx opnds)
               (jump-to-version cgc lco-alloc-cstfn ctx))))))
 
   ;; Drop all const functions of primitive args
@@ -2376,7 +2375,10 @@
                                            #f)))
                         (jump-to-version cgc succ ctx))))
                 ((and lcst? rcst?)
-                  (error "NYI2"))
+                  (let* ((cst (eval (list op lloc rloc)))
+                         (type (literal->ctx-type cst))
+                         (ctx (ctx-push (ctx-pop-n ctx 2) type #f #f)))
+                    (jump-to-version cgc succ ctx)))
                 (num-op?
                   (codegen-num-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t)
                   (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg)))
@@ -2583,13 +2585,7 @@
                 (foldr (lambda (n r)
                          (if (member (car n) fvars-imm) ;; If this id is a free var of future lambda
                              (cons (cons (car n)
-                                         (if (and (eq? (identifier-kind (cdr n)) 'local)
-                                                  (not (member 'cst (identifier-flags (cdr n)))))
-                                             ;; If local, get type from stack
-                                             (let ((type (ctx-identifier-type ctx (cdr n))))
-                                               type)
-                                             ;; If free, get type from env
-                                             (identifier-stype (cdr n))))
+                                         (ctx-identifier-type ctx (cdr n)))
                                    r)
                              r))
                        '()
