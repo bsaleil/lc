@@ -2314,19 +2314,6 @@
 
   (define num-op? (member op '(+ - * /)))
 
-  ;; Build chain to check type of one value (if one of them is a cst)
-  (define (type-check-one)
-    (let* (;; Op
-           (lazy-op-i
-             (if (eq? op '/)
-                 (get-op-ff #t #t)
-                 (get-op-ii)))
-           (lazy-op-f (get-op-ff (integer? lcst) (integer? rcst)))
-           ;; Checks
-           (lazy-float (gen-fatal-type-test ATX_FLO 0 lazy-op-f ast))
-           (lazy-int (gen-dyn-type-test ATX_INT 0 lazy-op-i lazy-float ast)))
-      lazy-int))
-
   ;; Build chain to check type of two values (no cst)
   (define (type-check-two)
     (let* (;; Operations lco
@@ -2352,9 +2339,8 @@
   (define (get-op-ii)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((type (if num-op? (make-ctx-tint) (make-ctx-tboo)))
-               (n-pop 2)
-               (res   (if inlined-if-cond? #f (ctx-get-free-reg ctx succ n-pop)))
+        (let* ((type  (if num-op? (make-ctx-tint) (make-ctx-tboo)))
+               (res   (if inlined-if-cond? #f (ctx-get-free-reg ctx succ 2)))
                (moves (if res (car res) '()))
                (reg   (if res (cadr res) #f))
                (ctx   (if res (caddr res) ctx))
@@ -2367,62 +2353,57 @@
                (lcst? (ctx-type-is-cst ltype))
                (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
           (apply-moves cgc ctx moves)
-          (cond ((and num-op? lcst? rcst?)
-                  (if inlined-if-cond?
-                      (error "NYI1");(jump-to-version cgc TRUE ctx)
-                      (let ((ctx (ctx-push (ctx-pop-n ctx n-pop)
-                                           (literal->ctx-type (eval (list op lloc rloc)))
-                                           #f)))
-                        (jump-to-version cgc succ ctx))))
-                ((and lcst? rcst?)
-                  (let* ((cst (eval (list op lloc rloc)))
-                         (type (literal->ctx-type cst))
-                         (ctx (ctx-push (ctx-pop-n ctx 2) type #f #f)))
+          (cond ((and (not inlined-if-cond?) lcst? rcst?)
+                  (let ((ctx (ctx-push (ctx-pop-n ctx 2)
+                                       (literal->ctx-type (eval (list op lloc rloc)))
+                                       #f)))
                     (jump-to-version cgc succ ctx)))
+                ((and lcst? rcst?)
+                  (error "NYI"))
                 (num-op?
                   (codegen-num-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t)
-                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg)))
+                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
                 (inlined-if-cond?
                   (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t)))
-                    ((lazy-code-generator succ) cgc (ctx-pop-n ctx n-pop) x86-op)))
+                    ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
                 (else
                     (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #f)
-                    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg))))))))
-
+                    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg))))))))
 
   ;;
   (define (get-op-ff leftint? rightint?)
     (make-lazy-code
       (lambda (cgc ctx)
-        (let* ((type (if num-op? (make-ctx-tflo) (make-ctx-tboo)))
-               (n-pop (count (list lcst rcst) not))
-               (res (if inlined-if-cond? #f (ctx-get-free-reg ctx succ n-pop)))
+        (let* ((type  (if num-op? (make-ctx-tflo) (make-ctx-tboo)))
+               (res   (if inlined-if-cond? #f (ctx-get-free-reg ctx succ 2)))
                (moves (if res (car res) '()))
-               (reg (if res (cadr res) #f))
-               (ctx (if res (caddr res) ctx))
-               ;; We need to get locs AFTER ctx-get-free-reg call
-               (lright (or rcst (ctx-get-loc ctx 0)))
-               (lleft
-                 (if rcst
-                     (or lcst (ctx-get-loc ctx 0))
-                     (or lcst (ctx-get-loc ctx 1)))))
+               (reg   (if res (cadr res) #f))
+               (ctx   (if res (caddr res) ctx))
+               ;; right info
+               (rtype (ctx-get-type ctx 0))
+               (rcst? (ctx-type-is-cst rtype))
+               (rloc  (if rcst? (ctx-type-cst rtype) (ctx-get-loc ctx 0)))
+               ;; left info
+               (ltype (ctx-get-type ctx 1))
+               (lcst? (ctx-type-is-cst ltype))
+               (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
           (apply-moves cgc ctx moves)
-          (cond (num-op?
-                  (codegen-num-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst #t)
-                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg)))
+          (cond ((or lcst? rcst?)
+                  (error "NYI"))
+                (num-op?
+                  (codegen-num-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #t)
+                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
                 (inlined-if-cond?
-                  (let ((x86-op (codegen-cmp-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst #t)))
-                    ((lazy-code-generator succ) cgc (ctx-pop-n ctx n-pop) x86-op)))
+                  (let ((x86-op (codegen-cmp-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #t)))
+                    ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
                 (else
-                  (codegen-cmp-ff cgc (ctx-fs ctx) op reg lleft leftint? lright rightint? lcst rcst #f)
-                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx n-pop) type reg))))))))
+                  (codegen-cmp-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #f)
+                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg))))))))
 
   (assert (not (and inlined-if-cond? (member op '(+ - * /))))
           "Internal compiler error")
 
-  (if (or lcst rcst)
-      (type-check-one)
-      (type-check-two)))
+  (type-check-two))
 
 ;;
 ;; Make lazy code from TYPE TEST

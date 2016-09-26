@@ -1,9 +1,46 @@
 
+(define (permutations x)
+  (let ((x x)
+        (perms (list x)))
+    (define (P n)
+      (if (> n 1)
+          (do ((j (- n 1) (- j 1)))
+              ((zero? j)
+               (P (- n 1)))
+              (P (- n 1))
+              (F n))))
+    (define (F n)
+      (set! x (revloop x n (list-tail x n)))
+      (set! perms (cons x perms)))
+    (define (revloop x n y)
+      (if (zero? n)
+          y
+          (revloop (cdr x)
+                   (- n 1)
+                   (cons (car x) y))))
+    (define (list-tail x n)
+      (if (zero? n)
+          x
+          (list-tail (cdr x) (- n 1))))
+    (P (length x))
+    perms))
 
+(define (sumlists x)
+  (do ((x x (cdr x))
+       (sum 0 (do ((y (car x) (cdr y))
+                   (sum sum (+ sum (car y))))
+                  ((null? y) sum))))
+      ((null? x) sum)))
 
-;; mlc-letrec
+(define (one..n n)
+  (do ((n n (- n 1))
+       (p '() (cons n p)))
+      ((zero? n) p)))
 
-;; 1. grouper 
+;-----
+
+(println (sumlists (permutations (one..n 9))))
+
 
 
 
