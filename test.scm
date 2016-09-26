@@ -1,13 +1,4 @@
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
-
-(pp (fib 40))
-
-
 ;; TODO: mlc-lambda, détecter les fn const, et les ajouter au contexte sans générer de code
 ;; TODO: quand on récupère l'emplacement d'une variable, regarder les slots pour trouver la meilleure loc (cst > reg > mem)
 ;; TODO: #<ctx-tclo #3 sym: closure mem-allocated?: #t is-cst: (lambda () ($$atom 1)) cst: #f fn-num: 0>

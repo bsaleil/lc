@@ -218,6 +218,23 @@ void initc()
 
   (x86-mov cgc (x86-mem (- 0 nbytes 8) alloc-ptr) (x86-imm-int (mem-header nbytes stag)) 64))
 
+(define (gen-allocation-imm-sti cgc stag nbytes)
+
+  (assert (= (modulo nbytes 4) 0) "GC internal error")
+  (assert (mem-still-required? nbytes) "Internal error")
+
+  ;; Save size (bytes)
+  (x86-upush cgc (x86-imm-int nbytes))
+  ;; Save aligned size ;; TODO change gen-alloc-still api
+  (x86-upush cgc (x86-imm-int nbytes))
+  ;; Stag is not encoded, push it to pstack
+  (x86-ppush cgc (x86-imm-int stag))
+  ;; Alloc
+  (x86-pcall cgc label-alloc-still-handler)
+  ;; Clean stacks
+  (x86-add cgc (x86-rsp) (x86-imm-int 8))
+  (x86-add cgc (x86-usp) (x86-imm-int 16)))
+
 ;; Generate an heap object header
 ;; using layout used by Gambit.
 (define (mem-header length stag #!optional (life LIFE_MOVE))

@@ -1363,7 +1363,7 @@
 
   (cond ((and cst-len?
               (mem-still-required? (* 8 llen)))
-           (error "NYI cgc"))
+           (codegen-p-make-vector-imm-sti cgc fs reg llen lval cst-val?))
         (cst-len?
            (codegen-p-make-vector-imm cgc fs reg llen lval cst-val?))
         (else
@@ -1401,6 +1401,39 @@
     (x86-label cgc label-end)
     (x86-lea cgc dest (x86-mem (+ (* (+ llen 1) -8) TAG_MEMOBJ) alloc-ptr))
     (x86-mov cgc selector-reg (x86-imm-int 0))))
+
+;; make-vector with cst len (still)
+(define (codegen-p-make-vector-imm-sti cgc fs reg llen lval cst-val?)
+
+  (let* ((dest  (codegen-reg-to-x86reg reg))
+         (oplen (x86-imm-int (obj-encoding llen)))
+         (opval (if cst-val?
+                    (x86-imm-int (obj-encoding lval))
+                    (codegen-loc-to-x86opnd fs lval)))
+         (label-loop (asm-make-label #f (new-sym 'make-vector-loop)))
+         (label-end  (asm-make-label #f (new-sym 'make-vector-end))))
+
+  ;; Alloc vector
+  (gen-allocation-imm-sti cgc STAG_VECTOR (* 8 llen))
+  ;; Loop counter
+  (x86-mov cgc selector-reg (x86-imm-int (* 8 llen)))
+  ;; Loop
+  (if cst-val?
+     (x86-mov cgc dest (x86-imm-int (obj-encoding lval))))
+  (x86-label cgc label-loop)
+  (x86-cmp cgc selector-reg (x86-imm-int 0))
+  (x86-je cgc label-end)
+
+    (let ((memop (x86-mem (- TAG_MEMOBJ) (x86-rax) selector-reg)))
+      (if cst-val?
+          (x86-mov cgc memop dest)
+          (x86-mov cgc memop opval))
+      (x86-sub cgc selector-reg (x86-imm-int 8))
+      (x86-jmp cgc label-loop))
+
+  (x86-label cgc label-end)
+  (x86-mov cgc dest (x86-rax))
+  (x86-mov cgc selector-reg (x86-imm-int 0))))
 
 ;; make-vector with !cst len
 (define (codegen-p-make-vector-opn cgc fs reg llen lval cst-val?)

@@ -408,6 +408,12 @@
 ;; Make lazy code from num/bool/char/null literal
 ;;
 (define (mlc-literal lit ast succ)
+
+  (if (and (integer? lit)
+           (not (fixnum? lit)))
+      ;; Bignum, fall back to flonum
+      (set! lit (exact->inexact lit)))
+
   (make-lazy-code
     (lambda (cgc ctx)
       (let ((literal

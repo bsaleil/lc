@@ -161,7 +161,7 @@
     ((string?  l) (make-ctx-tstr #t l))
     ((symbol?  l) (make-ctx-tsym #t l))
     ((flonum?  l) (make-ctx-tflo #t l))
-    (else (error "Internal error (literal->ctx-type)"))))
+    (else (pp l) (error "Internal error (literal->ctx-type)"))))
 
 ;; CTX IDENTIFIER LOC
 ;; Return best loc for identifier. (Register if available, memory otherwise)
