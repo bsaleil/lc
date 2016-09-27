@@ -228,73 +228,7 @@
 ;; * More complex primitives need more complex work.
 ;;   A "complex" primitive has no codegen function but a lco getter that is
 ;;   used to guild lco chain and return first lco of the chain
-
-;; TODO WIP const vers
-;; TODO: remove lco-prim when implemented
-(define (dummy-cst-all cgc succ op lco-prim ctx csts)
-  (error "NYI")
-  ;; TODO NOTE: NEED TO HANDLE FUNCTION CONST DIFFERENTLY FOR PRIMITIVES TAKING ATX_ALL:
-  ;* not
-  ;* eof-object?
-  ;* real?
-  ;* eqv?
-  (jump-to-version cgc lco-prim ctx))
-
-;; TODO: write note: lambda cst is considered as int, need to handle it
-;; TODO: use macro for prim with one, two, ... args.
-;;       give computation as a lambda
-;; TODO: move to cst section
-(define (cst-int->char cgc succ op lco-prim ctx csts)
-  (let* ((cst  (integer->char (ctx-type-cst (car csts))))
-         (type (literal->ctx-type cst))
-         (ctx  (ctx-push (ctx-pop ctx) type #f #f)))
-    (jump-to-version cgc succ ctx)))
-
-(define (cst-number? cgc succ op lco-prim ctx csts)
-  (let* ((cst  (and (not (ctx-tclo? (car csts)))
-                    (number? (ctx-type-cst (car csts)))))
-         (type (literal->ctx-type cst))
-         (ctx  (ctx-push (ctx-pop ctx) type #f #f)))
-    (jump-to-version cgc succ ctx)))
-
-(define (cst-car cgc succ op lco-prim ctx csts)
-  (let* ((cst  (car (ctx-type-cst (car csts))))
-         (type (literal->ctx-type cst))
-         (ctx  (ctx-push (ctx-pop ctx) type #f #f)))
-    (jump-to-version cgc succ ctx)))
-
-(define (cst-cdr cgc succ op lco-prim ctx csts)
-  (let* ((cst  (cdr (ctx-type-cst (car csts))))
-         (type (literal->ctx-type cst))
-         (ctx  (ctx-push (ctx-pop ctx) type #f #f)))
-    (jump-to-version cgc succ ctx)))
-
-(define (cst-eq? cgc succ op lco-prim ctx csts)
-  (let* ((cst
-           (and (not (ctx-tclo? (car  csts)))
-                (not (ctx-tclo? (cadr csts)))
-                (eq? (ctx-type-cst (car csts))
-                     (ctx-type-cst (cadr csts)))))
-         (type (literal->ctx-type cst))
-         (ctx  (ctx-push (ctx-pop-n ctx 2) type #f #f)))
-    (jump-to-version cgc succ ctx)))
-
-(define (cst-binop cgc succ op lco-prim ctx csts)
-  (let* ((cst (eval (list op
-                          (ctx-type-cst (car csts))
-                          (ctx-type-cst (cadr csts)))))
-         (type (literal->ctx-type cst))
-         (ctx (ctx-push (ctx-pop-n ctx 2) type #f #f)))
-    (jump-to-version cgc succ ctx)))
-
-(define (cst-not cgc succ op lco-prim ctx csts)
-  (let* ((cst (not (ctx-type-cst (car csts))))
-         (type (literal->ctx-type cst))
-         (ctx (ctx-push (ctx-pop ctx) type #f)))
-    (jump-to-version cgc succ ctx)))
-
 ;; TODO CST APPLY ?
-;; TODO: const vers: remove lco cst first, and just check for primitives in mlc-primitive
 
 (define primitives '())
 (define (init-primitives)
@@ -1823,7 +1757,7 @@
                (lco-cst (primitive-lco-cst primitive))
                (opnds (and lco-cst (get-all-cst-opnds ctx (length (cdr ast))))))
           (if opnds
-              (lco-cst cgc succ prim lco-prim ctx opnds)
+              (lco-cst cgc succ prim ctx opnds)
               (jump-to-version cgc lco-alloc-cstfn ctx))))))
 
   ;; Drop all const functions of primitive args
@@ -1904,6 +1838,48 @@
                             (gen-fatal-type-test (car types) 0 lazy-next ast)))))))
 
   (check-types-h types args 0))
+
+;;
+;; Cst primitives functions
+
+;; These functions are called when all arguments of a primitive are cst values
+;; -> compute new cst value, update ctx, and jump to successor lco
+
+;; NYI cst function
+(define (dummy-cst-all cgc succ op ctx csts)
+  (error "NYI"))
+
+(define-macro (cst-prim-n pop-n compute-cst)
+  `(lambda (cgc succ op ctx csts)
+     (let* ((cst ,compute-cst)
+            (type (literal->ctx-type cst))
+            (ctx (ctx-push (ctx-pop-n ctx ,pop-n) type #f)))
+       (jump-to-version cgc succ ctx))))
+
+(define-macro (cst-prim-1 fn) `(cst-prim-n 1 (,fn (car csts))))
+(define-macro (cst-prim-2 fn) `(cst-prim-n 2 (,fn (car csts) (cadr csts))))
+
+;; 1 arg cst primitives
+(define cst-car       (cst-prim-1 (lambda (cst) (car (ctx-type-cst cst)))))
+(define cst-cdr       (cst-prim-1 (lambda (cst) (cdr (ctx-type-cst cst)))))
+(define cst-not       (cst-prim-1 (lambda (cst) (not (ctx-type-cst cst)))))
+(define cst-int->char (cst-prim-1 (lambda (cst) (integer->char (ctx-type-cst cst)))))
+(define cst-number?   (cst-prim-1 (lambda (cst)
+                                    (and (not     (ctx-tclo?    cst))
+                                         (number? (ctx-type-cst cst))))))
+
+;; 2 args cst primitives
+(define cst-eq?
+  (cst-prim-2 (lambda (cst1 cst2)
+                (and (not (ctx-tclo? cst1))
+                     (not (ctx-tclo? cst2))
+                     (eq? (ctx-type-cst cst1)
+                          (ctx-type-cst cst2))))))
+(define cst-binop
+  (cst-prim-2 (lambda (cst1 cst2)
+                (eval (list op
+                            (ctx-type-cst cst1)
+                            (ctx-type-cst cst2))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Branches

@@ -1,9 +1,8 @@
 
-(define test #f)
-
-(set! test (lambda () (gambit$$pp 11)))
-
-(test)
+;; Allocation des procédures cst:
+;; à tous les drop-cst-value, et gen-closure*:
+;; -> uiliser simplement un mov de la globale
+;; -> conserver une table fn-id -> permanent object
 
 ;; NEXT:
 ;; * check cc-key
@@ -11,7 +10,6 @@
 ;; * use global-fn for cst fn ? (permanent objects?)
 ;; * merge code
 ;; * return value (type cr)
-
 
 ;; TODO: mlc-lambda, détecter les fn const, et les ajouter au contexte sans générer de code
 ;; TODO: quand on récupère l'emplacement d'une variable, regarder les slots pour trouver la meilleure loc (cst > reg > mem)
