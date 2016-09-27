@@ -326,7 +326,6 @@
 
 ;;-----------------------------------------------------------------------------
 
-;; TODO WIP
 (c-define (gambit-call usp psp) (long long) void "gambit_call" ""
   (let* ((nargs
            (encoding-obj (get-i64 (+ usp (* (+ (length regalloc-regs) 2) 8)))))
@@ -1343,25 +1342,8 @@
 
       (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos)))
 
-;; TODO WIP
 (define (gen-generic cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos)
-
-  ;; TODO: fn-verbose
   (error "NYI"))
-
-  ;(let* ((r (ctx-generic ctx))
-  ;       (gctx  (car r))
-  ;       (moves (cdr r))
-  ;       (generic-label (asm-make-label #f (new-sym label-sym))))
-  ;
-  ;  (set! code-alloc (fn-codepos))
-  ;  (apply-moves cgc ctx moves)
-  ;  (x86-label cgc generic-label)
-  ;  ((lazy-code-generator lazy-code) cgc gctx)
-  ;  (lazy-code-generic-ctx-set!  lazy-code gctx)
-  ;  (lazy-code-generic-vers-set! lazy-code generic-label)
-  ;  ;; Update lco info
-  ;  (fn-patch generic-label #t)))
 
 ;; TODO WIP
 (define (gen-merge cgc ctx generic-ctx generic-vers fn-verbose fn-patch fn-codepos)

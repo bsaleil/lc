@@ -1438,11 +1438,6 @@
                        (reverse cst?)))
          (rtype (primitive-rettype prim)))
 
-    ;; TODO WIP CST VERS: if all cst:
-    ;;  r = eval(...)
-    ;;  jump-to-version with ctx-push r
-    ;;  (Add pairs cst later)
-
     (apply gen args)
     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) rtype reg))))
 
@@ -1730,10 +1725,8 @@
 
 (define (mlc-primitive-d prim ast succ)
 
-  ;; TODO: check alloc size (for still obj) if primitive nbargs is #f (list, vector)
-
   ;; If all operands are cst, return list of ctx types
-  ;; If at least one operand is not cst, return #f
+  ;; If one or more operands are not cst, return #f
   (define (get-all-cst-opnds ctx nopnds)
     (let loop ((idx (- nopnds 1))
                (r '()))
@@ -1749,7 +1742,9 @@
                   (loop (- idx 1) (cons type r)))
                 #f)))))
 
-  ;; TODO WIP CONST VER
+  ;; This lco detect if all operands of the primitives are cst operands
+  ;; If so, use cst primitive function associated to current primitive
+  ;; else, jump to next
   (define (get-lazy-cst-check primitive lco-prim)
     (make-lazy-code
       (lambda (cgc ctx)
@@ -2109,9 +2104,10 @@
                  (x86-mov cgc selector-reg (x86-imm-int 0)))
           (apply-moves cgc ctx moves (car unused-regs)))
 
+      ;; Force closure reg to contain #f for do_callback_fn if we call a const closure
       (if (and (not opt-entry-points)
                const-fn)
-          (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f)))) ;; TODO wip: need #f in closure for do_callback_fn
+          (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f))))
 
       ctx)))
 
