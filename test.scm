@@ -1,15 +1,16 @@
 
+(define test #f)
 
-(define (foo n)
-  (+ n 100))
+(set! test (lambda () (gambit$$pp 11)))
 
-(foo 22)
+(test)
 
 ;; NEXT:
 ;; * check cc-key
 ;; * Detect fn cst in mlc-lambda
 ;; * use global-fn for cst fn ? (permanent objects?)
 ;; * merge code
+;; * return value (type cr)
 
 
 ;; TODO: mlc-lambda, détecter les fn const, et les ajouter au contexte sans générer de code

@@ -287,6 +287,12 @@
          (ctx (ctx-push (ctx-pop-n ctx 2) type #f #f)))
     (jump-to-version cgc succ ctx)))
 
+(define (cst-not cgc succ op lco-prim ctx csts)
+  (let* ((cst (not (ctx-type-cst (car csts))))
+         (type (literal->ctx-type cst))
+         (ctx (ctx-push (ctx-pop ctx) type #f)))
+    (jump-to-version cgc succ ctx)))
+
 ;; TODO CST APPLY ?
 ;; TODO: const vers: remove lco cst first, and just check for primitives in mlc-primitive
 
@@ -303,7 +309,7 @@
     (modulo              ,cst-binop     ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (remainder           ,dummy-cst-all ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (zero?               ,dummy-cst-all ,lco-p-zero?      #f                        ,ATX_BOO 1 ,ATX_NUM                   )
-    (not                 ,dummy-cst-all #f                ,codegen-p-not            ,ATX_BOO 1 ,ATX_ALL                   )
+    (not                 ,cst-not       #f                ,codegen-p-not            ,ATX_BOO 1 ,ATX_ALL                   )
     (set-car!            #f             #f                ,codegen-p-set-cxr!       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (set-cdr!            #f             #f                ,codegen-p-set-cxr!       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (vector-length       ,dummy-cst-all #f                ,codegen-p-vector-length  ,ATX_INT 1 ,ATX_VEC                   )
@@ -595,9 +601,14 @@
                (let ((global (asc-globals-get id)))
                  (if global
                      (gen-set-globalvar cgc ctx global succ)
-                     (error "Internal error")))))))
+                     (error "Internal error"))))))
+         (lazy-drop
+           (make-lazy-code
+             (lambda (cgc ctx)
+               (let ((ctx (drop-cst-value cgc ctx 0)))
+                 (jump-to-version cgc lazy-set! ctx))))))
 
-    (gen-ast (caddr ast) lazy-set!)))
+    (gen-ast (caddr ast) lazy-drop)))
 
 (define (gen-set-globalvar cgc ctx global succ)
   (mlet ((pos (global-pos global))
@@ -634,6 +645,7 @@
             (let* ((identifier (cadr ast))
                    (lazy-bind (make-lazy-code
                                 (lambda (cgc ctx)
+
                                   (mlet ((pos (global-pos (asc-globals-get identifier))) ;; Lookup in globals
                                          ;;
                                          (moves/reg/ctx (ctx-get-free-reg ctx succ 1))
@@ -645,7 +657,16 @@
                                     (apply-moves cgc ctx moves)
                                     (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue cst?)
                                     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))))
-                   (lazy-val (gen-ast (caddr ast) lazy-bind)))
+                   (lazy-drop
+                     (make-lazy-code
+                       (lambda (cgc ctx)
+                         (let ((type (ctx-get-type ctx 0)))
+                           (if (and (ctx-type-is-cst type)
+                                    (ctx-tclo? type))
+                               (let ((ctx (drop-cst-value cgc ctx 0)))
+                                 (jump-to-version cgc lazy-bind ctx))
+                               (jump-to-version cgc lazy-bind ctx))))))
+                   (lazy-val (gen-ast (caddr ast) lazy-drop)))
 
               (put-i64 (+ globals-addr (* 8 (global-pos (asc-globals-get (cadr ast))))) ENCODING_VOID)
               lazy-val)))))
@@ -909,12 +930,19 @@
 
       (mlet ((fn-num/entry-obj (init-entry ast ctx fvars-imm '() #f)))
 
-        ;; Gen code to create closure
-        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
-          (apply-moves cgc ctx moves)
-          (gen-closure cgc reg ctx entry-obj fvars-ncst)
-          ;;
-          (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg)))))))
+        (if (null? fvars-ncst)
+
+            ;; Cst function, add information to ctx
+            (let* ((type (make-ctx-tclo #t fn-num))
+                   (ctx  (ctx-push ctx type #f)))
+              (jump-to-version cgc succ ctx))
+
+            ;; Gen code to create closure
+            (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
+              (apply-moves cgc ctx moves)
+              (gen-closure cgc reg ctx entry-obj fvars-ncst)
+              ;;
+              (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg))))))))
 
 ;;
 (define (gen-closure cgc reg ctx entry-obj fvars-ncst)
@@ -2080,9 +2108,14 @@
       (if (null? locs)
           (set! ctx (ctx-fs-update ctx fs))
           (begin
-            (if (eq? (caar locs) 'const)
-                (x86-upush cgc (x86-imm-int (obj-encoding (cdar locs))))
-                (x86-upush cgc (codegen-loc-to-x86opnd fs (car locs))))
+            (cond ((eq? (caar locs) 'constfn)
+                     (let ((entry-obj (asc-globalfn-entry-get (cdar locs))))
+                       (gen-closure cgc 'tmp #f entry-obj '())
+                       (x86-upush cgc (codegen-reg-to-x86reg 'tmp))))
+                  ((eq? (caar locs) 'const)
+                     (x86-upush cgc (x86-imm-int (obj-encoding (cdar locs)))))
+                  (else
+                     (x86-upush cgc (codegen-loc-to-x86opnd fs (car locs)))))
             (loop (+ fs 1) (cdr locs)))))
 
     (let* ((used-regs
@@ -2144,6 +2177,11 @@
          (lazy-call
            (make-lazy-code
              (lambda (cgc ctx)
+
+               ;; Handle const fn
+               (let ((type (ctx-get-type ctx (length args))))
+                 (if (ctx-type-is-cst type)
+                     (set! fn-id-inf (cons #t (ctx-type-cst type)))))
 
                ;; Save used registers, generate and push continuation stub
                (set! ctx (call-save/cont cgc ctx ast succ tail? (+ (length args) 1) #f))

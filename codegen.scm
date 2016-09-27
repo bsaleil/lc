@@ -152,6 +152,7 @@
 (define alloc-ptr  (x86-r9))
 (define global-ptr (x86-r8))
 (define selector-reg (x86-rcx))
+(define tmp-reg (x86-rax))
 (define selector-reg-32 (x86-ecx))
 (define (x86-usp) (x86-rbp)) ;; user stack pointer is rbp
 
@@ -221,6 +222,8 @@
 (define (codegen-loc-to-x86opnd fs loc)
   (cond ((eq? loc 'selector)
          selector-reg)
+        ((eq? loc 'tmp)
+         tmp-reg)
         ((ctx-loc-is-register? loc)
          (codegen-reg-to-x86reg loc))
         ((ctx-loc-is-memory? loc)
@@ -231,7 +234,10 @@
   (x86-mem (* 8 (- fs (cdr mem) 1)) (x86-usp)))
 
 (define (codegen-reg-to-x86reg reg)
-  (cdr (assoc reg codegen-regmap)))
+  (cond ((eq? reg 'selector) selector-reg)
+        ((eq? reg 'tmp) tmp-reg)
+        (else
+          (cdr (assoc reg codegen-regmap)))))
 
 (define (codegen-is-imm-64? imm)
   (or (< imm -2147483648)
