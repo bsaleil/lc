@@ -7,7 +7,7 @@
 
 ;; NEXT:
 ;; * check cc-key
-;; * Detect fn cst in mlc-lambda
+;; * utiliser un systeme pour les globales non mutables compatible avec le nouvel cst vers.
 ;; * use global-fn for cst fn ? (permanent objects?)
 ;; * merge code
 ;; * return value (type cr)
