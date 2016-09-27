@@ -1673,7 +1673,7 @@
 ;; Interprocedural BBV (cr/cc-tables)
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 600)
+(define global-cc-table-maxsize 400)
 (define global-cr-table-maxsize (length cridx-type)) ;; TODO number of types
 ;; Holds the current shape of the global cc table
 (define global-cc-table (make-table))
