@@ -1,4 +1,9 @@
 
+(let loop ((i 10))
+  (if (= i 0)
+      1
+      (loop i)))
+
 ;; Allocation des procédures cst:
 ;; à tous les drop-cst-value, et gen-closure*:
 ;; -> uiliser simplement un mov de la globale

@@ -77,7 +77,8 @@ ___U64  get___heap_limit_addr()      { return (___U64)&callHL; }
 void lcIntHandler(int p) {
   // Write is reentrant
   write(1, \"*** INTERRUPTED IN ASM (SIGINT)\\n\",32);
-  exit(0);
+  signal(SIGINT, SIG_DFL);
+  kill(getpid(), SIGINT);
 }
 
 void initc()
