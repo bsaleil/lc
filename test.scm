@@ -1,9 +1,15 @@
 
 
+(define (foo n)
+  (+ n 100))
+
+(foo 22)
+
 ;; NEXT:
 ;; * check cc-key
 ;; * Detect fn cst in mlc-lambda
 ;; * use global-fn for cst fn ? (permanent objects?)
+;; * merge code
 
 
 ;; TODO: mlc-lambda, détecter les fn const, et les ajouter au contexte sans générer de code

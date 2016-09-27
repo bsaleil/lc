@@ -2156,11 +2156,7 @@
 
                ;; Generate call sequence
                ;; Build call ctx
-               (let ((call-ctx
-                       (ctx-copy
-                         (ctx-init)
-                         (append (list-head (ctx-stack ctx) (length (cdr ast)))
-                                 (list (make-ctx-tclo) (make-ctx-tret))))))
+               (let ((call-ctx (ctx-init-call ctx (length (cdr ast)))))
                  (gen-call-sequence ast cgc call-ctx (length args) (and fn-id-inf (cdr fn-id-inf)))))))
          ;; Lazy code object to build the continuation
          (lazy-tail-operator (check-types (list ATX_CLO) (list (car ast)) lazy-call ast)))

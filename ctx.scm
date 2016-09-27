@@ -200,6 +200,22 @@
     (ctx-copy ctx #f #f #f free-mem #f #f (+ fs nslots) #f)))
 
 ;;
+;; CTX INIT CALL
+(define (ctx-init-call ctx nb-args)
+
+  (define (get-stack)
+    (let loop ((head (list-head (ctx-stack ctx) nb-args)))
+      (if (null? head)
+          (list (make-ctx-tclo) (make-ctx-tret))
+          (let ((first (car head)))
+            (cons (ctx-type-nocst first)
+                  (loop (cdr head)))))))
+
+  (ctx-copy
+    (ctx-init)
+    (get-stack)))
+
+;;
 ;; CTX INIT FN
 (define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
 
