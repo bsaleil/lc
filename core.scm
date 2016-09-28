@@ -564,7 +564,8 @@
       (if opt-verbose-jit
           (begin
             (println "------------------------------------------------------------------------")
-            (asm-display-listing cgc (current-output-port) #t)))
+            (asm-display-listing cgc (current-output-port) #t)
+            (force-output)))
       (write-mcb code (- addr code-addr))
       (u8vector-length code))))
 

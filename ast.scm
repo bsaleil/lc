@@ -684,23 +684,30 @@
 
 ;;
 ;; Create and return a function return lco
-(define (get-lazy-return)
-  (make-lazy-code-ret ;; Lazy-code with 'ret flag
+(define (get-lazy-return ast)
+
+  (define lazy-ret
+    (make-lazy-code-ret ;; Lazy-code with 'ret flag
+      (lambda (cgc ctx)
+        (let* ((fs (ctx-fs ctx))
+               ;; Return value loc
+               (type-ret (ctx-get-type ctx 0))
+               (lret     (ctx-get-loc ctx 0))
+               ;; Return address object loc
+               (laddr (ctx-get-loc ctx (- (length (ctx-stack ctx)) 1))))
+
+          (assert (not (ctx-type-is-cst type-ret)) "Internal error")
+
+          ;; Gen return
+          (if opt-return-points
+              (let* ((crtable-offset (ctx-type->cridx type-ret)))
+                (codegen-return-cr cgc fs fs laddr lret crtable-offset))
+              (codegen-return-rp cgc fs fs laddr lret))))))
+  ;; TODO: write a generic lazy-drop function (this function is used by multiple mlc-*)
+  (make-lazy-code-ret
     (lambda (cgc ctx)
-      (let* ((fs (ctx-fs ctx))
-             ;; Return value loc
-             (type-ret (ctx-get-type ctx 0))
-             (cst? (ctx-type-is-cst type-ret))
-             (lret (if cst?
-                       (ctx-type-cst type-ret)
-                       (ctx-get-loc ctx 0)))
-             ;; Return address object loc
-             (laddr (ctx-get-loc ctx (- (length (ctx-stack ctx)) 1))))
-        ;; Gen return
-        (if opt-return-points
-            (let* ((crtable-offset (ctx-type->cridx type-ret)))
-              (codegen-return-cr cgc fs fs laddr lret cst? crtable-offset))
-            (codegen-return-rp cgc fs fs laddr lret cst?))))))
+      (let ((ctx (drop-cst-value cgc ctx 0)))
+        (jump-to-version cgc lazy-ret ctx)))))
 
 ;;
 ;; Create fn entry stub
@@ -715,7 +722,7 @@
         (formal-params (cadr ast))
         (cadr ast)))
   ;; Lazy lambda return
-  (define lazy-ret (get-lazy-return))
+  (define lazy-ret (get-lazy-return ast))
   ;; Lazy lambda body
   (define lazy-body (gen-ast (caddr ast) lazy-ret))
   ;; Lazy function prologue
