@@ -183,6 +183,17 @@
 (define (global-stype global) (cdr global))
 (define (global-stype-set! global stype) (set-cdr! global stype))
 
+;;
+;; Associate a closure (encoding of scm object) to an entry-obj-loc
+;; This asc keeps allocations of constant closures as permanent objects
+(define asc-entryobj-globalclo (make-table))
+(define (asc-entryobj-globalclo-get entry-obj-loc)
+  (table-ref asc-entryobj-globalclo entry-obj-loc #f))
+(define (asc-entryobj-globalclo-add entry-obj-loc clo-ptr)
+  (assert (not (asc-entryobj-globalclo-get entry-obj-loc))
+          "Internal error")
+  (table-set! asc-entryobj-globalclo entry-obj-loc clo-ptr))
+
 ;;-----------------------------------------------------------------------------
 ;; Type predicates
 
@@ -894,8 +905,28 @@
   (if opt-stats
     (gen-inc-slot cgc 'closures))
 
-  ;; TODO (refactoring): inline here
-  (gen-local-closure cgc reg ctx entry-obj-loc fvars-ncst))
+  (if (null? fvars-ncst)
+      (gen-global-closure cgc reg ctx entry-obj-loc)
+      (gen-local-closure cgc reg ctx entry-obj-loc fvars-ncst)))
+
+;; Create a global closure, and load it in dest register
+(define (gen-global-closure cgc reg ctx entry-obj-loc)
+
+  ;; If a closure already is generated for a given entry-obj, return it
+  ;; else, alloc new permanent closure, add it to asc and return it
+  (define (get-closure-ptr)
+    (let ((r (asc-entryobj-globalclo-get entry-obj-loc)))
+      (or r
+          (let* ((obj (alloc-perm-procedure))
+                 (enc (obj-encoding obj)))
+            (put-i64 (+ (- enc TAG_MEMOBJ) OFFSET_BODY) entry-obj-loc)
+            (asc-entryobj-globalclo-add entry-obj-loc enc)
+            enc))))
+
+  ;; The closure is constant so we only need to load closure ptr in dest register
+  (let ((ptr (get-closure-ptr))
+        (dest (codegen-reg-to-x86reg reg)))
+    (x86-mov cgc dest (x86-imm-int ptr))))
 
 ;; Create a local closure, and load it in dest register
 (define (gen-local-closure cgc reg ctx entry-obj-loc fvars-ncst)

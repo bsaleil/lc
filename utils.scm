@@ -222,6 +222,11 @@
               (life (bitwise-and (get-i64 obj-addr) 7)))
          (= life LIFE_PERM))))
 
+(define (alloc-perm-procedure)
+  ((c-lambda ()
+             scheme-object
+             "___result = ___EXT(___alloc_scmobj) (NULL, ___sPROCEDURE, 8);")))
+
 (define (alloc-still-vector-0 len)
   ((c-lambda (int)
              scheme-object

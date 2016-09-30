@@ -184,6 +184,7 @@
 (define OFFSET_PROC_EP 8)
 (define OFFSET_BOX 8)
 (define OFFSET_FLONUM 8)
+(define OFFSET_BODY 8)
 (define (OFFSET_PROC_FREE i) (+ 16 (* 8 i)))
 
 ;;-----------------------------------------------------------------------------
