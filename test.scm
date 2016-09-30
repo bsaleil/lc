@@ -1,8 +1,4 @@
-
-(let loop ((i 10))
-  (if (= i 0)
-      1
-      (loop i)))
+(println "OK")
 
 ;; Allocation des procédures cst:
 ;; à tous les drop-cst-value, et gen-closure*:

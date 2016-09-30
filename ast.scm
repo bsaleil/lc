@@ -954,52 +954,29 @@
 
 (define (mlc-let ast succ)
 
-  (define cst '())
-  (define nor '())
+  (define bindings (cadr ast))
+  (define ids (map car bindings))
+  (define values (map cadr bindings))
+  (define body (caddr ast))
 
-  (define (build-id-idx ids l)
-    (if (null? ids)
-        '()
-        (cons (cons (car ids) l)
-              (build-id-idx (cdr ids) (- l 1)))))
+  (define (build-id-idx)
+    (let loop ((ids ids)
+               (idx (- (length ids) 1))
+               (r '()))
+      (if (null? ids)
+          r
+          (let ((id (car ids)))
+            (loop (cdr ids) (- idx 1) (cons (cons id idx) r))))))
 
-  (define (reset-sets!)
-    (set! cst '())
-    (set! nor '()))
+  (let* ((lazy-let-out (get-lazy-lets-out ast ids 0 succ))
+         (lazy-body (gen-ast body lazy-let-out))
+         (lazy-bind
+           (make-lazy-code
+             (lambda (cgc ctx)
+               (let ((ctx (ctx-bind-locals ctx (build-id-idx))))
+                 (jump-to-version cgc lazy-body ctx))))))
 
-  (define (compute-sets! ctx)
-    (let loop ((bindings (cadr ast)))
-      (if (not (null? bindings))
-          (let* ((binding (car bindings))
-                 (id  (car binding))
-                 (val (cadr binding)))
-            (if (and (pair? val)
-                     (eq? (car val) 'lambda))
-                (let ((finfo (get-free-infos val '() ctx)))
-                  (if (= (length (cadr finfo)) 0)
-                      (let ((c (init-entry-cst val (car finfo) ctx)))
-                        (set! cst (cons (cons id c) cst)))
-                      (set! nor (cons binding nor))))
-                (set! nor (cons binding nor)))
-            (loop (cdr bindings))))))
-
-  (make-lazy-code
-    (lambda (cgc ctx)
-      (reset-sets!)
-      (compute-sets! ctx)
-      (let* ((lazy-let-out  (get-lazy-lets-out ast (map car (cadr ast)) (length cst) succ))
-             (lazy-body (gen-ast (caddr ast) lazy-let-out))
-             (lazy-bind
-               (make-lazy-code
-                 (lambda (cgc ctx)
-                   (let* ((id-idx (build-id-idx (map car nor)
-                                                (- (length nor) 1)))
-                          (ctx (ctx-bind-consts ctx cst))
-                          (ctx (ctx-bind-locals ctx id-idx)))
-                     (jump-to-version cgc lazy-body ctx)))))
-             (lazy-exprs
-               (gen-ast-l (map cadr nor) lazy-bind)))
-        (jump-to-version cgc lazy-exprs ctx)))))
+    (gen-ast-l values lazy-bind)))
 
 ;;-----------------------------------------------------------------------------
 ;; LETREC Binding
