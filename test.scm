@@ -1,6 +1,7 @@
 100
 
 
+
 ;; Allocation des procédures cst:
 ;; à tous les drop-cst-value, et gen-closure*:
 ;; -> uiliser simplement un mov de la globale
