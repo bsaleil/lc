@@ -380,21 +380,6 @@
     (x86-mov cgc dest (x86-imm-int (obj-encoding lit)))))
 
 ;;-----------------------------------------------------------------------------
-;; Flonum
-(define (codegen-flonum cgc immediate reg)
-
-  (let ((dest (codegen-reg-to-x86reg reg)))
-
-    (gen-allocation-imm cgc STAG_FLONUM 8)
-
-    ;; Write number
-    (x86-mov cgc (x86-rax) (x86-imm-int immediate))
-    (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
-
-    ;; Put flonum
-    (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))))
-
-;;-----------------------------------------------------------------------------
 ;; Symbol
 (define (codegen-symbol cgc sym reg)
   (let ((qword (obj-encoding sym))
