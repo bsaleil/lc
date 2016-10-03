@@ -350,7 +350,7 @@
   (let ((val (atom-node-val ast)))
     (cond ((string? val)          (mlc-string val ast succ))
           ((symbol? val)          (mlc-identifier val ast succ))
-          ((compiler-flonum? val) (mlc-flonum val ast succ))
+          ((compiler-flonum? val) (mlc-literal (exact->inexact val) ast succ))
           ((literal? val)         (mlc-literal val ast succ))
           (else (error "Internal error (mlc-atom)")))))
 
@@ -382,25 +382,6 @@
                   lit)))
         (let ((ctx (ctx-push ctx (literal->ctx-type literal) #f)))
           (jump-to-version cgc succ ctx))))))
-
-;;
-;; Make lazy code from flonum literal
-;;
-(define (mlc-flonum flo ast succ)
-
-  (make-lazy-code
-      (lambda (cgc ctx)
-        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0))
-               (immediate
-                (if (< flo 0)
-                    (let* ((ieee-rep (ieee754 (abs flo) 'double))
-                           (64-mod   (bitwise-not (- ieee-rep 1)))
-                           (64-modl  (bitwise-and (- (expt 2 63) 1) 64-mod)))
-                      (* -1 64-modl))
-                    (ieee754 flo 'double))))
-          (apply-moves cgc ctx moves)
-          (codegen-flonum cgc immediate reg)
-          (jump-to-version cgc succ (ctx-push ctx (make-ctx-tflo) reg))))))
 
 ;;
 ;; Make lazy code from string literal

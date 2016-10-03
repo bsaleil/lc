@@ -104,6 +104,14 @@
         (* nexpo (expt 2 nbits-fraction))
         nfrac))))
 
+(define (get-ieee754-imm64 f)
+  (if (< f 0)
+      (let* ((ieee-rep (ieee754 (abs f) 'double))
+             (64-mod   (bitwise-not (- ieee-rep 1)))
+             (64-modl  (bitwise-and (- (expt 2 63) 1) 64-mod)))
+        (* -1 64-modl))
+      (ieee754 f 'double)))
+
 ;;-----------------------------------------------------------------------------
 ;; Intel SSE2 instructions
 

@@ -750,65 +750,60 @@
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
 (define (codegen-num-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst? overflow?)
 
-  (assert (not (and lcst? rcst?)) "Internal codegen error")
+  (assert (not (and lcst? rcst?)) "Internal error")
 
-  (let ((dest    (codegen-reg-to-x86reg reg))
-        (opleft  (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
+  (let ((dest (codegen-reg-to-x86reg reg))
+        (opleft (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
         (opright (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
-
-    ;; Handle cases like 1. 2. etc...
-    (if (and lcst? (flonum? lleft))
-        (set! lleft (##flonum->fixnum lleft)))
-    (if (and rcst? (flonum? lright))
-        (set! lright (##flonum->fixnum lright)))
 
     ;; Alloc result flonum
     (gen-allocation-imm cgc STAG_FLONUM 8)
 
+    ;;
     (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd) (/ . ,x86-divsd))))))
 
-    ;; Right operand
-     (if rightint?
-        ;; Right is register or mem or cst and integer
-         (begin
-           (if rcst?
-               (x86-mov cgc (x86-rax) (x86-imm-int lright))
-               (begin (x86-mov cgc (x86-rax) opright)
-                      (x86-sar cgc (x86-rax) (x86-imm-int 2)))) ;; untag integer
-           (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))) ;; convert to double
-         (if (ctx-loc-is-register? lright)
-            ;; Right is register and not integer, then get float value in xmm0
-             (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright))
-            ;; Right is memory and not integer, then get float value in xmm0
-             (begin (x86-mov cgc (x86-rax) opright)
-                    (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))))
-     (set! opright (x86-xmm0))
-
-    ;; Left operand
-     (if leftint?
-        ;; Left is register or mem or cst and integer
-         (begin
-           (if lcst?
+      ;; Left operand
+      (cond ((and leftint? lcst?)
                (x86-mov cgc (x86-rax) (x86-imm-int lleft))
-               (begin (x86-mov cgc (x86-rax) opleft)
-                      (x86-sar cgc (x86-rax) (x86-imm-int 2)))) ;; untag integer
-           (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))) ;; convert to double
-         (if (ctx-loc-is-register? lleft)
-            ;; Left is register and not integer, then get float value in xmm1
-             (x86-movsd cgc (x86-xmm1) (x86-mem (- 8 TAG_MEMOBJ) opleft))
-            ;; Left is memory and not integer, then get float value in xmm1
-             (begin (x86-mov cgc (x86-rax) opleft)
-                    (x86-movsd cgc (x86-xmm1) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))))
-     (set! opleft (x86-xmm1))
+               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax)))
+            (leftint?
+               (x86-mov cgc (x86-rax) opleft)
+               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax)))
+            (lcst?
+               (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lleft)))
+               (x86-movd/movq cgc (x86-xmm0) (x86-rax)))
+            (else
+               (if (x86-mem? opleft)
+                   (begin
+                     (x86-mov cgc (x86-rax) opleft)
+                     (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                   (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opleft)))))
 
-    ;; Operator, result in opleft
-    (x86-op cgc opleft opright)
+      ;; Right operand
+      (cond ((and rightint? rcst?)
+               (x86-mov cgc (x86-rax) (x86-imm-int lright))
+               (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
+               (x86-op cgc (x86-xmm0) (x86-xmm1)))
+            (rightint?
+              (x86-mov cgc (x86-rax) opright)
+              (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
+              (x86-op cgc (x86-xmm0) (x86-xmm1)))
+            (rcst?
+               (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lright)))
+               (x86-movd/movq cgc (x86-xmm1) (x86-rax))
+               (x86-op cgc (x86-xmm0) (x86-xmm1)))
+            (else
+               (if (x86-mem? opright)
+                   (begin
+                     (x86-mov cgc (x86-rax) opright)
+                     (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                   (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright)))))
 
-    ;; Write number
-    (x86-movsd cgc (x86-mem -8 alloc-ptr) opleft)
+      ;; Write number
+      (x86-movsd cgc (x86-mem -8 alloc-ptr) (x86-xmm0))
 
-    ;; Put
-    (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))))
+      ;; Put
+      (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))))
 
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
@@ -876,48 +871,41 @@
 
   (assert (not (and lcst? rcst?)) "Internal codegen error")
 
-  (if (and lcst? (flonum? lleft))
-      (set! lleft (##flonum->fixnum lleft)))
-  (if (and rcst? (flonum? lright))
-      (set! lright (##flonum->fixnum lright)))
-
   (let ((dest (if-inline (codegen-reg-to-x86reg reg)))
         (label-end (if-inline (asm-make-label #f (new-sym 'label-end))))
-        (opleft  (if lcst? lleft  (codegen-loc-to-x86opnd fs lleft)))
-        (opright (if rcst? lright (codegen-loc-to-x86opnd fs lright)))
+        (opleft  (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
+        (opright (and (not rcst?) (codegen-loc-to-x86opnd fs lright)))
         (x86-op (cdr (assoc op `((< . ,x86-jae) (> . ,x86-jbe) (<= . ,x86-ja) (>= . ,x86-jb) (= . ,x86-jne))))))
 
     ;; Left operand
-    (cond
-      (lcst?
-         (x86-mov cgc (x86-rax) (x86-imm-int opleft))
-         (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax)))
-      (leftint?
-         (x86-mov cgc (x86-rax) opleft)
-         (x86-sar cgc (x86-rax) (x86-imm-int 2))
-         (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax)))
-      ((ctx-loc-is-memory? lleft)
-       (x86-mov cgc (x86-rax) opleft)
-       (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-      (else
-         (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opleft))))
+    (cond ((and leftint? lcst?)
+             (error "NYI1"))
+          (leftint?
+             (error "NYI2"))
+          (lcst?
+             (error "NYI3"))
+          (else
+             (if (x86-mem? opleft)
+                 (begin
+                   (x86-mov cgc (x86-rax) opleft)
+                   (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                 (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opleft)))))
 
     ;; Right operand
-    (cond
-      (rcst?
-        (x86-mov cgc (x86-rax) (x86-imm-int opright))
-        (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
-        (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
-      (rightint?
-        (x86-mov cgc (x86-rax) opright)
-        (x86-sar cgc (x86-rax) (x86-imm-int 2))
-        (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
-        (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
-      ((ctx-loc-is-memory? lright)
-       (x86-mov cgc (x86-rax) opright)
-       (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-      (else
-        (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright))))
+    (cond ((and rightint? rcst?)
+             (error "NYI1"))
+          (rightint?
+             (error "NYI2"))
+          (rcst?
+             (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lright)))
+             (x86-movd/movq cgc (x86-xmm1) (x86-rax))
+             (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
+          (else
+             (if (x86-mem? opright)
+                 (begin
+                   (x86-mov cgc (x86-rax) opright)
+                   (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                 (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright)))))
 
     ;; NOTE: check that mlc-if patch is able to patch ieee jcc instructions (ja, jb, etc...)
     (if inline-if-cond?
