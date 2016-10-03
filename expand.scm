@@ -326,6 +326,7 @@
               ((equal? (car expr) 'set!) (expand-set! expr))
               ((equal? (car expr) 'write-char) (expand-write-char expr))
               ((equal? (car expr) 'list) (expand-list expr))
+              ((equal? (car expr) 'append) (expand-append expr))
               ((member (car expr) '(real? eqv?)) (expand-prim expr))
               ((member (car expr) '(> >= < <= =)) (expand-cmp expr))
               ((member (car expr) '(+ - * /)) (expand-numop expr))
@@ -370,6 +371,16 @@
       ;;
       (cons (atom-node-make 'list)
             (map expand (cdr expr)))))
+
+(define (expand-append expr)
+  (define args (cdr expr))
+  (define len (length args))
+
+  (cond ((= len 0) (atom-node-make '()))
+        ((= len 1) (expand (cadr expr)))
+        ((= len 2) (expand (cons '##append-two args)))
+        (else      (cons (atom-node-make 'append)
+                         (map expand args)))))
 
 (define (expand-prim expr)
 

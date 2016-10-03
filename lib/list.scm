@@ -33,20 +33,19 @@
           ((pair? l) (loop (cdr l) (+ 1 len)))
           (else (error "LIST expected")))))
 
+(define (##append-two lst1 lst2)
+  (if (null? lst1)
+      lst2
+      (cons (car lst1)
+            (##append-two (cdr lst1) lst2))))
+
 (define (append . lsts)
-
-  (define (append-two lst1 lst2)
-    (if (null? lst1)
-        lst2
-        (cons (car lst1)
-              (append-two (cdr lst1) lst2))))
-
-  (define (append-h lsts)
+  (let loop ((lsts lsts))
     (if (null? lsts)
-      '()
-      (append-two (car lsts) (append-h (cdr lsts)))))
-
-  (append-h lsts))
+        '()
+        (##append-two
+          (car lsts)
+          (loop (cdr lsts))))))
 
 (define (list? n)
   (or (null? n)
