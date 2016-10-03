@@ -1529,7 +1529,7 @@
        (define type-ctor (ctx-type-ctor ctx-type))
 
        ;; TODO: plus nettoyer tout ca
-       (let* ((ctx-success (ctx-set-type ctx stack-idx (type-ctor)))
+       (let* ((ctx-success (ctx-set-type ctx stack-idx (type-ctor) #t))
               (ctx-success-known ctx);; If know type is tested type, do not change ctx (TODO?)
               (ctx-fail ctx)
               (known-type (list-ref (ctx-stack ctx) stack-idx)))
@@ -1656,7 +1656,7 @@
 ;; Interprocedural BBV (cr/cc-tables)
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 400)
+(define global-cc-table-maxsize 430)
 (define global-cr-table-maxsize (length cridx-type)) ;; TODO number of types
 ;; Holds the current shape of the global cc table
 (define global-cc-table (make-table))
@@ -1675,8 +1675,8 @@
       (if (= (table-length global-cc-table) global-cc-table-maxsize)
         ;; Global table is full
         (if opt-overflow-fallback
-          #f
-          (error "Global entry points table overflow!"))
+            #f
+            (error "Global entry points table overflow!"))
         ;; Global table is not full
         (let ((value (table-length global-cc-table)))
           (table-set! global-cc-table stack value)

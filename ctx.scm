@@ -761,7 +761,7 @@
 ;; Set type of data to 'type'
 ;; data could be a stack index
 ;; or an ident (id . identifier) object
-(define (ctx-set-type ctx data type)
+(define (ctx-set-type ctx data type change-id-type)
 
   ;; We do *NOT* want non permanent constant in ctx
   (assert (not (and (ctx-type-is-cst type)
@@ -771,7 +771,7 @@
 
   (let ((ident (or (and (pair? data) (symbol? (car data)) (identifier? (cdr data)) data)
                    (ctx-ident-at ctx data))))
-    (if ident
+    (if (and change-id-type ident)
         ;; Change for each identifier slot
         (set-ident-type ctx ident type)
         ;; Change only this slot

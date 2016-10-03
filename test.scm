@@ -1,6 +1,15 @@
-100
+
+(define (bar) 100)
+(define (baz) 100000)
 
 
+(define (foo n)
+
+  (let ((fn (if (< n 10) bar baz)))
+    (gambit$$pp (cons fn n))
+    (fn)))
+
+(foo 11)
 
 ;; Allocation des procédures cst:
 ;; à tous les drop-cst-value, et gen-closure*:

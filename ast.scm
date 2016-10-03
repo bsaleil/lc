@@ -637,7 +637,7 @@
               ((and rest-param (> nb-actual (- nb-formal 1)))
                (let* ((nb-extra (- nb-actual (- nb-formal 1)))
                       (nctx (ctx-stack-pop-n ctx (- nb-extra 1)))
-                      (nctx (ctx-set-type nctx 0 (make-ctx-tpai))))
+                      (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f)))
                  (set! ctx nctx)
                  (let* ((nb-formal-stack
                           (if (> (- nb-formal 1) (length args-regs))
@@ -1459,7 +1459,7 @@
     (make-lazy-code
       (lambda (cgc ctx)
         (let* ((type (if (eq? op 'current-input-port) (make-ctx-tipo) (make-ctx-topo)))
-               (ctx (ctx-set-type ctx 0 type)))
+               (ctx (ctx-set-type ctx 0 type #f)))
           (jump-to-version cgc succ ctx)))))
   (let* ((sym (string->symbol (string-append "gambit$$" (symbol->string op))))
          (node (atom-node-make sym)))
@@ -2681,7 +2681,7 @@
               (alloc-cst   reg cst))
           ;; Update & return ctx
           (let* ((ntype ((ctx-type-ctor type)))
-                 (ctx (ctx-set-type ctx ctx-idx ntype))
+                 (ctx (ctx-set-type ctx ctx-idx ntype #f))
                  (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx ctx-idx) reg)))
             ctx))
         ctx)))
