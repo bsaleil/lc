@@ -11,7 +11,6 @@
 ;; ->
 ;; * Merge regalloc
 ;; * Merge max versions
-;; * overflow
 ;; * add bound tests
 
 

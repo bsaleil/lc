@@ -1138,27 +1138,57 @@
   (define (get-first-label label-version)
     (if opt-vers-regalloc
         (cons #f label-version)
-        (let ((vctx (get-version-ctx lazy-code label-version)))
-          (if (and (equal? (ctx-slot-loc ctx)
-                           (ctx-slot-loc vctx))
-                   (equal? (ctx-fs ctx)
-                           (ctx-fs vctx)))
-            ;; No merge code needed, return label-version
-            (cons #f label-version)
-            ;; Merge code needed
-            (let* ((label (asm-make-label #f (new-sym 'regalloc_merge_)))
-                   (moves (ctx-regalloc-merge-moves ctx vctx))
-                   (gen   (lambda (cgc)
-                            (x86-label cgc label)
-                            (apply-moves cgc vctx moves)
-                            (x86-jmp cgc label-version))))
-              (if cgc
-                  (gen cgc)
-                  (code-add
-                    (lambda (cgc)
-                      (asm-align cgc 4 0 #x90)
-                      (gen cgc))))
-              (cons #t label))))))
+        (error "NYI")))
+        ;(let ((vctx (get-version-ctx lazy-code label-version)))
+        ;  (if (and (equal? (ctx-slot-loc ctx)
+        ;                   (ctx-slot-loc vctx))
+        ;           (equal? (ctx-fs ctx)
+        ;                   (ctx-fs vctx)))
+        ;    ;; No merge code needed, return label-version
+        ;    (cons #f label-version)
+        ;    ;; Merge code needed
+        ;    (let* ((label (asm-make-label #f (new-sym 'regalloc_merge_)))
+        ;           (moves (ctx-regalloc-merge-moves ctx vctx))
+        ;           (gen   (lambda (cgc)
+        ;                    (x86-label cgc label)
+        ;                    (apply-moves cgc vctx moves)
+        ;                    (x86-jmp cgc label-version))))
+        ;      (if cgc
+        ;          (gen cgc)
+        ;          (code-add
+        ;            (lambda (cgc)
+        ;              (asm-align cgc 4 0 #x90)
+        ;              (gen cgc))))
+        ;      (cons #t label))))))
+
+  ;; This function is called if a new version need to be generated
+  ;; It first creates version label, then generate the version
+  ;; and return new version label
+  (define (generate-new-version)
+
+    (define (generate ctx)
+      (let ((version-label (asm-make-label #f (new-sym label-sym))))
+        (set! code-alloc (fn-codepos))
+        (if cgc
+            ;; we already have cgc, generate code
+            (begin (x86-label cgc version-label)
+                   ((lazy-code-generator lazy-code) cgc ctx))
+            ;; add code to current code-alloc position
+            (code-add
+              (lambda (cgc)
+                (asm-align cgc 4 0 #x90)
+                (x86-label cgc version-label)
+                ((lazy-code-generator lazy-code) cgc ctx))))
+        (if fn-opt-label
+            (fn-opt-label version-label)
+            version-label)))
+
+    (if opt-max-versions
+        (let ((nb-versions (table-length (lazy-code-versions lazy-code))))
+          (if (>= nb-versions opt-max-versions)
+              (error "NEED GENERIC VERSION")
+              (generate ctx)))
+        (generate ctx)))
 
   (if opt-verbose-jit
       (fn-verbose))
@@ -1171,20 +1201,7 @@
           (set! new-version? (car r))
           (set! label-dest (cdr r)))
         ;; That version is not yet generated, so generate it
-        (let ((version-label (asm-make-label #f (new-sym label-sym))))
-          (set! code-alloc (fn-codepos))
-          (if cgc
-              ;; we already have cgc, generate code
-              (begin (x86-label cgc version-label)
-                     ((lazy-code-generator lazy-code) cgc ctx))
-              ;; add code to current code-alloc position
-              (code-add
-                (lambda (cgc)
-                  (asm-align cgc 4 0 #x90)
-                  (x86-label cgc version-label)
-                  ((lazy-code-generator lazy-code) cgc ctx))))
-          (if fn-opt-label
-              (set! version-label (fn-opt-label version-label)))
+        (let ((version-label (generate-new-version)))
           (put-version lazy-code ctx version-label)
           (set! label-dest version-label)))
     (fn-patch label-dest new-version?)))
@@ -1204,7 +1221,7 @@
 
 ;; #### LAZY CODE OBJECT
 ;; Generate a lco. Handle fall-through optimization
-(define (gen-version jump-addr lazy-code ctx #!optional (cleared-ctx #f))
+(define (gen-version jump-addr lazy-code ctx)
 
   (define (fn-verbose)
     (print "GEN VERSION")
@@ -1331,17 +1348,7 @@
   (define (fn-codepos)
     code-alloc)
 
-  ;; TODO WIP
-  ;; TODO: move all this test in gen-generic version
-  (if (and opt-max-versions
-           (>= (lazy-code-nb-versions lazy-code) opt-max-versions))
-      ;; Max versions reached
-      (if (not (lazy-code-generic-vers lazy-code))
-          (gen-generic cgc lazy-code ctx 'generic_version_ fn-verbose fn-patch fn-codepos)
-          (gen-merge cgc ctx (lazy-code-generic-ctx lazy-code) (lazy-code-generic-vers lazy-code) fn-verbose fn-patch fn-codepos))
-
-
-      (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos)))
+  (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
 
 (define (gen-generic cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos)
   (error "NYI"))
