@@ -961,15 +961,26 @@
 ;; List of all lazy code objects (for debug/measure purposes)
 (define all-lazy-code '())
 
+;; 'versions' is a table associating a version (label) to a ctx
+;; This version could be a 'real' version, which is a full version specialized for this ctx
+;; or a 'not real' version, which is a version containing only merge code and a jump to the generic version
+;; nb-real-versions counts only the real versions of this lco
 (define-type lazy-code
   constructor: make-lazy-code*
   generator
   versions
+  nb-real-versions
   flags
   lco-true  ;; lco of true branch if it's a cond lco
   lco-false ;; lco of false branch if it's a cond lco
   generic-ctx
   generic-vers)
+
+(define (lazy-code-nb-real-versions-inc lazy-code)
+  (let ((n (lazy-code-nb-real-versions lazy-code)))
+    (lazy-code-nb-real-versions-set!
+      lazy-code
+      (+ n 1))))
 
 ;; Create table of versions for a lazy-code
 (define (make-versions-table)
@@ -987,27 +998,27 @@
   (table-length (lazy-code-versions lazy-code)))
 
 (define (make-lazy-code generator)
-  (let ((lc (make-lazy-code* generator (make-versions-table) '() #f #f #f #f)))
+  (let ((lc (make-lazy-code* generator (make-versions-table) 0 '() #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-cont generator)
-  (let ((lc (make-lazy-code* generator (make-versions-table) '(cont) #f #f #f #f)))
+  (let ((lc (make-lazy-code* generator (make-versions-table) 0 '(cont) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-entry generator)
-  (let ((lc (make-lazy-code* generator (make-versions-table) '(entry) #f #f #f #f)))
+  (let ((lc (make-lazy-code* generator (make-versions-table) 0 '(entry) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-ret generator)
-  (let ((lc (make-lazy-code* generator (make-versions-table) '(ret) #f #f #f #f)))
+  (let ((lc (make-lazy-code* generator (make-versions-table) 0 '(ret) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-cond lco-true lco-false generator)
-  (let ((lc (make-lazy-code* generator (make-versions-table) '(cond) lco-true lco-false #f #f)))
+  (let ((lc (make-lazy-code* generator (make-versions-table) 0 '(cond) lco-true lco-false #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
@@ -1015,9 +1026,11 @@
   (let ((versions (lazy-code-versions lazy-code)))
     (table-ref versions ctx #f)))
 
-(define (put-version lazy-code ctx v)
+(define (put-version lazy-code ctx version real-version?)
   (let ((versions (lazy-code-versions lazy-code)))
-    (table-set! versions ctx v)))
+    (if real-version?
+        (lazy-code-nb-real-versions-inc lazy-code))
+    (table-set! versions ctx version)))
 
 ;; Return ctx associated to the version
 (define (get-version-ctx lazy-code version)
@@ -1128,83 +1141,55 @@
 
 (define (gen-version-* cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos #!optional fn-opt-label)
 
-  ;; When an existing version is used, it may be necessary to generate
-  ;; code to merge ctx, regalloc, etc...
-  ;; This function generate this extra code to use the version
-  ;; and return first label
-  ;; return a pair:
-  ;; car is #t if new code is generated, #f if version label can be used directly
-  ;; cdr is the first label (or version label if no code generated)
-  (define (get-first-label label-version)
-    (if opt-vers-regalloc
-        (cons #f label-version)
-        (error "NYI")))
-        ;(let ((vctx (get-version-ctx lazy-code label-version)))
-        ;  (if (and (equal? (ctx-slot-loc ctx)
-        ;                   (ctx-slot-loc vctx))
-        ;           (equal? (ctx-fs ctx)
-        ;                   (ctx-fs vctx)))
-        ;    ;; No merge code needed, return label-version
-        ;    (cons #f label-version)
-        ;    ;; Merge code needed
-        ;    (let* ((label (asm-make-label #f (new-sym 'regalloc_merge_)))
-        ;           (moves (ctx-regalloc-merge-moves ctx vctx))
-        ;           (gen   (lambda (cgc)
-        ;                    (x86-label cgc label)
-        ;                    (apply-moves cgc vctx moves)
-        ;                    (x86-jmp cgc label-version))))
-        ;      (if cgc
-        ;          (gen cgc)
-        ;          (code-add
-        ;            (lambda (cgc)
-        ;              (asm-align cgc 4 0 #x90)
-        ;              (gen cgc))))
-        ;      (cons #t label))))))
+  (define (generate-new-version ctx)
+    (let ((version-label (asm-make-label #f (new-sym label-sym))))
+      (set! code-alloc (fn-codepos))
+      (if cgc
+          ;; we already have cgc, generate code
+          (begin (x86-label cgc version-label)
+                 ((lazy-code-generator lazy-code) cgc ctx))
+          ;; add code to current code-alloc position
+          (code-add
+            (lambda (cgc)
+              (asm-align cgc 4 0 #x90)
+              (x86-label cgc version-label)
+              ((lazy-code-generator lazy-code) cgc ctx))))
+      (if fn-opt-label
+          (fn-opt-label version-label)
+          version-label)))
 
-  ;; This function is called if a new version need to be generated
-  ;; It first creates version label, then generate the version
-  ;; and return new version label
-  (define (generate-new-version)
-
-    (define (generate ctx)
-      (let ((version-label (asm-make-label #f (new-sym label-sym))))
-        (set! code-alloc (fn-codepos))
-        (if cgc
-            ;; we already have cgc, generate code
-            (begin (x86-label cgc version-label)
-                   ((lazy-code-generator lazy-code) cgc ctx))
-            ;; add code to current code-alloc position
-            (code-add
-              (lambda (cgc)
-                (asm-align cgc 4 0 #x90)
-                (x86-label cgc version-label)
-                ((lazy-code-generator lazy-code) cgc ctx))))
-        (if fn-opt-label
-            (fn-opt-label version-label)
-            version-label)))
-
-    (if opt-max-versions
-        (let ((nb-versions (table-length (lazy-code-versions lazy-code))))
-          (if (>= nb-versions opt-max-versions)
-              (error "NEED GENERIC VERSION")
-              (generate ctx)))
-        (generate ctx)))
+  (define nb-versions (lazy-code-nb-real-versions lazy-code))
 
   (if opt-verbose-jit
       (fn-verbose))
 
-  (let* ((label-dest (get-version lazy-code ctx))
-         (new-version? (not label-dest)))
-    (if label-dest
-        ;; Existing version
-        (let ((r (get-first-label label-dest)))
-          (set! new-version? (car r))
-          (set! label-dest (cdr r)))
-        ;; That version is not yet generated, so generate it
-        (let ((version-label (generate-new-version)))
-          (put-version lazy-code ctx version-label)
-          (set! label-dest version-label)))
-    (fn-patch label-dest new-version?)))
+  (cond
+    ;; A version already exists
+    ((get-version lazy-code ctx)
+       ;; Use existing version
+       (let ((label (get-version lazy-code ctx)))
+         (fn-patch label #f)))
+    ;; No version for this ctx, but limit is not reached
+    ((or (not opt-max-versions)
+         (< nb-versions opt-max-versions))
+       ;; Generate new real version
+       (let ((label (generate-new-version ctx)))
+         (put-version lazy-code ctx label #t)
+         (fn-patch label #t)))
+    ;; No version for this ctx, limit reached, and generic version exists
+    ((lazy-code-generic-vers lazy-code)
+       (error "NYI generic"))
+    ;; No version for this ctx, limit reached, and generic version does not exist
+    (else
+      (error "WIP"))))
+      ;(let* ((gctx          (ctx-generic ctx))
+      ;       (label-merge   (gen-merge-code ctx gctx))
+      ;       (label-generic (gen-generic gctx)))
+      ;
+      ;   (put-version lazy-code ctx label-merge #f)
+      ;   (lazy-code-generic-ctx-set!  gctx)
+      ;   (lazy-code-generic-vers-set! label-generic)
+      ;   (fn-patch label-merge #t)))))
 
 ;; #### FIRST LAZY CODE OBJECT
 ;; This is a special gen-version used to generate the first lco of the program

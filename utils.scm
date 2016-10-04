@@ -113,6 +113,19 @@
         #t
         #f)))
 
+;; Return #t if lst contains at least one duplicate
+;; Return #f if lst contains no duplicate
+;; Check for duplicate using test function (eq?, equal?, ...)
+(define (findDuplicates lst test)
+  (let ((els (make-table test: test)))
+    (define (find lst)
+      (cond ((null? lst) #f)
+            ((table-ref els (car lst) #f) #t)
+            (else
+              (table-set! els (car lst) #t)
+              (find (cdr lst)))))
+    (find lst)))
+
 ;; Return pair:
 ;; car: removed element
 ;; cdr: list with first occurrence of el removed

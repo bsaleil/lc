@@ -216,6 +216,36 @@
     (get-stack)))
 
 ;;
+;; GENERIC
+;; TODO wip
+(define (ctx-generic ctx)
+
+  (define (compute-stack stack)
+    (if (null? stack)
+        '()
+        (let ((first (car stack)))
+          (if (ctx-type-is-cst first)
+              (error "NYI")
+              (cons (make-ctx-tunk) (compute-stack (cdr stack)))))))
+
+  (define (check-env env)
+    (if (null? env)
+        0
+        (let ((first (car env)))
+          (if (identifier-stype (cdr first))
+              (error "NYI")
+              (check-env (cdr env))))))
+
+  (assert (not (findDuplicates (ctx-slot-loc ctx)
+                               (lambda (a b) (eq? (cdr a) (cdr b)))))
+          "NYI")
+  (check-env (ctx-env ctx))
+
+
+  (let ((stack (compute-stack (ctx-stack ctx))))
+    (ctx-copy ctx stack)))
+
+;;
 ;; CTX INIT FN
 (define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
 
