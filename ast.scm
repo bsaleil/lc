@@ -887,11 +887,11 @@
     (gen-inc-slot cgc 'closures))
 
   (if (null? fvars-ncst)
-      (gen-global-closure cgc reg ctx entry-obj-loc)
+      (gen-global-closure cgc reg ctx entry-obj entry-obj-loc)
       (gen-local-closure cgc reg ctx entry-obj-loc fvars-ncst)))
 
 ;; Create a global closure, and load it in dest register
-(define (gen-global-closure cgc reg ctx entry-obj-loc)
+(define (gen-global-closure cgc reg ctx entry-obj entry-obj-loc)
 
   ;; If a closure already is generated for a given entry-obj, return it
   ;; else, alloc new permanent closure, add it to asc and return it
@@ -900,7 +900,9 @@
       (or r
           (let* ((obj (alloc-perm-procedure))
                  (enc (obj-encoding obj)))
-            (put-i64 (+ (- enc TAG_MEMOBJ) OFFSET_BODY) entry-obj-loc)
+            (if opt-entry-points
+                (put-i64 (+ (- enc TAG_MEMOBJ) OFFSET_BODY) entry-obj-loc)
+                (put-i64 (+ (- enc TAG_MEMOBJ) OFFSET_BODY) (get-i64 (+ entry-obj-loc 8))))
             (asc-entryobj-globalclo-add entry-obj-loc enc)
             enc))))
 

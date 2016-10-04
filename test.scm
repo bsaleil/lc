@@ -1,15 +1,18 @@
 
-(define (bar) 100)
-(define (baz) 100000)
+(define (for-each f ar)
+   (f ar))
+
+(for-each (lambda (n) (print n)) 100)
 
 
-(define (foo n)
 
-  (let ((fn (if (< n 10) bar baz)))
-    (gambit$$pp (cons fn n))
-    (fn)))
 
-(foo 11)
+
+
+
+
+
+
 
 ;; Allocation des procédures cst:
 ;; à tous les drop-cst-value, et gen-closure*:
