@@ -2320,6 +2320,19 @@
 
   (define num-op? (member op '(+ - * /)))
 
+  ;; TODO wip
+  (define (get-stub-overflow-label cgc ctx reg lleft lcst? lright rcst?)
+    (let ((labels
+            (add-callback #f 0 (lambda (ret-addr selector)
+                                 (let ((lco
+                                        (make-lazy-code
+                                          (lambda (cgc ctx)
+                                            (let ((type (make-ctx-tflo)))
+                                              (codegen-num-ff cgc (ctx-fs ctx) op reg lleft #t lright #t lcst? rcst? #t)
+                                              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))
+                                   (gen-version-first lco ctx))))))
+      (list-ref labels 0)))
+
   ;; Build chain to check type of two values (no cst)
   (define (type-check-two)
     (let* (;; Operations lco
@@ -2346,7 +2359,9 @@
     (make-lazy-code
       (lambda (cgc ctx)
         (let* ((type  (if num-op? (make-ctx-tint) (make-ctx-tboo)))
-               (res   (if inlined-if-cond? #f (ctx-get-free-reg ctx succ 2)))
+               ;; If op is a num-op, we can't use an opnd register as dest in case of overflow
+               (nopnd-regalloc (if num-op? 0 2))
+               (res   (if inlined-if-cond? #f (ctx-get-free-reg ctx succ nopnd-regalloc)))
                (moves (if res (car res) '()))
                (reg   (if res (cadr res) #f))
                (ctx   (if res (caddr res) ctx))
@@ -2371,7 +2386,8 @@
                                     (lazy-code-lco-false succ))))
                     (jump-to-version cgc lco (ctx-pop-n ctx 2))))
                 (num-op?
-                  (codegen-num-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t)
+                  (let ((overflow-label (get-stub-overflow-label cgc ctx reg lloc lcst? rloc rcst?)))
+                    (codegen-num-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t overflow-label))
                   (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
                 (inlined-if-cond?
                   (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t)))

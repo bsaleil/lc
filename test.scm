@@ -1,8 +1,11 @@
 
-(define (for-each f ar)
-   (f ar))
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-(for-each (lambda (n) (print n)) 100)
+(fib 40)
 
 
 ;; ->

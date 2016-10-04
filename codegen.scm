@@ -663,13 +663,11 @@
 ;; N-ary arithmetic operators
 
 ;; Gen code for arithmetic operation on int/int
-(define (codegen-num-ii cgc fs op reg lleft lright lcst? rcst? overflow?)
+(define (codegen-num-ii cgc fs op reg lleft lright lcst? rcst? overflow? overflow-label)
 
   (assert (not (and lcst? rcst?)) "Internal codegen error")
 
-  (let ((labels-overflow (add-callback #f 0 (lambda (ret-addr selector)
-                                              (error ERR_ARR_OVERFLOW))))
-        (dest    (codegen-reg-to-x86reg reg))
+  (let ((dest    (codegen-reg-to-x86reg reg))
         (opleft  (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
         (opright (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
 
@@ -730,7 +728,7 @@
                          (x86-imul cgc dest opright)))))))
 
    (if overflow?
-       (x86-jo cgc (list-ref labels-overflow 0)))))
+       (x86-jo cgc overflow-label))))
 
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
 (define (codegen-num-ff cgc fs op reg lleft leftint? lright rightint? lcst? rcst? overflow?)
@@ -753,6 +751,7 @@
                (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax)))
             (leftint?
                (x86-mov cgc (x86-rax) opleft)
+               (x86-sar cgc (x86-rax) (x86-imm-int 2))
                (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax)))
             (lcst?
                (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lleft)))
@@ -771,6 +770,7 @@
                (x86-op cgc (x86-xmm0) (x86-xmm1)))
             (rightint?
               (x86-mov cgc (x86-rax) opright)
+              (x86-sar cgc (x86-rax) (x86-imm-int 2))
               (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
               (x86-op cgc (x86-xmm0) (x86-xmm1)))
             (rcst?
