@@ -220,30 +220,51 @@
 ;; TODO wip
 (define (ctx-generic ctx)
 
-  (define (compute-stack stack)
+  (define slot-loc (ctx-slot-loc ctx))
+  (define free-regs (ctx-free-regs ctx))
+  (define free-mems (ctx-free-mems ctx))
+  (define fs (ctx-fs ctx))
+
+  (define (change-loc slot-loc slot loc)
+    (if (null? slot-loc)
+        (error "Internal error")
+        (let ((sl (car slot-loc)))
+          (if (eq? (car sl) slot)
+              (cons (cons slot loc) (cdr slot-loc))
+              (cons sl (change-loc (cdr slot-loc) slot loc))))))
+
+  (define (set-new-loc! slot)
+    (cond ((not (null? free-regs))
+             (set! slot-loc (change-loc slot-loc slot (car free-regs)))
+             (set! free-regs (cdr free-regs)))
+          (else
+             (error "NYI1"))))
+
+  (define (compute-stack stack slot)
     (if (null? stack)
         '()
         (let ((first (car stack)))
           (if (ctx-type-is-cst first)
-              (error "NYI")
-              (cons (make-ctx-tunk) (compute-stack (cdr stack)))))))
+              (set-new-loc! slot))
+          (cons (make-ctx-tunk) (compute-stack (cdr stack) (- slot 1))))))
 
   (define (check-env env)
     (if (null? env)
         0
         (let ((first (car env)))
           (if (identifier-stype (cdr first))
-              (error "NYI")
+              (error "NYI2")
               (check-env (cdr env))))))
 
+  (pp ctx)
   (assert (not (findDuplicates (ctx-slot-loc ctx)
-                               (lambda (a b) (eq? (cdr a) (cdr b)))))
-          "NYI")
+                               (lambda (a b) (and (cdr a) (cdr b) (eq? (cdr a) (cdr b))))))
+          "NYI3")
   (check-env (ctx-env ctx))
 
 
-  (let ((stack (compute-stack (ctx-stack ctx))))
-    (ctx-copy ctx stack)))
+  (let ((stack (compute-stack (ctx-stack ctx) (- (length (ctx-stack ctx)) 1))))
+    (ctx-copy ctx stack slot-loc free-regs free-mems)))
 
 ;;
 ;; CTX INIT FN
@@ -991,30 +1012,36 @@
 
 ;; Compute and returns moves needed to merge reg alloc from src-ctx to dst-ctx
 (define (ctx-regalloc-merge-moves src-ctx dst-ctx)
-  (define sl-dst (ctx-slot-loc dst-ctx))
+
   (define (get-req-moves)
+    (define sl-dst (ctx-slot-loc dst-ctx))
     (let loop ((sl (ctx-slot-loc src-ctx)))
       (if (null? sl)
           '()
           (let ((first (car sl)))
             (if (cdr first)
-                (cons
-                  (cons (cdr first)
-                        (cdr (assoc (car first) sl-dst)))
-                  (loop (cdr sl)))
-                (loop (cdr sl)))))))
-  (let* ((req (get-req-moves))
-         (req-clean ;; remove wrong moves (e.g. '(r1 . r1))
-           (foldr (lambda (el r)
-                    (if (equal? (car el) (cdr el))
-                        r
-                        (cons el r)))
-                  '()
-                  req))
-         (moves (steps req-clean))
-         (fs-move
-           (cons 'fs (- (ctx-fs dst-ctx)
-                        (ctx-fs src-ctx)))))
+                ;; Loc is not #f
+                (let ((src (cdr first))
+                      (dst (cdr (assoc (car first) sl-dst))))
+                  (if (equal? src dst)
+                      (loop (cdr sl))
+                      (cons (cons src dst) (loop (cdr sl)))))
+                ;; Loc is #f
+                (let* ((slot (car first))
+                       (type (list-ref (ctx-stack src-ctx) (slot-to-stack-idx src-ctx slot))))
+                  (assert (ctx-type-is-cst type) "Internal error2")
+                  (let* ((dst
+                           (cdr (assoc slot (ctx-slot-loc dst-ctx))))
+                         (src
+                           (if (ctx-tclo? type)
+                               (cons 'constfn (ctx-type-cst type))
+                               (cons 'const (ctx-type-cst type)))))
+                    (cons (cons src dst) (loop (cdr sl))))))))))
+
+  (let* ((req-moves (get-req-moves))
+         (moves (steps req-moves))
+         (fs-move (cons 'fs (- (ctx-fs dst-ctx)
+                               (ctx-fs src-ctx)))))
     (cons fs-move moves)))
 
 (define (ctx-get-call-args-moves ctx nb-args cloloc)
