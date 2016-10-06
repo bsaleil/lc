@@ -1144,11 +1144,11 @@
   (define (generate-merge-code src-ctx dst-ctx label-dest)
     (let ((moves (ctx-regalloc-merge-moves src-ctx dst-ctx))
           (label (asm-make-label #f (new-sym 'merge_))))
-
+      
       (if cgc
           ;;
           (begin (x86-label cgc label)
-                 (apply-moves cgc src-ctx moves)
+                 (apply-moves cgc dst-ctx moves)
                  (if label-dest
                      (x86-jmp cgc label-dest)))
           ;;
@@ -1156,7 +1156,7 @@
             (lambda (cgc)
               (asm-align cgc 4 0 #x90)
               (x86-label cgc label)
-              (apply-moves cgc src-ctx moves)
+              (apply-moves cgc dst-ctx moves)
               (if label-dest
                   (x86-jmp cgc label-dest)))))
       label))
