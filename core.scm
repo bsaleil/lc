@@ -1164,7 +1164,9 @@
   ;; Todo: merge with generate-new-version
   (define (generate-generic ctx)
     (let ((version-label (asm-make-label #f (new-sym label-sym))))
-      (set! code-alloc (fn-codepos))
+      ;; NOTE: generate-generic is NEVER called without a previous call to generate-merge-code
+      ;;       generate-merge-code calls fn-codepos
+      ;(set! code-alloc (fn-codepos))
       (if cgc
           ;; we already have cgc, generate code
           (begin (x86-label cgc version-label)
