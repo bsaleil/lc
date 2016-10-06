@@ -1144,6 +1144,7 @@
   (define (generate-merge-code src-ctx dst-ctx label-dest)
     (let ((moves (ctx-regalloc-merge-moves src-ctx dst-ctx))
           (label (asm-make-label #f (new-sym 'merge_))))
+
       (if cgc
           ;;
           (begin (x86-label cgc label)

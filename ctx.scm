@@ -256,7 +256,6 @@
               (error "NYI2")
               (check-env (cdr env))))))
 
-  (pp ctx)
   (assert (not (findDuplicates (ctx-slot-loc ctx)
                                (lambda (a b) (and (cdr a) (cdr b) (eq? (cdr a) (cdr b))))))
           "NYI3")
@@ -693,6 +692,12 @@
                     (cdr env))
               (cons ident
                     (get-env (cdr env) id slot))))))
+
+  ;; If loc is #f, type must be a constant
+  (assert (if (not loc)
+              (ctx-type-is-cst type)
+              #t)
+          "Internal error")
 
   ;; We do *NOT* want non permanent constant in ctx
   (assert (not (and (ctx-type-is-cst type)
