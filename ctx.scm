@@ -224,6 +224,7 @@
   (define free-regs (ctx-free-regs ctx))
   (define free-mems (ctx-free-mems ctx))
   (define fs (ctx-fs ctx))
+  (define stack #f)
 
   (define (change-loc slot-loc slot loc)
     (if (null? slot-loc)
@@ -248,22 +249,41 @@
               (set-new-loc! slot))
           (cons (make-ctx-tunk) (compute-stack (cdr stack) (- slot 1))))))
 
-  (define (check-env env)
+  (define (compute-env env)
     (if (null? env)
-        0
+        '()
         (let ((first (car env)))
           (if (identifier-stype (cdr first))
-              (error "NYI2")
-              (check-env (cdr env))))))
+              ;; there is a stype in identifier
+              (let ((new-stype (make-ctx-tunk)))
+                (if (null? (identifier-sslots (cdr first)))
+                    ;; identifier-sslots is null, it's a constant
+                    (let ((slot (length slot-loc)))
+                      (assert (or (ctx-type-is-cst (identifier-stype (cdr first)))
+                                  (eq? (identifier-kind (cdr first)) 'free))
+                              "Internal error r")
+                      (set! stack (cons (make-ctx-tunk) stack))
+                      (set! slot-loc (cons (cons slot #f) slot-loc))
+                      (set-new-loc! slot)
+                      (cons (cons (car first)
+                                  (identifier-copy (cdr first) #f (list slot) #f new-stype))
+                            (compute-env (cdr env))))
+                    ;; identifier-sslots is not null, only remove type information
+                    (cons (cons (car first)
+                                (identifier-copy (cdr first) #f #f #f new-stype))
+                          (compute-env (cdr env)))))
+              ;; no stype in identifier
+              (cons first (compute-env (cdr env)))))))
 
   (assert (not (findDuplicates (ctx-slot-loc ctx)
                                (lambda (a b) (and (cdr a) (cdr b) (eq? (cdr a) (cdr b))))))
           "NYI3")
-  (check-env (ctx-env ctx))
 
 
-  (let ((stack (compute-stack (ctx-stack ctx) (- (length (ctx-stack ctx)) 1))))
-    (ctx-copy ctx stack slot-loc free-regs free-mems)))
+  (set! stack (compute-stack (ctx-stack ctx) (- (length (ctx-stack ctx)) 1)))
+
+  (let ((env   (compute-env   (ctx-env ctx))))
+    (ctx-copy ctx stack slot-loc free-regs free-mems env)))
 
 ;;
 ;; CTX INIT FN
