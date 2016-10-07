@@ -687,13 +687,6 @@
       (ctx-stack-pop-n
         (ctx-stack-pop ctx)
         (- n 1))))
-;;
-;; STACK MOVE
-(define (ctx-stack-move ctx idx-from idx-to)
-  (ctx-copy
-    ctx
-    (let ((old (ctx-stack ctx)))
-      (append (list-head old idx-to) (cons (list-ref old idx-from) (list-tail old (+ idx-to 1)))))))
 
 ;;
 ;; PUSH
@@ -803,6 +796,16 @@
          (r (assoc slot (ctx-slot-loc ctx))))
     (assert r "Internal error (ctx-get-loc)")
     (cdr r)))
+
+;;
+;; Get closure loc
+(define (ctx-get-closure-loc ctx)
+  (ctx-get-loc ctx (- (length (ctx-stack ctx)) 2)))
+
+;;
+;; Get retobj loc
+(define (ctx-get-retobj-loc ctx)
+  (ctx-get-loc ctx (- (length (ctx-stack ctx)) 1)))
 
 ;; Is register?
 (define (ctx-loc-is-register? loc)

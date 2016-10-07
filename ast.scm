@@ -485,7 +485,7 @@
 
     (if (ctx-loc-is-freemem? loc)
         ;; It's a free var that is only in closure
-        (let ((lclo (ctx-get-loc ctx (- (length (ctx-stack ctx)) 2))))
+        (let ((lclo (ctx-get-closure-loc ctx)))
           (codegen-get-free cgc (ctx-fs ctx) reg lclo loc))
         ;; The variable is in a register or in non closure memory
         (apply-moves cgc ctx (list (cons loc reg))))
@@ -625,7 +625,7 @@
 
         (cond ;; rest AND actual == formal
               ((and rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
-               (set! ctx (ctx-stack-push ctx (make-ctx-tnul)))
+               (set! ctx (ctx-push ctx (make-ctx-tnul #t '()) #f))
                (let ((reg
                        (if (<= nb-formal (length args-regs))
                            (list-ref args-regs (- nb-formal 1))
@@ -686,7 +686,7 @@
                (type-ret (ctx-get-type ctx 0))
                (lret     (ctx-get-loc ctx 0))
                ;; Return address object loc
-               (laddr (ctx-get-loc ctx (- (length (ctx-stack ctx)) 1))))
+               (laddr (ctx-get-retobj-loc ctx)))
 
           (assert (not (ctx-type-is-cst type-ret)) "Internal error")
 
@@ -1308,7 +1308,7 @@
                      make-lazy-code)))
     (make-lc
       (lambda (cgc ctx)
-        (let* ((type (car (ctx-stack ctx)))
+        (let* ((type (ctx-get-type ctx 0))
                (loc  (ctx-get-loc ctx 0))
                (ctx  (ctx-unbind-locals ctx ids))
                (ctx  (ctx-pop-n ctx (+ (- (length ids) nb-cst) 1)))
@@ -2641,8 +2641,7 @@
                (cond ;; No loc, free variable which is only in closure
                      ((ctx-loc-is-freemem? loc)
                        (let* (;; Get closure loc
-                              (closure-lidx (- (length (ctx-stack ctx)) 2))
-                              (closure-loc  (ctx-get-loc ctx closure-lidx))
+                              (closure-loc  (ctx-get-closure-loc ctx))
                               (closure-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) closure-loc))
                               ;; Get free var offset
                               (fvar-pos (cdr loc))
