@@ -620,7 +620,7 @@
 (define (get-lazy-prologue ast succ rest-param)
   (make-lazy-code-entry
     (lambda (cgc ctx)
-      (let* ((nb-actual (- (length (ctx-stack ctx)) 2))
+      (let* ((nb-actual (ctx-nb-actual ctx))
              (nb-formal (ctx-nb-args ctx)))
 
         (cond ;; rest AND actual == formal

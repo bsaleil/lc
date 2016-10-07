@@ -42,25 +42,27 @@
   free-regs ;; list of current free virtual registers
   free-mems ;; list of current free memory slots
   env       ;; alist which associates a variable symbol to an identifier object
+  nb-actual ;;
   nb-args   ;; number of arguments of function of the current stack frame
   fs        ;; current frame size
   fn-num    ;; fn-num of current function
 )
 
-(define (ctx-copy ctx #!optional stack slot-loc free-regs free-mems env nb-args fs fn-num)
+(define (ctx-copy ctx #!optional stack slot-loc free-regs free-mems env nb-actual nb-args fs fn-num)
   (make-ctx
     (or stack      (ctx-stack ctx))
     (or slot-loc   (ctx-slot-loc ctx))
     (or free-regs  (ctx-free-regs ctx))
     (or free-mems  (ctx-free-mems ctx))
     (or env        (ctx-env ctx))
+    (or nb-actual  (ctx-nb-actual ctx))
     (or nb-args    (ctx-nb-args ctx))
     (or fs         (ctx-fs ctx))
     (or fn-num     (ctx-fn-num ctx))))
 
 ;; Return ctx that only contains regalloc information
 (define (ctx-rm-regalloc ctx)
-  (ctx-copy ctx #f 0 0 0 #f #f 0))
+  (ctx-copy ctx #f 0 0 0 #f #f #f 0))
 
 ;; Generate initial free regs list
 (define (ctx-init-free-regs)
@@ -73,6 +75,7 @@
             (ctx-init-free-regs)
             '()
             '()
+            #f
             -1
             0
             #f))
@@ -187,10 +190,10 @@
 
 ;;
 (define (ctx-fs-inc ctx)
-  (ctx-copy ctx #f #f #f #f #f #f (+ (ctx-fs ctx) 1)))
+  (ctx-copy ctx #f #f #f #f #f #f #f (+ (ctx-fs ctx) 1)))
 
 (define (ctx-fs-update ctx fs)
-  (ctx-copy ctx #f #f #f #f #f #f fs))
+  (ctx-copy ctx #f #f #f #f #f #f #f fs))
 
 ;;
 ;; CTX INIT CALL
@@ -388,6 +391,7 @@
     (init-free-regs)
     '()
     (init-env)
+    (and stack (- (length stack) 2))
     (length args)
     (init-fs (length args))
     fn-num))
@@ -707,6 +711,7 @@
          (get-env (ctx-env ctx) id slot)
          #f)
      #f
+     #f
      #f)))
 
 ;; TODO: move
@@ -922,7 +927,7 @@
       (let ((mloc (cons 'm (ctx-fs ctx))))
         (list (list (cons 'fs 1))
               mloc
-              (ctx-copy ctx #f #f #f (cons mloc (ctx-free-mems ctx)) #f #f (+ (ctx-fs ctx) 1))))))
+              (ctx-copy ctx #f #f #f (cons mloc (ctx-free-mems ctx)) #f #f #f (+ (ctx-fs ctx) 1))))))
 
 
   ;; Si un emplacement mémoire est libre, on le retourne sans rien modifier
