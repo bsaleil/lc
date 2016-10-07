@@ -285,6 +285,25 @@
 ;; CTX INIT FN
 (define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
 
+  ;; Separate constant and non constant free vars
+  ;; Return a pair with const and nconst sets
+  ;; const contains id and type of all constant free vars
+  ;; nconst contains id and type of all non constant free vars
+  (define (find-const-free ids)
+    (let loop ((ids ids)
+               (const '())
+               (nconst '()))
+      (if (null? ids)
+          (cons const (reverse nconst)) ;; Order is important for non cst free variables!
+          (let* ((id (car ids))
+                 (late? (member id late-fbinds))
+                 (enc-identifier (and (not late?) (cdr (ctx-ident enclosing-ctx id))))
+                 (enc-type       (and (not late?) (ctx-identifier-type enclosing-ctx enc-identifier)))
+                 (cst?           (and (not late?) (ctx-type-is-cst enc-type))))
+            (if cst?
+                (loop (cdr ids) (cons (cons id enc-type) const) nconst)
+                (loop (cdr ids) const (cons (cons id enc-type) nconst)))))))
+
   ;;
   ;; STACK
   (define (init-stack stack)
@@ -309,8 +328,12 @@
   ;;
   ;; ENV
   (define (init-env)
-    (append (init-env-free)
-            (init-env-local)))
+    (let* ((r (find-const-free free-vars))
+           (free-const (car r))
+           (free-nconst (cdr r)))
+      (append (init-env-free free-nconst)
+              (init-env-free-const free-const)
+              (init-env-local))))
 
   (define (init-env-local)
     (define (init-env-local-h ids slot)
@@ -324,35 +347,24 @@
                   (init-env-local-h (cdr ids) (+ slot 1))))))
     (init-env-local-h args 2))
 
-  (define (init-env-free)
+  (define (init-env-free-const free-const)
+    (if (null? free-const)
+        '()
+        (let ((first (car free-const)))
+          (cons (cons (car first)
+                      (make-identifier 'local '() '(cst) (cdr first) #f (eq? (car first) bound-id)))
+                (init-env-free-const (cdr free-const))))))
+
+  (define (init-env-free free-vars)
     (define (init-env-free-h ids nvar)
       (if (null? ids)
           '()
-          (let* ((id (car ids))
-                 ;; is id a late binding ?
-                 (late? (member id late-fbinds))
-                 (enc-identifier (and (not late?) (cdr (ctx-ident enclosing-ctx id))))
-                 (enc-type       (and (not late?) (ctx-identifier-type enclosing-ctx enc-identifier)))
-                 (cst?           (and (not late?) (ctx-type-is-cst enc-type)))
-                 (identifier
-                   (make-identifier
-                     (if cst? 'local 'free) ;; if it's a cst variable, we create a local variable
-                     '()
-                     (if cst? '(cst) '())
-                     (if late?
-                         (make-ctx-tclo)
-                         enc-type)
-                     (if cst? ;; if cst?, we created a local variable, then don't write cloc
-                         #f
-                         (cons 'f nvar))
-                     (if (and cst? bound-id)
-                         #f
-                         (eq? id bound-id)))))
+          (let* ((id         (caar ids))
+                 (enc-type   (or (cdar ids) (make-ctx-tclo))) ;; enclosing type, or #f if late
+                 (late?      (member id late-fbinds))
+                 (identifier (make-identifier 'free '() '() enc-type (cons 'f nvar) (eq? id bound-id))))
             (cons (cons id identifier)
-                  ;; Update slot and nvar only if we created a real free variable (non const)
-                  (if (eq? (identifier-kind identifier) 'local)
-                      (init-env-free-h (cdr ids) nvar)
-                      (init-env-free-h (cdr ids) (+ nvar 1)))))))
+                  (init-env-free-h (cdr ids) (+ nvar 1))))))
     (init-env-free-h free-vars 0))
 
   ;;
