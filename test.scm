@@ -1,12 +1,12 @@
-(define (foo a b c)
-  11)
-
-(foo 1 2 3 4)
 
 
 
-
-
+;; TODO wip:
+;; 1. Ajouter n types à la pile juste avant clo/retaddr
+;; 2. Changer le paramètre de départ pour init-env-local
+;; 3. Changer le paramètre de départ pour init-slot-loc-local
+;; 4. Modifier slot-loc-base
+;; 5. Mettre à jour la pile générique quand stack est #f
 
 ;; ->
 ;; * Merge regalloc
