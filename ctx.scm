@@ -193,13 +193,6 @@
   (ctx-copy ctx #f #f #f #f #f #f fs))
 
 ;;
-(define (ctx-add-mem-slots ctx nslots)
-  (let* ((fs (ctx-fs ctx))
-         (new-free (build-list nslots (lambda (n) (cons 'm (+ fs n)))))
-         (free-mem (append new-free (ctx-free-mems ctx))))
-    (ctx-copy ctx #f #f #f free-mem #f #f (+ fs nslots) #f)))
-
-;;
 ;; CTX INIT CALL
 (define (ctx-init-call ctx nb-args)
 
@@ -672,23 +665,6 @@
   (save-all idx-start '() octx))
 
 ;;
-;; STACK PUSH
-;; Add a type on top of stack but do not change other components of ctx
-;; TODO: use ctx-push with reg set to #f (?)
-(define (ctx-stack-push ctx type)
-  (ctx-copy ctx (cons type (ctx-stack ctx))))
-;;
-;; STACK POP
-(define (ctx-stack-pop ctx)
-  (ctx-copy ctx (cdr (ctx-stack ctx))))
-(define (ctx-stack-pop-n ctx n)
-  (if (= n 0)
-      ctx
-      (ctx-stack-pop-n
-        (ctx-stack-pop ctx)
-        (- n 1))))
-
-;;
 ;; PUSH
 (define (ctx-push ctx type loc #!optional id)
 
@@ -772,18 +748,20 @@
   ;;
   (let* ((slot (- (length (ctx-stack ctx)) 1))
          (r (assoc-remove slot (ctx-slot-loc ctx)))
-         (loc (cdar r))
+         (loc (and (car r) (cdar r)))
          (slot-loc (cdr r)))
 
     (ctx-copy
       ctx
       (cdr (ctx-stack ctx))                        ;; stack: remove top
-      (cdr (assoc-remove slot (ctx-slot-loc ctx))) ;; slot-loc: remove popped slot
-      (if (and (not (loc-used? loc slot-loc))      ;; free-regs: add popped loc if it's an unused reg
+      slot-loc                                     ;; slot-loc: remove popped slot
+      (if (and loc
+               (not (loc-used? loc slot-loc))      ;; free-regs: add popped loc if it's an unused reg
                (ctx-loc-is-register? loc))
           (cons loc (ctx-free-regs ctx))
           #f)
-      (if (and (not (loc-used? loc slot-loc))      ;; free-mems: add popped loc if it's an unused mem
+      (if (and loc
+               (not (loc-used? loc slot-loc))      ;; free-mems: add popped loc if it's an unused mem
                (ctx-loc-is-memory? loc))
           (cons loc (ctx-free-mems ctx))
           #f)

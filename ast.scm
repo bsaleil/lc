@@ -636,7 +636,7 @@
               ;; TODO merge > and == (?)
               ((and rest-param (> nb-actual (- nb-formal 1)))
                (let* ((nb-extra (- nb-actual (- nb-formal 1)))
-                      (nctx (ctx-stack-pop-n ctx (- nb-extra 1)))
+                      (nctx (ctx-pop-n ctx (- nb-extra 1)))
                       (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f)))
                  (set! ctx nctx)
                  (let* ((nb-formal-stack
@@ -2702,10 +2702,6 @@
                  (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx ctx-idx) reg)))
             ctx))
         ctx)))
-
-;; Get position of current closure in stack
-(define (closure-pos ctx)
-  (- (length (ctx-stack ctx)) 2 (ctx-nb-args ctx))) ;; 2= 1length + 1retAddr
 
 ;; Get formal params from list of params
 ;; Ex: (formal-params '(a b c)  ) -> '(a b c)

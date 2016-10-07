@@ -1144,7 +1144,7 @@
   (define (generate-merge-code src-ctx dst-ctx label-dest)
     (let ((moves (ctx-regalloc-merge-moves src-ctx dst-ctx))
           (label (asm-make-label #f (new-sym 'merge_))))
-      
+
       (if cgc
           ;;
           (begin (x86-label cgc label)
@@ -1569,7 +1569,7 @@
        (let* ((ctx-success (ctx-set-type ctx stack-idx (type-ctor) #t))
               (ctx-success-known ctx);; If know type is tested type, do not change ctx (TODO?)
               (ctx-fail ctx)
-              (known-type (list-ref (ctx-stack ctx) stack-idx)))
+              (known-type  (ctx-get-type ctx stack-idx)))
 
          (cond ;; known == expected
                ((ctx-type-teq? ctx-type known-type)
