@@ -468,7 +468,7 @@
 
 (define (gen-closure-from-cst cgc ctx local succ)
   (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0))
-         (stype (identifier-stype (cdr local)))
+         (stype (ctx-identifier-type ctx (cdr local)))
          (fn-num (ctx-type-cst stype))
          (entry-obj (asc-globalfn-entry-get fn-num)))
     (apply-moves cgc ctx moves)

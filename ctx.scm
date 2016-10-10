@@ -306,11 +306,24 @@
 
   ;;
   ;; STACK
-  (define (init-stack stack)
+  (define (init-stack stack free-const)
+    (append (init-local-stack stack)
+            (init-const-stack free-const)
+            (list-tail stack (length args))))
+
+  (define (init-const-stack free-const)
+    (define (init free-const)
+      (if (null? free-const)
+          '()
+          (cons (cdar free-const)
+                (init-const-stack (cdr free-const)))))
+    (reverse (init free-const)))
+
+  (define (init-local-stack stack)
     (let loop ((i (length args))
                (stack stack))
       (if (= i 0)
-          stack
+          '()
           (cons (ctx-type-nocst (car stack))
                 (loop (- i 1) (cdr stack))))))
 
@@ -327,15 +340,13 @@
 
   ;;
   ;; ENV
-  (define (init-env)
-    (let* ((r (find-const-free free-vars))
-           (free-const (car r))
-           (free-nconst (cdr r)))
+  (define (init-env free-const free-nconst)
+    (let ((nb-free-const (length free-const)))
       (append (init-env-free free-nconst)
-              (init-env-free-const free-const)
-              (init-env-local))))
+              (init-env-free-const free-const 2)
+              (init-env-local (+ nb-free-const 2)))))
 
-  (define (init-env-local)
+  (define (init-env-local slot)
     (define (init-env-local-h ids slot)
       (if (null? ids)
           '()
@@ -345,15 +356,15 @@
                      'local (list slot) '() #f #f #f)))
             (cons (cons id identifier)
                   (init-env-local-h (cdr ids) (+ slot 1))))))
-    (init-env-local-h args 2))
+    (init-env-local-h args slot))
 
-  (define (init-env-free-const free-const)
+  (define (init-env-free-const free-const slot)
     (if (null? free-const)
         '()
         (let ((first (car free-const)))
           (cons (cons (car first)
-                      (make-identifier 'local '() '(cst) (cdr first) #f (eq? (car first) bound-id)))
-                (init-env-free-const (cdr free-const))))))
+                      (make-identifier 'local (list slot) '() (cdr first) #f (eq? (car first) bound-id)))
+                (init-env-free-const (cdr free-const) (+ slot 1))))))
 
   (define (init-env-free free-vars)
     (define (init-env-free-h ids nvar)
@@ -369,10 +380,10 @@
 
   ;;
   ;; SLOT-LOC
-  (define (init-slot-loc)
+  (define (init-slot-loc nb-free-const)
     (append
-      (reverse (init-slot-loc-local 1 args-regs 2 0)) ;; Reverse for best display for debug purposes
-      (init-slot-loc-base)))
+      (reverse (init-slot-loc-local 1 args-regs (+ nb-free-const 2) 0)) ;; Reverse for best display for debug purposes
+      (init-slot-loc-base nb-free-const)))
 
   (define (init-slot-loc-local mem avail-regs slot nvar)
     (if (= nvar (length args))
@@ -385,8 +396,9 @@
               (cons (cons slot loc)
                     (init-slot-loc-local mem (cdr avail-regs) (+ slot 1) (+ nvar 1)))))))
 
-  (define (init-slot-loc-base)
-    '((1 r . 2) (0 m . 0)))
+  (define (init-slot-loc-base nb-free-const)
+    (append (reverse (build-list nb-free-const (lambda (n) (cons (+ n 2) #f))))
+            '((1 r . 2) (0 m . 0))))
 
   ;;
   ;; FS
@@ -395,18 +407,24 @@
         1
         (+ (- nb-args (length args-regs)) 1)))
 
-  ;;
-  (make-ctx
-    (or (and stack (init-stack stack))
-        (append (make-list (length args) (make-ctx-tunk)) (list (make-ctx-tclo) (make-ctx-tret))))
-    (init-slot-loc)
-    (init-free-regs)
-    '()
-    (init-env)
-    (and stack (- (length stack) 2))
-    (length args)
-    (init-fs (length args))
-    fn-num))
+  (let* ((r (find-const-free free-vars))
+         (free-const (car r))
+         (free-nconst (cdr r)))
+
+    ;;
+    (make-ctx
+      (or (and stack (init-stack stack free-const))
+          (append (make-list (length args) (make-ctx-tunk))
+                  (init-const-stack free-const)
+                  (list (make-ctx-tclo) (make-ctx-tret))))
+      (init-slot-loc (length free-const))
+      (init-free-regs)
+      '()
+      (init-env free-const free-nconst)
+      (and stack (- (length stack) 2))
+      (length args)
+      (init-fs (length args))
+      fn-num)))
 
 ;; TODO WIP MOVE
 (define (ctx-loc-used ctx loc . excluded-idx)
@@ -489,19 +507,19 @@
 (define (ctx-get-eploc ctx id)
 
   (let ((r (assoc id (ctx-env ctx))))
-    (or
-      ;; Constant closure
-      (and r
-           (ctx-tclo? (identifier-stype (cdr r)))
-           (ctx-type-is-cst (identifier-stype (cdr r)))
-           (cons #t (ctx-type-cst (identifier-stype (cdr r)))))
-      ;; This id
-      (and r
-           (identifier-thisid (cdr r))
-           (let ((r (ctx-fn-num ctx)))
-             (if r
-                 (cons #f r)
-                 #f))))))
+    (if r
+        ;; Const closure
+        (let ((type (ctx-identifier-type ctx (cdr r))))
+          (and (ctx-tclo? type)
+               (ctx-type-is-cst type)
+               (cons #t (ctx-type-cst type))))
+        ;; This id
+        (and r
+             (identifier-thisid (cdr r))
+             (let ((r (ctx-fn-num ctx)))
+               (if r
+                   (cons #f r)
+                   #f))))))
 
 ;;
 ;; TODO: change to bind-top
