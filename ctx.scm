@@ -309,7 +309,7 @@
   (define (init-stack stack free-const)
     (append (init-local-stack stack)
             (init-const-stack free-const)
-            (list-tail stack (length args))))
+            (list (make-ctx-tclo) (make-ctx-tret))))
 
   (define (init-const-stack free-const)
     (define (init free-const)
@@ -320,12 +320,11 @@
     (reverse (init free-const)))
 
   (define (init-local-stack stack)
-    (let loop ((i (length args))
-               (stack stack))
-      (if (= i 0)
+    (let loop ((stack stack))
+      (if (null? stack)
           '()
           (cons (ctx-type-nocst (car stack))
-                (loop (- i 1) (cdr stack))))))
+                (loop (cdr stack))))))
 
   ;;
   ;; FREE REGS
@@ -421,7 +420,7 @@
       (init-free-regs)
       '()
       (init-env free-const free-nconst)
-      (and stack (- (length stack) 2))
+      (and stack (length stack))
       (length args)
       (init-fs (length args))
       fn-num)))

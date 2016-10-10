@@ -2297,7 +2297,7 @@
         ((not nb-args) ;; apply
            (codegen-call-cc-gen cgc #f eploc))
         (else
-           (let* ((idx (get-closure-index (ctx-stack call-ctx)))
+           (let* ((idx (get-closure-index (list-head (ctx-stack call-ctx) nb-args)))
                   (direct (get-cc-direct idx)))
              (if idx
                  (codegen-call-cc-spe cgc idx nb-args eploc direct)
