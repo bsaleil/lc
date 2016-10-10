@@ -1,3 +1,30 @@
+(declare (standard-bindings) (extended-bindings) (not inline-primitives) (block) (not safe))
+
+(define (revloop x n y)
+  (pp "OK"))
+
+(define (permutations x)
+  (let ((x x)
+        (perms (list x)))
+    (define (P n)
+      (if (> n 1)
+          (do ((j (- n 1)))
+              ( 1)
+              (P 1)
+              (F 1))))
+    (define (F n)
+      (pp "O")
+      (set! x (revloop x n (list-tail '(0 1) 2)))
+      (set! perms (cons x perms)))
+
+    (define (list-tail x n)
+      (if (zero? n)
+          x
+          (list-tail (cdr x) (- n 1))))
+    (P 2)
+    perms))
+
+(permutations '(0 1))
 
 
 

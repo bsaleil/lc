@@ -316,7 +316,7 @@
       (if (null? free-const)
           '()
           (cons (cdar free-const)
-                (init-const-stack (cdr free-const)))))
+                (init (cdr free-const)))))
     (reverse (init free-const)))
 
   (define (init-local-stack stack)
@@ -362,7 +362,7 @@
         '()
         (let ((first (car free-const)))
           (cons (cons (car first)
-                      (make-identifier 'local (list slot) '() (cdr first) #f (eq? (car first) bound-id)))
+                      (make-identifier 'local (list slot) '() #f #f (eq? (car first) bound-id)))
                 (init-env-free-const (cdr free-const) (+ slot 1))))))
 
   (define (init-env-free free-vars)

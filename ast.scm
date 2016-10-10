@@ -1296,6 +1296,7 @@
                (id-idx (map (lambda (el) (cons (car el) #f))
                             (append proc-vars other-vars)))
                (ctx (ctx-bind-locals ctx id-idx #t)))
+
           ;;
           (jump-to-version cgc lazy-eval ctx))))))
 
@@ -2147,6 +2148,7 @@
          (lazy-call
            (make-lazy-code
              (lambda (cgc ctx)
+
 
                ;; Handle const fn
                (let ((type (ctx-get-type ctx (length args))))
