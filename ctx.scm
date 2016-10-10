@@ -995,8 +995,8 @@
           (stack-change-type stack (slot-to-stack-idx ctx (car sslots)) type)
           (cdr sslots))))
 
-  (if (eq? (identifier-stype (cdr ident)) 'free)
-      (error "NYI set-ident-type"))
+  (assert (not (eq? (ctx-identifier-type ctx (cdr ident)) 'free))
+          "Internal error")
 
   (let ((sslots (identifier-sslots (cdr ident))))
     (ctx-copy
