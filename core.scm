@@ -1177,8 +1177,8 @@
               (asm-align cgc 4 0 #x90)
               (x86-label cgc version-label)
               ((lazy-code-generator lazy-code) cgc ctx))))
-      (if fn-opt-label
-          (error "Internal error"))
+      ;(if fn-opt-label
+      ;    (error "Internal error")) ;; TODO wip
       version-label))
 
   (define (generate-new-version ctx)
@@ -1227,9 +1227,14 @@
     ;; No version for this ctx, limit reached, and generic version does not exist
     (else
       ;; TODO what if fn-opt-label is set ?
+      ;(pp "-----------------------------------------------------------------")
+      ;(pp "*** non-generic:")
+      ;(pp ctx)
       (let* ((gctx (ctx-generic ctx))
+             ;(ooo (begin (pp "*** generic:") (pp gctx)))
              (label-merge (generate-merge-code ctx gctx #f))
              (label-generic (generate-generic gctx)))
+
 
         (put-version lazy-code ctx label-merge #f)
         (lazy-code-generic-ctx-set!  lazy-code gctx)

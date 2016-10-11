@@ -250,24 +250,12 @@
         '()
         (let ((first (car env)))
           (if (identifier-stype (cdr first))
-              ;; there is a stype in identifier
+              ;; there is a stype in identifier, it's a free variable
               (let ((new-stype (make-ctx-tunk)))
-                (if (null? (identifier-sslots (cdr first)))
-                    ;; identifier-sslots is null, it's a constant
-                    (let ((slot (length slot-loc)))
-                      (assert (or (ctx-type-is-cst (identifier-stype (cdr first)))
-                                  (eq? (identifier-kind (cdr first)) 'free))
-                              "Internal error r")
-                      (set! stack (cons (make-ctx-tunk) stack))
-                      (set! slot-loc (cons (cons slot #f) slot-loc))
-                      (set-new-loc! slot)
-                      (cons (cons (car first)
-                                  (identifier-copy (cdr first) #f (list slot) #f new-stype))
-                            (compute-env (cdr env))))
-                    ;; identifier-sslots is not null, only remove type information
-                    (cons (cons (car first)
-                                (identifier-copy (cdr first) #f #f #f new-stype))
-                          (compute-env (cdr env)))))
+                (assert (eq? (identifier-kind (cdr first)) 'free) "Internal error")
+                (cons (cons (car first)
+                            (identifier-copy (cdr first) #f '() #f new-stype))
+                      (compute-env (cdr env))))
               ;; no stype in identifier
               (cons first (compute-env (cdr env)))))))
 

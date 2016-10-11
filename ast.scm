@@ -2485,6 +2485,7 @@
                        (jump-to-version cgc (lazy-code-lco-true succ) ctx))
                     (else
                        (jump-to-version cgc (lazy-code-lco-false succ) ctx)))))
+
           (gen-ast (cadr ast) check)))))
 
 ;;-----------------------------------------------------------------------------

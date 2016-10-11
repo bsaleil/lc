@@ -1,8 +1,15 @@
 
-(define println (lambda n (($$atom gambit$$pp) ($$atom n))))
-(($$atom println)
-(letrec ((fact (lambda (n) ($$atom 4))))
-  ($$atom 0)))
+(define (foo n)
+  (let ((a 100))
+  (if (number? n)
+      (+ a 11)
+      a)))
+
+(foo 11)
+(foo #f)
+(foo #\f)
+(foo "KK")
+(foo (make-vector 2))
 
 
 
