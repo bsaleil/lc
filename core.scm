@@ -1097,17 +1097,18 @@
 
           (cond ;; Same operands, useless move
                 ((eq? src dst) #f)
-                ;; Both in memory, use rax
-                ((and (x86-mem? src)
-                      (x86-mem? dst))
-                   (x86-mov cgc (x86-rax) src)
-                   (x86-mov cgc dst (x86-rax)))
                 ;; Need to create an empty closure
                 ((and (pair? src) (eq? (car src) 'constfn))
                    (let ((entry-obj (asc-globalfn-entry-get (cdr src))))
                      (if (ctx-loc-is-register? (cdr move))
                          (gen-closure cgc (cdr move) #f entry-obj '())
                          (error "NYI"))))
+                ;; Both in memory, use rax
+                ((and (or (x86-mem? src)
+                          (x86-imm? src))
+                      (x86-mem? dst))
+                   (x86-mov cgc (x86-rax) src)
+                   (x86-mov cgc dst (x86-rax)))
                 ;; direct x86 mov is possible
                 (else
                    (x86-mov cgc dst src)))
