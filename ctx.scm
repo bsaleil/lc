@@ -542,24 +542,23 @@
 ;; BIND CONSTANTS
 (define (ctx-bind-consts ctx cst-set)
 
-  (define (build-env cst-set env)
+  (define (bind cst-set env stack slot-loc)
     (if (null? cst-set)
-        env
-        (let ((id  (caar cst-set))
-              (cst (cdar cst-set)))
-          (build-env (cdr cst-set)
-                     (cons (cons id
-                                 (make-identifier
-                                   'local
-                                   '()
-                                   '(cst)
-                                   (make-ctx-tclo #t cst)
-                                   #f
-                                   #f))
-                           env)))))
+        (list env stack slot-loc)
+        (let* ((id  (caar cst-set))
+               (cst (cdar cst-set))
+               (type (make-ctx-tclo #t cst))
+               (slot (length stack))
+               (stack (cons type stack)))
+          (bind (cdr cst-set)
+                (cons (cons id
+                            (make-identifier 'local (list slot) '() #f #f #f))
+                      env)
+                stack
+                (cons (cons slot #f) slot-loc)))))
 
-  (let ((env (build-env cst-set (ctx-env ctx))))
-   (ctx-copy ctx #f #f #f #f env)))
+  (let ((r (bind cst-set (ctx-env ctx) (ctx-stack ctx) (ctx-slot-loc ctx))))
+   (ctx-copy ctx (cadr r) (caddr r) #f #f (car r))))
 
 ;;
 ;; BIND LOCALS
@@ -606,10 +605,11 @@
 (define (ctx-cst-fnnum-set! ctx id fn-num)
   (let* ((r (assoc id (ctx-env ctx))))
     (assert (and r
-                 (ctx-type-is-cst (identifier-stype (cdr r)))
-                 (ctx-tclo?       (identifier-stype (cdr r))))
+                 (= (length (identifier-sslots (cdr r))) 1)
+                 (ctx-type-is-cst (ctx-identifier-type ctx (cdr r)))
+                 (ctx-tclo?       (ctx-identifier-type ctx (cdr r))))
             "Internal error (ctx-cst-fnnum-set!)")
-    (let ((stype (identifier-stype (cdr r))))
+    (let ((stype (ctx-identifier-type ctx (cdr r))))
       (ctx-type-cst-set! stype fn-num)
       ctx)))
 
@@ -635,7 +635,10 @@
 
   (let ((stype (identifier-stype identifier)))
     (if stype
-        stype
+        (begin
+          (assert (eq? (identifier-kind identifier) 'free)
+                  "Internal error")
+          stype)
         (let* ((sslots (identifier-sslots identifier))
                (sidx (slot-to-stack-idx ctx (car sslots))))
           (list-ref (ctx-stack ctx) sidx)))))

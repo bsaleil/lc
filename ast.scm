@@ -1241,12 +1241,14 @@
 
   ;; Add constant procedure bindings information to context
   (define (bind-const-proc-vars ctx const-proc-vars)
+
     (let* (;; We first add identifier to ctx with a fake fn-num value
            (cst-set
              (map (lambda (c) (cons (car c) -1))
                   const-proc-vars))
            ;; Bind const ids using fake cst-set
            (ctx (ctx-bind-consts ctx cst-set)))
+
       ;; Then, we init all entries and write fn-num values
       (let loop ((l const-proc-vars)
                  (ctx ctx))
@@ -1285,7 +1287,7 @@
              (const-proc-vars (cadr r))
              (other-vars (caddr r))
              ;; Build LCO chain
-             (lazy-let-out (get-lazy-lets-out ast ids (length const-proc-vars) succ))
+             (lazy-let-out (get-lazy-lets-out ast ids 0 succ))
              (lazy-body    (gen-ast body lazy-let-out))
              (lazy-fun     (get-lazy-make-closures lazy-body proc-vars other-vars))
              (lazy-eval    (get-lazy-eval other-vars lazy-fun)))

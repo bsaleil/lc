@@ -312,8 +312,8 @@
 
               (let ((exp-content (expand-tl content)))
                 (analyses-find-global-types! exp-content)
-                ;(pp content))))
                 ;(pp exp-content))))
+                ;(pp content))))
                 ;(exec content))))
                 (exec exp-content))))
         (else (error "NYI")))
