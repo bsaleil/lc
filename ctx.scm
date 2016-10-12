@@ -257,7 +257,11 @@
                             (identifier-copy (cdr first) #f '() #f new-stype))
                       (compute-env (cdr env))))
               ;; no stype in identifier
-              (cons first (compute-env (cdr env)))))))
+              (let ((sslots (identifier-sslots (cdr first))))
+                (assert (eq? (identifier-kind (cdr first)) 'local) "Internal error")
+                (cons (cons (car first)
+                            (identifier-copy (cdr first) #f (list (list-ref sslots (- (length sslots) 1)))))
+                      (compute-env (cdr env))))))))
 
   (assert (not (findDuplicates (ctx-slot-loc ctx)
                                (lambda (a b) (and (cdr a) (cdr b) (eq? (cdr a) (cdr b))))))

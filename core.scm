@@ -1102,7 +1102,9 @@
                    (let ((entry-obj (asc-globalfn-entry-get (cdr src))))
                      (if (ctx-loc-is-register? (cdr move))
                          (gen-closure cgc (cdr move) #f entry-obj '())
-                         (error "NYI"))))
+                         (begin
+                           (gen-closure cgc 'tmp #f entry-obj '())
+                           (x86-mov cgc dst (x86-rax))))))
                 ;; Both in memory, use rax
                 ((and (or (x86-mem? src)
                           (x86-imm? src))
@@ -1145,7 +1147,6 @@
   (define (generate-merge-code src-ctx dst-ctx label-dest)
     (let ((moves (ctx-regalloc-merge-moves src-ctx dst-ctx))
           (label (asm-make-label #f (new-sym 'merge_))))
-
       (if cgc
           ;;
           (begin (x86-label cgc label)
@@ -1219,6 +1220,7 @@
          (fn-patch label #t)))
     ;; No version for this ctx, limit reached, and generic version exists
     ((lazy-code-generic-vers lazy-code)
+
        ;; TODO what if fn-opt-label is set ?
        (let* ((gctx (lazy-code-generic-ctx lazy-code))
               (label-generic (lazy-code-generic-vers lazy-code))
@@ -1228,11 +1230,7 @@
     ;; No version for this ctx, limit reached, and generic version does not exist
     (else
       ;; TODO what if fn-opt-label is set ?
-      ;(pp "-----------------------------------------------------------------")
-      ;(pp "*** non-generic:")
-      ;(pp ctx)
       (let* ((gctx (ctx-generic ctx))
-             ;(ooo (begin (pp "*** generic:") (pp gctx)))
              (label-merge (generate-merge-code ctx gctx #f))
              (label-generic (generate-generic gctx)))
 
