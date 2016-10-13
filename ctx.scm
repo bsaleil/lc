@@ -237,6 +237,15 @@
           (else
              (error "NYI1"))))
 
+  ;; TODO: merge three functions
+  (define (get-new-loc)
+    (cond ((not (null? free-regs))
+             (let ((r (car free-regs)))
+               (set! free-regs (cdr free-regs))
+               r))
+          (else
+             (error "NYI2"))))
+
   (define (compute-stack stack slot)
     (if (null? stack)
         '()
@@ -263,14 +272,26 @@
                             (identifier-copy (cdr first) #f (list (list-ref sslots (- (length sslots) 1)))))
                       (compute-env (cdr env))))))))
 
-  (assert (not (findDuplicates (ctx-slot-loc ctx)
-                               (lambda (a b) (and (cdr a) (cdr b) (eq? (cdr a) (cdr b))))))
-          "NYI3")
-
+  ;; TODO wip
+  (define (compute-slot-loc slot-loc)
+    (if (null? slot-loc)
+        '()
+        (let ((first (car slot-loc)))
+          (assert (cdr first) "Internal error")
+          (if (find (lambda (el) (eq? (cdr el) (cdr first)))
+                    (cdr slot-loc))
+              ;; Loc is also used by at least one other slot
+              (let ((loc (get-new-loc)))
+                (cons (cons (car first) loc)
+                      (compute-slot-loc (cdr slot-loc))))
+              ;;
+              (cons first
+                    (compute-slot-loc (cdr slot-loc)))))))
 
   (set! stack (compute-stack (ctx-stack ctx) (- (length (ctx-stack ctx)) 1)))
 
-  (let ((env   (compute-env   (ctx-env ctx))))
+  (let ((env   (compute-env   (ctx-env ctx)))
+        (slot-loc (compute-slot-loc slot-loc)))
     (ctx-copy ctx stack slot-loc free-regs free-mems env)))
 
 ;;
