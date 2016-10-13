@@ -1234,7 +1234,6 @@
              (label-merge (generate-merge-code ctx gctx #f))
              (label-generic (generate-generic gctx)))
 
-
         (put-version lazy-code ctx label-merge #f)
         (lazy-code-generic-ctx-set!  lazy-code gctx)
         (lazy-code-generic-vers-set! lazy-code label-generic)

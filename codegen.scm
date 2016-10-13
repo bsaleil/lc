@@ -1441,9 +1441,13 @@
 
       (let ((memop (x86-mem (- TAG_MEMOBJ) (x86-rax) selector-reg)))
 
-        (if cst-val?
-            (x86-mov cgc memop dest)
-            (x86-mov cgc memop opval))
+        (cond (cst-val?
+                (x86-mov cgc memop dest))
+              ((x86-mem? opval)
+                (x86-mov cgc dest opval)
+                (x86-mov cgc memop dest))
+              (else
+                (x86-mov cgc memop opval)))
 
         (x86-sub cgc selector-reg (x86-imm-int 8))
         (x86-jmp cgc label-loop))

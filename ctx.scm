@@ -234,8 +234,11 @@
     (cond ((not (null? free-regs))
              (set! slot-loc (change-loc slot-loc slot (car free-regs)))
              (set! free-regs (cdr free-regs)))
+          ((not (null? free-mems))
+             (error "NYI1"))
           (else
-             (error "NYI1"))))
+             (set! slot-loc (change-loc slot-loc slot (cons 'm fs)))
+             (set! fs (+ fs 1)))))
 
   ;; TODO: merge three functions
   (define (get-new-loc)
@@ -288,12 +291,14 @@
               (cons first
                     (compute-slot-loc (cdr slot-loc)))))))
 
+  (if (not (cdr (assoc 1 (ctx-slot-loc ctx))))
+      (error "NYI"))
+
   (set! stack (compute-stack (ctx-stack ctx) (- (length (ctx-stack ctx)) 1)))
 
   (let ((env   (compute-env   (ctx-env ctx)))
         (slot-loc (compute-slot-loc slot-loc)))
-    (ctx-copy ctx stack slot-loc free-regs free-mems env)))
-
+    (ctx-copy ctx stack slot-loc free-regs free-mems env #f #f fs)))
 ;;
 ;; CTX INIT FN
 (define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
