@@ -1072,6 +1072,24 @@
         (codegen-loc-to-x86opnd (ctx-fs ctx) tmpreg)
         (x86-rax)))
 
+  ;; Is selector used to apply moves? If it is used, reset it after all moves
+  (define selector-used? #f)
+
+  ;; Select a register to be used as tmp register for mov instruction
+  ;; (mov mem mem, etc...)
+  (define (select-mov-tmp-reg next-moves)
+    (define (tmp-used-after moves)
+      (cond ((null? moves) #f)
+            ((eq? (caar moves) 'rtmp) #t) ;; rtmp is first used as a src, then #t
+            ((eq? (cdar moves) 'rtmp) #f) ;; rtmp is first used as a dst, then #f
+            (else (tmp-used-after (cdr moves)))))
+    (if (and (eq? (get-tmp) (x86-rax))
+             (tmp-used-after next-moves))
+        (begin
+          (set! selector-used? #t)
+          selector-reg)
+        (x86-rax)))
+
   ;; Apply move. A move is one of possible moves except fs move
   (define (apply-filtered moves)
     (if (not (null? moves))
@@ -1102,15 +1120,18 @@
                    (let ((entry-obj (asc-globalfn-entry-get (cdr src))))
                      (if (ctx-loc-is-register? (cdr move))
                          (gen-closure cgc (cdr move) #f entry-obj '())
-                         (begin
+                         (let ((r (select-mov-tmp-reg (cdr moves))))
+                           ;; select-mov-tmp-reg should return loc AND x86 opnd, then loc is used in gen-closure
+                           (assert (eq? r (x86-rax)) "Internal error, nyi")
                            (gen-closure cgc 'tmp #f entry-obj '())
-                           (x86-mov cgc dst (x86-rax))))))
+                           (x86-mov cgc dst r)))))
                 ;; Both in memory, use rax
                 ((and (or (x86-mem? src)
                           (x86-imm? src))
                       (x86-mem? dst))
-                   (x86-mov cgc (x86-rax) src)
-                   (x86-mov cgc dst (x86-rax)))
+                   (let ((r (select-mov-tmp-reg (cdr moves))))
+                     (x86-mov cgc r src)
+                     (x86-mov cgc dst r)))
                 ;; direct x86 mov is possible
                 (else
                    (x86-mov cgc dst src)))
@@ -1122,7 +1143,9 @@
     (if (not (= (car r) 0))
         (x86-sub cgc (x86-usp) (x86-imm-int (* 8 (car r)))))
     ;; Apply other moves
-    (apply-filtered (cdr r))))
+    (apply-filtered (cdr r))
+    (if selector-used?
+        (x86-xor cgc selector-reg selector-reg))))
 
 
 ;;-----------------------------------------------------------------------------
@@ -1147,6 +1170,7 @@
   (define (generate-merge-code src-ctx dst-ctx label-dest)
     (let ((moves (ctx-regalloc-merge-moves src-ctx dst-ctx))
           (label (asm-make-label #f (new-sym 'merge_))))
+
       (if cgc
           ;;
           (begin (x86-label cgc label)

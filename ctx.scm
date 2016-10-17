@@ -235,7 +235,8 @@
              (set! slot-loc (change-loc slot-loc slot (car free-regs)))
              (set! free-regs (cdr free-regs)))
           ((not (null? free-mems))
-             (error "NYI1"))
+             (set! slot-loc (change-loc slot-loc slot (car free-mems)))
+             (set! free-mems (cdr free-mems)))
           (else
              (set! slot-loc (change-loc slot-loc slot (cons 'm fs)))
              (set! fs (+ fs 1)))))
