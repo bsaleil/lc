@@ -730,16 +730,16 @@
       (cond ;; CASE 1 - Use entry point (no cctable)
             ((eq? opt-entry-points #f)
                (fn-generator closure lazy-prologue-gen #f #f))
-            ;; CASE 2 - Use multiple entry points AND use max-versions limit AND this limit is reached
-            ;;          OR use generic entry point
-            ((or (= selector 1)
-                 (and (= selector 0)
-                      opt-max-versions
-                      (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions)))
-               (fn-generator closure lazy-prologue-gen #f #t))
-            ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
+            ;; CASE 2 - Function is called using generic entry point
+            ((= selector 1)
+               (fn-generator #f lazy-prologue-gen #f #t))
+            ;; CASE 3 - Use multiple entry points AND use max-versions limit AND this limit is reached
+            ((and opt-max-versions
+                  (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
+               (fn-generator #f lazy-prologue-gen stack #t))
+            ;; CASE 4 - Use multiple entry points AND limit is not reached or there is no limit
             (else
-               (fn-generator closure lazy-prologue stack #f))))))
+               (fn-generator #f lazy-prologue stack #f))))))
 
 (define (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params bound-id)
 
@@ -747,7 +747,10 @@
   ;; First create function entry ctx
   ;; Then generate function prologue code
   (define (fn-generator closure prologue stack generic?)
-    (let ((ctx (ctx-init-fn stack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id)))
+    ;; In case the limit in the number of version is reached, we give #f to ctx-init-fn to get a generic ctx
+    ;; but we still want to patch cctable at index corresponding to stack
+    (let* ((ctx-stack (if generic? #f stack))
+           (ctx (ctx-init-fn ctx-stack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id)))
       (gen-version-fn ast closure entry-obj prologue ctx stack generic?)))
   ;;
   (define stub-labels  (create-fn-stub ast fn-num fn-generator))
