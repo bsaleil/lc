@@ -729,14 +729,14 @@
 
       (cond ;; CASE 1 - Use entry point (no cctable)
             ((eq? opt-entry-points #f)
-               (fn-generator closure lazy-prologue-gen stack #f))
+               (fn-generator closure lazy-prologue-gen #f #f))
             ;; CASE 2 - Use multiple entry points AND use max-versions limit AND this limit is reached
             ;;          OR use generic entry point
             ((or (= selector 1)
                  (and (= selector 0)
                       opt-max-versions
                       (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions)))
-               (fn-generator closure lazy-prologue-gen stack #t))
+               (fn-generator closure lazy-prologue-gen #f #t))
             ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
             (else
                (fn-generator closure lazy-prologue stack #f))))))
