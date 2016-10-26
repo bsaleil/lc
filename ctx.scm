@@ -247,8 +247,13 @@
              (let ((r (car free-regs)))
                (set! free-regs (cdr free-regs))
                r))
+          ((not (null? free-mems))
+             (let ((m (car free-mems)))
+               (set! free-mems (cdr free-mems))
+               m))
           (else
-             (error "NYI2"))))
+             (set! fs (+ fs 1))
+             (cons 'm fs))))
 
   (define (compute-stack stack slot)
     (if (null? stack)
@@ -272,9 +277,12 @@
               ;; no stype in identifier
               (let ((sslots (identifier-sslots (cdr first))))
                 (assert (eq? (identifier-kind (cdr first)) 'local) "Internal error")
-                (cons (cons (car first)
-                            (identifier-copy (cdr first) #f (list (list-ref sslots (- (length sslots) 1)))))
-                      (compute-env (cdr env))))))))
+                (if (null? sslots)
+                    ;; If slots is null, it's a special case used in letrec (letrec uses tmp binding with no slot)
+                    (cons first (compute-env (cdr env)))
+                    (cons (cons (car first)
+                                (identifier-copy (cdr first) #f (list (list-ref sslots (- (length sslots) 1)))))
+                          (compute-env (cdr env)))))))))
 
   ;; TODO wip
   (define (compute-slot-loc slot-loc)
