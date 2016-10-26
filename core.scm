@@ -1254,14 +1254,19 @@
     ;; No version for this ctx, limit reached, and generic version does not exist
     (else
       ;; TODO what if fn-opt-label is set ?
-      (let* ((gctx (ctx-generic ctx))
-             (label-merge (generate-merge-code ctx gctx #f))
-             (label-generic (generate-generic gctx)))
 
-        (put-version lazy-code ctx label-merge #f)
+      (let* ((entry-lco? (member 'entry (lazy-code-flags lazy-code)))
+             (gctx (if entry-lco? ctx (ctx-generic ctx)))
+             ;; Generate merge only if not entry
+             (label-merge   (and (not entry-lco?) (generate-merge-code ctx gctx #f)))
+             (label-generic (generate-generic gctx))
+             ;; If merge label exists, first label is merge label. Else first label is generic label
+             (label-first   (or label-merge label-generic)))
+
+        (put-version lazy-code ctx label-first #f)
         (lazy-code-generic-ctx-set!  lazy-code gctx)
         (lazy-code-generic-vers-set! lazy-code label-generic)
-        (fn-patch label-merge #t)))))
+        (fn-patch label-first #t)))))
 
 ;; #### FIRST LAZY CODE OBJECT
 ;; This is a special gen-version used to generate the first lco of the program

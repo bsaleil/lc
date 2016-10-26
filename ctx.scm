@@ -292,13 +292,16 @@
               (cons first
                     (compute-slot-loc (cdr slot-loc)))))))
 
-  (if (not (cdr (assoc 1 (ctx-slot-loc ctx))))
-      (error "NYI"))
+  (let* ((r (assoc 1 (ctx-slot-loc ctx)))
+         (type (and r (ctx-get-type ctx (- (length (ctx-stack ctx)) 2)))))
+    (if (and r (not (cdr r)) (not (ctx-type-is-cst type)))
+        (error "nyi?")))
 
   (set! stack (compute-stack (ctx-stack ctx) (- (length (ctx-stack ctx)) 1)))
 
   (let ((env   (compute-env   (ctx-env ctx)))
         (slot-loc (compute-slot-loc slot-loc)))
+
     (ctx-copy ctx stack slot-loc free-regs free-mems env #f #f fs)))
 ;;
 ;; CTX INIT FN
