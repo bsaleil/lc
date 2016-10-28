@@ -1,14 +1,20 @@
+(define pp (lambda (n) ($$atom 11)))
+
+(define setup-boyer (lambda () ($$atom #t)))
+
+(letrec ((symbol->symbol-record (lambda (sym) (($$atom error) ($$atom "jj"))))
+         (translate-term
+          (lambda (term)
+            (begin
+              (($$atom symbol->symbol-record) 'f)
+              (($$atom error) ($$atom "kk"))
+              (($$atom cons) (($$atom translate-term) (($$atom car) ($$atom 1))) ($$atom 2))))))
+ (($$atom translate-term) ($$atom 1000)))
 
 
-(define (foo n)
 
-  (letrec ((a (lambda () (+ c 1)))
-           (b (lambda () (+ c 2)))
-           (c 100)
-           (d 200))
-   (+ c (a))))
 
-(foo 1)
+
 
 
 

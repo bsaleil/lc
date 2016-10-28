@@ -1170,7 +1170,7 @@
   (define (generate-merge-code src-ctx dst-ctx label-dest)
     (let ((moves (ctx-regalloc-merge-moves src-ctx dst-ctx))
           (label (asm-make-label #f (new-sym 'merge_))))
-
+      (set! code-alloc (fn-codepos))
       (if cgc
           ;;
           (begin (x86-label cgc label)
@@ -1570,9 +1570,9 @@
              (lambda (cgc ctx)
                (pp "FAIL TEST")
                (pp ast)
-               (pp ctx-type)
-               (pp stack-idx)
-               (pp ctx)
+              ; (pp ctx-type)
+              ; (pp stack-idx)
+              ; (pp ctx)
                (if (or (ctx-tflo? ctx-type) (ctx-tint? ctx-type))
                    (gen-error cgc ERR_NUMBER_EXPECTED)
                    (gen-error cgc (ERR_TYPE_EXPECTED ctx-type)))))))
@@ -1609,6 +1609,7 @@
                                 (let ((prev-action #f))
 
                                   (lambda (ret-addr selector)
+
                                     (let ((stub-addr stub-first-label-addr)
                                           (jump-addr (asm-label-pos label-jump)))
 
