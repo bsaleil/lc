@@ -1140,7 +1140,11 @@
 
   ;; Alloc space for all non const closures
   ;; Init all closures by writing headers, entry points, free & late variables
-  (define (get-lazy-make-closures succ proc-vars other-vars)
+  (define (get-lazy-make-closures succ proc-vars other-vars const-proc-vars)
+
+    ;; This function takes a ctx and add const proc vars to it
+    (define (cst-binder ctx)
+      (bind-const-proc-vars ctx const-proc-vars))
 
     ;; Alloc all closures
     (define (get-lazy-alloc succ)
@@ -1153,7 +1157,10 @@
     (define (get-lazy-init-closures succ)
       (let loop ((lst (reverse proc-vars)))
         (if (null? lst)
-            succ
+            ;; The last thing to do is to bind const proc vars to new ctx, then jump to succ
+            (make-lazy-code
+              (lambda (cgc ctx)
+                (jump-to-version cgc succ (cst-binder ctx))))
             (let* ((l (car lst))
                    (id (car l))
                    (offset (cadr l))
@@ -1190,15 +1197,19 @@
             (x86-mov cgc (x86-mem offset-header clo-reg) (x86-rax)))
 
           ;; Write entry point
-          (mlet ((fn-num/entry-obj (init-entry ast ctx (append free-cst free-imm) free-late id))
+          ;; ctx is computed each time using cst-binder in a tmp ctx to ensure that cst are not dropped.
+          ;; if max-versions is reached, cst are dropped and we lost cst information.
+          ;; This context is used by init-entry and gen-free-vars because they need this information
+          (mlet ((ctx (cst-binder ctx))
+                 (fn-num/entry-obj (init-entry ast ctx (append free-cst free-imm) free-late id))
                  (entry-obj-loc (- (obj-encoding entry-obj) 1)))
             (if opt-entry-points
                 (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
                 (x86-mov cgc (x86-rax) (x86-mem (+ 8 entry-obj-loc))))
-            (x86-mov cgc (x86-mem offset-entry clo-reg) (x86-rax)))
+            (x86-mov cgc (x86-mem offset-entry clo-reg) (x86-rax))
 
-          ;; Write free vars
-          (gen-free-vars cgc free-imm ctx offset-free-h clo-reg)
+            ;; Write free vars
+            (gen-free-vars cgc free-imm ctx offset-free-h clo-reg))
 
           ;; Write late vars
           ;; TODO: late !fun ?
@@ -1237,7 +1248,10 @@
 
     ;; Return first LCO: closures alloc
     (if (= closures-size 0)
-        succ
+        ;; No closure to create, only bind cst proc vars
+        (make-lazy-code
+          (lambda (cgc ctx)
+            (jump-to-version cgc succ (cst-binder ctx))))
         (get-lazy-alloc succ)))
 
   ;; ---------------------------------------------------------------------------
@@ -1292,12 +1306,10 @@
              ;; Build LCO chain
              (lazy-let-out (get-lazy-lets-out ast ids 0 succ))
              (lazy-body    (gen-ast body lazy-let-out))
-             (lazy-fun     (get-lazy-make-closures lazy-body proc-vars other-vars))
+             (lazy-fun     (get-lazy-make-closures lazy-body proc-vars other-vars const-proc-vars))
              (lazy-eval    (get-lazy-eval other-vars lazy-fun)))
 
-        (let* (;; Bind cst bindings
-               (ctx (bind-const-proc-vars ctx const-proc-vars))
-               ;; Bind others
+        (let* (;; Bind others
                (id-idx (map (lambda (el) (cons (car el) #f))
                             (append proc-vars other-vars)))
                (ctx (ctx-bind-locals ctx id-idx #t)))
