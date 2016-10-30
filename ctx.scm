@@ -527,6 +527,7 @@
             (let* ((r (and preferred (member preferred free-regs)))
                    (reg (if r (car r) (car free-regs)))
                    (free (set-sub free-regs (list reg) '())))
+
               (list '()
                     reg
                     (ctx-copy ctx #f #f free)))))))
@@ -747,6 +748,12 @@
                     (cdr env))
               (cons ident
                     (get-env (cdr env) id slot))))))
+
+  ;; If ltype is a constant, loc must be #f
+  (assert (if (ctx-type-is-cst type)
+              (not loc)
+              #t)
+          "Internal error")
 
   ;; If loc is #f, type must be a constant
   (assert (if (not loc)

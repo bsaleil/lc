@@ -490,27 +490,23 @@
         ;; The variable is in a register or in non closure memory
         (apply-moves cgc ctx (list (cons loc reg))))
 
+    (if (and (ctx-type-is-cst type)
+             reg)
+        (error "NYI")) ;; TODO: Free a register only if type is not a cst
     (jump-to-version cgc succ (ctx-push ctx type reg (car local)))))
 
 (define (gen-get-globalvar cgc ctx global succ)
 
-  (mlet (;; Get variable type if known
-         (type (or (global-stype global) (make-ctx-tunk)))
-         ;; Get free register (dest)
-         (moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
+  (let ((type (or (global-stype global) (make-ctx-tunk))))
 
-    (apply-moves cgc ctx moves)
-
-    (if (and (ctx-tclo? type)
-             (ctx-type-is-cst type))
-      (let* ((fn-num (ctx-type-cst type))
-             (entry-obj (asc-globalfn-entry-get fn-num)))
-        (gen-closure cgc reg ctx entry-obj '()))
-      ;; Generate code to get global var from memory
-      (codegen-get-global cgc (global-pos global) reg))
-
-    ;; Jump with updated ctx
-    (jump-to-version cgc succ (ctx-push ctx type reg))))
+    (if (ctx-type-is-cst type)
+        ;; Type is cst, push cst to ctx
+        (jump-to-version cgc succ (ctx-push ctx type #f))
+        ;; Type is not a cst, free a register and use it
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
+          (apply-moves cgc ctx moves)
+          (codegen-get-global cgc (global-pos global) reg)
+          (jump-to-version cgc succ (ctx-push ctx type reg))))))
 
 ;;-----------------------------------------------------------------------------
 ;; VARIABLES SET
@@ -2431,7 +2427,7 @@
                (ltype (ctx-get-type ctx 1))
                (lcst? (ctx-type-is-cst ltype))
                (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
-               
+
           (cond ((and (not inlined-if-cond?) lcst? rcst?)
                   (error "NYI1"))
                 ((and lcst? rcst?)
