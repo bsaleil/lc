@@ -2380,10 +2380,6 @@
         (let* ((type  (if num-op? (make-ctx-tint) (make-ctx-tboo)))
                ;; If op is a num-op, we can't use an opnd register as dest in case of overflow
                (nopnd-regalloc (if num-op? 0 2))
-               (res   (if inlined-if-cond? #f (ctx-get-free-reg ctx succ nopnd-regalloc)))
-               (moves (if res (car res) '()))
-               (reg   (if res (cadr res) #f))
-               (ctx   (if res (caddr res) ctx))
                ;; right info
                (rtype (ctx-get-type ctx 0))
                (rcst? (ctx-type-is-cst rtype))
@@ -2392,7 +2388,7 @@
                (ltype (ctx-get-type ctx 1))
                (lcst? (ctx-type-is-cst ltype))
                (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
-          (apply-moves cgc ctx moves)
+
           (cond ((and (not inlined-if-cond?) lcst? rcst?)
                   (let ((ctx (ctx-push (ctx-pop-n ctx 2)
                                        (literal->ctx-type (eval (list op lloc rloc)))
@@ -2404,26 +2400,29 @@
                          (lco (if r (lazy-code-lco-true succ)
                                     (lazy-code-lco-false succ))))
                     (jump-to-version cgc lco (ctx-pop-n ctx 2))))
-                (num-op?
-                  (let ((overflow-label (get-stub-overflow-label cgc ctx reg lloc lcst? rloc rcst?)))
-                    (codegen-num-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t overflow-label))
-                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
+                ;; Inlined if condition
                 (inlined-if-cond?
-                  (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t)))
+                  (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) op #f lloc rloc lcst? rcst? #t)))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
+                ;; In these cases, we need a free register
+                ;; Then, get a free register, apply moves, and use it.
                 (else
-                    (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #f)
-                    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg))))))))
+                  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ nopnd-regalloc)))
+                    (apply-moves cgc ctx moves)
+                    (cond
+                      (num-op?
+                        (let ((overflow-label (get-stub-overflow-label cgc ctx reg lloc lcst? rloc rcst?)))
+                          (codegen-num-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t overflow-label))
+                        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
+                      (else
+                          (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #f)
+                          (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))))
 
   ;;
   (define (get-op-ff leftint? rightint?)
     (make-lazy-code
       (lambda (cgc ctx)
         (let* ((type  (if num-op? (make-ctx-tflo) (make-ctx-tboo)))
-               (res   (if inlined-if-cond? #f (ctx-get-free-reg ctx succ 2)))
-               (moves (if res (car res) '()))
-               (reg   (if res (cadr res) #f))
-               (ctx   (if res (caddr res) ctx))
                ;; right info
                (rtype (ctx-get-type ctx 0))
                (rcst? (ctx-type-is-cst rtype))
@@ -2432,20 +2431,27 @@
                (ltype (ctx-get-type ctx 1))
                (lcst? (ctx-type-is-cst ltype))
                (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
-          (apply-moves cgc ctx moves)
+               
           (cond ((and (not inlined-if-cond?) lcst? rcst?)
                   (error "NYI1"))
                 ((and lcst? rcst?)
                   (error "NYI2"))
-                (num-op?
-                  (codegen-num-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #t)
-                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
                 (inlined-if-cond?
-                  (let ((x86-op (codegen-cmp-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #t)))
+                  (let ((x86-op (codegen-cmp-ff cgc (ctx-fs ctx) op #f lloc leftint? rloc rightint? lcst? rcst? #t)))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
+                ;; In these cases, we need a free register
+                ;; Then, get a free register, apply moves, and use it.
                 (else
-                  (codegen-cmp-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #f)
-                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg))))))))
+                  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 2)))
+                    (apply-moves cgc ctx moves)
+                    (cond
+                      (num-op?
+                        (codegen-num-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #t)
+                        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
+
+                      (else
+                        (codegen-cmp-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #f)
+                        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))))
 
   (assert (not (and inlined-if-cond? (member op '(+ - * /))))
           "Internal compiler error")
