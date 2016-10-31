@@ -1034,6 +1034,7 @@
 
     ;; If ropnd is imm or rdx, use selector
     (if (or (x86-imm? ropnd)
+            (x86-mem? ropnd)
             (eq? ropnd (x86-rdx)))
         (begin (x86-mov cgc selector-reg ropnd)
                (set! ropnd selector-reg)
