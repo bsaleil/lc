@@ -1351,9 +1351,14 @@
 
 ;; #### FUNCTION ENTRY
 ;; Generate an entry point
+(define flfl 0)
 (define (gen-version-fn ast closure entry-obj lazy-code gen-ctx call-stack generic)
 
   (define (fn-verbose)
+    (set! flfl (+ flfl 1))
+    (println "FLFL:" flfl)
+    (pp entry-obj)
+    (pp (object->serial-number entry-obj))
     (print "GEN VERSION FN")
     (pp lazy-code)
     (print " >>> ")
@@ -1361,8 +1366,9 @@
     (pp call-stack))
 
   (define (fn-patch label-dest new-version?)
+
     (cond ((not opt-entry-points)
-           (patch-closure-ep ast closure entry-obj label-dest))
+           (patch-closure-ep lazy-code ast closure entry-obj label-dest))
           (generic
            (let ((cctable-loc (- (obj-encoding entry-obj) 1)))
              ;; If call-stack is not #f, a generic version is generated because number of versions limit is reached
@@ -1541,7 +1547,7 @@
     label-addr))
 
 ;; Patch closure when opt-entry-points is #f (only one ep)
-(define (patch-closure-ep ast closure entryvec label)
+(define (patch-closure-ep lazy-code ast closure entryvec label)
 
   (define label-addr (asm-label-pos label))
 

@@ -1,15 +1,4 @@
 
-(letrec ((foo (lambda () (($$atom error) ($$atom "jj"))))
-         (bar
-          (lambda ()
-            (begin
-              (($$atom foo))
-              (($$atom bar))))))
- (($$atom bar)))
-
-
-
-
 
 
 

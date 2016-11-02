@@ -141,6 +141,8 @@
 (define asc-entry-stub (make-table test: eq?))
 ;; Add an entry to the table
 (define (asc-entry-stub-add cctable generic-addr stub-addr)
+  (let ((rr (table-ref asc-entry-stub cctable #f)))
+    (if rr (error "NNNNN")))
   (table-set! asc-entry-stub cctable (cons generic-addr stub-addr)))
 ;; Read an entry from the table
 (define (asc-entry-stub-get cctable)
@@ -193,6 +195,12 @@
   (assert (not (asc-entryobj-globalclo-get entry-obj-loc))
           "Internal error")
   (table-set! asc-entryobj-globalclo entry-obj-loc clo-ptr))
+
+(define ASC-AST-ENTRYOBJ (make-table test: eq?))
+(define (GET-ENTRY-OBJ ast)
+  (table-ref ASC-AST-ENTRYOBJ ast #f))
+(define (ADD-ENTRY-OBJ ast eo)
+  (table-set! ASC-AST-ENTRYOBJ ast eo))
 
 ;;-----------------------------------------------------------------------------
 ;; Type predicates
@@ -749,9 +757,10 @@
            (ctx (ctx-init-fn ctx-stack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id)))
       (gen-version-fn ast closure entry-obj prologue ctx stack generic?)))
   ;;
-  (define stub-labels  (create-fn-stub ast fn-num fn-generator))
-  (define stub-addr    (asm-label-pos (list-ref stub-labels 0)))
-  (define generic-addr (asm-label-pos (list-ref stub-labels 1)))
+  (define EP-SS (if (not opt-entry-points) (GET-ENTRY-OBJ ast) #f))
+  (define stub-labels  (and (not EP-SS) (create-fn-stub ast fn-num fn-generator)))
+  (define stub-addr    (and (not EP-SS) (asm-label-pos (list-ref stub-labels 0))))
+  (define generic-addr (and (not EP-SS) (asm-label-pos (list-ref stub-labels 1))))
 
   ;; ---------------------------------------------------------------------------
   ;; Return 'entry-obj' (entry object)
@@ -774,13 +783,18 @@
   ;; In the case of -ep, entry object is the still vector of size 1 that contain the single entry point
   (define (get-entry-obj-ep)
     (let ((entryvec (get-entry-points-loc ast stub-addr)))
+
       (asc-entry-stub-add entryvec generic-addr stub-addr)
       entryvec))
 
   (define entry-obj
     (if opt-entry-points
         (get-entry-obj-cc)
-        (get-entry-obj-ep)))
+        (if EP-SS
+            EP-SS
+            (let ((r (get-entry-obj-ep)))
+              (ADD-ENTRY-OBJ ast r)
+              r))))
 
   entry-obj)
 
@@ -1692,7 +1706,6 @@
 
   (make-lazy-code
     (lambda (cgc ctx)
-
       ;; Save used registers, generate and push continuation stub
       (set! ctx (call-save/cont cgc ctx ast succ #f 2 #t))
       ;; Push closure
@@ -2147,6 +2160,7 @@
 ;; Make lazy code from CALL EXPR
 ;;
 (define (mlc-call ast succ)
+
   (let* (;; fn-num. Computed when ctx is available
          ;; #f is called function is unknown at compile time
          ;; contains fn-num if called function is known at compile time
@@ -2161,6 +2175,8 @@
          (lazy-call
            (make-lazy-code
              (lambda (cgc ctx)
+
+
 
 
                ;; Handle const fn
@@ -2292,6 +2308,7 @@
           (ep (if opt-entry-points
                   (s64vector-ref entry-obj (+ idx 1))
                   (* 4 (vector-ref entry-obj 0)))))
+
       (cond ;; It's a call to an already generated entry point
             ((and (not (= ep (car r)))
                   (not (= ep (cdr r))))
@@ -2305,6 +2322,7 @@
             ;;
             (else
                #f))))
+
 
   (cond ((not opt-entry-points)
            (let ((direct (get-ep-direct)))
