@@ -36,8 +36,10 @@
 ;;-----------------------------------------------------------------------------
 
 (define perm-domain #f)
+(define locat-table #f)
 
 (define (init-frontend)
+  (set! locat-table (make-table test: eq?))
   (set! perm-domain (make-perm-domain))
   (init-primitives))
 
@@ -374,6 +376,7 @@
       (set! lit (exact->inexact lit)))
 
   (make-lazy-code
+    #f
     (lambda (cgc ctx)
       (let ((literal
               (if (and (##mem-allocated? lit)
@@ -388,6 +391,7 @@
 ;;
 (define (mlc-string str ast succ)
   (make-lazy-code
+    #f
     (lambda (cgc ctx)
       (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
         (apply-moves cgc ctx moves)
@@ -421,6 +425,7 @@
                        (and r (global-stype r))))))
 
   (make-lazy-code
+    #f
     (lambda (cgc ctx)
 
       (let ((local  (assoc sym (ctx-env ctx)))
@@ -519,6 +524,7 @@
   (let* ((id (cadr ast))
          (lazy-set!
            (make-lazy-code
+             #f
              (lambda (cgc ctx)
                (let ((global (asc-globals-get id)))
                  (if global
@@ -526,6 +532,7 @@
                      (error "Internal error"))))))
          (lazy-drop
            (make-lazy-code
+             #f
              (lambda (cgc ctx)
                (let ((ctx (drop-cst-value cgc ctx 0)))
                  (jump-to-version cgc lazy-set! ctx))))))
@@ -560,12 +567,14 @@
                    (fn-num (init-entry-cst (caddr ast) '() (ctx-init))))
               (ctx-type-cst-set! (global-stype global) fn-num)
               (make-lazy-code
+                #f
                 (lambda (cgc ctx)
                   (jump-to-version cgc succ (ctx-push ctx (global-stype global) #f))))))
           (else
             ;;
             (let* ((identifier (cadr ast))
                    (lazy-bind (make-lazy-code
+                                #f
                                 (lambda (cgc ctx)
 
                                   (mlet ((pos (global-pos (asc-globals-get identifier))) ;; Lookup in globals
@@ -581,6 +590,7 @@
                                     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))))
                    (lazy-drop
                      (make-lazy-code
+                      #f
                        (lambda (cgc ctx)
                          (let ((type (ctx-get-type ctx 0)))
                            (if (and (ctx-type-is-cst type)
@@ -601,6 +611,7 @@
 ;; Create and return a generic prologue lco
 (define (get-lazy-generic-prologue ast succ rest-param nb-formal)
   (make-lazy-code-entry
+    #f
     (lambda (cgc ctx)
       (let ((nb-args (ctx-nb-args ctx))
             (label-next (asm-make-label #f (new-sym 'label-next))))
@@ -615,6 +626,7 @@
 ;; Create and return a prologue lco
 (define (get-lazy-prologue ast succ rest-param)
   (make-lazy-code-entry
+    #f
     (lambda (cgc ctx)
       (let* ((nb-actual (ctx-nb-actual ctx))
              (nb-formal (ctx-nb-args ctx)))
@@ -676,6 +688,7 @@
 
   (define lazy-ret
     (make-lazy-code-ret ;; Lazy-code with 'ret flag
+      #f
       (lambda (cgc ctx)
         (let* ((fs (ctx-fs ctx))
                ;; Return value loc
@@ -693,6 +706,7 @@
               (codegen-return-rp cgc fs fs laddr lret))))))
   ;; TODO: write a generic lazy-drop function (this function is used by multiple mlc-*)
   (make-lazy-code-ret
+    #f
     (lambda (cgc ctx)
       (let ((ctx (drop-cst-value cgc ctx 0)))
         (jump-to-version cgc lazy-ret ctx)))))
@@ -848,6 +862,7 @@
 (define (mlc-lambda-ast ast succ)
 
   (make-lazy-code
+    #f
     (lambda (cgc ctx)
 
       (define all-params (flatten (cadr ast)))
@@ -950,6 +965,7 @@
              (let ((next (build-chain (cdr exprs) succ)))
                (gen-ast (car exprs)
                         (make-lazy-code
+                          #f
                           (lambda (cgc ctx)
                             (jump-to-version cgc next (ctx-pop ctx)))))))))
 
@@ -985,6 +1001,7 @@
          (lazy-body (gen-ast body lazy-let-out))
          (lazy-bind
            (make-lazy-code
+             #f
              (lambda (cgc ctx)
                (let ((ctx (ctx-bind-locals ctx (build-id-idx))))
                  (jump-to-version cgc lazy-body ctx))))))
@@ -1122,6 +1139,7 @@
 
     (define (bind-last id succ)
       (make-lazy-code
+        #f
         (lambda (cgc ctx)
           (let ((ctx (ctx-id-add-idx ctx id 0)))
             (jump-to-version cgc succ ctx)))))
@@ -1145,6 +1163,7 @@
     ;; Alloc all closures
     (define (get-lazy-alloc succ)
       (make-lazy-code
+        #f
         (lambda (cgc ctx)
           (gen-allocation-imm cgc STAG_PROCEDURE (* 8 (- closures-size 1)))
           (jump-to-version cgc (get-lazy-init-closures succ) ctx))))
@@ -1155,6 +1174,7 @@
         (if (null? lst)
             ;; The last thing to do is to bind const proc vars to new ctx, then jump to succ
             (make-lazy-code
+              #f
               (lambda (cgc ctx)
                 (jump-to-version cgc succ (cst-binder ctx))))
             (let* ((l (car lst))
@@ -1173,6 +1193,7 @@
     (define (get-lazy-init-closure id ast succ clo-offset free-cst free-imm free-late)
 
       (make-lazy-code
+        #f
         (lambda (cgc ctx)
 
           (define clo-reg alloc-ptr)
@@ -1246,6 +1267,7 @@
     (if (= closures-size 0)
         ;; No closure to create, only bind cst proc vars
         (make-lazy-code
+          #f
           (lambda (cgc ctx)
             (jump-to-version cgc succ (cst-binder ctx))))
         (get-lazy-alloc succ)))
@@ -1292,6 +1314,7 @@
 
   ;; Main lco
   (make-lazy-code
+    #f
     (lambda (cgc ctx)
 
       (let* (;; Compute binding groups
@@ -1321,6 +1344,7 @@
                      make-lazy-code-ret
                      make-lazy-code)))
     (make-lc
+      #f
       (lambda (cgc ctx)
         (let* ((type (ctx-get-type ctx 0))
                (loc  (ctx-get-loc ctx 0))
@@ -1351,6 +1375,7 @@
   ;; lco dropping all cst arguments
   (define (get-lazy-drop-csts succ)
     (make-lazy-code
+      #f
       (lambda (cgc ctx)
         (let loop ((i (- (length (cdr ast)) 1))
                    (ctx ctx))
@@ -1373,6 +1398,7 @@
 
   (let* ((lazy-call
            (make-lazy-code
+             ast
              (lambda (cgc ctx)
                (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ (length (cdr ast))))
                       (gsym (get-gambit-sym (atom-node-val (car ast))))
@@ -1458,6 +1484,7 @@
 (define (lco-p-number? ast op succ)
   (define (get-lazy-res r)
     (make-lazy-code
+      ast
       (lambda (cgc ctx)
         (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1)))
           (apply-moves cgc ctx moves)
@@ -1473,6 +1500,7 @@
 (define (lco-p-cur-x-port ast op succ)
   (define lazy-out
     (make-lazy-code
+      ast
       (lambda (cgc ctx)
         (let* ((type (if (eq? op 'current-input-port) (make-ctx-tipo) (make-ctx-topo)))
                (ctx (ctx-set-type ctx 0 type #f)))
@@ -1500,6 +1528,7 @@
 ;; Special primitives 'quotient', 'modulo', 'remainder'
 (define (lco-p-binop ast op succ)
   (make-lazy-code
+    ast
     (lambda (cgc ctx)
       (mlet ((label-div0 (get-label-error ERR_DIVIDE_ZERO))
              (moves/reg/ctx (ctx-get-free-reg ctx succ 2))
@@ -1556,6 +1585,7 @@
       (jump-to-version cgc succ nctx)))
 
   (make-lazy-code
+    ast
     (lambda (cgc ctx)
       (let* ((typel (ctx-get-type ctx 1))
              (typer (ctx-get-type ctx 0))
@@ -1584,6 +1614,7 @@
 
   (let* ((lazy-set
            (make-lazy-code
+             ast
              (lambda (cgc ctx)
                (let* ((vec-loc  (ctx-get-loc ctx 0))
                       (vec-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) vec-loc)))
@@ -1624,6 +1655,7 @@
   (define (build-chain n)
     (if (= n 0)
         (make-lazy-code
+          #f
           (lambda (cgc ctx)
             (let* ((type (ctx-get-type ctx n))
                    (cst? (ctx-type-is-cst type))
@@ -1654,6 +1686,7 @@
                        (x86-lea cgc dest (x86-mem offset alloc-ptr))
                        (jump-to-version cgc succ (ctx-push ctx (make-ctx-tpai) reg)))))))))
         (make-lazy-code
+          #f
           (lambda (cgc ctx)
             (let* ((type (ctx-get-type ctx n))
                    (cst? (ctx-type-is-cst type))
@@ -1680,6 +1713,7 @@
                 (jump-to-version cgc (build-chain (- n 1)) ctx)))))))
 
   (make-lazy-code
+    ast
     (lambda (cgc ctx)
       (let ((size (- (* len 3 8) 8)))
         ;; One alloc for all pairs
@@ -1691,6 +1725,7 @@
 (define (lco-p-apply ast op succ)
 
   (make-lazy-code
+    ast
     (lambda (cgc ctx)
 
       ;; Save used registers, generate and push continuation stub
@@ -1759,6 +1794,7 @@
   ;; else, jump to next
   (define (get-lazy-cst-check primitive lco-prim)
     (make-lazy-code
+      #f
       (lambda (cgc ctx)
         (let* ((lco-alloc-cstfn (get-lazy-drop-cstfn lco-prim (length (cdr ast))))
                (lco-cst (primitive-lco-cst primitive))
@@ -1770,6 +1806,7 @@
   ;; Drop all const functions of primitive args
   (define (get-lazy-drop-cstfn succ nargs)
     (make-lazy-code
+      #f
       (lambda (cgc ctx)
         (let loop ((i (- nargs 1))
                    (ctx ctx))
@@ -1787,6 +1824,7 @@
       (if lco-getter
           (lco-getter ast prim succ)
           (make-lazy-code
+            ast
             (lambda (cgc ctx)
               (define nb-opnds (length (cdr ast)))
               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ nb-opnds)))
@@ -1903,6 +1941,7 @@
              (gen-ast (caddr ast) succ))
            (lazy-code-test
              (make-lazy-code-cond
+               #f
                lazy-code1
                lazy-code0
                (lambda (cgc ctx #!optional x86-op)
@@ -2160,6 +2199,7 @@
          ;; Lazy call
          (lazy-call
            (make-lazy-code
+             #f
              (lambda (cgc ctx)
 
 
@@ -2186,6 +2226,7 @@
 
     ;; Gen and check types of args
     (make-lazy-code
+      ast
       (lambda (cgc ctx)
 
         ;; Check if the identity of called function is available
@@ -2205,6 +2246,7 @@
 
   (let* ((lazy-continuation
            (make-lazy-code-cont
+             #f
              (lambda (cgc ctx)
                (jump-to-version cgc succ ctx))))
          ;; Label for return address loading
@@ -2236,6 +2278,7 @@
 
   (let* ((lazy-continuation
            (make-lazy-code-cont
+             #f
              (lambda (cgc ctx)
                (jump-to-version cgc succ ctx))))
          (stub-labels
@@ -2341,6 +2384,7 @@
             (add-callback #f 0 (lambda (ret-addr selector)
                                  (let ((lco
                                         (make-lazy-code
+                                          #f
                                           (lambda (cgc ctx)
                                             (let ((type (make-ctx-tflo)))
                                               (codegen-num-ff cgc (ctx-fs ctx) op reg lleft #t lright #t lcst? rcst? #t)
@@ -2372,6 +2416,7 @@
   ;; TODO: Merge with get-op-ff
   (define (get-op-ii)
     (make-lazy-code
+      #f
       (lambda (cgc ctx)
         (let* ((type  (if num-op? (make-ctx-tint) (make-ctx-tboo)))
                ;; If op is a num-op, we can't use an opnd register as dest in case of overflow
@@ -2417,6 +2462,7 @@
   ;;
   (define (get-op-ff leftint? rightint?)
     (make-lazy-code
+      #f
       (lambda (cgc ctx)
         (let* ((type  (if num-op? (make-ctx-tflo) (make-ctx-tboo)))
                ;; right info
@@ -2452,7 +2498,10 @@
   (assert (not (and inlined-if-cond? (member op '(+ - * /))))
           "Internal compiler error")
 
-  (type-check-two))
+  (make-lazy-code
+    ast
+    (lambda (cgc ctx)
+      (jump-to-version cgc (type-check-two) ctx))))
 
 ;;
 ;; Make lazy code from TYPE TEST
@@ -2463,6 +2512,7 @@
 
   (define (get-lazy-res bool)
     (make-lazy-code
+      #f
       (lambda (cgc ctx)
         (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1)))
           (apply-moves cgc ctx moves)
@@ -2471,6 +2521,7 @@
 
   (define (get-lazy-inline bool)
     (make-lazy-code
+      #f
       (lambda (cgc ctx)
         (let ((next (if bool (lazy-code-lco-true succ)
                              (lazy-code-lco-false succ))))
@@ -2493,6 +2544,7 @@
                (atom-node? (cadr ast))
                (symbol? (atom-node-val (cadr ast))))
           (make-lazy-code
+            #f
             (lambda (cgc ctx)
               (define sym (atom-node-val (cadr ast)))
               (define vartype (ctx-id-type ctx sym))

@@ -110,6 +110,11 @@
      ,(lambda (args) (set! opt-use-lib #f)
                      args))
 
+  (--show-locat-versions
+    "Pretty print number of versions for each locat object"
+    ,(lambda (args) (set! opt-show-locat-versions #t)
+                    args))
+
   (--stats
     "Print stats about execution"
     ,(lambda (args) (assert (not opt-time) "--stats option can't be used with --time")
@@ -159,6 +164,7 @@
 
   (let ((lazy-final
           (make-lazy-code
+            #f
             (lambda (cgc ctx)
 
               ;; Update gambit heap ptr from LC heap ptr
@@ -192,6 +198,7 @@
             (let ((next (lazy-exprs (cdr exprs) succ)))
               (gen-ast (car exprs)
                        (make-lazy-code
+                         #f
                          (lambda (cgc ctx)
                            (jump-to-version cgc
                                             next
@@ -218,6 +225,7 @@
 
 (define lazy-repl-call
   (make-lazy-code
+    #f
     (lambda (cgc ctx)
       ;; Generate call to repl handler defined in core.scm
       ;; This handler read from stdin, build lco chain,
@@ -273,6 +281,41 @@
                    (current-output-port)))
       (begin (##machine-code-block-exec mcb))))
 
+
+
+
+
+
+(define (print-locat-versions)
+
+  (define restable (make-table))
+
+  (define (restable-add locat lco)
+    (let* ((lin (+ 1 (bitwise-and (vector-ref locat 1) 65535)))
+           (col (+ 1 (arithmetic-shift (vector-ref locat 1) -16)))
+           (str  (string-append (number->string lin) "." (number->string col))))
+      (let ((r (table-ref restable str 0)))
+        (table-set! restable str (+ r (length (table->list (lazy-code-versions lco))))))))
+
+  ;; For each lco
+  (for-each
+    (lambda (x)
+      (let ((ast (lazy-code-ast x)))
+        ;; If an ast is associated to the lco and there is 1 or more versions
+        (if (and ast (> (length (table->list (lazy-code-versions x))) 0))
+            ;; Then, if a locat object is associated to this ast, add versions number
+            (let ((r (table-ref locat-table ast #f)))
+              (if r
+                  (restable-add r x))))))
+    all-lazy-code)
+
+  ;; For each entry (locat) in restable
+  (for-each
+    (lambda (x)
+      ;; Pretty print "locat nb-version" 
+      (println (car x) " " (cdr x)))
+    (table->list restable)))
+
 ;;-----------------------------------------------------------------------------
 ;; Main
 
@@ -303,12 +346,12 @@
   (cond ;; If no files specified then start REPL
         ((null? files)
           (copy-with-declare "" "./tmp")
-          (let ((content (c#expand-program "./tmp")))
+          (let ((content (c#expand-program "./tmp" #f locat-table)))
             (repl (expand-tl content))))
         ;; Can only exec 1 file
         ((= (length files) 1)
           (copy-with-declare (car files) "./tmp")
-        (let ((content (c#expand-program "./tmp"))) ;(read-all (open-input-file (car files)))))
+        (let ((content (c#expand-program "./tmp" #f locat-table))) ;(read-all (open-input-file (car files)))))
 
               (let ((exp-content (expand-tl content)))
                 (analyses-find-global-types! exp-content)
@@ -378,6 +421,8 @@
 (define (print-opts)
   (if opt-stats
       (print-stats))
+  (if opt-show-locat-versions
+      (print-locat-versions))
   (if opt-dump-bin
       (print-mcb)))
 

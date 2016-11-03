@@ -39,6 +39,7 @@
 ;; Compiler options
 
 (define opt-stats                #f) ;; Print stats report
+(define opt-show-locat-versions  #f) ;; Pretty print number of versions for each locat object
 (define opt-time                 #f) ;; Print exec time in processor cycles
 (define opt-verbose-jit          #f) ;; JIT Verbose debugging
 (define opt-verbose-gc           #f) ;; GC  Verbose debugging
@@ -222,6 +223,7 @@
 ;; Return lazy code object which generates an error with 'msg'
 (define (get-lazy-error msg)
   (make-lazy-code
+    #f
     (lambda (cgc ctx)
       (gen-error cgc msg))))
 
@@ -310,6 +312,7 @@
            ;; LOOP
            (lazy-clean
              (make-lazy-code
+               #f
                (lambda (cgc ctx)
                  ;; We need to clean the stack before executing lazy-repl-call again
                  (jump-to-version cgc lazy-repl-call (ctx-pop ctx)))))
@@ -967,6 +970,7 @@
 ;; nb-real-versions counts only the real versions of this lco
 (define-type lazy-code
   constructor: make-lazy-code*
+  ast
   generator
   versions
   nb-real-versions
@@ -997,28 +1001,28 @@
 (define (lazy-code-nb-versions lazy-code)
   (table-length (lazy-code-versions lazy-code)))
 
-(define (make-lazy-code generator)
-  (let ((lc (make-lazy-code* generator (make-versions-table) 0 '() #f #f #f #f)))
+(define (make-lazy-code ast generator)
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) 0 '() #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
-(define (make-lazy-code-cont generator)
-  (let ((lc (make-lazy-code* generator (make-versions-table) 0 '(cont) #f #f #f #f)))
+(define (make-lazy-code-cont ast generator)
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) 0 '(cont) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
-(define (make-lazy-code-entry generator)
-  (let ((lc (make-lazy-code* generator (make-versions-table) 0 '(entry) #f #f #f #f)))
+(define (make-lazy-code-entry ast generator)
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) 0 '(entry) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
-(define (make-lazy-code-ret generator)
-  (let ((lc (make-lazy-code* generator (make-versions-table) 0 '(ret) #f #f #f #f)))
+(define (make-lazy-code-ret ast generator)
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) 0 '(ret) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
-(define (make-lazy-code-cond lco-true lco-false generator)
-  (let ((lc (make-lazy-code* generator (make-versions-table) 0 '(cond) lco-true lco-false #f #f)))
+(define (make-lazy-code-cond ast lco-true lco-false generator)
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) 0 '(cond) lco-true lco-false #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
@@ -1567,6 +1571,7 @@
 (define (gen-fatal-type-test ctx-type stack-idx succ #!optional ast)
  (let ((lazy-error
           (make-lazy-code
+             #f
              (lambda (cgc ctx)
                (pp "FAIL TEST")
                (pp ast)
@@ -1584,6 +1589,7 @@
 (define (gen-dyn-type-test ctx-type stack-idx lazy-success lazy-fail #!optional ast)
 
   (make-lazy-code
+     #f
      (lambda (cgc ctx)
 
        (define type-ctor (ctx-type-ctor ctx-type))

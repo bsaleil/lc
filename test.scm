@@ -1,14 +1,14 @@
 
-(letrec ((foo (lambda () (($$atom error) ($$atom "jj"))))
-         (bar
-          (lambda ()
-            (begin
-              (($$atom foo))
-              (($$atom bar))))))
- (($$atom bar)))
+
+(define (fact n)
+  (if (= n 0)
+      1
+      (* n (fact (- n 1)))))
+
+(fact 5)
 
 
-
+(gambit$$pp (number? fact))
 
 
 
