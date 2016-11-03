@@ -52,7 +52,11 @@ test:
 # Run full unit tests with and without entry and return points
 full-test:
 	rm ./unit-tests/mutable-out -rf
-	./run-ut.scm -lc -lc-nep -lc-nrp -lc-nep-nrp -lc-n-regalloc
+	./run-ut.scm -lc
+	./run-ut.scm -lc-nep
+	./run-ut.scm -lc-nrp
+	./run-ut.scm -lc-nep-nrp
+	./run-ut.scm -lc-m5
 
 # Clean
 clean:

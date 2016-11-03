@@ -65,7 +65,7 @@
                (esc "\33[K")))))
 
 (define (run path . args)
-  
+
   (let* ((port
           (open-process (list path: path
                               arguments: args
@@ -79,6 +79,7 @@
     (cons status output)))
 
 (define (run-lc file . args)
+  (pp file)
   (let* ((run-args (append (list "./lazy-comp" file) args))
          (x (apply run run-args)))
     (if (= (car x) 0)
@@ -103,8 +104,8 @@
         ((or (equal? mode "lc-nep-nrp")
              (equal? mode "lc-nrp-nep"))
          (run-lc file "--disable-entry-points" "--disable-return-points"))
-        ((equal? mode "lc-n-regalloc")
-         (run-lc file "--disable-regalloc-vers"))
+        ((equal? mode "lc-m5")
+         (run-lc file "--max-versions 5"))
         (else (error "Unknown mode " mode))))
 
 (define (get-expected-output filename)
