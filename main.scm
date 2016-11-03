@@ -281,41 +281,6 @@
                    (current-output-port)))
       (begin (##machine-code-block-exec mcb))))
 
-
-
-
-
-
-(define (print-locat-versions)
-
-  (define restable (make-table))
-
-  (define (restable-add locat lco)
-    (let* ((lin (+ 1 (bitwise-and (vector-ref locat 1) 65535)))
-           (col (+ 1 (arithmetic-shift (vector-ref locat 1) -16)))
-           (str  (string-append (number->string lin) "." (number->string col))))
-      (let ((r (table-ref restable str 0)))
-        (table-set! restable str (+ r (length (table->list (lazy-code-versions lco))))))))
-
-  ;; For each lco
-  (for-each
-    (lambda (x)
-      (let ((ast (lazy-code-ast x)))
-        ;; If an ast is associated to the lco and there is 1 or more versions
-        (if (and ast (> (length (table->list (lazy-code-versions x))) 0))
-            ;; Then, if a locat object is associated to this ast, add versions number
-            (let ((r (table-ref locat-table ast #f)))
-              (if r
-                  (restable-add r x))))))
-    all-lazy-code)
-
-  ;; For each entry (locat) in restable
-  (for-each
-    (lambda (x)
-      ;; Pretty print "locat nb-version" 
-      (println (car x) " " (cdr x)))
-    (table->list restable)))
-
 ;;-----------------------------------------------------------------------------
 ;; Main
 
@@ -476,3 +441,46 @@
                            (count (cddr n) (lambda (n) (member 'cont n)))))
                 (sort versions-info-full (lambda (n m) (< (car n) (car m)))))
       (println "-------------------------"))))
+
+;;-----------------------------------------------------------------------------
+;; Locat infos
+
+(define (print-locat-versions)
+
+  (define restable (make-table))
+
+  (define (show-locat-info locat info)
+  (let ((port (current-output-port)))
+    (##display-locat locat #t port)
+    (println port: port ": " info)))
+
+  (define (restable-add locat lco)
+    (let ((key (list locat
+                     lco
+                     (object->serial-number (lazy-code-ast lco)))))
+      (let ((r (table-ref restable key 0)))
+        (table-set! restable key (+ r (length (table->list (lazy-code-versions lco))))))))
+
+  ;; For each lco
+  (for-each
+    (lambda (x)
+      (let ((ast (lazy-code-ast x)))
+        ;; If an ast is associated to the lco and there is 1 or more versions
+        (if (and ast (> (length (table->list (lazy-code-versions x))) 0))
+            ;; Then, if a locat object is associated to this ast, add versions number
+            (let ((r (table-ref locat-table ast #f)))
+              (if r
+                  (restable-add r x))))))
+    all-lazy-code)
+
+  ;; For each entry (locat) in restable
+  (for-each
+    (lambda (x)
+      ;; Pretty print "locat nb-version"
+      (show-locat-info
+        (caar x) ;; locat
+        (with-output-to-string ""
+          (lambda () (print (cdr x) " ")
+                     (let ((lco (cadar x)))
+                       (pretty-print (lazy-code-ast lco)))))))
+    (table->list restable)))

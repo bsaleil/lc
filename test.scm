@@ -1,15 +1,12 @@
 
 
-(define (fact n)
-  (if (= n 0)
+(define (fib n)
+  (if (< n 2)
       1
-      (* n (fact (- n 1)))))
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-(fact 5)
-
-
-(gambit$$pp (number? fact))
-
+(gambit$$pp (fib 10))
 
 
 
