@@ -359,17 +359,14 @@
   (define (get-versions-info-full-h lcs)
     (if (null? lcs)
        #t
-       (let* ((lc (car lcs))
-              (nb (table-length (lazy-code-versions lc)))
-              (r  (table-ref table nb #f)))
-        (if r
-           (table-set! table nb (cons (+ (car r) 1)
-                                      (cons (lazy-code-flags lc) (cdr r))))
-           (table-set! table nb (cons 1
-                                      (list (lazy-code-flags lc)))))
+       (let* ((lco (car lcs))
+              (nb-versions (lazy-code-nb-real-versions lco))
+              (r  (table-ref table nb-versions (cons 0 '()))))
+        (table-set!
+          table nb-versions
+          (cons (+ (car r) 1)
+                (cons (lazy-code-flags lco) (cdr r))))
         (get-versions-info-full-h (cdr lcs)))))
-        ;(table-set! table nb (if r (+ r 1) 1))
-        ;(get-versions-info-full-h (cdr lcs)))))
 
   (get-versions-info-full-h lazy-codes)
   (table->list table))
@@ -431,14 +428,15 @@
     ;; Number of stubs, number of return stubs, and number of entry stubs for each number of versions
     (println "-------------------------")
     (println "Number of stubs for each number of version")
-    (println "#versions;#stubs;#ret;#entry;#cont")
+    (println "#versions;#stubs;#ret;#entry;#cont;#cond")
     (let ((versions-info-full (get-versions-info-full all-lazy-code)))
       (for-each (lambda (n)
                   (println (car n) ";"
                            (cadr n) ";"
                            (count (cddr n) (lambda (n) (member 'ret n))) ";"
                            (count (cddr n) (lambda (n) (member 'entry n))) ";"
-                           (count (cddr n) (lambda (n) (member 'cont n)))))
+                           (count (cddr n) (lambda (n) (member 'cont n))) ";"
+                           (count (cddr n) (lambda (n) (member 'cond n)))))
                 (sort versions-info-full (lambda (n m) (< (car n) (car m)))))
       (println "-------------------------"))))
 
