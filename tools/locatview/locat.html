@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>locat</title>
+
+
+<!--**************************************************-->
+<!--CSS-->
+<style type="text/css" media="screen">
+    * { font-family: Monaco, Menlo, "Ubuntu Mono", Consolas, source-code-pro, monospace; font-size: 20px; padding:0; margin:0;}
+    html, body { height: 100%; color:#cccccc; background-color: #2d2d2d; }
+    #header  { height: 5%; }
+    #content { width: 100%; height: 95%;}
+    #left {
+      background-color: #2d2d2d;
+      float:left;
+      width:15%;
+      height:100%:
+    }
+    #left table {
+      text-align: center;
+      width:100%;
+      border-collapse: collapse;
+    }
+    th { font-size: 16px; background-color: #393939;}
+    td { font-size: 16px; }
+    tr { height: 17pt; border-bottom: 1pt solid #393939;}
+    tr:hover { background-color: #393939; }
+    #right {
+      margin-left: 15%;
+      width:85%;
+      height:100%;
+    }
+    #editor {
+        width:100%;
+        height:80%;
+    }
+    #info {
+        background-color: #111111;
+        box-sizing: border-box;
+        padding: 10px;
+        height:20%;
+    }
+
+    .marker {
+      position:absolute;
+      background:rgba(100,200,100,0.5);
+      z-index:20
+    }
+</style>
+<!--**************************************************-->
+
+
+<!--**************************************************-->
+<!--HTML-->
+</head>
+<body>
+
+<div id="header"></div>
+
+<div id="content">
+
+<div id="left">
+</div>
+
+<div id="right">
+
+<div id="editor">(declare (standard-bindings) (extended-bindings) (not inline-primitives) (block) (not safe))
+(define (fib n)
+  (if (< n 2000)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
+
+(gambit$$pp (fib 10))</div>
+
+<div id="info"></div>
+</div>
+</div>
+<!--**************************************************-->
+
+<!--**************************************************-->
+<!--JS-->
+<script src="sorttable.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.2.5/ace.js" type="text/javascript" charset="utf-8"></script>
+<script>
+
+  // Locat data:
+  // {
+  //   "l1.c1":[str1,str2,...],
+  //   "l2.c2":[str3,str4,...],
+  // }
+  // #versions is always the first key, followed by the number of versions
+  var locat_info = {
+    "3.12": ["#versions","1", "ctx1","(fixnum fixnum)","ctx2","(fixnum)"],
+    "3.7":  ["#versions","6", "ctx1","(fixnum fixnum)","ctx2","(fixnum)"],
+    "5.10": ["#versions","3", "ctx1","(fixnum fixnum)","ctx2","(fixnum)"],
+    "5.15": ["#versions","1", "ctx1","(fixnum fixnum)","ctx2","(fixnum)"],
+  };
+
+  // TODO
+  function trOver(tr)
+  {
+    var key = tr.getElementsByClassName("trKey")[0].innerHTML
+    var row = parseInt(key.split('.')[0]);
+    var col = parseInt(key.split('.')[1]);
+    setActiveObj(row,col);
+  }
+
+  // TODO
+  function fillLeftView()
+  {
+    var keys = [];
+    var strtable = "<table class='sortable'>" + "<tr><th style='width:50%'>Locat</th><th>#versions</th></tr>";
+    for (key in locat_info)
+    {
+      var obj = locat_info[key];
+      var customkey = parseInt(key.split('.')[0])*1000000000 + parseInt(key.split('.')[1])
+      strtable += "<tr onmouseover='trOver(this)'><td class='trKey' sorttable_customkey='"+customkey+"'>"+key+"</td><td>"+obj[1]+"</td></tr>"
+    }
+    strtable += "</table>";
+    document.getElementById("left").innerHTML = strtable;
+  }
+
+  // TODO expecting locat row/col
+  function setActiveObj(row,col)
+  {
+    var ace_row = row-1;
+    var ace_col = col;
+    // Get info associated to row/col
+    var str = row + "." + col;
+    var info = locat_info[str];
+    if (info)
+    {
+      // Remove previous marker
+      editor.session.removeMarker(markerId);
+      // Print expr info
+      var i = 0;
+      var str = "";
+      info.forEach(function (el){
+        if (i%2 == 0)
+         str += "<b>" + el + ":</b><br/>";
+        else
+         str += el + "<br/>";
+        i++;
+      });
+      document.getElementById("info").innerHTML = str;
+      // Add new highlighting marker
+      var end = getExprEnd(ace_row,ace_col-1);
+      markerId = editor.session.addMarker(new Range(ace_row, ace_col-1, end.row, end.column), "marker");
+    }
+  }
+
+  // Takes a row and column number where an expression is starting
+  // and returns an object {row:n,column:m} corresponding to the position
+  // of the end of the expression
+  function getExprEnd(row,col)
+  {
+    var code  = editor.session.doc.getValue();
+    var index = editor.session.doc.positionToIndex({row:row,column:col});
+    // first symbol of expr is '(', read until all parenthesis are balanced
+    if (code[index] == '(')
+    {
+      var nbpar = 1;
+      index++;
+      while (index<code.length && nbpar != 0)
+      {
+        var char = code[index];
+        if (char == '(') nbpar++;
+        if (char == ')') nbpar--;
+        index++;
+      }
+    }
+    // else, read until EOF, '\n', ' ', '(' or ')'
+    else
+    {
+      while (index<code.length && code[index] != '\n' && code[index] != ' ' && code[index] != ')' && code[index] != '(')
+        index++;
+    }
+    return editor.session.doc.indexToPosition(index);
+  }
+
+  fillLeftView();
+  var markerId = 0;
+  var Range  = ace.require('ace/range').Range;
+  var editor = ace.edit("editor");
+
+  editor.setTheme("ace/theme/tomorrow_night_eighties");
+  editor.setFontSize(20);
+  editor.getSession().setMode("ace/mode/scheme");
+  editor.setReadOnly(true)
+  editor.on("mousemove", function (e)
+  {
+     // Get position of mouse in document
+     var position = e.getDocumentPosition();
+     var row = position.row;
+     var col = position.column;
+     setActiveObj(row+1,col);
+  });
+</script>
+<!--**************************************************-->
+</body>
+</html>
