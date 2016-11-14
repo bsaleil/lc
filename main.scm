@@ -484,10 +484,32 @@
     (println "}"))
 
   (define (format-n-versions n)
-    (print-array-item "#versions")
+    (print-array-item "~#versions")
     (print-array-item n))
 
   (define (format-ctxs versions)
+    (define (format-ctx ctx n)
+      ;; Ctx id
+      (print-array-item (string-append "~ctx" (number->string n)))
+      ;; Stack
+      (print-array-item
+        (string-append
+          "Stack -> "
+          (with-output-to-string '()
+            (lambda ()
+              (for-each
+                (lambda (stype)
+                  (if (ctx-type-is-cst stype)
+                      (print (ctx-type-cst stype) " ")
+                      (print (ctx-type-sym stype) " ")))
+                (ctx-stack ctx))))))
+      ;; Slot loc
+      (print-array-item
+        (string-append
+          "Reg-alloc -> "
+          (with-output-to-string '()
+            (lambda () (display (ctx-slot-loc ctx)))))))
+
     (let loop ((versions (table->list versions))
                (n 1))
       (if (not (null? versions))
@@ -495,8 +517,8 @@
                  (real-version? (cddr version-entry)))
             (if real-version?
                 (begin
-                  (print-array-item (string-append "ctx" (number->string n)))
-                  (print-array-item (car version-entry))
+                  ;(print-array-item (string-append "ctx" (number->string n)))
+                  (format-ctx (car version-entry) n)
                   (set! n (+ n 1))))
             (loop (cdr versions) n)))))
 

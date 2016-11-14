@@ -1,11 +1,11 @@
 
+
 (define (myfun n)
   (if (= n 0)
-      '()
-      (cons n (myfun (- n 1)))))
+      1
+      (myfun (- n 1))))
 
-(gambit$$pp (myfun 10))
-
+(myfun 10)
 
 
 ;; WIP:

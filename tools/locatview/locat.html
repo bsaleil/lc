@@ -109,10 +109,11 @@
     setActiveObj(row,col,nlo);
   }
 
-  // TODO
+  // File left panel:
+  // Create a table with locat (lin.col.n) in first col, and #versions in the second
+  // and fill it with locat_info data
   function fillLeftView()
   {
-    var keys = [];
     var strtable = "<table class='sortable'>" + "<tr><th style='width:50%'>Locat</th><th>#versions</th></tr>";
     for (key in locat_info)
     {
@@ -150,14 +151,12 @@
       editor.session.removeMarker(markerId);
       editor.renderer.scrollCursorIntoView({row: ace_row, column: 1}, 0.5) // Scroll and center to cursor if needed.
       // Print expr info
-      var i = 0;
       var str = row + "." + col + "." + nlo + "<br/>";
       info.forEach(function (el){
-        if (i%2 == 0)
-         str += "<b>" + escapeHtml(el) + ":</b> ";
+        if (el[0] == '~')
+          str += "<b>" + escapeHtml(el.substr(1)) + ":</b><br/>";
         else
-         str += escapeHtml(el) + "<br/>";
-        i++;
+          str += "&nbsp;&nbsp;" + escapeHtml(el) + "<br/>";
       });
       document.getElementById("info").innerHTML = str;
       // Add new highlighting marker
