@@ -39,7 +39,7 @@
 ;; Compiler options
 
 (define opt-stats                #f) ;; Print stats report
-(define opt-show-locat-versions  #f) ;; Pretty print number of versions for each locat object
+(define opt-export-locat-info    #f) ;; Pretty print number of versions for each locat object
 (define opt-time                 #f) ;; Print exec time in processor cycles
 (define opt-verbose-jit          #f) ;; JIT Verbose debugging
 (define opt-verbose-gc           #f) ;; GC  Verbose debugging

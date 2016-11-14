@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<meta charset="utf-8">
 <title>locat</title>
 
 
@@ -16,7 +17,8 @@
       background-color: #2d2d2d;
       float:left;
       width:15%;
-      height:100%:
+      height:100%;
+      overflow: auto;
     }
     #left table {
       text-align: center;
@@ -67,14 +69,7 @@
 
 <div id="right">
 
-<div id="editor">(declare (standard-bindings) (extended-bindings) (not inline-primitives) (block) (not safe))
-
-(define (myfun n)
-  (if (= n 0)
-      '()
-      (cons n (myfun (- n 1)))))
-
-(gambit$$pp (myfun 10))</div>
+<div id="editor"></div>
 
 <div id="info"></div>
 </div>
@@ -83,6 +78,7 @@
 
 <!--**************************************************-->
 <!--JS-->
+<script src="locat.js"></script>
 <script src="sorttable.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.2.5/ace.js" type="text/javascript" charset="utf-8"></script>
 <script>
@@ -93,21 +89,6 @@
   //   "l2.c2":[str3,str4,...],
   // }
   // #versions is always the first key, followed by the number of versions
-var locat_info = {
-"6.7.0": ["#versions","1","ctx1","#<ctx #22 stack: (#<ctx-tpai #23 sym: pair mem-allocated?: #t is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tclo #25 sym: closure mem-allocated?: #t is-cst: #f cst: #f> #<ctx-tret #26 sym: retaddr mem-allocated?: #f is-cst: #f cst: #f>) slot-loc: ((4 r . 8) (3 m . 2) (2 m . 2) (1 m . 3) (0 m . 0)) free-regs: ((r . 6) (r . 2) (r . 0) (r . 1) (r . 4) (r . 3) (r . 5) (r . 7) (r . 9)) free-mems: ((m . 1)) env: ((n . #<identifier #27 kind: local sslots: (3 2) flags: () stype: #f cloc: #f thisid: #f>)) nb-actual: 1 nb-args: 1 fs: 4 fn-num: 0>",],
-"4.7.0": ["#versions","1","ctx1","#<ctx #28 stack: (#<ctx-tint #29 sym: integer mem-allocated?: #f is-cst: #t cst: 0> #<ctx-tint #30 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #30 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tclo #25 sym: closure mem-allocated?: #t is-cst: #f cst: #f> #<ctx-tret #26 sym: retaddr mem-allocated?: #f is-cst: #f cst: #f>) slot-loc: ((6 . #f) (5 r . 3) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0)) free-regs: ((r . 5) (r . 6) (r . 7) (r . 8) (r . 9)) free-mems: () env: ((n . #<identifier #31 kind: local sslots: (5 4) flags: () stype: #f cloc: #f thisid: #f>) (n . #<identifier #27 kind: local sslots: (3 2) flags: () stype: #f cloc: #f thisid: #f>)) nb-actual: 1 nb-args: 1 fs: 1 fn-num: 0>",],
-"4.7.1": ["#versions","1","ctx1","#<ctx #32 stack: (#<ctx-tint #33 sym: integer mem-allocated?: #f is-cst: #t cst: 0> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tclo #25 sym: closure mem-allocated?: #t is-cst: #f cst: #f> #<ctx-tret #26 sym: retaddr mem-allocated?: #f is-cst: #f cst: #f>) slot-loc: ((4 . #f) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0)) free-regs: ((r . 3) (r . 4) (r . 5) (r . 6) (r . 7) (r . 8) (r . 9)) free-mems: () env: ((n . #<identifier #34 kind: local sslots: (3 2) flags: () stype: #f cloc: #f thisid: #f>)) nb-actual: 1 nb-args: 1 fs: 1 fn-num: 0>",],
-"8.1.0": ["#versions","1","ctx1","#<ctx #35 stack: (#<ctx-tpai #36 sym: pair mem-allocated?: #t is-cst: #f cst: #f>) slot-loc: ((0 r . 8)) free-regs: ((r . 0) (r . 1) (r . 2) (r . 3) (r . 4) (r . 5) (r . 6) (r . 7) (r . 9)) free-mems: () env: () nb-actual: #f nb-args: -1 fs: 0 fn-num: #f>",],
-"6.22.0": ["#versions","1","ctx1","#<ctx #37 stack: (#<ctx-tint #38 sym: integer mem-allocated?: #f is-cst: #t cst: 1> #<ctx-tint #30 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tclo #39 sym: closure mem-allocated?: #t is-cst: #t cst: 0> #<ctx-tint #30 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #30 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tclo #25 sym: closure mem-allocated?: #t is-cst: #f cst: #f> #<ctx-tret #26 sym: retaddr mem-allocated?: #f is-cst: #f cst: #f>) slot-loc: ((8 . #f) (7 r . 5) (6 . #f) (5 r . 3) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0)) free-regs: ((r . 6) (r . 7) (r . 8) (r . 9)) free-mems: () env: ((n . #<identifier #40 kind: local sslots: (7 5 4) flags: () stype: #f cloc: #f thisid: #f>) (n . #<identifier #27 kind: local sslots: (3 2) flags: () stype: #f cloc: #f thisid: #f>)) nb-actual: 1 nb-args: 1 fs: 1 fn-num: 0>",],
-"6.22.1": ["#versions","1","ctx1","#<ctx #41 stack: (#<ctx-tint #42 sym: integer mem-allocated?: #f is-cst: #t cst: 1> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tclo #25 sym: closure mem-allocated?: #t is-cst: #f cst: #f> #<ctx-tret #26 sym: retaddr mem-allocated?: #f is-cst: #f cst: #f>) slot-loc: ((5 . #f) (4 r . 3) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0)) free-regs: ((r . 4) (r . 5) (r . 6) (r . 7) (r . 8) (r . 9)) free-mems: () env: ((n . #<identifier #43 kind: local sslots: (4 3 2) flags: () stype: #f cloc: #f thisid: #f>)) nb-actual: 1 nb-args: 1 fs: 1 fn-num: 0>",],
-"8.13.0": ["#versions","1","ctx1","#<ctx #44 stack: () slot-loc: () free-regs: ((r . 0) (r . 1) (r . 2) (r . 3) (r . 4) (r . 5) (r . 6) (r . 7) (r . 8) (r . 9)) free-mems: () env: () nb-actual: #f nb-args: -1 fs: 0 fn-num: #f>",],
-"6.7.1": ["#versions","2","ctx1","#<ctx #45 stack: (#<ctx-tpai #46 sym: pair mem-allocated?: #t is-cst: #f cst: #f> #<ctx-tint #30 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #30 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tclo #25 sym: closure mem-allocated?: #t is-cst: #f cst: #f> #<ctx-tret #26 sym: retaddr mem-allocated?: #f is-cst: #f cst: #f>) slot-loc: ((6 r . 8) (5 m . 1) (4 m . 1) (3 m . 2) (2 m . 2) (1 m . 3) (0 m . 0)) free-regs: ((r . 6) (r . 2) (r . 0) (r . 1) (r . 4) (r . 3) (r . 5) (r . 7) (r . 9)) free-mems: () env: ((n . #<identifier #47 kind: local sslots: (5 4) flags: () stype: #f cloc: #f thisid: #f>) (n . #<identifier #27 kind: local sslots: (3 2) flags: () stype: #f cloc: #f thisid: #f>)) nb-actual: 1 nb-args: 1 fs: 4 fn-num: 0>","ctx2","#<ctx #48 stack: (#<ctx-tnul #49 sym: null mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #30 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #30 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tclo #25 sym: closure mem-allocated?: #t is-cst: #f cst: #f> #<ctx-tret #26 sym: retaddr mem-allocated?: #f is-cst: #f cst: #f>) slot-loc: ((6 r . 8) (5 m . 1) (4 m . 1) (3 m . 2) (2 m . 2) (1 m . 3) (0 m . 0)) free-regs: ((r . 6) (r . 2) (r . 0) (r . 1) (r . 4) (r . 3) (r . 5) (r . 7) (r . 9)) free-mems: () env: ((n . #<identifier #47 kind: local sslots: (5 4) flags: () stype: #f cloc: #f thisid: #f>) (n . #<identifier #27 kind: local sslots: (3 2) flags: () stype: #f cloc: #f thisid: #f>)) nb-actual: 1 nb-args: 1 fs: 4 fn-num: 0>",],
-"6.15.0": ["#versions","1","ctx1","#<ctx #50 stack: (#<ctx-tint #30 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #30 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tint #24 sym: integer mem-allocated?: #f is-cst: #f cst: #f> #<ctx-tclo #25 sym: closure mem-allocated?: #t is-cst: #f cst: #f> #<ctx-tret #26 sym: retaddr mem-allocated?: #f is-cst: #f cst: #f>) slot-loc: ((5 r . 3) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0)) free-regs: ((r . 5) (r . 6) (r . 7) (r . 8) (r . 9)) free-mems: () env: ((n . #<identifier #51 kind: local sslots: (5 4) flags: () stype: #f cloc: #f thisid: #f>) (n . #<identifier #27 kind: local sslots: (3 2) flags: () stype: #f cloc: #f thisid: #f>)) nb-actual: 1 nb-args: 1 fs: 1 fn-num: 0>",],
-}
-
-
-
-
 
 
   // var locat_info = {
@@ -167,6 +148,7 @@ var locat_info = {
     {
       // Remove previous marker
       editor.session.removeMarker(markerId);
+      editor.renderer.scrollCursorIntoView({row: ace_row, column: 1}, 0.5) // Scroll and center to cursor if needed.
       // Print expr info
       var i = 0;
       var str = row + "." + col + "." + nlo + "<br/>";
@@ -222,6 +204,8 @@ var locat_info = {
   editor.setFontSize(20);
   editor.getSession().setMode("ace/mode/scheme");
   editor.setReadOnly(true)
+  editor.setValue(code);
+  editor.selection.moveTo(0,0); // scroll to top by setting the cursor to 0,0
   editor.on("mousemove", function (e)
   {
      // Get position of mouse in document

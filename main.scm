@@ -99,6 +99,11 @@
     ,(lambda (args) (set! opt-dump-bin #t)
                     args))
 
+  (--export-locat-info
+    "Export locat info so it can be used by locatview tool"
+    ,(lambda (args) (set! opt-export-locat-info #t)
+                    args))
+
   (--max-versions
     "Set a limit on the number of versions of lazy code objects"
     ,(lambda (args) (set! opt-max-versions (string->number (cadr args)))
@@ -109,11 +114,6 @@
      "Do not include the standard library"
      ,(lambda (args) (set! opt-use-lib #f)
                      args))
-
-  (--show-locat-versions
-    "Pretty print number of versions for each locat object"
-    ,(lambda (args) (set! opt-show-locat-versions #t)
-                    args))
 
   (--stats
     "Print stats about execution"
@@ -382,8 +382,8 @@
 (define (print-opts)
   (if opt-stats
       (print-stats))
-  (if opt-show-locat-versions
-      (print-locat-versions))
+  (if opt-export-locat-info
+      (export-locat-info))
   (if opt-dump-bin
       (print-mcb)))
 
@@ -442,7 +442,7 @@
 ;;-----------------------------------------------------------------------------
 ;; Locat infos
 
-(define (print-locat-versions)
+(define (export-locat-info)
 
   (define restable (make-table))
 
@@ -473,10 +473,14 @@
   (define (print-array-item i)
     (print "\"" i "\"" ","))
 
-  (define (format-header)
-    (println "var locat_info = {"))
+  (define (format-code-header)
+    (print "var code = "))
+  (define (format-code-footer)
+    (println ";"))
 
-  (define (format-footer)
+  (define (format-locat-header)
+    (println "var locat_info = {"))
+  (define (format-locat-footer)
     (println "}"))
 
   (define (format-n-versions n)
@@ -498,7 +502,7 @@
 
   (define (format-entry lin col lco)
     (let ((n (next-linecol-n lin col)))
-      (print "\"" lin "." col "." n "\"" ": [")
+      (print "  \"" lin "." col "." n "\"" ": [")
       (format-n-versions (lazy-code-nb-real-versions lco))
       (format-ctxs (lazy-code-versions lco))
       (println "],")))
@@ -517,27 +521,29 @@
 
   ;; Format locat info for jsview (see tools/)
   ;; Add locat_info var to string
-  (set! locat-formatted-str
-        (with-output-to-string '()
-          (lambda ()
-            (println "var locat_info = {"))))
-  ;; Add all locat infos to the string
-  (set! locat-formatted-str
-        (string-append
-          locat-formatted-str
+  (let ((file (open-output-file '(path: "./tools/locatview/locat.js" char-encoding: UTF-8)))
+        (output
           (with-output-to-string '()
             (lambda ()
+              ;; Write locat info
+              (format-locat-header)
               (for-each
                 (lambda (x)
-                  ;; Pretty print "locat nb-version"
                   (let* ((locat (caar x))
-                         (file  (vector-ref locat 0))
+                         (file (vector-ref locat 0))
                          (lin (+ 1 (bitwise-and (vector-ref locat 1) (- (expt 2 16) 1))))
                          (col (+ 1 (arithmetic-shift (vector-ref locat 1) -16))))
                     (format-entry lin col (cadar x))))
-                (table->list restable))))))
-  ;; Add end '}'
-  (set! locat-formatted-str
-        (string-append locat-formatted-str "}"))
-
-  (println locat-formatted-str))
+                (table->list restable))
+              (format-locat-footer)
+              ;; Write code
+              (let* ((port (open-input-file '(path: "./tmp" char-encoding: UTF-8)))
+                     (code (read-line port #f)))
+                (close-input-port port)
+                (format-code-header)
+                (write code)
+                (format-code-footer))))))
+    ;;
+    (display output file)
+    (force-output file)
+    (close-output-port file)))
