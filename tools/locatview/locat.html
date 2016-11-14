@@ -9,7 +9,8 @@
 <style type="text/css" media="screen">
     * { font-family: Monaco, Menlo, "Ubuntu Mono", Consolas, source-code-pro, monospace; font-size: 20px; padding:0; margin:0;}
     html, body { height: 100%; color:#cccccc; background-color: #2d2d2d; }
-    #header  { height: 5%; }
+    #header  { height: 5%; color:#f99157; }
+    #img-warning { width: 25px; height: auto;}
     #content { width: 100%; height: 95%;}
     #left {
       background-color: #2d2d2d;
@@ -33,13 +34,14 @@
     }
     #editor {
         width:100%;
-        height:80%;
+        height:70%;
     }
     #info {
         background-color: #111111;
         box-sizing: border-box;
         padding: 10px;
-        height:20%;
+        height:30%;
+        overflow: auto;
     }
 
     .marker {
@@ -118,6 +120,7 @@ var locat_info = {
   // TODO
   function trOver(tr)
   {
+    resetWarning();
     var key = tr.getElementsByClassName("trKey")[0].innerHTML
     var row = parseInt(key.split('.')[0]);
     var col = parseInt(key.split('.')[1]);
@@ -139,6 +142,9 @@ var locat_info = {
     strtable += "</table>";
     document.getElementById("left").innerHTML = strtable;
   }
+
+  function resetWarning()  { document.getElementById("header").innerHTML = ""; }
+  function setWarning(str) { document.getElementById("header").innerHTML = "<img id='img-warning' src='./warning.png'>" + escapeHtml(str); }
 
   function escapeHtml(unsafe) {
     return unsafe
@@ -163,14 +169,13 @@ var locat_info = {
       editor.session.removeMarker(markerId);
       // Print expr info
       var i = 0;
-      var str = "";
+      var str = row + "." + col + "." + nlo + "<br/>";
       info.forEach(function (el){
         if (i%2 == 0)
          str += "<b>" + escapeHtml(el) + ":</b> ";
         else
          str += escapeHtml(el) + "<br/>";
         i++;
-        console.log(str);
       });
       document.getElementById("info").innerHTML = str;
       // Add new highlighting marker
@@ -223,7 +228,16 @@ var locat_info = {
      var position = e.getDocumentPosition();
      var row = position.row;
      var col = position.column;
-     // TODO: WARNING IF THERE ARE MORE THAN 1 NLO
+     // Build keys for .0 and .1
+     var key1 = (row+1) + "." + col + ".0";
+     var key2 = (row+1) + "." + col + ".1";
+     // If there is at least one key, reset warning
+     if (locat_info[key1])
+       resetWarning();
+     // Uf there are at least two keys, display warning
+     if (locat_info[key1] && locat_info[key2])
+       setWarning("More than one locat objects are associated with this expression. First is displayed.");
+     //
      setActiveObj(row+1,col,0);
   });
 </script>
