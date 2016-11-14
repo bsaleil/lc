@@ -335,7 +335,7 @@
               ((equal? (car expr) 'and)           (using-same-locat (expand-and expr) expr))
               ((equal? (car expr) 'cond)          (expand-cond expr))
               ((equal? (car expr) 'case)          (expand-case expr))
-              ((equal? (car expr) 'quote)         expr)
+              ((equal? (car expr) 'quote)         (atom-node-make expr))
               ((equal? (car expr) 'set!)          (expand-set! expr))
               ((equal? (car expr) 'write-char)    (using-same-locat (expand-write-char expr) expr))
               ((equal? (car expr) 'list)          (using-same-locat (expand-list expr) expr))

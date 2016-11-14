@@ -1,12 +1,10 @@
 
+(define (myfun n)
+  (if (= n 0)
+      '()
+      (cons n (myfun (- n 1)))))
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
-
-(gambit$$pp (fib 10))
+(gambit$$pp (myfun 10))
 
 
 

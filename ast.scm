@@ -337,7 +337,6 @@
       ((eq? op 'lambda) (mlc-lambda-ast ast succ))
       ((eq? op 'let)    (mlc-let ast succ)) ;; Also handles let* (let* is a macro)
       ((eq? op 'letrec) (mlc-letrec ast succ))
-      ((eq? op 'quote)  (mlc-literal (cadr ast) ast succ))
       ((eq? op 'set!)   (mlc-set! ast succ))
       ;; Known operator
       ((atom-node? op)
@@ -362,6 +361,9 @@
           ((symbol? val)          (mlc-identifier val ast succ))
           ((compiler-flonum? val) (mlc-literal (exact->inexact val) ast succ))
           ((literal? val)         (mlc-literal val ast succ))
+          ((and (pair? val)
+                (eq? (car val) 'quote))
+             (mlc-literal (cadr val) ast succ))
           (else (error "Internal error (mlc-atom)")))))
 
 ;;-----------------------------------------------------------------------------
