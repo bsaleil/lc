@@ -336,7 +336,7 @@
     (if (null? lcs)
        (cons min max)
        (let* ((lc (car lcs))
-              (nb (table-length (lazy-code-versions lc))))
+              (nb (table-length (lazy-code-nb-real-versions lc))))
          (cond ((< nb min)
                    (get-versions-info-h (cdr lcs) nb max))
                ((> nb max)
@@ -347,7 +347,7 @@
   (if (null? lazy-codes)
      (cons 0 0)
      (let* ((lc (car lazy-codes))
-            (nb (table-length (lazy-code-versions lc))))
+            (nb (table-length (lazy-code-nb-real-versions lc))))
        (get-versions-info-h (cdr lazy-codes) nb nb))))
 
 ;; TODO
@@ -446,38 +446,98 @@
 
   (define restable (make-table))
 
-  (define (show-locat-info locat info)
-  (let ((port (current-output-port)))
-    (##display-locat locat #t port)
-    (println port: port ": " info)))
+  ;(define (show-locat-info locat info)
+  ;(let ((port (current-output-port)))
+  ;  (##display-locat locat #t port)
+  ;  (println port: port ": " info)))
 
+  ;; TODO: remove nb versions here, keep only lco
   (define (restable-add locat lco)
     (let ((key (list locat
                      lco
                      (object->serial-number (lazy-code-ast lco)))))
       (let ((r (table-ref restable key 0)))
-        (table-set! restable key (+ r (length (table->list (lazy-code-versions lco))))))))
+        (table-set! restable key (+ r (lazy-code-nb-real-versions lco))))))
+
+  ;;---------------------------------------------------------------------------
+  ;; Locat formatter to output data so that locat tool can use it (tools/locatview)
+
+  (define locat-formatted-str "")
+  (define asc-linecol-n (make-table)) ;; associate a integer n to a "line.col" string
+  (define (next-linecol-n lin col)
+    (let* ((str (string-append (number->string lin) "." (number->string col)))
+           (r (table-ref asc-linecol-n str 0)))
+     (table-set! asc-linecol-n str (+ r 1))
+     r))
+
+  (define (print-array-item i)
+    (print "\"" i "\"" ","))
+
+  (define (format-header)
+    (println "var locat_info = {"))
+
+  (define (format-footer)
+    (println "}"))
+
+  (define (format-n-versions n)
+    (print-array-item "#versions")
+    (print-array-item n))
+
+  (define (format-ctxs versions)
+    (let loop ((versions (table->list versions))
+               (n 1))
+      (if (not (null? versions))
+          (let* ((version-entry (car versions))
+                 (real-version? (cddr version-entry)))
+            (if real-version?
+                (begin
+                  (print-array-item (string-append "ctx" (number->string n)))
+                  (print-array-item (car version-entry))
+                  (set! n (+ n 1))))
+            (loop (cdr versions) n)))))
+
+  (define (format-entry lin col lco)
+    (let ((n (next-linecol-n lin col)))
+      (print "\"" lin "." col "." n "\"" ": [")
+      (format-n-versions (lazy-code-nb-real-versions lco))
+      (format-ctxs (lazy-code-versions lco))
+      (println "],")))
 
   ;; For each lco
   (for-each
     (lambda (x)
       (let ((ast (lazy-code-ast x)))
         ;; If an ast is associated to the lco and there is 1 or more versions
-        (if (and ast (> (length (table->list (lazy-code-versions x))) 0))
+        (if (and ast (> (lazy-code-nb-real-versions x) 0))
             ;; Then, if a locat object is associated to this ast, add versions number
             (let ((r (table-ref locat-table ast #f)))
               (if r
                   (restable-add r x))))))
     all-lazy-code)
 
-  ;; For each entry (locat) in restable
-  (for-each
-    (lambda (x)
-      ;; Pretty print "locat nb-version"
-      (show-locat-info
-        (caar x) ;; locat
-        (with-output-to-string ""
-          (lambda () (print (cdr x) " ")
-                     (let ((lco (cadar x)))
-                       (pretty-print (lazy-code-ast lco)))))))
-    (table->list restable)))
+  ;; Format locat info for jsview (see tools/)
+  ;; Add locat_info var to string
+  (set! locat-formatted-str
+        (with-output-to-string '()
+          (lambda ()
+            (println "var locat_info = {"))))
+  ;; Add all locat infos to the string
+  (set! locat-formatted-str
+        (string-append
+          locat-formatted-str
+          (with-output-to-string '()
+            (lambda ()
+              (for-each
+                (lambda (x)
+                  ;; Pretty print "locat nb-version"
+                  (let* ((locat (caar x))
+                         (file  (vector-ref locat 0))
+                         (lin (+ 1 (bitwise-and (vector-ref locat 1) (- (expt 2 16) 1))))
+                         (col (+ 1 (arithmetic-shift (vector-ref locat 1) -16))))
+                    (format-entry lin col (cadar x))))
+                (table->list restable))))))
+  ;; Add end '}'
+  (set! locat-formatted-str
+        (string-append locat-formatted-str "}"))
+
+  (println locat-formatted-str))

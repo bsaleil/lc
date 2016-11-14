@@ -1027,14 +1027,15 @@
     lc))
 
 (define (get-version lazy-code ctx)
-  (let ((versions (lazy-code-versions lazy-code)))
-    (table-ref versions ctx #f)))
+  (let* ((versions (lazy-code-versions lazy-code))
+         (version  (table-ref versions ctx #f)))
+    (and version (car version))))
 
 (define (put-version lazy-code ctx version real-version?)
   (let ((versions (lazy-code-versions lazy-code)))
     (if real-version?
         (lazy-code-nb-real-versions-inc lazy-code))
-    (table-set! versions ctx version)))
+    (table-set! versions ctx (cons version real-version?))))
 
 ;; Return ctx associated to the version
 (define (get-version-ctx lazy-code version)
@@ -1042,7 +1043,7 @@
     (let loop ((lst (table->list versions)))
       (if (null? lst)
           (error "Internal error")
-          (if (eq? (cdar lst)
+          (if (eq? (cadar lst)
                    version)
               (caar lst)
               (loop (cdr lst)))))))
