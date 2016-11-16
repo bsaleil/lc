@@ -967,24 +967,16 @@
 ;; 'versions' is a table associating a version (label) to a ctx
 ;; This version could be a 'real' version, which is a full version specialized for this ctx
 ;; or a 'not real' version, which is a version containing only merge code and a jump to the generic version
-;; nb-real-versions counts only the real versions of this lco
 (define-type lazy-code
   constructor: make-lazy-code*
   ast
   generator
   versions
-  nb-real-versions
   flags
   lco-true  ;; lco of true branch if it's a cond lco
   lco-false ;; lco of false branch if it's a cond lco
   generic-ctx
   generic-vers)
-
-(define (lazy-code-nb-real-versions-inc lazy-code)
-  (let ((n (lazy-code-nb-real-versions lazy-code)))
-    (lazy-code-nb-real-versions-set!
-      lazy-code
-      (+ n 1))))
 
 ;; Create table of versions for a lazy-code
 (define (make-versions-table)
@@ -1001,28 +993,31 @@
 (define (lazy-code-nb-versions lazy-code)
   (table-length (lazy-code-versions lazy-code)))
 
+(define (lazy-code-nb-real-versions lazy-code)
+  (count (table->list (lazy-code-versions lazy-code)) cddr))
+
 (define (make-lazy-code ast generator)
-  (let ((lc (make-lazy-code* ast generator (make-versions-table) 0 '() #f #f #f #f)))
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) '() #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-cont ast generator)
-  (let ((lc (make-lazy-code* ast generator (make-versions-table) 0 '(cont) #f #f #f #f)))
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) '(cont) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-entry ast generator)
-  (let ((lc (make-lazy-code* ast generator (make-versions-table) 0 '(entry) #f #f #f #f)))
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) '(entry) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-ret ast generator)
-  (let ((lc (make-lazy-code* ast generator (make-versions-table) 0 '(ret) #f #f #f #f)))
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) '(ret) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-cond ast lco-true lco-false generator)
-  (let ((lc (make-lazy-code* ast generator (make-versions-table) 0 '(cond) lco-true lco-false #f #f)))
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) '(cond) lco-true lco-false #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
@@ -1033,8 +1028,6 @@
 
 (define (put-version lazy-code ctx version real-version?)
   (let ((versions (lazy-code-versions lazy-code)))
-    (if real-version?
-        (lazy-code-nb-real-versions-inc lazy-code))
     (table-set! versions ctx (cons version real-version?))))
 
 ;; Return ctx associated to the version
