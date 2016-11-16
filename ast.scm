@@ -143,8 +143,8 @@
 (define asc-entry-stub (make-table test: eq?))
 ;; Add an entry to the table
 (define (asc-entry-stub-add cctable generic-addr stub-addr)
-  (let ((rr (table-ref asc-entry-stub cctable #f)))
-    (if rr (error "NNNNN")))
+  (assert (not (table-ref asc-entry-stub cctable #f))
+          "Internal error")
   (table-set! asc-entry-stub cctable (cons generic-addr stub-addr)))
 ;; Read an entry from the table
 (define (asc-entry-stub-get cctable)
@@ -198,11 +198,15 @@
           "Internal error")
   (table-set! asc-entryobj-globalclo entry-obj-loc clo-ptr))
 
-(define ASC-AST-ENTRYOBJ (make-table test: eq?))
-(define (GET-ENTRY-OBJ ast)
-  (table-ref ASC-AST-ENTRYOBJ ast #f))
-(define (ADD-ENTRY-OBJ ast eo)
-  (table-set! ASC-AST-ENTRYOBJ ast eo))
+;;
+;; Associate an ep entry object to an ast (eq? on ast)
+(define asc-ast-epentry (make-table test: eq?))
+(define (asc-ast-epentry-get ast)
+  (table-ref asc-ast-epentry ast #f))
+(define (asc-ast-epentry-add ast eo)
+  (assert (not (asc-ast-epentry-get ast))
+          "Internal error")
+  (table-set! asc-ast-epentry ast eo))
 
 ;;-----------------------------------------------------------------------------
 ;; Type predicates
@@ -762,7 +766,6 @@
                (fn-generator #f lazy-prologue stack #f))))))
 
 (define (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params bound-id)
-
   ;; Generator used to generate function code waiting for runtime data
   ;; First create function entry ctx
   ;; Then generate function prologue code
@@ -772,11 +775,6 @@
     (let* ((ctx-stack (if generic? #f stack))
            (ctx (ctx-init-fn ctx-stack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id)))
       (gen-version-fn ast closure entry-obj prologue ctx stack generic?)))
-  ;;
-  (define EP-SS (if (not opt-entry-points) (GET-ENTRY-OBJ ast) #f))
-  (define stub-labels  (and (not EP-SS) (create-fn-stub ast fn-num fn-generator)))
-  (define stub-addr    (and (not EP-SS) (asm-label-pos (list-ref stub-labels 0))))
-  (define generic-addr (and (not EP-SS) (asm-label-pos (list-ref stub-labels 1))))
 
   ;; ---------------------------------------------------------------------------
   ;; Return 'entry-obj' (entry object)
@@ -791,28 +789,40 @@
                               (begin (set! cctable-new? #t) (cctable-make cctable-key))))))
       ;; The compiler needs to fill cctable if it is a new cctable
       (if cctable-new?
-          (begin
+          (let* (;; Create stub
+                 (stub-labels  (create-fn-stub ast fn-num fn-generator))
+                 (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
+                 (generic-addr (asm-label-pos (list-ref stub-labels 1))))
             ;; Add cctable->stub-addrs assoc
             (asc-entry-stub-add cctable generic-addr stub-addr)
             (cctable-fill cctable stub-addr generic-addr)))
       cctable))
   ;; In the case of -ep, entry object is the still vector of size 1 that contain the single entry point
   (define (get-entry-obj-ep)
-    (let ((entryvec (get-entry-points-loc ast stub-addr)))
+    (let ((existing (asc-ast-epentry-get ast)))
+      (if existing
+          ;; An entry points object already exists for this ast, use it!
+          existing
+          ;; TODO: we are supposed to use only one e.p. with -ep objects
+          ;;       use a max-selector of 0 in create-fn-stub, and use only one -addr
+          (let* (;; Create stub
+                 (stub-labels  (create-fn-stub ast fn-num fn-generator))
+                 (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
+                 (generic-addr (asm-label-pos (list-ref stub-labels 1)))
+                 (entryvec (get-entry-points-loc ast stub-addr)))
+            (asc-entry-stub-add entryvec generic-addr stub-addr)
+            (asc-ast-epentry-add ast entryvec)
+            entryvec))))
 
-      (asc-entry-stub-add entryvec generic-addr stub-addr)
-      entryvec))
+  (define entry-obj #f)
 
-  (define entry-obj
+  (set! entry-obj
     (if opt-entry-points
         (get-entry-obj-cc)
-        (if EP-SS
-            EP-SS
-            (let ((r (get-entry-obj-ep)))
-              (ADD-ENTRY-OBJ ast r)
-              r))))
+        (get-entry-obj-ep)))
 
   entry-obj)
+
 
 ;;
 ;; Init constant lambda
