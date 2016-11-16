@@ -31,13 +31,15 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Sets
+(define LIFE_PERM #f)
+(define TAG_MEMOBJ #f)
 
 ;; Set subtraction with lists
 ;; return lsta - lstb
 ;; res is accu
 (define (set-sub lsta lstb res)
   (if (null? lsta)
-    res
+    (reverse res) ;; to keep same order
     (if (member (car lsta) lstb)
       (set-sub (cdr lsta) lstb res)
       (set-sub (cdr lsta) lstb (cons (car lsta) res)))))
@@ -50,6 +52,15 @@
     (if (member (car lsta) lstb)
       (set-union (cdr lsta) lstb)
       (set-union (cdr lsta) (cons (car lsta) lstb)))))
+
+;; Set intersect with lists
+;; return lsta INTERSECT lstb
+(define (set-inter lsta lstb)
+  (if (null? lsta)
+      '()
+      (if (member (car lsta) lstb)
+          (cons (car lsta) (set-inter (cdr lsta) lstb))
+          (set-inter (cdr lsta) lstb))))
 
 ;;-----------------------------------------------------------------------------
 ;; Lists
@@ -75,8 +86,17 @@
          (else (append (flatten (car x))
                        (flatten (cdr x))))))
 
+(define (keep fn lst)
+  (foldr (lambda (el r) (if (fn el) (cons el r) r)) '() lst))
+
 (define (count lst fn)
   (foldr (lambda (n r) (if (fn n) (+ 1 r) r)) 0 lst))
+
+(define (find fn lst)
+  (if (null? lst)
+      #f
+      (or (and (fn (car lst)) (car lst))
+          (find fn (cdr lst)))))
 
 ;; Return n firsts elements of lst
 (define (list-head lst n)
@@ -92,6 +112,32 @@
      (if (eq? l el)
         #t
         #f)))
+
+;; Return #t if lst contains at least one duplicate
+;; Return #f if lst contains no duplicate
+;; Check for duplicate using test function (eq?, equal?, ...)
+(define (findDuplicates lst test)
+  (let ((els (make-table test: test)))
+    (define (find lst)
+      (cond ((null? lst) #f)
+            ((table-ref els (car lst) #f) #t)
+            (else
+              (table-set! els (car lst) #t)
+              (find (cdr lst)))))
+    (find lst)))
+
+;; Return pair:
+;; car: removed element
+;; cdr: list with first occurrence of el removed
+(define (assoc-remove el lst)
+  (if (null? lst)
+      (cons #f '())
+      (if (equal? (car (car lst)) el)
+          lst
+          (let ((r (assoc-remove el (cdr lst))))
+            (cons (car r)
+                  (cons (car lst)
+                        (cdr r)))))))
 
 (define (symbol->list s)
   (string->list (symbol->string s)))
@@ -133,6 +179,9 @@
         (+ 1 (assocount el (cdr lst)))
         (assocount el (cdr lst))))))
 
+(define (void? n)
+  (eq? #!void n))
+
 ;; Is the v a literal ?
 (define (literal? v)
    (or (char? v) (number? v) (symbol? v) (vector? v) (string? v) (boolean? v) (null? v)))
@@ -142,6 +191,9 @@
   (if (> n 0)
     (begin (apply fn args)
            (apply call-n (append (list (- n 1) fn ) args)))))
+
+(define-macro (1-if condition)
+  `(if ,condition 1 0))
 
 ;;-----------------------------------------------------------------------------
 ;; Specific to Gambit
@@ -157,7 +209,11 @@
     (if (>= n (expt 2 63)) (- n (expt 2 64)) n)))
 
 (define (encoding-obj encoding)
-  (##encoding->object encoding))
+  (let ((n
+          (if (< encoding 0)
+              (+ (expt 2 63) (bitwise-and encoding (- (expt 2 63) 1)))
+              encoding)))
+    (##encoding->object n)))
 
 (define (pp-flonum n #!optional (nfrac 2))
   (define (print-int-part n)
@@ -173,17 +229,52 @@
     (print-frac (- n (truncate n)) nfrac)
     (newline)))
 
+(define (permanent-object? obj)
+  (and (##mem-allocated? obj)
+       (let* ((obj-addr (- (obj-encoding obj) TAG_MEMOBJ))
+              (life (bitwise-and (get-i64 obj-addr) 7)))
+         (= life LIFE_PERM))))
+
+(define (alloc-perm-procedure)
+  ((c-lambda ()
+             scheme-object
+             "___result = ___EXT(___alloc_scmobj) (NULL, ___sPROCEDURE, 8);")))
+
+(define (alloc-still-vector-0 len)
+  ((c-lambda (int)
+             scheme-object
+             "___result = ___EXT(___make_vector) (___PSTATE, ___arg1, ___FIX(0));")
+   len))
+
 (define (alloc-still-vector len)
   ((c-lambda (int)
              scheme-object
              "___result = ___EXT(___make_vector) (___PSTATE, ___arg1, ___FAL);")
    len))
 
+(define (alloc-still-s64vector-0 len)
+  (let ((r (alloc-still-s64vector-0-h len)))
+    (let loop ((i 0))
+      (if (< i len)
+          (begin (s64vector-set! r i 0)
+                 (loop (+ i 1)))))
+    r))
+
+(define (alloc-still-s64vector-0-h len)
+ ((c-lambda (int)
+            scheme-object
+            "___result = ___EXT(___alloc_scmobj) (___ps, ___sS64VECTOR, ___arg1<<3);")
+  len))
+
 (define (release-still-vector vect)
   ((c-lambda (scheme-object)
              void
              "___EXT(___release_scmobj) (___arg1);")
    vect))
+
+(define (get-u64 addr)
+  ((c-lambda (int64) unsigned-long "___result = *___CAST(___U64*,___arg1);")
+   addr))
 
 (define (get-i64 addr)
   ((c-lambda (int64) long "___result = *___CAST(___S64*,___arg1);")
@@ -211,6 +302,10 @@
   ((c-lambda (int64 unsigned-int8) void "*___CAST(___U8*,___arg1) = ___arg2;")
    addr
    val))
+
+ (define (get-i8 addr)
+   ((c-lambda (int64) long "___result = *___CAST(___S8*,___arg1);")
+    addr))
 
 (define (get-scmobj addr)
   ((c-lambda (int64) scheme-object "___result = *___CAST(___SCMOBJ*,___arg1);")

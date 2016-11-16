@@ -1,13 +1,17 @@
 *.o1
 /tools/graphs.pdf
+/tools/benchtimes/result
 lazy-comp
 *~
 out
 out1
 out2
+tmp
 in
 lib.scm
 unit-tests/benchmarks/foo
+unit-tests/mutable-out
 __pycache__/
 CPS/
 script.sh
+foo

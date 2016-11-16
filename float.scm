@@ -62,7 +62,6 @@
 
   (cond ;; Last choice (do we take 2^-23 ?)
       ((= p (* -1 nbits-fraction))
-
          ;; We get the closest number of f between n and n+2^-23
          (let ((sa (abs (- f (+ n (expt 2 p)))))
                (sb (abs (- f n))))
@@ -101,10 +100,17 @@
         (nsign (sign-int f))
         (nexpo (+ bias (cdr frac)))
         (nfrac (frac-int nbits-fraction (- (car frac) 1) 0 -1)))
-
      (+ (* nsign (expt 2 nbits-exp-frac))
         (* nexpo (expt 2 nbits-fraction))
         nfrac))))
+
+(define (get-ieee754-imm64 f)
+  (if (< f 0)
+      (let* ((ieee-rep (ieee754 (abs f) 'double))
+             (64-mod   (bitwise-not (- ieee-rep 1)))
+             (64-modl  (bitwise-and (- (expt 2 63) 1) 64-mod)))
+        (* -1 64-modl))
+      (ieee754 f 'double)))
 
 ;;-----------------------------------------------------------------------------
 ;; Intel SSE2 instructions
@@ -191,8 +197,8 @@
               (and (x86-reg-xmm? src) (or (x86-reg? dst) (x86-mem? dst))))
           "invalid operands")
   (if (x86-reg-xmm? src)
-    (x86-sse-op cgc "test1" src dst #x66 #x7e)
-    (x86-sse-op cgc "test2" dst src #x66 #x6e)))
+    (x86-sse-op cgc "movq" src dst #x66 #x7e)
+    (x86-sse-op cgc "movq" dst src #x66 #x6e)))
 
 (define (x86-cvtsi2sd cgc dst src)
   (assert (or (and (x86-reg-xmm? dst)

@@ -1,0 +1,8 @@
+catch signal SIGTRAP
+command
+i r rax
+set $rip = $rip + 1
+c
+end
+run
+quit

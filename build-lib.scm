@@ -31,6 +31,7 @@
 
 (define LIB_FILES
   '("./lib/op.scm"
+    "./lib/io.scm"
     "./lib/string.scm"
     "./lib/print.scm"
     "./lib/vector.scm"

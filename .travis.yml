@@ -1,0 +1,16 @@
+language: c
+
+install:
+  - git clone https://github.com/gambit/gambit.git
+  - cd gambit
+  - mkdir build
+  - ./configure --prefix=$TRAVIS_BUILD_DIR/gambit/build/
+  - make -j4 latest-release
+  - ./configure --prefix=$TRAVIS_BUILD_DIR/gambit/build/ --enable-single-host
+  - make -j4 from-scratch
+  - make install
+  - export PATH=$TRAVIS_BUILD_DIR/gambit/build/bin/:$PATH
+
+script:
+  - cd $TRAVIS_BUILD_DIR
+  - make && make full-test

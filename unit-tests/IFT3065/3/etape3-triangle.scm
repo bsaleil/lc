@@ -32,7 +32,7 @@
                    3 6 2 5 4 11 12 13 7 8 4 4)))
 
 (define *answer* '())
- 
+
 (define (attempt i depth)
   (cond ((= depth 14)
          ;;(set! *answer* (cons (cdr (vector->list *sequence*)) *answer*))
@@ -61,7 +61,7 @@
   (set! *answer* '())
   (attempt i depth)
   *answer*)
- 
+
 (println (length (test 22 1)))
 
 ;775

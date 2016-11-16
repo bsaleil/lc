@@ -27,18 +27,8 @@
 ;;
 ;;---------------------------------------------------------------------------
 
-(define (number? n)
-  (real? n))
-
 (define (integer? n)
   (fixnum? n)) ;; TODO flonum
-
-(define (real? n)
-  (or (integer? n)
-    (flonum?  n)))
-
-(define (zero? x)
-  (= x 0))
 
 (define (positive? x)
   (> x 0))
@@ -61,16 +51,18 @@
   (define (max-h els m)
     (if (null? els)
        m
-       (if (> (car els) m)
-          (max-h (cdr els) (car els))
-          (max-h (cdr els) m))))
+       (let ((c (car els)))
+         (if (> c m)
+            (max-h (cdr els) c)
+            (max-h (cdr els) m)))))
   (max-h l a))
 
 (define (min a . l)
   (define (min-h els m)
     (if (null? els)
        m
-       (if (< (car els) m)
-          (min-h (cdr els) (car els))
-          (min-h (cdr els) m))))
+       (let ((c (car els)))
+         (if (< (car els) m)
+            (min-h (cdr els) (car els))
+            (min-h (cdr els) m)))))
   (min-h l a))

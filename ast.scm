@@ -28,49 +28,208 @@
 ;;---------------------------------------------------------------------------
 
 (include "~~lib/_asm#.scm")
+(include "~~lib/_x86#.scm") ;; TODO regalloc remove when finished
+(include "extern/copy-permanent.scm")
+
+(define free-vars #f)
+
+;;-----------------------------------------------------------------------------
+
+(define perm-domain #f)
+(define locat-table #f)
+
+(define (init-frontend)
+  (set! locat-table (make-table test: eq?))
+  (set! perm-domain (make-perm-domain))
+  (init-primitives))
 
 ;;-----------------------------------------------------------------------------
 ;; Macros
 
 (define-macro (assert c err)
   `(if (not ,c)
-       (begin (pp ast)
-	      (println "!!! ERROR : " ,err)
-	      (exit 1))))
+       (begin
+        (println "!!! ERROR : " ,err)
+        (exit 1))))
 
-;; Generate primitive types lists from types pattern (used in 'primitives' set)
-(define-macro (prim-types . args)
-  (define (list-head l n)
-    (if (= n 0)
-       '()
-       (cons (car l)
-             (list-head (cdr l) (- n 1)))))
-  (if (= (length args) (+ (car args) 1))
-     `(list (list ,(car args) ,@(cdr args)))
-     `(cons (list ,(car args) ,@(list-head (cdr args) (car args)))
-            (prim-types ,@(list-tail args (+ (car args) 1))))))
+;; Multiple bindings let
+;; ex: (let ((a/b/c (foo))) (println a b c))
+;;     -> (let ((#sym (foo))
+;;              (a (car #sym))
+;;              (b (cadr #sym))
+;;              (c (caddr #sym)))
+;;          (println a b c))
+(define-macro (mlet bindings . body)
+
+  (define (string-split str char)
+    (define (list-split lst el r)
+      (if (null? lst)
+          (list (reverse r))
+          (if (eq? (car lst) el)
+              (cons (reverse r)
+                      (list-split (cdr lst)
+                                  el
+                                  '()))
+              (list-split (cdr lst)
+                          el
+                          (cons (car lst) r)))))
+    (map list->string (list-split (string->list str) char '())))
+
+  (define (count fn lst)
+    (if (null? lst)
+        0
+        (if (fn (car lst))
+            (+ 1 (count fn (cdr lst)))
+            (count fn (cdr lst)))))
+
+  (define (write-bindings bindings)
+    (if (null? bindings)
+        '()
+        (let ((id (caar bindings)))
+          (if (> (count (lambda (el) (char=? el #\/))
+                        (string->list (symbol->string id)))
+                 0)
+              (let* ((r (string-split (symbol->string id) #\/))
+                     (tmp (gensym)))
+                (define (build-subbinding r i)
+                  (if (null? r)
+                      '()
+                      (let ((accessor-sym
+                              (string->symbol
+                                (string-append
+                                  "ca"
+                                  (make-string i #\d)
+                                  "r"))))
+                      (cons `(,(string->symbol (car r)) (,accessor-sym ,tmp))
+                            (build-subbinding (cdr r) (+ i 1))))))
+                (append `((,tmp ,@(cdar bindings)) ,@(build-subbinding r 0))
+                        (write-bindings (cdr bindings))))
+              (cons (car bindings) (write-bindings (cdr bindings)))))))
+
+  `(let* ,(write-bindings bindings) ,@body))
+
+;;-----------------------------------------------------------------------------
+;; Parsistent data structures
+
+;; Associate an entry object to a function number
+;; if opt-entry-points is #t, entry is the cc-table
+;; if opt-entry-points is #f, entry is the 1-sized vector which contains ep
+(define asc-globalfn-entry (make-table))
+(define (asc-globalfn-entry-add fn-num entry)
+  (table-set! asc-globalfn-entry fn-num entry))
+(define (asc-globalfn-entry-get fn-num)
+  (table-ref asc-globalfn-entry fn-num))
+
+;; Keep each constant of the program in a still box
+;; allowing the compiler to generate:
+;; mov dest, [box]
+;; to load the constant
+(define cst-table (make-table test: equal?))
+(define (cst-get cst)
+  (let ((r (table-ref cst-table cst #f)))
+    (if r
+        (+ (obj-encoding r) (- 8 TAG_MEMOBJ))
+        (let* ((box  (alloc-still-vector 1)))
+          (vector-set! box 0 cst)
+          (table-set! cst-table cst box)
+          (+ (obj-encoding box) (- 8 TAG_MEMOBJ))))))
+
+;;
+;; entry-object -> stubs
+;; Associate a pair generic,stub to an entry object
+;; This structure is used to determine if an entry point is a stub
+;; address or a version address
+;;
+(define asc-entry-stub (make-table test: eq?))
+;; Add an entry to the table
+(define (asc-entry-stub-add cctable generic-addr stub-addr)
+  (assert (not (table-ref asc-entry-stub cctable #f))
+          "Internal error")
+  (table-set! asc-entry-stub cctable (cons generic-addr stub-addr)))
+;; Read an entry from the table
+(define (asc-entry-stub-get cctable)
+  (table-ref asc-entry-stub cctable #f))
+
+;;
+;; (entry-obj . idx) -> label list
+;; Associate a list of label to a pair entry-obj/idx
+;; This structure is used to store all addresses where the compiler generated a
+;; direct jump to a stub.
+;; When the stub generate a version stored in this entry object
+;; it patches all stored labels and clear the table entry
+;;
+;; idx is the ctx idx if using cctable, 0 otherwise
+(define asc-entry-load
+  (make-table
+    test: (lambda (k1 k2)
+            (and (eq? (car k1) (car k2))     ;; eq? on cctables
+                 (=   (cdr k1) (cdr k2)))))) ;; = on idx
+;; Add an entry to the table
+(define (asc-entry-load-add entry-obj ctxidx label)
+  (let ((r (table-ref asc-entry-load (cons entry-obj ctxidx) '())))
+    (table-set! asc-entry-load (cons entry-obj ctxidx) (cons label r))))
+;; Get all labels from entry object and ctxidx
+(define (asc-entry-load-get entry-obj ctxidx)
+  (table-ref asc-entry-load (cons entry-obj ctxidx) '()))
+;; Clear the entry for the entry-object/ctxidx
+(define (asc-entry-load-clear entry-obj ctxidx)
+  (table-set! asc-entry-load (cons entry-obj ctxidx) '())) ;; TODO: remove table entry
+
+;; Global variables information
+(define nb-globals 0)
+(define asc-globals (make-table))
+(define (asc-globals-add id stype)
+  (table-set! asc-globals id (cons nb-globals stype))
+  (set! nb-globals (+ nb-globals 1)))
+(define (asc-globals-get id)
+  (table-ref asc-globals id #f))
+(define (global-pos global) (car global))
+(define (global-stype global) (cdr global))
+(define (global-stype-set! global stype) (set-cdr! global stype))
+
+;;
+;; Associate a closure (encoding of scm object) to an entry-obj-loc
+;; This asc keeps allocations of constant closures as permanent objects
+(define asc-entryobj-globalclo (make-table))
+(define (asc-entryobj-globalclo-get entry-obj-loc)
+  (table-ref asc-entryobj-globalclo entry-obj-loc #f))
+(define (asc-entryobj-globalclo-add entry-obj-loc clo-ptr)
+  (assert (not (asc-entryobj-globalclo-get entry-obj-loc))
+          "Internal error")
+  (table-set! asc-entryobj-globalclo entry-obj-loc clo-ptr))
+
+;;
+;; Associate an ep entry object to an ast (eq? on ast)
+(define asc-ast-epentry (make-table test: eq?))
+(define (asc-ast-epentry-get ast)
+  (table-ref asc-ast-epentry ast #f))
+(define (asc-ast-epentry-add ast eo)
+  (assert (not (asc-ast-epentry-get ast))
+          "Internal error")
+  (table-set! asc-ast-epentry ast eo))
 
 ;;-----------------------------------------------------------------------------
 ;; Type predicates
 
 (define type-predicates `(
-  (output-port? . ,CTX_OPORT)
-  (input-port?  . ,CTX_IPORT)
-  (symbol?      . ,CTX_SYM)
-  (string?      . ,CTX_STR)
-  (char?        . ,CTX_CHAR)
-  (vector?      . ,CTX_VECT)
-  (fixnum?      . ,CTX_NUM)
-  (flonum?      . ,CTX_FLO)
-  (procedure?   . ,CTX_CLO)
-  (pair?        . ,CTX_PAI)
-  (null?        . ,CTX_NULL)
+  (output-port? . ,ATX_OPO)
+  (input-port?  . ,ATX_IPO)
+  (symbol?      . ,ATX_SYM)
+  (string?      . ,ATX_STR)
+  (char?        . ,ATX_CHA)
+  (vector?      . ,ATX_VEC)
+  (fixnum?      . ,ATX_INT)
+  (flonum?      . ,ATX_FLO)
+  (procedure?   . ,ATX_CLO)
+  (pair?        . ,ATX_PAI)
+  (null?        . ,ATX_NUL)
 ))
 
 (define (type-predicate? sym)
   (assq sym type-predicates))
 
-(define (predicate-to-ctxtype predicate)
+;; WARNING: this function return constant instance ATX_* do not modify it!
+(define (predicate->ctx-type predicate)
   (let ((r (assq predicate type-predicates)))
     (if r
       (cdr r)
@@ -79,49 +238,85 @@
 ;;-----------------------------------------------------------------------------
 ;; Primitives
 
-;; Primitives: name, nb args min, nb args max
-(define primitives `(
-   (car                 1  1  ,(prim-types 1 CTX_PAI))
-   (cdr                 1  1  ,(prim-types 1 CTX_PAI))
-   (eq?                 2  2  ,(prim-types 2 CTX_ALL CTX_ALL))
-   (char=?              2  2  ,(prim-types 2 CTX_CHAR CTX_CHAR))
-   (not                 1  1  ,(prim-types 1 CTX_ALL))
-   (set-car!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL))
-   (set-cdr!            2  2  ,(prim-types 2 CTX_PAI CTX_ALL))
-   (cons                2  2  ,(prim-types 2 CTX_ALL CTX_ALL))
-   (vector-length       1  1  ,(prim-types 1 CTX_VECT))
-   (vector-ref          2  2  ,(prim-types 2 CTX_VECT CTX_NUM))
-   (char->integer       1  1  ,(prim-types 1 CTX_CHAR))
-   (integer->char       1  1  ,(prim-types 1 CTX_NUM))
-   (string-ref          2  2  ,(prim-types 2 CTX_STR CTX_NUM))
-   (string->symbol      1  1  ,(prim-types 1 CTX_STR))
-   (symbol->string      1  1  ,(prim-types 1 CTX_SYM))
-   (close-output-port   1  1  ,(prim-types 1 CTX_OPORT))
-   (close-input-port    1  1  ,(prim-types 1 CTX_IPORT))
-   (open-output-file    1  1  ,(prim-types 1 CTX_STR))
-   (open-input-file     1  1  ,(prim-types 1 CTX_STR))
-   (string-set!         3  3  ,(prim-types 3 CTX_STR CTX_NUM CTX_CHAR))
-   (vector-set!         3  3  ,(prim-types 3 CTX_VECT CTX_NUM CTX_ALL))
-   (string-length       1  1  ,(prim-types 1 CTX_STR))
-   (read-char           1  1  ,(prim-types 1 CTX_IPORT))
-   (exit                0  0  ,(prim-types 0 ))
-   (make-vector         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_ALL))
-   (make-string         1  2  ,(prim-types 1 CTX_NUM 2 CTX_NUM CTX_CHAR))
-   (eof-object?         1  1  ,(prim-types 1 CTX_ALL))
-   (write-char          2  2  ,(prim-types 2 CTX_CHAR CTX_OPORT))
-   (current-output-port 0  0  ,(prim-types 0 ))
-   (current-input-port  0  0  ,(prim-types 0 ))
-   (list                #f) ;; nb-args and types are not fixed
-))
+(define (primitive-get sym)            (assoc sym primitives))
+(define (primitive-sym prim)           (list-ref  prim 0))
+(define (primitive-lco-cst prim)       (list-ref  prim 1))
+(define (primitive-lcofun prim)        (list-ref  prim 2))
+(define (primitive-codegen prim)       (list-ref  prim 3))
+(define (primitive-rettype prim)       (list-ref  prim 4))
+(define (primitive-nbargs prim)        (list-ref  prim 5))
+(define (primitive-argtypes prim)      (list-tail prim 6))
 
-(define (assert-p-nbargs ast)
-  (let ((infos (cdr (assoc (car ast) primitives))))
-    (assert (or (not (car infos)) ;; nb args and types are not fixed
-                (and (>= (length (cdr ast))
-                         (cadr (assoc (car ast) primitives)))
-                     (<= (length (cdr ast))
-                         (caddr (assoc (car ast) primitives)))))
+;; TODO: remove or add ?/! from codegen-p functions
+;; * Most primitives are "simple", they only need to call code generator.
+;;   A "simple" primitive has only a codegen function and no lco getter
+;; * More complex primitives need more complex work.
+;;   A "complex" primitive has no codegen function but a lco getter that is
+;;   used to guild lco chain and return first lco of the chain
+;; TODO CST APPLY ?
+
+(define primitives '())
+(define (init-primitives)
+  (set! primitives `(
+    ;; Symbol            LCO cst all    LCO getter        Codegen function          Return-type Nb-args Args-type
+    (car                 ,cst-car       #f                ,codegen-p-cxr            ,ATX_UNK 1 ,ATX_PAI                   )
+    (cdr                 ,cst-cdr       #f                ,codegen-p-cxr            ,ATX_UNK 1 ,ATX_PAI                   )
+    (cons                #f             #f                ,codegen-p-cons           ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL          )
+    (eq?                 ,cst-eq?       ,lco-p-eq?        #f                        ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          )
+    (char=?              ,dummy-cst-all ,lco-p-char=?     #f                        ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA          )
+    (quotient            ,cst-binop     ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
+    (modulo              ,cst-binop     ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
+    (remainder           ,dummy-cst-all ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
+    (zero?               ,dummy-cst-all ,lco-p-zero?      #f                        ,ATX_BOO 1 ,ATX_NUM                   )
+    (not                 ,cst-not       #f                ,codegen-p-not            ,ATX_BOO 1 ,ATX_ALL                   )
+    (set-car!            #f             #f                ,codegen-p-set-cxr!       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
+    (set-cdr!            #f             #f                ,codegen-p-set-cxr!       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
+    (vector-length       ,dummy-cst-all #f                ,codegen-p-vector-length  ,ATX_INT 1 ,ATX_VEC                   )
+    (vector-ref          ,dummy-cst-all #f                ,codegen-p-vector-ref     ,ATX_UNK 2 ,ATX_VEC ,ATX_INT          )
+    (char->integer       ,dummy-cst-all #f                ,codegen-p-ch<->int       ,ATX_INT 1 ,ATX_CHA                   )
+    (integer->char       ,cst-int->char #f                ,codegen-p-ch<->int       ,ATX_CHA 1 ,ATX_INT                   )
+    (string-ref          ,dummy-cst-all #f                ,codegen-p-string-ref     ,ATX_CHA 2 ,ATX_STR ,ATX_INT          )
+    (string-set!         #f             #f                ,codegen-p-string-set!    ,ATX_VOI 3 ,ATX_STR ,ATX_INT ,ATX_CHA )
+    (vector-set!         #f             #f                ,codegen-p-vector-set!    ,ATX_VOI 3 ,ATX_VEC ,ATX_INT ,ATX_ALL )
+    (string-length       ,dummy-cst-all #f                ,codegen-p-string-length  ,ATX_INT 1 ,ATX_STR                   )
+    (exit                #f             #f                 #f                       ,ATX_VOI 0                            )
+    (make-vector         #f             #f                ,codegen-p-make-vector    ,ATX_VEC 2 ,ATX_INT ,ATX_ALL          )
+    (make-string         #f             #f                ,codegen-p-make-string    ,ATX_STR 2 ,ATX_INT ,ATX_CHA          )
+    (eof-object?         ,dummy-cst-all #f                ,codegen-p-eof-object?    ,ATX_BOO 1 ,ATX_ALL                   )
+    (symbol->string      ,dummy-cst-all #f                ,codegen-p-symbol->string ,ATX_STR 1 ,ATX_SYM                   )
+    (current-output-port #f             ,lco-p-cur-x-port #f                        ,ATX_OPO 0                            )
+    (current-input-port  #f             ,lco-p-cur-x-port #f                        ,ATX_IPO 0                            )
+    (number?             ,cst-number?   ,lco-p-number?    #f                        ,ATX_BOO 1 ,ATX_ALL                   )
+    (##apply             #f             ,lco-p-apply      #f                        ,ATX_UNK 2 ,ATX_CLO ,ATX_ALL          )
+    (##box               #f             #f                ,codegen-p-box            ,ATX_BOX 1 ,ATX_ALL                   )
+    (##unbox             #f             #f                ,codegen-p-unbox          ,ATX_UNK 1 ,ATX_ALL                   )
+    (##set-box!          #f             #f                ,codegen-p-set-box        ,ATX_VOI 2 ,ATX_ALL ,ATX_ALL          )
+    (##gettime-ns        #f             #f                ,codegen-p-gettime-ns     ,ATX_INT 0                            )
+    (vector              #f             ,lco-p-vector     #f                        ,ATX_VEC #f                           )
+    (list                #f             ,lco-p-list       #f                        ,ATX_PAI #f                           )
+    ;; These primitives are inlined during expansion but still here to build lambda
+    (real?               ,dummy-cst-all #f                #f                        ,ATX_BOO 1 ,ATX_ALL                   )
+    (eqv?                ,dummy-cst-all #f                #f                        ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          ))))
+
+(define (assert-p-nbargs sym ast)
+  (let ((prim (primitive-get sym)))
+    (assert (or (not (primitive-nbargs prim))
+                (and (= (length (cdr ast))
+                        (primitive-nbargs prim))))
             ERR_WRONG_NUM_ARGS)))
+
+;;-----------------------------------------------------------------------------
+;; AST SPECIAL NODES
+
+(define (atom-node-make val)
+  (list '$$atom val))
+
+(define (atom-node? n)
+  (and (pair? n)
+       (eq? (car n) '$$atom)))
+
+(define (atom-node-val n)
+  (cadr n))
 
 ;;-----------------------------------------------------------------------------
 ;; AST DISPATCH
@@ -132,187 +327,208 @@
 
 ;; Gen lazy code from ast
 (define (gen-ast ast succ)
-  (cond ;; String
-        ((string? ast)  (mlc-string ast succ))
-        ;; Symbol
-        ((symbol? ast) (mlc-identifier ast succ))
-        ;; Flonum
-        ((flonum? ast)  (mlc-flonum ast succ))
-        ;; Other literal
-        ((literal? ast) (mlc-literal ast succ))
-        ;; Pair
-        ((pair? ast)
-         (let ((op (car ast)))
-           (cond ;; Special
-                 ((member op '(breakpoint)) (mlc-special ast succ))
-                 ;; TODO special function
-                 ((eq? op '$$print-flonum) (mlc-printflonum ast succ))
-                 ;; Inlined primitive
-                 ((assoc op primitives) (mlc-primitive ast succ))
-                 ;; Quote
-                 ((eq? 'quote (car ast)) (mlc-quote (cadr ast) succ))
-                 ;; Set!
-                 ((eq? 'set! (car ast)) (mlc-set! ast succ))
-                 ;; Lambda
-                 ((eq? op 'lambda) (mlc-lambda ast succ #f))
-                 ;; Begin
-                 ((eq? op 'begin) (mlc-begin ast succ))
-                 ;; Do
-                 ((eq? op 'do) (mlc-do ast succ))
-                 ;; Binding
-                 ((member op '(let let* letrec)) (mlc-binding ast succ op))
-                 ;; Operator num
-                 ((member op '(FLOAT+ FLOAT- FLOAT* FLOAT/ FLOAT< FLOAT> FLOAT<= FLOAT>= FLOAT=))
-                   (let ((generic-op (list->symbol (list-tail (symbol->list op) 5))))
-                     (gen-ast (cons generic-op (cdr ast))
-                              succ)))
-                 ((member op '(+ - * < > <= >= = /))         (mlc-op-n ast succ op))   ;; nary operator
-                 ((member op '(quotient modulo remainder)) (mlc-op-bin ast succ op)) ;; binary operator
-                 ;; Type predicate
-                 ((type-predicate? op) (mlc-test ast succ))
-                 ;; If
-                 ((eq? op 'if) (mlc-if ast succ))
-                 ;; Define
-                 ((eq? op 'define) (mlc-define ast succ))
-                 ;; Apply
-                 ((eq? op '$apply) (mlc-apply ast succ))
-                 ;; Call expr
-                 (else (mlc-call ast succ)))))
-        ;; *unknown*
-        (else
-         (error "unknown ast" ast))))
+
+  (assert (pair? ast) "Internal error")
+
+  (let ((op (car ast)))
+    (cond
+      ;; Atom node
+      ((atom-node? ast) (mlc-atom ast succ))
+      ;; Special forms
+      ((eq? op 'begin)  (mlc-begin ast succ))
+      ((eq? op 'define) (mlc-define ast succ))
+      ((eq? op 'if)     (mlc-if ast succ))
+      ((eq? op 'lambda) (mlc-lambda-ast ast succ))
+      ((eq? op 'let)    (mlc-let ast succ)) ;; Also handles let* (let* is a macro)
+      ((eq? op 'letrec) (mlc-letrec ast succ))
+      ((eq? op 'set!)   (mlc-set! ast succ))
+      ;; Known operator
+      ((atom-node? op)
+         (let ((val (atom-node-val op)))
+           (cond
+             ;;
+             ((primitive-get val)   (mlc-primitive val ast succ))
+             ((type-predicate? val) (mlc-test val ast succ))
+             ((gambit-call? op)     (mlc-gambit-call ast succ #f))
+             ((member val '(+ - * < > <= >= = /)) (mlc-op-n ast succ val))
+             ;; Call
+             (else (mlc-call ast succ)))))
+      ;; Call expr
+      (else (mlc-call ast succ)))))
+
+;;-----------------------------------------------------------------------------
+;; ATOM
+
+(define (mlc-atom ast succ)
+  (let ((val (atom-node-val ast)))
+    (cond ((string? val)          (mlc-string val ast succ))
+          ((symbol? val)          (mlc-identifier val ast succ))
+          ((compiler-flonum? val) (mlc-literal (exact->inexact val) ast succ))
+          ((literal? val)         (mlc-literal val ast succ))
+          ((and (pair? val)
+                (eq? (car val) 'quote))
+             (mlc-literal (cadr val) ast succ))
+          (else (error "Internal error (mlc-atom)")))))
 
 ;;-----------------------------------------------------------------------------
 ;; LITERALS
 
-;;
-;; Make lazy code from flonum literal
-;;
-(define (mlc-flonum ast succ)
-  (make-lazy-code
-      (lambda (cgc ctx)
-        (let ((immediate
-                (if (< ast 0)
-                    (let* ((ieee-rep (ieee754 (abs ast) 'double))
-                           (64-mod   (bitwise-not (- ieee-rep 1)))
-                           (64-modl  (bitwise-and (- (expt 2 63) 1) 64-mod)))
-                      (* -1 64-modl))
-                    (ieee754 ast 'double))))
-          (codegen-flonum cgc immediate)
-          (jump-to-version cgc succ (ctx-push ctx CTX_FLO))))))
-
-;;
-;; Make lazy code from symbol literal
-;;
-(define (mlc-symbol ast succ)
-  (make-lazy-code
-    (lambda (cgc ctx)
-      (let ((qword (get-symbol-qword ast)))
-        (codegen-symbol cgc ast)
-        (jump-to-version cgc succ (ctx-push ctx CTX_SYM))))))
-
-;;
-;; Make lazy code from vector literal
-;;
-(define (mlc-vector ast succ)
-  (let ((lazy-vector
-          (make-lazy-code
-            (lambda (cgc ctx)
-              (codegen-vector cgc ast)
-              (jump-to-version cgc succ (ctx-push (ctx-pop ctx (vector-length ast)) CTX_VECT))))))
-    ;; Push all vector elements in reverse order
-    (gen-ast-l (reverse (vector->list ast)) lazy-vector)))
-
-;;
-;; Make lazy code from string literal
-;;
-(define (mlc-string ast succ)
-  (make-lazy-code
-    (lambda (cgc ctx)
-      (codegen-string cgc ast)
-      (jump-to-version cgc succ (ctx-push ctx CTX_STR)))))
-
-;;
-;; Make lazy code from QUOTE
-;;
-(define (mlc-quote ast succ)
-  (cond ((pair? ast)
-         (let* ((lazy-pair (mlc-pair succ))
-                (lazy-cdr  (mlc-quote (cdr ast) lazy-pair)))
-           (mlc-quote (car ast) lazy-cdr)))
-        ((symbol? ast)
-            (mlc-symbol ast succ))
-        ((vector? ast)
-            (mlc-vector ast succ))
-        (else (gen-ast ast succ))))
-
-;;
-;; Make lazy code from SYMBOL
-;;
-(define (mlc-identifier ast succ)
-
- (make-lazy-code
-   (lambda (cgc ctx)
-
-     (let ((local  (assoc ast (ctx-env ctx)))
-           (global (assoc ast globals)))
-     ;; If local or global (not primitive nor type predicate)
-     (if (or local global)
-         ;; Id lookup
-         (let ((ctx-type (cond (local
-                                  (if (eq? (identifier-type (cdr local)) 'free)
-                                     ;; Free var
-                                     (gen-get-freevar  cgc ctx local 'stack #f)
-                                     ;; Local var
-                                     (gen-get-localvar cgc ctx local 'stack #f)))
-                               (global
-                                  (gen-get-globalvar cgc ctx global 'stack))
-                               (else
-                                  (gen-error cgc (ERR_UNKNOWN_VAR ast))))))
-
-            (let* ((nctx (if (eq? ctx-type CTX_MOBJ)
-                           (ctx-push ctx CTX_UNK 1 ast)
-                           (ctx-push ctx ctx-type 1 ast))))
-              (jump-to-version cgc succ nctx)))
-         ;; Else it is a primitive / type predicate
-         (let ((r (assoc ast primitives)))
-            (if r
-               ;; Create and return function calling primitive
-               (let ((args (build-list (cadr r) (lambda (x) (string->symbol (string-append "arg" (number->string x)))))))
-                 (jump-to-version cgc
-                                  (gen-ast `(lambda ,args
-                                              (,ast ,@args))
-                                           succ)
-                                  ctx))
-               ;; Type predicate
-               (if (type-predicate? ast)
-                 (jump-to-version cgc
-                                  (gen-ast `(lambda (a) (,ast a)) succ)
-                                  ctx)
-                 (gen-error cgc (ERR_UNKNOWN_VAR ast))))))))))
+(define (compiler-flonum? n)
+ (and (number? n)
+      (or (flonum? n)                            ;; 3.3
+          (and (integer? n) (inexact? n))        ;; 3.
+          (and (not (integer? n)) (exact? n))))) ;; (/ 10 3)
 
 ;;
 ;; Make lazy code from num/bool/char/null literal
 ;;
-(define (mlc-literal ast succ)
-  (if (and (number? ast)
-           (or (>= ast (expt 2 61))
-               (<  ast (* -1  (expt 2 60)))))
-    (mlc-flonum ast succ)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (codegen-literal cgc ast)
-        (jump-to-version cgc
-                         succ
-                         (ctx-push ctx
-                                   (cond ((integer? ast) CTX_NUM)
-                                         ((boolean? ast) CTX_BOOL)
-                                         ((char? ast)    CTX_CHAR)
-                                         ((null? ast)    CTX_NULL)
-                                         (else (error ERR_INTERNAL)))))))))
+(define (mlc-literal lit ast succ)
+
+  (if (and (integer? lit)
+           (not (fixnum? lit)))
+      ;; Bignum, fall back to flonum
+      (set! lit (exact->inexact lit)))
+
+  (make-lazy-code
+    #f
+    (lambda (cgc ctx)
+      (let ((literal
+              (if (and (##mem-allocated? lit)
+                       (not (eq? (mem-allocated-kind lit) 'PERM)))
+                  (copy-permanent lit #f perm-domain)
+                  lit)))
+        (let ((ctx (ctx-push ctx (literal->ctx-type literal) #f)))
+          (jump-to-version cgc succ ctx))))))
+
+;;
+;; Make lazy code from string literal
+;;
+(define (mlc-string str ast succ)
+  (make-lazy-code
+    #f
+    (lambda (cgc ctx)
+      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
+        (apply-moves cgc ctx moves)
+        (codegen-string cgc str reg)
+        (jump-to-version cgc succ (ctx-push ctx (make-ctx-tstr) reg))))))
 
 ;;-----------------------------------------------------------------------------
-;; INTERNAL FORMS
+;; VARIABLES GET
+
+;;
+;; Make lazy code from SYMBOL
+;;
+(define (mlc-identifier sym ast succ)
+
+  (define next-is-cond (member 'cond (lazy-code-flags succ)))
+
+  (define (inlined-cond? type-fn)
+    (and next-is-cond
+         (let ((type (type-fn)))
+           (and
+             type
+             (not (ctx-tboo? type))     ;; If it's a bool, we must check the value
+             (not (ctx-tunk? type)))))) ;; If it's a unk, we must check the type
+
+  (define (lcl-inlined-cond? ctx identifier)
+    (inlined-cond? (lambda () (ctx-identifier-type ctx identifier))))
+
+  (define (gbl-inlined-cond? id)
+    (inlined-cond? (lambda ()
+                     (let ((r (asc-globals-get id)))
+                       (and r (global-stype r))))))
+
+  (make-lazy-code
+    #f
+    (lambda (cgc ctx)
+
+      (let ((local  (assoc sym (ctx-env ctx)))
+            (global (asc-globals-get sym)))
+
+        ;;
+        (cond ;; Identifier local or global and inlined condition
+              ((or (and local  (lcl-inlined-cond? ctx (cdr local))) ;; TODO wip add bool cst
+                   (and global (gbl-inlined-cond? sym)))
+                (jump-to-version cgc (lazy-code-lco-true succ) ctx))
+              ;; Identifier local and cst literal
+              ((and local
+                    (ctx-type-is-cst (ctx-identifier-type ctx (cdr local))))
+                 ;; TODO use =>
+                 (let* ((cst (ctx-type-cst (ctx-identifier-type ctx (cdr local))))
+                        (ctx (ctx-push ctx (ctx-identifier-type ctx (cdr local)) #f sym)))
+                   (jump-to-version cgc succ ctx)))
+              ;; Identifier is a local variable
+              (local
+                (gen-get-localvar cgc ctx local succ))
+              ;; Identifier is a global variable
+              (global
+                (gen-get-globalvar cgc ctx global succ))
+              ;; Vector
+              ((eq? sym 'vector)
+                 (let* ((node-lv (atom-node-make 'list->vector))
+                        (node-l  (atom-node-make 'l))
+                        (lco     (gen-ast `(lambda l (,node-lv ,node-l)) succ)))
+                   (jump-to-version cgc lco ctx)))
+              ;; List
+              ((eq? sym 'list)
+                 (let* ((node (atom-node-make 'n))
+                        (lco  (gen-ast `(lambda n ,node) succ)))
+                   (jump-to-version cgc lco ctx)))
+              ;; Primitive
+              ((primitive-get sym) =>
+                 (lambda (r)
+                   (let ((ast
+                           ;; primitive with fixed number of args
+                           (let* ((args (build-list (primitive-nbargs r) (lambda (x) (string->symbol (string-append "arg" (number->string x))))))
+                                  (args-nodes (map atom-node-make args)))
+                             `(lambda ,args (,ast ,@args-nodes)))))
+                     (jump-to-version cgc (gen-ast ast succ) ctx))))
+              (else (gen-error cgc (ERR_UNKNOWN_VAR sym))))))))
+
+(define (gen-closure-from-cst cgc ctx local succ)
+  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0))
+         (stype (ctx-identifier-type ctx (cdr local)))
+         (fn-num (ctx-type-cst stype))
+         (entry-obj (asc-globalfn-entry-get fn-num)))
+    (apply-moves cgc ctx moves)
+    (gen-closure cgc reg #f entry-obj '())
+    (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg (car local)))))
+
+(define (gen-get-localvar cgc ctx local succ)
+
+  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0))
+         (loc (ctx-identifier-loc ctx (cdr local)))
+         (type (ctx-identifier-type ctx (cdr local))))
+
+    (apply-moves cgc ctx moves)
+
+    (if (ctx-loc-is-freemem? loc)
+        ;; It's a free var that is only in closure
+        (let ((lclo (ctx-get-closure-loc ctx)))
+          (codegen-get-free cgc (ctx-fs ctx) reg lclo loc))
+        ;; The variable is in a register or in non closure memory
+        (apply-moves cgc ctx (list (cons loc reg))))
+
+    (if (and (ctx-type-is-cst type)
+             reg)
+        (error "NYI")) ;; TODO: Free a register only if type is not a cst
+    (jump-to-version cgc succ (ctx-push ctx type reg (car local)))))
+
+(define (gen-get-globalvar cgc ctx global succ)
+
+  (let ((type (or (global-stype global) (make-ctx-tunk))))
+
+    (if (ctx-type-is-cst type)
+        ;; Type is cst, push cst to ctx
+        (jump-to-version cgc succ (ctx-push ctx type #f))
+        ;; Type is not a cst, free a register and use it
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
+          (apply-moves cgc ctx moves)
+          (codegen-get-global cgc (global-pos global) reg)
+          (jump-to-version cgc succ (ctx-push ctx type reg))))))
+
+;;-----------------------------------------------------------------------------
+;; VARIABLES SET
 
 ;;
 ;; Make lazy code from SET!
@@ -320,1408 +536,2056 @@
 (define (mlc-set! ast succ)
 
   (let* ((id (cadr ast))
-         (lazy-set
-            (make-lazy-code
-               (lambda (cgc ctx)
-                  (let* ((glookup-res (assoc id globals))
-                         (nctx
-                           (if glookup-res
-                              ;; Global var
-                              (gen-set-globalvar cgc ctx glookup-res)
-                                 (let ((res (assoc id (ctx-env ctx))))
-                                    (if res
-                                       (if (eq? (identifier-type (cdr res)) 'free)
-                                          (gen-set-freevar  cgc ctx res)  ;; Free var
-                                          (gen-set-localvar cgc ctx res)) ;; Local var
-                                      #f)))))
-                      (if (not nctx)
-                          (gen-error cgc (ERR_UNKNOWN_VAR id))
-                          (begin
-                            (codegen-void cgc)
-                            (jump-to-version cgc succ (ctx-push (ctx-pop nctx) CTX_VOID)))))))))
+         (lazy-set!
+           (make-lazy-code
+             #f
+             (lambda (cgc ctx)
+               (let ((global (asc-globals-get id)))
+                 (if global
+                     (gen-set-globalvar cgc ctx global succ)
+                     (error "Internal error"))))))
+         (lazy-drop
+           (make-lazy-code
+             #f
+             (lambda (cgc ctx)
+               (let ((ctx (drop-cst-value cgc ctx 0)))
+                 (jump-to-version cgc lazy-set! ctx))))))
 
-     (gen-ast (caddr ast) lazy-set)))
+    (gen-ast (caddr ast) lazy-drop)))
+
+(define (gen-set-globalvar cgc ctx global succ)
+  (mlet ((pos (global-pos global))
+         (moves/reg/ctx (ctx-get-free-reg ctx succ 1))
+         (tval (ctx-get-type ctx 0))
+         (cst? (ctx-type-is-cst tval))
+         (lval (if cst?
+                   (ctx-type-cst tval)
+                   (ctx-get-loc ctx 0))))
+    (apply-moves cgc ctx moves)
+    (codegen-set-global cgc (ctx-fs ctx) reg pos lval cst?)
+    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))
+
+;;-----------------------------------------------------------------------------
+;; INTERNAL FORMS
 
 ;;
 ;; Make lazy code from DEFINE
 ;;
 (define (mlc-define ast succ)
 
-  (let* ((identifier (cadr ast))
-         (lazy-bind (make-lazy-code
-                      (lambda (cgc ctx)
-                        (let* ((res (assoc identifier globals)) ;; Lookup in globals
-                               (pos (cdr res)))                 ;; Get global pos
-                          (codegen-define-bind cgc pos)
-                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
-         (lazy-val (gen-ast (caddr ast) lazy-bind)))
+  (let ((global (asc-globals-get (cadr ast))))
+    (cond
+          ((and global (ctx-tclo? (global-stype global)))
+            ;; CONST FN TODO: remove when const versioning implemented!
+            (let* ((identifier (cadr ast))
+                   (fn-num (init-entry-cst (caddr ast) '() (ctx-init))))
+              (ctx-type-cst-set! (global-stype global) fn-num)
+              (make-lazy-code
+                #f
+                (lambda (cgc ctx)
+                  (jump-to-version cgc succ (ctx-push ctx (global-stype global) #f))))))
+          (else
+            ;;
+            (let* ((identifier (cadr ast))
+                   (lazy-bind (make-lazy-code
+                                #f
+                                (lambda (cgc ctx)
 
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (codegen-define-id cgc)
-        (set! globals (cons (cons identifier (length globals)) globals))
-        (jump-to-version cgc lazy-val ctx)))))
+                                  (mlet ((pos (global-pos (asc-globals-get identifier))) ;; Lookup in globals
+                                         ;;
+                                         (moves/reg/ctx (ctx-get-free-reg ctx succ 1))
+                                         (type (ctx-get-type ctx 0))
+                                         (cst? (ctx-type-is-cst type))
+                                         (lvalue (if cst?
+                                                     (ctx-type-cst type)
+                                                     (ctx-get-loc ctx 0))))
+                                    (apply-moves cgc ctx moves)
+                                    (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue cst?)
+                                    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))))
+                   (lazy-drop
+                     (make-lazy-code
+                      #f
+                       (lambda (cgc ctx)
+                         (let ((type (ctx-get-type ctx 0)))
+                           (if (and (ctx-type-is-cst type)
+                                    (ctx-tclo? type))
+                               (let ((ctx (drop-cst-value cgc ctx 0)))
+                                 (jump-to-version cgc lazy-bind ctx))
+                               (jump-to-version cgc lazy-bind ctx))))))
+                   (lazy-val (gen-ast (caddr ast) lazy-drop)))
+
+              (put-i64 (+ globals-addr (* 8 (global-pos (asc-globals-get (cadr ast))))) ENCODING_VOID)
+              lazy-val)))))
 
 ;;
 ;; Make lazy code from LAMBDA
 ;;
 
-;; Store the cc table associated to each lambda (ast -> cctable)
-;; cctable is a still vector
-(define cctables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))     ;; eq? on ast
-                                                      (equal? (cdr a) (cdr b)))))) ;; equal? on ctx information
-
-;; Store the cr table associated to each lambda (ast -> crtable)
-;; crtable is a still vector
-(define crtables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))
-                                                      (equal? (cdr a) (cdr b))))))
-
-;; TODO
-;; TODO
-(define entry-points-locs (make-table test: eq?))
-
-(define (get-entry-points-loc ast stub-addr)
-  (let ((r (table-ref entry-points-locs ast #f)))
-    (if r
-        r
-        (let ((v (alloc-still-vector 1)))
-          (vector-set! v 0 (quotient stub-addr 4)) ;; quotient 4 because vector-set write the encoded value (bug when using put-i64?)
-          (table-set! entry-points-locs ast v)
-          v))))
-;; TODO
-;; TODO
-
-;; Return cctable from cctable-key
-;; Return the existing table if already created or create one, add entry, and return it
-(define (get-cctable ast cctable-key stub-addr generic-addr)
-  (let ((cctable (table-ref cctables cctable-key #f)))
-    (if cctable
-      cctable
-      (let ((t (make-cc (+ 1 global-cc-table-maxsize) stub-addr generic-addr)))
-        (table-set! cctables cctable-key t)
-        (set! cctables-loc-code (cons (cons (- (obj-encoding t) 1)
-                                            ast)
-                                      cctables-loc-code))
-        t))))
-
-;; Return crtable from crtable-key
-;; Return the existing table if already created or create one, add entry, and return it
-(define (get-crtable ast crtable-key stub-addr)
-  (let ((crtable (table-ref crtables crtable-key #f)))
-    (if crtable
-        crtable
-        (let ((t (make-cr global-cr-table-maxsize stub-addr)))
-          (table-set! crtables crtable-key t)
-          t))))
-
-;; Return crtable key from ast and ctx
-;; The key contains ast, stack types, and a list of known identifier with types
-(define (get-crtable-key ast ctx)
-  (cons ast
-        (cons (ctx-stack ctx)
-          (map (lambda (el)
-                 (cons (car el)
-                       (identifier-stype (cdr el))))
-               (ctx-env ctx)))))
-
-;; TODO: change to table, merge with cctables ? (change cctable-key to something better)
-;; Store pairs associating cctable address to the code of the corresponding function
-(define cctables-loc-code '())
-
-(define (mlc-lambda ast succ lib-define)
-
-  (let* (;; Lambda free vars
-         (fvars #f)
-         ;; Flatten list of param (include rest param)
-         (all-params (flatten (cadr ast)))
-         ;; Lambda mutable vars
-         (mvars (mutable-vars (caddr ast) all-params))
-         ;; Rest param ?
-         (rest-param (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
-                         (and (pair? (cadr ast)) (not (list? (cadr ast)))))) ;; (foo a..z . rest)
-         ;; Params list
-         (params
-           (if rest-param
-              (formal-params (cadr ast))
-              (cadr ast)))
-         ;; Lazy lambda return
-         (lazy-ret (make-lazy-code-ret ;; Lazy-code with 'ret flag
-                     (lambda (cgc ctx)
-                       ;; Stack:
-                       ;;         RSP
-                       ;;     | ret-val | closure | arg n |  ...  | arg 1 | ret-addr |
-                       ;; Or if rest :
-                       ;;     | ret-val | closure |  rest | arg n |  ...  | arg 1 | ret-addr |
-                       (let ((retaddr-offset ;; after pop ret-val
-                               (if rest-param
-                                   (* 8 (+ 2 (length params)))
-                                   (* 8 (+ 1 (length params))))))
-                         (if opt-return-points
-                             (let* ((ret-type (car (ctx-stack ctx)))
-                                    (crtable-offset (type-to-cridx ret-type)))
-                               (codegen-return-cr cgc retaddr-offset crtable-offset))
-                             (codegen-return-rp cgc retaddr-offset))))))
-         ;; Lazy lambda body
-         (lazy-body (gen-ast (caddr ast) lazy-ret))
-         ;; Lazy function prologue : creates rest param if any, transforms mutable vars, ...
-         (lazy-prologue (get-lazy-prologue ast lazy-body rest-param mvars))
-         ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
-         (lazy-generic-prologue (get-lazy-generic-prologue ast lazy-body rest-param mvars params)))
-
-    ;; Lazy closure generation
-    (make-lazy-code
-      (lambda (cgc ctx)
-
-        (let* (;; Lambda stub
-               (stub-labels (add-fn-callback cgc
-                                             1
-                                             (lambda (sp sctx ret-addr selector closure)
-
-                                              (cond ;; CASE 1 - Use multiple entry points AND use max-versions limit AND this limit is reached
-                                                    ((and (= selector 0)
-                                                          opt-max-versions
-                                                          (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
-
-                                                       ;; Then, generate a generic version and patch cc-table entry corresponding to call-ctx with the generic version
-                                                       (let* ((env     (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0)))
-                                                              (nb-args (length params))
-                                                              ;; Call ctx used to patch cc-table
-                                                              (call-ctx (make-ctx (ctx-stack sctx) env nb-args))
-                                                              ;; Generic ctx used to generate version
-                                                              (gen-ctx  (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD)) env nb-args)))
-                                                          (gen-version-fn ast closure lazy-generic-prologue gen-ctx call-ctx #f)))
-
-                                                    ;; CASE 2 - Don't use multiple entry points
-                                                    ((= selector 1)
-                                                        ;; Then, generate a generic version and patch generic ptr in closure
-                                                        (let ((ctx (make-ctx (append (cons CTX_CLO (make-list (length params) CTX_UNK)) (list CTX_RETAD))
-                                                                             (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
-                                                                             (length params))))
-                                                          (gen-version-fn ast closure lazy-generic-prologue ctx ctx #t)))
-
-                                                    ;; CASE 3 - Use multiple entry points AND limit is not reached or there is no limit
-                                                    (else
-                                                       ;; Then, generate a specified version and patch cc-table in closure
-                                                       (let ((ctx (make-ctx (ctx-stack sctx)
-                                                                            (build-env mvars all-params 0 (build-fenv (ctx-stack ctx) (ctx-env ctx) mvars fvars 0))
-                                                                            (length params))))
-                                                         (gen-version-fn ast closure lazy-prologue ctx ctx #f)))))))
-               (stub-addr (vector-ref (list-ref stub-labels 0) 1))
-               (generic-addr (vector-ref (list-ref stub-labels 1) 1)))
-
-          ;; Get free vars from ast
-          (set! fvars (free-vars (caddr ast) all-params ctx))
-
-          ;; If 'stats' option, then inc closures slot
-          (if opt-stats
-            (gen-inc-slot cgc 'closures))
-
-          ;; Create closure
-          (codegen-closure-create cgc (length fvars))
-
-          ;; Write entry point or cctable location
-          (if opt-entry-points
-              ;; If opt-entry-points generate a closure using cctable
-              (let* ((cctable-key (get-cctable-key ast ctx fvars))
-                     (cctable     (get-cctable ast cctable-key stub-addr generic-addr))
-                     (cctable-loc (- (obj-encoding cctable) 1)))
-                (codegen-closure-cc cgc cctable-loc))
-              ;; Else, generate a closure using a single entry point
-              (let ((ep-loc (get-entry-points-loc ast stub-addr)))
-                (codegen-closure-ep cgc ep-loc)))
-
-          ;; Write free variables
-          (gen-free-vars cgc fvars ctx 16)
-
-          ;; Push closure
-          (codegen-closure-put cgc)
-
-          ;; Trigger the next object
-          (if opt-propagate-functionid
-              (error "NYI - mlc-lambda: Use (CTX_CLOi with cctable or closure id)")
-              (jump-to-version cgc succ (ctx-push ctx CTX_CLO))))))))
-
-;; This is the key used in hash table to find the cc-table for this closure.
-;; The key is (ast . free-vars-inf) with ast the s-expression of the lambda
-;; and free-vars-inf the type information of free vars ex. ((a . number) (b . char))
-;; The hash function uses eq? on ast, and equal? on free-vars-inf.
-;; This allows us to use different cctable if types of free vars are not the same.
-;; (to properly handle type checks)
-(define (get-cctable-key ast ctx fvars)
-  (cons ast
-        (foldr (lambda (n r)
-                 (if (member (car n) fvars) ;; If this id is a free var of future lambda
-                     (cons (cons (car n)
-                                 (if (eq? (identifier-type (cdr n)) 'local)
-                                     ;; If local, get type from stack
-                                     (list-ref (ctx-stack ctx) (- (length (ctx-stack ctx)) (identifier-offset (cdr n)) 2))
-                                     ;; If free, get type from env
-                                     (identifier-stype (cdr n))))
-                           r)
-                     r))
-               '()
-               (ctx-env ctx))))
-
-;; Create and return a generic lazy prologue
-(define (get-lazy-generic-prologue ast succ rest-param mvars params)
+;;
+;; Create and return a generic prologue lco
+(define (get-lazy-generic-prologue ast succ rest-param nb-formal)
   (make-lazy-code-entry
+    #f
     (lambda (cgc ctx)
-      (let* ((nb-formal (length params))
-             (err-labels (add-callback #f 0 (lambda (ret-addr selector)
-                                             (error ERR_WRONG_NUM_ARGS))))
-             (err-label (list-ref err-labels 0)))
-        (if rest-param
-            ;; If there is a rest param then we need to change the context to include it
-            ;; CTX_UNK because it could be NULL
-            (set! ctx (make-ctx (cons CTX_CLO (cons CTX_UNK (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) nb-formal 1))))
-                                (ctx-env ctx)
-                                (+ (ctx-nb-args ctx) 1))))
-        ;; Gen prologue code
-        (codegen-prologue-gen cgc rest-param nb-formal err-label)
-        ;; Gen mutable vars and jump to function body
-        (jump-to-version cgc succ (gen-mutable cgc ctx mvars))))))
+      (let ((nb-args (ctx-nb-args ctx))
+            (label-next (asm-make-label #f (new-sym 'label-next))))
+        ;;
+        (if (not rest-param)
+            (codegen-prologue-gen-nrest cgc nb-args)
+            (codegen-prologue-gen-rest  cgc (ctx-fs ctx) nb-args))
+        ;;
+        (jump-to-version cgc succ ctx)))))
 
-;; Create and return a lazy prologue
-(define (get-lazy-prologue ast succ rest-param mvars)
+;;
+;; Create and return a prologue lco
+(define (get-lazy-prologue ast succ rest-param)
   (make-lazy-code-entry
+    #f
     (lambda (cgc ctx)
-      (let* ((nb-actual (- (length (ctx-stack ctx)) 2))
-             (nb-formal (ctx-nb-args ctx))
-             (nstack  (ctx-stack ctx))    ;; New stack  (change if rest-param)
-             (nnbargs (ctx-nb-args ctx))) ;; New nbargs (change if rest-param)
+      (let* ((nb-actual (ctx-nb-actual ctx))
+             (nb-formal (ctx-nb-args ctx)))
 
         (cond ;; rest AND actual == formal
-              ((and rest-param (= nb-actual nb-formal))
-                (codegen-prologue-rest= cgc)
-                ;; Update ctx information
-                (set! nstack (cons CTX_CLO (cons CTX_NULL (cdr (ctx-stack ctx)))))
-                (set! nnbargs (+ (ctx-nb-args ctx) 1)))
+              ((and rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
+               (set! ctx (ctx-push ctx (make-ctx-tnul #t '()) #f))
+               (let ((reg
+                       (if (<= nb-formal (length args-regs))
+                           (list-ref args-regs (- nb-formal 1))
+                           #f)))
+                 (codegen-prologue-rest= cgc reg)
+                 (jump-to-version cgc succ ctx)))
               ;; rest AND actual > formal
-              ((and rest-param (> nb-actual nb-formal))
-                (codegen-prologue-rest> cgc (- nb-actual nb-formal))
-                ;; Update ctx information
-                (set! nstack (cons CTX_CLO (cons CTX_PAI (list-tail (ctx-stack ctx) (- (length (ctx-stack ctx)) nb-formal 1)))))
-                (set! nnbargs (+ (ctx-nb-args ctx) 1)))
+              ;; TODO merge > and == (?)
+              ((and rest-param (> nb-actual (- nb-formal 1)))
+               (let* ((nb-extra (- nb-actual (- nb-formal 1)))
+                      (nctx (ctx-pop-n ctx (- nb-extra 1)))
+                      (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f)))
+                 (set! ctx nctx)
+                 (let* ((nb-formal-stack
+                          (if (> (- nb-formal 1) (length args-regs))
+                              (- nb-formal 1 (length args-regs))
+                              0))
+                        (r
+                          (if (<= nb-actual (length args-regs))
+                              0
+                              (- nb-actual (length args-regs))))
+                        (nb-rest-stack (- r nb-formal-stack))
+                        (rest-regs
+                          (if (>= (- nb-formal 1) (length args-regs))
+                              '()
+                              (list-head
+                                (list-tail args-regs (- nb-formal 1))
+                                (- nb-actual nb-rest-stack nb-formal -1))))
+                        (reg
+                          (if (<= nb-formal (length args-regs))
+                              (list-ref args-regs (- nb-formal 1))
+                              #f)))
+
+                   (codegen-prologue-rest>
+                     cgc
+                     (ctx-fs ctx)
+                     nb-rest-stack
+                     (reverse rest-regs)
+                     reg))
+
+                 (jump-to-version cgc succ ctx)))
               ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
               ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
-                (gen-error cgc ERR_WRONG_NUM_ARGS))
-              ;; !rest AND actual == formal
-              (else #f)) ;; Nothing to do
+               (gen-error cgc ERR_WRONG_NUM_ARGS))
+              ;; Else, nothing to do
+              (else
+                 (jump-to-version cgc succ ctx)))))))
 
-        (let* ((nctx (make-ctx nstack (ctx-env ctx) nnbargs))
-               (mctx (gen-mutable cgc nctx mvars)))
-          (jump-to-version cgc succ mctx))))))
+;;
+;; Create and return a function return lco
+(define (get-lazy-return ast)
 
-;; Create a new cc table with 'init' as stub value
-(define (make-cc len init generic)
-  (let ((v (alloc-still-vector len)))
-    (put-i64 (+ 8 (- (obj-encoding v) 1)) generic) ;; Write generic after header
-    (let loop ((i 1))
-      (if (< i (vector-length v))
-        (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding v) 1)) init)
-               (loop (+ i 1)))
-        v))))
+  (define lazy-ret
+    (make-lazy-code-ret ;; Lazy-code with 'ret flag
+      #f
+      (lambda (cgc ctx)
+        (let* ((fs (ctx-fs ctx))
+               ;; Return value loc
+               (type-ret (ctx-get-type ctx 0))
+               (lret     (ctx-get-loc ctx 0))
+               ;; Return address object loc
+               (laddr (ctx-get-retobj-loc ctx)))
 
-;; Create a new cr table with 'init' as stub value
-(define (make-cr len init)
-  (let ((v (alloc-still-vector len)))
-    (let loop ((i 0))
-      (if (< i (vector-length v))
-        (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding v) 1)) init)
-               (loop (+ i 1)))
-        v))))
+          (assert (not (ctx-type-is-cst type-ret)) "Internal error")
+
+          ;; Gen return
+          (if opt-return-points
+              (let* ((crtable-offset (ctx-type->cridx type-ret)))
+                (codegen-return-cr cgc fs fs laddr lret crtable-offset))
+              (codegen-return-rp cgc fs fs laddr lret))))))
+  ;; TODO: write a generic lazy-drop function (this function is used by multiple mlc-*)
+  (make-lazy-code-ret
+    #f
+    (lambda (cgc ctx)
+      (let ((ctx (drop-cst-value cgc ctx 0)))
+        (jump-to-version cgc lazy-ret ctx)))))
+
+;;
+;; Create fn entry stub
+(define (create-fn-stub ast fn-num fn-generator)
+
+  ;; Function use rest param ?
+  (define rest-param (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
+                         (and (pair? (cadr ast)) (not (list? (cadr ast)))))) ;; (foo a..z . rest)
+  ;; List of formal params
+  (define params
+    (if rest-param
+        (formal-params (cadr ast))
+        (cadr ast)))
+  ;; Lazy lambda return
+  (define lazy-ret (get-lazy-return ast))
+  ;; Lazy lambda body
+  (define lazy-body (gen-ast (caddr ast) lazy-ret))
+  ;; Lazy function prologue
+  (define lazy-prologue (get-lazy-prologue ast lazy-body rest-param))
+  ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
+  (define lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params)))
+
+  (add-fn-callback
+    1
+    fn-num
+    (lambda (stack ret-addr selector closure)
+
+      (cond ;; CASE 1 - Use entry point (no cctable)
+            ((eq? opt-entry-points #f)
+               (fn-generator closure lazy-prologue-gen #f #f))
+            ;; CASE 2 - Function is called using generic entry point
+            ((= selector 1)
+               (fn-generator #f lazy-prologue-gen #f #t))
+            ;; CASE 3 - Use multiple entry points AND use max-versions limit AND this limit is reached
+            ((and opt-max-versions
+                  (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
+               (fn-generator #f lazy-prologue-gen stack #t))
+            ;; CASE 4 - Use multiple entry points AND limit is not reached or there is no limit
+            (else
+               (fn-generator #f lazy-prologue stack #f))))))
+
+(define (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params bound-id)
+  ;; Generator used to generate function code waiting for runtime data
+  ;; First create function entry ctx
+  ;; Then generate function prologue code
+  (define (fn-generator closure prologue stack generic?)
+    ;; In case the limit in the number of version is reached, we give #f to ctx-init-fn to get a generic ctx
+    ;; but we still want to patch cctable at index corresponding to stack
+    (let* ((ctx-stack (if generic? #f stack))
+           (ctx (ctx-init-fn ctx-stack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id)))
+      (gen-version-fn ast closure entry-obj prologue ctx stack generic?)))
+
+  ;; ---------------------------------------------------------------------------
+  ;; Return 'entry-obj' (entry object)
+  ;; An entry object is the object that contains entry-points-locs
+  ;; In the case of -cc, entry object is the cctable
+  (define (get-entry-obj-cc)
+    (let* (;; Is the cctable new or existed before ?
+           (cctable-new? #f)
+           (cctable-key (get-cctable-key ast ctx fvars-imm fvars-late))
+           (cctable     (let ((table (cctable-get cctable-key)))
+                          (or table
+                              (begin (set! cctable-new? #t) (cctable-make cctable-key))))))
+      ;; The compiler needs to fill cctable if it is a new cctable
+      (if cctable-new?
+          (let* (;; Create stub
+                 (stub-labels  (create-fn-stub ast fn-num fn-generator))
+                 (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
+                 (generic-addr (asm-label-pos (list-ref stub-labels 1))))
+            ;; Add cctable->stub-addrs assoc
+            (asc-entry-stub-add cctable generic-addr stub-addr)
+            (cctable-fill cctable stub-addr generic-addr)))
+      cctable))
+  ;; In the case of -ep, entry object is the still vector of size 1 that contain the single entry point
+  (define (get-entry-obj-ep)
+    (let ((existing (asc-ast-epentry-get ast)))
+      (if existing
+          ;; An entry points object already exists for this ast, use it!
+          existing
+          ;; TODO: we are supposed to use only one e.p. with -ep objects
+          ;;       use a max-selector of 0 in create-fn-stub, and use only one -addr
+          (let* (;; Create stub
+                 (stub-labels  (create-fn-stub ast fn-num fn-generator))
+                 (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
+                 (generic-addr (asm-label-pos (list-ref stub-labels 1)))
+                 (entryvec (get-entry-points-loc ast stub-addr)))
+            (asc-entry-stub-add entryvec generic-addr stub-addr)
+            (asc-ast-epentry-add ast entryvec)
+            entryvec))))
+
+  (define entry-obj #f)
+
+  (set! entry-obj
+    (if opt-entry-points
+        (get-entry-obj-cc)
+        (get-entry-obj-ep)))
+
+  entry-obj)
+
+
+;;
+;; Init constant lambda
+(define (init-entry-cst ast free ctx)
+
+  ;; Flatten list of param (include rest param)
+  (define all-params (flatten (cadr ast)))
+
+  (letrec (;; Closure unique number
+           (fn-num (new-fn-num))
+           (entry-obj (get-entry-obj ast ctx fn-num free '() all-params #f))
+           (entry-obj-loc (- (obj-encoding entry-obj) 1)))
+
+      ;; Add association fn-num -> entry point
+      (asc-globalfn-entry-add fn-num entry-obj)
+
+      ;; Return lambda identity
+      fn-num))
+
+;;
+;; Init non constant lambda
+(define (init-entry ast ctx fvars-imm fvars-late bound-id)
+
+  ;; Flatten list of param (include rest param)
+  (define all-params (flatten (cadr ast)))
+
+  (letrec (;; Closure unique number
+           (fn-num (new-fn-num))
+           (entry-obj (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params bound-id))
+           (entry-obj-loc (- (obj-encoding entry-obj) 1)))
+
+      ;; Add association fn-num -> entry point
+      (asc-globalfn-entry-add fn-num entry-obj)
+
+      (list fn-num entry-obj)))
+
+;; Compute free var sets for given lambda ast
+;; return list (cst imm late) with:
+;; cst:  list of cst free variables
+;; imm:  immediate non cst free variables
+;; late: late free variables
+(define (get-free-infos ast bound-ids ctx)
+
+  (let* ((body (caddr ast))
+         (params (cadr ast))
+         (enc-ids (append bound-ids (map car (ctx-env ctx))))
+         (free-ids (free-vars body params enc-ids)))
+
+    (define late (set-inter bound-ids free-ids))
+
+    (let loop ((ids (set-sub free-ids late '()))
+               (imm '())
+               (cst '()))
+      (if (null? ids)
+          (list cst imm late)
+          (let ((id (car ids)))
+            (let* ((identifier (cdr (assoc id (ctx-env ctx))))
+                   (type (ctx-identifier-type ctx identifier)))
+              (if (ctx-type-is-cst type)
+                  (loop (cdr ids) imm (cons id cst))
+                  (loop (cdr ids) (cons id imm) cst))))))))
+
+(define (mlc-lambda-ast ast succ)
+
+  (make-lazy-code
+    #f
+    (lambda (cgc ctx)
+
+      (define all-params (flatten (cadr ast)))
+
+      (define fvars-imm
+              (free-vars
+                (caddr ast)
+                all-params
+                (map car (ctx-env ctx))))
+
+      (define fvars-ncst (ctx-ids-keep-non-cst ctx fvars-imm))
+
+      (mlet ((fn-num/entry-obj (init-entry ast ctx fvars-imm '() #f)))
+
+        (if (null? fvars-ncst)
+
+            ;; Cst function, add information to ctx
+            (let* ((type (make-ctx-tclo #t fn-num))
+                   (ctx  (ctx-push ctx type #f)))
+              (jump-to-version cgc succ ctx))
+
+            ;; Gen code to create closure
+            (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
+              (apply-moves cgc ctx moves)
+              (gen-closure cgc reg ctx entry-obj fvars-ncst)
+              ;;
+              (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg))))))))
+
+;;
+(define (gen-closure cgc reg ctx entry-obj fvars-ncst)
+
+  (define entry-obj-loc (- (obj-encoding entry-obj) 1))
+
+  ;; If 'stats' option, then inc closures slot
+  (if opt-stats
+    (gen-inc-slot cgc 'closures))
+
+  (if (null? fvars-ncst)
+      (gen-global-closure cgc reg ctx entry-obj entry-obj-loc)
+      (gen-local-closure cgc reg ctx entry-obj-loc fvars-ncst)))
+
+;; Create a global closure, and load it in dest register
+(define (gen-global-closure cgc reg ctx entry-obj entry-obj-loc)
+
+  ;; If a closure already is generated for a given entry-obj, return it
+  ;; else, alloc new permanent closure, add it to asc and return it
+  (define (get-closure-ptr)
+    (let ((r (asc-entryobj-globalclo-get entry-obj-loc)))
+      (or r
+          (let* ((obj (alloc-perm-procedure))
+                 (enc (obj-encoding obj)))
+            (if opt-entry-points
+                (put-i64 (+ (- enc TAG_MEMOBJ) OFFSET_BODY) entry-obj-loc)
+                (put-i64 (+ (- enc TAG_MEMOBJ) OFFSET_BODY) (get-i64 (+ entry-obj-loc 8))))
+            (asc-entryobj-globalclo-add entry-obj-loc enc)
+            enc))))
+
+  ;; The closure is constant so we only need to load closure ptr in dest register
+  (let ((ptr (get-closure-ptr))
+        (dest (codegen-reg-to-x86reg reg)))
+    (x86-mov cgc dest (x86-imm-int ptr))))
+
+;; Create a local closure, and load it in dest register
+(define (gen-local-closure cgc reg ctx entry-obj-loc fvars-ncst)
+
+  ;;
+  (define close-length (length fvars-ncst))
+
+  ;; Create closure
+  ;; Closure size = length of free variables
+  (codegen-closure-create cgc close-length)
+
+  ;; Write entry point or cctable location
+  (if opt-entry-points
+      ;; If opt-entry-points generate a closure using cctable
+      (codegen-closure-cc cgc entry-obj-loc close-length)
+      ;; Else, generate a closure using a single entry point
+      (codegen-closure-ep cgc entry-obj-loc close-length))
+
+  ;; Write free variables
+  (let* ((free-offset (* -1 (length fvars-ncst))))
+    (gen-free-vars cgc fvars-ncst ctx free-offset alloc-ptr))
+
+    ;; Put closure
+    (codegen-closure-put cgc reg close-length))
 
 ;;
 ;; Make lazy code from BEGIN
 ;;
 (define (mlc-begin ast succ)
+
+  (define (build-chain exprs succ)
+    (cond ((null? exprs)
+           succ)
+          ;; Last expr
+          ((eq? (length exprs) 1)
+           (gen-ast (car exprs) succ))
+          ;; Not last expr, eval then free loc
+          (else
+             (let ((next (build-chain (cdr exprs) succ)))
+               (gen-ast (car exprs)
+                        (make-lazy-code
+                          #f
+                          (lambda (cgc ctx)
+                            (jump-to-version cgc next (ctx-pop ctx)))))))))
+
   (cond ;; There is no body
         ((null? (cdr ast))
-           (if (member 'ret (lazy-code-flags succ))
-             ;; No body and succ is a ret object
-             (error ERR_BEGIN)
-             ;; No body and succ is *not* a ret object
-             (make-lazy-code
-               (lambda (cgc ctx)
-                 (codegen-void cgc)
-                 (jump-to-version cgc succ (ctx-push ctx CTX_VOID))))))
+         (error ERR_BEGIN))
         ;; Only one body
         ((= (length (cdr ast)) 1)
-           (gen-ast (cadr ast) succ))
+         (gen-ast (cadr ast) succ))
         ;; >1 body
-        (else
-           (let (;; LAZY BEGIN OUT
-                 (lazy-begin-out
-                  (let ((make-lc (if (member 'ret (lazy-code-flags succ))
-                          make-lazy-code-ret
-                          make-lazy-code)))
-                    (make-lc
-                      (lambda (cgc ctx)
-                        (let* ((nctx (ctx-move ctx 0 (- (length (cdr ast)) 1)))
-                               (mctx (ctx-pop nctx (- (length (cdr ast)) 1))))
-                          (codegen-begin-out cgc (- (length (cdr ast)) 1))
-                          (jump-to-version cgc succ mctx)))))))
-             ;; LAZY BODIES
-             (gen-ast-l (cdr ast) lazy-begin-out)))))
+        (else (build-chain (cdr ast) succ))))
 
 ;;-----------------------------------------------------------------------------
-;; Bindings (let, letrec, let*)
+;; LET Binding
 
-;; NOTE: Letrec: All ids are considered as mutable. Analysis to detect recursive use of ids?
-
-;; Entry point to compile let, letrec
-(define (mlc-binding ast succ op)
-  (let ((ids (map car (cadr ast)))
-        (bodies (cddr ast)))
-
-    (cond ;; No bindings, it is a begin
-          ((null? ids) (mlc-begin (cons 'begin bodies) succ))
-          ;; No body, error
-          ((null? bodies) (error (cond ((eq? op 'let)    ERR_LET)
-                                       ((eq? op 'letrec) ERR_LETREC)
-                                       ((eq? op 'let*)   ERR_LET*))))
-          ;; >= 1 body
-          (else
-            (let* (;; LAZY LET OUT
-                   ;; Clean ctx stack and env, update rsp
-                   (lazy-let-out
-                     (let ((make-lc (if (member 'ret (lazy-code-flags succ))
-                                      make-lazy-code-ret
-                                      make-lazy-code)))
-                       (make-lc ;; If succ is a ret object, then last object of begin is also a ret object
-                         (lambda (cgc ctx)
-                           (let* ((nctx (ctx-move ctx 0 (- (+ (length ids) (length bodies)) 1)))
-                                  (mctx (ctx-pop nctx (- (+ (length ids) (length bodies)) 1)))
-                                  (env  (list-tail (ctx-env mctx) (length ids)))
-                                  (ctx  (make-ctx (ctx-stack mctx) env (ctx-nb-args mctx))))
-                            (codegen-binding-clear cgc (+ (length ids) (length bodies) -1))
-                            (jump-to-version cgc succ ctx))))))
-                   ;; LAZY BODIES
-                   (lazy-bodies (gen-ast-l bodies lazy-let-out)))
-
-            ;; Delegate with bodies as successor
-            (cond ((or (eq? op 'let)
-                       (and (eq? op 'letrec)
-                            ;; BAD HACK !
-                            ;; If the bindings do not not contains the symcol 'lambda, use a let
-                            (not (contains (map cadr (cadr ast)) 'lambda))))
-                     (mlc-let ast lazy-bodies))
-                  ((eq? op 'letrec) (mlc-letrec ast lazy-bodies))
-                  ((eq? op 'let*)   (mlc-let* ast lazy-bodies))
-                  (else (error "Unknown ast"))))))))
-
-;;
-;; Make lazy code from LET*
-;;
-(define (mlc-let* ast succ)
-  ;; Build lazy objects chain for let* bindings
-  (define (gen-let*-bindings ids values mvars)
-    (if (null? ids)
-      succ
-      (let ((lazy-bind
-              (make-lazy-code
-                (lambda (cgc ctx)
-                  (let* ((start (- (length (ctx-stack ctx)) 2))
-                         (env (build-env mvars (list (car ids)) start (ctx-env ctx)))
-                         (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx)))
-                         ;; If this id is mutable then gen mobject
-                         (mctx (if (member (car ids) mvars)
-                                  (gen-mutable cgc nctx (list (car ids)))
-                                  nctx)))
-                      ;; Jump to next id (or succ) with new ctx
-                      (jump-to-version cgc
-                                       (gen-let*-bindings (cdr ids) (cdr values) mvars)
-                                       mctx))))))
-        ;; Gen value
-        (gen-ast (car values) lazy-bind))))
-
-  (let* ((ids (map car (cadr ast)))
-         (values (map cadr (cadr ast)))
-         (mvars (mutable-vars ast ids)))
-    ;; Init call with all ids
-    (gen-let*-bindings ids values mvars)))
-
-;;
-;; Make lazy code from LETREC
-;;
-(define (mlc-letrec ast succ)
-  (let* ((ids (map car (cadr ast)))
-         (values (map cadr (cadr ast)))
-         ;; 3 - Bind values to their locations and jump to bodies
-         (lazy-let-mid
-            (make-lazy-code
-               (lambda (cgc ctx)
-                  (let ((ctx (gen-letrec-binds cgc ctx ids)))
-                     (jump-to-version cgc succ ctx)))))
-         ;; 2 - Gen all bound values
-         (lazy-values (gen-ast-l values lazy-let-mid)))
-
-    ;; 1 - Push initial values, Update env, ctx,
-    ;;     gen mutable and jump to values
-    (make-lazy-code
-       (lambda (cgc ctx)
-          (let* ((stack (ctx-stack (ctx-push ctx CTX_BOOL (length ids))))
-                 (start (- (length stack) (length ids) 1))
-                 (env (build-env ids ids start (ctx-env ctx)))
-                 (nctx (make-ctx stack env (ctx-nb-args ctx))))
-
-             ;; Create values on stack (initial value is #f)
-             (codegen-push-n cgc #f (length ids))
-
-             ;; All ids are considered mutable except those that are both
-             ;; non-mutable AND lambda expr. This allows the compiler to keep
-             ;; the type of non mutable lambdas which represents a large part
-             ;; of letrec uses.
-             (let* ((mvars (mutable-vars ast ids))
-                    (stack-types
-                      (foldr (lambda (el r)
-                               (if (and (pair? (cadr el))
-                                        (eq? (caadr el) 'lambda)
-                                        (not (member (car el) mvars)))
-                                 (cons CTX_CLO r)    ;; Non mutable and lambda, keep the type
-                                 (cons CTX_MOBJ r)))
-                             '()
-                             (cadr ast)))
-                    (mctx (gen-mutable cgc nctx ids))
-                    (zctx (make-ctx (append (reverse stack-types) (list-tail (ctx-stack mctx) (length stack-types)))
-                                    (ctx-env mctx)
-                                    (ctx-nb-args mctx))))
-
-              (jump-to-version cgc lazy-values zctx)))))))
-
-;; Mov values to their locations (letrec bind)
-(define (gen-letrec-binds cgc ctx all-ids)
-
-  (define (gen-letrec-binds-h cgc ctx ids from to)
-    (if (null? ids)
-      ;; No more id, update rsp and return new ctx
-      (begin (codegen-clean-stack cgc (length all-ids))
-             (ctx-pop ctx (length all-ids)))
-      ;; Bind id
-      (let* ((nctx (ctx-move ctx from to #f)))
-        ;; Get val and mov to location
-        (codegen-letrec-bind cgc from to)
-        (gen-letrec-binds-h cgc nctx (cdr ids) (+ from 1) (+ to 1)))))
-
-  ;; Initial call
-  (gen-letrec-binds-h cgc ctx all-ids 0 (length all-ids)))
-
-;;
-;; Make lazy code from LET
-;;
 (define (mlc-let ast succ)
-  (let* ((ids (map car (cadr ast)))
-         (values (map cadr (cadr ast)))
-         ;; 2 - Update env, ctx, gen mutable and jump to bodies
-         (lazy-let-in
-            (make-lazy-code
-               (lambda (cgc ctx)
-                  (let* ((mvars (mutable-vars ast ids))
-                         (start (- (length (ctx-stack ctx)) (length ids) 1))
-                         (env (build-env mvars ids start (ctx-env ctx)))
-                         (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx)))
-                         ;; Gen mutable vars
-                         (mctx (gen-mutable cgc nctx mvars)))
-                     ;; Jump to first body
-                     (jump-to-version cgc succ mctx))))))
-      ;; 1 - Gen all bound values
-      (gen-ast-l values lazy-let-in)))
+
+  (define bindings (cadr ast))
+  (define ids (map car bindings))
+  (define values (map cadr bindings))
+  (define body (caddr ast))
+
+  (define (build-id-idx)
+    (let loop ((ids ids)
+               (idx (- (length ids) 1))
+               (r '()))
+      (if (null? ids)
+          r
+          (let ((id (car ids)))
+            (loop (cdr ids) (- idx 1) (cons (cons id idx) r))))))
+
+  (let* ((lazy-let-out (get-lazy-lets-out ast ids 0 succ))
+         (lazy-body (gen-ast body lazy-let-out))
+         (lazy-bind
+           (make-lazy-code
+             #f
+             (lambda (cgc ctx)
+               (let ((ctx (ctx-bind-locals ctx (build-id-idx))))
+                 (jump-to-version cgc lazy-body ctx))))))
+
+    (gen-ast-l values lazy-bind)))
 
 ;;-----------------------------------------------------------------------------
-;; SPECIAL & PRIMITIVES
+;; LETREC Binding
 
-;;
-;; Make lazy code from special id $$print-flonum
-;;
-(define (mlc-printflonum ast succ)
-  (let ((spec
-          (make-lazy-code
-            (lambda (cgc ctx)
-              (codegen-print-flonum cgc)
-              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID))))))
-    (gen-ast (cadr ast) spec)))
+(define (mlc-letrec ast succ)
 
+  ;; Letrec info
+  (define ids (map car (cadr ast)))
+  (define bindings (cadr ast))
+  (define body (caddr ast))
+
+  ;; ---------------------------------------------------------------------------
+  ;; ANALYSES
+
+  ;; Group bindings, return list (proc-vars const-proc-var other-vars) with:
+  ;; proc-vars represents procedure bindings, with the form (id pos ast free-info)
+  ;; const-proc-vars represents constant procedure bindings, with the form (id ast free-info)
+  ;; other-vars represents non procedure bindings, with the forms (id ast)
+  (define (group-bindings ctx)
+    (mlet ((proc/other      (group-proc-others ctx ids bindings))
+           (const-proc/proc (group-const-proc proc))
+           (const-proc/proc (group-recursive-const-proc const-proc proc))
+           (proc            (proc-vars-insert-pos proc (map car const-proc))))
+        (list proc const-proc other)))
+
+  ;; Take proc-vars objects.
+  ;; For each proc-var object, compute pos field and insert it in object
+  ;; (id ast free-info) -> (id pos ast free-info)
+  (define (proc-vars-insert-pos proc-vars const-proc-vars-ids)
+    (let loop ((l proc-vars) (res '()))
+       (if (null? l)
+           res
+           (let* (;; Compute proc info object (id pos ast free-info)
+                  ;; pos is the position of the closure in the big allocated object
+                  (obj (car l))
+                  (id (car obj))
+                  (pos (get-closures-size res))
+                  (ast (cadr obj))
+                  (old-free-info (caddr obj))
+                  (free-info
+                    (list (append (car old-free-info)
+                                  (set-inter const-proc-vars-ids
+                                             (caddr old-free-info)))
+                          (cadr old-free-info)
+                          (set-sub (caddr old-free-info) const-proc-vars-ids '()))))
+             (loop (cdr l)
+                   (cons (list id pos ast free-info)
+                         res))))))
+
+  ;; Group bindings, return list (proc-vars other-vars)
+  ;; proc-vars represent procedure bindings, with (id free-info val)
+  ;; other-vars represent other bindings (id ast)
+  (define (group-proc-others ctx bound-ids bindings)
+    (let loop ((bindings bindings)
+               (proc-vars '())
+               (other-vars '()))
+      (if (null? bindings)
+          (list proc-vars other-vars)
+          (let* ((binding (car bindings))
+                 (id (car binding))
+                 (val (cadr binding)))
+            (if (and (pair? val)
+                     (eq? (car val) 'lambda))
+                (loop (cdr bindings)
+                      (let ((free-info (get-free-infos val bound-ids ctx)))
+                        (cons (list id val free-info) proc-vars))
+                      other-vars)
+                (loop (cdr bindings)
+                      proc-vars
+                      (cons binding other-vars)))))))
+
+  ;; Group proc-vars, return list (const-proc-vars proc-vars)
+  ;; const-proc-vars represent constant procedure bindings
+  ;; proc-vars represent non constant procedure bindings
+  (define (group-const-proc proc-vars)
+
+    (let loop ((const-proc-vars '())
+               (proc-vars proc-vars))
+
+      (let loop2 ((l proc-vars)
+                  (new-const-proc-vars const-proc-vars)
+                  (new-proc-vars '()))
+        (if (null? l)
+            ;; Fixed point condition, if there is a change, continue else stop and return
+            (if (= (length const-proc-vars)
+                   (length new-const-proc-vars))
+                (list new-const-proc-vars new-proc-vars)
+                (loop new-const-proc-vars new-proc-vars))
+            (let* ((proc-var (car l))
+                   (free-info (caddr proc-var))
+                   (all-free (append (cadr free-info) (caddr free-info))))
+              (if (= (length (set-inter all-free
+                                        (map car const-proc-vars)))
+                     (length all-free))
+                  (loop2 (cdr l) (cons proc-var new-const-proc-vars) new-proc-vars)
+                  (loop2 (cdr l) new-const-proc-vars (cons proc-var new-proc-vars))))))))
+
+  ;; Use and refine the result of group-const-proc
+  ;; Fixed point to find recursively const procedures in bindigs refering others const bindings
+  (define (group-recursive-const-proc const-proc-vars proc-vars)
+
+    ;; Init fixed point set is all proc-vars with no imm free (only cst and late)
+    (define const-init
+      (keep (lambda (el)
+              (null? (cadr (caddr el)))) ;; No imm free vars, only late
+            proc-vars))
+
+    (let loop ((const-set const-init))
+      ;; Compute new set, only keep binding if all of its late vars
+      ;; are members of const-set
+      (let ((new-const-set
+              (keep (lambda (el)
+                      (let ((late-ids (caddr (caddr el))))
+                        (= (length late-ids)
+                           (length (set-inter late-ids (map car const-set))))))
+                    const-set)))
+        ;; Fixed point condition, if there is a change, continue else stop and return
+        (if (= (length const-set)
+               (length new-const-set))
+            (list (append new-const-set
+                          const-proc-vars)
+                  (set-sub proc-vars new-const-set '()))
+            (loop new-const-set)))))
+
+  ;; ---------------------------------------------------------------------------
+  ;; LAZY CODE OBJECTS
+
+  ;; Eval each !fun binding
+  (define (get-lazy-eval other-vars succ)
+
+    (define (bind-last id succ)
+      (make-lazy-code
+        #f
+        (lambda (cgc ctx)
+          (let ((ctx (ctx-id-add-idx ctx id 0)))
+            (jump-to-version cgc succ ctx)))))
+
+    (let loop ((bindings other-vars))
+      (if (null? bindings)
+          succ
+          (let ((binding (car bindings))
+                (next (loop (cdr bindings))))
+            (gen-ast (cadr binding)
+                     (bind-last (car binding) next))))))
+
+  ;; Alloc space for all non const closures
+  ;; Init all closures by writing headers, entry points, free & late variables
+  (define (get-lazy-make-closures succ proc-vars other-vars const-proc-vars)
+
+    ;; This function takes a ctx and add const proc vars to it
+    (define (cst-binder ctx)
+      (bind-const-proc-vars ctx const-proc-vars))
+
+    ;; Alloc all closures
+    (define (get-lazy-alloc succ)
+      (make-lazy-code
+        #f
+        (lambda (cgc ctx)
+          (gen-allocation-imm cgc STAG_PROCEDURE (* 8 (- closures-size 1)))
+          (jump-to-version cgc (get-lazy-init-closures succ) ctx))))
+
+    ;; Init all closures. Write headers, entry points, and free & late variables
+    (define (get-lazy-init-closures succ)
+      (let loop ((lst (reverse proc-vars)))
+        (if (null? lst)
+            ;; The last thing to do is to bind const proc vars to new ctx, then jump to succ
+            (make-lazy-code
+              #f
+              (lambda (cgc ctx)
+                (jump-to-version cgc succ (cst-binder ctx))))
+            (let* ((l (car lst))
+                   (id (car l))
+                   (offset (cadr l))
+                   (ast (caddr l))
+                   (free-info (cadddr l))
+                   (fvars-cst  (car free-info))
+                   (fvars-imm  (cadr free-info))
+                   (fvars-late (caddr free-info))
+                   (next (loop (cdr lst))))
+
+              (get-lazy-init-closure id ast next offset fvars-cst fvars-imm fvars-late)))))
+
+    ;; Init a closure. Write header, entry point, and free & late variables
+    (define (get-lazy-init-closure id ast succ clo-offset free-cst free-imm free-late)
+
+      (make-lazy-code
+        #f
+        (lambda (cgc ctx)
+
+          (define clo-reg alloc-ptr)
+          (define clo-life LIFE_MOVE)
+
+          (define offset-start (* -8 (- closures-size clo-offset)))
+          (define offset-header offset-start)
+          (define offset-entry  (+ offset-header 8))
+          (define offset-free   (+ offset-entry 8))
+          (define offset-free-h (* -1 (- closures-size clo-offset 2)))
+          (define offset-late   (+ offset-free (* 8 (length free-imm))))
+
+          ;; TODO: use a gen-closure function (merge with existing gen-closure function)
+
+          ;; Write header
+          (let ((clo-size (* 8 (+ (length (append free-imm free-late)) 1))))
+            (x86-mov cgc (x86-rax) (x86-imm-int (mem-header clo-size STAG_PROCEDURE clo-life)))
+            (x86-mov cgc (x86-mem offset-header clo-reg) (x86-rax)))
+
+          ;; Write entry point
+          ;; ctx is computed each time using cst-binder in a tmp ctx to ensure that cst are not dropped.
+          ;; if max-versions is reached, cst are dropped and we lost cst information.
+          ;; This context is used by init-entry and gen-free-vars because they need this information
+          (mlet ((ctx (cst-binder ctx))
+                 (fn-num/entry-obj (init-entry ast ctx (append free-cst free-imm) free-late id))
+                 (entry-obj-loc (- (obj-encoding entry-obj) 1)))
+            (if opt-entry-points
+                (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
+                (x86-mov cgc (x86-rax) (x86-mem (+ 8 entry-obj-loc))))
+            (x86-mov cgc (x86-mem offset-entry clo-reg) (x86-rax))
+
+            ;; Write free vars
+            (gen-free-vars cgc free-imm ctx offset-free-h clo-reg))
+
+          ;; Write late vars
+          ;; TODO: late !fun ?
+          (let loop ((lates free-late)
+                     (offset offset-late))
+            (if (not (null? lates))
+                (let* ((late-inf (assoc (car lates) proc-vars))
+                       (late-off (and late-inf (+ (* -8 (- closures-size (cadr late-inf))) TAG_MEMOBJ)))
+                       (opnd
+                         (if late-off
+                             (x86-mem late-off clo-reg)
+                             (begin
+                               (assert (assoc (car lates) other-vars) "Internal error")
+                               (x86-imm-int (obj-encoding #f))))))
+                  (if (x86-mem? opnd)
+                      (x86-lea cgc (x86-rax) opnd)
+                      (x86-mov cgc (x86-rax) opnd))
+                  (x86-mov cgc (x86-mem offset clo-reg) (x86-rax))
+                  (loop (cdr lates) (+ offset 8)))))
+
+          ;; Update ctx and load closure
+          (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
+            (apply-moves cgc ctx moves)
+            (let ((dest (codegen-reg-to-x86reg reg)))
+              (x86-lea cgc dest (x86-mem (+ offset-start TAG_MEMOBJ) clo-reg)))
+            (let* ((ctx (ctx-push ctx (make-ctx-tclo) reg))
+                   (ctx (ctx-id-add-idx ctx id 0)))
+              (jump-to-version cgc succ ctx))))))
+
+    ;; Total alloc size
+    (define closures-size (get-closures-size proc-vars))
+
+    ;; TODO: check each procedure does not require still object
+    (if (not (mem-can-alloc-group? (* 8 closures-size)))
+        (error "Letrec: NYI, alloc group > MSECTION_FUDGE"))
+
+    ;; Return first LCO: closures alloc
+    (if (= closures-size 0)
+        ;; No closure to create, only bind cst proc vars
+        (make-lazy-code
+          #f
+          (lambda (cgc ctx)
+            (jump-to-version cgc succ (cst-binder ctx))))
+        (get-lazy-alloc succ)))
+
+  ;; ---------------------------------------------------------------------------
+
+  ;; Add constant procedure bindings information to context
+  (define (bind-const-proc-vars ctx const-proc-vars)
+
+    (let* (;; We first add identifier to ctx with a fake fn-num value
+           (cst-set
+             (map (lambda (c) (cons (car c) -1))
+                  const-proc-vars))
+           ;; Bind const ids using fake cst-set
+           (ctx (ctx-bind-consts ctx cst-set)))
+
+      ;; Then, we init all entries and write fn-num values
+      (let loop ((l const-proc-vars)
+                 (ctx ctx))
+        (if (null? l)
+            ctx
+            (let* ((free-inf (caddr (car l)))
+                   (free-late (caddr free-inf))
+                   (free-cst (car free-inf))
+                   (fn-num (init-entry-cst (cadr (car l)) (append free-cst free-late) ctx)))
+              (loop (cdr l)
+                    (ctx-cst-fnnum-set! ctx (caar l) fn-num)))))))
+
+  ;; Compute current closures total size
+  ;; If proc-vars set contains no function, size is 0
+  ;; If proc-vars set contains at least one function,
+  ;; size is:
+  ;; position of previously computed proc + size of previously computed proc
+  ;; with size of previous proc is:
+  ;; 2 (header & entry) + number of non const free vars + number of late vars
+  (define (get-closures-size proc-set)
+    (if (null? proc-set)
+        0
+        (let ((prev-finfo (cadddr (car proc-set))))
+          (+ (cadar proc-set)
+             2
+             (length (cadr prev-finfo))
+             (length (caddr prev-finfo))))))
+
+  ;; Main lco
+  (make-lazy-code
+    #f
+    (lambda (cgc ctx)
+
+      (let* (;; Compute binding groups
+             (r (group-bindings ctx))
+             (proc-vars (car r))
+             (const-proc-vars (cadr r))
+             (other-vars (caddr r))
+             ;; Build LCO chain
+             (lazy-let-out (get-lazy-lets-out ast ids 0 succ))
+             (lazy-body    (gen-ast body lazy-let-out))
+             (lazy-fun     (get-lazy-make-closures lazy-body proc-vars other-vars const-proc-vars))
+             (lazy-eval    (get-lazy-eval other-vars lazy-fun)))
+
+        (let* (;; Bind others
+               (id-idx (map (lambda (el) (cons (car el) #f))
+                            (append proc-vars other-vars)))
+               (ctx (ctx-bind-locals ctx id-idx #t)))
+
+          ;;
+          (jump-to-version cgc lazy-eval ctx))))))
+
+;; Create and return out lazy code object of let/letrec
+;; Unbind locals, unbox result, and update ctx
+(define (get-lazy-lets-out ast ids nb-cst succ)
+
+  (let ((make-lc (if (member 'ret (lazy-code-flags succ))
+                     make-lazy-code-ret
+                     make-lazy-code)))
+    (make-lc
+      #f
+      (lambda (cgc ctx)
+        (let* ((type (ctx-get-type ctx 0))
+               (loc  (ctx-get-loc ctx 0))
+               (ctx  (ctx-unbind-locals ctx ids))
+               (ctx  (ctx-pop-n ctx (+ (- (length ids) nb-cst) 1)))
+               (ctx  (ctx-push ctx type loc)))
+          (jump-to-version cgc succ ctx))))))
+
+;;-----------------------------------------------------------------------------
+;; SPECIAL
+
+;;-----------------------------------------------------------------------------
 ;;
-;; Make lazy code from SPECIAL FORM
-;;
-(define (mlc-special ast succ)
-  (cond ((eq? (car ast) 'breakpoint)
+
+(define (gambit-call? op)
+  (and (atom-node? op)
+       (symbol? (atom-node-val op))
+       (let* ((sym (atom-node-val op))
+              (lstsym (string->list (symbol->string sym)))
+              (lstprefix (string->list "gambit$$")))
+         (and (> (length lstsym) (length lstprefix))
+              (equal? (list-head lstsym (length lstprefix))
+                      lstprefix)))))
+
+;; generated-arg? is #t if call take 1 arg and this arg already is generated
+(define (mlc-gambit-call ast succ generated-arg?)
+
+  ;; lco dropping all cst arguments
+  (define (get-lazy-drop-csts succ)
+    (make-lazy-code
+      #f
+      (lambda (cgc ctx)
+        (let loop ((i (- (length (cdr ast)) 1))
+                   (ctx ctx))
+          (if (< i 0)
+              (jump-to-version cgc succ ctx)
+              (loop (- i 1)
+                    (drop-cst-value cgc ctx i)))))))
+
+  (define (get-gambit-sym sym)
+    (let* ((lstprefix (string->list "gambit$$"))
+           (lstsym (string->list (symbol->string sym)))
+           (lstres (list-tail lstsym (length lstprefix))))
+      (string->symbol (list->string lstres))))
+
+  (define (get-locs ctx nlocs)
+    (if (= nlocs 0)
+        '()
+        (cons (ctx-get-loc ctx (- nlocs 1))
+              (get-locs ctx (- nlocs 1)))))
+
+  (let* ((lazy-call
            (make-lazy-code
+             ast
              (lambda (cgc ctx)
-               (gen-breakpoint cgc)
-               (codegen-void cgc)
-               (jump-to-version cgc succ (ctx-push ctx CTX_VOID)))))))
+               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ (length (cdr ast))))
+                      (gsym (get-gambit-sym (atom-node-val (car ast))))
+                      (nargs (length (cdr ast))))
+                 (apply-moves cgc ctx moves)
+                 (let ((locs (get-locs ctx nargs)))
+                   (let loop ((clocs locs)
+                              (fs (ctx-fs ctx)))
+                     (if (not (null? clocs))
+                         (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs (car clocs)))
+                                (x86-upush cgc (x86-rax))
+                                (loop (cdr clocs) (+ fs 1))))))
+                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding nargs)))
+                 (x86-upush cgc (x86-rax))
+                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding gsym)))
+                 (x86-upush cgc (x86-rax))
+                 (x86-pcall cgc label-gambit-call-handler)
+                 (x86-upop cgc (codegen-reg-to-x86reg reg))
+                 (x86-add cgc (x86-usp) (x86-imm-int (* 8 (+ nargs 1))))
+                 (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) (make-ctx-tunk) reg)))))))
+    (if generated-arg?
+        lazy-call
+        (gen-ast-l
+          (cdr ast)
+          (get-lazy-drop-csts lazy-call)))))
+
+;;-----------------------------------------------------------------------------
+;; PRIMITIVES
 
 ;;
-;; Make lazy code from SPECIAL FORM (inlined specials)
 ;;
-(define (mlc-primitive ast succ)
-
-  ;; Adjust args for some primitives
-  (cond ((and (eq? (car ast) 'write-char)
-              (= (length ast) 2))
-          (set! ast (append ast '((current-output-port))))))
-
-  ;; Assert nb args primitive
-  (assert-p-nbargs ast)
-
-  ;; Manage fake implementation. NOTE: remove when all implemented
-  ;; TODO: implement 'char=?'
-  (cond ((eq? (car ast) 'char=?)
-            (gen-ast (cons 'eq? (cdr ast)) succ))
+(define (mlc-primitive prim ast succ)
+  (cond ((and (= (length ast) 2)
+              (member prim '(##fx-? ##fl-)))
+           (error "NYI atom mlc-primitive 1"))
+        ((eq? prim 'exit)
+           (get-lazy-error ""))
+        ;; TODO: this can be removed when = is implemented as a primitive (in primitives set)
+        ;; TODO: zero? will then be handled by prim-p-zero?
+        ((eq? prim 'zero?)
+           (gen-ast (list (atom-node-make '=)
+                          (cadr ast)
+                          (atom-node-make 0))
+                    succ))
+        ((and (eq? prim 'make-vector)
+              (eq? (length ast) 2))
+           (mlc-primitive-d prim (append ast (list (atom-node-make 0))) succ))
+        ((and (eq? prim 'make-string)
+              (eq? (length ast) 2))
+           (mlc-primitive-d prim (append ast (list (atom-node-make (integer->char 0)))) succ))
         (else
-          (let* ((special (car ast))
-                 (lazy-special
-                   (cond ;; EXIT
-                         ((eq? special 'exit)
-                            (get-lazy-error ""))
-                         ;; CONS
-                         ((eq? special 'cons) (mlc-pair succ))
-                         ;; NOT
-                         ((eq? special 'not)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (codegen-not cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))
-                         ;; EQ?
-                         ((eq? special 'eq?)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (codegen-eq? cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_BOOL)))))
-                         ;; CAR & CDR
-                         ((member special '(car cdr))
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (codegen-car/cdr cgc special)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_UNK)))))
-                         ;; SET-CAR! & SET-CDR!
-                         ((member special '(set-car! set-cdr!))
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (codegen-scar/scdr cgc special)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_VOID)))))
-                         ;; CURRENT-INPUT-PORT / CURRENT-OUTPUT-PORT
-                         ((member special '(current-input-port current-output-port))
-                           (make-lazy-code
-                             (lambda (cgc ctx)
-                               (codegen-current-io-port cgc special)
-                               (jump-to-version cgc succ (ctx-push ctx
-                                                                   (if (eq? special 'current-output-port)
-                                                                       CTX_OPORT
-                                                                       CTX_IPORT))))))
-                         ;; CLOSE-INPUT-PORT / CLOSE-OUTPUT-PORT
-                         ((member special '(close-output-port close-input-port))
-                           (make-lazy-code
-                             (lambda (cgc ctx)
-                               (codegen-close-io-port cgc)
-                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_VOID)))))
-                         ;; OPEN-INPUT-FILE / OPEN-OUTPUT-FILE
-                         ((member special '(open-output-file open-input-file))
-                           (make-lazy-code
-                             (lambda (cgc ctx)
-                               (codegen-open-io-file cgc special)
-                               (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
-                                                                   (if (eq? special 'open-input-file)
-                                                                       CTX_IPORT
-                                                                       CTX_OPORT))))))
-                         ;; EOF-OBJECT?
-                         ((eq? special 'eof-object?)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (codegen-eof? cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))
-                         ;; READ-CHAR
-                         ((eq? special 'read-char)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (codegen-read-char cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_CHAR)))))
-                         ;; WRITE-CHAR
-                         ((eq? special 'write-char)
-                            (make-lazy-code
-                              (lambda (cgc ctx)
-                                (codegen-write-char cgc)
-                                (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_VOID)))))
-                         ;; CHAR<->INTEGER
-                         ((member special '(char->integer integer->char))
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (codegen-ch<->int cgc special)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx)
-                                                                  (if (eq? special 'char->integer)
-                                                                      CTX_NUM
-                                                                      CTX_CHAR))))))
-                         ;; MAKE-STRING
-                         ((eq? special 'make-string)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let ((init-value? (= (length (cdr ast)) 2)))
-                                (codegen-make-string cgc init-value?)
-                                (jump-to-version cgc succ (ctx-push (if init-value?
-                                                                        (ctx-pop ctx 2)
-                                                                        (ctx-pop ctx))
-                                                                    CTX_STR))))))
-                         ;; MAKE-VECTOR
-                         ((eq? special 'make-vector)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let ((init-value? (= (length (cdr ast)) 2)))
-                                (codegen-make-vector cgc (= (length (cdr ast)) 2))
-                                (jump-to-version cgc succ (ctx-push (if init-value?
-                                                                       (ctx-pop ctx 2)
-                                                                       (ctx-pop ctx))
-                                                                    CTX_VECT))))))
-                         ;; STRING->SYMBOL
-                         ((eq? special 'string->symbol)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (codegen-str->sym cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_SYM)))))
-                         ;; SYMBOL->STRING
-                         ((eq? special 'symbol->string)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (codegen-sym->str cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_STR)))))
-                         ;; VECTOR-LENGTH & STRING-LENGTH
-                         ((member special '(vector-length string-length))
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (codegen-vec/str-length cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_NUM)))))
-                         ;; VECTOR-REF
-                         ((eq? special 'vector-ref)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (codegen-vector-ref cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_UNK)))))
-                         ;; STRING-REF
-                         ((eq? special 'string-ref)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (codegen-string-ref cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_CHAR)))))
-                         ;; VECTOR-SET!
-                         ((eq? special 'vector-set!)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (codegen-vector-set! cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 3) CTX_VOID)))))
-                         ;; VECTOR-SET!
-                         ((eq? special 'string-set!)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (codegen-string-set! cgc)
-                              (jump-to-version cgc succ (ctx-push (ctx-pop ctx 3) CTX_VOID)))))
-                         ;; LIST
-                         ((eq? special 'list)
-                          (make-lazy-code
-                            (lambda (cgc ctx)
-                              (let ((len (length (cdr ast))))
-                                (codegen-list cgc len)
-                                (jump-to-version cgc
-                                                 succ
-                                                 (ctx-push (ctx-pop ctx len)
-                                                           (if (null? (cdr ast))
-                                                               CTX_NULL
-                                                               CTX_PAI)))))))
-                         ;; OTHERS
-                         (else (error "NYI")))))
+           (mlc-primitive-d prim ast succ))))
 
-            (let* ((primitive (assoc (car ast) primitives))
-                   ;; Get list of types required by this primitive
-                   (types (if (cadr primitive)
-                              (cdr (assoc (length (cdr ast))
-                                          (cadddr primitive)))
-                              (build-list (length (cdr ast)) (lambda (el) CTX_ALL)))))
-              (assert (= (length types)
-                         (length (cdr ast)))
-                      "Compiler: primitive error")
-              ;; Build args lazy object chain (with type checks)
-              (check-types types (cdr ast) lazy-special ast))))))
+;;
+;; Gen code for simple primitives (primitive that only call codegen)
+(define (gen-primitive cgc ctx succ reg op)
+
+  (define inlined-cond? (member 'cond (lazy-code-flags succ)))
+
+  (let* ((prim (primitive-get op))
+         (gen  (primitive-codegen prim))
+         (fs (ctx-fs ctx))
+         (nargs (primitive-nbargs prim))
+         (r  (build-list
+                  nargs
+                  (lambda (n)
+                    (let ((type (ctx-get-type ctx n)))
+                      (if (ctx-type-is-cst type)
+                          (cons #t (ctx-type-cst type))
+                          (cons #f (ctx-get-loc ctx n)))))))
+         (cst? (map car r))
+         (locs (map cdr r))
+         (args (append (list cgc fs op reg inlined-cond?)
+                       (reverse locs)
+                       (reverse cst?)))
+         (rtype (primitive-rettype prim)))
+
+    (apply gen args)
+    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) rtype reg))))
+
+;;
+;; Special primitive 'number?'
+(define (lco-p-number? ast op succ)
+  (define (get-lazy-res r)
+    (make-lazy-code
+      ast
+      (lambda (cgc ctx)
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1)))
+          (apply-moves cgc ctx moves)
+          (codegen-set-bool cgc r reg)
+          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg))))))
+
+  (let* ((lazy-flo (gen-dyn-type-test ATX_FLO 0 (get-lazy-res #t) (get-lazy-res #f) #f))
+         (lazy-fix (gen-dyn-type-test ATX_INT 0 (get-lazy-res #t) lazy-flo #f)))
+    lazy-fix))
+
+;;
+;; Special primitive 'current-x-port'
+(define (lco-p-cur-x-port ast op succ)
+  (define lazy-out
+    (make-lazy-code
+      ast
+      (lambda (cgc ctx)
+        (let* ((type (if (eq? op 'current-input-port) (make-ctx-tipo) (make-ctx-topo)))
+               (ctx (ctx-set-type ctx 0 type #f)))
+          (jump-to-version cgc succ ctx)))))
+  (let* ((sym (string->symbol (string-append "gambit$$" (symbol->string op))))
+         (node (atom-node-make sym)))
+    (gen-ast (list node) lazy-out)))
+
+;;
+;; Special primitive 'zero?'
+(define (lco-p-zero? ast op succ)
+  (let ((zero-node (atom-node-make 0))
+        (=-node    (atom-node-make '=)))
+  (gen-ast (list =-node (cadr ast) zero-node)
+           succ)))
+
+;;
+;; Special primitive 'char=?'
+(define (lco-p-char=? ast op succ)
+  (let ((node (atom-node-make 'eq?)))
+    (gen-ast (cons node (cdr ast))
+             succ)))
+
+;;
+;; Special primitives 'quotient', 'modulo', 'remainder'
+(define (lco-p-binop ast op succ)
+  (make-lazy-code
+    ast
+    (lambda (cgc ctx)
+      (mlet ((label-div0 (get-label-error ERR_DIVIDE_ZERO))
+             (moves/reg/ctx (ctx-get-free-reg ctx succ 2))
+             (tleft  (ctx-get-type ctx 1))
+             (tright (ctx-get-type ctx 0))
+             (lcst?  (ctx-type-is-cst tleft))
+             (rcst?  (ctx-type-is-cst tright))
+             (lleft  (if lcst? (ctx-type-cst tleft)  (ctx-get-loc ctx 1)))
+             (lright (if rcst? (ctx-type-cst tright) (ctx-get-loc ctx 0))))
+        (apply-moves cgc ctx moves)
+        (if (and lcst? rcst?)
+            (error "NN"))
+        (codegen-p-binop cgc (ctx-fs ctx) op label-div0 reg lleft lright lcst? rcst?)
+        (jump-to-version cgc
+                         succ
+                         (ctx-push (ctx-pop-n ctx 2) (make-ctx-tint) reg))))))
+
+;;
+;; Special primitive 'eq?'
+(define (lco-p-eq? ast op succ)
+
+  ;; Inlined if cond eq?
+  (define (gen-eq?-if cgc ctx typel typer lcst? rcst?)
+    (let ((ll (if lcst? (ctx-type-cst typel)
+                        (ctx-get-loc  ctx 1)))
+          (lr (if rcst? (ctx-type-cst typer)
+                        (ctx-get-loc  ctx 0)))
+          (nctx (ctx-pop-n ctx 2)))
+      (if (and (not (ctx-tunk? typel))
+               (not (ctx-tunk? typer))
+               (not (ctx-type-teq? typel typer)))
+          ;; Types are known and !=
+          (jump-to-version cgc (lazy-code-lco-false succ) nctx)
+          ;;
+          (begin
+            (codegen-p-eq? cgc (ctx-fs ctx) 'eq? #f #t ll lr lcst? rcst?)
+            ((lazy-code-generator succ) cgc nctx x86-jne)))))
+
+  (define (gen-eq? cgc ctx typel typer lcst? rcst?)
+    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 2))
+           (ll (if lcst? (ctx-type-cst typel)
+                               (ctx-get-loc  ctx 1)))
+           (lr (if rcst? (ctx-type-cst typer)
+                         (ctx-get-loc  ctx 0)))
+           (nctx (ctx-push (ctx-pop-n ctx 2) (make-ctx-tboo) reg)))
+      (apply-moves cgc ctx moves)
+      (if (and (not (ctx-tunk? typel))
+               (not (ctx-tunk? typer))
+               (not (ctx-type-teq? typel typer)))
+          ;; Types are known and !=
+          (codegen-set-bool cgc #f reg)
+          ;;
+          (codegen-p-eq? cgc (ctx-fs ctx) 'eq? reg #f ll lr lcst? rcst?))
+      (jump-to-version cgc succ nctx)))
+
+  (make-lazy-code
+    ast
+    (lambda (cgc ctx)
+      (let* ((typel (ctx-get-type ctx 1))
+             (typer (ctx-get-type ctx 0))
+             (lcst? (ctx-type-is-cst typel))
+             (rcst? (ctx-type-is-cst typer))
+             (if-cond? (member 'cond (lazy-code-flags succ))))
+        (cond ((and lcst? rcst? if-cond?)
+                 (error "NYI"))
+              ((and lcst? rcst?)
+                 (if (or (ctx-tclo? typel)
+                         (ctx-tclo? typer))
+                     (error "NYI, can't use literal->ctx-type with fn-num"))
+                 (let ((ctx (ctx-pop-n ctx 2))
+                       (r (eq? (ctx-type-cst typel) (ctx-type-cst typer))))
+                   (jump-to-version cgc succ (ctx-push ctx (literal->ctx-type r) #f))))
+              (if-cond?
+                 (gen-eq?-if cgc ctx typel typer lcst? rcst?))
+              (else
+                 (gen-eq? cgc ctx typel typer lcst? rcst?)))))))
+
+;;
+;; Special primitive 'vector'
+(define (lco-p-vector ast op succ)
+
+  (define nbargs (length (cdr ast)))
+
+  (let* ((lazy-set
+           (make-lazy-code
+             ast
+             (lambda (cgc ctx)
+               (let* ((vec-loc  (ctx-get-loc ctx 0))
+                      (vec-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) vec-loc)))
+
+                 (let loop ((idx nbargs))
+                   (if (= idx 0)
+                       (let* ((ctx (ctx-pop-n ctx (+ nbargs 1)))
+                              (ctx (ctx-push ctx (make-ctx-tvec) vec-loc)))
+                         (jump-to-version cgc succ ctx))
+                       (let* ((val-loc  (ctx-get-loc ctx idx))
+                              (type (ctx-get-type ctx idx))
+                              (cst? (ctx-type-is-cst type))
+                              (val-opnd (if cst?
+                                            (x86-imm-int (obj-encoding (ctx-type-cst type)))
+                                            (codegen-loc-to-x86opnd (ctx-fs ctx) val-loc)))
+                              (offset (- (* 8 (+ (- nbargs idx) 1)) TAG_MEMOBJ)))
+                         (if (or (x86-imm? val-opnd)
+                                 (x86-mem? val-opnd))
+                             (begin (x86-mov cgc (x86-rax) val-opnd)
+                                    (set! val-opnd (x86-rax))))
+                         (x86-mov cgc (x86-mem offset vec-opnd) val-opnd)
+                         (loop (- idx 1)))))))))
+
+         (lazy-vector
+           (gen-ast (list (atom-node-make 'make-vector)
+                          (atom-node-make nbargs))
+                    lazy-set)))
+
+    lazy-vector))
+
+
+;;
+;; Special primitive 'list'
+(define (lco-p-list ast op succ)
+
+  (define len (length (cdr ast)))
+
+  (define (build-chain n)
+    (if (= n 0)
+        (make-lazy-code
+          #f
+          (lambda (cgc ctx)
+            (let* ((type (ctx-get-type ctx n))
+                   (cst? (ctx-type-is-cst type))
+                   (loc (if cst?
+                            (ctx-type-cst type)
+                            (ctx-get-loc ctx n))))
+              (let ((pair-offset (* -3 8 n)))
+                ;; Write header
+                (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
+                ;; Write null in cdr
+                (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-imm-int (obj-encoding '())) 64)
+                ;; Write value in car
+                (let ((opnd
+                        (if cst?
+                            (x86-imm-int (obj-encoding loc))
+                            (codegen-loc-to-x86opnd (ctx-fs ctx) loc))))
+                  (if (or (x86-mem? opnd)
+                          (x86-imm? opnd))
+                      (begin
+                        (x86-mov cgc (x86-rax) opnd)
+                        (set! opnd (x86-rax))))
+                  (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) opnd))
+                (mlet ((moves/reg/ctx (ctx-get-free-reg (ctx-pop-n ctx len) succ 0)))
+                   (apply-moves cgc ctx moves)
+                   ;; Load first pair in dest register
+                   (let ((dest (codegen-reg-to-x86reg reg)))
+                     (let ((offset (+ (* len 3 -8) TAG_PAIR)))
+                       (x86-lea cgc dest (x86-mem offset alloc-ptr))
+                       (jump-to-version cgc succ (ctx-push ctx (make-ctx-tpai) reg)))))))))
+        (make-lazy-code
+          #f
+          (lambda (cgc ctx)
+            (let* ((type (ctx-get-type ctx n))
+                   (cst? (ctx-type-is-cst type))
+                   (loc (if cst?
+                            (ctx-type-cst type)
+                            (ctx-get-loc ctx n))))
+              (let ((pair-offset (* -3 8 n)))
+                ;; Write header
+                (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
+                ;; Write encoded next pair in cdr
+                (x86-lea cgc (x86-rax) (x86-mem (+ pair-offset TAG_PAIR) alloc-ptr))
+                (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-rax))
+                ;; Write value in car
+                (let ((opnd
+                        (if cst?
+                            (x86-imm-int (obj-encoding loc))
+                            (codegen-loc-to-x86opnd (ctx-fs ctx) loc))))
+                  (if (or (x86-imm? opnd)
+                          (x86-mem? opnd))
+                      (begin (x86-mov cgc (x86-rax) opnd)
+                             (set! opnd (x86-rax))))
+                  (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) opnd))
+                ;; Continue
+                (jump-to-version cgc (build-chain (- n 1)) ctx)))))))
+
+  (make-lazy-code
+    ast
+    (lambda (cgc ctx)
+      (let ((size (- (* len 3 8) 8)))
+        ;; One alloc for all pairs
+        (gen-allocation-imm cgc STAG_PAIR size)
+        (jump-to-version cgc (build-chain (- len 1)) ctx)))))
+
+;;
+;; Special primitive 'apply'
+(define (lco-p-apply ast op succ)
+
+  (make-lazy-code
+    ast
+    (lambda (cgc ctx)
+      ;; Save used registers, generate and push continuation stub
+      (set! ctx (call-save/cont cgc ctx ast succ #f 2 #t))
+      ;; Push closure
+      (call-get-closure cgc ctx 1)
+
+      (let* ((label-end (asm-make-label #f (new-sym 'apply-end-args)))
+             (llst (ctx-get-loc ctx 0))
+             (oplst (codegen-loc-to-x86opnd (ctx-fs ctx) llst)))
+        ;; r11, selector & r15 are used as tmp registers
+        ;; It is safe because they are not used for parameters.
+        ;; And if they are used after, they already are saved on the stack
+        (x86-mov cgc (x86-rdx) oplst)
+        (x86-mov cgc (x86-r11) (x86-imm-int 0))
+        (let loop ((args-regs args-regs))
+          (if (null? args-regs)
+              (let ((label-loop (asm-make-label #f (new-sym 'apply-loop-args))))
+                (x86-label cgc label-loop)
+                (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
+                (x86-je cgc label-end)
+                  (x86-add cgc (x86-r11) (x86-imm-int 4))
+                  (x86-mov cgc selector-reg (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
+                  (x86-upush cgc selector-reg)
+                  (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
+                  (x86-jmp cgc label-loop))
+              (begin
+                (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
+                (x86-je cgc label-end)
+                  (x86-add cgc (x86-r11) (x86-imm-int 4))
+                  (x86-mov cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (car args-regs)) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
+                  (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
+                (loop (cdr args-regs)))))
+        (x86-label cgc label-end)
+        ;; Reset selector used as tmp reg
+        (x86-mov cgc selector-reg (x86-imm-int 0))
+
+        (let ((fn-id-inf (call-get-eploc ctx (cadr ast))))
+          (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
+          (if (and (not opt-entry-points) fn-id-inf (car fn-id-inf))
+              (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f)))
+              (x86-mov cgc (x86-rsi) (x86-rax))) ;; Move closure in closure reg
+          (gen-call-sequence ast cgc #f #f (and fn-id-inf (cdr fn-id-inf))))))))
+
+(define (mlc-primitive-d prim ast succ)
+
+  ;; If all operands are cst, return list of ctx types
+  ;; If one or more operands are not cst, return #f
+  (define (get-all-cst-opnds ctx nopnds)
+    (let loop ((idx (- nopnds 1))
+               (r '()))
+      (if (< idx 0)
+          (reverse r)
+          (let ((type (ctx-get-type ctx idx)))
+            (if (ctx-type-is-cst type)
+                (let ((cst (ctx-type-cst type)))
+                  (assert (or (not (ctx-tclo? type))
+                              (not (##mem-allocated? cst))
+                              (permanent-object? cst))
+                          "Internal error")
+                  (loop (- idx 1) (cons type r)))
+                #f)))))
+
+  ;; This lco detect if all operands of the primitives are cst operands
+  ;; If so, use cst primitive function associated to current primitive
+  ;; else, jump to next
+  (define (get-lazy-cst-check primitive lco-prim)
+    (make-lazy-code
+      #f
+      (lambda (cgc ctx)
+        (let* ((lco-alloc-cstfn (get-lazy-drop-cstfn lco-prim (length (cdr ast))))
+               (lco-cst (primitive-lco-cst primitive))
+               (opnds (and lco-cst (get-all-cst-opnds ctx (length (cdr ast))))))
+          (if opnds
+              (lco-cst cgc succ prim ctx opnds)
+              (jump-to-version cgc lco-alloc-cstfn ctx))))))
+
+  ;; Drop all const functions of primitive args
+  (define (get-lazy-drop-cstfn succ nargs)
+    (make-lazy-code
+      #f
+      (lambda (cgc ctx)
+        (let loop ((i (- nargs 1))
+                   (ctx ctx))
+          (if (< i 0)
+              (jump-to-version cgc succ ctx)
+              (let ((type (ctx-get-type ctx i)))
+                (if (and (ctx-type-is-cst type)
+                         (ctx-tclo? type))
+                    (loop (- i 1) (drop-cst-value cgc ctx i))
+                    (loop (- i 1) ctx))))))))
+
+  ;;
+  (define (get-prim-lco primitive)
+    (let ((lco-getter (primitive-lcofun primitive)))
+      (if lco-getter
+          (lco-getter ast prim succ)
+          (make-lazy-code
+            ast
+            (lambda (cgc ctx)
+              (define nb-opnds (length (cdr ast)))
+              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ nb-opnds)))
+                (apply-moves cgc ctx moves)
+                (gen-primitive cgc ctx succ reg prim)))))))
+
+  ;; Assert primitive nb args
+  (assert-p-nbargs prim ast)
+
+  ;;
+  (let* ((primitive (primitive-get prim))
+         (lazy-primitive (get-prim-lco primitive))
+         (lazy-cst-check (get-lazy-cst-check primitive lazy-primitive)))
+
+    (if (primitive-nbargs primitive)
+        ;; Build args lco chain with type checks
+        (let ((types (primitive-argtypes primitive)))
+          (assert (= (length types)
+                     (length (cdr ast)))
+                  "Primitive error")
+          (check-types types (cdr ast) lazy-cst-check ast))
+        ;; No need to check types
+        (gen-ast-l (cdr ast) lazy-cst-check))))
 
 ;; Build lazy objects chain of 'args' list
 ;; and insert type check for corresponding 'types'
+;; TODO: rename types -> type-tests-fn
 (define (check-types types args succ ast)
-  (if (null? types)
-     succ
-     (let ((next-arg (check-types (cdr types) (cdr args) succ ast)))
-        (if (eq? (car types) '*)
-           (gen-ast (car args) next-arg)
-           (gen-ast (car args)
-                    (gen-fatal-type-test (car types) 0 next-arg ast))))))
+
+  (define (check-cst-type type cst)
+    (cond
+      ((eq? type ATX_INT) (integer? cst))
+      ((eq? type ATX_FLO) (flonum? cst))
+      ((eq? type ATX_NUL) (null? cst))
+      ((eq? type ATX_BOO) (boolean? cst))
+      ((eq? type ATX_CHA) (char? cst))
+      (else #f)))
+
+  (define (check-types-h types args curr-pos)
+
+    (if (null? types)
+        succ
+        (let* ((lazy-next (check-types-h (cdr types) (cdr args) (+ curr-pos 1))))
+          (cond ;; special type all
+                ((eq? (car types) ATX_ALL)
+                   (gen-ast (car args) lazy-next))
+                ;; special type number
+                ((eq? (car types) ATX_NUM)
+                   (let* ((lazy-flo (gen-fatal-type-test ATX_FLO 0 lazy-next ast))
+                          (lazy-fix (gen-dyn-type-test   ATX_INT 0 lazy-next lazy-flo ast)))
+                     (gen-ast (car args)
+                              lazy-fix)))
+                ;;
+                (else
+                   (gen-ast (car args)
+                            (gen-fatal-type-test (car types) 0 lazy-next ast)))))))
+
+  (check-types-h types args 0))
+
+;;
+;; Cst primitives functions
+
+;; These functions are called when all arguments of a primitive are cst values
+;; -> compute new cst value, update ctx, and jump to successor lco
+
+;; NYI cst function
+(define (dummy-cst-all cgc succ op ctx csts)
+  (error "NYI"))
+
+(define-macro (cst-prim-n pop-n compute-cst)
+  `(lambda (cgc succ op ctx csts)
+     (let* ((cst ,compute-cst)
+            (type (literal->ctx-type cst))
+            (ctx (ctx-push (ctx-pop-n ctx ,pop-n) type #f)))
+       (jump-to-version cgc succ ctx))))
+
+(define-macro (cst-prim-1 fn) `(cst-prim-n 1 (,fn (car csts))))
+(define-macro (cst-prim-2 fn) `(cst-prim-n 2 (,fn (car csts) (cadr csts))))
+
+;; 1 arg cst primitives
+(define cst-car       (cst-prim-1 (lambda (cst) (car (ctx-type-cst cst)))))
+(define cst-cdr       (cst-prim-1 (lambda (cst) (cdr (ctx-type-cst cst)))))
+(define cst-not       (cst-prim-1 (lambda (cst) (not (ctx-type-cst cst)))))
+(define cst-int->char (cst-prim-1 (lambda (cst) (integer->char (ctx-type-cst cst)))))
+(define cst-number?   (cst-prim-1 (lambda (cst)
+                                    (and (not     (ctx-tclo?    cst))
+                                         (number? (ctx-type-cst cst))))))
+
+;; 2 args cst primitives
+(define cst-eq?
+  (cst-prim-2 (lambda (cst1 cst2)
+                (and (not (ctx-tclo? cst1))
+                     (not (ctx-tclo? cst2))
+                     (eq? (ctx-type-cst cst1)
+                          (ctx-type-cst cst2))))))
+(define cst-binop
+  (cst-prim-2 (lambda (cst1 cst2)
+                (eval (list op
+                            (ctx-type-cst cst1)
+                            (ctx-type-cst cst2))))))
 
 ;;-----------------------------------------------------------------------------
-;; Conditionals
+;; Branches
 
 ;;
 ;; Make lazy code from IF
 ;;
 (define (mlc-if ast succ)
-  (let* ((lazy-code0
-           (gen-ast (cadddr ast) succ))
-         (lazy-code1
-           (gen-ast (caddr ast) succ))
-         (lazy-code-test
-           (make-lazy-code
-             (lambda (cgc ctx)
-               (let* ((ctx0
-                        (ctx-pop ctx))
 
-                      (ctx1
-                        ctx0)
+  (letrec ((condition (cadr ast))
+           (lazy-code0
+             (gen-ast (cadddr ast) succ))
+           (lazy-code1
+             (gen-ast (caddr ast) succ))
+           (lazy-code-test
+             (make-lazy-code-cond
+               #f
+               lazy-code1
+               lazy-code0
+               (lambda (cgc ctx #!optional x86-op)
 
-                      (label-jump
-                        (asm-make-label
-                          cgc
-                          (new-sym 'patchable_jump)))
+                 (let* ((ctx0 (if x86-op ctx (ctx-pop ctx)))   ;; Pop condition result
 
-                      (stub-labels
-                        (add-callback
-                          cgc
-                          1
-                          (let ((prev-action #f))
-                            (lambda (ret-addr selector)
-                              (let ((stub-addr
-                                      (- ret-addr 5 2))
-                                    (jump-addr
-                                      (asm-label-pos label-jump)))
+                        (ctx1
+                          ctx0)
 
-                                (if opt-verbose-jit
-                                    (begin
-                                      (println ">>> selector= " selector)
-                                      (println ">>> prev-action= " prev-action)))
+                        (label-jump
+                          (asm-make-label
+                            cgc
+                            (new-sym 'patchable_jump)))
 
-                                (if (not prev-action)
+                        (stub-first-label-addr #f)
 
-                                    (begin
+                        (stub-labels
+                          (add-callback
+                            cgc
+                            1
+                            (let ((prev-action #f))
+                              (lambda (ret-addr selector)
+                                (let ((stub-addr
+                                        stub-first-label-addr)
+                                      (jump-addr
+                                        (asm-label-pos label-jump)))
 
-                                      (set! prev-action 'no-swap)
+                                  (if opt-verbose-jit
+                                      (begin
+                                        (println ">>> selector= " selector)
+                                        (println ">>> prev-action= " prev-action)))
 
-                                      (if (= selector 1)
+                                  (if (not prev-action)
 
-                                          ;; overwrite unconditional jump
-                                          (gen-version
-                                            (+ jump-addr 6)
-                                            lazy-code1
-                                            ctx1)
+                                      (begin
 
-                                          (if (= (+ jump-addr 6 5) code-alloc)
+                                        (set! prev-action 'no-swap)
 
-                                              (begin
+                                        (if (= selector 1)
+                                            ;; overwrite unconditional jump
+                                            (gen-version
+                                              (+ jump-addr 6)
+                                              lazy-code1
+                                              ctx1)
 
-                                                (if opt-verbose-jit (println ">>> swapping-branches"))
+                                            (if (= (+ jump-addr 6 5) code-alloc)
 
-                                                (set! prev-action 'swap)
+                                                (begin
 
-                                                ;; invert jump direction
-                                                (put-u8 (+ jump-addr 1)
-                                                        (fxxor 1 (get-u8 (+ jump-addr 1))))
+                                                  (if opt-verbose-jit (println ">>> swapping-branches"))
 
-                                                ;; make conditional jump to stub
-                                                (patch-jump jump-addr stub-addr)
+                                                  (set! prev-action 'swap)
 
-                                                ;; overwrite unconditional jump
+                                                  ;; invert jump direction
+                                                  (put-u8 (+ jump-addr 1)
+                                                          (fxxor 1 (get-u8 (+ jump-addr 1))))
+
+                                                  ;; make conditional jump to stub
+                                                  (patch-jump jump-addr stub-addr)
+
+                                                  ;; overwrite unconditional jump
+                                                  (gen-version
+                                                    (+ jump-addr 6)
+                                                    lazy-code0
+                                                    ctx0))
+
+                                                ;; make conditional jump to new version
                                                 (gen-version
-                                                  (+ jump-addr 6)
+                                                  jump-addr
                                                   lazy-code0
-                                                  ctx0))
+                                                  ctx0))))
 
-                                              ;; make conditional jump to new version
-                                              (gen-version
-                                                jump-addr
-                                                lazy-code0
-                                                ctx0))))
+                                      (begin
 
-                                    (begin
+                                        ;; one branch has already been patched
 
-                                      ;; one branch has already been patched
+                                        ;; reclaim the stub
+                                        (release-still-vector
+                                          (get-scmobj ret-addr))
+                                        (stub-reclaim stub-addr)
 
-                                      ;; reclaim the stub
-                                      (release-still-vector
-                                        (get-scmobj ret-addr))
-                                      (stub-reclaim stub-addr)
+                                        (if (= selector 0)
 
-                                      (if (= selector 0)
+                                            (gen-version
+                                              (if (eq? prev-action 'swap)
+                                                  (+ jump-addr 6)
+                                                  jump-addr)
+                                              lazy-code0
+                                              ctx0)
 
-                                          (gen-version
-                                            (if (eq? prev-action 'swap)
-                                                (+ jump-addr 6)
-                                                jump-addr)
-                                            lazy-code0
-                                            ctx0)
+                                            (gen-version
+                                              (if (eq? prev-action 'swap)
+                                                  jump-addr
+                                                  (+ jump-addr 6))
+                                              lazy-code1
+                                              ctx1))))))))))
 
-                                          (gen-version
-                                            (if (eq? prev-action 'swap)
-                                                jump-addr
-                                                (+ jump-addr 6))
-                                            lazy-code1
-                                            ctx1))))))))))
+                   (let ((label-false (list-ref stub-labels 0))
+                         (label-true  (list-ref stub-labels 1)))
 
-                 (let ((label-false (list-ref stub-labels 0))
-                       (label-true  (list-ref stub-labels 1)))
-                   ;; Gen code
-                   (codegen-if cgc label-jump label-false label-true)))))))
+                     (set! stub-first-label-addr
+                           (min (asm-label-pos label-false)
+                                (asm-label-pos label-true)))
+
+                     (if x86-op
+                         (codegen-inlined-if cgc label-jump label-false label-true x86-op)
+                         (let* ((type (ctx-get-type ctx 0))
+                                (cst? (ctx-type-is-cst type)))
+                           ;; TODO WIP: do *not* create stub in the first two cases
+                           (cond ((and cst? (ctx-type-cst type))
+                                    (jump-to-version cgc lazy-code1 (ctx-pop ctx)))
+                                 (cst?
+                                    (jump-to-version cgc lazy-code0 (ctx-pop ctx)))
+                                 (else
+                                    (let ((lcond (ctx-get-loc ctx 0)))
+                                      (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond))))))))))))
+
     (gen-ast
       (cadr ast)
       lazy-code-test)))
 
 ;;-----------------------------------------------------------------------------
-;;
-;; Make lazy code from DO
-;;
-;; NOTE: optimization: if <step> is <variable> it is useless to compile
-;;       and move in stack, we can use the value of previous iteration
-;;
-;; Lazy objects chain :
-;;
-;; +-------+  +---------+  +------+  +----------+  +------------+  +-----+  +------+
-;; | inits |->| ctx-add |->| test |->| dispatch |->| test-exprs |->| end |->| succ |-> ...
-;; +-------+  +---------+  +------+  +----------+  +------------+  +-----+  +------+
-;;                            ^           |
-;;                            |           V
-;;                            |       +--------+
-;;                            |       | bodies |
-;;                            |       +--------+
-;;                            |           |
-;;                            |           V
-;;                         +------+   +-------+
-;;                         | bind |<--| steps |
-;;                         +------+   +-------+
-(define (mlc-do ast succ)
-
-  ;; Get list of steps
-  (define (get-steps variables)
-    (if (null? variables)
-      '()
-      (let ((variable (car variables)))
-        (if (null? (cddr variable))
-          ;; No step, use variable
-          (cons (car variable)   (get-steps (cdr variables)))
-          ;; Step exists, add step
-          (cons (caddr variable) (get-steps (cdr variables)))))))
-
-  (let* (;; DO components
-         (test       (car (caddr ast)))
-         (test-exprs (if (null? (cdr (caddr ast)))
-                         '(#f)
-                         (cdr (caddr ast))))
-         (variables  (map car (cadr ast)))
-         (inits      (map cadr (cadr ast)))
-         (steps      (get-steps (cadr ast)))
-         (bodies     (cdddr ast))
-         (mvars      (mutable-vars ast variables))
-         ;; LAZY-END
-         (lazy-end
-           ;; Last object. Executed if test evaluates to true
-           ;; Update ctx and rsp
-           (make-lazy-code
-             (lambda (cgc ctx)
-
-               (let* ((nctx (ctx-move ctx 0 (- (+ (length test-exprs) (length variables)) 1)))
-                      (mctx (ctx-pop nctx (- (+ (length test-exprs) (length variables)) 1)))
-                      (env (list-tail (ctx-env mctx) (length variables)))
-                      (ctx (make-ctx (ctx-stack mctx) env (ctx-nb-args mctx))))
-                ;; Clean stack and push result on top of stack
-                (codegen-do-end cgc (+ (length variables) (length test-exprs) -1))
-                ;; Jump to succ
-                (jump-to-version cgc succ ctx)))))
-         ;; LAZY-TEST
-         (lazy-test #f) ;; do test
-         ;; LAZY-BIND
-         (lazy-bind
-           (make-lazy-code
-             (lambda (cgc ctx)
-               ;; Update variables
-               (do ((it   variables (cdr it))
-                    (from (- (* 8 (length variables)) 8) (- from 8))
-                    (to   (- (* 8 (+ (length variables) (length variables) (length bodies))) 8) (- to 8)))
-                   ((null? it) #f)
-                   (codegen-do-bind-var cgc (member (car it) mvars) from to))
-
-               ;; Clean stack
-               (codegen-clean-stack cgc (+ (length variables) (length bodies)))
-
-               ;; Update ctx
-               (let* (;; Mov stack types
-                    (lctx (ctx-mov-nb ctx
-                                      (length variables)
-                                      0
-                                      (+ (length variables) (length bodies))))
-                    ;; Keep same env
-                    (env (ctx-env ctx))
-                    ;; Remove pushed values
-                    (mctx (ctx-pop (make-ctx (ctx-stack lctx)
-                                             env
-                                             (ctx-nb-args lctx))
-                                   (+ (length variables) (length bodies)))))
-
-               (jump-to-version cgc lazy-test mctx)))))
-         ;; LAZY-STEP
-         (lazy-steps
-           (gen-ast-l steps lazy-bind))
-         ;; LAZY-BODY
-         (lazy-body
-           (if (null? bodies)
-              lazy-steps ;; Jump directly to lazy-steps if no body
-              (gen-ast-l bodies lazy-steps)))
-         ;; LAZY-TEST-EXPRS
-         (lazy-test-exprs (gen-ast-l test-exprs lazy-end))
-         ;; LAZY-DISPATCH: Read result of test and jump to test-exors if #t or body if #f
-         (lazy-dispatch (get-lazy-dispatch lazy-test-exprs lazy-body #t #f))
-         ;; LAZY-ADD-CTX
-         (lazy-add-ctx
-           ;; Add variables to env and gen mutable vars
-           (make-lazy-code
-             (lambda (cgc ctx)
-               (let* ((start (- (length (ctx-stack ctx)) (length variables) 1))
-                      (env  (build-env mvars variables start (ctx-env ctx)))
-                      (nctx (make-ctx (ctx-stack ctx) env (ctx-nb-args ctx)))
-                      ;; Gen mutable vars
-                      (mctx (gen-mutable cgc nctx mvars)))
-                 ;; Jump to test with new ctx
-                 (jump-to-version cgc lazy-test mctx))))))
-
-    ;; Lazy-dispatch exists then generate test ast
-    (set! lazy-test (gen-ast test lazy-dispatch))
-
-    ;; Return first init lazy object
-    (gen-ast-l inits lazy-add-ctx)))
-
-;; Create a new lazy code object.
-;; Takes the value from stack and cmp to #f
-;; If == #f jump to lazy-fail
-;; If != #f jump to lazy-success
-(define (get-lazy-dispatch lazy-success lazy-fail from-stack? cmp-val)
-
-    (make-lazy-code
-       (lambda (cgc ctx)
-         (let* ((ctx-out (if from-stack?
-                            (ctx-pop ctx)
-                            ctx))
-                (label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
-                (stub-labels
-                      (add-callback cgc 1
-                        (let ((prev-action #f))
-
-                          (lambda (ret-addr selector)
-                            (let ((stub-addr (- ret-addr 5 2))
-                                  (jump-addr (asm-label-pos label-jump)))
-
-                              (if opt-verbose-jit
-                                  (begin
-                                    (println ">>> selector= " selector)
-                                    (println ">>> prev-action= " prev-action)))
-
-                              (if (not prev-action)
-
-                                  (begin (set! prev-action 'no-swap)
-                                         (if (= selector 1)
-
-                                            ;; overwrite unconditional jump
-                                            (gen-version (+ jump-addr 6) lazy-success ctx-out)
-
-                                            (if (= (+ jump-addr 6 5) code-alloc)
-
-                                              (begin (if opt-verbose-jit (println ">>> swapping-branches"))
-                                                     (set! prev-action 'swap)
-                                                     ;; invert jump direction
-                                                     (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
-                                                     ;; make conditional jump to stub
-                                                     (patch-jump jump-addr stub-addr)
-                                                     ;; overwrite unconditional jump
-                                                     (gen-version
-                                                     (+ jump-addr 6)
-                                                     lazy-fail
-                                                     ctx-out))
-
-                                              ;; make conditional jump to new version
-                                              (gen-version jump-addr lazy-fail ctx-out))))
-
-                                  (begin ;; one branch has already been patched
-                                         ;; reclaim the stub
-                                         (release-still-vector (get-scmobj ret-addr))
-                                         (stub-reclaim stub-addr)
-                                         (if (= selector 0)
-                                            (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-fail ctx-out)
-                                            (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-success ctx-out))))))))))
-
-         (codegen-dispatch-imm cgc label-jump (list-ref stub-labels 0) (list-ref stub-labels 1) from-stack? cmp-val)))))
-
-;;-----------------------------------------------------------------------------
 ;; APPLY & CALL
 
+;; Return air (const? . fn-num)
+;; const? is #t if fn-num is an fn-num of a const function
+;; const? is #f if fn-num is an fn-num of a non const function
+(define (call-get-eploc ctx op)
+
+  (if (and (atom-node? op)
+           (symbol? (atom-node-val op)))
+      ;; Op is an atom node with a symbol
+      (let ((sym (atom-node-val op)))
+
+        (define global-opt
+          (let ((global (asc-globals-get sym)))
+            (if (and global
+                     (not (assoc sym (ctx-env ctx)))
+                     (ctx-tclo? (global-stype global))
+                     (ctx-type-is-cst (global-stype global)))
+                (cons #t (ctx-type-cst (global-stype global)))
+                #f)))
+
+        (or (ctx-get-eploc ctx sym)
+            global-opt))
+      #f))
+
 ;;
-;; Make lazy code from APPLY
+;; Call steps
 ;;
-(define (mlc-apply ast succ)
 
-  (let (;; Get closure and gen call sequence
-        (lazy-call
-          (make-lazy-code
-            (lambda (cgc ctx)
-              (gen-call-sequence cgc #f #f)))))
+;; Save used registers and return updated ctx
+(define (call-save/cont cgc ctx ast succ tail? idx-offset apply?)
+  (if tail?
+      ;; Tail call, no register to save and no continuation to generate
+      ctx
+      (mlet ((moves/nctx (ctx-save-call ctx idx-offset)))
+        (define fctx (ctx-fs-inc nctx))
+        ;; Save registers
+        (set! moves (cons (cons 'fs 1) moves))
+        (apply-moves cgc fctx moves)
+        ;; Generate & push continuation
+        ;; gen-continuation-* needs ctx without return address slot
+        (if opt-return-points
+            (gen-continuation-cr cgc ast succ nctx apply?)
+            (gen-continuation-rp cgc ast succ nctx apply?))
 
-    ;; First object of the chain, reserve a slot for the continuation
-    (make-lazy-code
-      (lambda (cgc ctx)
-         (let* (;; Lazy code object to build continuation and move it to stack slot
-                (lazy-build-continuation (get-lazy-continuation-builder (cadr ast) succ lazy-call '() ctx #t ast))
-                ;; Remove apply op and lst, push args from lst and push closure
-                (lazy-move-args
-                  (make-lazy-code
-                    (lambda (cgc ctx)
-                      (codegen-pre-apply cgc)
-                      ;; Jump to lazy-build-continuation without ctx
-                      ;; This works because lazy-build-continuation and its successor lazy-call do not use ctx. ;; TODO (use ctx? instead of empty ctx)
-                      (jump-to-version cgc lazy-build-continuation (make-ctx '() '() -1)))))
-                  ;; Push args list of apply
-                  (lazy-args-list (gen-ast (caddr ast) lazy-move-args)) ;; TODO: check that caddr is a pair ?
-                  ;; Push function of apply
-                  (lazy-fun (check-types (list CTX_CLO) (list (cadr ast)) lazy-args-list ast)))
+        fctx)))
 
-              (codegen-push-n cgc #f 1) ;; Reserve stack slot
-              (jump-to-version cgc lazy-fun (ctx-push ctx CTX_RETAD)))))))
+;; Push closure, put it in rax, and return updated ctx
+(define (call-get-closure cgc ctx closure-idx)
+  (let* ((fs (ctx-fs ctx))
+         (loc  (ctx-get-loc     ctx closure-idx)))
+    (codegen-load-closure cgc fs loc)))
+
+;; Move args in regs or mem following calling convention
+(define (call-prep-args cgc ctx ast nbargs const-fn)
+
+  (let* ((cloloc (if const-fn #f (ctx-get-loc ctx nbargs)))
+         (stackp/moves (ctx-get-call-args-moves ctx nbargs cloloc))
+         (stackp (car stackp/moves))
+         (moves (cdr stackp/moves)))
+
+    (let loop ((fs (ctx-fs ctx))
+               (locs stackp))
+      (if (null? locs)
+          (set! ctx (ctx-fs-update ctx fs))
+          (begin
+            (cond ((eq? (caar locs) 'constfn)
+                     (let ((entry-obj (asc-globalfn-entry-get (cdar locs))))
+                       (gen-closure cgc 'tmp #f entry-obj '())
+                       (x86-upush cgc (codegen-reg-to-x86reg 'tmp))))
+                  ((eq? (caar locs) 'const)
+                     (x86-upush cgc (x86-imm-int (obj-encoding (cdar locs)))))
+                  (else
+                     (x86-upush cgc (codegen-loc-to-x86opnd fs (car locs)))))
+            (loop (+ fs 1) (cdr locs)))))
+
+    (let* ((used-regs
+             (foldr (lambda (el r)
+                      (define regs '())
+                      (if (ctx-loc-is-register? (car el)) (set! regs (cons (car el) regs)))
+                      (if (ctx-loc-is-register? (cdr el)) (set! regs (cons (cdr el) regs)))
+                      (append regs r))
+                    '()
+                    moves))
+             (unused-regs (set-sub (ctx-init-free-regs) used-regs '())))
+
+      (if (null? unused-regs)
+          (begin (apply-moves cgc ctx moves 'selector)
+                 (x86-mov cgc selector-reg (x86-imm-int 0)))
+          (apply-moves cgc ctx moves (car unused-regs)))
+
+      ;; Force closure reg to contain #f for do_callback_fn if we call a const closure
+      (if (and (not opt-entry-points)
+               const-fn)
+          (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f))))
+
+      ctx)))
+
+;; Shift args and closure for tail call
+(define (call-tail-shift cgc ctx ast tail? nbargs)
+
+  ;; r11 is available because it's the ctx register
+  (if tail?
+      (let ((fs (ctx-fs ctx))
+            (nshift
+              (if (> (- nbargs (length args-regs)) 0)
+                  (- nbargs (length args-regs))
+                  0)))
+        (let loop ((curr (- nshift 1)))
+          (if (>= curr 0)
+              (begin
+                (x86-mov cgc (x86-r11) (x86-mem (* 8 curr) (x86-usp)))
+                (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift 1) curr)) (x86-usp)) (x86-r11))
+                (loop (- curr 1)))))
+
+        (if (not (= (- fs nshift 1) 0))
+            (x86-add cgc (x86-usp) (x86-imm-int (* 8 (- fs nshift 1))))))))
 
 ;;
 ;; Make lazy code from CALL EXPR
 ;;
 (define (mlc-call ast succ)
 
-  (let* (;; Tail call if successor's flags set contains 'ret flag
-         (tail (member 'ret (lazy-code-flags succ)))
+  (let* (;; fn-num. Computed when ctx is available
+         ;; #f is called function is unknown at compile time
+         ;; contains fn-num if called function is known at compile time
+         (fn-id-inf #f) ;; (cst? . fn-num) or #f
+         ;; Tail call if successor's flags set contains 'ret flag
+         (tail? (member 'ret (lazy-code-flags succ)))
          ;; Call arguments
          (args (cdr ast))
          ;; Lazy fail
-         (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED CTX_CLO)))
+         (lazy-fail (get-lazy-error (ERR_TYPE_EXPECTED ATX_CLO)))
          ;; Lazy call
-         (lazy-call (make-lazy-code (lambda (cgc ctx)
+         (lazy-call
+           (make-lazy-code
+             #f
+             (lambda (cgc ctx)
 
-                                        ;; Call ctx in rdx
-                                        (let* ((call-stack (if tail
-                                                              (append (list-head (ctx-stack ctx) (+ 1 (length args))) (list CTX_RETAD))
-                                                              (list-head (ctx-stack ctx) (+ (length args) 2))))
-                                               (call-ctx (make-ctx call-stack '() -1)))
 
-                                        (if tail
-                                          (tail-shift cgc
-                                                      ;; Nb slots to shift
-                                                      (+ (length args) 1) ;; +1 closure
-                                                      ;; Initial from slot
-                                                      (length args)
-                                                      ;; Initial to slot
-                                                      (- (length (ctx-stack ctx)) 2)))
 
-                                        ;; If count calls compiler opt
-                                        (if (eq? (car ast) opt-count-calls)
-                                           (gen-inc-slot cgc 'calls))
 
-                                        ;; Gen call sequence with closure in RAX
-                                        (let ((nb-unk (count call-stack (lambda (n) (eq? n CTX_UNK)))))
-                                          (if (and opt-entry-points (= nb-unk (length args)))
-                                              (begin (codegen-call-set-nbargs cgc (length args))
-                                                     (gen-call-sequence cgc #f #f))
-                                              (gen-call-sequence cgc call-ctx (length (cdr ast)))))))))
+               ;; Handle const fn
+               (let ((type (ctx-get-type ctx (length args))))
+                 (if (ctx-type-is-cst type)
+                     (set! fn-id-inf (cons #t (ctx-type-cst type)))))
+
+               ;; Save used registers, generate and push continuation stub
+               (set! ctx (call-save/cont cgc ctx ast succ tail? (+ (length args) 1) #f))
+
+               ;; Move args to regs or stack following calling convention
+               (set! ctx (call-prep-args cgc ctx ast (length args) (and fn-id-inf (car fn-id-inf))))
+
+               ;; Shift args and closure for tail call
+               (call-tail-shift cgc ctx ast tail? (length args))
+
+               ;; Generate call sequence
+               ;; Build call ctx
+               (let ((call-ctx (ctx-init-call ctx (length (cdr ast)))))
+                 (gen-call-sequence ast cgc call-ctx (length args) (and fn-id-inf (cdr fn-id-inf)))))))
          ;; Lazy code object to build the continuation
-         (lazy-tail-operator (check-types (list CTX_CLO) (list (car ast)) lazy-call ast)))
+         (lazy-tail-operator (check-types (list ATX_CLO) (list (car ast)) lazy-call ast)))
 
-    (if tail
-        (if (> (length args) 0)
-            ;; If args, then compile args
-            (gen-ast-l args lazy-tail-operator)
-            ;; Else, compile call
-            lazy-tail-operator)
-        ;; First object of the chain
-        (make-lazy-code
-          (lambda (cgc ctx)
-            (let* (;; Lazy code object to build continuation and move it to stack slot
-                   (lazy-build-continuation (get-lazy-continuation-builder (car ast) succ lazy-call args ctx #f ast))
-                   ;; Lazy code object to push operator of the call
-                   (lazy-operator (check-types (list CTX_CLO) (list (car ast)) lazy-build-continuation ast)))
+    ;; Gen and check types of args
+    (make-lazy-code
+      ast
+      (lambda (cgc ctx)
 
-              (codegen-push-n cgc #f 1) ;; Reserve a slot for continuation
-              (jump-to-version cgc
-                               (gen-ast-l args lazy-operator) ;; Compile args and jump to operator
-                               (ctx-push ctx CTX_RETAD))))))))
+        ;; Check if the identity of called function is available
+        (set! fn-id-inf (call-get-eploc ctx (car ast)))
 
-(define (get-lazy-continuation-builder op lazy-succ lazy-call args continuation-ctx from-apply? ast)
+        (if (and fn-id-inf (car fn-id-inf))
+            (jump-to-version
+              cgc
+              (gen-ast-l (cdr ast) lazy-call)
+              (ctx-push ctx (make-ctx-tclo #t (cdr fn-id-inf)) #f))
+            (jump-to-version
+              cgc
+              (check-types (list ATX_CLO) (list (car ast)) (gen-ast-l (cdr ast) lazy-call) ast)
+              ctx))))))
 
-  (if opt-return-points
-    (get-lazy-continuation-builder-cr  op lazy-succ lazy-call args continuation-ctx from-apply? ast)
-    (get-lazy-continuation-builder-nor op lazy-succ lazy-call args continuation-ctx from-apply?)))
+(define (gen-continuation-rp cgc ast succ ctx apply?)
 
-;; TODO: rename from-apply? -> apply?
-(define (get-lazy-continuation-builder-cr op lazy-succ lazy-call args continuation-ctx from-apply? ast)
+  (let* ((lazy-continuation
+           (make-lazy-code-cont
+             #f
+             (lambda (cgc ctx)
+               (jump-to-version cgc succ ctx))))
+         ;; Label for return address loading
+         (load-ret-label (asm-make-label #f (new-sym 'load-ret-addr)))
+         ;; Flag in stub : is the continuation already generated ?
+         (gen-flag #f)
+         ;; Continuation stub
+         (stub-labels
+           (add-callback cgc
+                              0
+                              (lambda (ret-addr selector)
+                                (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag to continuation addr
+                                    (mlet ((args (cdr ast))
+                                           (ctx
+                                             (if apply?
+                                                 (ctx-pop-n ctx 2) ;; Pop operator and args
+                                                 (ctx-pop-n ctx (+ (length args) 1)))))
 
-  ;; Create stub and push ret addr
-  (make-lazy-code-cont
-     (lambda (cgc ctx)
-       (let* (;; Lazy-continuation, push returned value
-              (lazy-continuation
-                (make-lazy-code
-                  (lambda (cgc ctx)
-                    (codegen-push-tmp cgc)
-                    (jump-to-version cgc lazy-succ ctx))))
-              ;; Continuation stub
-              (stub-labels (add-cont-callback cgc
-                                              0
-                                              (lambda (ret-addr selector type table)
+                                      (set! gen-flag
+                                            (gen-version-continuation
+                                              load-ret-label
+                                              lazy-continuation
+                                              (ctx-push ctx (make-ctx-tunk) return-reg)))))
+                                gen-flag))))
+   ;; Generate code
+   (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0))))
 
-                                                (let ((continuation-ctx (ctx-push continuation-ctx type)))
-                                                  (gen-version-continuation-cr lazy-continuation
-                                                                               continuation-ctx
-                                                                               type
-                                                                               table)))))
-              ;; CRtable
-              (crtable-key (get-crtable-key ast ctx))
-              (stub-addr (vector-ref (list-ref stub-labels 0) 1))
-              (crtable (get-crtable ast crtable-key stub-addr))
-              (crtable-loc (- (obj-encoding crtable) 1)))
-         ;; Generate code
-         (codegen-load-cont-cr cgc crtable-loc from-apply? (length args))
-         ;; Jump to call object
-         (jump-to-version cgc lazy-call ctx)))))
+(define (gen-continuation-cr cgc ast succ ctx apply?)
 
-;; TODO: rename from-apply? -> apply?
-;; Build continuation stub and load stub address to the continuation slot
-(define (get-lazy-continuation-builder-nor op lazy-succ lazy-call args continuation-ctx from-apply?)
-  ;; Create stub and push ret addr
-  (make-lazy-code-cont
-    (lambda (cgc ctx)
-      (let* (;; Flag in stub : is the continuation already generated ?
-             (gen-flag #f)
-             ;; Label for return address loading
-             (load-ret-label (asm-make-label cgc (new-sym 'load-ret-addr)))
-             ;; Lazy continuation, push returned value
-             (lazy-continuation
-                (make-lazy-code
-                   (lambda (cgc ctx)
-                      (codegen-push-tmp cgc)
-                      (jump-to-version cgc lazy-succ (ctx-push ctx CTX_UNK)))))
-             ;; Continuation stub
-             (stub-labels (add-callback cgc
-                                        0
-                                        (lambda (ret-addr selector)
-                                            (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag to continuation addr
-                                               (set! gen-flag (gen-version-continuation load-ret-label
-                                                                                        lazy-continuation
-                                                                                        continuation-ctx))) ;; Remove operator, args, and continuation from stack
-                                            gen-flag))))
+  (let* ((lazy-continuation
+           (make-lazy-code-cont
+             #f
+             (lambda (cgc ctx)
+               (jump-to-version cgc succ ctx))))
+         (stub-labels
+           (add-cont-callback
+             cgc
+             0
+             (lambda (ret-addr selector type table)
 
-        ;; Generate code
-        (codegen-load-cont-nor cgc load-ret-label (list-ref stub-labels 0) from-apply? (length args))
-        ;; Jump to call object
-        (jump-to-version cgc lazy-call ctx)))))
+                   ;;
+                   (let* ((args (cdr ast))
+                          (ctx
+                            (if apply?
+                                (ctx-pop-n ctx 2) ;; Pop operator and args
+                                (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
+                          (generic?
+                            (and opt-max-versions
+                                 (>= (lazy-code-nb-versions lazy-continuation) opt-max-versions))))
 
-;; Gen call sequence (call instructions) with call closure in RAX
-(define (gen-call-sequence cgc call-ctx nb-args) ;; Use multiple entry points?
+                     (gen-version-continuation-cr
+                       lazy-continuation
+                       (ctx-push ctx (if generic? (make-ctx-tunk) type) return-reg)
+                       type
+                       generic?
+                       table)))))
+         ;; CRtable
+         (crtable-key (get-crtable-key ast ctx))
+         (stub-addr (vector-ref (list-ref stub-labels 0) 1))
+         (crtable (get-crtable ast crtable-key stub-addr))
+         (crtable-loc (- (obj-encoding crtable) 1)))
 
-    (cond ((and opt-entry-points nb-args)
-             (let* ((idx (get-closure-index call-ctx)))
-               (if idx
-                   (codegen-call-cc-spe cgc idx (ctx->still-ref call-ctx) nb-args)
-                   (codegen-call-cc-gen cgc))))
-          ((and opt-entry-points (not nb-args))
-             (codegen-call-cc-gen cgc))
-          (else (codegen-call-ep cgc nb-args))))
+    ;; Generate code
+    (codegen-load-cont-cr cgc crtable-loc)))
+
+;; Gen call sequence (call instructions)
+;; fn-num is fn identifier or #f
+(define (gen-call-sequence ast cgc call-ctx nb-args fn-num)
+
+  (define entry-obj (and fn-num (asc-globalfn-entry-get fn-num)))
+  ;; TODO: eploc -> entry-obj-loc
+  (define eploc (and entry-obj (- (obj-encoding entry-obj) 1)))
+
+  (define (get-cc-direct cc-idx)
+    (if (and cc-idx entry-obj)
+        (get-xx-direct cc-idx)
+        #f))
+
+  (define (get-ep-direct)
+    (if entry-obj
+        (get-xx-direct 0)
+        #f))
+
+  (define (get-xx-direct idx)
+    (let ((r (asc-entry-stub-get entry-obj))
+          (ep (if opt-entry-points
+                  (s64vector-ref entry-obj (+ idx 1))
+                  (* 4 (vector-ref entry-obj 0)))))
+
+      (cond ;; It's a call to an already generated entry point
+            ((and (not (= ep (car r)))
+                  (not (= ep (cdr r))))
+               (list 'ep ep))
+            ;; It's a call to a known stub
+            ((or (= ep (car r))
+                 (= ep (cdr r)))
+               (let ((label (asm-make-label #f (new-sym 'stub_load_))))
+                 (asc-entry-load-add entry-obj idx label)
+                 (list 'stub ep label)))
+            ;;
+            (else
+               #f))))
+
+
+  (cond ((not opt-entry-points)
+           (let ((direct (get-ep-direct)))
+             (codegen-call-ep cgc nb-args eploc direct)))
+        ((not nb-args) ;; apply
+           (codegen-call-cc-gen cgc #f eploc))
+        (else
+           (let* ((idx (get-closure-index (list-head (ctx-stack call-ctx) nb-args)))
+                  (direct (get-cc-direct idx)))
+             (if idx
+                 (codegen-call-cc-spe cgc idx nb-args eploc direct)
+                 (codegen-call-cc-gen cgc nb-args eploc))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
 
 ;;
-;; Make lazy code from BINARY OPERATOR
-;;
-(define (mlc-op-bin ast succ op)
-  (let ((opnds (cdr ast)))
-    (if (not (= (length opnds) 2))
-      ;; != 2 operands, error
-      (get-lazy-error ERR_WRONG_NUM_ARGS)
-      ;; == 2 operands
-      (let* ((lazy-op
-               (make-lazy-code
-                 (lambda (cgc ctx)
-                   (let ((label-div0 (get-label-error ERR_DIVIDE_ZERO)))
-                     (codegen-binop cgc op label-div0))
-                   (jump-to-version cgc
-                                    succ
-                                    (ctx-push (ctx-pop ctx 2) CTX_NUM))))))
-         ;; Check operands type
-         (check-types (list CTX_NUM CTX_NUM)
-                      (list (car opnds) (cadr opnds))
-                      lazy-op
-                      ast)))))
-
-;;
 ;; Make lazy code from N-ARY OPERATOR
 ;;
-(define (mlc-op-n ast succ op)
-  (if (member op '(< > <= >= =))
-    (mlc-op-n-cmp ast succ op)
-    (mlc-op-n-num ast succ op)))
-
-;;
-;; Make lazy code from N-ARY COMPARISON OPERATOR
-;;
-(define (mlc-op-n-cmp ast succ op)
-
-  ;; Create final lazy object. This object clean stack and push 'res'
-  (define (get-lazy-final res)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (codegen-cmp-end cgc (- (length ast) 1) res)
-        (jump-to-version cgc succ (ctx-push (ctx-pop ctx (- (length ast) 1))
-                                            CTX_BOOL)))))
-
-  ;; Gen false stub from jump-label & ctx and return stub label
-  (define (get-stub-label label-jump ctx)
-    (list-ref (add-callback #f 0 (lambda (ret-addr selector)
-                                   (gen-version (asm-label-pos label-jump)
-                                                (get-lazy-final #f)
-                                                ctx)))
-              0))
-
-  ;; Build chain for all operands
-  (define (build-chain lidx ridx)
-    (if (or (< lidx 0) (< ridx 0))
-        ;; All operands compared
-        (get-lazy-final #t)
-        ;; There is at least 1 comparison to perform
-        (build-bincomp (build-chain (- lidx 1) (- ridx 1)) lidx ridx)))
-
-  ;; Gen lazy code objects chain for binary comparison (x op y)
-  ;; Build a lco for each node of the type checks tree (with int and float)
-  (define (build-bincomp succ lidx ridx)
-    (let* (;; Operations lco
-           (lazy-ii (get-comp-ii succ lidx ridx))       ;; lco for int int operation
-           (lazy-if (get-comp-ff succ lidx ridx #t #f)) ;; lco for int float operation
-           (lazy-fi (get-comp-ff succ lidx ridx #f #t)) ;; lco for float int operation
-           (lazy-ff (get-comp-ff succ lidx ridx #f #f)) ;; lco for float float operation
-           ;; Right branch
-           (lazy-yfloat2 (gen-fatal-type-test CTX_FLO ridx lazy-ff ast))
-           (lazy-yint2   (gen-dyn-type-test CTX_NUM ridx lazy-fi lazy-yfloat2 ast))
-           (lazy-xfloat  (gen-fatal-type-test CTX_FLO lidx lazy-yint2 ast))
-           ;; Left branch
-           (lazy-yfloat  (gen-fatal-type-test CTX_FLO ridx lazy-if ast))
-           (lazy-yint    (gen-dyn-type-test CTX_NUM ridx lazy-ii lazy-yfloat ast))
-           ;; Root node
-           (lazy-xint    (gen-dyn-type-test CTX_NUM lidx lazy-yint lazy-xfloat ast)))
-      lazy-xint))
-
-  ;; Get lazy code object for comparison with int and int
-  (define (get-comp-ii succ lidx ridx)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (codegen-cmp-ii cgc ctx op lidx ridx get-stub-label)
-        (jump-to-version cgc succ ctx))))
-
-  ;; Get lazy code object for comparison with float and float, float and int, and int and float
-  ;; leftint?  to #t if left operand is an integer
-  ;; rightint? to #t if right operand is an integer
-  (define (get-comp-ff succ lidx ridx leftint? rightint?)
-    (make-lazy-code
-      (lambda (cgc ctx)
-        (codegen-cmp-ff cgc ctx op lidx ridx get-stub-label leftint? rightint?)
-        (jump-to-version cgc succ ctx))))
-
-  ;; Push operands and start comparisons
+(define (mlc-op-n ast succ op) ;; '(+ - * < > <= >= = /)
+  (assert (= (length ast) 3) "Internal error")
   (gen-ast-l (cdr ast)
-             (build-chain (- (length ast) 2)
-                          (- (length ast) 3))))
+             (get-lazy-n-binop ast op #f #f succ)))
 
-;;
-;; Make lazy code from N-ARY ARITHMETIC OPERATOR
-;;
-(define (mlc-op-n-num ast succ op)
+(define (get-lazy-n-binop ast op lcst rcst succ)
 
-  ;; Build chain for all operands
-  (define (build-chain opnds)
-    (if (null? opnds)
-        succ
-        (let* ((lazy-bin-op (build-binop (build-chain (cdr opnds))))
-               (lazy-opnd (gen-ast (car opnds) lazy-bin-op)))
-          lazy-opnd)))
+  (define inlined-if-cond? (member 'cond (lazy-code-flags succ)))
 
-  ;; Gen lazy code objects chain for binary operation (x op y)
-  ;; Build a lco for each node of the type checks tree (with int and float)
-  (define (build-binop succ)
+  (define num-op? (member op '(+ - * /)))
+
+  ;; TODO wip
+  (define (get-stub-overflow-label cgc ctx reg lleft lcst? lright rcst?)
+    (let ((labels
+            (add-callback #f 0 (lambda (ret-addr selector)
+                                 (let ((lco
+                                        (make-lazy-code
+                                          #f
+                                          (lambda (cgc ctx)
+                                            (let ((type (make-ctx-tflo)))
+                                              (codegen-num-ff cgc (ctx-fs ctx) op reg lleft #t lright #t lcst? rcst? #t)
+                                              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))
+                                   (gen-version-first lco ctx))))))
+      (list-ref labels 0)))
+
+  ;; Build chain to check type of two values (no cst)
+  (define (type-check-two)
     (let* (;; Operations lco
-           (lazy-ii
+           (lazy-op-ii
              (if (eq? op '/)
-                 (get-op-ff succ #t #t)   ;; If it is the / operator, fall back to float
-                 (get-op-ii succ)))       ;; lco for int int operation
-           (lazy-if (get-op-ff succ #t #f)) ;; lco for int float operation
-           (lazy-fi (get-op-ff succ #f #t)) ;; lco for float int operation
-           (lazy-ff (get-op-ff succ #f #f)) ;; lco for float float operation
+                 (get-op-ff #t #t)
+                 (get-op-ii)))
+           (lazy-op-if (get-op-ff #t #f))
+           (lazy-op-fi (get-op-ff #f #t))
+           (lazy-op-ff (get-op-ff #f #f))
            ;; Right branch
-           (lazy-yfloat2 (gen-fatal-type-test CTX_FLO 0 lazy-ff ast))
-           (lazy-yint2   (gen-dyn-type-test CTX_NUM 0 lazy-fi lazy-yfloat2 ast))
-           (lazy-xfloat  (gen-fatal-type-test CTX_FLO 1 lazy-yint2 ast))
+           (lazy-yfloat2 (gen-fatal-type-test ATX_FLO 0 lazy-op-ff ast))
+           (lazy-yint2   (gen-dyn-type-test ATX_INT 0 lazy-op-fi lazy-yfloat2 ast))
+           (lazy-xfloat  (gen-fatal-type-test ATX_FLO 1 lazy-yint2 ast))
            ;; Left branch
-           (lazy-yfloat  (gen-fatal-type-test CTX_FLO 0 lazy-if ast))
-           (lazy-yint    (gen-dyn-type-test CTX_NUM 0 lazy-ii lazy-yfloat ast))
+           (lazy-yfloat  (gen-fatal-type-test ATX_FLO 0 lazy-op-if ast))
+           (lazy-yint    (gen-dyn-type-test ATX_INT 0 lazy-op-ii lazy-yfloat ast))
            ;; Root node
-           (lazy-xint    (gen-dyn-type-test CTX_NUM 1 lazy-yint lazy-xfloat ast)))
-      lazy-xint))
+           (lazy-xint    (gen-dyn-type-test ATX_INT 1 lazy-yint lazy-xfloat ast)))
+    lazy-xint))
 
-  ;; Get lazy code object for operation with int and int
-  (define (get-op-ii succ)
+  ;; TODO: Merge with get-op-ff
+  (define (get-op-ii)
     (make-lazy-code
+      #f
       (lambda (cgc ctx)
-        (codegen-num-ii cgc op)
-        (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_NUM)))))
+        (let* ((type  (if num-op? (make-ctx-tint) (make-ctx-tboo)))
+               ;; If op is a num-op, we can't use an opnd register as dest in case of overflow
+               (nopnd-regalloc (if num-op? 0 2))
+               ;; right info
+               (rtype (ctx-get-type ctx 0))
+               (rcst? (ctx-type-is-cst rtype))
+               (rloc  (if rcst? (ctx-type-cst rtype) (ctx-get-loc ctx 0)))
+               ;; left info
+               (ltype (ctx-get-type ctx 1))
+               (lcst? (ctx-type-is-cst ltype))
+               (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
 
-  ;; Get lazy code object for operation with float and float, float and int, and int and float
-  ;; leftint?  to #t if left operand is an integer
-  ;; rightint? to #t if right operand is an integer
-  (define (get-op-ff succ leftint? rightint?)
+          (cond ((and (not inlined-if-cond?) lcst? rcst?)
+                  (let ((ctx (ctx-push (ctx-pop-n ctx 2)
+                                       (literal->ctx-type (eval (list op lloc rloc)))
+                                       #f)))
+                    (jump-to-version cgc succ ctx)))
+                ;; Inlined if condition with both cst
+                ((and lcst? rcst?)
+                  (let* ((r (eval (list op lloc rloc)))
+                         (lco (if r (lazy-code-lco-true succ)
+                                    (lazy-code-lco-false succ))))
+                    (jump-to-version cgc lco (ctx-pop-n ctx 2))))
+                ;; Inlined if condition
+                (inlined-if-cond?
+                  (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) op #f lloc rloc lcst? rcst? #t)))
+                    ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
+                ;; In these cases, we need a free register
+                ;; Then, get a free register, apply moves, and use it.
+                (else
+                  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ nopnd-regalloc)))
+                    (apply-moves cgc ctx moves)
+                    (cond
+                      (num-op?
+                        (let ((overflow-label (get-stub-overflow-label cgc ctx reg lloc lcst? rloc rcst?)))
+                          (codegen-num-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t overflow-label))
+                        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
+                      (else
+                          (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #f)
+                          (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))))
+
+  ;;
+  (define (get-op-ff leftint? rightint?)
     (make-lazy-code
+      #f
       (lambda (cgc ctx)
-        (codegen-num-ff cgc op leftint? rightint?)
-        (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_FLO)))))
+        (let* ((type  (if num-op? (make-ctx-tflo) (make-ctx-tboo)))
+               ;; right info
+               (rtype (ctx-get-type ctx 0))
+               (rcst? (ctx-type-is-cst rtype))
+               (rloc  (if rcst? (ctx-type-cst rtype) (ctx-get-loc ctx 0)))
+               ;; left info
+               (ltype (ctx-get-type ctx 1))
+               (lcst? (ctx-type-is-cst ltype))
+               (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
 
-  (cond ((= (length ast) 1)
-           (cond ((eq? op '+) (gen-ast 0 succ))
-                 ((eq? op '-) (get-lazy-error ERR_WRONG_NUM_ARGS))
-                 ((eq? op '*) (gen-ast 1 succ))
-                 (else (error "Unknown operator " op))))
-        ((and (= (length ast) 2) (eq? op '-))
-           (gen-ast (list '* -1 (cadr ast)) succ))
-        ((and (= (length ast) 2) (member op '(< > <= >= =)))
-           (gen-ast #t succ))
-        (else
-           (gen-ast (cadr ast) (build-chain (cddr ast))))))
+          (cond ((and (not inlined-if-cond?) lcst? rcst?)
+                  (error "NYI1"))
+                ((and lcst? rcst?)
+                  (error "NYI2"))
+                (inlined-if-cond?
+                  (let ((x86-op (codegen-cmp-ff cgc (ctx-fs ctx) op #f lloc leftint? rloc rightint? lcst? rcst? #t)))
+                    ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
+                ;; In these cases, we need a free register
+                ;; Then, get a free register, apply moves, and use it.
+                (else
+                  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 2)))
+                    (apply-moves cgc ctx moves)
+                    (cond
+                      (num-op?
+                        (codegen-num-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #t)
+                        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
+
+                      (else
+                        (codegen-cmp-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #f)
+                        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))))
+
+  (assert (not (and inlined-if-cond? (member op '(+ - * /))))
+          "Internal compiler error")
+
+  (make-lazy-code
+    ast
+    (lambda (cgc ctx)
+      (jump-to-version cgc (type-check-two) ctx))))
 
 ;;
 ;; Make lazy code from TYPE TEST
 ;;
-(define (mlc-test ast succ)
+(define (mlc-test sym ast succ)
 
-  (let ((type (predicate-to-ctxtype (car ast)))
+  (define next-is-cond (member 'cond (lazy-code-flags succ)))
+
+  (define (get-lazy-res bool)
+    (make-lazy-code
+      #f
+      (lambda (cgc ctx)
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1)))
+          (apply-moves cgc ctx moves)
+          (codegen-set-bool cgc bool reg)
+          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg))))))
+
+  (define (get-lazy-inline bool)
+    (make-lazy-code
+      #f
+      (lambda (cgc ctx)
+        (let ((next (if bool (lazy-code-lco-true succ)
+                             (lazy-code-lco-false succ))))
+          (jump-to-version cgc next (ctx-pop ctx))))))
+
+  (let ((type (predicate->ctx-type sym))
         (stack-idx 0)
-        (lazy-success
-          (make-lazy-code
-            (lambda (cgc ctx)
-                (codegen-set-bool cgc #t)
-                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL)))))
         (lazy-fail
+          (if next-is-cond
+              (get-lazy-inline #f)
+              (get-lazy-res #f)))
+        (lazy-success
+          (if next-is-cond
+              (get-lazy-inline #t)
+              (get-lazy-res #t))))
+
+    (let ((check (gen-dyn-type-test type stack-idx lazy-success lazy-fail ast)))
+
+      (if (and next-is-cond
+               (atom-node? (cadr ast))
+               (symbol? (atom-node-val (cadr ast))))
           (make-lazy-code
+            #f
             (lambda (cgc ctx)
-              (codegen-set-bool cgc #f)
-              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) CTX_BOOL))))))
+              (define sym (atom-node-val (cadr ast)))
+              (define vartype (ctx-id-type ctx sym))
+              (cond ((or (not vartype) (ctx-tunk? vartype))
+                       (jump-to-version cgc (gen-ast (cadr ast) check) ctx))
+                    ((ctx-type-teq? type vartype)
+                       (jump-to-version cgc (lazy-code-lco-true succ) ctx))
+                    (else
+                       (jump-to-version cgc (lazy-code-lco-false succ) ctx)))))
 
-    (gen-ast (cadr ast)
-             (gen-dyn-type-test type stack-idx lazy-success lazy-fail ast))))
-
-;;
-;; Make lazy code to create pair
-;; Create pair with the too values on top of the stack
-;;
-(define (mlc-pair succ)
-  (make-lazy-code
-    (lambda (cgc ctx)
-      (codegen-pair cgc)
-      (jump-to-version cgc succ (ctx-push (ctx-pop ctx 2) CTX_PAI)))))
+          (gen-ast (cadr ast) check)))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -1769,234 +2633,179 @@
 ;; +---------+---------+---------+---------+---------+
 ;;  index  0  index  1  index  2     ...    index  n
 
-;;
-;; VARIABLE SET
-;;
+;; Store the cc table associated to each lambda (ast -> cctable)
+;; cctable is a still vector
+(define cctables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))     ;; eq? on ast
+                                                      (equal? (cdr a) (cdr b)))))) ;; equal? on ctx information
 
-;; Gen code to set a free/local
-;; variable is the lookup result which contains id info
-;;  ex: variable = '(n . identifier-obj)
+;; Store the cr table associated to each lambda (ast -> crtable)
+;; crtable is a still vector
+(define crtables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))
+                                                      (equal? (cdr a) (cdr b))))))
 
-;; Free var
-(define (gen-set-freevar cgc ctx variable)
-  (let ((mutable (identifier-mutable? (cdr variable))))
-    (if mutable
-        (begin (gen-get-freevar cgc ctx variable 'gen-reg)
-               (codegen-set-not-global cgc)
-               ctx) ;; TODO: change ctx ?
-        (error "Compiler error : set a non mutable free var"))))
+;; Create a new cr table with 'init' as stub value
+(define (make-cr len init)
+  (let ((v (alloc-still-vector len)))
+    (let loop ((i 0))
+      (if (< i (vector-length v))
+        (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding v) 1)) init)
+               (loop (+ i 1)))
+        v))))
 
-;; Local var
-(define (gen-set-localvar cgc ctx variable)
-  (let ((mutable (identifier-mutable? (cdr variable))))
-    (if mutable
-        (begin (gen-get-localvar cgc ctx variable 'gen-reg)
-               (codegen-set-not-global cgc)
-               ;; Change ctx type
-               (let* ((fs (length (ctx-stack ctx)))
-                      (idx (- fs 2 (identifier-offset (cdr variable)))))
-                ;; move and reset pos
-                (ctx-reset-pos (ctx-move ctx 0 idx #f) (car variable))))
-        (error "Compiler error : set a non mutable local var"))))
+;; Return cctable associated to key or #f if not yet created
+(define (cctable-get cctable-key)
+  (table-ref cctables cctable-key #f))
 
-;; Gen code to set a global var
-(define (gen-set-globalvar cgc ctx variable)
-  ;; Gen code
-  (codegen-set-global cgc (cdr variable))
-  ;; Return unchanged ctx
-  ctx)
+;; Create a new cctable associated to key
+;; !! cctable is not filled. Not even with dummy value (0)
+(define (cctable-make cctable-key)
+  (let* ((len     (+ 1 global-cc-table-maxsize))
+         (cctable (make-s64vector len)))
+    (table-set! cctables cctable-key cctable)
+    cctable))
 
-;;
-;; VARIABLE GET
-;;
+;; Fill cctable with stub and generic addresses
+(define (cctable-fill cctable stub-addr generic-addr)
+  ;; Fill cctable
+  (put-i64 (+ 8 (- (obj-encoding cctable) 1)) generic-addr) ;; Write generic after header
+  (let loop ((i 1))
+    (if (< i (s64vector-length cctable))
+      (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding cctable) 1)) stub-addr)
+             (loop (+ i 1)))
+      cctable)))
 
-;; Gen code to get a variable from closure/stack
-;; variable is the lookup result which contains id info
-;;  ex: variable = '(n . identifier-obj)
-;; dest is the destination. possible values are :
-;;  'stack : push value
-;;  'gen-reg : general register (mov value to rax)
-;; raw_value is #t if the value is copied directly from closure
-;;              #f if the value is copied from memory (id variable is mutable)
+;-----------------------------------------------------------------------------
 
-;; Free variable
-(define (gen-get-freevar cgc ctx variable dest #!optional (raw? #t))
-  (let* ((pos      (identifier-offset   (cdr variable)))
-         (mutable? (identifier-mutable? (cdr variable))))
-    ;; Gen code
-    (codegen-get-free cgc dest pos raw? mutable? (closure-pos ctx))
-    ;; Return variable ctx type
-    (identifier-stype (cdr variable))))
+;; Return crtable from crtable-key
+;; Return the existing table if already created or create one, add entry, and return it
+(define (get-crtable ast crtable-key stub-addr)
+  (let ((crtable (table-ref crtables crtable-key #f)))
+    (if crtable
+        crtable
+        (let ((t (make-cr global-cr-table-maxsize stub-addr)))
+          (table-set! crtables crtable-key t)
+          t))))
 
-;; Local variable
-(define (gen-get-localvar cgc ctx variable dest #!optional (raw? #t))
-  (let* ((fs (length (ctx-stack ctx)))
-         (pos (- fs 2 (identifier-offset (cdr variable))))
-         (mutable? (identifier-mutable? (cdr variable))))
-    ;; Gen code
-    (codegen-get-local cgc dest pos raw? mutable?)
-    ;; Return variable ctx type
-    (list-ref (ctx-stack ctx) pos)))
+;; This is the key used in hash table to find the cc-table for this closure.
+;; The key is (ast . free-vars-inf) with ast the s-expression of the lambda
+;; and free-vars-inf the type information of free vars ex. ((a . number) (b . char))
+;; The hash function uses eq? on ast, and equal? on free-vars-inf.
+;; This allows us to use different cctable if types of free vars are not the same.
+;; (to properly handle type checks)
+(define (get-cctable-key ast ctx fvars-imm fvars-late)
+  (cons ast
+        (append (map (lambda (n) (cons n 'closure)) fvars-late)
+                (foldr (lambda (n r)
+                         (if (member (car n) fvars-imm) ;; If this id is a free var of future lambda
+                             (cons (cons (car n)
+                                         (ctx-identifier-type ctx (cdr n)))
+                                   r)
+                             r))
+                       '()
+                       (ctx-env ctx)))))
 
-;; Gen code to get a global var
-(define (gen-get-globalvar cgc ctx variable dest)
-   ;; Gen code
-   (codegen-get-global cgc dest (cdr variable))
-   ;; If this global is a non mutable global, return type else return unknown
-   (let ((r (assoc (car variable) gids)))
-     (if (and r (cdr r))
-         (cdr r)
-         CTX_UNK)))
+;; TODO regalloc: Créer de nouvelles entrées dans la table (+ que le type de la valeur de retour)
+;;                avec slot-loc free-regs
+;; Return crtable key from ast and ctx
+;; The key contains ast, stack types, and a list of known identifier with types
+(define (get-crtable-key ast ctx)
+  (cons ast
+        (list (ctx-slot-loc ctx)
+              (ctx-free-regs ctx)
+              (ctx-free-mems ctx)
+              (ctx-stack ctx)
+              (ctx-env ctx))))
+
+;; Store pairs associating cctable address to the code of the corresponding function
+(define cctables-loc-code '())
+(define entry-points-locs (make-table test: eq?))
+
+(define (get-entry-points-loc ast stub-addr)
+  (let ((r (table-ref entry-points-locs ast #f)))
+    (if r
+        r
+        (let ((v (alloc-still-vector 1)))
+          (vector-set! v 0 (quotient stub-addr 4)) ;; quotient 4 because vector-set write the encoded value (bug when using put-i64?)
+          (table-set! entry-points-locs ast v)
+          v))))
 
 ;;
 ;; FREE VARS
 ;;
 
-;; Extends env with 'fvars' free vars starting with offset
-(define (build-fenv saved-stack saved-env mvars fvars offset)
-
-  (if (null? fvars)
-      '()
-      (cons (cons (car fvars) (make-identifier 'free
-                                               offset
-                                               '()
-                                               ;; Flags
-                                               (let ((res (assoc (car fvars) saved-env)))
-                                                  (if (identifier-mutable? (cdr res))
-                                                    '(mutable)
-                                                    '()))
-                                               ;; SType
-                                               (let* ((res (assoc (car fvars) saved-env)))
-                                                 (if (eq? (identifier-type (cdr res)) 'local)
-                                                    ;; From local var
-                                                    (let ((idx (- (length saved-stack) 2 (identifier-offset (cdr res)))))
-                                                      (list-ref saved-stack idx))
-                                                    ;; From free var
-                                                    (identifier-stype (cdr res))))))
-
-            (build-fenv saved-stack saved-env mvars (cdr fvars) (+ offset 1)))))
-
-;; Write free vars in closure
-(define (gen-free-vars cgc vars ctx offset)
-  (if (null? vars)
-      '()
-      (let* ((var (car vars))
-             (res (assoc var (ctx-env ctx))))
-         (if res
-            (if (eq? (identifier-type (cdr res)) 'free)
-               ;; Free var
-               (gen-get-freevar  cgc ctx res 'gen-reg)
-               ;; Local var
-               (gen-get-localvar cgc ctx res 'gen-reg))
-            (error "Can't find variable: " var))
-         (codegen-move-tmp cgc offset alloc-ptr)
-         (gen-free-vars cgc (cdr vars) ctx (+ offset 8)))))
+;; free-offset is the current free variable offset position from alloc-ptr
+;; clo-offset is the closure offset position from alloc-ptr
+(define (gen-free-vars cgc ids ctx free-offset base-reg)
+  (if (null? ids)
+      #f
+      (let* ((id (car ids))
+             (identifier (cdr (assoc id (ctx-env ctx))))
+             (loc (ctx-identifier-loc ctx identifier))
+             (opn
+               (cond ;; No loc, free variable which is only in closure
+                     ((ctx-loc-is-freemem? loc)
+                       (let* (;; Get closure loc
+                              (closure-loc  (ctx-get-closure-loc ctx))
+                              (closure-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) closure-loc))
+                              ;; Get free var offset
+                              (fvar-pos (cdr loc))
+                              (fvar-offset (+ 16 (* 8 fvar-pos)))) ;; 16:header,entrypoint -1: pos starts from 1 and not 0
+                         (if (ctx-loc-is-memory? closure-loc)
+                             (begin (x86-mov cgc (x86-rax) closure-opnd)
+                                    (set! closure-opnd (x86-rax))))
+                         (x86-mov cgc (x86-rax) (x86-mem (- fvar-offset TAG_MEMOBJ) closure-opnd))
+                         (x86-rax)))
+                     ;;
+                     ((ctx-loc-is-memory? loc)
+                       (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
+                       (x86-rax))
+                     ;;
+                     (else
+                       (codegen-reg-to-x86reg loc)))))
+        (x86-mov cgc (x86-mem (* 8 free-offset) base-reg) opn)
+        (gen-free-vars cgc (cdr ids) ctx (+ free-offset 1) base-reg))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
-(define (free-vars-l lst clo-env ctx)
+(define (free-vars-l lst params enc-ids)
   (if (null? lst)
       '()
-      (set-union (free-vars (car lst) clo-env ctx) (free-vars-l (cdr lst) clo-env ctx))))
-
-;; Return all free vars used by ast knowing env 'clo-env'
-(define (free-vars ast clo-env ctx)
-  (cond ;; Symbol
-        ((symbol? ast)
-          (if (and (assoc ast (ctx-env ctx))
-                   (not (member ast clo-env)))
-              (list ast)
-              '()))
-        ;; Literal
-        ((literal? ast) '())
-        ;; Pair
-        ((pair? ast)
-          (let ((op (car ast)))
-            (cond ;; If
-                  ((eq? op 'if) (set-union (free-vars (cadr ast)   clo-env ctx)   ; cond
-                                           (set-union (free-vars (caddr ast)  clo-env ctx)    ; then
-                                                      (free-vars (cadddr ast) clo-env ctx)))) ; else
-                  ;; Quote
-                  ((eq? op 'quote) '())
-                  ;; Lambda
-                  ((eq? op 'lambda) (free-vars (caddr ast)
-                                               (if (list? (cadr ast))
-                                                  (append (cadr ast) clo-env)
-                                                  (cons (cadr ast) clo-env))
-                                               ctx))
-                  ;; Call
-                  (else (free-vars-l ast clo-env ctx)))))))
-
-;;
-;; MUTABLE VARS
-;;
-
-;; Return all mutable vars used by the list of ast
-(define (mutable-vars-l lst params)
-  (if (or (null? lst) (not (pair? lst)))
-    '()
-    (set-union (mutable-vars (car lst) params) (mutable-vars-l (cdr lst) params))))
-
-;; Return all mutable vars used by ast
-(define (mutable-vars ast params)
-  (cond ;; Literal
-        ((literal? ast) '())
-        ;; Pair
-        ((pair? ast)
-           (let ((op (car ast)))
-              (cond ((eq? op 'lambda) (mutable-vars (caddr ast) (set-sub params
-                                                                         (if (list? (cadr ast))
-                                                                           (cadr ast)
-                                                                           (list (cadr ast)))
-                                                                         '())))
-                    ((eq? op 'set!)
-                      (set-union (mutable-vars (caddr ast) params)
-                                 (if (member (cadr ast) params)
-                                   (list (cadr ast))
-                                   '())))
-                    (else (mutable-vars-l ast params)))))))
-
-;;
-;; OPTIMIZATIONS
-;;
-
-;; Shift stack slots for tail call optimization
-;; 'nb': nb of slot to shift
-;; 'init-from': position of first slot to move
-;; 'init-to': destination of the first slot to move
-(define (tail-shift cgc nb init-from init-to)
-  (tail-shift-h cgc nb init-from init-to (- init-to init-from)))
-
-(define (tail-shift-h cgc curr from to rsp-offset)
-  (if (= curr 0)
-      ;; All shifted, update RSP
-      (codegen-clean-stack cgc rsp-offset)
-      ;; Shift next
-      (begin (codegen-tco-move-arg cgc from to)
-             (tail-shift-h cgc (- curr 1) (- from 1) (- to 1) rsp-offset))))
+      (set-union (free-vars   (car lst) params enc-ids)
+                 (free-vars-l (cdr lst) params enc-ids))))
 
 ;;
 ;; UTILS
 ;;
 
-;; Build new environment with ids starting from 'start'
-;; Append this new environment to existing 'env'
-;; ex : (build-env '(...) '(a b c) 8) -> ((a . 8) (b . 9) (c . 10))
-;; mvars contains all mutable vars to tag created identifier objects
-(define (build-env mvars ids start env)
-  (if (null? ids)
-    env
-    (cons (cons (car ids) (make-identifier 'local
-                                           start
-                                           (list start)
-                                           (if (member (car ids) mvars)
-                                              '(mutable)
-                                              '())
-                                           '()))
-          (build-env mvars (cdr ids) (+ start 1) env))))
+;; Check if type at index ctx-idx represents a constant
+;; * If it is a constant, free a register, put it in a register,
+;;   update ctx, return updated ctx
+;; * Else return unmodified ctx
+(define (drop-cst-value cgc ctx ctx-idx)
 
-;; Get position of current closure in stack
-(define (closure-pos ctx)
-  (- (length (ctx-stack ctx)) 2 (ctx-nb-args ctx))) ;; 2= 1length + 1retAddr
+  (define (alloc-cstfn reg cst)
+    (let ((entry-obj (asc-globalfn-entry-get cst)))
+      (gen-closure cgc reg #f entry-obj '())))
+
+  (define (alloc-cst reg cst)
+    (let ((opnd (codegen-reg-to-x86reg reg)))
+      (x86-mov cgc opnd (x86-imm-int (obj-encoding cst)))))
+
+  (let* ((type (ctx-get-type ctx ctx-idx))
+         (cst? (ctx-type-is-cst type)))
+    (if cst?
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx #f 0))
+               (cst (ctx-type-cst type)))
+          (apply-moves cgc ctx moves)
+          ;; Move object to free register
+          (if (ctx-tclo? type)
+              (alloc-cstfn reg cst)
+              (alloc-cst   reg cst))
+          ;; Update & return ctx
+          (let* ((ntype ((ctx-type-ctor type)))
+                 (ctx (ctx-set-type ctx ctx-idx ntype #f))
+                 (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx ctx-idx) reg)))
+            ctx))
+        ctx)))
 
 ;; Get formal params from list of params
 ;; Ex: (formal-params '(a b c)  ) -> '(a b c)
@@ -2005,31 +2814,6 @@
   (if (not (pair? l))
      '()
      (cons (car l) (formal-params (cdr l)))))
-
-;; Gen mutable variable
-;; This code is a function prelude. It transforms variable from stack (args) tagged as "mutable"
-;; into memory-allocated variables.
-(define (gen-mutable cgc ctx mutable)
-
-    (if (null? mutable)
-       ctx ;; Return new ctx
-       (let* ((res (assoc (car mutable) (ctx-env ctx)))
-              (header-word (mem-header 2 STAG_MOBJECT))
-              (fs (length (ctx-stack ctx)))
-              (local-idx (- fs 2 (identifier-offset (cdr res)))))
-
-         ;; Get current variable
-         (gen-get-localvar cgc ctx res 'stack) ;; There are only localvar here (no free vars)
-
-         ;; Create mutable object and copy variable
-         (codegen-mutable cgc local-idx)
-
-         (let* ((nstack (append (list-head (ctx-stack ctx) local-idx)
-                                (cons CTX_MOBJ
-                                      (list-tail (ctx-stack ctx) (+ local-idx 1)))))
-                (nctx (make-ctx nstack (ctx-env ctx) (ctx-nb-args ctx))))
-           ;; Gen next mutable vars
-           (gen-mutable cgc nctx (cdr mutable))))))
 
 ;; Return label of a stub generating error with 'msg'
 (define (get-label-error msg) (list-ref (add-callback #f   0 (lambda (ret-addr selector) (error msg))) 0))

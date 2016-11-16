@@ -59,6 +59,10 @@
             (error "APPLY ERROR"))
         (cons (car l) (gen-args (cdr l)))))
 
-  (if (null? r)
-    ($apply fn args)
-    ($apply fn (gen-args (cons args r)))))
+  (let ((args
+          (if (null? r)
+            args
+            (gen-args (cons args r)))))
+    (if (not (list? args))
+        (error "LIST EXPECTED"))
+    (##apply fn args)))

@@ -34,12 +34,12 @@
 ;;-----------------------------------------------------------------------------
 
 (include "x86-debug.scm")
-(include "extern/Sort.scm")
 
 ;;--------------------------------------------------------------------------------
 ;; Compiler options
 
 (define opt-stats                #f) ;; Print stats report
+(define opt-export-locat-info    #f) ;; Pretty print number of versions for each locat object
 (define opt-time                 #f) ;; Print exec time in processor cycles
 (define opt-verbose-jit          #f) ;; JIT Verbose debugging
 (define opt-verbose-gc           #f) ;; GC  Verbose debugging
@@ -48,349 +48,331 @@
 (define opt-max-versions         #f) ;; Limit of number of versions (#f=no limit, 0=only generic, ...)
 (define opt-entry-points         #t) ;; Use multiple entry points (#t to use cc-tables, #f to use flat closures)
 (define opt-return-points        #t) ;; Use multiple return points (#t to use cr-tables, #f to use a generic return point)
-(define opt-overflow-fallback    #t) ;; Automatic fallback to generic entry point if cctable overflows
-(define opt-propagate-functionid #f) ;; Propagate function identitie
-(define mode-repl                #f) ;; REPL mode ?
-
-;; TODO Move
-(define (type-to-cridx type)
-  (cond ((eq? type CTX_NUM)    8) ;; Start from 8 because of header
-        ((eq? type CTX_CHAR)  16)
-        ((eq? type CTX_BOOL)  24)
-        ((eq? type CTX_CLO)   32)
-        ((eq? type CTX_PAI)   40)
-        ((eq? type CTX_VOID)  48)
-        ((eq? type CTX_NULL)  56)
-        ((eq? type CTX_VECT)  64)
-        ((eq? type CTX_STR)   72)
-        ((eq? type CTX_SYM)   80)
-        ((eq? type CTX_IPORT) 88)
-        ((eq? type CTX_OPORT) 96)
-        ((eq? type CTX_FLO)   104)
-        ((eq? type CTX_UNK)   112)
-        ((eq? type CTX_MOBJ)  120)
-        (else (pp type) (error ERR_INTERNAL))))
-
-;; TODO Move
-(define (cridx-to-type cridx)
-  (cond ((= cridx  8)  CTX_NUM)
-        ((= cridx 16)  CTX_CHAR)
-        ((= cridx 24)  CTX_BOOL)
-        ((= cridx 32)  CTX_CLO)
-        ((= cridx 40)  CTX_PAI)
-        ((= cridx 48)  CTX_VOID)
-        ((= cridx 56)  CTX_NULL)
-        ((= cridx 64)  CTX_VECT)
-        ((= cridx 72)  CTX_STR)
-        ((= cridx 80)  CTX_SYM)
-        ((= cridx 88)  CTX_IPORT)
-        ((= cridx 96)  CTX_OPORT)
-        ((= cridx 104) CTX_FLO)
-        ((= cridx 112) CTX_UNK)
-        ((= cridx 120) CTX_MOBJ)
-        (else (pp cridx) (error ERR_INTERNAL))))
+(define opt-overflow-fallback    #f) ;; Automatic fallback to generic entry point if cctable overflows
+(define opt-use-lib              #t) ;; Use scheme std lib (see lib/ folder)
+(define opt-vers-regalloc        #t) ;; Use register allocation for code specialization
+(define opt-dump-bin             #f) ;; Print generated binary bytes to stdout
 
 ;;-----------------------------------------------------------------------------
 
-(define mem-header #f)
-(define ctx-change-type #f)
-(define get-entry-points-loc #f)
-
 ;; Forward declarations
+(define x86-upush #f)
+(define x86-upop  #f)
+(define x86-upush-l #f)
+(define x86-upop-l  #f)
+(define x86-ppush #f)
+(define x86-ppop  #f)
+(define x86-usp   #f)
+(define x86-pcall #f)
+(define asc-entry-load-get #f)
+(define asc-entry-load-clear #f)
+(define asc-globalfn-entry-get #f)
+(define global-closures-get #f)
+(define gen-closure #f)
+
+(define init-c #f)
+(define get___heap_limit-addr  #f)
+(define get___alloc_still-addr #f)
+(define get-pstate-addr #f)
 (define run-gc #f)         ;; mem.scm
 (define expand-tl #f)      ;; expand.scm
 (define gen-ast #f)        ;; ast.scm
-(define repl-print-lco #f) ;; main.scm
+(define alloc-ptr #f)
+(define global-ptr #f)
+(define entry-points-locs #f)
+(define codegen-loc-to-x86opnd #f)
+(define atom-node-make #f)
+(define mlc-gambit-call #f)
+(define lazy-repl-call #f)
+
+(define get-heap_limit-addr #f)
+(define get-hp-addr #f)
+(define global-offset #f)
+(define selector-reg #f)
+(define x86-call-label-aligned-ret #f)
 
 ;;-----------------------------------------------------------------------------
 
-;; Global ids
-;; Contains a list of global ids with id,position
-;; ex. '((foo 1) (bar 2) (fun 3))
-(define globals '())
-(define gids '()) ;; TODO : merge with 'globals'
-
-(define label-print-msg        #f)
-(define label-print-msg-val    #f)
-(define label-exec-error       #f)
-(define label-gc               #f)
-(define label-do-callback      #f)
-(define label-do-callback-fn   #f)
-(define label-do-callback-cont #f)
-(define label-repl #f)
-(define label-gc-trampoline    #f)
-
-;;-----------------------------------------------------------------------------
+;; Object life
+(define LIFE_MOVE  0)
+(define LIFE_STILL 5)
+(define LIFE_PERM  6)
 
 ;; Tags
-(define TAG_NUMBER  0) ;; Must be 0
+(define TAG_NUMBER  0)
 (define TAG_MEMOBJ  1)
 (define TAG_SPECIAL 2)
+(define TAG_PAIR    3)
+;; Char mask is 100000...00011
+(define SPECIAL_MASK   (bitwise-not (- (expt 2 63) 4)))
 
-;; Sub tag
-(define STAG_PROCEDURE 14)
-(define STAG_PAIR       1)
-(define STAG_MOBJECT    2)
+;; STags
 (define STAG_VECTOR     0)
-(define STAG_STRING    19)
-(define STAG_CCTABLE   16)
+(define STAG_PAIR       1)
+(define STAG_MOBJECT    5) ;; TODO: rename to STAG_BOX
 (define STAG_SYMBOL     8)
+(define STAG_PROCEDURE 14)
 (define STAG_IPORT     17)
 (define STAG_OPORT     18)
+(define STAG_STRING    19)
 (define STAG_FLONUM    30)
 
-;; Context types
-(define CTX_UNK   'unknown)
-(define CTX_ALL   '*) ;; cst reprsenting all ctx types
-(define CTX_NUM   'number)
-(define CTX_CHAR  'char)
-(define CTX_BOOL  'boolean)
-(define CTX_CLO   'procedure)
-(define CTX_PAI   'pair)
-(define CTX_VOID  'void)
-(define CTX_NULL  'null)
-(define CTX_RETAD 'retAddr)
-(define CTX_VECT  'vector)
-(define CTX_STR   'string)
-(define CTX_SYM   'symbol)
-(define CTX_IPORT 'inport)
-(define CTX_OPORT 'outport)
-(define CTX_MOBJ  'mobject)
-(define CTX_FLO   'float)
+;;-----------------------------------------------------------------------------
+;; ctx-types jit implementation
 
-(define (CTX_CLOi cctable)
-  (if opt-propagate-functionid
-      (cons CTX_CLO cctable)
-      CTX_CLO))
+;; Generic ctx-type instances
+;; Used to avoid type creation for simple operations
+;; MUST NOT BE MUTATED
+;; NOTE: we need to reorganize 'primitives' data structure in ast.scm
+;; to replace ATX_* uses by symbols uses to identify types (e.g. in ctx-type-teq?)
+(define ATX_ALL (make-ctx-tall)) ; Represents all ctx types
+(define ATX_NUM (make-ctx-tnum)) ; Represents number types
+(define ATX_UNK (make-ctx-tunk))
+(define ATX_CHA (make-ctx-tcha))
+(define ATX_VOI (make-ctx-tvoi))
+(define ATX_NUL (make-ctx-tnul))
+(define ATX_RET (make-ctx-tret))
+(define ATX_INT (make-ctx-tint))
+(define ATX_BOO (make-ctx-tboo))
+(define ATX_BOX (make-ctx-tbox))
+(define ATX_PAI (make-ctx-tpai))
+(define ATX_VEC (make-ctx-tvec))
+(define ATX_STR (make-ctx-tstr))
+(define ATX_SYM (make-ctx-tsym))
+(define ATX_IPO (make-ctx-tipo))
+(define ATX_FLO (make-ctx-tflo))
+(define ATX_OPO (make-ctx-topo))
+(define ATX_CLO (make-ctx-tclo))
 
-;; Exec errors
-(define ERR_MSG             "EXEC ERROR")
-(define ERR_ARR_OVERFLOW    "ARITHMETIC OVERFLOW")
-(define ERR_WRONG_NUM_ARGS  "WRONG NUMBER OF ARGUMENTS")
-(define ERR_TYPE_EXPECTED   (lambda (type)
-                              (string-append (string-upcase type)
-                                             " EXPECTED")))
+(define (ctx-type->stag type)
+  (cond ((ctx-tbox? type) STAG_MOBJECT)
+        ((ctx-tpai? type) STAG_PAIR)
+        ((ctx-tvec? type) STAG_VECTOR)
+        ((ctx-tstr? type) STAG_STRING)
+        ((ctx-tsym? type) STAG_SYMBOL)
+        ((ctx-tflo? type) STAG_FLONUM)
+        ((ctx-tclo? type) STAG_PROCEDURE)
+        (else (pp type) (error "Internal error (ctx-type->stag)"))))
+
+;; cridx<->ctx-type table
+(define cridx-type
+  `(( 8  ,ctx-tint? ,make-ctx-tint) ;; Start from 8 because of header
+    (16  ,ctx-tcha? ,make-ctx-tcha)
+    (24  ,ctx-tboo? ,make-ctx-tboo)
+    (32  ,ctx-tclo? ,make-ctx-tclo)
+    (40  ,ctx-tpai? ,make-ctx-tpai)
+    (48  ,ctx-tvoi? ,make-ctx-tvoi)
+    (56  ,ctx-tnul? ,make-ctx-tnul)
+    (64  ,ctx-tvec? ,make-ctx-tvec)
+    (72  ,ctx-tstr? ,make-ctx-tstr)
+    (80  ,ctx-tsym? ,make-ctx-tsym)
+    (88  ,ctx-tipo? ,make-ctx-tipo)
+    (96  ,ctx-topo? ,make-ctx-topo)
+    (104 ,ctx-tflo? ,make-ctx-tflo)
+    (112 ,ctx-tunk? ,make-ctx-tunk)))
+
+(define (ctx-type->cridx type)
+  (let loop ((l cridx-type))
+    (let ((test (cadar l)))
+      (if (test type)
+          (caar l)
+          (loop (cdr l))))))
+
+(define (cridx->ctx-type cridx)
+  (let* ((r (assoc cridx cridx-type))
+         (ctor (caddr r)))
+    (ctor)))
+
+;;-----------------------------------------------------------------------------
+
+;; Errors
+(define ERR_MSG              "EXEC ERROR")
+(define ERR_ARR_OVERFLOW     "ARITHMETIC OVERFLOW")
+(define ERR_WRONG_NUM_ARGS   "WRONG NUMBER OF ARGUMENTS")
 (define ERR_OPEN_INPUT_FILE  "CAN'T OPEN INPUT FILE")
 (define ERR_OPEN_OUTPUT_FILE "CAN'T OPEN OUTPUT FILE")
 (define ERR_READ_CHAR        "CAN'T READ CHAR")
 (define ERR_WRITE_CHAR       "CAN'T WRITE CHAR")
 (define ERR_DIVIDE_ZERO      "DIVIDE BY ZERO")
 (define ERR_INTERNAL         "INTERNAL ERROR")
-
 (define ERR_BEGIN            "ILL-FORMED BEGIN")
 (define ERR_LET              "ILL-FORMED LET")
 (define ERR_LET*             "ILL-FORMED LET*")
 (define ERR_LETREC           "ILL-FORMED LETREC")
+
+(define (ERR_TYPE_EXPECTED type)
+  (string-append (string-upcase (ctx-type-sym type))
+                 " EXPECTED"))
+
+(define ERR_NUMBER_EXPECTED "NUMBER EXPECTED")
 
 (define (ERR_UNKNOWN_VAR var)
   (if (string? var)
       (string-append "Can't find variable: " var)
       (string-append "Can't find variable: " (symbol->string var))))
 
-(define ERR_HEAP_NOT_8       "INTERNAL ERROR: heap size should be a multiple of 8")
+;;-----------------------------------------------------------------------------
 
-;;
 (define ENCODING_VOID -18) ;; encoded VOID
 (define ENCODING_EOF  -14) ;; encoded EOF
 (define NENCODING_EOF  -4) ;; non encoded EOF
 
 ;;--------------------------------------------------------------------------------
+;; Runtime error
 
 ;; Return lazy code object which generates an error with 'msg'
 (define (get-lazy-error msg)
   (make-lazy-code
+    #f
     (lambda (cgc ctx)
       (gen-error cgc msg))))
 
-
-;; Gen code for error
-;; stop-exec? to #f to continue after error
 (define (gen-error cgc err #!optional (stop-exec? #t))
-
   ;; Put error msg in RAX
-  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding err)))
-
-  ;; If no msg print nothing
-  (if (not (string=? err ""))
-    ;; Call exec-error
-    (push-pop-regs cgc
-                   c-caller-save-regs ;; preserve regs for C call
-                   (lambda (cgc)
-                     (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-                     (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-                     (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-                     (x86-push cgc (x86-rdi))
-                     (x86-call cgc label-exec-error) ;; call C function
-                     (x86-pop  cgc (x86-rsp))))) ;; restore unaligned stack-pointer
-
-  (if mode-repl
-      (begin
-        (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-        (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
-        (gen-repl-call cgc)
-        (x86-jmp cgc (x86-rbx)))
-      (begin
-        (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-        (x86-mov cgc (x86-rsp) (x86-mem 0 (x86-rax)))
-        (x86-mov cgc (x86-rax) (x86-imm-int -1))
-        (pop-regs-reverse cgc all-regs)
-        (x86-ret cgc))))
+  (let ((r1 (car regalloc-regs)))
+    (x86-upush cgc r1)
+    (x86-mov cgc r1 (x86-imm-int (obj-encoding err)))
+    (x86-pcall cgc label-rt-error-handler)
+    (x86-upop cgc r1)))
 
 ;; The procedure exec-error is callable from generated machine code.
 ;; This function print the error message in rax
-(c-define (exec-error sp) (long) void "exec_error" ""
-  (let* ((err-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
-        (err (encoding-obj err-enc)))
-    (print "!!! ERROR : ")
-    (println err)))
+(c-define (rt-error usp psp) (long long) void "rt_error" ""
+  (let ((msg (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-rbx)))))))
+    (print "*** ERROR -- ")
+    (println msg)
+    (exit 0)))
 
 ;;-----------------------------------------------------------------------------
 
-(c-define (gc sp) (long) long "gc" ""
-    (let ((alloc-size (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8)))))
-      (run-gc sp alloc-size)))
+(define (gen-print-* cgc label-handler p1 p2)
+  ;; Save rax & rcx.
+  ;; We want this function not modify any register
+  (let ((r1 (car regalloc-regs))
+        (r2 (cadr regalloc-regs)))
 
-(define (gen-gc-call cgc)
-  (push-pop-regs
-     cgc
-     c-caller-save-regs ;; preserve regs for C call
-     (lambda (cgc)
-       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-       (x86-push cgc (x86-rdi))
-       (x86-call cgc label-gc) ;; call C function
-       (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-       (x86-mov cgc alloc-ptr (x86-rax)) ;; TODO : Update alloc-ptr
-       )))
+    (x86-upush cgc r1)
+    (x86-upush cgc r2)
 
-;;-----------------------------------------------------------------------------
+    (x86-mov cgc r1 p1)
+    (x86-mov cgc r2 p2)
 
-;; TODO: remove rax from c-caller-save-regs, then use gen-handler for this function
-(define (gen-repl-call cgc)
-  (push-pop-regs
+    (x86-call-label-aligned-ret cgc label-handler)
+
+    (x86-upop cgc r2)
+    (x86-upop cgc r1)))
+
+(define (gen-print-obj cgc reg newline?)
+  (gen-print-*
     cgc
-    c-caller-save-regs ;; preserve regs for C call
-    (lambda (cgc)
-      (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-      (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-      (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-      (x86-push cgc (x86-rdi))
-      (x86-call cgc label-repl) ;; call C function
-      (x86-pop cgc (x86-rsp))
-      (x86-mov cgc (x86-rbx) (x86-rax))))) ;; Move version address to rbx
-
-;;-----------------------------------------------------------------------------
-
-(define (gen-print-slot cgc slot msg)
-  (x86-push cgc (x86-rax))
-  (gen-get-slot cgc slot (x86-rax))
-  (gen-print-reg cgc msg (x86-rax))
-  (x86-pop cgc (x86-rax)))
-
-(define (gen-print-msg cgc msg newline? #!optional (literal? #t))
-
-  (x86-push cgc (x86-rax))
-  (x86-push cgc (x86-rcx))
-  (x86-push cgc (x86-rdi))
-
-  (if literal?
-     (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding msg)))
-     (x86-mov cgc (x86-rax) msg))
-
-  (x86-mov cgc (x86-rdi) (x86-imm-int (if newline? (obj-encoding 1) (obj-encoding 0))))
-
-  (push-pop-regs
-       cgc
-       c-caller-save-regs ;; preserve regs for C call
-       (lambda (cgc)
-         (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-         (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-         (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-         (x86-push cgc (x86-rdi))
-         (x86-call cgc label-print-msg) ;; call C function
-         (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-         ))
-
-  (x86-pop cgc (x86-rdi))
-  (x86-pop cgc (x86-rcx))
-  (x86-pop cgc (x86-rax)))
+    label-print-msg-handler
+    reg
+    (x86-imm-int (obj-encoding newline?))))
 
 (define (gen-print-reg cgc msg reg)
+  (gen-print-*
+    cgc
+    label-print-msg-val-handler
+    (x86-imm-int (obj-encoding msg))
+    reg))
 
-  (x86-push cgc (x86-rax))
-  (x86-push cgc (x86-rcx))
-
-  (x86-mov cgc (x86-rcx) reg)
-  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding msg)))
-
-  (push-pop-regs
-       cgc
-       c-caller-save-regs ;; preserve regs for C call
-       (lambda (cgc)
-         (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-         (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-         (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-         (x86-push cgc (x86-rdi))
-         (x86-call cgc label-print-msg-val) ;; call C function
-         (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-         ))
-
-  (x86-pop cgc (x86-rcx))
-  (x86-pop cgc (x86-rax)))
-
-;; TODO
+;; Print msg which is encoded in rax
+;; Print val which is in rcx
 (c-define (print-msg-val sp) (long) void "print_msg_val" ""
-  (let* ((msg-enc (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
-         (val     (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
-         (msg     (encoding-obj msg-enc)))
-
+  (let* ((msg (encoding-obj (get-i64 (+ sp (reg-sp-offset 0)))))
+         (val (get-i64 (+ sp (reg-sp-offset 1)))))
     (print msg " ")
     (println val)))
 
-;; TODO
+;; Print msg which is encoded in rax
+;; if rcx contains #t, print a newline too
 (c-define (print-msg sp) (long) void "print_msg" ""
-  (let* ((msg-enc  (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rax-pos) 1) 8))))
-         (newline? (encoding-obj (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdi-pos) 1) 8)))))
-         (msg      (encoding-obj msg-enc)))
+  (let* ((msg      (encoding-obj (get-i64 (+ sp (reg-sp-offset 0)))))
+         (newline? (= (encoding-obj (get-i64 (+ sp (reg-sp-offset 1)))) 1)))
 
-    (and (print msg) (= newline? 1) (newline))))
+    (and (print msg) (force-output) newline? (newline))))
 
-;; Repl function.
-;; Get sexpr from stdin, gen-version for empty context and returns version address
 (c-define (repl sp) (long) long "repl" ""
+
   (print "lc> ")
-  (let ((r (read)))
-    (if (or (eq? r 'quit) (eof-object? r))
-        (begin (println "") (exit 0))
-        (let* ((r (car (expand-tl (list r))))
-               (lco (gen-ast r repl-print-lco))
-               (addr (gen-version code-alloc lco (make-ctx '() '() -1))))
-          addr))))
+
+  ;; READ
+  (let ((sexpr (read)))
+
+    (if (or (eq? sexpr 'q)
+            (eq? sexpr 'quit)
+            (eof-object? sexpr))
+        (begin
+          (newline)
+          (exit 0)))
+
+    (let* (;;
+           (ast-print (list (atom-node-make 'gambit$$println)
+                            (atom-node-make 0)))
+           ;; LOOP
+           (lazy-clean
+             (make-lazy-code
+               #f
+               (lambda (cgc ctx)
+                 ;; We need to clean the stack before executing lazy-repl-call again
+                 (jump-to-version cgc lazy-repl-call (ctx-pop ctx)))))
+           ;; PRINT
+           (lazy-print
+             (mlc-gambit-call ast-print lazy-clean #t))
+           ;; Expand sexpr
+           (ast (car (expand-tl (list sexpr)))) ;; TODO: use gambit frontend (c#expand-program) before expand-tl to generate better code
+           ;; EVAL
+           (lazy-eval (gen-ast ast lazy-print))
+           ;; Generate version of first lco
+           (addr (gen-version-first lazy-eval (ctx-init))))
+        addr)))
+
+;;-----------------------------------------------------------------------------
+
+(c-define (gambit-call usp psp) (long long) void "gambit_call" ""
+  (let* ((nargs
+           (encoding-obj (get-i64 (+ usp (* (+ (length regalloc-regs) 2) 8)))))
+         (op-sym
+           (encoding-obj (get-i64 (+ usp (* (+ (length regalloc-regs) 1) 8)))))
+         (args
+           (reverse
+             (let loop ((n nargs) (offset 3))
+               (if (= n 0)
+                   '()
+                   (let ((word (get-u64 (+ usp (* (+ (length regalloc-regs) offset) 8)))))
+                     (cons (encoding-obj word)
+                           (loop (- n 1) (+ offset 1))))))))
+
+         (op-fn (eval op-sym)))
+
+    (let ((retval (apply op-fn args)))
+
+      (put-i64 (+ usp (* 8 (+ (length regalloc-regs) 1)))
+               (obj-encoding retval)))))
 
 ;;-----------------------------------------------------------------------------
 
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
-(c-define (do-callback sp) (long) void "do_callback" ""
-  (let* ((ret-addr
-          (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
+(c-define (do-callback usp psp) (long long) void "do_callback" ""
+
+  (let* ((ret-addr (get-i64 psp))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
 
          (selector
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
+          (encoding-obj (get-i64 (+ usp (selector-sp-offset)))))
 
          (new-ret-addr
           (callback-fn ret-addr selector)))
 
     ;; replace return address
-    (put-i64 (+ sp (* nb-c-caller-save-regs 8))
+    (put-i64 psp
              new-ret-addr)
 
     ;; reset selector
-    (put-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))
+    (put-i64 (+ usp (selector-sp-offset))
              0)))
 
 ;; Same behavior as 'do-callback' but calls callback with call site addr
@@ -417,294 +399,123 @@
 ;; +---------------+
 ;; | Call arg 1    |
 ;; +---------------+
-(c-define (do-callback-fn sp) (long) void "do_callback_fn" ""
-  (let* ((ret-addr
-          (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
+(c-define (do-callback-fn usp psp) (long long) void "do_callback_fn" ""
 
-         ;; R11 is the still-box containing call-ctx
-         (still-encoding
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8))))
+  (let* ((ret-addr (get-i64 psp))
 
          (selector
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
+          (encoding-obj (get-i64 (- psp 16))))
 
-         ;; Get ctx from still-box address
-         (ctx
-           (if (= selector 1) ;; If called from generic ptr
-             #f
-             (still-ref->ctx still-encoding)))
+         ;; TODO
+         (ctx-idx
+          (if opt-entry-points
+              (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-r11)))))
+              #f))
 
+         (stack
+           (if (or (not opt-entry-points) (= selector 1))
+               #f
+               (global-cc-get-ctx ctx-idx)))
+
+         ;; Closure is used as a Gambit procedure to keep an updated reference
          (closure
-          (get-i64 (+ sp (* nb-c-caller-save-regs 8) 8)))
+          (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-rsi))))))
+
+         (nb-args
+           (if (or (not opt-entry-points) (= selector 1))
+               (let ((encoded (get-i64 (+ usp (reg-sp-offset-r (x86-rdi))))))
+                 (encoding-obj encoded))
+               (- (length stack) 2)))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
 
          (new-ret-addr
-          (callback-fn sp ctx ret-addr selector closure)))
+          (callback-fn stack ret-addr selector closure)))
 
     ;; replace return address
-    (put-i64 (+ sp (* nb-c-caller-save-regs 8))
-             new-ret-addr)
+    (put-i64 psp new-ret-addr)
 
     ;; reset selector
-    (put-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))
+    (put-i64 (+ usp (selector-sp-offset))
              0)))
 
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
-(c-define (do-callback-cont sp) (long) void "do_callback_cont" ""
-  (let* ((ret-addr
-          (get-i64 (+ sp (* nb-c-caller-save-regs 8))))
+(c-define (do-callback-cont usp psp) (long long) void "do_callback_cont" ""
+
+  (let* ((ret-addr (get-i64 psp))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
 
          (selector
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8))))
+          (encoding-obj (get-i64 (- psp 16))))
 
          (type-idx
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs r11-pos) 1) 8))))
+          (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-r11))))))
 
          (table
-          (get-i64 (+ sp (* (- (- nb-c-caller-save-regs rdx-pos) 1) 8))))
+          (get-i64 (+ usp (reg-sp-offset-r (x86-rdx)))))
 
-         (type (cridx-to-type type-idx))
+         (type (cridx->ctx-type type-idx))
 
          (new-ret-addr
            (callback-fn ret-addr selector type table)))
+
     ;; replace return address
-    (put-i64 (+ sp (* nb-c-caller-save-regs 8)) new-ret-addr)
+    (put-i64 psp
+             new-ret-addr)
 
     ;; reset selector
-    (put-i64 (+ sp (* (- (- nb-c-caller-save-regs rcx-pos) 1) 8)) 0)))
+    (put-i64 (+ usp (selector-sp-offset))
+             0)))
 
 ;;-----------------------------------------------------------------------------
-;; Interned symbols
-;; TODO
 
-(define label-interned-symbol #f)
-(define sym-space-len 100000)
-(define sym-space (make-mcb sym-space-len))
-(define sym-alloc (##foreign-address sym-space))
-(define interned-symbols (make-table test: eq?))
-
-;; Allocate a new symbol and return encoded qword
-(define (alloc-symbol sym)
-
-  (define (copy-sym str pos offset)
-    ;; SI =pos, combler avec des 0 pour avoir la bonne adresse (alignee sur 8)
-    (if (= pos (string-length str))
-       #f
-       (begin (put-u8 (+ sym-alloc offset) (char->integer (string-ref str pos)))
-              (copy-sym str (+ pos 1) (+ offset 1)))))
-
-  (let* ((addr sym-alloc)
-         (str  (symbol->string sym))
-         (len  (string-length str))
-         (nbbytes (arithmetic-shift (bitwise-and (+ len 8) (bitwise-not 7)) -3)))
-
-    ;; Write header
-    (put-i64 sym-alloc (mem-header (+ 2 nbbytes) STAG_SYMBOL))
-    ;; Write encoded length
-    (put-i64 (+ sym-alloc 8) (* 4 len))
-    ;; Copy sym
-    (copy-sym str 0 16)
-    ;; Update sym alloc
-    (set! sym-alloc (+ sym-alloc 16 (* 8 nbbytes)))
-    ;; Return tagged symbol qword
-    (+ addr TAG_MEMOBJ)))
-
-;; Get symbol qworw from symbol 'sym'
-;; Allocate a new symbol if not in table, and return existing if already in table
-(define (get-symbol-qword sym)
-  (let ((r (table-ref interned-symbols sym #f)))
-    (if r
-       ;; Symbol exists
-       r
-       ;; Symbol does not exist
-       (let ((c (alloc-symbol sym)))
-        (table-set! interned-symbols sym c)
-        c))))
-
-;; Entry point to create symbol from string at runtime
-(c-define (interned-symbol sp) (long) void "interned_symbol" ""
-
-  (let* ((str (get-i64 (+ sp (* nb-c-caller-save-regs 8)))) ;; Get str from top of runtime stack
-         (len (quotient (get-i64 (+ (- str TAG_MEMOBJ) 8)) 4)))
-
-    ;; Get gambit symbol from lc string
-    (define (lcstr->gsym addr len pos gstr)
-      (if (= 0 len)
-         (string->symbol gstr)
-         (begin (string-set! gstr pos (integer->char (get-u8 addr)))
-                (lcstr->gsym (+ addr 1) (- len 1) (+ pos 1) gstr))))
-
-    (let* ((sym   (lcstr->gsym (+ (- str TAG_MEMOBJ) 16) len 0 (make-string len)))
-           (qword (get-symbol-qword sym)))
-      ;; Write symbol qword at top on runtime stack
-      (put-i64 (+ sp (* nb-c-caller-save-regs 8)) qword))))
-
-;; Gen code to call interner-symbol at runtime
-(define (gen-interned-symbol cgc)
-  (push-pop-regs
-     cgc
-     c-caller-save-regs ;; preserve regs for C call
-     (lambda (cgc)
-       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-       (x86-push cgc (x86-rdi))
-       (x86-call cgc label-interned-symbol) ;; call C function
-       (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-       )))
-
-
-;;-----------------------------------------------------------------------------
+;; Create label used by generated machine code to call c-define functions
+(define-macro (set-cdef-label! label sym c-code)
+  `(set! ,label
+         (asm-make-label
+           cgc
+           ,sym
+           (##foreign-address
+            ((c-lambda ()
+                       (pointer void)
+                       ,c-code))))))
 
 (define (init-labels cgc)
-
-  (set! label-exec-error
-        (asm-make-label
-         cgc
-         'exec-error
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,exec_error);")))))
-
-  (set! label-print-msg
-        (asm-make-label
-         cgc
-         'print-msg
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,print_msg);")))))
-
-  (set! label-print-msg-val
-        (asm-make-label
-         cgc
-         'print-msg-val
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,print_msg_val);")))))
-
-  (set! label-repl
-        (asm-make-label
-         cgc
-         'repl
-         (##foreign-address
-           ((c-lambda ()
-                      (pointer void)
-                      "___result = ___CAST(void*,repl);")))))
-
-  (set! label-gc
-        (asm-make-label
-         cgc
-         'gc
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,gc);")))))
-
-  (set! label-do-callback
-        (asm-make-label
-         cgc
-         'do_callback
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,do_callback);")))))
-
-  (set! label-do-callback-fn
-        (asm-make-label
-         cgc
-         'do_callback_fn
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,do_callback_fn);")))))
-
-  (set! label-do-callback-cont
-        (asm-make-label
-         cgc
-         'do_callback_cont
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,do_callback_cont);")))))
-
-  (set! label-interned-symbol
-        (asm-make-label
-         cgc
-         'interned_symbol
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,interned_symbol);")))))
-
-  (set! label-dump-regs
-          (asm-make-label
-           cgc
-           'dump-regs
-           (##foreign-address
-            ((c-lambda ()
-                       (pointer void)
-                       "___result = ___CAST(void*,dump_regs);")))))
-
-  (set! label-dump-stack
-          (asm-make-label
-           cgc
-           'dump-stack
-           (##foreign-address
-            ((c-lambda ()
-                       (pointer void)
-                       "___result = ___CAST(void*,dump_stack);")))))
-
-  (set! label-breakpoint
-        (asm-make-label
-         cgc
-         'break_point
-         (##foreign-address
-          ((c-lambda ()
-                     (pointer void)
-                     "___result = ___CAST(void*,break_point);"))))))
-
-
+  (set-cdef-label! label-repl             'repl             "___result = ___CAST(void*,repl);")
+  (set-cdef-label! label-print-msg        'print-msg        "___result = ___CAST(void*,print_msg);")
+  (set-cdef-label! label-print-msg-val    'print-msg-val    "___result = ___CAST(void*,print_msg_val);")
+  (set-cdef-label! label-rt-error         'rt_error         "___result = ___CAST(void*,rt_error);")
+  (set-cdef-label! label-gambit-call      'gambit_call      "___result = ___CAST(void*,gambit_call);")
+  (set-cdef-label! label-do-callback      'do_callback      "___result = ___CAST(void*,do_callback);")
+  (set-cdef-label! label-do-callback-fn   'do_callback_fn   "___result = ___CAST(void*,do_callback_fn);")
+  (set-cdef-label! label-do-callback-cont 'do_callback_cont "___result = ___CAST(void*,do_callback_cont);"))
 
 ;;-----------------------------------------------------------------------------
 
 ;; Machine code block management
-
-;; HEAP
-(define from-space #f)
-(define to-space   #f)
-;; Set to 2gb (2000000000) to exec all benchmarks without GC (except lattice.scm)
-;; Set to 7gb (7000000000) to exec all benchmarks without GC
-(define space-len 7000000000)
-(define alloc-ptr (x86-r12))
-
-(assert (= (modulo space-len 8) 0) ERR_HEAP_NOT_8)
-
-(define init-to-space #f)
-(define init-from-space #f)
 
 ;; CODE
 (define code-len 12000000)
 (define code-addr #f)
 (define mcb #f)
 
+;; User stack (ustack) is the used by generated machine code
+;; This stack is a scheme object. This allows the Gambit GC to scan the stack
+;; to find roots.
+;; Process stack (pstack) is still used for each call to c code (stubs and others)
+(define ustack #f)
+(define ustack-init #f) ;; initial sp value (right of the stack)
+(define ustack-len 1000000) ;; 1M
+
 (define (init-mcb)
   (set! mcb (make-mcb code-len))
   (set! code-addr (##foreign-address mcb))
-  (let ((tspace (make-mcb space-len))
-        (fspace (make-mcb space-len)))
-    (set! init-from-space (+ (##foreign-address fspace) space-len))
-    (set! init-to-space   (+ (##foreign-address tspace) space-len)))
-  (set! from-space init-from-space)
-  (set! to-space init-to-space))
+  (set! ustack (make-vector (/ ustack-len 8)))
+  (set! ustack-init (+ (- (obj-encoding ustack) 1) 8 ustack-len)))
 
 ;; BLOCK :
 ;; 0          8                       (nb-globals * 8 + 8)
@@ -714,13 +525,18 @@
 ;; | addr     |          |          |          |
 ;; +----------+----------+----------+----------+
 
+(define globals-space #f)
+(define globals-len 10000) ;; 1024 globals
+(define globals-addr #f)
 (define block #f)
-(define global-offset 15) ;; [Stack addr], [def-out-port-header|def-out-port-fd], [def-in-port-header|def-in-port-fd], [heaplimit] + n empty slot (used for debug)
-(define block-len (* 8 (+ global-offset 10000))) ;; 1 stack addr, 1000 globals
+(define block-len 15)
 (define block-addr #f)
 (define debug-slots '((calls . 6) (tests . 7) (extests . 8) (closures . 9) (time . 10) (other . 11)))
 
 (define (init-block)
+  (set! globals-space (alloc-still-vector-0 globals-len))
+  (set! globals-addr (+ (- (obj-encoding globals-space) 1) 8))
+
   (set! block (make-mcb block-len))
   (set! block-addr (##foreign-address block)))
 
@@ -751,7 +567,8 @@
       (if opt-verbose-jit
           (begin
             (println "------------------------------------------------------------------------")
-            (asm-display-listing cgc (current-output-port) #t)))
+            (asm-display-listing cgc (current-output-port) #t)
+            (force-output)))
       (write-mcb code (- addr code-addr))
       (u8vector-length code))))
 
@@ -778,7 +595,7 @@
   (let* ((alloc
           (if (= stub-freelist 0)
               (begin
-                (set! stub-alloc (- stub-alloc 16))
+                (set! stub-alloc (- stub-alloc 24))
                 stub-alloc)
               (let ((a stub-freelist))
                 (set! stub-freelist (get-i64 a))
@@ -792,7 +609,7 @@
        (let loop ((i max-selector))
          (let ((label
                 (asm-make-label
-                 cgc
+                 #f
                  (string->symbol
                   (string-append "stub_"
                                  (number->string alloc 16)
@@ -802,7 +619,8 @@
            (x86-label cgc label)
            (if (> i 0)
                (begin
-                 (x86-inc cgc (x86-cl)) ;; increment selector
+                 (x86-add cgc (x86-ecx) (x86-imm-int (obj-encoding 1))) ;; increment selector
+                 (x86-nop cgc)
                  (loop (- i 1))))))
        (gen cgc)))
     stub-labels))
@@ -818,12 +636,12 @@
            (lambda (cgc)
              (call-handler cgc label-handler obj)))))
     (subvector-move! (list->vector args) 0 len obj 0)
-    (if opt-verbose-jit
-        (pp (list 'obj= obj)))
+    ;(if opt-verbose-jit
+    ;    (pp (list 'obj= obj)))
     stub-labels))
 
 (define (call-handler cgc label-handler obj)
-  (x86-call cgc label-handler)
+  (x86-pcall cgc label-handler)
   (asm-64   cgc (obj-encoding obj)))
 
 (define (stub-reclaim stub-addr)
@@ -832,28 +650,107 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define label-do-callback-handler #f)
-(define label-do-callback-fn-handler #f)
+(define label-heap-limit-handler       #f)
+(define label-alloc-still-handler      #f)
+(define label-gambit-call-handler      #f)
+(define label-do-callback-handler      #f)
+(define label-do-callback-fn-handler   #f)
 (define label-do-callback-cont-handler #f)
+(define label-rt-error-handler         #f)
+(define label-print-msg-handler        #f)
+(define label-print-msg-val-handler    #f)
+(define label-repl-handler             #f)
+
+(define label-err-wrong-num-args       #f)
+
+(define (gen-addr-handler cgc id addr cargs-generator)
+  (let ((label-handler (asm-make-label cgc id)))
+
+    (x86-label cgc label-handler)
+
+    ;; Save regalloc-regs to ustack because stub could trigger GC,
+    ;; then registers are treated as stack roots
+    ;; Save selector to allow stub to access its value
+    (upush-pop-regs
+      cgc
+      (cons selector-reg regalloc-regs)
+      (lambda (cgc)
+        ;; Update gambit heap ptr from LC heap ptr
+        (x86-mov cgc (x86-mem (get-hp-addr)) alloc-ptr)
+        ;; Set usp as the first c-arg
+        (x86-mov cgc (x86-rdi) (x86-usp))
+        ;; Save ustack ptr to pstack
+        (x86-ppush cgc (x86-usp))
+        ;; Save c caller save registers
+        (ppush-pop-regs
+          cgc
+          (set-sub c-caller-save-regs regalloc-regs '())
+          (lambda (cgc)
+            (cargs-generator cgc) ;; Gen c args
+            ;; Aligned call to addr
+            (x86-mov  cgc (x86-rax) (x86-rsp)) ;; align stack-pointer for C call
+            (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+            (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+            (x86-ppush cgc (x86-rax))
+            (x86-mov cgc (x86-rax) (x86-imm-int addr))
+            (x86-pcall cgc (x86-rax))
+            (x86-ppop cgc (x86-rsp))))
+        ;; Update LC heap ptr and heap limit from Gambit heap ptr and heap limit
+        (let ((r1 selector-reg)
+              (r2 alloc-ptr))
+          ;; heap limit
+          (x86-mov cgc r1 (x86-mem (get-heap_limit-addr)))
+          (x86-mov cgc r2 (x86-imm-int block-addr))
+          (x86-mov cgc (x86-mem (* 8 5) r2) r1)
+          ;; hp
+          (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr))))
+        ;; Set rsp to saved ustack sp
+        (x86-ppop cgc (x86-usp))))
+
+    label-handler))
 
 (define (gen-handler cgc id label)
   (let ((label-handler (asm-make-label cgc id)))
 
     (x86-label cgc label-handler)
 
-    (push-pop-regs
-     cgc
-     c-caller-save-regs ;; preserve regs for C call
-     (lambda (cgc)
-       (x86-mov  cgc (x86-rdi) (x86-rsp)) ;; align stack-pointer for C call
-       (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-       (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-       (x86-push cgc (x86-rdi))
-       (x86-call cgc label) ;; call C function
-       (x86-pop  cgc (x86-rsp)) ;; restore unaligned stack-pointer
-       ))
-
-    (x86-ret cgc)
+    ;; Save regalloc-regs to ustack because stub could trigger GC,
+    ;; then registers are treated as stack roots
+    ;; Save selector to allow stub to access its value
+    (upush-pop-regs
+      cgc
+      (cons selector-reg regalloc-regs)
+      (lambda (cgc)
+        ;; Update gambit heap ptr from LC heap ptr
+        (x86-mov cgc (x86-mem (get-hp-addr)) alloc-ptr)
+        ;; Set usp & psp as the first & second c-args
+        (x86-mov cgc (x86-rdi) (x86-usp))       ;; NOTE: will not be correctly restored if rdi is not a reg-alloc reg
+        (x86-mov cgc (x86-rsi) (x86-rsp)) ;; NOTE: will not be correctly restored if rsi is not a reg-alloc reg
+        ;; Save ustack ptr to pstack
+        (x86-ppush cgc (x86-usp))
+        ;; Save c caller save registers
+        (ppush-pop-regs
+          cgc
+          (set-sub c-caller-save-regs regalloc-regs '())
+          (lambda (cgc)
+            ;; Aligned call to label
+            (x86-mov  cgc (x86-rax) (x86-rsp)) ;; align stack-pointer for C call
+            (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+            (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+            (x86-ppush cgc (x86-rax))
+            (x86-pcall cgc label)
+            (x86-ppop cgc (x86-rsp))))
+        ;; Update LC heap ptr and heap limit from Gambit heap ptr and heap limit
+        (let ((r1 selector-reg)
+              (r2 alloc-ptr))
+          ;; heap limit
+          (x86-mov cgc r1 (x86-mem (get-heap_limit-addr)))
+          (x86-mov cgc r2 (x86-imm-int block-addr))
+          (x86-mov cgc (x86-mem (* 8 5) r2) r1)
+          ;; hp
+          (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr))))
+        ;; Set rsp to saved ustack sp
+        (x86-ppop cgc (x86-usp))))
 
     label-handler))
 
@@ -862,68 +759,109 @@
 
     (x86-jmp cgc label-rtlib-skip)
 
+    ;; heap_limit
+    (set! label-heap-limit-handler
+          (gen-addr-handler cgc 'heap_limit_handler (get___heap_limit-addr) (lambda (cgc) #f)))
+    (x86-ret cgc)
+
+    ;; heap_limit
+    (set! label-alloc-still-handler
+          (gen-addr-handler cgc 'alloc_still_handler (get___alloc_still-addr)
+            (lambda (cgc)
+              ;; rdi rsi rdx (pstate, stag, len)
+              ;;(x86-mov cgc (x86-rdi) (x86-imm-int 0))
+
+              (let* (;; NOTE: Must match the registers saved using ppush-pop-regs in gen-addr-handler
+                     (saved-offset (length (set-sub c-caller-save-regs regalloc-regs '())))
+                     (stag-offset  (* 8 (+ saved-offset 2))))
+
+                ;; stag is not encoded, then it is in pstack
+                (x86-mov cgc (x86-rdi) (x86-mem stag-offset (x86-rsp)))
+                (x86-mov cgc (x86-rsi) (x86-mem (* 8 (+ (length regalloc-regs) 2)) (x86-rbp)))))))
+                ;(x86-mov cgc (x86-rdi) (x86-imm-int (get-pstate-addr)))))))
+    (x86-ret cgc)
+
+    (set! label-gambit-call-handler
+          (gen-handler cgc 'gambit_call_handler label-gambit-call))
+    (x86-ret cgc)
+
+    ;; do_callback
     (set! label-do-callback-handler
           (gen-handler cgc 'do_callback_handler label-do-callback))
+    (x86-ret cgc)
 
+    ;; do_callback_fn
     (set! label-do-callback-fn-handler
           (gen-handler cgc 'do_callback_fn_handler label-do-callback-fn))
+    (x86-ret cgc)
 
+    ;; do_callback_cont
     (set! label-do-callback-cont-handler
           (gen-handler cgc 'do_callback_cont_handler label-do-callback-cont))
-
-    (set! label-gc-trampoline (asm-make-label cgc 'gc_trampoline))
-
-    (x86-label cgc label-gc-trampoline)
-    (gen-gc-call cgc)
     (x86-ret cgc)
+
+    ;; Runtime error
+    (set! label-rt-error-handler
+          (gen-handler cgc 'rt_error_handler label-rt-error))
+    (x86-ret cgc)
+
+    ;; Print msg
+    (set! label-print-msg-handler
+          (gen-handler cgc 'print_msg_handler label-print-msg))
+    (x86-ret cgc)
+
+    ;; Print msg val
+    (set! label-print-msg-val-handler
+          (gen-handler cgc 'print_msg_val_handler label-print-msg-val))
+    (x86-ret cgc)
+
+    ;; Repl
+    (set! label-repl-handler
+          (gen-handler cgc 'repl label-repl))
+    (x86-ret cgc)
+
+    (set! label-err-wrong-num-args (asm-make-label #f 'err_wrong_num_args))
+    (x86-label cgc label-err-wrong-num-args)
+    (gen-error cgc ERR_WRONG_NUM_ARGS)
+
+    ;; -------------------------
 
     (x86-label cgc label-rtlib-skip)
 
-    (push-regs cgc all-regs)
+    ;; Save all regs to pstack (because the GC must *not* scan these values)
+    (ppush-regs cgc all-regs)
+
+    ;; Set usp to ustack init
+    (x86-mov cgc (x86-usp) (x86-imm-int ustack-init))
 
     ;; Init debug slots
-    (for-each (lambda (s)
-                (gen-set-slot cgc (car s) 0))
-              debug-slots)
-
-    ;; Get RDTSC value if --time option is #t
-    (if opt-time
-       (begin
-          (x86-mov   cgc (x86-rbx) (x86-imm-int (+ block-addr (* 9 8)))) ;; Get slot addr in rbx
-          (x86-rdtsc cgc)                                   ;; rdx = hi, rax = lo
-          (x86-shl   cgc (x86-rdx) (x86-imm-int 32))        ;; rdx = rdx << 32
-          (x86-or    cgc (x86-rax) (x86-rdx))               ;; rax = lo | hi
-          (x86-mov   cgc (x86-mem 0 (x86-rbx)) (x86-rax)))) ;; Mov time in time slot
-
-    ;; Put bottom of the stack (after saving registers) at "block-addr + 0"
-    (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-    (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rsp))
+    ;; TODO
+    ;(for-each (lambda (s)
+    ;            (gen-set-slot cgc (car s) 0))
+    ;          debug-slots)
 
     ;; Put heaplimit in heaplimit slot
     ;; TODO: remove cst slots
-    (x86-mov cgc (x86-rcx) (x86-imm-int (- from-space space-len)))
+    (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
+    (x86-mov cgc (x86-rcx) (x86-mem (get-heap_limit-addr)))
     (x86-mov cgc (x86-mem (* 8 5) (x86-rax)) (x86-rcx))
 
     (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-    (x86-mov cgc alloc-ptr (x86-imm-int from-space))       ;; Heap addr in alloc-ptr
-    (x86-mov cgc (x86-r10) (x86-imm-int (+ block-addr (* 8 global-offset)))) ;; Globals addr in r10
+    (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr)))     ;; Heap addr in alloc-ptr
+    (x86-mov cgc global-ptr (x86-imm-int globals-addr)) ;; Globals addr in r10
+
+    ;; Set all registers used for regalloc to 0
+    (for-each (lambda (el)
+                (x86-mov cgc el (x86-imm-int 0)))
+              regalloc-regs)
 
     (let ((label (asm-make-label #f (new-sym 'prog_begin))))
       (x86-label cgc label))))
 
-(define (init)
+(define (init-backend)
 
+  (init-c)
   (init-code-allocator)
-
-  ;; Create default ports in 'block'
-  (let ((output-header (mem-header 2 STAG_OPORT))
-        (input-header  (mem-header 2 STAG_IPORT)))
-    ;; output
-    (put-i64 (+ block-addr 8) output-header)
-    (put-i64 (+ block-addr 16) 1)
-    ;; input
-    (put-i64 (+ block-addr 24) input-header)
-    (put-i64 (+ block-addr 32) 0))
 
   (code-add
    (lambda (cgc)
@@ -932,32 +870,38 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define (push-pop-regs cgc regs proc)
-  (for-each (lambda (reg) (x86-push cgc reg)) regs)
+(define (upush-pop-regs cgc regs proc)
+  (x86-upush-l cgc regs)
   (proc cgc)
-  (for-each (lambda (reg) (x86-pop cgc reg)) (reverse regs)))
+  (x86-upop-l cgc (reverse regs)))
 
-(define (push-regs cgc regs)
-  (for-each (lambda (reg) (x86-push cgc reg)) regs))
+(define (ppush-pop-regs cgc regs proc)
+  (for-each (lambda (reg) (x86-ppush cgc reg)) regs)
+  (proc cgc)
+  (for-each (lambda (reg) (x86-ppop cgc reg)) (reverse regs)))
 
-(define (pop-regs-reverse cgc regs)
-  (for-each (lambda (reg) (x86-pop cgc reg)) (reverse regs)))
+(define (upush-regs cgc regs)
+  (for-each (lambda (reg) (x86-upush cgc reg)) regs))
+
+(define (ppush-regs cgc regs)
+  (for-each (lambda (reg) (x86-ppush cgc reg)) regs))
+
+(define (upop-regs-reverse cgc regs)
+  (for-each (lambda (reg) (x86-upop cgc reg)) (reverse regs)))
+
+(define (ppop-regs-reverse cgc regs)
+  (for-each (lambda (reg) (x86-ppop cgc reg)) (reverse regs)))
 
 (define c-caller-save-regs ;; from System V ABI
-  (list (x86-rdi) ;; 1st argument
-        (x86-rsi) ;; 2nd argument
-        (x86-rdx) ;; 3rd argument
-        (x86-rcx) ;; 4th argument
-        (x86-r8)  ;; 5th argument
-        (x86-r9)  ;; 6th argument
-        (x86-r10)
-        (x86-r11)
-        (x86-rax) ;; return register ;; TODO
-        ))
+  (list (x86-rdi)  ;; 1st argument
+        (x86-rsi)  ;; 2nd argument
+        (x86-rdx)  ;; 3rd argument
+        (x86-rcx)  ;; 4th argument
+        (x86-r8)   ;; 5th argument
+        (x86-r9))) ;; 6th argument
 
 (define all-regs
-  (list (x86-rsp)
-        (x86-rax)
+  (list (x86-rax)
         (x86-rbx)
         (x86-rcx)
         (x86-rdx)
@@ -973,28 +917,31 @@
         (x86-r14)
         (x86-r15)))
 
+(define regalloc-regs
+  (list (x86-rbx)
+        (x86-r15)
+        (x86-rsi)
+        (x86-rdi)
+        (x86-r10)
+        (x86-r11)
+        (x86-r12)
+        (x86-r13)
+        (x86-r14)
+        (x86-rdx)))
+
 (define nb-c-caller-save-regs
   (length c-caller-save-regs))
 
-(define rdx-pos
-  (- nb-c-caller-save-regs
-     (length (member (x86-rdx) c-caller-save-regs))))
+(define (reg-sp-offset idx)
+  (assert (< idx (length regalloc-regs)) "Internal error (reg-sp-offset)")
+  (* 8 (- (length regalloc-regs) idx 1)))
 
-(define rcx-pos
-  (- nb-c-caller-save-regs
-     (length (member (x86-rcx) c-caller-save-regs))))
+(define (reg-sp-offset-r reg)
+  (assert (member reg regalloc-regs) "Internal error (reg-sp-offset-r)")
+  (* 8 (- (length (member reg regalloc-regs)) 1)))
 
-(define rdi-pos
-  (- nb-c-caller-save-regs
-     (length (member (x86-rdi) c-caller-save-regs))))
-
-(define r11-pos
-  (- nb-c-caller-save-regs
-     (length (member (x86-r11) c-caller-save-regs))))
-
-(define rax-pos
-  (- nb-c-caller-save-regs
-     (length (member (x86-rax) c-caller-save-regs))))
+(define (selector-sp-offset)
+  (* 8 (length regalloc-regs)))
 
 ;;-----------------------------------------------------------------------------
 
@@ -1005,313 +952,199 @@
     (table-set! new-sym-counters sym n)
     (string->symbol (string-append (symbol->string sym) (number->string n)))))
 
-;;-----------------------------------------------------------------------------
+(define fn-count 0)
 
-(define extremely-lazy? #f)
+(define (new-fn-num)
+  (let ((n fn-count))
+    (set! fn-count (+ fn-count 1))
+    n))
 
 ;;-----------------------------------------------------------------------------
 
 ;; List of all lazy code objects (for debug/measure purposes)
 (define all-lazy-code '())
 
+;; 'versions' is a table associating a version (label) to a ctx
+;; This version could be a 'real' version, which is a full version specialized for this ctx
+;; or a 'not real' version, which is a version containing only merge code and a jump to the generic version
 (define-type lazy-code
   constructor: make-lazy-code*
+  ast
   generator
   versions
   flags
-)
+  lco-true  ;; lco of true branch if it's a cond lco
+  lco-false ;; lco of false branch if it's a cond lco
+  generic-ctx
+  generic-vers)
+
+;; Create table of versions for a lazy-code
+(define (make-versions-table)
+  ;; If we do not use regalloc to specialize code,
+  ;; we need to check for the same ctx without considering reg alloc information
+  (if opt-vers-regalloc
+      (make-table)
+      (let ((test
+              (lambda (ctx1 ctx2)
+                (equal? (ctx-rm-regalloc ctx1)
+                        (ctx-rm-regalloc ctx2)))))
+        (make-table test: test))))
 
 (define (lazy-code-nb-versions lazy-code)
   (table-length (lazy-code-versions lazy-code)))
 
-(define (make-lazy-code generator)
-  (let ((lc (make-lazy-code* generator (make-table) '())))
+(define (lazy-code-nb-real-versions lazy-code)
+  (count (table->list (lazy-code-versions lazy-code)) cddr))
+
+(define (make-lazy-code ast generator)
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) '() #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
-(define (make-lazy-code-cont generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(cont))))
+(define (make-lazy-code-cont ast generator)
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) '(cont) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
-(define (make-lazy-code-entry generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(entry))))
+(define (make-lazy-code-entry ast generator)
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) '(entry) #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
-(define (make-lazy-code-ret generator)
-  (let ((lc (make-lazy-code* generator (make-table) '(ret))))
+(define (make-lazy-code-ret ast generator)
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) '(ret) #f #f #f #f)))
+    (set! all-lazy-code (cons lc all-lazy-code))
+    lc))
+
+(define (make-lazy-code-cond ast lco-true lco-false generator)
+  (let ((lc (make-lazy-code* ast generator (make-versions-table) '(cond) lco-true lco-false #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (get-version lazy-code ctx)
-  (let ((versions (lazy-code-versions lazy-code)))
-    (table-ref versions ctx #f)))
+  (let* ((versions (lazy-code-versions lazy-code))
+         (version  (table-ref versions ctx #f)))
+    (and version (car version))))
 
-(define (put-version lazy-code ctx v)
+(define (put-version lazy-code ctx version real-version?)
   (let ((versions (lazy-code-versions lazy-code)))
-    (table-set! versions ctx v)))
+    (table-set! versions ctx (cons version real-version?))))
+
+;; Return ctx associated to the version
+(define (get-version-ctx lazy-code version)
+  (let ((versions (lazy-code-versions lazy-code)))
+    (let loop ((lst (table->list versions)))
+      (if (null? lst)
+          (error "Internal error")
+          (if (eq? (cadar lst)
+                   version)
+              (caar lst)
+              (loop (cdr lst)))))))
 
 ;;-----------------------------------------------------------------------------
-;; Identifier management
+;; ctx regalloc
 
-;; Identifier in environment associated to an identifier
-(define-type identifier
-  constructor: make-identifier*
-  type   ;; 'free or 'local
-  offset ;; offset in closure or stack
-  pos    ;; set of offset where the identifier is located
-  flags  ;; list of flags (possible flags : mutable)
-  stype  ;; ctx type if identifier is a free var
-)
+;; Apply list of moves
+;; Possible moves are (src . dst):
+;; (loc1  . loc2)  -> move loc1 to loc2
+;; ('rtmp . loc)  -> move temporary register to loc (temporary is tmpreg or rax)
+;; (loc   . 'rtmp)  -> move loc to temporary register (temporary is tmpreg or rax)
+;; (fs    . n)       -> add n words to sp
+(define (apply-moves cgc ctx moves #!optional tmpreg)
 
-(define (make-identifier type offset pos flags stype)
-  (make-identifier* type offset (sort pos <) flags stype))
+  ;; Filter moves
+  ;; Return a pair with fs to add in first and moves except fs moves
+  ;; ex. (4 . ((r0 . r1) (r2 . r3)))
+  (define (filter-fs moves fs filtered)
+    (if (null? moves)
+        (cons fs (reverse filtered))
+        (let ((move (car moves)))
+          (if (eq? (car move) 'fs)
+              (filter-fs (cdr moves) (+ fs (cdr move)) filtered)
+              (filter-fs (cdr moves) fs (cons move filtered))))))
 
-(define (identifier-mutable? id)
-  (member 'mutable (identifier-flags id)))
+  ;; Return tmp register to use for 'rtmp operand
+  ;; Use given temporary register if given, rax otherwise
+  (define (get-tmp)
+    (if tmpreg
+        (codegen-loc-to-x86opnd (ctx-fs ctx) tmpreg)
+        (x86-rax)))
 
-;; Add pos to identifier object
-(define (identifier-add-pos identifier pos)
-  (if (member pos (identifier-pos identifier))
-    identifier
-    (make-identifier (identifier-type identifier)
-                     (identifier-offset identifier)
-                     (cons pos (identifier-pos identifier))
-                     (identifier-flags identifier)
-                     (identifier-stype identifier))))
+  ;; Is selector used to apply moves? If it is used, reset it after all moves
+  (define selector-used? #f)
 
-;; Remove pos from identifier object
-(define (identifier-remove-pos identifier pos)
-  (make-identifier (identifier-type    identifier)
-                   (identifier-offset  identifier)
-                   (set-sub (identifier-pos identifier) (list pos) '())
-                   (identifier-flags   identifier)
-                   (identifier-stype   identifier)))
+  ;; Select a register to be used as tmp register for mov instruction
+  ;; (mov mem mem, etc...)
+  (define (select-mov-tmp-reg next-moves)
+    (define (tmp-used-after moves)
+      (cond ((null? moves) #f)
+            ((eq? (caar moves) 'rtmp) #t) ;; rtmp is first used as a src, then #t
+            ((eq? (cdar moves) 'rtmp) #f) ;; rtmp is first used as a dst, then #f
+            (else (tmp-used-after (cdr moves)))))
+    (if (and (eq? (get-tmp) (x86-rax))
+             (tmp-used-after next-moves))
+        (begin
+          (set! selector-used? #t)
+          selector-reg)
+        (x86-rax)))
 
-;; Reset pos of given identifier
-(define (identifier-reset-pos identifier)
-  (make-identifier (identifier-type identifier)
-                   (identifier-offset identifier)
-                   '()
-                   (identifier-flags identifier)
-                   (identifier-stype identifier)))
+  ;; Apply move. A move is one of possible moves except fs move
+  (define (apply-filtered moves)
+    (if (not (null? moves))
+        (let* ((move (car moves))
+               ;; Compute x86 dst operand
+               (dst
+                 (if (eq? (cdr move) 'rtmp)
+                     (get-tmp)
+                     (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
+               ;; Compute x86 src operand
+               (src
+                 (cond ((and (pair? (car move))
+                             (eq? (caar move) 'constfn))
+                          ;; If src is a constfn, create closure in move
+                          (car move))
+                       ((and (pair? (car move))
+                             (eq? (caar move) 'const))
+                          (x86-imm-int (obj-encoding (cdar move))))
+                       ((eq? (car move) 'rtmp)
+                          (get-tmp))
+                       (else
+                          (codegen-loc-to-x86opnd (ctx-fs ctx) (car move))))))
 
-;;-----------------------------------------------------------------------------
-;; Ctx
-;; TODO : fonction pour supprimer des ids de l'environnement pour eviter des list-tails, et mettre dans let, begin et do
+          (cond ;; Same operands, useless move
+                ((eq? src dst) #f)
+                ;; Need to create an empty closure
+                ((and (pair? src) (eq? (car src) 'constfn))
+                   (let ((entry-obj (asc-globalfn-entry-get (cdr src))))
+                     (if (ctx-loc-is-register? (cdr move))
+                         (gen-closure cgc (cdr move) #f entry-obj '())
+                         (let ((r (select-mov-tmp-reg (cdr moves))))
+                           ;; select-mov-tmp-reg should return loc AND x86 opnd, then loc is used in gen-closure
+                           (assert (eq? r (x86-rax)) "Internal error, nyi")
+                           (gen-closure cgc 'tmp #f entry-obj '())
+                           (x86-mov cgc dst r)))))
+                ;; Both in memory, use rax
+                ((and (or (x86-mem? src)
+                          (x86-imm? src))
+                      (x86-mem? dst))
+                   (let ((r (select-mov-tmp-reg (cdr moves))))
+                     (x86-mov cgc r src)
+                     (x86-mov cgc dst r)))
+                ;; direct x86 mov is possible
+                (else
+                   (x86-mov cgc dst src)))
+          ;;
+          (apply-filtered (cdr moves)))))
 
-(define-type ctx
-  stack   ;; compile time stack, containing types
-  env     ;; compile time environment
-  nb-args ;; nb of arguments of current frame
-)
+  (let ((r (filter-fs moves 0 '())))
+    ;; Update sp
+    (if (not (= (car r) 0))
+        (x86-sub cgc (x86-usp) (x86-imm-int (* 8 (car r)))))
+    ;; Apply other moves
+    (apply-filtered (cdr r))
+    (if selector-used?
+        (x86-xor cgc selector-reg selector-reg))))
 
-(define (ctx-get-top-pos ctx)
-  (- (length (ctx-stack ctx)) 2))
-
-(define (ctx-idx-to-pos ctx idx)
-  (- (length (ctx-stack ctx)) idx 2))
-
-(define (ctx-pos-to-idx ctx pos)
-  (- (length (ctx-stack ctx)) pos 2))
-
-(define (ctx-change-stack-type ctx pos type)
-  (let ((idx (ctx-pos-to-idx ctx pos)))
-    (make-ctx (append (list-head (ctx-stack ctx) idx) (list type) (list-tail (ctx-stack ctx) (+ idx 1)))
-              (ctx-env ctx)
-              (ctx-nb-args ctx))))
-
-(define (ctx-change-stack-types ctx positions type)
-  (if (null? positions)
-    ctx
-    (ctx-change-stack-types (ctx-change-stack-type ctx (car positions) type)
-                            (cdr positions)
-                            type)))
-
-;; Remove pos from ctx identifiers
-(define (ctx-remove-pos ctx pos)
-  (make-ctx (ctx-stack ctx)
-            (env-remove-pos (ctx-env ctx) pos)
-            (ctx-nb-args ctx)))
-
-;; Reset pos in identifier object associated to id 'sym'
-(define (ctx-reset-pos ctx sym)
-  (make-ctx (ctx-stack ctx)
-            (env-reset-pos (ctx-env ctx) sym)
-            (ctx-nb-args ctx)))
-
-;; Move nb slot from l-from to l-to (ascending)
-(define (ctx-mov-nb ctx nb l-from l-to)
-  (if (= nb 0)
-     ctx
-     (ctx-mov-nb (ctx-move ctx l-from l-to)
-                 (- nb 1)
-                 (+ l-from 1)
-                 (+ l-to 1))))
-
-;; Pop ctx
-(define (ctx-pop ctx #!optional (n 1))
-
-  (define (ctx-pop-one ctx)
-    (let* ((pos  (ctx-get-top-pos ctx))    ;; Get pos
-           (nctx (ctx-remove-pos ctx pos)) ;; Remove pos from identifiers
-           (stack (cdr (ctx-stack nctx)))) ;; Remove first from stack
-      ;; Return new ctx
-      (make-ctx stack (ctx-env nctx) (ctx-nb-args nctx))))
-
-  (define (ctx-pop-n ctx n)
-    (if (= n 0)
-       ctx
-       (ctx-pop-n (ctx-pop-one ctx) (- n 1))))
-
-  (ctx-pop-n ctx n))
-
-;; Push value to ctx
-;; Update stack and env if sym
-(define (ctx-push ctx ctx-type #!optional (n 1) sym)
-
-  (define (ctx-push-one ctx ctx-type sym)
-    (let ((stack (cons ctx-type (ctx-stack ctx)))
-          (env   (if sym
-                     (env-push-id (ctx-env ctx) ctx sym)
-                     (ctx-env ctx))))
-      (make-ctx stack env (ctx-nb-args ctx))))
-
-  (define (ctx-push-n ctx ctx-type n)
-    (if (= n 0)
-        ctx
-        (ctx-push-n (ctx-push-one ctx ctx-type #f) ctx-type (- n 1))))
-
-  (assert (or (= n 1) (not sym)) ERR_INTERNAL)
-
-  (if sym
-      (ctx-push-one ctx ctx-type sym)
-      (ctx-push-n  ctx ctx-type n)))
-
-;; Remove all ctx information.
-;; Return the 'generic' version of this context
-(define (ctx-clear ctx)
-  (make-ctx ;; Remove stack information
-            (make-list (length (ctx-stack ctx)) CTX_UNK)
-            ;; Remove env information
-            (foldr (lambda (id others)
-                     (cons (cons (car id)
-                                 (make-identifier (identifier-type (cdr id))
-                                                  (identifier-offset (cdr id))
-                                                  '()
-                                                  (identifier-flags (cdr id))
-                                                  CTX_UNK))
-                           others))
-                   '()
-                   (ctx-env ctx))
-            (ctx-nb-args ctx)))
-
-;; Change type at 'idx' to 'type'
-;; Change types at all other positions of the id(s) at this slot.
-(define (ctx-change-type ctx idx type)
-
-  (define (change-for-identifiers env pos ctx)
-    (if (null? env)
-      ctx
-      (let* ((idpair     (car env))
-             (identifier (cdr idpair)))
-        (if (member pos (identifier-pos identifier))
-          ;; TODO: This function returns as soon as it encounters an identifier containing 'pos'
-          ;;       Add the possibility to keep same positions of two identifier if they are non mutable.
-          ;;       ex: (let ((a X)) (let ((b a)) BODY)) if in BODY, the compiler discovers the type of a, change the type of b !
-          ;;       Then, this function must continue to change all identifiers. Only if an identifier associated to the current identifier as not yet been modified.
-          ;;       (if there are to variable 'v in the env, discovering the type of 'v only changes the stack positions of most visible (recent) 'v)
-          (ctx-change-stack-types ctx (identifier-pos identifier) type)
-          ;; (change-for-identifiers (cdr env)
-          ;;                         pos
-          ;;                         (ctx-change-stack-types ctx (identifier-pos identifier) type))
-          (change-for-identifiers (cdr env) pos ctx)))))
-
-  (let* ((pos (ctx-idx-to-pos ctx idx))
-         (nctx  (change-for-identifiers (ctx-env ctx) pos ctx))
-         (mctx  (ctx-change-stack-type nctx pos type)))
-    mctx))
-
-;; Move type from index 'from' to index 'to'
-(define (ctx-stack-move stack idx-from idx-to)
-   (if (eq? (list-ref stack idx-to) CTX_MOBJ)
-       stack
-       (append (list-head stack idx-to)
-               (cons (list-ref stack idx-from)
-                     (list-tail stack (+ idx-to 1))))))
-
-;; Move slot from stack index 'from' to stack index 'to'
-;; Optionnally update env
-(define (ctx-move ctx idx-from idx-to #!optional (update-env? #t))
-   (let ((pos-from (ctx-idx-to-pos ctx idx-from))
-         (pos-to   (ctx-idx-to-pos ctx idx-to)))
-
-     (let ((env   (if update-env?
-                      (env-move (ctx-env ctx) pos-from pos-to)
-                      (ctx-env ctx)))
-           (stack (ctx-stack-move (ctx-stack ctx) idx-from idx-to)))
-
-       (make-ctx stack env (ctx-nb-args ctx)))))
-
-;;-------------------------
-
-;; Remove pos from env
-(define (env-remove-pos env pos)
-  (if (null? env)
-    '()
-    (let* ((idpair     (car env))
-           (idsym      (car idpair))
-           (identifier (cdr idpair)))
-      (if (member pos (identifier-pos identifier))
-        (cons (cons idsym (identifier-remove-pos identifier pos))
-              (env-remove-pos (cdr env) pos))
-        (cons idpair (env-remove-pos (cdr env) pos))))))
-
-;; Reset pos of given idsym
-(define (env-reset-pos env sym)
-  (if (null? env)
-    '()
-    (let* ((idpair     (car env))
-           (idsym      (car idpair))
-           (identifier (cdr idpair)))
-      (if (eq? idsym sym)
-         (cons (cons idsym (identifier-reset-pos identifier))
-               (cdr env))
-         (cons idpair (env-reset-pos (cdr env) sym))))))
-
-;; Mov slot 'from' to 'to' (update identifiers positions)
-(define (env-move env pos-from pos-to)
-  (if (null? env)
-    '()
-    (let* ((idpair (car env))
-           (idsym  (car idpair))
-           (identifier (cdr idpair)))
-      (cond
-        ;; If id contains 'from', add 'to'
-        ((and (member pos-from (identifier-pos identifier))
-              (not (member pos-to (identifier-pos identifier))))
-           (cons (cons idsym (identifier-add-pos identifier pos-to))
-                 (env-move (cdr env) pos-from pos-to)))
-        ;; If id contains 'to', remove it
-        ((and (member pos-to (identifier-pos identifier))
-              (not (member pos-from (identifier-pos identifier))))
-           (cons (cons idsym (identifier-remove-pos identifier pos-to))
-                 (env-move (cdr env) pos-from pos-to)))
-        (else
-          (cons idpair (env-move (cdr env) pos-from pos-to)))))))
-
-;; Push identifier on top of the stack (update identifiers positions)
-(define (env-push-id env ctx idsym-push)
-  (if (null? env)
-    '()
-    (let* ((idpair (car env))
-           (idsym  (car idpair))
-           (identifier (cdr idpair)))
-      (if (eq? idsym idsym-push)
-          (cons (cons idsym (identifier-add-pos identifier (+ (ctx-get-top-pos ctx) 1)))
-                (env-push-id (cdr env) ctx idsym-push))
-          (cons idpair (env-push-id (cdr env) ctx idsym-push))))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -1320,147 +1153,308 @@
   (create-stub label-do-callback-handler max-selector callback-fn))
 
 ;; Add function callback
-(define (add-fn-callback cgc max-selector callback-fn)
-  (create-stub label-do-callback-fn-handler max-selector callback-fn))
+(define (add-fn-callback max-selector fn-num callback-fn)
+  (create-stub label-do-callback-fn-handler max-selector callback-fn fn-num))
 
 ;; Add continuation callback
 (define (add-cont-callback cgc max-selector callback-fn)
   (create-stub label-do-callback-cont-handler max-selector callback-fn))
 
 ;;-----------------------------------------------------------------------------
-;; Lazy-code generation
+;; JIT
 
-(define (jump-to-version cgc lazy-code ctx #!optional (cleared-ctx #f))
+(define (gen-version-* cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos #!optional fn-opt-label)
 
-  (let ((label-dest (get-version lazy-code ctx)))
-    (if label-dest
-
-        ;; That version has already been generated, so just jump to it
-        (x86-jmp cgc label-dest)
-
-        ;; That version is not yet generated, so generate it
-        (if (and opt-max-versions
-                 (not cleared-ctx)
-                 (>= (lazy-code-nb-versions lazy-code) opt-max-versions))
-          ;; Maxversions is not #f and limit is reached, then remove
-          ;; type information to generate a generic version
-          ;; Recursive call (maybe this version already exists)
-          (jump-to-version cgc lazy-code (ctx-clear ctx) #t)
-
-          ;; Generate that version inline
-          (let ((label-version (asm-make-label cgc (new-sym 'version))))
-            (put-version lazy-code ctx label-version)
-            (x86-label cgc label-version)
-            ((lazy-code-generator lazy-code) cgc ctx))))))
-
-;; Generate a continuation
-(define (gen-version-continuation load-ret-label lazy-code ctx)
-  ;; TODO: print msg if opt-verbose-jit (see gen-version-fn)
-  (let ((continuation-label (asm-make-label #f (new-sym 'continuation_)))
-        (load-addr (asm-label-pos load-ret-label)))
-
-    ;; Generate lazy-code
-    (code-add
-      (lambda (cgc)
-        (asm-align cgc 4 0 #x90)
-        (x86-label cgc continuation-label)
-        ((lazy-code-generator lazy-code) cgc ctx)))
-
-    (patch-continuation load-addr continuation-label)))
-
-;; Generate continuation using cr table (patch cr entry)
-(define (gen-version-continuation-cr lazy-code ctx type table)
-  ;; TODO: print msg if opt-verbose-jit (see gen-version-fn)
-
-  (let ((label-dest (get-version lazy-code ctx)))
-
-    (if (not label-dest)
-        ;; That version is not yet generated, so generate it
-        (let ((continuation-label (asm-make-label #f (new-sym 'continuation_))))
+  (define (generate-merge-code src-ctx dst-ctx label-dest)
+    (let ((moves (ctx-regalloc-merge-moves src-ctx dst-ctx))
+          (label (asm-make-label #f (new-sym 'merge_))))
+      (set! code-alloc (fn-codepos))
+      (if cgc
+          ;;
+          (begin (x86-label cgc label)
+                 (apply-moves cgc dst-ctx moves)
+                 (if label-dest
+                     (x86-jmp cgc label-dest)))
+          ;;
           (code-add
             (lambda (cgc)
               (asm-align cgc 4 0 #x90)
-              (x86-label cgc continuation-label)
-              ((lazy-code-generator lazy-code) cgc ctx)))
-          (put-version lazy-code ctx continuation-label)
-          (set! label-dest continuation-label)))
+              (x86-label cgc label)
+              (apply-moves cgc dst-ctx moves)
+              (if label-dest
+                  (x86-jmp cgc label-dest)))))
+      label))
 
-    (patch-continuation-cr label-dest type table)))
-
-;; Generate an entry point
-(define (gen-version-fn ast closure lazy-code gen-ctx call-ctx generic)
-
-  (if opt-verbose-jit
-      (begin
-        (print "GEN VERSION FN")
-        (print " >>> ")
-        (pp gen-ctx)
-        (pp call-ctx)))
-
-  (let ((label-dest (get-version lazy-code gen-ctx)))
-
-    (if (not label-dest)
-       ;; That version is not yet generated, so generate it
-       (let ((fn-label (asm-make-label #f (new-sym 'fn_entry_))))
+  ;; Todo: merge with generate-new-version
+  (define (generate-generic ctx)
+    (let ((version-label (asm-make-label #f (new-sym label-sym))))
+      ;; NOTE: generate-generic is NEVER called without a previous call to generate-merge-code
+      ;;       generate-merge-code calls fn-codepos
+      ;(set! code-alloc (fn-codepos))
+      (if cgc
+          ;; we already have cgc, generate code
+          (begin (x86-label cgc version-label)
+                 ((lazy-code-generator lazy-code) cgc ctx))
+          ;; add code to current code-alloc position
           (code-add
-             (lambda (cgc)
-                (asm-align cgc 4 0 #x90)
-                (x86-label cgc fn-label)
-                ((lazy-code-generator lazy-code) cgc gen-ctx)))
-          (put-version lazy-code gen-ctx fn-label)
-          (set! label-dest fn-label)))
+            (lambda (cgc)
+              (asm-align cgc 4 0 #x90)
+              (x86-label cgc version-label)
+              ((lazy-code-generator lazy-code) cgc ctx))))
+      ;(if fn-opt-label
+      ;    (error "Internal error")) ;; TODO wip
+      version-label))
 
-    ;; If generic is #t, patch generic slot in closure.
-    ;; Else patch cc-table slot for this ctx
-    (if generic
-      (patch-generic ast closure label-dest)
-      (patch-closure closure call-ctx label-dest))))
+  (define (generate-new-version ctx)
+    (let ((version-label (asm-make-label #f (new-sym label-sym))))
+      (set! code-alloc (fn-codepos))
+      (if cgc
+          ;; we already have cgc, generate code
+          (begin (x86-label cgc version-label)
+                 ((lazy-code-generator lazy-code) cgc ctx))
+          ;; add code to current code-alloc position
+          (code-add
+            (lambda (cgc)
+              (asm-align cgc 4 0 #x90)
+              (x86-label cgc version-label)
+              ((lazy-code-generator lazy-code) cgc ctx))))
+      (if fn-opt-label
+          (fn-opt-label version-label)
+          version-label)))
 
-(define (gen-version jump-addr lazy-code ctx #!optional (cleared-ctx #f))
+  (define nb-versions (lazy-code-nb-real-versions lazy-code))
 
   (if opt-verbose-jit
-      (begin
-        (print "GEN VERSION")
-        (print " >>> ")
-        (pp ctx)))
+      (fn-verbose))
 
-  (let ((label-dest (get-version lazy-code ctx)))
-    (if label-dest
+  (cond
+    ;; A version already exists
+    ((get-version lazy-code ctx)
+       ;; Use existing version
+       (let ((label (get-version lazy-code ctx)))
+         (fn-patch label #f)))
+    ;; No version for this ctx, but limit is not reached
+    ((or (not opt-max-versions)
+         (< nb-versions opt-max-versions))
+       ;; Generate new real version
+       (let ((label (generate-new-version ctx)))
+         (put-version lazy-code ctx label #t)
+         (fn-patch label #t)))
+    ;; No version for this ctx, limit reached, and generic version exists
+    ((lazy-code-generic-vers lazy-code)
 
-        ;; That version has already been generated, so just patch jump
-        (let ((dest-addr (asm-label-pos label-dest)))
-          (patch-jump jump-addr dest-addr)
-          dest-addr)
+       ;; TODO what if fn-opt-label is set ?
+       (let* ((gctx (lazy-code-generic-ctx lazy-code))
+              (label-generic (lazy-code-generic-vers lazy-code))
+              (label-merge (generate-merge-code ctx gctx label-generic)))
+         (put-version lazy-code ctx label-merge #f)
+         (fn-patch label-merge #t)))
+    ;; No version for this ctx, limit reached, and generic version does not exist
+    (else
+      ;; TODO what if fn-opt-label is set ?
 
-        ;; That version is not yet generated, so generate it
-        (if (and opt-max-versions
-                 (not cleared-ctx)
-                 (>= (lazy-code-nb-versions lazy-code) opt-max-versions))
-          ;; Maxversions is not #f and limit is reached, then remove
-          ;; type information to generate a generic version
-          ;; Recursive call (maybe this version already exists)
-          (gen-version jump-addr lazy-code (ctx-clear ctx) #t)
+      (let* ((entry-lco? (member 'entry (lazy-code-flags lazy-code)))
+             (gctx (if entry-lco? ctx (ctx-generic ctx)))
+             ;; Generate merge only if not entry
+             (label-merge   (and (not entry-lco?) (generate-merge-code ctx gctx #f)))
+             (label-generic (generate-generic gctx))
+             ;; If merge label exists, first label is merge label. Else first label is generic label
+             (label-first   (or label-merge label-generic)))
 
-          ;; Generate that version inline
-          (begin
-            (cond ((= (+ jump-addr (jump-size jump-addr)) code-alloc)
-                   ;; (fall-through optimization)
-                   ;; the jump is the last instruction previously generated, so
-                   ;; just overwrite the jump
-                   (if opt-verbose-jit (println ">>> fall-through-optimization"))
-                   (set! code-alloc jump-addr))
-                  (else
-                   ;; Else we need to patch the jump
-                   (patch-jump jump-addr code-alloc)))
-            ;; Generate
-            (let ((label-version (asm-make-label #f (new-sym 'version))))
-              (put-version lazy-code ctx label-version)
-              (code-add
-               (lambda (cgc)
-                 (asm-align cgc 4 0 #x90)
-                 (x86-label cgc label-version)
-                 ((lazy-code-generator lazy-code) cgc ctx)))
-              (asm-label-pos label-version)))))))
+        (put-version lazy-code ctx label-first #f)
+        (lazy-code-generic-ctx-set!  lazy-code gctx)
+        (lazy-code-generic-vers-set! lazy-code label-generic)
+        (fn-patch label-first #t)))))
+
+;; #### FIRST LAZY CODE OBJECT
+;; This is a special gen-version used to generate the first lco of the program
+(define (gen-version-first lazy-code ctx)
+
+  (define (fn-verbose) #f)
+
+  (define (fn-codepos) code-alloc)
+
+  (define (fn-patch label-dest new-version?)
+    (asm-label-pos label-dest))
+
+  (gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
+
+;; #### LAZY CODE OBJECT
+;; Generate a lco. Handle fall-through optimization
+(define (gen-version jump-addr lazy-code ctx)
+
+  (define (fn-verbose)
+    (print "GEN VERSION")
+    (print " >>> ")
+    (pp lazy-code)
+    (pp ctx))
+
+  (define fall-through? #f)
+
+  (define (fn-codepos)
+    (if (= (+ jump-addr (jump-size jump-addr)) code-alloc)
+        (begin ;; (fall-through optimization)
+               ;; the jump is the last instruction previously generated, so
+               ;; just overwrite the jump
+               (set! fall-through? #t)
+               (if opt-verbose-jit (println ">>> fall-through-optimization"))
+               jump-addr)
+        code-alloc))
+
+  (define (fn-patch label-dest new-version?)
+    (if (not fall-through?)
+        (patch-jump jump-addr (asm-label-pos label-dest)))
+    (asm-label-pos label-dest))
+
+  (gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
+
+;; #### CONTINUATION
+;; Generate a continuation
+(define (gen-version-continuation load-ret-label lazy-code ctx)
+
+  (define (fn-verbose)
+    (print "GEN VERSION CONTINUATION (RP)")
+    (print " >>> Patch label ")
+    (pp load-ret-label)
+    (println " with ctx:")
+    (pp ctx))
+
+  (define (fn-patch label-dest new-version?)
+    (let ((load-addr (asm-label-pos load-ret-label)))
+      (patch-continuation load-addr label-dest)))
+
+  (define (fn-codepos)
+    code-alloc)
+
+  (gen-version-* #f lazy-code ctx 'continuation_ fn-verbose fn-patch fn-codepos))
+
+;; #### CONTINUATION CR
+;; Generate continuation using cr table (patch cr entry)
+(define (gen-version-continuation-cr lazy-code ctx type generic? table)
+
+  (define (fn-verbose)
+    (print "GEN VERSION CONTINUATION (CR)")
+    (print " >>> Patch table with type ")
+    (print type)
+    (println " and ctx:")
+    (pp ctx))
+
+  (define (fn-patch label-dest new-version?)
+    (patch-continuation-cr label-dest type generic? table))
+
+  (define (fn-codepos)
+    code-alloc)
+
+  (gen-version-* #f lazy-code ctx 'continuation_ fn-verbose fn-patch fn-codepos))
+
+;; #### FUNCTION ENTRY
+;; Generate an entry point
+(define (gen-version-fn ast closure entry-obj lazy-code gen-ctx call-stack generic)
+
+  (define (fn-verbose)
+    (print "GEN VERSION FN")
+    (pp lazy-code)
+    (print " >>> ")
+    (pp gen-ctx)
+    (pp call-stack))
+
+  (define (fn-patch label-dest new-version?)
+
+    (cond ((not opt-entry-points)
+           (patch-closure-ep ast closure entry-obj label-dest))
+          (generic
+           (let ((cctable-loc (- (obj-encoding entry-obj) 1)))
+             ;; If call-stack is not #f, a generic version is generated because number of versions limit is reached
+             ;; Then we also need to patch cctable slot
+             (if call-stack
+                 (patch-closure entry-obj call-stack label-dest))
+             (patch-generic ast cctable-loc #f label-dest)))
+          (else
+             (patch-closure entry-obj call-stack label-dest))))
+
+  (define (fn-codepos)
+    code-alloc)
+
+  (define (fn-opt-label version-label)
+    (define entry-pos (asm-label-pos version-label))
+    ;; Ignore all nop instructions (byte 0x90)
+    (let loop ((i 0) (opcode (get-u8 entry-pos)))
+      (if (not (= opcode #x90))
+          (set! entry-pos (+ entry-pos i))
+          (loop (+ i 1) (get-u8 (+ entry-pos (+ i 1))))))
+    ;;
+    (let* ((opcode (get-u8 entry-pos)))
+      (cond ;; First instruction is a jmp rel8
+            ((= opcode #xeb)
+               ;; Get destination from jump instruction
+               (let ((jmpdest (+ entry-pos (get-i8 (+ entry-pos 1)) 2)))
+                 ;; The new version label is a new label built from jmp destination address
+                 (asm-make-label #f (new-sym 'fn_entry_) jmpdest)))
+            ;; First instruction is a jmp rel32
+            ((= opcode #xe9)
+               (let ((jmpdest (+ entry-pos (get-i32 (+ entry-pos 1)) 5)))
+                 (asm-make-label #f (new-sym 'fn_entry_) jmpdest)))
+            (else
+               version-label))))
+
+  (gen-version-* #f lazy-code gen-ctx 'fn_entry_ fn-verbose fn-patch fn-codepos fn-opt-label))
+
+
+;; #### LAZY CODE OBJECT
+;; Generate a normal lazy code object with known cgc and jump to it
+(define (jump-to-version cgc lazy-code ctx)
+
+  (define (fn-verbose) #f)
+
+  (define (fn-patch label-dest new-version?)
+    (if (not new-version?)
+        (x86-jmp cgc label-dest)))
+
+  (define (fn-codepos)
+    code-alloc)
+
+  (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
+
+(define (gen-generic cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos)
+  (error "NYI"))
+
+;; TODO WIP
+(define (gen-merge cgc ctx generic-ctx generic-vers fn-verbose fn-patch fn-codepos)
+
+  ;; pour chaque id de l'environnement
+  ;; ne garder que la position de droite (position d'origine)
+  ;;  - si l'id est mutable, des boxer les autres avant de les enlever
+
+  ;; Return (sp-add moves)
+  ;; sp-add: number of word added to adjust sp for ctx merging
+  ;; moves: moves required for ctx merging
+  (define (ctx-merge src-ctx dst-ctx)
+    (define (get-sp-add)
+      (- (ctx-fs src-ctx) (ctx-fs dst-ctx)))
+    (define (get-moves)
+      (let loop ((sl (ctx-slot-loc src-ctx)))
+        (if (null? sl)
+            '()
+            (cons (cons (cdar sl)
+                        (cdr (assoc (caar sl) (ctx-slot-loc dst-ctx))))
+                        (loop (cdr sl))))))
+
+    (list
+      (steps (get-moves))
+      (get-sp-add)))
+
+  (let* ((r (ctx-merge ctx generic-ctx))
+         (moves  (car r))
+         (sp-add (cadr r))
+         (merge-label (asm-make-label #f (new-sym 'merge_version_))))
+
+    (set! code-alloc (fn-codepos))
+    (x86-label cgc merge-label)
+    (apply-moves cgc ctx moves)
+    ;; Update fs (sp)
+    (x86-add cgc (x86-usp) (x86-imm-int (* 8 sp-add)))
+    (x86-jmp cgc generic-vers)
+    (fn-patch merge-label #t)))
 
 ;;-----------------------------------------------------------------------------
 
@@ -1478,10 +1472,12 @@
   (asm-label-pos continuation-label))
 
 ;; Patch continuation if using cr (write label addr in table instead of compiler stub addr)
-(define (patch-continuation-cr continuation-label type table)
-    ;; TODO: msg if opt-verbose-jit (see patch-continuation)
-    (put-i64 (+ (type-to-cridx type) table) (asm-label-pos continuation-label))
-    (asm-label-pos continuation-label))
+(define (patch-continuation-cr continuation-label type generic? table)
+  ;; TODO: msg if opt-verbose-jit (see patch-continuation)
+  (if generic?
+      (put-i64 (+ (ctx-type->cridx ATX_UNK) table) (asm-label-pos continuation-label)))
+  (put-i64 (+ (ctx-type->cridx type) table) (asm-label-pos continuation-label))
+  (asm-label-pos continuation-label))
 
 ;; Patch jump at jump-addr: change jump destination to dest-addr
 (define (patch-jump jump-addr dest-addr)
@@ -1498,94 +1494,124 @@
                  (- dest-addr (+ jump-addr size))))))
 
 ;; Patch generic slot in closure
-(define (patch-generic ast closure label)
+(define (patch-generic ast cctable-loc stack label)
 
   (let ((label-addr (asm-label-pos  label))
         (label-name (asm-label-name label)))
 
-  (if opt-verbose-jit
-      (println ">>> patching generic slot of closure " (number->string closure 16)
-               ": now contains label "
-               label-name
-               " (" (number->string label-addr 16) ")"))
+   (put-i64 (+ cctable-loc 8)      label-addr) ;; Patch generic slot
+   label-addr))
 
-  (if opt-entry-points
-      (let ((table-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ))))
-        (put-i64 (+ table-addr 8) label-addr))
-      (let ((eploc (get-entry-points-loc ast #f)))
-        (put-i64 (- (+ closure 8) TAG_MEMOBJ) label-addr)       ;; Patch closure
-        (put-i64 (+ 8 (- (obj-encoding eploc) 1)) label-addr))) ;; Patch still vector containing code addr
-
-
-  label-addr))
+;; Patch all call sites previously generated by the compiler
+;; using a direct jump to this stub
+(define (patch-direct-jmp-labels entry-obj index eplabel)
+  (let ((patched-labels (asc-entry-load-get entry-obj index))
+        (tmp code-alloc))
+    ;; Clear table entry
+    (asc-entry-load-clear entry-obj index)
+    ;; Patch all labels
+    (let loop ((labels patched-labels))
+      (if (not (null? labels))
+          (let ((plabel (car labels)))
+            (if opt-verbose-jit
+                (begin
+                  (println "Patch direct stub jump at " (number->string (asm-label-pos plabel) 16))
+                  (println "  > now jump to " (number->string (asm-label-pos eplabel) 16))))
+            (set! code-alloc (asm-label-pos plabel))
+            (code-add (lambda (cgc) (x86-jmp cgc eplabel)))
+            (loop (cdr labels)))))
+    ;; Restore code-alloc
+    (set! code-alloc tmp)))
 
 ;; Patch closure
-(define (patch-closure closure ctx label)
+(define (patch-closure cctable stack label)
 
-  (let* ((label-addr (asm-label-pos  label))
+  (let* ((cctable-loc (- (obj-encoding cctable) 1))
+         (label-addr (asm-label-pos  label))
          (label-name (asm-label-name label))
-         (index (or (get-closure-index ctx) -1)) ;; -1 TODO to patch generic
+         (index (or (get-closure-index stack) -1)) ;; -1 TODO to patch generic
          (offset (+ 16 (* index 8)))) ;; +16 (header & generic)
 
-    (if opt-verbose-jit
-        (println ">>> patching closure " (number->string closure 16) " at "
-                 (number->string (+ closure offset) 16)
-                 " : slot contains now label "
-                 label-name
-                 " ("
-                 (number->string label-addr 16)
-                 ")"))
-
-    (let ((cctable-addr (get-i64 (- (+ closure 8) TAG_MEMOBJ)))) ;; +8(header) - 1(tag)
-      (put-i64 (+ cctable-addr offset) label-addr))
+    ;; Patch cctable entry
+    (put-i64 (+ cctable-loc offset) label-addr)
+    ;;
+    (patch-direct-jmp-labels cctable index label)
 
     label-addr))
+
+;; Patch closure when opt-entry-points is #f (only one ep)
+(define (patch-closure-ep ast closure entryvec label)
+
+  (define label-addr (asm-label-pos label))
+
+  ;; Patch entry vector
+  (vector-set! entryvec 0 (quotient label-addr 4))
+
+  ;; Patch current closure
+  (if closure
+      ;; if known closure, patch it
+      (put-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8) label-addr))
+
+  ;;
+  (patch-direct-jmp-labels entryvec 0 label)
+
+  label-addr)
 
 (define (jump-size jump-addr)
   (if (= (get-u8 jump-addr) #x0f) 6 5))
 
-
 ;; Gen fatal dynamic type test
 ;; fatal means that if type test fails, it stops execution
 ;; Check type 'type' for stack slot at 'stack-idx' and jump to 'succ' if succeess
-(define (gen-fatal-type-test type stack-idx succ #!optional ast)
-(let ((lazy-error
-         (make-lazy-code
-            (lambda (cgc ctx)
-               (if (or (eq? type CTX_FLO) (eq? type CTX_NUM))
-                 (gen-error cgc (ERR_TYPE_EXPECTED CTX_NUM))
-                 (gen-error cgc (ERR_TYPE_EXPECTED type)))))))
-  (gen-dyn-type-test type stack-idx succ lazy-error ast)))
+(define (gen-fatal-type-test ctx-type stack-idx succ #!optional ast)
+ (let ((lazy-error
+          (make-lazy-code
+             #f
+             (lambda (cgc ctx)
+               (pp "FAIL TEST")
+               (pp ast)
+              ; (pp ctx-type)
+              ; (pp stack-idx)
+              ; (pp ctx)
+               (if (or (ctx-tflo? ctx-type) (ctx-tint? ctx-type))
+                   (gen-error cgc ERR_NUMBER_EXPECTED)
+                   (gen-error cgc (ERR_TYPE_EXPECTED ctx-type)))))))
+   (gen-dyn-type-test ctx-type stack-idx succ lazy-error ast)))
 
 ;; Create lazy code for type test of stack slot (stack-idx)
 ;; jump to lazy-success if test succeeds
 ;; jump to lazy-fail if test fails
-(define (gen-dyn-type-test type stack-idx lazy-success lazy-fail #!optional ast)
+(define (gen-dyn-type-test ctx-type stack-idx lazy-success lazy-fail #!optional ast)
 
   (make-lazy-code
+     #f
      (lambda (cgc ctx)
+
+       (define type-ctor (ctx-type-ctor ctx-type))
+
        ;; TODO: plus nettoyer tout ca
-       (let* ((ctx-success (ctx-change-type ctx stack-idx type))
-              (ctx-success-known ctx);; Is know type is tested type, do not change ctx
+       (let* ((ctx-success (ctx-set-type ctx stack-idx (type-ctor) #t))
+              (ctx-success-known ctx);; If know type is tested type, do not change ctx (TODO?)
               (ctx-fail ctx)
-              (known-type (list-ref (ctx-stack ctx) stack-idx)))
+              (known-type  (ctx-get-type ctx stack-idx)))
 
          (cond ;; known == expected
-               ((or (eq? known-type type)
-                    (and (pair? known-type) (eq? (car known-type) type)))
-                  (jump-to-version cgc lazy-success ctx-success-known))
+               ((ctx-type-teq? ctx-type known-type)
+                (jump-to-version cgc lazy-success ctx-success-known))
                ;; known != expected && known != unknown
-               ((not (eq? known-type CTX_UNK))
-                  (jump-to-version cgc lazy-fail ctx-fail))
+               ((not (ctx-tunk? known-type))
+                (jump-to-version cgc lazy-fail ctx-fail))
                ;; known == unknown
                (else
                  (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
+                        (stub-first-label-addr #f)
                         (stub-labels
                               (add-callback cgc 1
                                 (let ((prev-action #f))
 
                                   (lambda (ret-addr selector)
-                                    (let ((stub-addr (- ret-addr 5 2))
+
+                                    (let ((stub-addr stub-first-label-addr)
                                           (jump-addr (asm-label-pos label-jump)))
 
                                       (if opt-verbose-jit
@@ -1611,9 +1637,9 @@
                                                              (patch-jump jump-addr stub-addr)
                                                              ;; overwrite unconditional jump
                                                              (gen-version
-                                                             (+ jump-addr 6)
-                                                             lazy-success
-                                                             ctx-success))
+                                                              (+ jump-addr 6)
+                                                              lazy-success
+                                                              ctx-success))
 
                                                       ;; make conditional jump to new version
                                                       (gen-version jump-addr lazy-success ctx-success))))
@@ -1626,70 +1652,84 @@
                                                     (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy-success ctx-success)
                                                     (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy-fail ctx-fail))))))))))
 
-       (if opt-verbose-jit
-           (println ">>> Gen dynamic type test at index " stack-idx))
+                  (set! stub-first-label-addr
+                        (min (asm-label-pos (list-ref stub-labels 0))
+                             (asm-label-pos (list-ref stub-labels 1))))
 
-       ;; If 'opt-stats' option, then inc tests slot
-       (if opt-stats
-        (gen-inc-slot cgc 'tests))
+                  (if opt-verbose-jit
+                      (println ">>> Gen dynamic type test at index " stack-idx))
 
-       (cond ;; Number type test
-             ((eq? type CTX_NUM)
-                 (x86-mov cgc (x86-rax) (x86-imm-int 3)) ;; rax = 0...011b
-                 (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
-                 ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_NUMBER)))
-             ;; Null type test
-             ((eq? type CTX_NULL)
-                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                 (x86-cmp cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp))))
-             ;; Char type test
-             ((eq? type CTX_CHAR)
-                 (x86-mov cgc (x86-rax) (x86-imm-int (+ (* -1 (expt 2 63)) TAG_SPECIAL)))
-                 (x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
-                 (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
-                 ;(x86-and cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
-                 ;(x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
-             ;; Procedure type test
-             ((member type (list CTX_FLO CTX_CLO CTX_PAI CTX_SYM CTX_VECT CTX_STR CTX_IPORT CTX_OPORT))
-                 (x86-mov cgc (x86-rax) (x86-mem (* 8 stack-idx) (x86-rsp)))
-                 (x86-mov cgc (x86-rbx) (x86-rax)) ;; value in rax and rbx
-                 (x86-and cgc (x86-rax) (x86-imm-int 3))
-                 (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-                 (x86-jne cgc label-jump)
-                 (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rbx)))
-                 (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
-                 ;; STAG_XXX << 3
-                 (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (cond ((eq? type CTX_FLO)  STAG_FLONUM)
-                                                                ((eq? type CTX_CLO)  STAG_PROCEDURE)
-                                                                ((eq? type CTX_SYM)  STAG_SYMBOL)
-                                                                ((eq? type CTX_STR)  STAG_STRING)
-                                                                ((eq? type CTX_IPORT) STAG_IPORT)
-                                                                ((eq? type CTX_OPORT) STAG_OPORT)
-                                                                ((eq? type CTX_VECT) STAG_VECTOR)
-                                                                ((eq? type CTX_PAI)  STAG_PAIR))))))
-             ;; Other
-             (else (error "Unknown type" type)))
-       (x86-label cgc label-jump)
-       (x86-je cgc (list-ref stub-labels 0))
-       (x86-jmp cgc (list-ref stub-labels 1)))))))))
+                  ;; If 'opt-stats' option, then inc tests slot
+                  (if opt-stats
+                   (gen-inc-slot cgc 'tests))
+
+                  (let* ((lval (ctx-get-loc ctx stack-idx))
+                         (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
+
+                    (cond ;; Number type check
+                          ((ctx-tint? ctx-type)
+                           (x86-mov cgc (x86-rax) (x86-imm-int 3))
+                           (x86-and cgc (x86-rax) opval))
+                          ;; Null type test
+                          ((ctx-tnul? ctx-type)
+                           (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+                           (x86-cmp cgc (x86-rax) opval))
+                          ;; Pair type test
+                          ((ctx-tpai? ctx-type)
+                           (x86-mov cgc (x86-rax) (x86-imm-int 3))
+                           (x86-and cgc (x86-rax) opval)
+                           (x86-cmp cgc (x86-rax) (x86-imm-int TAG_PAIR)))
+                          ;; Char type check
+                          ((ctx-tcha? ctx-type)
+                           ;; char if val is tagged with TAG_SPECIAL and val > 0
+                           (x86-mov cgc (x86-rax) opval)
+                           (x86-mov cgc selector-reg (x86-imm-int SPECIAL_MASK))
+                           (x86-and cgc (x86-rax) selector-reg)
+                           (x86-mov cgc selector-reg (x86-imm-int 0))
+                           (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
+                          ;; Procedure type test
+                          ((ctx-type-mem-allocated? ctx-type)
+                           ;; Vérifier le tag memobj
+                           ;; extraire le tag du header
+                           ;; Vérifier le tag stag
+
+                           ;; Check tag
+                           (x86-mov cgc (x86-rax) opval)
+                           (x86-and cgc (x86-rax) (x86-imm-int 3))
+                           (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
+                           (x86-jne cgc label-jump)
+                           ;; Check stag
+                           (if (ctx-loc-is-memory? lval)
+                               (begin
+                                 (x86-mov cgc (x86-rax) opval)
+                                 (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rax))))
+                               (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) opval)))
+                           (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
+                           ;; stag xxx << 3
+                           (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (ctx-type->stag ctx-type)))))
+                          ;; Other
+                          (else (error "Unknown type " ctx-type)))
+
+                    (x86-label cgc label-jump)
+                    (x86-je cgc (list-ref stub-labels 0))
+                    (x86-jmp cgc (list-ref stub-labels 1))))))))))
 
 ;;-----------------------------------------------------------------------------
-;; Global cc table
+;; Interprocedural BBV (cr/cc-tables)
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 500)
-;; Current shape of the global cc table
+(define global-cc-table-maxsize 430)
+(define global-cr-table-maxsize (length cridx-type)) ;; TODO number of types
+;; Holds the current shape of the global cc table
 (define global-cc-table (make-table))
-
-(define global-cr-table-maxsize 16) ;; TODO number of types
 
 ;; Get closure index associated to ctx. If ctx is not in the
 ;; global cc table, then this function adds it and returns
 ;; the new associated index. Index starts from 0.
 ;; Store and compare ctx-stack in enough because environment is
 ;; the same for all versions of a lazy-object.
-(define (get-closure-index ctx)
-  (let ((res (table-ref global-cc-table (ctx-stack ctx) #f)))
+(define (get-closure-index stack)
+  (let ((res (table-ref global-cc-table stack #f)))
     (if res
       ;; Ctx exists in global table
       res
@@ -1697,33 +1737,19 @@
       (if (= (table-length global-cc-table) global-cc-table-maxsize)
         ;; Global table is full
         (if opt-overflow-fallback
-          #f
-          (error "Global entry points table overflow!"))
+            #f
+            (error "Global entry points table overflow!"))
         ;; Global table is not full
         (let ((value (table-length global-cc-table)))
-          (table-set! global-cc-table (ctx-stack ctx) value)
+          (table-set! global-cc-table stack value)
           value)))))
 
-;; Associates a ctx to the address of a still-vector of length 1 containing only this ctx.
-;; This table keep a reference to all ctx of call-sites because these ctx must
-;; NOT be collected by scheme GC.
-;; This table also keep the address of the still-box associated to the ctx because we can't release
-;; this box when version is generated in case of the same call site is used with a
-;; non yet generated procedure.
-(define ctx-boxes (make-table))
-
-;; Get ctx object from still-vector address
-(define (still-ref->ctx addr)
-  (let ((v (encoding-obj addr)))
-    (vector-ref v 0)))
-
-;; Get still-vector address from ctx
-;; This still vector of length 1 contains only ctx
-(define (ctx->still-ref ctx)
-  (let ((r (table-ref ctx-boxes ctx #f)))
-    (if r
-      r
-      (let ((v (alloc-still-vector 1)))
-        (vector-set! v 0 ctx)
-        (table-set! ctx-boxes ctx (obj-encoding v))
-        (obj-encoding v)))))
+(define (global-cc-get-ctx ctx-idx)
+  (define (get lst)
+    (if (null? lst)
+        (error "Internal error (global-cc-get-ctx)")
+        (let ((first (car lst)))
+          (if (eq? (cdr first) ctx-idx)
+              (car first)
+              (get (cdr lst))))))
+  (get (table->list global-cc-table)))

@@ -57,16 +57,58 @@
     (set! global 7)
     (println global)))
 
+(define (setlet1 n)
+ (let ((n (begin (set! n 7) n)))
+   (+ n 1)))
+
+(println (setlet1 000))
+
+(define (setlet2 n)
+ (let ((n (begin (set! n 200) n)))
+   (set! n 8)
+   (+ n 1)))
+
+(println (setlet2 111))
+
+(define (setlet3 n)
+ (set! n 100)
+ (let ((n (begin (set! n 9) n)))
+   (+ n 1)))
+
+(println (setlet3 222))
+
+(define (setletrec1 n)
+ (letrec ((m 100)
+          (n (begin (set! n 10) n)))
+   (+ n 1)))
+
+(println (setletrec1 333))
+
+(define (setletrec2 n)
+ (let ((m 200)
+       (n (begin (set! n 200) n)))
+   (set! n 11)
+   (+ n 1)))
+
+(println (setletrec2 444))
+
+(define (setletrec3 n)
+ (set! n 100)
+ (let ((m 300)
+       (n (begin (set! n 12) n)))
+   (+ n 1)))
+
+(println (setletrec3 555))
 
 (let ((f #f)
 	  (g #f))
    (set! f (lambda (n)
               (if (= 0 n)
-              	(write-char #\P)
+              	(write-char #\L)
               	(g (- n 1)))))
    (set! g (lambda (n)
               (if (= 0 n)
-              	(write-char #\I)
+              	(write-char #\N)
               	(f (- n 1)))))
    (f 0)
    (f 1)
@@ -83,4 +125,10 @@
 ;5
 ;6
 ;7
-;PIPIPI
+;8
+;9
+;10
+;11
+;12
+;13
+;LNLNLN

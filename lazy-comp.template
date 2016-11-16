@@ -1,21 +1,22 @@
 #!/bin/bash
 
-# Change relative path to absolute
-args=()
-i=0
-for arg in "$@"
-do
-  if [[ "$arg" == *.scm ]]
-  then
-    args[$i]=$(realpath $arg)
-  else
-    args[$i]=$arg
-  fi
-  i=$((i+1))
+GSC="gsc -:m8000"
+LC_FILES="float.o1 utils.o1 ctx.o1 core.o1 native.o1 mem.o1 codegen.o1 ast.o1 expand.o1 analyses.o1 main.o1"
+ARGS=()
+
+for i in "$@" ; do
+    # --gdb arg, then call gsc through gdb
+    if [[ $i == "--gdb" ]] ; then
+        GSC="gdb -ex run --args gsc"
+    # scm file, then use realpath
+    elif [[ $i == *.scm ]] ; then
+        ARGS+=($(readlink -f $i))
+    # else, keep unchanged
+    else
+        ARGS+=($i)
+    fi
 done
 
 # Chdir to script path
 cd "$(dirname "$0")"
-
-# Call gsc
-gsc -i float.o1 utils.o1 core.o1 native.o1 mem.o1 codegen.o1 ast.o1 expand.o1 main.o1 ${args[@]}
+$GSC -i $LC_FILES ${ARGS[@]}

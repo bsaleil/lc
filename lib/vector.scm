@@ -27,17 +27,13 @@
 ;;
 ;;---------------------------------------------------------------------------
 
-(define (vector . l) (list->vector l))
+(define (vector-fill! v el)
+  (let loop ((l (- (vector-length v) 1)))
+    (if (= l -1)
+        v
+        (begin (vector-set! v l el)
+               (loop (- l 1))))))
 
-(define (vector-fill! v val)
-  (vector-fill!-h v 0 val (vector-length v)))
-
-(define (vector-fill!-h v pos val len)
-  (if (= pos len)
-    #f
-    (begin (vector-set! v pos val)
-           (vector-fill!-h v (+ pos 1) val len))))
-
-(define (FLOATvector-const . l) (apply vector l))
+(define FLOATvector-const  vector)
 (define FLOATvector-length vector-length)
 (define FLOATvector-ref    vector-ref)

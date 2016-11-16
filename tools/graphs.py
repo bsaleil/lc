@@ -29,6 +29,9 @@
 #
 #---------------------------------------------------------------------------
 
+# No font with Ubuntu:
+# http://stackoverflow.com/questions/11354149/python-unable-to-render-tex-in-matplotlib
+
 # Execute compiler with stats option for all benchmarks
 # Parse output
 # Draw graphs
@@ -466,7 +469,7 @@ def drawKeyValueGraph(pdf,key,benchs_data):
 
 	# Draw benchmark name
 	names = fileList
-	names.append("ari mean.scm") # Add mean name
+	names.append("ari-mean.scm") # Add mean name
 	for i in range(0,len(fileList)):
 		text(X[i]+0.40, -3, os.path.basename(fileList[i])[:-4], rotation=90, ha='center', va='top')
 

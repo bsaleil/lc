@@ -27,11 +27,6 @@
 ;;
 ;;---------------------------------------------------------------------------
 
-(define (eqv? x y)
-  (if (number? x)
-    (and (number? y) (= x y))
-    (eq? x y)))
-
 (define (equal? x y)
   (cond ((pair? x) (and (pair? y)
                         (equal? (car x) (car y))
@@ -39,11 +34,3 @@
         ((string? x) (and (string? y)
                           (string=? x y)))
         (else (eqv? x y))))
-
-;(define FLOAT- (lambda (a b) (- a b)))
-;(define FLOAT+ (lambda (a b) (+ a b)))
-;(define FLOAT* (lambda (a b) (* a b)))
-(define FLOAT/ (lambda (a b) (error "NYI")))
-;(define FLOAT> (lambda (a b) (> a b)))
-;(define FLOAT< (lambda (a b) (< a b)))
-;(define FLOAT>= (lambda (a b) (>= a b)))

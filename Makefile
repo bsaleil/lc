@@ -1,42 +1,63 @@
-all: float.o1 utils.o1 main.o1 native.o1 mem.o1 codegen.o1 ast.o1 core.o1 expand.o1 lib
+GSC_FLAGS= -prelude "(declare (not safe))"
+
+all: analyses.o1 float.o1 utils.o1 main.o1 native.o1 mem.o1 codegen.o1 ast.o1 core.o1 expand.o1 ctx.o1 lib
 	cp lazy-comp.template lazy-comp
 	chmod u+x lazy-comp
+
+debug: GSC_FLAGS= -debug
+debug: all
 
 .PHONY: lib
 lib:
 	gsi ./build-lib
 
+ctx.o1: ctx.scm
+	gsc $(GSC_FLAGS) -o $@ $<
+
 codegen.o1: codegen.scm
-	gsc -o codegen.o1 codegen.scm
+	gsc $(GSC_FLAGS) -o $@ $<
 
 float.o1: float.scm
-	gsc -o float.o1 float.scm
+	gsc $(GSC_FLAGS) -o $@ $<
 
 utils.o1: utils.scm
-	gsc -o utils.o1 utils.scm
+	gsc $(GSC_FLAGS) -o $@ $<
 
 main.o1: main.scm
-	gsc -o main.o1 main.scm
+	gsc $(GSC_FLAGS) -o $@ $<
 
 native.o1: native.scm
-	gsc -o native.o1 native.scm
+	gsc $(GSC_FLAGS) -o $@ $<
 
 mem.o1: mem.scm
-	gsc -o mem.o1 mem.scm
+	gsc $(GSC_FLAGS) -o $@ $<
 
 ast.o1: ast.scm
-	gsc -o ast.o1 ast.scm
+	gsc $(GSC_FLAGS) -o $@ $<
 
 core.o1: core.scm
-	gsc -o core.o1 core.scm
+	gsc $(GSC_FLAGS) -o $@ $<
 
 expand.o1: expand.scm
-	gsc -o expand.o1 expand.scm
+	gsc $(GSC_FLAGS) -o $@ $<
+
+analyses.o1: analyses.scm
+	gsc $(GSC_FLAGS) -o $@ $<
 
 # Run unit tests
 test:
-	./run-ut.scm
+	rm ./unit-tests/mutable-out -rf
+	./run-ut.scm -lc
+
+# Run full unit tests with and without entry and return points
+full-test:
+	rm ./unit-tests/mutable-out -rf
+	./run-ut.scm -lc
+	./run-ut.scm -lc-nep
+	./run-ut.scm -lc-nrp
+	./run-ut.scm -lc-nep-nrp
+	./run-ut.scm -lc-m5
 
 # Clean
 clean:
-	rm -rf *~ *.o* lazy-comp
+	rm -rf *~ *.o1* lazy-comp
