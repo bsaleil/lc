@@ -446,18 +446,10 @@
 
   (define restable (make-table))
 
-  ;(define (show-locat-info locat info)
-  ;(let ((port (current-output-port)))
-  ;  (##display-locat locat #t port)
-  ;  (println port: port ": " info)))
-
-  ;; TODO: remove nb versions here, keep only lco
   (define (restable-add locat lco)
-    (let ((key (list locat
-                     lco
-                     (object->serial-number (lazy-code-ast lco)))))
-      (let ((r (table-ref restable key 0)))
-        (table-set! restable key (+ r (lazy-code-nb-real-versions lco))))))
+    (set! restable
+          (cons (cons locat lco)
+                restable)))
 
   ;;---------------------------------------------------------------------------
   ;; Locat formatter to output data so that locat tool can use it (tools/locatview)
@@ -551,12 +543,12 @@
               (format-locat-header)
               (for-each
                 (lambda (x)
-                  (let* ((locat (caar x))
+                  (let* ((locat (car x))
                          (file (vector-ref locat 0))
                          (lin (+ 1 (bitwise-and (vector-ref locat 1) (- (expt 2 16) 1))))
                          (col (+ 1 (arithmetic-shift (vector-ref locat 1) -16))))
-                    (format-entry lin col (cadar x))))
-                (table->list restable))
+                    (format-entry lin col (cdr x))))
+                restable)
               (format-locat-footer)
               ;; Write code
               (let* ((port (open-input-file '(path: "./tmp" char-encoding: UTF-8)))
