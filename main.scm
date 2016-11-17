@@ -336,7 +336,7 @@
     (if (null? lcs)
        (cons min max)
        (let* ((lc (car lcs))
-              (nb (table-length (lazy-code-nb-real-versions lc))))
+              (nb (lazy-code-nb-real-versions lc)))
          (cond ((< nb min)
                    (get-versions-info-h (cdr lcs) nb max))
                ((> nb max)
@@ -347,7 +347,7 @@
   (if (null? lazy-codes)
      (cons 0 0)
      (let* ((lc (car lazy-codes))
-            (nb (table-length (lazy-code-nb-real-versions lc))))
+            (nb (lazy-code-nb-real-versions lc)))
        (get-versions-info-h (cdr lazy-codes) nb nb))))
 
 ;; TODO
