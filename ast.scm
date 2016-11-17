@@ -698,7 +698,7 @@
 
 ;;
 ;; Create and return a function return lco
-(define (get-lazy-return ast)
+(define (get-lazy-return)
 
   (define lazy-ret
     (make-lazy-code-ret ;; Lazy-code with 'ret flag
@@ -738,7 +738,7 @@
         (formal-params (cadr ast))
         (cadr ast)))
   ;; Lazy lambda return
-  (define lazy-ret (get-lazy-return ast))
+  (define lazy-ret (get-lazy-return))
   ;; Lazy lambda body
   (define lazy-body (gen-ast (caddr ast) lazy-ret))
   ;; Lazy function prologue
