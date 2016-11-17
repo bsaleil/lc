@@ -1959,11 +1959,19 @@
 ;;
 (define (mlc-if ast succ)
 
-  (letrec ((condition (cadr ast))
-           (lazy-code0
-             (gen-ast (cadddr ast) succ))
-           (lazy-code1
-             (gen-ast (caddr ast) succ))
+  (letrec (;; If the successor lco is a return lco, duplicate it to have distinct return lco for each branch.
+           ;; This avoids the jump in case the two branches go to the return lco with the same context.
+           ;; (i.e. the version is inlined for a branch and a JMP is generated for the other branch,
+           ;; we want to generate two inlined versions instead).
+           (succ1 succ)
+           (succ2
+             (if (member 'ret (lazy-code-flags succ))
+                 (get-lazy-return)
+                 succ))
+           ;;
+           (condition (cadr ast))
+           (lazy-code0 (gen-ast (cadddr ast) succ1))
+           (lazy-code1 (gen-ast (caddr ast) succ2))
            (lazy-code-test
              (make-lazy-code-cond
                #f
