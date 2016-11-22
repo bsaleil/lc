@@ -279,7 +279,7 @@
              (##gc)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
-      (begin (##machine-code-block-exec mcb))))
+      (begin (##machine-code-block-exec mcb) (current-output-port))))
 
 ;;-----------------------------------------------------------------------------
 ;; Main
@@ -395,6 +395,7 @@
           (if (< byte #x10)
               (print "\\x0" (number->string (get-u8 pos) 16) "")
               (print "\\x"  (number->string (get-u8 pos) 16) ""))
+          (newline)
           (print-mcb-h (+ pos 1) lim))))
   (print-mcb-h code-addr code-alloc))
 
@@ -413,13 +414,13 @@
     ;; Number of cc tables
     (println "Number of cctables: " (table-length cctables))
     ;; Number of cr tables
-    (println "Number of crtables: " (table-length crtables))
+    (println "Number of crtables: " (crtables-total))
     ;; CC table space (kb)
     (print "CC table space: ")
     (pp-flonum (/ (* (table-length global-cc-table) 8 (table-length cctables)) 1000) 5)
     ;; CR table space (kb)
     (print "CR table space: ")
-    (pp-flonum (/ (* 16 8 (table-length crtables)) 1000) 5)
+    (pp-flonum (/ (* 16 8 (crtables-total)) 1000) 5)
     ;; Min/Max versions number of stubs
     (let ((versions-info (get-versions-info all-lazy-code)))
       (println "Min versions number: " (car versions-info))

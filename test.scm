@@ -1,11 +1,29 @@
 
 
-(define (myfun n)
-  (if (= n 0)
+(define (fib n)
+  (if (< n 2)
       1
-      (myfun (- n 1))))
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-(myfun 10)
+(gambit$$pp (fib 40))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ;; WIP:

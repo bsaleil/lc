@@ -240,11 +240,12 @@
              scheme-object
              "___result = ___EXT(___alloc_scmobj) (NULL, ___sPROCEDURE, 8);")))
 
-(define (alloc-still-vector-0 len)
-  ((c-lambda (int)
+(define (alloc-still-vector-i64 len v)
+  ((c-lambda (int int64)
              scheme-object
-             "___result = ___EXT(___make_vector) (___PSTATE, ___arg1, ___FIX(0));")
-   len))
+             "___result = ___EXT(___make_vector) (___PSTATE, ___arg1, ___arg2);")
+   len
+   v))
 
 (define (alloc-still-vector len)
   ((c-lambda (int)

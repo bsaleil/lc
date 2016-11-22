@@ -534,7 +534,7 @@
 (define debug-slots '((calls . 6) (tests . 7) (extests . 8) (closures . 9) (time . 10) (other . 11)))
 
 (define (init-block)
-  (set! globals-space (alloc-still-vector-0 globals-len))
+  (set! globals-space (alloc-still-vector-i64 globals-len 0))
   (set! globals-addr (+ (- (obj-encoding globals-space) 1) 8))
 
   (set! block (make-mcb block-len))

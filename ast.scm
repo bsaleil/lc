@@ -759,7 +759,7 @@
                (fn-generator #f lazy-prologue-gen #f #t))
             ;; CASE 3 - Use multiple entry points AND use max-versions limit AND this limit is reached
             ((and opt-max-versions
-                  (>= (lazy-code-nb-versions lazy-prologue) opt-max-versions))
+                  (>= (lazy-code-nb-real-versions lazy-prologue) opt-max-versions))
                (fn-generator #f lazy-prologue-gen stack #t))
             ;; CASE 4 - Use multiple entry points AND limit is not reached or there is no limit
             (else
@@ -2331,7 +2331,7 @@
                                 (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
                           (generic?
                             (and opt-max-versions
-                                 (>= (lazy-code-nb-versions lazy-continuation) opt-max-versions))))
+                                 (>= (lazy-code-nb-real-versions lazy-continuation) opt-max-versions))))
 
                      (gen-version-continuation-cr
                        lazy-continuation
@@ -2340,9 +2340,8 @@
                        generic?
                        table)))))
          ;; CRtable
-         (crtable-key (get-crtable-key ast ctx))
          (stub-addr (vector-ref (list-ref stub-labels 0) 1))
-         (crtable (get-crtable ast crtable-key stub-addr))
+         (crtable (get-crtable ast ctx stub-addr))
          (crtable-loc (- (obj-encoding crtable) 1)))
 
     ;; Generate code
@@ -2646,19 +2645,9 @@
 (define cctables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))     ;; eq? on ast
                                                       (equal? (cdr a) (cdr b)))))) ;; equal? on ctx information
 
-;; Store the cr table associated to each lambda (ast -> crtable)
-;; crtable is a still vector
-(define crtables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))
-                                                      (equal? (cdr a) (cdr b))))))
-
 ;; Create a new cr table with 'init' as stub value
 (define (make-cr len init)
-  (let ((v (alloc-still-vector len)))
-    (let loop ((i 0))
-      (if (< i (vector-length v))
-        (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding v) 1)) init)
-               (loop (+ i 1)))
-        v))))
+  (alloc-still-vector-i64 len init))
 
 ;; Return cctable associated to key or #f if not yet created
 (define (cctable-get cctable-key)
@@ -2683,16 +2672,43 @@
       cctable)))
 
 ;-----------------------------------------------------------------------------
+;; CR TABLES
+
+;; all-crtables associates an ast to a table ('equal?' table)
+;; to get a crtable, we first use the eq? table to get crtables associated to this ast
+;; then we use the equal? table to get crtable associated to the free values
+(define all-crtables (make-table test: eq?))
 
 ;; Return crtable from crtable-key
 ;; Return the existing table if already created or create one, add entry, and return it
-(define (get-crtable ast crtable-key stub-addr)
-  (let ((crtable (table-ref crtables crtable-key #f)))
-    (if crtable
-        crtable
-        (let ((t (make-cr global-cr-table-maxsize stub-addr)))
-          (table-set! crtables crtable-key t)
-          t))))
+(define (get-crtable ast ctx stub-addr)
+  ;; Use 'eq?' table to get prliminary result
+  (let ((crtables (table-ref all-crtables ast #f)))
+    (if (not crtables)
+        (let ((tables (make-table test: equal?)))
+          (table-set! all-crtables ast tables)
+          (set! crtables tables)))
+    ;; Then use 'equal?' table to get crtable
+    (let* ((key
+            (list (ctx-slot-loc ctx)
+                  (ctx-free-regs ctx)
+                  (ctx-free-mems ctx)
+                  (ctx-stack ctx)
+                  (ctx-env ctx)))
+           (crtable (table-ref crtables key #f)))
+      (or crtable
+          (let ((crtable (make-cr global-cr-table-maxsize stub-addr)))
+            (table-set! crtables key crtable)
+            crtable)))))
+
+;; Return the total number of crtables
+(define (crtables-total)
+  (foldr (lambda (el total)
+           (let ((lst (table->list (cdr el))))
+             (+ (length lst) total)))
+         0
+         (table->list all-crtables)))
+
 
 ;; This is the key used in hash table to find the cc-table for this closure.
 ;; The key is (ast . free-vars-inf) with ast the s-expression of the lambda
@@ -2711,18 +2727,6 @@
                              r))
                        '()
                        (ctx-env ctx)))))
-
-;; TODO regalloc: Créer de nouvelles entrées dans la table (+ que le type de la valeur de retour)
-;;                avec slot-loc free-regs
-;; Return crtable key from ast and ctx
-;; The key contains ast, stack types, and a list of known identifier with types
-(define (get-crtable-key ast ctx)
-  (cons ast
-        (list (ctx-slot-loc ctx)
-              (ctx-free-regs ctx)
-              (ctx-free-mems ctx)
-              (ctx-stack ctx)
-              (ctx-env ctx))))
 
 ;; Store pairs associating cctable address to the code of the corresponding function
 (define cctables-loc-code '())
