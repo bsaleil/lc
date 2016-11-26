@@ -412,12 +412,12 @@
     ;; Global cc-table size
     (println "Global table size: " (table-length global-cc-table))
     ;; Number of cc tables
-    (println "Number of cctables: " (table-length cctables))
+    (println "Number of cctables: " (cctables-total))
     ;; Number of cr tables
     (println "Number of crtables: " (crtables-total))
     ;; CC table space (kb)
     (print "CC table space: ")
-    (pp-flonum (/ (* (table-length global-cc-table) 8 (table-length cctables)) 1000) 5)
+    (pp-flonum (/ (* (table-length global-cc-table) 8 (cctables-total)) 1000) 5)
     ;; CR table space (kb)
     (print "CR table space: ")
     (pp-flonum (/ (* 16 8 (crtables-total)) 1000) 5)

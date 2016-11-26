@@ -781,22 +781,18 @@
   ;; An entry object is the object that contains entry-points-locs
   ;; In the case of -cc, entry object is the cctable
   (define (get-entry-obj-cc)
-    (let* (;; Is the cctable new or existed before ?
-           (cctable-new? #f)
-           (cctable-key (get-cctable-key ast ctx fvars-imm fvars-late))
-           (cctable     (let ((table (cctable-get cctable-key)))
-                          (or table
-                              (begin (set! cctable-new? #t) (cctable-make cctable-key))))))
-      ;; The compiler needs to fill cctable if it is a new cctable
-      (if cctable-new?
-          (let* (;; Create stub
+    (let* ((r (get-cctable ast ctx fvars-imm fvars-late))
+           (new? (car r))
+           (cctable (cdr r)))
+      (if new?
+          (let* (;; Create stub only if cctable is new
                  (stub-labels  (create-fn-stub ast fn-num fn-generator))
                  (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
                  (generic-addr (asm-label-pos (list-ref stub-labels 1))))
-            ;; Add cctable->stub-addrs assoc
             (asc-entry-stub-add cctable generic-addr stub-addr)
             (cctable-fill cctable stub-addr generic-addr)))
       cctable))
+
   ;; In the case of -ep, entry object is the still vector of size 1 that contain the single entry point
   (define (get-entry-obj-ep)
     (let ((existing (asc-ast-epentry-get ast)))
@@ -2600,6 +2596,18 @@
 
 ;;-----------------------------------------------------------------------------
 
+;; Return the total number of crtables
+(define (cxtables-total all-tables)
+  (lambda ()
+    (foldr (lambda (el total)
+             (let ((lst (table->list (cdr el))))
+               (+ (length lst) total)))
+           0
+           (table->list all-tables))))
+
+(define crtables-total (cxtables-total all-crtables))
+(define cctables-total (cxtables-total all-cctables))
+
 ;;
 ;; CC TABLE
 ;;
@@ -2640,26 +2648,45 @@
 ;; +---------+---------+---------+---------+---------+
 ;;  index  0  index  1  index  2     ...    index  n
 
-;; Store the cc table associated to each lambda (ast -> cctable)
-;; cctable is a still vector
-(define cctables (make-table test: (lambda (a b) (and (eq?    (car a) (car b))     ;; eq? on ast
-                                                      (equal? (cdr a) (cdr b)))))) ;; equal? on ctx information
-
 ;; Create a new cr table with 'init' as stub value
-(define (make-cr len init)
-  (alloc-still-vector-i64 len init))
+(define (make-cc)
+  (make-s64vector (+ 1 global-cc-table-maxsize)))
 
-;; Return cctable associated to key or #f if not yet created
-(define (cctable-get cctable-key)
-  (table-ref cctables cctable-key #f))
+;; This is the key used in hash table to find the cc-table for this closure.
+;; The key represents captured values used to specialize tables
+(define (get-cc-key ctx fvars-imm fvars-late)
+  (append (map (lambda (n) (cons n 'closure)) fvars-late)
+          (foldr (lambda (n r)
+                   (if (member (car n) fvars-imm) ;; If this id is a free var of future lambda
+                       (cons (cons (car n)
+                                   (ctx-identifier-type ctx (cdr n)))
+                             r)
+                       r))
+                 '()
+                 (ctx-env ctx))))
 
-;; Create a new cctable associated to key
-;; !! cctable is not filled. Not even with dummy value (0)
-(define (cctable-make cctable-key)
-  (let* ((len     (+ 1 global-cc-table-maxsize))
-         (cctable (make-s64vector len)))
-    (table-set! cctables cctable-key cctable)
-    cctable))
+;; all-cctables associates an ast to a table ('equal?' table)
+;; to get a cctable, we first use the eq? table to get cctables associated to this ast
+;; then we use the equal? table to get cctable associated to the captured values
+(define all-cctables (make-table test: eq?))
+
+;; Return cctable
+;; Return the existing table if already created or create one, add entry, and return it
+(define (get-cctable ast ctx fvars-imm fvars-late)
+  ;; Use 'eq?' table to get prleiminary result
+  (let ((cctables (table-ref all-cctables ast #f)))
+    (if (not cctables)
+        (let ((tables (make-table test: equal?)))
+          (table-set! all-cctables ast tables)
+          (set! cctables tables)))
+    ;; Then use 'equal?' table to get cctable
+    (let* ((key (get-cc-key ctx fvars-imm fvars-late))
+           (cctable (table-ref cctables key #f)))
+      (if cctable
+          (cons #f cctable)
+          (let ((cctable (make-cc)))
+            (table-set! cctables key cctable)
+            (cons #t cctable))))))
 
 ;; Fill cctable with stub and generic addresses
 (define (cctable-fill cctable stub-addr generic-addr)
@@ -2674,6 +2701,10 @@
 ;-----------------------------------------------------------------------------
 ;; CR TABLES
 
+;; Create a new cr table with 'init' as stub value
+(define (make-cr len init)
+  (alloc-still-vector-i64 len init))
+
 ;; all-crtables associates an ast to a table ('equal?' table)
 ;; to get a crtable, we first use the eq? table to get crtables associated to this ast
 ;; then we use the equal? table to get crtable associated to the free values
@@ -2682,7 +2713,7 @@
 ;; Return crtable from crtable-key
 ;; Return the existing table if already created or create one, add entry, and return it
 (define (get-crtable ast ctx stub-addr)
-  ;; Use 'eq?' table to get prliminary result
+  ;; Use 'eq?' table to get prleiminary result
   (let ((crtables (table-ref all-crtables ast #f)))
     (if (not crtables)
         (let ((tables (make-table test: equal?)))
@@ -2700,33 +2731,6 @@
           (let ((crtable (make-cr global-cr-table-maxsize stub-addr)))
             (table-set! crtables key crtable)
             crtable)))))
-
-;; Return the total number of crtables
-(define (crtables-total)
-  (foldr (lambda (el total)
-           (let ((lst (table->list (cdr el))))
-             (+ (length lst) total)))
-         0
-         (table->list all-crtables)))
-
-
-;; This is the key used in hash table to find the cc-table for this closure.
-;; The key is (ast . free-vars-inf) with ast the s-expression of the lambda
-;; and free-vars-inf the type information of free vars ex. ((a . number) (b . char))
-;; The hash function uses eq? on ast, and equal? on free-vars-inf.
-;; This allows us to use different cctable if types of free vars are not the same.
-;; (to properly handle type checks)
-(define (get-cctable-key ast ctx fvars-imm fvars-late)
-  (cons ast
-        (append (map (lambda (n) (cons n 'closure)) fvars-late)
-                (foldr (lambda (n r)
-                         (if (member (car n) fvars-imm) ;; If this id is a free var of future lambda
-                             (cons (cons (car n)
-                                         (ctx-identifier-type ctx (cdr n)))
-                                   r)
-                             r))
-                       '()
-                       (ctx-env ctx)))))
 
 ;; Store pairs associating cctable address to the code of the corresponding function
 (define cctables-loc-code '())
