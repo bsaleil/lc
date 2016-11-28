@@ -711,7 +711,6 @@
                        (mem (cadr r))
                        (ctx (caddr r))
                        (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx curr-idx) mem)))
-
                   ;; Remove all 'fs moves
                   (cons (append (set-sub moves (list (assoc 'fs moves)) '())
                                 (list (cons loc mem)))

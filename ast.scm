@@ -2605,9 +2605,6 @@
            0
            (table->list all-tables))))
 
-(define crtables-total (cxtables-total all-crtables))
-(define cctables-total (cxtables-total all-cctables))
-
 ;;
 ;; CC TABLE
 ;;
@@ -2669,6 +2666,7 @@
 ;; to get a cctable, we first use the eq? table to get cctables associated to this ast
 ;; then we use the equal? table to get cctable associated to the captured values
 (define all-cctables (make-table test: eq?))
+(define cctables-total (cxtables-total all-cctables))
 
 ;; Return cctable
 ;; Return the existing table if already created or create one, add entry, and return it
@@ -2709,6 +2707,7 @@
 ;; to get a crtable, we first use the eq? table to get crtables associated to this ast
 ;; then we use the equal? table to get crtable associated to the free values
 (define all-crtables (make-table test: eq?))
+(define crtables-total (cxtables-total all-crtables))
 
 ;; Return crtable from crtable-key
 ;; Return the existing table if already created or create one, add entry, and return it

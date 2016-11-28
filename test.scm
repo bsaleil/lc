@@ -1,16 +1,11 @@
+;;; ACK -- One of the Kernighan and Van Wyk benchmarks.
 
+(define (ack m n)
+  (cond ((= m 0) (+ n 1))
+        ((= n 0) (ack (- m 1) 1))
+        (else (ack (- m 1) (ack m (- n 1))))))
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
-
-(gambit$$pp (fib 40))
-
-
-
-
+(gambit$$pp (ack 3 9))
 
 
 
