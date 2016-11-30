@@ -382,7 +382,7 @@
           (let* ((id (car ids))
                  (identifier
                    (make-identifier
-                     'local (list slot) '() #f #f #f)))
+                     'local (list slot) '() #f #f #f #f)))
             (cons (cons id identifier)
                   (init-env-local-h (cdr ids) (+ slot 1))))))
     (init-env-local-h args slot))
@@ -392,7 +392,7 @@
         '()
         (let ((first (car free-const)))
           (cons (cons (car first)
-                      (make-identifier 'local (list slot) '() #f #f (eq? (car first) bound-id)))
+                      (make-identifier 'local (list slot) '() #f #f #f (eq? (car first) bound-id)))
                 (init-env-free-const (cdr free-const) (+ slot 1))))))
 
   (define (init-env-free free-vars)
@@ -402,7 +402,7 @@
           (let* ((id         (caar ids))
                  (enc-type   (or (cdar ids) (make-ctx-tclo))) ;; enclosing type, or #f if late
                  (late?      (member id late-fbinds))
-                 (identifier (make-identifier 'free '() '() enc-type (cons 'f nvar) (eq? id bound-id))))
+                 (identifier (make-identifier 'free '() '() enc-type (cons 'f nvar) #f (eq? id bound-id))))
             (cons (cons id identifier)
                   (init-env-free-h (cdr ids) (+ nvar 1))))))
     (init-env-free-h free-vars 0))
@@ -571,19 +571,25 @@
 
 ;;
 ;; BIND CONSTANTS
+;; cst-set: ((id cst fn?) (id2 cst fn?) ...)
 (define (ctx-bind-consts ctx cst-set)
 
   (define (bind cst-set env stack slot-loc)
     (if (null? cst-set)
         (list env stack slot-loc)
-        (let* ((id  (caar cst-set))
-               (cst (cdar cst-set))
-               (type (make-ctx-tclo #t cst))
+        (let* ((info (car cst-set))
+               (id   (car  info))
+               (cst  (cadr info))
+               (fn?  (caddr info))
+               (type
+                 (if fn?
+                     (make-ctx-tclo #t cst)
+                     (literal->ctx-type cst)))
                (slot (length stack))
                (stack (cons type stack)))
           (bind (cdr cst-set)
                 (cons (cons id
-                            (make-identifier 'local (list slot) '() #f #f #f))
+                            (make-identifier 'local (list slot) '() #f #f #f #f))
                       env)
                 stack
                 (cons (cons slot #f) slot-loc)))))
@@ -615,6 +621,7 @@
                             '()
                             (list (stack-idx-to-slot ctx (cdr first))))
                         '()
+                        #f
                         #f
                         #f
                         #f))
@@ -1071,17 +1078,19 @@
   flags  ;; list of variable
   stype  ;; ctx type (copied to virtual stack)
   cloc   ;; closure slot if free variable
+  cst    ;; is this id constant ?
   thisid ;;
 )
 
 ;; TODO USE IT ! remove all make-ctx which are only copies and use ctx-copy
-(define (identifier-copy identifier #!optional kind sslots flags stype cloc thisid)
+(define (identifier-copy identifier #!optional kind sslots flags stype cloc cst thisid)
   (make-identifier
     (or kind   (identifier-kind identifier))
     (or sslots (identifier-sslots identifier))
     (or flags  (identifier-flags identifier))
     (or stype  (identifier-stype identifier))
     (or cloc   (identifier-cloc identifier))
+    (or cst    (identifier-cloc identifier))
     (or thisid (identifier-thisid identifier))))
 
 

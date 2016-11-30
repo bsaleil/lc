@@ -1,25 +1,54 @@
-;;; ACK -- One of the Kernighan and Van Wyk benchmarks.
+;;; BROWSE -- Benchmark to create and browse through
+;;; an AI-like data base of units.
 
-(define (ack m n)
-  (cond ((= m 0) (+ n 1))
-        ((= n 0) (ack (- m 1) 1))
-        (else (ack (- m 1) (ack m (- n 1))))))
+(define (lookup key table)
+  (let loop ((x table))
+    (if (null? x)
+      #f
+      (let ((pair (car x)))
+        (if (eq? (car pair) key)
+          pair
+          (loop (cdr x)))))))
 
-(gambit$$pp (ack 3 9))
-
-
-
-
-
-
-
+(define properties '())
 
 
+(define (put key1 key2 val)
+  (let ((x (lookup key1 properties)))
+    (if x
+      1
+      (set! properties
+        (cons (list key1 (cons key2 val)) properties)))))
+
+(define (init n m npats ipats)
+  (let ((ipats ipats))
+
+    (do ((a 0))
+        ((= 1 0) 0)
+        (put 100
+             200
+             (do ((i 0 0)
+                  (a 0))
+                 ((zero? 0) 0)
+                 1)))))
+
+(init 1 0 0 '(()))
 
 
 
-
-
+;(define (foo)
+;
+;  (let ((a 100))
+;    (let ((b (+ a 12)))
+;      11)))
+;
+;(foo)
+;
+;
+;
+;
+;
+;
 
 ;; WIP:
 ;; -> Quand on génère un E.P. générique, il faut patcher le pt générique + la fermeture a l'index

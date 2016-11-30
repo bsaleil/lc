@@ -1005,30 +1005,69 @@
 
 (define (mlc-let ast succ)
 
+  ;; A binding expr is a cst if it's an atom node,
+  ;; and the value is not a symbol (identifier).
+  (define (cst-obj expr) ;; TODO: detect fun cst
+    (if (and (atom-node? expr)
+             (not (symbol? (atom-node-val expr))))
+        (let* ((val (atom-node-val expr))
+               (cst (if (and (pair? val) (eq? (car val) 'quote))
+                        (cadr val)
+                        val)))
+          (if (and (##mem-allocated? cst)
+                   (not (eq? (mem-allocated-kind cst) 'PERM)))
+              (set! cst (copy-permanent cst #f perm-domain)))
+          (cons #t cst))
+        (cons #f #f)))
+
   (define bindings (cadr ast))
   (define ids (map car bindings))
   (define values (map cadr bindings))
   (define body (caddr ast))
 
-  (define (build-id-idx)
-    (let loop ((ids ids)
-               (idx (- (length ids) 1))
-               (r '()))
-      (if (null? ids)
-          r
-          (let ((id (car ids)))
-            (loop (cdr ids) (- idx 1) (cons (cons id idx) r))))))
+  (define (get-bindings-info)
+    (let loop ((cst '())
+               (ncst '())
+               (bindings bindings))
+      (if (null? bindings)
+          (list cst ncst)
+          (let* ((binding (car bindings))
+                 (id (car binding))
+                 (v  (cadr binding))
+                 (r  (cst-obj v)))
+            (if (car r)
+                ;; Binding is a cst, add (id cst #f) (#f -> not a function)
+                (loop (cons (list id (cdr r) #f) cst) ncst (cdr bindings))
+                ;; Binding is not a cst, add (id . expr)
+                (loop cst (cons (cons id v) ncst) (cdr bindings)))))))
 
-  (let* ((lazy-let-out (get-lazy-lets-out ast ids 0 succ))
-         (lazy-body (gen-ast body lazy-let-out))
-         (lazy-bind
-           (make-lazy-code
-             #f
-             (lambda (cgc ctx)
-               (let ((ctx (ctx-bind-locals ctx (build-id-idx))))
-                 (jump-to-version cgc lazy-body ctx))))))
+  ;; Bind all variables and jump to body
+  (define (lazy-bind cst ncst)
+    (make-lazy-code
+      #f
+      (lambda (cgc ctx)
+        (let* (;; ncst id-idx set
+               (id-idx
+                 (let loop ((idx (- (length ncst) 1)) (ids (map car ncst)))
+                   (if (null? ids)
+                       '()
+                       (cons (cons (car ids) idx)
+                             (loop (- idx 1) (cdr ids))))))
+               ;; Bind locals then consts
+               (ctx (ctx-bind-locals ctx id-idx))
+               (ctx (ctx-bind-consts ctx cst))
+               ;;
+               (lazy-let-out (get-lazy-lets-out ast ids 0 succ))
+               (lazy-body (gen-ast body lazy-let-out)))
+          (jump-to-version cgc lazy-body ctx)))))
 
-    (gen-ast-l values lazy-bind)))
+  ;; Get cst/ncst info
+  (mlet ((cst/ncst (get-bindings-info)))
+    ;; Gen all ncst and jump to bind
+    (foldr (lambda (el r)
+             (gen-ast (cdr el) r))
+           (lazy-bind cst ncst)
+           ncst)))
 
 ;;-----------------------------------------------------------------------------
 ;; LETREC Binding
@@ -1301,7 +1340,7 @@
 
     (let* (;; We first add identifier to ctx with a fake fn-num value
            (cst-set
-             (map (lambda (c) (cons (car c) -1))
+             (map (lambda (c) (list (car c) -1 #t))
                   const-proc-vars))
            ;; Bind const ids using fake cst-set
            (ctx (ctx-bind-consts ctx cst-set)))
