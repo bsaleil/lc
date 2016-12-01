@@ -320,6 +320,7 @@
     (ctx-copy ctx stack slot-loc free-regs free-mems env #f #f fs)))
 ;;
 ;; CTX INIT FN
+(define tto 0)
 (define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
 
   ;; Separate constant and non constant free vars
@@ -337,6 +338,9 @@
                  (enc-identifier (and (not late?) (cdr (ctx-ident enclosing-ctx id))))
                  (enc-type       (and (not late?) (ctx-identifier-type enclosing-ctx enc-identifier)))
                  (cst?           (and (not late?) (ctx-type-is-cst enc-type))))
+            ;; TODO: This case should occur as little as possible
+            ;(if (and cst? (not (identifier-cst enc-identifier)))
+            ;    (begin (set! tto (+ tto 1)) (pp tto)))
             (if cst?
                 (loop (cdr ids) (cons (cons id enc-type) const) nconst)
                 (loop (cdr ids) const (cons (cons id enc-type) nconst)))))))
@@ -398,9 +402,8 @@
     (if (null? free-const)
         '()
         (let ((first (car free-const)))
-          (pp first)
           (cons (cons (car first)
-                      (make-identifier 'local (list slot) '() #f #f #f (eq? (car first) bound-id)))
+                      (make-identifier 'local (list slot) '() #f #f #t (eq? (car first) bound-id)))
                 (init-env-free-const (cdr free-const) (+ slot 1))))))
 
   (define (init-env-free free-vars)
