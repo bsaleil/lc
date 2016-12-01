@@ -216,7 +216,7 @@
 ;; TODO wip
 (define (ctx-generic ctx)
 
-  (define slot-loc (ctx-slot-loc ctx))
+  (define slot-loc  (ctx-slot-loc ctx))
   (define free-regs (ctx-free-regs ctx))
   (define free-mems (ctx-free-mems ctx))
   (define fs (ctx-fs ctx))
@@ -258,10 +258,17 @@
   (define (compute-stack stack slot)
     (if (null? stack)
         '()
-        (let ((first (car stack)))
-          (if (ctx-type-is-cst first)
-              (set-new-loc! slot))
-          (cons (make-ctx-tunk) (compute-stack (cdr stack) (- slot 1))))))
+        (let* ((first (car stack))
+               (ntype
+                 (if (ctx-type-is-cst first)
+                     (let ((ident (ctx-ident-at ctx (slot-to-stack-idx ctx slot))))
+                       (if (and ident (identifier-cst (cdr ident)))
+                           ;; It's a cst associated to a cst identifier
+                           first
+                           ;; If stack type is cst, and not associated to a cst identifier, then change loc
+                           (begin (set-new-loc! slot) (make-ctx-tunk))))
+                     (make-ctx-tunk))))
+          (cons ntype (compute-stack (cdr stack) (- slot 1))))))
 
   (define (compute-env env)
     (if (null? env)
@@ -289,9 +296,9 @@
     (if (null? slot-loc)
         '()
         (let ((first (car slot-loc)))
-          (assert (cdr first) "Internal error")
-          (if (find (lambda (el) (eq? (cdr el) (cdr first)))
-                    (cdr slot-loc))
+          (if (and (cdr first)
+                   (find (lambda (el) (eq? (cdr el) (cdr first)))
+                     (cdr slot-loc)))
               ;; Loc is also used by at least one other slot
               (let ((loc (get-new-loc)))
                 (cons (cons (car first) loc)
@@ -391,6 +398,7 @@
     (if (null? free-const)
         '()
         (let ((first (car free-const)))
+          (pp first)
           (cons (cons (car first)
                       (make-identifier 'local (list slot) '() #f #f #f (eq? (car first) bound-id)))
                 (init-env-free-const (cdr free-const) (+ slot 1))))))
@@ -589,7 +597,7 @@
                (stack (cons type stack)))
           (bind (cdr cst-set)
                 (cons (cons id
-                            (make-identifier 'local (list slot) '() #f #f #f #f))
+                            (make-identifier 'local (list slot) '() #f #f #t #f))
                       env)
                 stack
                 (cons (cons slot #f) slot-loc)))))
@@ -599,6 +607,7 @@
 
 ;;
 ;; BIND LOCALS
+;; Do not bind ctx ids with ctx-bind-locals, use ctx-bind-consts instead
 (define (ctx-bind-locals ctx id-idx #!optional letrec-bind?)
 
   (define (clean-env env bound-slots)
@@ -1090,7 +1099,7 @@
     (or flags  (identifier-flags identifier))
     (or stype  (identifier-stype identifier))
     (or cloc   (identifier-cloc identifier))
-    (or cst    (identifier-cloc identifier))
+    (or cst    (identifier-cst identifier))
     (or thisid (identifier-thisid identifier))))
 
 

@@ -1,39 +1,5 @@
-;;; BROWSE -- Benchmark to create and browse through
-;;; an AI-like data base of units.
 
-(define (lookup key table)
-  (let loop ((x table))
-    (if (null? x)
-      #f
-      (let ((pair (car x)))
-        (if (eq? (car pair) key)
-          pair
-          (loop (cdr x)))))))
-
-(define properties '())
-
-
-(define (put key1 key2 val)
-  (let ((x (lookup key1 properties)))
-    (if x
-      1
-      (set! properties
-        (cons (list key1 (cons key2 val)) properties)))))
-
-(define (init n m npats ipats)
-  (let ((ipats ipats))
-
-    (do ((a 0))
-        ((= 1 0) 0)
-        (put 100
-             200
-             (do ((i 0 0)
-                  (a 0))
-                 ((zero? 0) 0)
-                 1)))))
-
-(init 1 0 0 '(()))
-
+(println 100)
 
 
 ;(define (foo)

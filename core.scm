@@ -1094,9 +1094,9 @@
         (let* ((move (car moves))
                ;; Compute x86 dst operand
                (dst
-                 (if (eq? (cdr move) 'rtmp)
-                     (get-tmp)
-                     (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move))))
+                 (cond ((not (cdr move)) #f)
+                       ((eq? (cdr move) 'rtmp) (get-tmp))
+                       (else (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move)))))
                ;; Compute x86 src operand
                (src
                  (cond ((and (pair? (car move))
@@ -1111,7 +1111,13 @@
                        (else
                           (codegen-loc-to-x86opnd (ctx-fs ctx) (car move))))))
 
-          (cond ;; Same operands, useless move
+          (cond ;; dst is #f, src need to be a cst (cst -> cst)
+                ((not dst)
+                   ;; TODO: assert src is a cst.
+                   ;; However, it's possible that we move loc -> cst. for example if we merge two ctx, dst ctx has a cst and src ctx lost informtion
+                   ;; TODO wip: then, check that this case is correctly handled in steps functions, this kind of move should not be here
+                   #f)
+                ;; Same operands, useless move
                 ((eq? src dst) #f)
                 ;; Need to create an empty closure
                 ((and (pair? src) (eq? (car src) 'constfn))
