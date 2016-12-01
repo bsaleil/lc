@@ -870,16 +870,21 @@
     (define late (set-inter bound-ids free-ids))
 
     (let loop ((ids (set-sub free-ids late '()))
-               (imm '())
-               (cst '()))
+               (imm '())    ;; imm free
+               (cst '())    ;; cst free
+               (cstid '())) ;; id-cst free (cst associated to cst identifier)
       (if (null? ids)
-          (list cst imm late)
+          (list cst cstid imm late)
           (let ((id (car ids)))
             (let* ((identifier (cdr (assoc id (ctx-env ctx))))
                    (type (ctx-identifier-type ctx identifier)))
-              (if (ctx-type-is-cst type)
-                  (loop (cdr ids) imm (cons id cst))
-                  (loop (cdr ids) (cons id imm) cst))))))))
+              (cond ((and (ctx-type-is-cst type)
+                          (identifier-cst identifier))
+                       (loop (cdr ids) imm cst (cons id cstid)))
+                    ((ctx-type-is-cst type)
+                       (loop (cdr ids) imm (cons id cst) cstid))
+                    (else
+                       (loop (cdr ids) (cons id imm) cst cstid)))))))))
 
 (define (mlc-lambda-ast ast succ)
 
@@ -1132,7 +1137,8 @@
             (if (and (pair? val)
                      (eq? (car val) 'lambda))
                 (loop (cdr bindings)
-                      (let ((free-info (get-free-infos val bound-ids ctx)))
+                      (let* ((r (get-free-infos val bound-ids ctx))
+                             (free-info (cons (append (car r) (cadr r)) (cddr r)))) ;; TODO: use cst/cst-id info instead of merging them
                         (cons (list id val free-info) proc-vars))
                       other-vars)
                 (loop (cdr bindings)
