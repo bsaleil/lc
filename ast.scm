@@ -1013,17 +1013,18 @@
   ;; A binding expr is a cst if it's an atom node,
   ;; and the value is not a symbol (identifier).
   (define (cst-obj expr) ;; TODO: detect fun cst
-    (if (and (atom-node? expr)
-             (not (symbol? (atom-node-val expr))))
-        (let* ((val (atom-node-val expr))
-               (cst (if (and (pair? val) (eq? (car val) 'quote))
-                        (cadr val)
-                        val)))
-          (if (and (##mem-allocated? cst)
-                   (not (eq? (mem-allocated-kind cst) 'PERM)))
-              (set! cst (copy-permanent cst #f perm-domain)))
-          (cons #t cst))
-        (cons #f #f)))
+    (cond ((and (atom-node? expr)
+                (not (symbol? (atom-node-val expr))))
+             (let* ((val (atom-node-val expr))
+                    (cst (if (and (pair? val) (eq? (car val) 'quote))
+                             (cadr val)
+                             val)))
+               (if (and (##mem-allocated? cst)
+                        (not (eq? (mem-allocated-kind cst) 'PERM)))
+                   (set! cst (copy-permanent cst #f perm-domain)))
+               (cons #t cst)))
+          (else
+            (cons #f #f))))
 
   (define bindings (cadr ast))
   (define ids (map car bindings))
