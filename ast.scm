@@ -1009,11 +1009,9 @@
 ;; LET Binding
 
 (define (mlc-let ast succ)
-
-  ;; A binding expr is a cst if it's an atom node,
-  ;; and the value is not a symbol (identifier).
-  (define (cst-obj expr) ;; TODO: detect fun cst
-    (cond ((and (atom-node? expr)
+  (define (cst-obj expr ctx) ;; TODO: detect fun cst
+    (cond ;; Atom node, but not identifier
+          ((and (atom-node? expr)
                 (not (symbol? (atom-node-val expr))))
              (let* ((val (atom-node-val expr))
                     (cst (if (and (pair? val) (eq? (car val) 'quote))
@@ -1023,6 +1021,18 @@
                         (not (eq? (mem-allocated-kind cst) 'PERM)))
                    (set! cst (copy-permanent cst #f perm-domain)))
                (cons #t cst)))
+          ;; lambda expr
+          ((and (pair? expr)
+                (eq? (car expr) 'lambda))
+             (let ((r (get-free-infos expr '() ctx)))
+               (if (and (null? (car r))
+                        (null? (caddr r))
+                        (null? (cadddr r)))
+                   ;; if no free, or only cst-id free, it's a cst obj
+                   (cons #t (init-entry-cst expr (flatten r) ctx))
+                   ;; else, it's not a cst obj
+                   (cons #f #f))))
+          ;; Others
           (else
             (cons #f #f))))
 
@@ -1031,7 +1041,7 @@
   (define values (map cadr bindings))
   (define body (caddr ast))
 
-  (define (get-bindings-info)
+  (define (get-bindings-info ctx)
     (let loop ((cst '())
                (ncst '())
                (bindings bindings))
@@ -1040,12 +1050,16 @@
           (let* ((binding (car bindings))
                  (id (car binding))
                  (v  (cadr binding))
-                 (r  (cst-obj v)))
-            (if (car r)
-                ;; Binding is a cst, add (id cst #f) (#f -> not a function)
-                (loop (cons (list id (cdr r) #f) cst) ncst (cdr bindings))
-                ;; Binding is not a cst, add (id . expr)
-                (loop cst (cons (cons id v) ncst) (cdr bindings)))))))
+                 (r  (cst-obj v ctx)))
+            (cond ((and (car r) (pair? v) (eq? (car v) 'lambda))
+                    ;; Binding is a fn cst, add (id cst #t) (#t -> function)
+                    (loop (cons (list id (cdr r) #t) cst) ncst (cdr bindings)))
+                  ((car r)
+                    ;; Binding is a cst, add (id cst #f) (#f -> not a function)
+                    (loop (cons (list id (cdr r) #f) cst) ncst (cdr bindings)))
+                  (else
+                    ;; Binding is not a cst, add (id . expr)
+                    (loop cst (cons (cons id v) ncst) (cdr bindings))))))))
 
   ;; Bind all variables and jump to body
   (define (lazy-bind cst ncst)
@@ -1067,13 +1081,18 @@
                (lazy-body (gen-ast body lazy-let-out)))
           (jump-to-version cgc lazy-body ctx)))))
 
-  ;; Get cst/ncst info
-  (mlet ((cst/ncst (get-bindings-info)))
-    ;; Gen all ncst and jump to bind
-    (foldr (lambda (el r)
-             (gen-ast (cdr el) r))
-           (lazy-bind cst ncst)
-           ncst)))
+  (make-lazy-code
+    #f
+    (lambda (cgc ctx)
+      ;; Get cst/ncst info
+      (mlet ((cst/ncst (get-bindings-info ctx)))
+        (let ((lco-first
+                ;; Gen all ncst and jump to bind
+                (foldr (lambda (el r)
+                         (gen-ast (cdr el) r))
+                       (lazy-bind cst ncst)
+                       ncst)))
+          (jump-to-version cgc lco-first ctx))))))
 
 ;;-----------------------------------------------------------------------------
 ;; LETREC Binding
@@ -2277,9 +2296,6 @@
            (make-lazy-code
              #f
              (lambda (cgc ctx)
-
-
-
 
                ;; Handle const fn
                (let ((type (ctx-get-type ctx (length args))))

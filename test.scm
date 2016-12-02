@@ -1,6 +1,4 @@
 
-(println 100)
-
 
 ;(define (foo)
 ;
