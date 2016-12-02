@@ -1075,7 +1075,7 @@
                              (loop (- idx 1) (cdr ids))))))
                ;; Bind locals then consts
                (ctx (ctx-bind-locals ctx id-idx))
-               (ctx (ctx-bind-consts ctx cst))
+               (ctx (ctx-bind-consts ctx cst #t))
                ;;
                (lazy-let-out (get-lazy-lets-out ast ids 0 succ))
                (lazy-body (gen-ast body lazy-let-out)))
@@ -1132,12 +1132,14 @@
                   (pos (get-closures-size res))
                   (ast (cadr obj))
                   (old-free-info (caddr obj))
+                  ;; Compute new free-info set. Merge cst & cst-id vars of !cst procs
                   (free-info
                     (list (append (car old-free-info)
+                                  (cadr old-free-info)
                                   (set-inter const-proc-vars-ids
-                                             (caddr old-free-info)))
-                          (cadr old-free-info)
-                          (set-sub (caddr old-free-info) const-proc-vars-ids '()))))
+                                             (cadddr old-free-info)))
+                          (caddr old-free-info)
+                          (set-sub (cadddr old-free-info) const-proc-vars-ids '()))))
              (loop (cdr l)
                    (cons (list id pos ast free-info)
                          res))))))
@@ -1157,8 +1159,7 @@
             (if (and (pair? val)
                      (eq? (car val) 'lambda))
                 (loop (cdr bindings)
-                      (let* ((r (get-free-infos val bound-ids ctx))
-                             (free-info (cons (append (car r) (cadr r)) (cddr r)))) ;; TODO: use cst/cst-id info instead of merging them
+                      (let* ((free-info (get-free-infos val bound-ids ctx)))
                         (cons (list id val free-info) proc-vars))
                       other-vars)
                 (loop (cdr bindings)
@@ -1184,7 +1185,7 @@
                 (loop new-const-proc-vars new-proc-vars))
             (let* ((proc-var (car l))
                    (free-info (caddr proc-var))
-                   (all-free (append (cadr free-info) (caddr free-info))))
+                   (all-free (append (caddr free-info) (cadddr free-info))))
               (if (= (length (set-inter all-free
                                         (map car const-proc-vars)))
                      (length all-free))
@@ -1198,7 +1199,7 @@
     ;; Init fixed point set is all proc-vars with no imm free (only cst and late)
     (define const-init
       (keep (lambda (el)
-              (null? (cadr (caddr el)))) ;; No imm free vars, only late
+              (null? (caddr (caddr el)))) ;; No imm free vars, only late
             proc-vars))
 
     (let loop ((const-set const-init))
@@ -1206,7 +1207,7 @@
       ;; are members of const-set
       (let ((new-const-set
               (keep (lambda (el)
-                      (let ((late-ids (caddr (caddr el))))
+                      (let ((late-ids (cadddr (caddr el))))
                         (= (length late-ids)
                            (length (set-inter late-ids (map car const-set))))))
                     const-set)))
@@ -1364,22 +1365,36 @@
   ;; Add constant procedure bindings information to context
   (define (bind-const-proc-vars ctx const-proc-vars)
 
-    (let* (;; We first add identifier to ctx with a fake fn-num value
-           (cst-set
-             (map (lambda (c) (list (car c) -1 #t))
-                  const-proc-vars))
-           ;; Bind const ids using fake cst-set
-           (ctx (ctx-bind-consts ctx cst-set)))
+    (mlet (;; Compute cst-id and cst sets
+           ;; cst-id: cst bindings which are always cst
+           ;; cst: cst bindings which are detected to be cst using versioning information
+           (cst-id/cst
+             (let loop ((c const-proc-vars)
+                        (cst-id '())
+                        (cst '()))
+               (if (null? c)
+                   (list cst-id cst)
+                   (let* ((first (car c))
+                          (free-inf (caddr first))
+                          (l (list (car first) -1 #t)))
+                     (if (null? (car free-inf))
+                         (loop (cdr c) (cons l cst-id) cst)
+                         (loop (cdr c) cst-id (cons l cst)))))))
+           ;;
+           (ctx (ctx-bind-consts ctx cst    #f))
+           (ctx (ctx-bind-consts ctx cst-id #t)))
 
       ;; Then, we init all entries and write fn-num values
       (let loop ((l const-proc-vars)
                  (ctx ctx))
         (if (null? l)
             ctx
-            (let* ((free-inf (caddr (car l)))
-                   (free-late (caddr free-inf))
-                   (free-cst (car free-inf))
-                   (fn-num (init-entry-cst (cadr (car l)) (append free-cst free-late) ctx)))
+            (let* ((free-inf   (caddr (car l)))
+                   (free-late  (cadddr free-inf))
+                   (free-cst   (car free-inf))
+                   (free-cstid (cadr free-inf))
+                   (fn-num (init-entry-cst (cadr (car l)) (append free-cst free-cstid free-late) ctx)))
+              (assert (null? (caddr free-inf)) "Internal error")
               (loop (cdr l)
                     (ctx-cst-fnnum-set! ctx (caar l) fn-num)))))))
 

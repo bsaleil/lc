@@ -584,7 +584,7 @@
 ;;
 ;; BIND CONSTANTS
 ;; cst-set: ((id cst fn?) (id2 cst fn?) ...)
-(define (ctx-bind-consts ctx cst-set)
+(define (ctx-bind-consts ctx cst-set cst-id?)
 
   (define (bind cst-set env stack slot-loc)
     (if (null? cst-set)
@@ -601,7 +601,7 @@
                (stack (cons type stack)))
           (bind (cdr cst-set)
                 (cons (cons id
-                            (make-identifier 'local (list slot) '() #f #f #t #f))
+                            (make-identifier 'local (list slot) '() #f #f cst-id? #f))
                       env)
                 stack
                 (cons (cons slot #f) slot-loc)))))
