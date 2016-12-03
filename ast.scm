@@ -2376,6 +2376,18 @@
         ;; Check if the identity of called function is available
         (set! fn-id-inf (call-get-eploc ctx (car ast)))
 
+        ;; If the operator is an atom node, and it's a symbol
+        ;; and the symbol is an identifier in ctx, and this identifier is a cst-id
+        ;; Then fn-id-inf *must* be set for perfs
+        (assert (not
+                  (and (atom-node? (car ast))
+                       (symbol? (atom-node-val (car ast)))
+                       (let ((r (assoc (atom-node-val (car ast)) (ctx-env ctx))))
+                         (and r
+                              (identifier-cst (cdr r))
+                              (not fn-id-inf)))))
+                "Internal error")
+
         (if (and fn-id-inf (car fn-id-inf))
             (jump-to-version
               cgc
