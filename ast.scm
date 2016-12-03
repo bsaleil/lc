@@ -1008,19 +1008,27 @@
 ;;-----------------------------------------------------------------------------
 ;; LET Binding
 
+;; Return a pair (cst? . cst)
+;; cst? is #f if the atom node is not a cst value
+;; cst  is the cst value if node is a cst value (perm object if mem-allocated)
+;; pair is either (#f . #f) or (#t . cst)
+(define (cst-from-atom atom-node)
+  (if (symbol? (atom-node-val atom-node))
+      (cons #f #f)
+      (let* ((val (atom-node-val atom-node))
+             (cst (if (and (pair? val) (eq? (car val) 'quote))
+                      (cadr val)
+                      val)))
+        (if (and (##mem-allocated? cst)
+                 (not (eq? (mem-allocated-kind cst) 'PERM)))
+            (set! cst (copy-permanent cst #f perm-domain)))
+        (cons #t cst))))
+
 (define (mlc-let ast succ)
   (define (cst-obj expr ctx) ;; TODO: detect fun cst
     (cond ;; Atom node, but not identifier
-          ((and (atom-node? expr)
-                (not (symbol? (atom-node-val expr))))
-             (let* ((val (atom-node-val expr))
-                    (cst (if (and (pair? val) (eq? (car val) 'quote))
-                             (cadr val)
-                             val)))
-               (if (and (##mem-allocated? cst)
-                        (not (eq? (mem-allocated-kind cst) 'PERM)))
-                   (set! cst (copy-permanent cst #f perm-domain)))
-               (cons #t cst)))
+          ((atom-node? expr)
+             (cst-from-atom expr))
           ;; lambda expr
           ((and (pair? expr)
                 (eq? (car expr) 'lambda))
@@ -1112,13 +1120,37 @@
   ;; const-proc-vars represents constant procedure bindings, with the form (id ast free-info)
   ;; other-vars represents non procedure bindings, with the forms (id ast)
   (define (group-bindings ctx)
-    (mlet ((proc/other      (group-proc-others ctx ids bindings))
-           (const-proc/proc (group-const-proc proc))
-           (const-proc/proc (group-recursive-const-proc const-proc proc))
-           (proc            (proc-vars-insert-pos proc (map car const-proc))))
-        (list proc const-proc other)))
+    (mlet ((proc/other        (group-proc-others ctx ids bindings))
+           (const-proc/proc   (group-const-proc proc))
+           (const-proc/proc   (group-recursive-const-proc const-proc proc))
+           (proc              (proc-vars-insert-pos proc (map car const-proc)))
+           (const-nproc/other (group-cnproc-others other)))
+        (list proc const-proc const-nproc other)))
 
-  ;; Take proc-vars objects.
+  ;; Takes non proc bindings
+  ;; TODO: not tested because for every LC tests, gambit frontend propagate and inline constants.
+  ;; Group bindings, returns list (const-non-proc others) bindings
+  ;; 'others' are bindings with !lambda & !constants values
+  ;; 'const-non-proc' are bindings with !lambda & constants values.
+  ;; const-non-proc has the form ((id1 cst1 fn?1) (id2 cst2 fn?2) ...) -> see ctx-bind-consts
+  (define (group-cnproc-others bindings)
+    (let loop ((bindings bindings)
+               (cnprocs '())
+               (others  '()))
+        (if (null? bindings)
+            (list cnprocs others)
+            (let ((b (car bindings)))
+              (if (atom-node? (cadr b))
+                  (begin
+                    (error "Needs to be tested.") ;; see TODO above
+                    (let ((r (cst-from-atom (cadr b))))
+                      (if (car r)
+                          (loop (cdr bindings) (cons (list (car b) (cdr r) #f) cnprocs) others)
+                          (loop (cdr bindings) cnprocs (cons b others)))))
+                  (loop (cdr bindings) cnprocs (cons b others)))))))
+
+
+  ;; Takes proc-vars objects.
   ;; For each proc-var object, compute pos field and insert it in object
   ;; (id ast free-info) -> (id pos ast free-info)
   (define (proc-vars-insert-pos proc-vars const-proc-vars-ids)
@@ -1423,14 +1455,17 @@
              (r (group-bindings ctx))
              (proc-vars (car r))
              (const-proc-vars (cadr r))
-             (other-vars (caddr r))
+             (const-nproc-vars (caddr r))
+             (other-vars (cadddr r))
              ;; Build LCO chain
              (lazy-let-out (get-lazy-lets-out ast ids 0 succ))
              (lazy-body    (gen-ast body lazy-let-out))
              (lazy-fun     (get-lazy-make-closures lazy-body proc-vars other-vars const-proc-vars))
              (lazy-eval    (get-lazy-eval other-vars lazy-fun)))
 
-        (let* (;; Bind others
+        (let* (;; Bind const nproc
+               (ctx (ctx-bind-consts ctx const-nproc-vars #t))
+               ;; Bind others
                (id-idx (map (lambda (el) (cons (car el) #f))
                             (append proc-vars other-vars)))
                (ctx (ctx-bind-locals ctx id-idx #t)))
