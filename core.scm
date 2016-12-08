@@ -38,6 +38,7 @@
 ;;--------------------------------------------------------------------------------
 ;; Compiler options
 
+(define opt-ctime                #f) ;; Print compilation time
 (define opt-stats                #f) ;; Print stats report
 (define opt-export-locat-info    #f) ;; Pretty print number of versions for each locat object
 (define opt-time                 #f) ;; Print exec time in processor cycles
@@ -52,6 +53,21 @@
 (define opt-use-lib              #t) ;; Use scheme std lib (see lib/ folder)
 (define opt-vers-regalloc        #t) ;; Use register allocation for code specialization
 (define opt-dump-bin             #f) ;; Print generated binary bytes to stdout
+
+;; Macro to compute compilation time
+(define user-compilation-time 0)
+(define-macro (run-add-to-ctime f)
+  (let ((tmp (gensym)))
+    `(if opt-ctime
+         (let ((,tmp (##exec-stats ,f)))
+           (set! user-compilation-time
+                 (+ (- (+ (cdr (assoc 'user-time ,tmp))
+                          (cdr (assoc 'sys-time  ,tmp)))
+                       (+ (cdr (assoc 'gc-user-time ,tmp))
+                          (cdr (assoc 'gc-sys-time ,tmp))))
+                    user-compilation-time))
+           (cdr (assoc 'result ,tmp)))
+         (,f))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -365,7 +381,9 @@
           (encoding-obj (get-i64 (+ usp (selector-sp-offset)))))
 
          (new-ret-addr
-          (callback-fn ret-addr selector)))
+          (run-add-to-ctime
+            (lambda ()
+              (callback-fn ret-addr selector)))))
 
     ;; replace return address
     (put-i64 psp
@@ -431,7 +449,9 @@
           (vector-ref (get-scmobj ret-addr) 0))
 
          (new-ret-addr
-          (callback-fn stack ret-addr selector closure)))
+           (run-add-to-ctime
+             (lambda ()
+               (callback-fn stack ret-addr selector closure)))))
 
     ;; replace return address
     (put-i64 psp new-ret-addr)
@@ -461,7 +481,9 @@
          (type (cridx->ctx-type type-idx))
 
          (new-ret-addr
-           (callback-fn ret-addr selector type table)))
+           (run-add-to-ctime
+             (lambda ()
+               (callback-fn ret-addr selector type table)))))
 
     ;; replace return address
     (put-i64 psp

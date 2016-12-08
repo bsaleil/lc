@@ -56,6 +56,10 @@
                     (set! args (cdr args)) ;; Remove one more arg
                     args))
 
+  (--ctime
+    "Print compilation time after execution"
+    ,(lambda (args) (set! opt-ctime #t) args))
+
   (--disable-entry-points
     "Disable the use of multiple entry points use only one generic entry point"
     ,(lambda (args) (set! opt-entry-points #f) args))
@@ -279,7 +283,7 @@
              (##gc)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
-      (begin (##machine-code-block-exec mcb) (current-output-port))))
+      (begin (##machine-code-block-exec mcb))))
 
 ;;-----------------------------------------------------------------------------
 ;; Main
@@ -380,12 +384,19 @@
            (println "Executed tests: " (get-slot 'tests)))))
 
 (define (print-opts)
+  (if opt-ctime
+      (print-ctime))
   (if opt-stats
       (print-stats))
   (if opt-export-locat-info
       (export-locat-info))
   (if opt-dump-bin
       (print-mcb)))
+
+(define (print-ctime)
+  (println
+    "Compilation time (user time):"
+    user-compilation-time))
 
 (define (print-mcb)
   (define (print-mcb-h pos lim)
