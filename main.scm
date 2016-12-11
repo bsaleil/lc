@@ -427,10 +427,10 @@
     ;; Number of cr tables
     (println "Number of crtables: " (crtables-total))
     ;; CC table space (kb)
-    (print "CC table space: ")
+    (print "CC table space (kbytes): ")
     (pp-flonum (/ (* (table-length global-cc-table) 8 (cctables-total)) 1000) 5)
     ;; CR table space (kb)
-    (print "CR table space: ")
+    (print "CR table space (kbytes): ")
     (pp-flonum (/ (* 16 8 (crtables-total)) 1000) 5)
     ;; Min/Max versions number of stubs
     (let ((versions-info (get-versions-info all-lazy-code)))
