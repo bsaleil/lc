@@ -361,7 +361,7 @@
 
 (define (mlc-atom ast succ)
   (let ((val (atom-node-val ast)))
-    (cond ((string? val)          (mlc-string val ast succ))
+    (cond ((string? val)          (mlc-literal val ast succ))
           ((symbol? val)          (mlc-identifier val ast succ))
           ((compiler-flonum? val) (mlc-literal (exact->inexact val) ast succ))
           ((literal? val)         (mlc-literal val ast succ))
@@ -399,18 +399,6 @@
                   lit)))
         (let ((ctx (ctx-push ctx (literal->ctx-type literal) #f)))
           (jump-to-version cgc succ ctx))))))
-
-;;
-;; Make lazy code from string literal
-;;
-(define (mlc-string str ast succ)
-  (make-lazy-code
-    #f
-    (lambda (cgc ctx)
-      (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
-        (apply-moves cgc ctx moves)
-        (codegen-string cgc str reg)
-        (jump-to-version cgc succ (ctx-push ctx (make-ctx-tstr) reg))))))
 
 ;;-----------------------------------------------------------------------------
 ;; VARIABLES GET

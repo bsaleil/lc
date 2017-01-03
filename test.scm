@@ -1,11 +1,17 @@
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
 
-(fib 42)
+;; Vector
+(define v (make-vector 4 0))
+(vector-set! v 2 "Hey")
+
+
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1))
+;         (fib (- n 2)))))
+;
+;(fib 42)
 
 ;(define (foo)
 ;
