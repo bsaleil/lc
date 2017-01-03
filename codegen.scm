@@ -1567,7 +1567,9 @@
 
   (assert (not vec-cst?) "Internal error")
   (assert (or (not val-cst?)
-              (not (##mem-allocated? lval)))
+              (not (##mem-allocated? lval))
+              (and (##mem-allocated? lval)
+                   (eq? (mem-allocated-kind lval) 'PERM)))
           "Internal error")
 
   (let* ((dest (codegen-reg-to-x86reg reg))
