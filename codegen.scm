@@ -879,7 +879,10 @@
     (cond ((and rightint? rcst?)
              (error "NYI1"))
           (rightint?
-             (error "NYI2"))
+             (x86-mov cgc (x86-rax) opright)
+             (x86-shr cgc (x86-rax) (x86-imm-int 2))
+             (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
+             (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
           (rcst?
              (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lright)))
              (x86-movd/movq cgc (x86-xmm1) (x86-rax))
