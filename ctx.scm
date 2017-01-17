@@ -37,6 +37,7 @@
 
 ;; Compilation context
 (define-type ctx
+  constructor: make-ctx*
   stack     ;; virtual stack of types
   slot-loc  ;; alist which associates a virtual stack slot to a location
   free-regs ;; list of current free virtual registers
@@ -47,6 +48,26 @@
   fs        ;; current frame size
   fn-num    ;; fn-num of current function
 )
+
+;; TODO: begin wip alpha conversion:
+;; Check that every id is unique when creating a ctx
+(define (contains-dbl ids)
+  (if (null? ids)
+      #f
+      (if (member (car ids) (cdr ids))
+          (car ids)
+          (contains-dbl (cdr ids)))))
+
+(define (make-ctx stack slot-loc free-regs free-mems env nb-actual nb-args fs fn-num)
+  (let* ((local-ids (map car env))
+         (r         (contains-dbl local-ids)))
+    (if r
+        (begin (println "WIP: alpha conversion needed for " r)
+               (pp local-ids)
+               (exit 0))))
+  (make-ctx* stack slot-loc free-regs free-mems env nb-actual nb-args fs fn-num))
+;; TODO: end wip alpha conversion
+
 
 (define (ctx-copy ctx #!optional stack slot-loc free-regs free-mems env nb-actual nb-args fs fn-num)
   (make-ctx
