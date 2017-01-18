@@ -318,6 +318,9 @@
 (define (atom-node-val n)
   (cadr n))
 
+(define (atom-node-val-set! node n)
+  (set-car! (cdr node) n))
+
 ;;-----------------------------------------------------------------------------
 ;; AST DISPATCH
 
