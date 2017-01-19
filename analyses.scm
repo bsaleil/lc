@@ -93,6 +93,108 @@
   (remove-mutables! expr))
 
 ;;-----------------------------------------------------------------------------
+;; Liveness analysis
+;;-----------------------------------------------------------------------------
+
+;; in[n] = use[n] U (out[n] - def[n])
+;; out[n] = U in[s] with s the successors of n
+
+(define live-in  (make-table test: eq?))
+(define live-out (make-table test: eq?))
+
+(define (compute-live-out expr successors)
+  (let ((out
+          (foldr (lambda (el set)
+                   (let ((r (table-ref live-in el #f)))
+                     (if r
+                         (set-union r set)
+                         set)))
+                 '()
+                 successors)))
+    (table-set! live-out expr out)))
+
+(define (compute-live-in expr used)
+  (let* ((out (table-ref live-out expr #f))
+         (in (if out
+                 (set-union used out)
+                 used)))
+    (table-set! live-in expr in)))
+
+;; TODO: on considère à chaque noeud que in et out des successors sont calculés
+(define (liveness-expr expr locals successors)
+  (let ((op (car expr)))
+    (cond ;; Atom node
+          ((atom-node? expr)
+             (let ((val (atom-node-val expr)))
+               ;; Live out
+               (compute-live-out expr successors)
+               ;; Live in
+               (if (symbol? val)
+                   (compute-live-in expr (list val))
+                   (compute-live-in expr '()))))
+          ;; TODO
+          ((eq? op 'begin)
+             (error "NYI1"))
+          ;; Define
+          ((eq? op 'define)
+             (let ((val (caddr expr)))
+               ;; Val
+               (liveness-expr val locals successors)
+               ;; Expr
+               (compute-live-out expr (list val))
+               (compute-live-in  expr '())))
+          ;; TODO
+          ((eq? op 'if)
+             ;;
+             (let ((bcond (cadr expr))
+                   (bthen (caddr expr))
+                   (belse (cadddr expr)))
+               (liveness-expr bthen locals successors)
+               (liveness-expr belse locals successors)
+               (liveness-expr bcond locals (list bthen belse))
+               ;;
+               (compute-live-out expr (list bcond))
+               (compute-live-in  expr '())))
+          ;; TODO
+          ((eq? op 'lambda)
+             (compute-live-out expr successors)
+             (let ((free-vars (free-vars (caddr expr) (cadr expr) locals)))
+               ;; TODO: delay to function call
+               (liveness-expr (caddr expr) (set-union free-vars (cadr expr)) (list (cons 'END 'END)))
+               (compute-live-in  expr free-vars)))
+          ;; TODO
+          ((eq? op 'let)
+             (let ((ids (map car (cadr expr)))
+                   (exprs (map cadr (cadr expr)))
+                   (body (caddr expr)))
+               ;;
+               (liveness-expr body (set-union locals ids) successors)
+               (liveness-seq exprs locals body)
+               ;;
+               (compute-live-out expr (car exprs))
+               (compute-live-in expr '())))
+          ;; TODO
+          ((eq? op 'letrec)
+             (error "NYI4"))
+          ;; TODO
+          ((eq? op 'set)
+             (error "NYI5"))
+          ;; Call
+          (else
+            (liveness-seq expr locals successors)))))
+
+(define (liveness-seq exprs locals successors)
+  (if (null? exprs)
+      successors
+      (let* ((first (car exprs))
+             (r (liveness-seq (cdr exprs) locals successors)))
+        (liveness-expr first locals r)
+        (list first))))
+
+(define (compute-liveness exp-content)
+  (liveness-seq exp-content '() (list (cons 'END 'END))))
+
+;;-----------------------------------------------------------------------------
 ;; Alpha conversion
 ;;-----------------------------------------------------------------------------
 

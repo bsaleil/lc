@@ -5,7 +5,7 @@
       (+ (fib (- n 1))
          (fib (- n 2)))))
 
-(pp (fib 42))
+(gambit$$pp (fib 40))
 
 ;(define (foo)
 ;
