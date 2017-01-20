@@ -324,8 +324,6 @@
               (let ((exp-content (expand-tl content)))
                 (analyses-find-global-types! exp-content)
                 (analyses-a-conversion! exp-content)
-                (pp exp-content)
-                (pp "-----------------------")
                 (compute-liveness exp-content)
                 ;(pp exp-content))))
                 ;(pp content))))

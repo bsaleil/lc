@@ -113,10 +113,10 @@
                  successors)))
     (table-set! live-out expr out)))
 
-(define (compute-live-in expr used)
+(define (compute-live-in expr used #!optional (killed '()))
   (let* ((out (table-ref live-out expr #f))
          (in (if out
-                 (set-union used out)
+                 (set-union used (set-sub out killed '()))
                  used)))
     (table-set! live-in expr in)))
 
@@ -132,9 +132,13 @@
                (if (symbol? val)
                    (compute-live-in expr (list val))
                    (compute-live-in expr '()))))
-          ;; TODO
+          ;; Begin
           ((eq? op 'begin)
-             (error "NYI1"))
+             ;;
+             (compute-live-out expr successors)
+             (compute-live-in expr '())
+             ;;
+             (liveness-seq (cdr expr) locals (list expr)))
           ;; Define
           ((eq? op 'define)
              (let ((val (caddr expr)))
@@ -143,9 +147,8 @@
                ;; Expr
                (compute-live-out expr (list val))
                (compute-live-in  expr '())))
-          ;; TODO
+          ;; If
           ((eq? op 'if)
-             ;;
              (let ((bcond (cadr expr))
                    (bthen (caddr expr))
                    (belse (cadddr expr)))
@@ -155,33 +158,47 @@
                ;;
                (compute-live-out expr (list bcond))
                (compute-live-in  expr '())))
-          ;; TODO
+          ;; Lambda
           ((eq? op 'lambda)
              (compute-live-out expr successors)
-             (let ((free-vars (free-vars (caddr expr) (cadr expr) locals)))
+             (let* ((nids (flatten (cadr expr)))
+                    (free-vars (free-vars (caddr expr) nids locals)))
                ;; TODO: delay to function call
-               (liveness-expr (caddr expr) (set-union free-vars (cadr expr)) (list (cons 'END 'END)))
-               (compute-live-in  expr free-vars)))
-          ;; TODO
+               (liveness-expr (caddr expr) (set-union free-vars nids) (list (cons 'END 'END)))
+               (compute-live-in expr free-vars)))
+          ;; Let
           ((eq? op 'let)
              (let ((ids (map car (cadr expr)))
                    (exprs (map cadr (cadr expr)))
                    (body (caddr expr)))
                ;;
                (liveness-expr body (set-union locals ids) successors)
-               (liveness-seq exprs locals body)
+               (liveness-seq exprs locals (list body))
                ;;
-               (compute-live-out expr (car exprs))
+               (compute-live-out expr (list (car exprs)))
                (compute-live-in expr '())))
-          ;; TODO
+          ;; Letrec
           ((eq? op 'letrec)
-             (error "NYI4"))
-          ;; TODO
-          ((eq? op 'set)
-             (error "NYI5"))
+             (let ((ids (map car (cadr expr)))
+                   (exprs (map cadr (cadr expr)))
+                   (body (caddr expr)))
+               ;;
+               (liveness-expr body (set-union locals ids) successors)
+               (liveness-seq exprs (set-union locals ids) (list body))
+               ;;
+               (compute-live-out expr (list (car exprs)))
+               (compute-live-in expr '())))
+          ;; Set!
+          ((eq? op 'set!)
+             (compute-live-out expr successors)
+             (compute-live-in expr '() (list (cadr expr)))
+             ;;
+             (liveness-expr (caddr expr) locals (list (cadr expr))))
           ;; Call
           (else
-            (liveness-seq expr locals successors)))))
+            (liveness-seq expr locals successors)
+            (compute-live-out expr successors)
+            (compute-live-in expr '())))))
 
 (define (liveness-seq exprs locals successors)
   (if (null? exprs)
