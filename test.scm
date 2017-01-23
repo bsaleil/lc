@@ -1,11 +1,36 @@
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
-
-(gambit$$pp (fib 40))
+(define substring-h
+   (lambda (to0 from0 posf0 post0 end0)
+     (if (($$atom =) ($$atom posf0) ($$atom end0))
+         ($$atom to0)
+         (begin
+           (($$atom string-set!)
+            ($$atom to0)
+            ($$atom post0)
+            (($$atom string-ref) ($$atom from0) ($$atom posf0)))
+           (let ((post1 (($$atom +) ($$atom post0) ($$atom 1)))
+                 (posf1 (($$atom +) ($$atom posf0) ($$atom 1))))
+             (if (($$atom =) ($$atom posf1) ($$atom end0))
+                 ($$atom to0)
+                 (begin
+                   (($$atom string-set!)
+                    ($$atom to0)
+                    ($$atom post1)
+                    (($$atom string-ref) ($$atom from0) ($$atom posf1)))
+                   (($$atom substring-h)
+                    ($$atom to0)
+                    ($$atom from0)
+                    (($$atom +) ($$atom posf1) ($$atom 1))
+                    (($$atom +) ($$atom post1) ($$atom 1))
+                    ($$atom end0)))))))))
+ (define s15 ($$atom "Dark vador"))
+ (($$atom gambit$$pp)
+  (($$atom substring-h)
+   (($$atom make-string) ($$atom 10))
+   ($$atom "Dark vador")
+   ($$atom 0)
+   ($$atom 0)
+   ($$atom 10)))
 
 ;(define (foo)
 ;

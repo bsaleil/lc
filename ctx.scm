@@ -502,7 +502,7 @@
 
 ;;
 ;; GET FREE REG
-(define (ctx-get-free-reg ctx succ nb-opnds)
+(define (ctx-get-free-reg ast ctx succ nb-opnds)
 
   ;; TODO: prefer 'preferred' to 'deep-opnd-reg' ?
 
@@ -540,12 +540,11 @@
       (cdr sl)))
 
   (if deep-opnd-reg
-      ;; TODO WIP comment
       (list '() deep-opnd-reg ctx)
-      ;; TODO WIP comment
       (let ((free-regs (ctx-free-regs ctx)))
         (if (null? free-regs)
-            (let* ((moves/mloc/ctx (ctx-get-free-mem ctx))
+            (let* (;(ctx (ctx-free-dead-locs ctx ast))
+                   (moves/mloc/ctx (ctx-get-free-mem ctx))
                    (moves (car moves/mloc/ctx))
                    (mloc  (cadr moves/mloc/ctx))
                    (ctx   (caddr moves/mloc/ctx))
@@ -555,7 +554,6 @@
               (let ((ctx (ctx-set-loc-n ctx reg-slots mloc))
                     (moves (append moves
                                    (list (cons spill-reg mloc)))))
-
                 (list moves spill-reg ctx)))
             (let* ((r (and preferred (member preferred free-regs)))
                    (reg (if r (car r) (car free-regs)))
@@ -601,6 +599,47 @@
   (let ((env (build-env (ctx-env ctx))))
 
     (ctx-copy ctx #f #f #f #f env)))
+
+;; TODO WIP
+(define ppo 0)
+(define (ctx-free-dead-locs ctx ast)
+
+  (define (in-stack? slots)
+    (if (null? slots)
+        #f
+        (let ((slot (car slots)))
+          (or (>= slot (+ 2 (ctx-nb-args ctx)))
+              (in-stack? (cdr slots))))))
+
+  (define (free-deads ctx env)
+    (if (null? env)
+        ctx
+        ;;
+        (let ((id (caar env))
+              (identifier (cdar env)))
+          ;(ctx-set-loc ctx slot loc)
+          (if (and (not (live-out? id ast))
+                   (not (in-stack? (identifier-sslots identifier))))
+              (begin
+                ;(println "-----------------------------------------------------------------------------------------------")
+                ;(println "-----------------------------------------------------------------------------------------------")
+                ;(println "-----------------------------------------------------------------------------------------------")
+                ;(println "-----------------------------------------------------------------------------------------------")
+                ;(print "## id  ") (pp id)
+                ;(print "## ast ") (pp ast)
+                ;(print "## no  ") (pp (object->serial-number ast))
+                ;(pp (map car (ctx-env ctx)))
+                ;(println (eq? ast ppo))
+                ;(pp ctx)
+                (let ((nctx (ctx-unbind-locals ctx (list id))))
+                  ;(pp nctx)
+                  ;(pp (table->list locat-table))
+                  (free-deads nctx (cdr env))))
+              (free-deads ctx (cdr env))))))
+
+  (let ((env (ctx-env ctx)))
+    (free-deads ctx env)))
+;; TODO end wip
 
 ;;
 ;; BIND CONSTANTS
