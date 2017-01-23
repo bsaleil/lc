@@ -96,6 +96,9 @@
 ;; Liveness analysis
 ;;-----------------------------------------------------------------------------
 
+(define (live-out? id ast)
+  (member id (table-ref live-out ast)))
+
 ;; in[n] = use[n] U (out[n] - def[n])
 ;; out[n] = U in[s] with s the successors of n
 
@@ -135,10 +138,9 @@
           ;; Begin
           ((eq? op 'begin)
              ;;
-             (compute-live-out expr successors)
-             (compute-live-in expr '())
-             ;;
-             (liveness-seq (cdr expr) locals (list expr)))
+             (let ((r (liveness-seq (cdr expr) locals successors)))
+               (compute-live-out expr r)
+               (compute-live-in expr '())))
           ;; Define
           ((eq? op 'define)
              (let ((val (caddr expr)))
@@ -196,9 +198,9 @@
              (liveness-expr (caddr expr) locals (list (cadr expr))))
           ;; Call
           (else
-            (liveness-seq expr locals successors)
-            (compute-live-out expr successors)
-            (compute-live-in expr '())))))
+            (let ((r (liveness-seq expr locals successors)))
+              (compute-live-out expr r)
+              (compute-live-in expr '()))))))
 
 (define (liveness-seq exprs locals successors)
   (if (null? exprs)
