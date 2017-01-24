@@ -97,7 +97,7 @@
 ;;-----------------------------------------------------------------------------
 
 (define (live-out? id ast)
-  (member id (table-ref live-out ast)))
+  (member id (table-ref live-out ast '()))) ;; TODO: default '() or (list id) ???
 
 ;; in[n] = use[n] U (out[n] - def[n])
 ;; out[n] = U in[s] with s the successors of n
@@ -162,12 +162,18 @@
                (compute-live-in  expr '())))
           ;; Lambda
           ((eq? op 'lambda)
-             (compute-live-out expr successors)
              (let* ((nids (flatten (cadr expr)))
                     (free-vars (free-vars (caddr expr) nids locals)))
-               ;; TODO: delay to function call
+               ;; Body TODO: delay to function call
                (liveness-expr (caddr expr) (set-union free-vars nids) (list (cons 'END 'END)))
-               (compute-live-in expr free-vars)))
+               ;;
+               (let ((d (cons 'USE free-vars)))
+                 ;; Dummy
+                 (compute-live-out d successors)
+                 (compute-live-in  d free-vars)
+                 ;; Curr
+                 (compute-live-out expr (list d))
+                 (compute-live-in  expr '()))))
           ;; Let
           ((eq? op 'let)
              (let ((ids (map car (cadr expr)))
@@ -192,10 +198,18 @@
                (compute-live-in expr '())))
           ;; Set!
           ((eq? op 'set!)
-             (compute-live-out expr successors)
-             (compute-live-in expr '() (list (cadr expr)))
-             ;;
-             (liveness-expr (caddr expr) locals (list (cadr expr))))
+             ;; kill
+             (let* ((val (caddr expr))
+                    (id  (cadr expr))
+                    (d   (cons 'KILL id)))
+               ;; Dummy ast node to kill identifier
+               (compute-live-out d successors)
+               (compute-live-in  d '() (list (cadr expr)))
+               ;; Val node
+               (liveness-expr val locals (list d))
+               ;; Curr node
+               (compute-live-out expr (list val))
+               (compute-live-in expr '())))
           ;; Call
           (else
             (let ((r (liveness-seq expr locals successors)))

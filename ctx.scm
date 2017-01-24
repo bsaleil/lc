@@ -543,7 +543,7 @@
       (list '() deep-opnd-reg ctx)
       (let ((free-regs (ctx-free-regs ctx)))
         (if (null? free-regs)
-            (let* (;(ctx (ctx-free-dead-locs ctx ast))
+            (let* ((ctx (ctx-free-dead-locs ctx ast))
                    (moves/mloc/ctx (ctx-get-free-mem ctx))
                    (moves (car moves/mloc/ctx))
                    (mloc  (cadr moves/mloc/ctx))
@@ -617,10 +617,11 @@
         ;;
         (let ((id (caar env))
               (identifier (cdar env)))
-          ;(ctx-set-loc ctx slot loc)
           (if (and (not (live-out? id ast))
                    (not (in-stack? (identifier-sslots identifier))))
               (begin
+                ;(set! ppo (+ ppo 1))
+                ;(print "------> ") (pp ppo)
                 ;(println "-----------------------------------------------------------------------------------------------")
                 ;(println "-----------------------------------------------------------------------------------------------")
                 ;(println "-----------------------------------------------------------------------------------------------")
@@ -628,8 +629,10 @@
                 ;(print "## id  ") (pp id)
                 ;(print "## ast ") (pp ast)
                 ;(print "## no  ") (pp (object->serial-number ast))
+                ;(print "## liveout ") (pp (table-ref live-out ast #f))
                 ;(pp (map car (ctx-env ctx)))
                 ;(println (eq? ast ppo))
+
                 ;(pp ctx)
                 (let ((nctx (ctx-unbind-locals ctx (list id))))
                   ;(pp nctx)

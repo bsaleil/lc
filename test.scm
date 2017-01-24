@@ -1,50 +1,34 @@
 
-(define substring-h
-   (lambda (to0 from0 posf0 post0 end0)
-     (if (($$atom =) ($$atom posf0) ($$atom end0))
-         ($$atom to0)
-         (begin
-           (($$atom string-set!)
-            ($$atom to0)
-            ($$atom post0)
-            (($$atom string-ref) ($$atom from0) ($$atom posf0)))
-           (let ((post1 (($$atom +) ($$atom post0) ($$atom 1)))
-                 (posf1 (($$atom +) ($$atom posf0) ($$atom 1))))
-             (if (($$atom =) ($$atom posf1) ($$atom end0))
-                 ($$atom to0)
-                 (begin
-                   (($$atom string-set!)
-                    ($$atom to0)
-                    ($$atom post1)
-                    (($$atom string-ref) ($$atom from0) ($$atom posf1)))
-                   (($$atom substring-h)
-                    ($$atom to0)
-                    ($$atom from0)
-                    (($$atom +) ($$atom posf1) ($$atom 1))
-                    (($$atom +) ($$atom post1) ($$atom 1))
-                    ($$atom end0)))))))))
- (define s15 ($$atom "Dark vador"))
- (($$atom gambit$$pp)
-  (($$atom substring-h)
-   (($$atom make-string) ($$atom 10))
-   ($$atom "Dark vador")
-   ($$atom 0)
-   ($$atom 0)
-   ($$atom 10)))
+;; out.scm 1333
+;; TODO: use kill set for let & letrec
 
-;(define (foo)
-;
-;  (let ((a 100))
-;    (let ((b (+ a 12)))
-;      11)))
-;
-;(foo)
-;
-;
-;
-;
-;
-;
+
+(define (fold-over-perm-tree universe b-folder)
+        (let LOOP1
+            ((foo 12)
+             (bar 1)
+             (accross 11))
+
+              (let LOOP2
+                  ((bar bar))
+                  (let* ((first (car universe))
+                         (rest  (cdr universe)))
+                    (b-folder first bar
+                          (lambda ()
+                              (LOOP1 1 2 3))
+                          11)))))
+
+(fold-over-perm-tree '(1)
+    (lambda (a b c d) 11))
+
+
+
+
+
+
+
+
+
 
 ;; WIP:
 ;; -> Quand on génère un E.P. générique, il faut patcher le pt générique + la fermeture a l'index
