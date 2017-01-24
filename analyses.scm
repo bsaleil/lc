@@ -97,7 +97,11 @@
 ;;-----------------------------------------------------------------------------
 
 (define (live-out? id ast)
-  (member id (table-ref live-out ast '()))) ;; TODO: default '() or (list id) ???
+  ;; TODO: dans certains cas, le compilateur est appellé avec des ast créés à la volée
+  ;; ex. (gen-ast `(lambda l (,node-lv ,node-l)) succ). ce qui fausse complètement l'information de liveness
+  ;; PATCH: par défault, si l'ast n'est pas trouvé dans live-out, on dit que l'id est vivant.
+  ;; TODO:  -> éviter ce travail, le faire à l'expansion, et reconsidérer la valeur par défaut
+  (member id (table-ref live-out ast (list id))))
 
 ;; in[n] = use[n] U (out[n] - def[n])
 ;; out[n] = U in[s] with s the successors of n
