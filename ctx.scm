@@ -31,6 +31,7 @@
 (define regalloc-regs #f)
 (define lazy-code-flags #f)
 (define mem-allocated-kind #f)
+(define live-out? #f)
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx

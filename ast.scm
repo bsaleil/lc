@@ -1035,7 +1035,7 @@
                (ncst '())
                (bindings bindings))
       (if (null? bindings)
-          (list cst ncst)
+          (list cst (reverse ncst))
           (let* ((binding (car bindings))
                  (id (car binding))
                  (v  (cadr binding))
