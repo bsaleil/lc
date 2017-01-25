@@ -600,8 +600,9 @@
   (let ((env (build-env (ctx-env ctx))))
     (ctx-copy ctx #f #f #f #f env)))
 
-;; TODO WIP
-(define ppo 0)
+;; Take a ctx and an s-expression (ast)
+;; Remove all dead ids and free their locs (unbind)
+;; Return new context
 (define (ctx-free-dead-locs ctx ast)
 
   (define (in-stack? slots)
@@ -614,38 +615,17 @@
   (define (free-deads ctx env)
     (if (null? env)
         ctx
-        ;;
         (let ((id (caar env))
               (identifier (cdar env)))
           (if (and (not (live-out? id ast))
                    (not (in-stack? (identifier-sslots identifier))))
-              (begin
-                ;(set! ppo (+ ppo 1))
-                ;(print "------> ") (pp ppo)
-                ;(println "-----------------------------------------------------------------------------------------------")
-                ;(println "-----------------------------------------------------------------------------------------------")
-                ;(println "-----------------------------------------------------------------------------------------------")
-                ;(println "-----------------------------------------------------------------------------------------------")
-                ;(print "## id  ") (pp id)
-
-                ;(println (live-out? id ast))
-                ;(print "## ast ") (pp ast)
-                ;(println (table-ref locat-table ast #f))
-                ;(print "## no  ") (pp (object->serial-number ast))
-                ;(print "## liveout ") (pp (table-ref live-out ast #f))
-                ;(pp (map car (ctx-env ctx)))
-                ;(println (eq? ast ppo))
-
-                ;(pp ctx)
-                (let ((nctx (ctx-unbind-locals ctx (list id))))
-                  ;(pp nctx)
-                  ;(pp (table->list locat-table))
-                  (free-deads nctx (cdr env))))
+              ;; the id is dead and not in stack, we can unbind it
+              (let ((nctx (ctx-unbind-locals ctx (list id))))
+                (free-deads nctx (cdr env)))
               (free-deads ctx (cdr env))))))
 
   (let ((env (ctx-env ctx)))
     (free-deads ctx env)))
-;; TODO end wip
 
 ;;
 ;; BIND CONSTANTS
