@@ -543,7 +543,7 @@
       (list '() deep-opnd-reg ctx)
       (let ((free-regs (ctx-free-regs ctx)))
         (if (null? free-regs)
-            (let* (;(ctx (ctx-free-dead-locs ctx ast))
+            (let* ((ctx (ctx-free-dead-locs ctx ast))
                    (moves/mloc/ctx (ctx-get-free-mem ctx))
                    (moves (car moves/mloc/ctx))
                    (mloc  (cadr moves/mloc/ctx))
