@@ -2226,7 +2226,7 @@
   (if tail?
       ;; Tail call, no register to save and no continuation to generate
       ctx
-      (mlet ((moves/nctx (ctx-save-call ctx idx-offset)))
+      (mlet ((moves/nctx (ctx-save-call ast ctx idx-offset)))
         (define fctx (ctx-fs-inc nctx))
         ;; Save registers
         (set! moves (cons (cons 'fs 1) moves))

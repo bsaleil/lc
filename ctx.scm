@@ -766,7 +766,7 @@
 ;; Returns:
 ;;  moves: list of moves
 ;;  ctx: updated ctx
-(define (ctx-save-call octx idx-start)
+(define (ctx-save-call ast octx idx-start)
 
   ;; pour chaque slot sur la vstack:
     ;; Si le slot appartient à une variable, et que cette variable à déjà un emplacement mémoire:
@@ -813,6 +813,9 @@
             (append moves (car r))
             (cdr r)))))
 
+  ;; Free dead locations
+
+  (set! octx (ctx-free-dead-locs octx ast))
   (save-all idx-start '() octx))
 
 ;;
