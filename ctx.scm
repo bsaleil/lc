@@ -597,7 +597,6 @@
                   (build-env (cdr env))))))
 
   (let ((env (build-env (ctx-env ctx))))
-
     (ctx-copy ctx #f #f #f #f env)))
 
 ;; TODO WIP
@@ -733,8 +732,7 @@
 
   (define (gen-env env ids)
     (if (null? env)
-        (begin (assert (null? ids) "Internal error (ctx-unbind-locals)")
-               '())
+        '()
         (let ((ident (car env)))
           (if (member (car ident) ids)
               (gen-env (cdr env) (set-sub ids (list (car ident)) '()))

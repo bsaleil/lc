@@ -1349,7 +1349,10 @@
                   (loop (cdr lates) (+ offset 8)))))
 
           ;; Update ctx and load closure
-          (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 0)))
+          ;; We do not give ast to ctx-get-free-reg because it could free a register associated to an index
+          ;; which is not yet associated to an identifier.
+          ;; The association is done with ctx-id-add-idx.
+          (mlet ((moves/reg/ctx (ctx-get-free-reg #f ctx succ 0)))
             (apply-moves cgc ctx moves)
             (let ((dest (codegen-reg-to-x86reg reg)))
               (x86-lea cgc dest (x86-mem (+ offset-start TAG_MEMOBJ) clo-reg)))
