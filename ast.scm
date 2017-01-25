@@ -2376,7 +2376,7 @@
             (jump-to-version
               cgc
               (gen-ast-l (cdr ast) lazy-call)
-              (ctx-push ctx (make-ctx-tclo #t (cdr fn-id-inf)) #f))
+              (ctx-push ctx (make-ctx-tclo #t (cdr fn-id-inf)) #f (atom-node-val (car ast))))
             (jump-to-version
               cgc
               (check-types (list ATX_CLO) (list (car ast)) (gen-ast-l (cdr ast) lazy-call) ast)
