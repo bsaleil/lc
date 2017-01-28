@@ -1255,6 +1255,8 @@
   (if opt-verbose-jit
       (fn-verbose))
 
+  (set! ctx (ctx-free-dead-locs ctx (lazy-code-ast lazy-code)))
+
   (cond
     ;; A version already exists
     ((get-version lazy-code ctx)

@@ -597,8 +597,13 @@
             (cons (car env)
                   (build-env (cdr env))))))
 
-  (let ((env (build-env (ctx-env ctx))))
-    (ctx-copy ctx #f #f #f #f env)))
+  ;; Add idx only if the id exists.
+  ;; The id could have been removed using liveness info.
+  (let ((r (assoc id (ctx-env ctx))))
+    (if r
+        (let ((env (build-env (ctx-env ctx))))
+          (ctx-copy ctx #f #f #f #f env))
+        ctx)))
 
 ;; Take a ctx and an s-expression (ast)
 ;; Remove all dead ids and free their locs (unbind)
