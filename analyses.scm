@@ -92,7 +92,245 @@
   (find-types! expr)
   (remove-mutables! expr))
 
+;;-----------------------------------------------------------------------------
+;; Liveness analysis
+;;-----------------------------------------------------------------------------
 
+(define (live-out? id ast)
+  ;; TODO: dans certains cas, le compilateur est appellé avec des ast créés à la volée
+  ;; ex. (gen-ast `(lambda l (,node-lv ,node-l)) succ). ce qui fausse complètement l'information de liveness
+  ;; PATCH: par défault, si l'ast n'est pas trouvé dans live-out, on dit que l'id est vivant.
+  ;; TODO:  -> éviter ce travail, le faire à l'expansion, et reconsidérer la valeur par défaut
+  (member id (table-ref live-out ast (list id))))
+
+;; in[n] = use[n] U (out[n] - def[n])
+;; out[n] = U in[s] with s the successors of n
+
+(define live-in  (make-table test: eq?))
+(define live-out (make-table test: eq?))
+
+(define (compute-live-out expr successors)
+  (let ((out
+          (foldr (lambda (el set)
+                   (let ((r (table-ref live-in el #f)))
+                     (if r
+                         (set-union r set)
+                         set)))
+                 '()
+                 successors)))
+    (table-set! live-out expr out)))
+
+(define (compute-live-in expr used #!optional (killed '()))
+  (let* ((out (table-ref live-out expr #f))
+         (in (if out
+                 (set-union used (set-sub out killed '()))
+                 used)))
+    (table-set! live-in expr in)))
+
+;; TODO: on considère à chaque noeud que in et out des successors sont calculés
+(define (liveness-expr expr locals successors)
+  (let ((op (car expr)))
+    (cond ;; Atom node
+          ((atom-node? expr)
+             (let ((val (atom-node-val expr)))
+               ;; Live out
+               (compute-live-out expr successors)
+               ;; Live in
+               (if (symbol? val)
+                   (compute-live-in expr (list val))
+                   (compute-live-in expr '()))))
+          ;; Begin
+          ((eq? op 'begin)
+             ;;
+             (let ((r (liveness-seq (cdr expr) locals successors)))
+               (compute-live-out expr r)
+               (compute-live-in expr '())))
+          ;; Define
+          ((eq? op 'define)
+             (let ((val (caddr expr)))
+               ;; Val
+               (liveness-expr val locals successors)
+               ;; Expr
+               (compute-live-out expr (list val))
+               (compute-live-in  expr '())))
+          ;; If
+          ((eq? op 'if)
+             (let ((bcond (cadr expr))
+                   (bthen (caddr expr))
+                   (belse (cadddr expr)))
+               (liveness-expr bthen locals successors)
+               (liveness-expr belse locals successors)
+               (liveness-expr bcond locals (list bthen belse))
+               ;;
+               (compute-live-out expr (list bcond))
+               (compute-live-in  expr '())))
+          ;; Lambda
+          ((eq? op 'lambda)
+             (let* ((nids (flatten (cadr expr)))
+                    (free-vars (free-vars (caddr expr) nids locals)))
+               ;; Body TODO: delay to function call
+               (liveness-expr (caddr expr) (set-union free-vars nids) (list (cons 'END 'END)))
+               ;;
+               (let ((d (cons 'USE free-vars)))
+                 ;; Dummy
+                 (compute-live-out d successors)
+                 (compute-live-in  d free-vars)
+                 ;; Curr
+                 (compute-live-out expr (list d))
+                 (compute-live-in  expr '()))))
+          ;; Let
+          ((eq? op 'let)
+             (let ((ids (map car (cadr expr)))
+                   (exprs (map cadr (cadr expr)))
+                   (body (caddr expr)))
+               ;;
+               (liveness-expr body (set-union locals ids) successors)
+               (liveness-seq exprs locals (list body))
+               ;;
+               (compute-live-out expr (list (car exprs)))
+               (compute-live-in expr '())))
+          ;; Letrec
+          ((eq? op 'letrec)
+             (let ((ids (map car (cadr expr)))
+                   (exprs (map cadr (cadr expr)))
+                   (body (caddr expr)))
+               ;;
+               (liveness-expr body (set-union locals ids) successors)
+               (liveness-seq exprs (set-union locals ids) (list body))
+               ;;
+               (compute-live-out expr (list (car exprs)))
+               (compute-live-in expr '())))
+          ;; Set!
+          ((eq? op 'set!)
+             ;; kill
+             (let* ((val (caddr expr))
+                    (id  (cadr expr))
+                    (d   (cons 'KILL id)))
+               ;; Dummy ast node to kill identifier
+               (compute-live-out d successors)
+               (compute-live-in  d '() (list (cadr expr)))
+               ;; Val node
+               (liveness-expr val locals (list d))
+               ;; Curr node
+               (compute-live-out expr (list val))
+               (compute-live-in expr '())))
+          ;; Call
+          (else
+            (let ((r (liveness-seq expr locals successors)))
+              (compute-live-out expr r)
+              (compute-live-in expr '()))))))
+
+(define (liveness-seq exprs locals successors)
+  (if (null? exprs)
+      successors
+      (let* ((first (car exprs))
+             (r (liveness-seq (cdr exprs) locals successors)))
+        (liveness-expr first locals r)
+        (list first))))
+
+(define (compute-liveness exp-content)
+  (liveness-seq exp-content '() (list (cons 'END 'END))))
+
+;;-----------------------------------------------------------------------------
+;; Alpha conversion
+;;-----------------------------------------------------------------------------
+
+(define (analyses-a-conversion! exp-content)
+
+  ;; Expr changes TODO
+  (define (change-let-syms! bindings symtable)
+    (if (null? bindings)
+        '()
+        (let ((binding (car bindings)))
+          (set-car! binding (symtable-get-symbol symtable (car binding)))
+          (change-let-syms! (cdr bindings) symtable))))
+
+  (define (change-lambda-syms! args symtable)
+    (cond ((null? args) #f)
+          ((and (pair? args)
+                (not (pair? (cdr args))))
+            (set-car! args (symtable-get-symbol symtable (car args)))
+            (set-cdr! args (symtable-get-symbol symtable (cdr args))))
+          (else
+            (set-car! args (symtable-get-symbol symtable (car args)))
+            (change-lambda-syms! (cdr args) symtable))))
+
+  ;; Asc table
+  (define (symtable-add-bindings table syms)
+    (if (null? syms)
+        table
+        (symtable-add-bindings
+            (symtable-add-binding table (car syms))
+            (cdr syms))))
+
+  (define (symtable-add-binding table sym)
+    (let ((asc (assoc sym table)))
+      (if asc
+          (cons (cons sym (+ (cdr asc) 1))
+                table)
+          (cons (cons sym 0)
+                table))))
+
+  (define (symtable-get-symbol table sym)
+    (let ((asc (assoc sym table)))
+      (if asc
+          (string->symbol
+            (string-append
+              (symbol->string sym)
+              (number->string (cdr asc))))
+          sym)))
+
+  ;; Aconv
+  (define (aconv expr symtable)
+    (if (not (pair? expr))
+        #f
+        (let ((op (car expr)))
+          (cond ;; Atom node
+                ((atom-node? expr)
+                   (let ((val (atom-node-val expr)))
+                     (if (symbol? val)
+                         (atom-node-val-set! expr (symtable-get-symbol symtable val)))))
+                ;; Let
+                ((eq? op 'let)
+                   (let* ((new-ids (map car (cadr expr)))
+                          (new-symtable (symtable-add-bindings symtable new-ids)))
+                     ;; aconv on let bindings
+                     (for-each (lambda (x) (aconv (cadr x) symtable))
+                               (cadr expr))
+                     ;; Change binding symbols
+                     (change-let-syms! (cadr expr) new-symtable)
+                     ;; aconv on let body
+                     (aconv (caddr expr) new-symtable)))
+                ;; Let*
+                ((eq? op 'let*)    (error "Internal error."))
+                ;; Letrec
+                ((eq? op 'letrec)
+                   (let* ((new-ids (map car (cadr expr)))
+                          (new-symtable (symtable-add-bindings symtable new-ids)))
+                     ;; aconv on letrec bindings
+                     (for-each (lambda (x) (aconv (cadr x) new-symtable))
+                               (cadr expr))
+                     ;; Change binding symbols
+                     (change-let-syms! (cadr expr) new-symtable)
+                     ;; aconv on letrec body
+                     (aconv (caddr expr) new-symtable)))
+                ;; Lambda
+                ((eq? op 'lambda)
+                   (let* ((new-ids  (flatten (cadr expr)))
+                          (new-symtable (symtable-add-bindings symtable new-ids)))
+                     ;; if it's a (lambda arg body) form, change arg
+                     ;; else, change lambda args
+                     (if (symbol? (cadr expr))
+                         (set-car! (cdr expr) (symtable-get-symbol new-symtable (cadr expr)))
+                         (change-lambda-syms! (cadr expr) new-symtable))
+                     ;; aconv on lambda body
+                     (aconv (caddr expr) new-symtable)))
+                ;; Others
+                (else
+                  (map (lambda (x) (aconv x symtable))
+                       expr))))))
+
+  (aconv exp-content '()))
 
 ;;-----------------------------------------------------------------------------
 ;; Liveness

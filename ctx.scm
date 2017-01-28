@@ -31,12 +31,14 @@
 (define regalloc-regs #f)
 (define lazy-code-flags #f)
 (define mem-allocated-kind #f)
+(define live-out? #f)
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx
 
 ;; Compilation context
 (define-type ctx
+  constructor: make-ctx*
   stack     ;; virtual stack of types
   slot-loc  ;; alist which associates a virtual stack slot to a location
   free-regs ;; list of current free virtual registers
@@ -47,6 +49,26 @@
   fs        ;; current frame size
   fn-num    ;; fn-num of current function
 )
+
+;; TODO: begin wip alpha conversion:
+;; Check that every id is unique when creating a ctx
+(define (contains-dbl ids)
+  (if (null? ids)
+      #f
+      (if (member (car ids) (cdr ids))
+          (car ids)
+          (contains-dbl (cdr ids)))))
+
+(define (make-ctx stack slot-loc free-regs free-mems env nb-actual nb-args fs fn-num)
+  (let* ((local-ids (map car env))
+         (r         (contains-dbl local-ids)))
+    (if r
+        (begin (println "WIP: alpha conversion needed for " r)
+               (pp local-ids)
+               (exit 0))))
+  (make-ctx* stack slot-loc free-regs free-mems env nb-actual nb-args fs fn-num))
+;; TODO: end wip alpha conversion
+
 
 (define (ctx-copy ctx #!optional stack slot-loc free-regs free-mems env nb-actual nb-args fs fn-num)
   (make-ctx
@@ -481,7 +503,7 @@
 
 ;;
 ;; GET FREE REG
-(define (ctx-get-free-reg ctx succ nb-opnds)
+(define (ctx-get-free-reg ast ctx succ nb-opnds)
 
   ;; TODO: prefer 'preferred' to 'deep-opnd-reg' ?
 
@@ -519,12 +541,11 @@
       (cdr sl)))
 
   (if deep-opnd-reg
-      ;; TODO WIP comment
       (list '() deep-opnd-reg ctx)
-      ;; TODO WIP comment
       (let ((free-regs (ctx-free-regs ctx)))
         (if (null? free-regs)
-            (let* ((moves/mloc/ctx (ctx-get-free-mem ctx))
+            (let* ((ctx (ctx-free-dead-locs ctx ast))
+                   (moves/mloc/ctx (ctx-get-free-mem ctx))
                    (moves (car moves/mloc/ctx))
                    (mloc  (cadr moves/mloc/ctx))
                    (ctx   (caddr moves/mloc/ctx))
@@ -534,7 +555,6 @@
               (let ((ctx (ctx-set-loc-n ctx reg-slots mloc))
                     (moves (append moves
                                    (list (cons spill-reg mloc)))))
-
                 (list moves spill-reg ctx)))
             (let* ((r (and preferred (member preferred free-regs)))
                    (reg (if r (car r) (car free-regs)))
@@ -577,9 +597,40 @@
             (cons (car env)
                   (build-env (cdr env))))))
 
-  (let ((env (build-env (ctx-env ctx))))
+  ;; Add idx only if the id exists.
+  ;; The id could have been removed using liveness info.
+  (let ((r (assoc id (ctx-env ctx))))
+    (if r
+        (let ((env (build-env (ctx-env ctx))))
+          (ctx-copy ctx #f #f #f #f env))
+        ctx)))
 
-    (ctx-copy ctx #f #f #f #f env)))
+;; Take a ctx and an s-expression (ast)
+;; Remove all dead ids and free their locs (unbind)
+;; Return new context
+(define (ctx-free-dead-locs ctx ast)
+
+  (define (in-stack? slots)
+    (if (null? slots)
+        #f
+        (let ((slot (car slots)))
+          (or (>= slot (+ 2 (ctx-nb-args ctx)))
+              (in-stack? (cdr slots))))))
+
+  (define (free-deads ctx env)
+    (if (null? env)
+        ctx
+        (let ((id (caar env))
+              (identifier (cdar env)))
+          (if (and (not (live-out? id ast))
+                   (not (in-stack? (identifier-sslots identifier))))
+              ;; the id is dead and not in stack, we can unbind it
+              (let ((nctx (ctx-unbind-locals ctx (list id))))
+                (free-deads nctx (cdr env)))
+              (free-deads ctx (cdr env))))))
+
+  (let ((env (ctx-env ctx)))
+    (free-deads ctx env)))
 
 ;;
 ;; BIND CONSTANTS
@@ -670,8 +721,7 @@
 
   (define (gen-env env ids)
     (if (null? env)
-        (begin (assert (null? ids) "Internal error (ctx-unbind-locals)")
-               '())
+        '()
         (let ((ident (car env)))
           (if (member (car ident) ids)
               (gen-env (cdr env) (set-sub ids (list (car ident)) '()))
@@ -701,7 +751,7 @@
 ;; Returns:
 ;;  moves: list of moves
 ;;  ctx: updated ctx
-(define (ctx-save-call octx idx-start)
+(define (ctx-save-call ast octx idx-start)
 
   ;; pour chaque slot sur la vstack:
     ;; Si le slot appartient à une variable, et que cette variable à déjà un emplacement mémoire:
@@ -748,6 +798,9 @@
             (append moves (car r))
             (cdr r)))))
 
+  ;; Free dead locations
+
+  (set! octx (ctx-free-dead-locs octx ast))
   (save-all idx-start '() octx))
 
 ;;

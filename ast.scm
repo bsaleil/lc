@@ -318,6 +318,9 @@
 (define (atom-node-val n)
   (cadr n))
 
+(define (atom-node-val-set! node n)
+  (set-car! (cdr node) n))
+
 ;;-----------------------------------------------------------------------------
 ;; AST DISPATCH
 
@@ -447,10 +450,10 @@
                    (jump-to-version cgc succ ctx)))
               ;; Identifier is a local variable
               (local
-                (gen-get-localvar cgc ctx local succ))
+                (gen-get-localvar cgc ast ctx local succ))
               ;; Identifier is a global variable
               (global
-                (gen-get-globalvar cgc ctx global succ))
+                (gen-get-globalvar cgc ast ctx global succ))
               ;; Vector
               ((eq? sym 'vector)
                  (let* ((node-lv (atom-node-make 'list->vector))
@@ -473,18 +476,8 @@
                      (jump-to-version cgc (gen-ast ast succ) ctx))))
               (else (gen-error cgc (ERR_UNKNOWN_VAR sym))))))))
 
-(define (gen-closure-from-cst cgc ctx local succ)
-  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0))
-         (stype (ctx-identifier-type ctx (cdr local)))
-         (fn-num (ctx-type-cst stype))
-         (entry-obj (asc-globalfn-entry-get fn-num)))
-    (apply-moves cgc ctx moves)
-    (gen-closure cgc reg #f entry-obj '())
-    (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg (car local)))))
-
-(define (gen-get-localvar cgc ctx local succ)
-
-  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0))
+(define (gen-get-localvar cgc ast ctx local succ)
+  (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 0))
          (loc (ctx-identifier-loc ctx (cdr local)))
          (type (ctx-identifier-type ctx (cdr local))))
 
@@ -502,7 +495,7 @@
         (error "NYI")) ;; TODO: Free a register only if type is not a cst
     (jump-to-version cgc succ (ctx-push ctx type reg (car local)))))
 
-(define (gen-get-globalvar cgc ctx global succ)
+(define (gen-get-globalvar cgc ast ctx global succ)
 
   (let ((type (or (global-stype global) (make-ctx-tunk))))
 
@@ -510,7 +503,7 @@
         ;; Type is cst, push cst to ctx
         (jump-to-version cgc succ (ctx-push ctx type #f))
         ;; Type is not a cst, free a register and use it
-        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 0)))
           (apply-moves cgc ctx moves)
           (codegen-get-global cgc (global-pos global) reg)
           (jump-to-version cgc succ (ctx-push ctx type reg))))))
@@ -530,20 +523,20 @@
              (lambda (cgc ctx)
                (let ((global (asc-globals-get id)))
                  (if global
-                     (gen-set-globalvar cgc ctx global succ)
+                     (gen-set-globalvar cgc ast ctx global succ)
                      (error "Internal error"))))))
          (lazy-drop
            (make-lazy-code
              #f
              (lambda (cgc ctx)
-               (let ((ctx (drop-cst-value cgc ctx 0)))
+               (let ((ctx (drop-cst-value cgc ast ctx 0)))
                  (jump-to-version cgc lazy-set! ctx))))))
 
     (gen-ast (caddr ast) lazy-drop)))
 
-(define (gen-set-globalvar cgc ctx global succ)
+(define (gen-set-globalvar cgc ast ctx global succ)
   (mlet ((pos (global-pos global))
-         (moves/reg/ctx (ctx-get-free-reg ctx succ 1))
+         (moves/reg/ctx (ctx-get-free-reg ast ctx succ 1))
          (tval (ctx-get-type ctx 0))
          (cst? (ctx-type-is-cst tval))
          (lval (if cst?
@@ -581,7 +574,7 @@
 
                                   (mlet ((pos (global-pos (asc-globals-get identifier))) ;; Lookup in globals
                                          ;;
-                                         (moves/reg/ctx (ctx-get-free-reg ctx succ 1))
+                                         (moves/reg/ctx (ctx-get-free-reg ast ctx succ 1))
                                          (type (ctx-get-type ctx 0))
                                          (cst? (ctx-type-is-cst type))
                                          (lvalue (if cst?
@@ -597,7 +590,7 @@
                          (let ((type (ctx-get-type ctx 0)))
                            (if (and (ctx-type-is-cst type)
                                     (ctx-tclo? type))
-                               (let ((ctx (drop-cst-value cgc ctx 0)))
+                               (let ((ctx (drop-cst-value cgc ast ctx 0)))
                                  (jump-to-version cgc lazy-bind ctx))
                                (jump-to-version cgc lazy-bind ctx))))))
                    (lazy-val (gen-ast (caddr ast) lazy-drop)))
@@ -710,7 +703,7 @@
   (make-lazy-code-ret
     #f
     (lambda (cgc ctx)
-      (let ((ctx (drop-cst-value cgc ctx 0)))
+      (let ((ctx (drop-cst-value cgc #f ctx 0)))
         (jump-to-version cgc lazy-ret ctx)))))
 
 ;;
@@ -900,7 +893,7 @@
               (jump-to-version cgc succ ctx))
 
             ;; Gen code to create closure
-            (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
+            (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 0)))
               (apply-moves cgc ctx moves)
               (gen-closure cgc reg ctx entry-obj fvars-ncst)
               ;;
@@ -1042,7 +1035,7 @@
                (ncst '())
                (bindings bindings))
       (if (null? bindings)
-          (list cst ncst)
+          (list cst (reverse ncst))
           (let* ((binding (car bindings))
                  (id (car binding))
                  (v  (cadr binding))
@@ -1356,7 +1349,10 @@
                   (loop (cdr lates) (+ offset 8)))))
 
           ;; Update ctx and load closure
-          (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 0)))
+          ;; We do not give ast to ctx-get-free-reg because it could free a register associated to an index
+          ;; which is not yet associated to an identifier.
+          ;; The association is done with ctx-id-add-idx.
+          (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 0)))
             (apply-moves cgc ctx moves)
             (let ((dest (codegen-reg-to-x86reg reg)))
               (x86-lea cgc dest (x86-mem (+ offset-start TAG_MEMOBJ) clo-reg)))
@@ -1507,7 +1503,7 @@
           (if (< i 0)
               (jump-to-version cgc succ ctx)
               (loop (- i 1)
-                    (drop-cst-value cgc ctx i)))))))
+                    (drop-cst-value cgc ast ctx i)))))))
 
   (define (get-gambit-sym sym)
     (let* ((lstprefix (string->list "gambit$$"))
@@ -1525,7 +1521,7 @@
            (make-lazy-code
              ast
              (lambda (cgc ctx)
-               (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ (length (cdr ast))))
+               (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ (length (cdr ast))))
                       (gsym (get-gambit-sym (atom-node-val (car ast))))
                       (nargs (length (cdr ast))))
                  (apply-moves cgc ctx moves)
@@ -1611,7 +1607,7 @@
     (make-lazy-code
       ast
       (lambda (cgc ctx)
-        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1)))
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 1)))
           (apply-moves cgc ctx moves)
           (codegen-set-bool cgc r reg)
           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg))))))
@@ -1656,7 +1652,7 @@
     ast
     (lambda (cgc ctx)
       (mlet ((label-div0 (get-label-error ERR_DIVIDE_ZERO))
-             (moves/reg/ctx (ctx-get-free-reg ctx succ 2))
+             (moves/reg/ctx (ctx-get-free-reg ast ctx succ 2))
              (tleft  (ctx-get-type ctx 1))
              (tright (ctx-get-type ctx 0))
              (lcst?  (ctx-type-is-cst tleft))
@@ -1693,7 +1689,7 @@
             ((lazy-code-generator succ) cgc nctx x86-jne)))))
 
   (define (gen-eq? cgc ctx typel typer lcst? rcst?)
-    (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 2))
+    (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 2))
            (ll (if lcst? (ctx-type-cst typel)
                                (ctx-get-loc  ctx 1)))
            (lr (if rcst? (ctx-type-cst typer)
@@ -1803,7 +1799,7 @@
                         (x86-mov cgc (x86-rax) opnd)
                         (set! opnd (x86-rax))))
                   (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) opnd))
-                (mlet ((moves/reg/ctx (ctx-get-free-reg (ctx-pop-n ctx len) succ 0)))
+                (mlet ((moves/reg/ctx (ctx-get-free-reg ast (ctx-pop-n ctx len) succ 0)))
                    (apply-moves cgc ctx moves)
                    ;; Load first pair in dest register
                    (let ((dest (codegen-reg-to-x86reg reg)))
@@ -1939,7 +1935,7 @@
               (let ((type (ctx-get-type ctx i)))
                 (if (and (ctx-type-is-cst type)
                          (ctx-tclo? type))
-                    (loop (- i 1) (drop-cst-value cgc ctx i))
+                    (loop (- i 1) (drop-cst-value cgc ast ctx i))
                     (loop (- i 1) ctx))))))))
 
   ;;
@@ -1951,7 +1947,7 @@
             ast
             (lambda (cgc ctx)
               (define nb-opnds (length (cdr ast)))
-              (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ nb-opnds)))
+              (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ nb-opnds)))
                 (apply-moves cgc ctx moves)
                 (gen-primitive cgc ctx succ reg prim)))))))
 
@@ -2230,7 +2226,7 @@
   (if tail?
       ;; Tail call, no register to save and no continuation to generate
       ctx
-      (mlet ((moves/nctx (ctx-save-call ctx idx-offset)))
+      (mlet ((moves/nctx (ctx-save-call ast ctx idx-offset)))
         (define fctx (ctx-fs-inc nctx))
         ;; Save registers
         (set! moves (cons (cons 'fs 1) moves))
@@ -2380,7 +2376,7 @@
             (jump-to-version
               cgc
               (gen-ast-l (cdr ast) lazy-call)
-              (ctx-push ctx (make-ctx-tclo #t (cdr fn-id-inf)) #f))
+              (ctx-push ctx (make-ctx-tclo #t (cdr fn-id-inf)) #f (atom-node-val (car ast))))
             (jump-to-version
               cgc
               (check-types (list ATX_CLO) (list (car ast)) (gen-ast-l (cdr ast) lazy-call) ast)
@@ -2593,7 +2589,7 @@
                 ;; In these cases, we need a free register
                 ;; Then, get a free register, apply moves, and use it.
                 (else
-                  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ nopnd-regalloc)))
+                  (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ nopnd-regalloc)))
                     (apply-moves cgc ctx moves)
                     (cond
                       (num-op?
@@ -2629,7 +2625,7 @@
                 ;; In these cases, we need a free register
                 ;; Then, get a free register, apply moves, and use it.
                 (else
-                  (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 2)))
+                  (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 2)))
                     (apply-moves cgc ctx moves)
                     (cond
                       (num-op?
@@ -2659,7 +2655,7 @@
     (make-lazy-code
       #f
       (lambda (cgc ctx)
-        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx succ 1)))
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 1)))
           (apply-moves cgc ctx moves)
           (codegen-set-bool cgc bool reg)
           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg))))))
@@ -2907,7 +2903,7 @@
 ;; * If it is a constant, free a register, put it in a register,
 ;;   update ctx, return updated ctx
 ;; * Else return unmodified ctx
-(define (drop-cst-value cgc ctx ctx-idx)
+(define (drop-cst-value cgc ast ctx ctx-idx)
 
   (define (alloc-cstfn reg cst)
     (let ((entry-obj (asc-globalfn-entry-get cst)))
@@ -2920,7 +2916,7 @@
   (let* ((type (ctx-get-type ctx ctx-idx))
          (cst? (ctx-type-is-cst type)))
     (if cst?
-        (mlet ((moves/reg/ctx (ctx-get-free-reg ctx #f 0))
+        (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx #f 0))
                (cst (ctx-type-cst type)))
           (apply-moves cgc ctx moves)
           ;; Move object to free register

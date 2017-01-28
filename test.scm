@@ -1,54 +1,14 @@
 
-(define make-sumer
-  (lambda (n)
-    (letrec ((f (lambda (x)
-                  (if (> x n)
-                      0
-                      (+ x (f (+ x 1)))))))
-      f)))
-
-(define sum-to-10 (make-sumer 10))
-(define sum-to-pi (make-sumer 3.14))
-
-(println (sum-to-10 6))    ; 6 + 7 + 8 + 9 + 10
-(println (sum-to-10 7.5))  ; 7.5 + 8.5 + 9.5
-(println (sum-to-pi 1.10)) ; 1.10 + 2.10 + 3.10
-;(define (make-sumer n)
-;  (letrec ((f (lambda (x)
-;    (if (> x n)
-;        0
-;        (+ x (f (+ x 1)))))))
-;  f))
-;
-;(define sum-to-10 (make-sumer 10))
-;(define sum-to-pi (make-sumer 3.14))
-;
-;(println (sum-to-10 6)) ; 6 + 7 + 8 + 9 + 10
-;(println (sum-to-10 7.5)) ; 7.5 + 8.5 + 9.5
-;(println (sum-to-pi 1.10)) ; 1.10 + 2.10 + 3.10
+;; out.scm 1333
+;; TODO: use kill set for let & letrec
 
 
-;(define (fib n)
-;  (if (< n 2)
-;      1
-;      (+ (fib (- n 1))
-;         (fib (- n 2)))))
-;
-;(fib 42)
 
-;(define (foo)
-;
-;  (let ((a 100))
-;    (let ((b (+ a 12)))
-;      11)))
-;
-;(foo)
-;
-;
-;
-;
-;
-;
+
+
+
+
+
 
 ;; WIP:
 ;; -> Quand on génère un E.P. générique, il faut patcher le pt générique + la fermeture a l'index
