@@ -1258,11 +1258,6 @@
   (set! ctx (ctx-free-dead-locs ctx (lazy-code-ast lazy-code)))
 
   (cond
-    ;; A version already exists
-    ((get-version lazy-code ctx)
-       ;; Use existing version
-       (let ((label (get-version lazy-code ctx)))
-         (fn-patch label #f)))
     ;; No version for this ctx, but limit is not reached
     ((or (not opt-max-versions)
          (< nb-versions opt-max-versions))
@@ -1270,9 +1265,13 @@
        (let ((label (generate-new-version ctx)))
          (put-version lazy-code ctx label #t)
          (fn-patch label #t)))
+    ;; A version already exists
+    ((get-version lazy-code ctx)
+       ;; Use existing version
+       (let ((label (get-version lazy-code ctx)))
+         (fn-patch label #f)))
     ;; No version for this ctx, limit reached, and generic version exists
     ((lazy-code-generic-vers lazy-code)
-
        ;; TODO what if fn-opt-label is set ?
        (let* ((gctx (lazy-code-generic-ctx lazy-code))
               (label-generic (lazy-code-generic-vers lazy-code))
@@ -1282,7 +1281,6 @@
     ;; No version for this ctx, limit reached, and generic version does not exist
     (else
       ;; TODO what if fn-opt-label is set ?
-
       (let* ((entry-lco? (member 'entry (lazy-code-flags lazy-code)))
              (gctx (if entry-lco? ctx (ctx-generic ctx)))
              ;; Generate merge only if not entry
