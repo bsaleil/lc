@@ -186,6 +186,7 @@
     ((string?  l) (make-ctx-tstr #t l))
     ((symbol?  l) (make-ctx-tsym #t l))
     ((flonum?  l) (make-ctx-tflo #t l))
+    ((##bignum? l) (make-ctx-tflo #t (exact->inexact l)))
     (else (pp l) (error "Internal error (literal->ctx-type)"))))
 
 ;; CTX IDENTIFIER LOC

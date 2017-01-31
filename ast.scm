@@ -298,6 +298,23 @@
     (real?               ,dummy-cst-all #f                #f                        ,ATX_BOO 1 ,ATX_ALL                   )
     (eqv?                ,dummy-cst-all #f                #f                        ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          ))))
 
+(define (get-prim-lambda ast sym primitive)
+  (let ((nbargs (primitive-nbargs primitive)))
+    (if nbargs
+        ;; Fixed nb args primitive
+        (let* ((args (build-list (primitive-nbargs primitive) (lambda (x) (string->symbol (string-append "arg" (number->string x))))))
+               (args-nodes (map atom-node-make args)))
+          `(lambda ,args (,ast ,@args-nodes)))
+        ;; Rest param primitive
+        (cond ((eq? sym 'list)
+                 (let ((node-l (atom-node-make 'l)))
+                   `(lambda l ,node-l)))
+              ((eq? sym 'vector)
+                 (let ((node-l (atom-node-make 'l))
+                       (node-lv (atom-node-make 'list->vector)))
+                   (error "U")))
+              (else (error "Internal error"))))))
+
 (define (assert-p-nbargs sym ast)
   (let ((prim (primitive-get sym)))
     (assert (or (not (primitive-nbargs prim))
@@ -454,25 +471,10 @@
               ;; Identifier is a global variable
               (global
                 (gen-get-globalvar cgc ast ctx global succ))
-              ;; Vector
-              ((eq? sym 'vector)
-                 (let* ((node-lv (atom-node-make 'list->vector))
-                        (node-l  (atom-node-make 'l))
-                        (lco     (gen-ast `(lambda l (,node-lv ,node-l)) succ)))
-                   (jump-to-version cgc lco ctx)))
-              ;; List
-              ((eq? sym 'list)
-                 (let* ((node (atom-node-make 'n))
-                        (lco  (gen-ast `(lambda n ,node) succ)))
-                   (jump-to-version cgc lco ctx)))
               ;; Primitive
               ((primitive-get sym) =>
                  (lambda (r)
-                   (let ((ast
-                           ;; primitive with fixed number of args
-                           (let* ((args (build-list (primitive-nbargs r) (lambda (x) (string->symbol (string-append "arg" (number->string x))))))
-                                  (args-nodes (map atom-node-make args)))
-                             `(lambda ,args (,ast ,@args-nodes)))))
+                   (let ((ast (get-prim-lambda ast sym r)))
                      (jump-to-version cgc (gen-ast ast succ) ctx))))
               (else (gen-error cgc (ERR_UNKNOWN_VAR sym))))))))
 
@@ -553,7 +555,6 @@
 ;; Make lazy code from DEFINE
 ;;
 (define (mlc-define ast succ)
-
   (let ((global (asc-globals-get (cadr ast))))
     (cond
           ((and global (ctx-tclo? (global-stype global)))
@@ -566,37 +567,47 @@
                 (lambda (cgc ctx)
                   (jump-to-version cgc succ (ctx-push ctx (global-stype global) #f))))))
           (else
-            ;;
-            (let* ((identifier (cadr ast))
-                   (lazy-bind (make-lazy-code
-                                #f
-                                (lambda (cgc ctx)
+            (let* ((val (and (atom-node? (caddr ast)) (atom-node-val (caddr ast))))
+                   (primitive (and val (assoc val primitives))))
+              (if primitive
+                  ;; form (define sym primitive)
+                  (begin (set! primitives
+                           (cons (cons (cadr ast) (cdr primitive))
+                                 primitives))
+                         (make-lazy-code #f
+                             (lambda (cgc ctx)
+                               (jump-to-version cgc succ (ctx-push ctx (make-ctx-tboo #t #f) #f)))))
+                  ;; other
+                  (let* ((identifier (cadr ast))
+                         (lazy-bind (make-lazy-code
+                                      #f
+                                      (lambda (cgc ctx)
 
-                                  (mlet ((pos (global-pos (asc-globals-get identifier))) ;; Lookup in globals
-                                         ;;
-                                         (moves/reg/ctx (ctx-get-free-reg ast ctx succ 1))
-                                         (type (ctx-get-type ctx 0))
-                                         (cst? (ctx-type-is-cst type))
-                                         (lvalue (if cst?
-                                                     (ctx-type-cst type)
-                                                     (ctx-get-loc ctx 0))))
-                                    (apply-moves cgc ctx moves)
-                                    (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue cst?)
-                                    (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))))
-                   (lazy-drop
-                     (make-lazy-code
-                      #f
-                       (lambda (cgc ctx)
-                         (let ((type (ctx-get-type ctx 0)))
-                           (if (and (ctx-type-is-cst type)
-                                    (ctx-tclo? type))
-                               (let ((ctx (drop-cst-value cgc ast ctx 0)))
-                                 (jump-to-version cgc lazy-bind ctx))
-                               (jump-to-version cgc lazy-bind ctx))))))
-                   (lazy-val (gen-ast (caddr ast) lazy-drop)))
+                                        (mlet ((pos (global-pos (asc-globals-get identifier))) ;; Lookup in globals
+                                               ;;
+                                               (moves/reg/ctx (ctx-get-free-reg ast ctx succ 1))
+                                               (type (ctx-get-type ctx 0))
+                                               (cst? (ctx-type-is-cst type))
+                                               (lvalue (if cst?
+                                                           (ctx-type-cst type)
+                                                           (ctx-get-loc ctx 0))))
+                                          (apply-moves cgc ctx moves)
+                                          (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue cst?)
+                                          (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))))
+                         (lazy-drop
+                           (make-lazy-code
+                            #f
+                             (lambda (cgc ctx)
+                               (let ((type (ctx-get-type ctx 0)))
+                                 (if (and (ctx-type-is-cst type)
+                                          (ctx-tclo? type))
+                                     (let ((ctx (drop-cst-value cgc ast ctx 0)))
+                                       (jump-to-version cgc lazy-bind ctx))
+                                     (jump-to-version cgc lazy-bind ctx))))))
+                         (lazy-val (gen-ast (caddr ast) lazy-drop)))
 
-              (put-i64 (+ globals-addr (* 8 (global-pos (asc-globals-get (cadr ast))))) ENCODING_VOID)
-              lazy-val)))))
+                    (put-i64 (+ globals-addr (* 8 (global-pos (asc-globals-get (cadr ast))))) ENCODING_VOID)
+                    lazy-val)))))))
 
 ;;
 ;; Make lazy code from LAMBDA

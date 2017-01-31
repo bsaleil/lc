@@ -148,9 +148,9 @@
 (pp (assq 5 lst))
 (pp (assq 8 lst))
 
-(define lst '(("one" . 1) ("two" . 2)))
+(define lst2 '(("one" . 1) ("two" . 2)))
 
-(pp (assq "one" lst))
+(pp (assq "one" lst2))
 
 (println "Map")
 
