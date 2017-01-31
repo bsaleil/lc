@@ -340,6 +340,7 @@
               ((equal? (car expr) 'write-char)    (using-same-locat (expand-write-char expr) expr))
               ((equal? (car expr) 'list)          (using-same-locat (expand-list expr) expr))
               ((equal? (car expr) 'append)        (using-same-locat (expand-append expr) expr))
+              ((equal? (car expr) 'apply)         (using-same-locat (expand-apply expr) expr))
               ((member (car expr) '(real? eqv?))  (using-same-locat (expand-prim expr)   expr))
               ((member (car expr) '(> >= < <= =)) (using-same-locat (expand-cmp expr)    expr))
               ((member (car expr) '(+ - * /))     (using-same-locat (expand-numop expr)  expr))
@@ -389,14 +390,27 @@
             (map expand (cdr expr)))))
 
 (define (expand-append expr)
-  (define args (cdr expr))
-  (define len (length args))
+  (let* ((args (cdr expr))
+         (len (length args)))
+      (cond ((= len 0) (atom-node-make '()))
+            ((= len 1) (expand (cadr expr)))
+            ((= len 2) (expand (cons '##append-two args)))
+            (else      (cons (atom-node-make 'append)
+                             (map expand args))))))
 
-  (cond ((= len 0) (atom-node-make '()))
-        ((= len 1) (expand (cadr expr)))
-        ((= len 2) (expand (cons '##append-two args)))
-        (else      (cons (atom-node-make 'append)
-                         (map expand args)))))
+(define (expand-apply expr)
+  (let* ((args (cddr expr))
+         (len (length args)))
+  (cond
+      ((= len 0) (error ERR_WRONG_NUM_ARGS))
+      ((= len 1)
+        (expand (cons '##apply (cdr expr))))
+      (else
+        (let ((op   (cadr expr))
+              (larg (list-head args (- (length args) 1)))
+              (lst  (list-ref  args (- (length args) 1))))
+          (expand
+            `(##apply ,op (append (list ,@larg) ,lst))))))))
 
 (define (expand-prim expr)
 

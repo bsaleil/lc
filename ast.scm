@@ -1854,34 +1854,43 @@
       (call-get-closure cgc ctx 1)
 
       (let* ((label-end (asm-make-label #f (new-sym 'apply-end-args)))
-             (llst (ctx-get-loc ctx 0))
-             (oplst (codegen-loc-to-x86opnd (ctx-fs ctx) llst)))
-        ;; r11, selector & r15 are used as tmp registers
-        ;; It is safe because they are not used for parameters.
-        ;; And if they are used after, they already are saved on the stack
-        (x86-mov cgc (x86-rdx) oplst)
-        (x86-mov cgc (x86-r11) (x86-imm-int 0))
-        (let loop ((args-regs args-regs))
-          (if (null? args-regs)
-              (let ((label-loop (asm-make-label #f (new-sym 'apply-loop-args))))
-                (x86-label cgc label-loop)
-                (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
-                (x86-je cgc label-end)
-                  (x86-add cgc (x86-r11) (x86-imm-int 4))
-                  (x86-mov cgc selector-reg (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
-                  (x86-upush cgc selector-reg)
-                  (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
-                  (x86-jmp cgc label-loop))
-              (begin
-                (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
-                (x86-je cgc label-end)
-                  (x86-add cgc (x86-r11) (x86-imm-int 4))
-                  (x86-mov cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (car args-regs)) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
-                  (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
-                (loop (cdr args-regs)))))
-        (x86-label cgc label-end)
-        ;; Reset selector used as tmp reg
-        (x86-mov cgc selector-reg (x86-imm-int 0))
+             (lsttype (ctx-get-type ctx 0)))
+        (cond
+          ((and (ctx-type-is-cst lsttype)
+                (null? (ctx-type-cst lsttype)))
+             ;; Only write the number of arguments (0)
+             (x86-mov cgc (x86-r11) (x86-imm-int 0)))
+          ((ctx-type-is-cst lsttype)
+             (error "NYI - apply (other cst)"))
+          (else
+             (let* ((llst  (ctx-get-loc ctx 0))
+                    (oplst (codegen-loc-to-x86opnd (ctx-fs ctx) llst)))
+               ;; r11, selector & r15 are used as tmp registers
+               ;; It is safe because they are not used for parameters.
+               ;; And if they are used after, they already are saved on the stack
+               (x86-mov cgc (x86-rdx) oplst)
+               (x86-mov cgc (x86-r11) (x86-imm-int 0))
+               (let loop ((args-regs args-regs))
+                 (if (null? args-regs)
+                     (let ((label-loop (asm-make-label #f (new-sym 'apply-loop-args))))
+                       (x86-label cgc label-loop)
+                       (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
+                       (x86-je cgc label-end)
+                         (x86-add cgc (x86-r11) (x86-imm-int 4))
+                         (x86-mov cgc selector-reg (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
+                         (x86-upush cgc selector-reg)
+                         (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
+                         (x86-jmp cgc label-loop))
+                     (begin
+                       (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
+                       (x86-je cgc label-end)
+                         (x86-add cgc (x86-r11) (x86-imm-int 4))
+                         (x86-mov cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (car args-regs)) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
+                         (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
+                       (loop (cdr args-regs)))))
+               (x86-label cgc label-end)
+               ;; Reset selector used as tmp reg
+               (x86-mov cgc selector-reg (x86-imm-int 0)))))
 
         (let ((fn-id-inf (call-get-eploc ctx (cadr ast))))
           (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
