@@ -739,7 +739,7 @@
         (opright (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
 
     ;; Alloc result flonum
-    (gen-allocation-imm cgc STAG_FLONUM 8)
+    ;(gen-allocation-imm cgc STAG_FLONUM 8)
 
     ;;
     (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd) (/ . ,x86-divsd))))))
@@ -757,11 +757,8 @@
                (x86-movd/movq cgc (x86-xmm0) (x86-rax)))
             (else
                (if (x86-mem? opleft)
-                   (begin
-                     (x86-mov cgc (x86-rax) opleft)
-                     (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                   (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opleft)))))
-
+                   (x86-movsd cgc (x86-xmm0) opleft)
+                   (x86-movd/movq cgc (x86-xmm0) opleft))))
       ;; Right operand
       (cond ((and rightint? rcst?)
                (x86-mov cgc (x86-rax) (x86-imm-int lright))
@@ -778,16 +775,13 @@
                (x86-op cgc (x86-xmm0) (x86-xmm1)))
             (else
                (if (x86-mem? opright)
+                   (x86-op cgc (x86-xmm0) opright)
                    (begin
-                     (x86-mov cgc (x86-rax) opright)
-                     (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                   (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright)))))
+                     (x86-movd/movq cgc (x86-xmm1) opright)
+                     (x86-op cgc (x86-xmm0) (x86-xmm1))))))
 
       ;; Write number
-      (x86-movsd cgc (x86-mem -8 alloc-ptr) (x86-xmm0))
-
-      ;; Put
-      (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))))
+      (x86-movd/movq cgc dest (x86-xmm0)))))
 
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
@@ -870,10 +864,8 @@
              (error "NYI3"))
           (else
              (if (x86-mem? opleft)
-                 (begin
-                   (x86-mov cgc (x86-rax) opleft)
-                   (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                 (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opleft)))))
+                 (x86-movsd cgc (x86-xmm0) opleft)
+                 (x86-movd/movq cgc (x86-xmm0) opleft))))
 
     ;; Right operand
     (cond ((and rightint? rcst?)
@@ -889,10 +881,10 @@
              (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
           (else
              (if (x86-mem? opright)
+                 (x86-comisd cgc (x86-xmm0) opright)
                  (begin
-                   (x86-mov cgc (x86-rax) opright)
-                   (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                 (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright)))))
+                   (x86-movd/movq cgc (x86-xmm1) opright)
+                   (x86-comisd cgc (x86-xmm0) (x86-xmm1))))))
 
     ;; NOTE: check that mlc-if patch is able to patch ieee jcc instructions (ja, jb, etc...)
     (if inline-if-cond?

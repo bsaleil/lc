@@ -268,7 +268,7 @@
     (modulo              ,cst-binop     ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (remainder           ,dummy-cst-all ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (zero?               ,dummy-cst-all ,lco-p-zero?      #f                        ,ATX_BOO 1 ,ATX_NUM                   )
-    (not                 ,cst-not       #f                ,codegen-p-not            ,ATX_BOO 1 ,ATX_ALL                   )
+    (not                 ,cst-not       ,lco-p-not        #f                        ,ATX_BOO 1 ,ATX_ALL                   )
     (set-car!            #f             #f                ,codegen-p-set-cxr!       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (set-cdr!            #f             #f                ,codegen-p-set-cxr!       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (vector-length       ,dummy-cst-all #f                ,codegen-p-vector-length  ,ATX_INT 1 ,ATX_VEC                   )
@@ -282,7 +282,7 @@
     (exit                #f             #f                 #f                       ,ATX_VOI 0                            )
     (make-vector         #f             #f                ,codegen-p-make-vector    ,ATX_VEC 2 ,ATX_INT ,ATX_ALL          )
     (make-string         #f             #f                ,codegen-p-make-string    ,ATX_STR 2 ,ATX_INT ,ATX_CHA          )
-    (eof-object?         ,dummy-cst-all #f                ,codegen-p-eof-object?    ,ATX_BOO 1 ,ATX_ALL                   )
+    (eof-object?         ,dummy-cst-all ,lco-p-eof-object #f                        ,ATX_BOO 1 ,ATX_ALL                   )
     (symbol->string      ,dummy-cst-all #f                ,codegen-p-symbol->string ,ATX_STR 1 ,ATX_SYM                   )
     (current-output-port #f             ,lco-p-cur-x-port #f                        ,ATX_OPO 0                            )
     (current-input-port  #f             ,lco-p-cur-x-port #f                        ,ATX_IPO 0                            )
@@ -652,7 +652,7 @@
                (let* ((nb-extra (- nb-actual (- nb-formal 1)))
                       (nctx (ctx-pop-n ctx (- nb-extra 1)))
                       (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f)))
-                 (set! ctx nctx)
+
                  (let* ((nb-formal-stack
                           (if (> (- nb-formal 1) (length args-regs))
                               (- nb-formal 1 (length args-regs))
@@ -672,6 +672,18 @@
                           (if (<= nb-formal (length args-regs))
                               (list-ref args-regs (- nb-formal 1))
                               #f)))
+
+                   (let* ((memtypes (list-head (ctx-stack ctx) nb-rest-stack))
+                          (memlocs  (build-list nb-rest-stack (lambda (n) (cons 'm n))))
+                          (fs (+ (ctx-fs ctx) -1))
+                          (regtypes (list-tail
+                                      (list-head (ctx-stack ctx) nb-extra)
+                                      nb-rest-stack))
+                          (types (append memtypes regtypes))
+                          (locs  (append (reverse memlocs) (reverse rest-regs))))
+                     (gen-box-flonums cgc fs locs types))
+
+                   (set! ctx nctx)
 
                    (codegen-prologue-rest>
                      cgc
@@ -1522,11 +1534,13 @@
            (lstres (list-tail lstsym (length lstprefix))))
       (string->symbol (list->string lstres))))
 
-  (define (get-locs ctx nlocs)
+  (define (get-types/locs ctx nlocs)
     (if (= nlocs 0)
         '()
-        (cons (ctx-get-loc ctx (- nlocs 1))
-              (get-locs ctx (- nlocs 1)))))
+        (cons (cons
+                (ctx-get-type ctx (- nlocs 1))
+                (ctx-get-loc ctx  (- nlocs 1)))
+              (get-types/locs ctx (- nlocs 1)))))
 
   (let* ((lazy-call
            (make-lazy-code
@@ -1536,13 +1550,25 @@
                       (gsym (get-gambit-sym (atom-node-val (car ast))))
                       (nargs (length (cdr ast))))
                  (apply-moves cgc ctx moves)
-                 (let ((locs (get-locs ctx nargs)))
-                   (let loop ((clocs locs)
+                 (let ((tl (get-types/locs ctx nargs)))
+                   (let loop ((tl tl)
                               (fs (ctx-fs ctx)))
-                     (if (not (null? clocs))
-                         (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs (car clocs)))
-                                (x86-upush cgc (x86-rax))
-                                (loop (cdr clocs) (+ fs 1))))))
+                     (if (not (null? tl))
+                         (let* ((type (caar tl))
+                                (loc  (cdar tl)))
+                           (if (ctx-tflo? type)
+                               ;;
+                               (let ((opnd (codegen-loc-to-x86opnd fs loc)))
+                                 (gen-allocation-imm cgc STAG_FLONUM 8)
+                                 (if (x86-mem? loc)
+                                   (begin (x86-mov cgc (x86-rax) opnd)
+                                          (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax)))
+                                   (x86-mov cgc (x86-mem -8 alloc-ptr) opnd))
+                                 (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))
+                               ;;
+                               (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs loc)))
+                           (x86-upush cgc (x86-rax))
+                           (loop (cdr tl) (+ fs 1))))))
                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding nargs)))
                  (x86-upush cgc (x86-rax))
                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding gsym)))
@@ -1650,6 +1676,36 @@
            succ)))
 
 ;;
+;; Special primitive 'not'
+(define (lco-p-not ast op succ)
+  (make-lazy-code ast
+    (lambda (cgc ctx)
+        (let ((type (ctx-get-type ctx 0)))
+          ;TODO(assert (not (member 'cond (lazy-code-flags succ))) "Internal error. This case should be handled in expand.scm")
+          (assert (not (ctx-type-is-cst type)) "Internal error. Cst prim function should be called")
+          (if (or (ctx-tboo? type)
+                  (ctx-tunk? type))
+              (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 1))
+                     (loc  (ctx-get-loc ctx 0)))
+                (codegen-p-not cgc (ctx-fs ctx) op reg #f loc #f)
+                (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg)))
+              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (literal->ctx-type #f) #f)))))))
+
+;;
+;; Special primitive 'eof-object?'
+(define (lco-p-eof-object ast op succ)
+  (make-lazy-code ast
+    (lambda (cgc ctx)
+      (let ((type (ctx-get-type ctx 0)))
+        (assert (not (ctx-type-is-cst type)) "Internal error. Cst prim function should be called")
+        (if (ctx-tunk? type)
+            (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 1))
+                   (loc  (ctx-get-loc ctx 0)))
+              (codegen-p-eof-object cgc (ctx-fs ctx) op reg #f loc #f)
+              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg)))
+            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (literal->ctx-type #f) #f)))))))
+
+;;
 ;; Special primitive 'char=?'
 (define (lco-p-char=? ast op succ)
   (let ((node (atom-node-make 'eq?)))
@@ -1724,7 +1780,11 @@
              (lcst? (ctx-type-is-cst typel))
              (rcst? (ctx-type-is-cst typer))
              (if-cond? (member 'cond (lazy-code-flags succ))))
-        (cond ((and lcst? rcst? if-cond?)
+        (cond ;; One of the two is an unboxed flonum
+              ((or (ctx-tflo? typel)
+                   (ctx-tflo? typer))
+                 (jump-to-version cgc succ (ctx-push ctx (literal->ctx-type #f) #f)))
+              ((and lcst? rcst? if-cond?)
                  (error "NYI"))
               ((and lcst? rcst?)
                  (if (or (ctx-tclo? typel)
@@ -2636,7 +2696,12 @@
                (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
 
           (cond ((and (not inlined-if-cond?) lcst? rcst?)
-                  (error "NYI1"))
+                  (let ((cst (eval (list op lloc rloc))))
+                    (if (and (##mem-allocated? cst)
+                             (not (eq? (mem-allocated-kind cst) 'PERM)))
+                        (set! cst (copy-permanent cst #f perm-domain)))
+                    (let ((ctx (ctx-push (ctx-pop-n ctx 2) (literal->ctx-type cst) #f)))
+                      (jump-to-version cgc succ ctx))))
                 ((and lcst? rcst?)
                   (error "NYI2"))
                 (inlined-if-cond?
@@ -2919,6 +2984,25 @@
 ;; UTILS
 ;;
 
+(define (gen-box-flonums cgc fs locs types)
+  (if (not (null? locs))
+      (let ((type (car types))
+            (loc  (car locs)))
+        (if (ctx-tflo? type)
+            (let ((opnd (codegen-loc-to-x86opnd fs loc)))
+              (gen-allocation-imm cgc STAG_FLONUM 8)
+              (if (x86-mem? opnd)
+                  (begin
+                    (x86-mov cgc (x86-rax) opnd)
+                    (x86-mov cgc (x86-mem -8 alloc-ptr) (x86-rax))
+                    (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
+                    (x86-mov cgc opnd (x86-rax)))
+                  (begin
+                    (x86-mov cgc (x86-mem -8 alloc-ptr) opnd)
+                    (x86-lea cgc opnd (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))))))
+              ;(assert (not (ctx-ident-at from)) (error "Internal error - NYI"))))
+        (gen-box-flonums cgc fs (cdr locs) (cdr types)))))
+
 ;; Check if type at index ctx-idx represents a constant
 ;; * If it is a constant, free a register, put it in a register,
 ;;   update ctx, return updated ctx
@@ -2930,8 +3014,12 @@
       (gen-closure cgc reg #f entry-obj '())))
 
   (define (alloc-cst reg cst)
-    (let ((opnd (codegen-reg-to-x86reg reg)))
-      (x86-mov cgc opnd (x86-imm-int (obj-encoding cst)))))
+    (let ((opnd (codegen-reg-to-x86reg reg))
+          (imm
+            (if (flonum? cst)
+                (get-i64 (+ (- TAG_MEMOBJ) OFFSET_FLONUM (obj-encoding cst)))
+                (obj-encoding cst))))
+      (x86-mov cgc opnd (x86-imm-int imm))))
 
   (let* ((type (ctx-get-type ctx ctx-idx))
          (cst? (ctx-type-is-cst type)))

@@ -1190,7 +1190,9 @@
                          (src
                            (if (ctx-tclo? type)
                                (cons 'constfn (ctx-type-cst type))
-                               (cons 'const (ctx-type-cst type)))))
+                               (if (ctx-tflo? type)
+                                   (error "WIP float")
+                                   (cons 'const (ctx-type-cst type))))))
                     (cons (cons src dst) (loop (cdr sl))))))))))
 
   (let* ((req-moves (get-req-moves))

@@ -1126,6 +1126,10 @@
                           ;; If src is a constfn, create closure in move
                           (car move))
                        ((and (pair? (car move))
+                             (eq? (caar move) 'const)
+                             (flonum? (cdar move)))
+                          (x86-imm-int (get-i64 (+ (- TAG_MEMOBJ) OFFSET_FLONUM (obj-encoding (cdar move))))))
+                       ((and (pair? (car move))
                              (eq? (caar move) 'const))
                           (x86-imm-int (obj-encoding (cdar move))))
                        ((eq? (car move) 'rtmp)
@@ -1631,7 +1635,29 @@
                 (jump-to-version cgc lazy-fail ctx-fail))
                ;; known == unknown
                (else
-                 (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
+                 (let* ((lazy-success
+                          (if (ctx-tflo? ctx-type)
+                              (make-lazy-code #f
+                                (lambda (cgc ctx)
+                                  (let ((ident (ctx-ident-at ctx stack-idx)))
+                                    (if ident
+                                        ;; get id loc, unbox float and set id loc to this loc
+                                        (let ((loc (ctx-identifier-loc ctx (cdr ident))))
+                                          (set! ctx (ctx-set-loc ctx stack-idx loc))
+                                          (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
+                                            (x86-mov cgc (x86-rax) opnd)
+                                            (x86-mov cgc (x86-rax) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) (x86-rax)))
+                                            (x86-mov cgc opnd (x86-rax))
+                                            (jump-to-version cgc lazy-success ctx)))
+                                        (let ((loc (ctx-get-loc ctx stack-idx)))
+                                          ;; TODO WIP
+                                          (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) loc)))
+                                            (x86-mov cgc (x86-rax) opnd)
+                                            (x86-mov cgc (x86-rax) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) (x86-rax)))
+                                            (x86-mov cgc opnd (x86-rax))
+                                            (jump-to-version cgc lazy-success ctx)))))))
+                              lazy-success))
+                        (label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
                         (stub-first-label-addr #f)
                         (stub-labels
                               (add-callback cgc 1

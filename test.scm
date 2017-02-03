@@ -2,12 +2,18 @@
 ;; out.scm 1333
 ;; TODO: use kill set for let & letrec
 
-(define lst '((2 . "two")))
+(define (foo n)
+  (gambit$$pp (cons n 100.3)))
 
-(pp (assq 0 lst))
-(define lst2 '(("one" . 1)))
+(define (bar n)
+  (gambit$$pp (list n 100.3)))
 
+(define (baz n)
+  (gambit$$pp (vector n 100.3)))
 
+(foo 3.3)
+(bar 2.2)
+(baz 5.5)
 
 ;; WIP:
 ;; -> Quand on génère un E.P. générique, il faut patcher le pt générique + la fermeture a l'index
