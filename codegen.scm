@@ -229,6 +229,8 @@
          (codegen-reg-to-x86reg loc))
         ((ctx-loc-is-memory? loc)
          (codegen-mem-to-x86mem fs loc))
+        ((ctx-loc-is-fregister? loc)
+         (codegen-freg-to-x86reg loc))
         (else (error "Internal error"))))
 
 (define (codegen-mem-to-x86mem fs mem)
@@ -239,6 +241,9 @@
         ((eq? reg 'tmp) tmp-reg)
         (else
           (cdr (assoc reg codegen-regmap)))))
+
+(define (codegen-freg-to-x86reg freg)
+  (list-ref regalloc-fregs (cdr freg)))
 
 (define (codegen-is-imm-64? imm)
   (or (< imm -2147483648)
@@ -554,13 +559,17 @@
     (x86-lea cgc dest (x86-mem offset alloc-ptr))))
 
 ;;
-(define (codegen-return-common cgc fs clean-nb lretobj lretval)
+(define (codegen-return-common cgc fs clean-nb lretobj lretval float?)
   (let ((opretobj (codegen-loc-to-x86opnd fs lretobj))
         (opretval (codegen-loc-to-x86opnd fs lretval))
-        (opret    (codegen-reg-to-x86reg return-reg)))
+        (opret    (if float?
+                      (codegen-freg-to-x86reg return-freg)
+                      (codegen-reg-to-x86reg return-reg))))
     ;; Move return value to return register
     (if (not (eq? opret opretval))
-        (x86-mov cgc opret opretval))
+        (if float?
+            (x86-movsd cgc opret opretval)
+            (x86-mov cgc opret opretval)))
     ;; Move return address (or cctable address) in rdx
     (if (not (eq? opretobj (x86-rdx)))
         (x86-mov cgc (x86-rdx) opretobj))
@@ -571,13 +580,14 @@
 ;; Generate function return using a return address
 ;; Retaddr (or cctable) is in rdx
 (define (codegen-return-rp cgc fs clean-nb lretobj lretval)
+    (error "Handle return of float")
     (codegen-return-common cgc fs clean-nb lretobj lretval)
     (x86-jmp cgc (x86-rdx)))
 
 ;; Generate function return using a crtable
 ;; Retaddr (or cctable) is in rdx
-(define (codegen-return-cr cgc fs clean-nb lretobj lretval crtable-offset)
-    (codegen-return-common cgc fs clean-nb lretobj lretval)
+(define (codegen-return-cr cgc fs clean-nb lretobj lretval crtable-offset float?)
+    (codegen-return-common cgc fs clean-nb lretobj lretval float?)
     (x86-mov cgc (x86-rax) (x86-mem crtable-offset (x86-rdx)))
     (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding crtable-offset)))
     (x86-jmp cgc (x86-rax)))
@@ -734,12 +744,9 @@
 
   (assert (not (and lcst? rcst?)) "Internal error")
 
-  (let ((dest (codegen-reg-to-x86reg reg))
+  (let ((dest (codegen-freg-to-x86reg reg))
         (opleft (and (not lcst?) (codegen-loc-to-x86opnd fs lleft)))
         (opright (and (not rcst?) (codegen-loc-to-x86opnd fs lright))))
-
-    ;; Alloc result flonum
-    (gen-allocation-imm cgc STAG_FLONUM 8)
 
     ;;
     (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd) (/ . ,x86-divsd))))))
@@ -747,47 +754,39 @@
       ;; Left operand
       (cond ((and leftint? lcst?)
                (x86-mov cgc (x86-rax) (x86-imm-int lleft))
-               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax)))
+               (x86-cvtsi2sd cgc dest (x86-rax)))
             (leftint?
                (x86-mov cgc (x86-rax) opleft)
                (x86-sar cgc (x86-rax) (x86-imm-int 2))
-               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax)))
+               (x86-cvtsi2sd cgc dest (x86-rax)))
             (lcst?
                (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lleft)))
-               (x86-movd/movq cgc (x86-xmm0) (x86-rax)))
+               (x86-movd/movq cgc dest (x86-rax)))
+            ((x86-mem? opleft)
+               (error "N1"))
+            ;; Nothing to do, left operand is in a xmm register
             (else
-               (if (x86-mem? opleft)
-                   (begin
-                     (x86-mov cgc (x86-rax) opleft)
-                     (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                   (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opleft)))))
+               (x86-movsd cgc dest opleft)))
 
       ;; Right operand
       (cond ((and rightint? rcst?)
                (x86-mov cgc (x86-rax) (x86-imm-int lright))
                (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
-               (x86-op cgc (x86-xmm0) (x86-xmm1)))
+               (x86-op cgc dest (x86-xmm1)))
             (rightint?
               (x86-mov cgc (x86-rax) opright)
               (x86-sar cgc (x86-rax) (x86-imm-int 2))
               (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
-              (x86-op cgc (x86-xmm0) (x86-xmm1)))
+              (x86-op cgc dest (x86-xmm1)))
             (rcst?
                (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lright)))
                (x86-movd/movq cgc (x86-xmm1) (x86-rax))
-               (x86-op cgc (x86-xmm0) (x86-xmm1)))
+               (x86-op cgc dest (x86-xmm1)))
+            ((x86-mem? opright)
+               (error "N3"))
+            ;; Right operand is in a xmm register
             (else
-               (if (x86-mem? opright)
-                   (begin
-                     (x86-mov cgc (x86-rax) opright)
-                     (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                   (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright)))))
-
-      ;; Write number
-      (x86-movsd cgc (x86-mem -8 alloc-ptr) (x86-xmm0))
-
-      ;; Put
-      (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))))
+               (x86-op cgc dest opright))))))
 
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators

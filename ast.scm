@@ -479,9 +479,12 @@
               (else (gen-error cgc (ERR_UNKNOWN_VAR sym))))))))
 
 (define (gen-get-localvar cgc ast ctx local succ)
-  (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 0))
-         (loc (ctx-identifier-loc ctx (cdr local)))
-         (type (ctx-identifier-type ctx (cdr local))))
+  (mlet ((type (ctx-identifier-type ctx (cdr local)))
+         (moves/reg/ctx
+           (if (ctx-tflo? type)
+               (ctx-get-free-freg ast ctx succ 0)
+               (ctx-get-free-reg ast ctx succ 0)))
+         (loc (ctx-identifier-loc ctx (cdr local))))
 
     (apply-moves cgc ctx moves)
 
@@ -708,7 +711,7 @@
           ;; Gen return
           (if opt-return-points
               (let* ((crtable-offset (ctx-type->cridx type-ret)))
-                (codegen-return-cr cgc fs fs laddr lret crtable-offset))
+                (codegen-return-cr cgc fs fs laddr lret crtable-offset (ctx-tflo? type-ret)))
               (codegen-return-rp cgc fs fs laddr lret))))))
   ;; TODO: write a generic lazy-drop function (this function is used by multiple mlc-*)
   (make-lazy-code-ret
@@ -2459,7 +2462,7 @@
 
                      (gen-version-continuation-cr
                        lazy-continuation
-                       (ctx-push ctx (if generic? (make-ctx-tunk) type) return-reg)
+                       (ctx-push ctx (if generic? (make-ctx-tunk) type) (if (ctx-tflo? type) return-freg return-reg))
                        type
                        generic?
                        table)))))
@@ -2645,7 +2648,7 @@
                 ;; In these cases, we need a free register
                 ;; Then, get a free register, apply moves, and use it.
                 (else
-                  (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 2)))
+                  (mlet ((moves/reg/ctx (ctx-get-free-freg ast ctx succ 2)))
                     (apply-moves cgc ctx moves)
                     (cond
                       (num-op?

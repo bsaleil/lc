@@ -187,6 +187,8 @@
                           (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding cst)))))
                       ((ctx-loc-is-register? loc)
                         (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc)))
+                      ((ctx-loc-is-fregister? loc)
+                        (x86-mov cgc (x86-rax) (x86-imm-int 0)))
                       (else (error "NYI main"))))
 
               ;; Restore registers values from pstack
@@ -325,7 +327,6 @@
                 (analyses-find-global-types! exp-content)
                 (analyses-a-conversion! exp-content)
                 (compute-liveness exp-content)
-                ;(pp exp-content)
                 ;(pp exp-content))))
                 ;(pp content))))
                 ;(exec content))))

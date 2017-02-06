@@ -951,6 +951,12 @@
         (x86-r14)
         (x86-rdx)))
 
+(define regalloc-fregs
+  (list             (x86-xmm1)  (x86-xmm2)  (x86-xmm3)  (x86-xmm4)
+        (x86-xmm5)  (x86-xmm6)  (x86-xmm7)  (x86-xmm8)  (x86-xmm9)
+        (x86-xmm10) (x86-xmm11) (x86-xmm12) (x86-xmm13) (x86-xmm14)
+        (x86-xmm15)))
+
 (define nb-c-caller-save-regs
   (length c-caller-save-regs))
 
@@ -1127,7 +1133,9 @@
                           (car move))
                        ((and (pair? (car move))
                              (eq? (caar move) 'const))
-                          (x86-imm-int (obj-encoding (cdar move))))
+                          (if (flonum? (cdar move))
+                              (x86-imm-int (get-i64 (+ (- OFFSET_FLONUM TAG_MEMOBJ) (obj-encoding (cdar move)))))
+                              (x86-imm-int (obj-encoding (cdar move)))))
                        ((eq? (car move) 'rtmp)
                           (get-tmp))
                        (else
@@ -1158,6 +1166,14 @@
                    (let ((r (select-mov-tmp-reg (cdr moves))))
                      (x86-mov cgc r src)
                      (x86-mov cgc dst r)))
+                ;; Dest is xmm
+                ((x86-xmm? dst)
+                   (cond ((x86-imm? src)
+                            (x86-mov cgc (x86-rax) src)
+                            (x86-movd/movq cgc dst (x86-rax)))
+                         ((x86-xmm? src)
+                            (x86-movsd cgc dst src))
+                         (else (error "NYI apply-moves"))))
                 ;; direct x86 mov is possible
                 (else
                    (x86-mov cgc dst src)))

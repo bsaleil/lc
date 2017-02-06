@@ -2,11 +2,17 @@
 ;; out.scm 1333
 ;; TODO: use kill set for let & letrec
 
-(define lst '((2 . "two")))
+(define (foo n)
+  (gambit$$pp n))
 
-(pp (assq 0 lst))
-(define lst2 '(("one" . 1)))
+(foo 1.1)
 
+;(define (foo n)
+;  (+ n 22))
+;  ;(gambit$$pp (+ n 11.1)))
+;
+;(foo (+ 1.1 (foo 1.4)))
+;;(foo 1.4)
 
 
 ;; WIP:
