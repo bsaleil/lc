@@ -763,7 +763,7 @@
                (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lleft)))
                (x86-movd/movq cgc dest (x86-rax)))
             ((x86-mem? opleft)
-               (error "N1"))
+               (error "N1s"))
             ;; Nothing to do, left operand is in a xmm register
             (else
                (x86-movsd cgc dest opleft)))
@@ -771,17 +771,17 @@
       ;; Right operand
       (cond ((and rightint? rcst?)
                (x86-mov cgc (x86-rax) (x86-imm-int lright))
-               (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
-               (x86-op cgc dest (x86-xmm1)))
+               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))
+               (x86-op cgc dest (x86-xmm0)))
             (rightint?
               (x86-mov cgc (x86-rax) opright)
               (x86-sar cgc (x86-rax) (x86-imm-int 2))
-              (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
-              (x86-op cgc dest (x86-xmm1)))
+              (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))
+              (x86-op cgc dest (x86-xmm0)))
             (rcst?
                (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lright)))
-               (x86-movd/movq cgc (x86-xmm1) (x86-rax))
-               (x86-op cgc dest (x86-xmm1)))
+               (x86-movd/movq cgc (x86-xmm0) (x86-rax))
+               (x86-op cgc dest (x86-xmm0)))
             ((x86-mem? opright)
                (error "N3"))
             ;; Right operand is in a xmm register
@@ -867,31 +867,30 @@
              (error "NYI2"))
           (lcst?
              (error "NYI3"))
+          ((x86-mem? opleft)
+             (error "N1"))
+          ;; Nothing to do, left operand is in a xmm register
           (else
-             (if (x86-mem? opleft)
-                 (begin
-                   (x86-mov cgc (x86-rax) opleft)
-                   (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                 (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opleft)))))
+             #f))
 
     ;; Right operand
     (cond ((and rightint? rcst?)
              (error "NYI1"))
           (rightint?
+             (pp "I")
              (x86-mov cgc (x86-rax) opright)
              (x86-shr cgc (x86-rax) (x86-imm-int 2))
              (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
-             (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
+             (x86-comisd cgc opleft (x86-xmm1)))
           (rcst?
              (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lright)))
              (x86-movd/movq cgc (x86-xmm1) (x86-rax))
-             (x86-comisd cgc (x86-xmm0) (x86-xmm1)))
+             (x86-comisd cgc opleft (x86-xmm1)))
+          ((x86-mem? opright)
+             (error "NYI"))
           (else
-             (if (x86-mem? opright)
-                 (begin
-                   (x86-mov cgc (x86-rax) opright)
-                   (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                 (x86-comisd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright)))))
+             (pp "K")
+             (x86-comisd cgc opleft opright)))
 
     ;; NOTE: check that mlc-if patch is able to patch ieee jcc instructions (ja, jb, etc...)
     (if inline-if-cond?

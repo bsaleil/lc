@@ -708,15 +708,18 @@
           cgc
           (set-sub c-caller-save-regs regalloc-regs '())
           (lambda (cgc)
-            (cargs-generator cgc) ;; Gen c args
-            ;; Aligned call to addr
-            (x86-mov  cgc (x86-rax) (x86-rsp)) ;; align stack-pointer for C call
-            (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-            (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-            (x86-ppush cgc (x86-rax))
-            (x86-mov cgc (x86-rax) (x86-imm-int addr))
-            (x86-pcall cgc (x86-rax))
-            (x86-ppop cgc (x86-rsp))))
+            (ppush-pop-xmm
+              cgc
+              (lambda (cgc)
+                (cargs-generator cgc) ;; Gen c args
+                ;; Aligned call to addr
+                (x86-mov  cgc (x86-rax) (x86-rsp)) ;; align stack-pointer for C call
+                (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+                (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+                (x86-ppush cgc (x86-rax))
+                (x86-mov cgc (x86-rax) (x86-imm-int addr))
+                (x86-pcall cgc (x86-rax))
+                (x86-ppop cgc (x86-rsp))))))
         ;; Update LC heap ptr and heap limit from Gambit heap ptr and heap limit
         (let ((r1 selector-reg)
               (r2 alloc-ptr))
@@ -755,13 +758,16 @@
           cgc
           (set-sub c-caller-save-regs regalloc-regs '())
           (lambda (cgc)
-            ;; Aligned call to label
-            (x86-mov  cgc (x86-rax) (x86-rsp)) ;; align stack-pointer for C call
-            (x86-and  cgc (x86-rsp) (x86-imm-int -16))
-            (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
-            (x86-ppush cgc (x86-rax))
-            (x86-pcall cgc label)
-            (x86-ppop cgc (x86-rsp))))
+            (ppush-pop-xmm
+              cgc
+              (lambda (cgc)
+                ;; Aligned call to label
+                (x86-mov  cgc (x86-rax) (x86-rsp)) ;; align stack-pointer for C call
+                (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+                (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+                (x86-ppush cgc (x86-rax))
+                (x86-pcall cgc label)
+                (x86-ppop cgc (x86-rsp))))))
         ;; Update LC heap ptr and heap limit from Gambit heap ptr and heap limit
         (let ((r1 selector-reg)
               (r2 alloc-ptr))
@@ -794,7 +800,7 @@
               ;;(x86-mov cgc (x86-rdi) (x86-imm-int 0))
 
               (let* (;; NOTE: Must match the registers saved using ppush-pop-regs in gen-addr-handler
-                     (saved-offset (length (set-sub c-caller-save-regs regalloc-regs '())))
+                     (saved-offset (+ (length xmm-regs) (length (set-sub c-caller-save-regs regalloc-regs '()))))
                      (stag-offset  (* 8 (+ saved-offset 2))))
 
                 ;; stag is not encoded, then it is in pstack
@@ -902,6 +908,17 @@
   (proc cgc)
   (for-each (lambda (reg) (x86-ppop cgc reg)) (reverse regs)))
 
+(define (ppush-pop-xmm cgc proc)
+  (for-each (lambda (xmm)
+              (x86-movd/movq cgc (x86-rax) xmm)
+              (x86-ppush cgc (x86-rax)))
+            xmm-regs)
+  (proc cgc)
+  (for-each (lambda (xmm)
+              (x86-ppop cgc (x86-rax))
+              (x86-movd/movq cgc xmm (x86-rax)))
+            (reverse xmm-regs)))
+
 (define (upush-regs cgc regs)
   (for-each (lambda (reg) (x86-upush cgc reg)) regs))
 
@@ -952,10 +969,12 @@
         (x86-rdx)))
 
 (define regalloc-fregs
-  (list             (x86-xmm1)  (x86-xmm2)  (x86-xmm3)  (x86-xmm4)
+  (list                         (x86-xmm2)  (x86-xmm3)  (x86-xmm4)
         (x86-xmm5)  (x86-xmm6)  (x86-xmm7)  (x86-xmm8)  (x86-xmm9)
         (x86-xmm10) (x86-xmm11) (x86-xmm12) (x86-xmm13) (x86-xmm14)
         (x86-xmm15)))
+
+(define xmm-regs (cons (x86-xmm0) regalloc-fregs))
 
 (define nb-c-caller-save-regs
   (length c-caller-save-regs))
@@ -1167,7 +1186,8 @@
                      (x86-mov cgc r src)
                      (x86-mov cgc dst r)))
                 ;; Dest is xmm
-                ((x86-xmm? dst)
+                ((and (x86-reg? dst)
+                      (x86-xmm? dst))
                    (cond ((x86-imm? src)
                             (x86-mov cgc (x86-rax) src)
                             (x86-movd/movq cgc dst (x86-rax)))

@@ -3,16 +3,12 @@
 ;; TODO: use kill set for let & letrec
 
 (define (foo n)
-  (gambit$$pp n))
+  (if (= n 0.0)
+      1.0
+      (* n (foo (- n 1.0)))))
 
-(foo 1.1)
-
-;(define (foo n)
-;  (+ n 22))
-;  ;(gambit$$pp (+ n 11.1)))
-;
-;(foo (+ 1.1 (foo 1.4)))
-;;(foo 1.4)
+(pp (foo 1.0))
+;(foo 1.4)
 
 
 ;; WIP:

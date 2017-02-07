@@ -637,6 +637,7 @@
   (make-lazy-code-entry
     #f
     (lambda (cgc ctx)
+
       (let* ((nb-actual (ctx-nb-actual ctx))
              (nb-formal (ctx-nb-args ctx)))
 
@@ -1539,13 +1540,21 @@
                       (gsym (get-gambit-sym (atom-node-val (car ast))))
                       (nargs (length (cdr ast))))
                  (apply-moves cgc ctx moves)
-                 (let ((locs (get-locs ctx nargs)))
-                   (let loop ((clocs locs)
-                              (fs (ctx-fs ctx)))
-                     (if (not (null? clocs))
-                         (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs (car clocs)))
-                                (x86-upush cgc (x86-rax))
-                                (loop (cdr clocs) (+ fs 1))))))
+                 (let loop ((idx (- nargs 1)))
+                   (if (>= idx 0)
+                       (let ((loc  (ctx-get-loc ctx idx))
+                             (type (ctx-get-type ctx idx)))
+                         (if (ctx-tflo? type)
+                             ;; Float, push a boxed float
+                             (begin (gen-allocation-imm cgc STAG_FLONUM 8)
+                                    (x86-movsd cgc (x86-mem -8 alloc-ptr) (codegen-freg-to-x86reg loc))
+                                    (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
+                                    (x86-upush cgc (x86-rax))
+                                    (loop (- idx 1)))
+                             ;; !Float, push value
+                             (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
+                                    (x86-upush cgc (x86-rax))
+                                    (loop (- idx 1)))))))
                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding nargs)))
                  (x86-upush cgc (x86-rax))
                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding gsym)))
@@ -2647,17 +2656,16 @@
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
                 ;; In these cases, we need a free register
                 ;; Then, get a free register, apply moves, and use it.
-                (else
+                (num-op?
                   (mlet ((moves/reg/ctx (ctx-get-free-freg ast ctx succ 2)))
                     (apply-moves cgc ctx moves)
-                    (cond
-                      (num-op?
-                        (codegen-num-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #t)
-                        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
-
-                      (else
-                        (codegen-cmp-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #f)
-                        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))))
+                    (codegen-num-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #t)
+                    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg))))
+                (else
+                  (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 2)))
+                    (apply-moves cgc ctx moves)
+                    (codegen-cmp-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #f)
+                    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))
 
   (assert (not (and inlined-if-cond? (member op '(+ - * /))))
           "Internal compiler error")
@@ -2928,7 +2936,12 @@
 ;; * Else return unmodified ctx
 (define (drop-cst-value cgc ast ctx ctx-idx)
 
-  (define (alloc-cstfn reg cst)
+  (define (alloc-cst-flo reg cst)
+    (let ((opnd (codegen-freg-to-x86reg reg)))
+      (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 cst)))
+      (x86-movd/movq cgc opnd (x86-rax))))
+
+  (define (alloc-cst-clo reg cst)
     (let ((entry-obj (asc-globalfn-entry-get cst)))
       (gen-closure cgc reg #f entry-obj '())))
 
@@ -2939,13 +2952,15 @@
   (let* ((type (ctx-get-type ctx ctx-idx))
          (cst? (ctx-type-is-cst type)))
     (if cst?
-        (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx #f 0))
-               (cst (ctx-type-cst type)))
-          (apply-moves cgc ctx moves)
-          ;; Move object to free register
-          (if (ctx-tclo? type)
-              (alloc-cstfn reg cst)
-              (alloc-cst   reg cst))
+        (mlet ((cst (ctx-type-cst type))
+               (r   (if (ctx-tflo? type)
+                        (ctx-get-free-freg ast ctx #f 0)
+                        (ctx-get-free-reg ast ctx #f 0)))
+               (moves/reg/ctx r))
+          ;; Alloc cst
+          (cond ((ctx-tflo? type) (alloc-cst-flo reg cst))
+                ((ctx-tclo? type) (alloc-cst-clo reg cst))
+                (else             (alloc-cst reg cst)))
           ;; Update & return ctx
           (let* ((ntype ((ctx-type-ctor type)))
                  (ctx (ctx-set-type ctx ctx-idx ntype #f))
