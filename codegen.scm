@@ -340,9 +340,9 @@
 
 ;; get free
 ;; Get free variable directly from closure.
-(define (codegen-get-free cgc fs reg lclo lvar)
+(define (codegen-get-free cgc fs ffs reg lclo lvar)
 
-  (let ((copnd (codegen-loc-to-x86opnd fs lclo))
+  (let ((copnd (codegen-loc-to-x86opnd fs ffs lclo))
         (coffset (- (* 8 (+ (cdr lvar) 2)) TAG_MEMOBJ))
         (dest (codegen-reg-to-x86reg reg)))
 
@@ -354,11 +354,11 @@
 
 ;;-----------------------------------------------------------------------------
 ;; set
-(define (codegen-set-global cgc fs reg pos lval cst?)
+(define (codegen-set-global cgc fs ffs reg pos lval cst?)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (if cst?
                    (x86-imm-int (obj-encoding lval))
-                   (codegen-loc-to-x86opnd fs lval))))
+                   (codegen-loc-to-x86opnd fs ffs lval))))
 
     (if (or (x86-imm? opval)
             (x86-mem? opval))

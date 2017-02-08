@@ -1201,7 +1201,7 @@
                       (x86-xmm? src))
                    ;; NOTE: dst can't be xmm
                    (if (x86-reg? dst)
-                       (error "NYI")
+                       (x86-movd/movq cgc dst src)
                        (x86-movsd cgc dst src)))
                 ;; direct x86 mov is possible
                 (else

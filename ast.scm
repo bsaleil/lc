@@ -486,7 +486,7 @@
     (if (ctx-loc-is-freemem? loc)
         ;; It's a free var that is only in closure
         (let ((lclo (ctx-get-closure-loc ctx)))
-          (codegen-get-free cgc (ctx-fs ctx) reg lclo loc))
+          (codegen-get-free cgc (ctx-fs ctx) (ctx-ffs ctx) reg lclo loc))
         ;; The variable is in a register or in non closure memory
         (apply-moves cgc ctx (list (cons loc reg))))
 
@@ -543,7 +543,7 @@
                    (ctx-type-cst tval)
                    (ctx-get-loc ctx 0))))
     (apply-moves cgc ctx moves)
-    (codegen-set-global cgc (ctx-fs ctx) reg pos lval cst?)
+    (codegen-set-global cgc (ctx-fs ctx) (ctx-ffs ctx) reg pos lval cst?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))
 
 ;;-----------------------------------------------------------------------------
@@ -1683,7 +1683,7 @@
         (apply-moves cgc ctx moves)
         (if (and lcst? rcst?)
             (error "NN"))
-        (codegen-p-binop cgc (ctx-fs ctx) op label-div0 reg lleft lright lcst? rcst?)
+        (codegen-p-binop cgc (ctx-fs ctx) (ctx-ffs ctx) op label-div0 reg lleft lright lcst? rcst?)
         (jump-to-version cgc
                          succ
                          (ctx-push (ctx-pop-n ctx 2) (make-ctx-tint) reg))))))

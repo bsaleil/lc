@@ -2,13 +2,12 @@
 ;; out.scm 1333
 ;; TODO: use kill set for let & letrec
 
-(define (foo n)
-  (if (< n 2.0)
-      1.0
-      (+ (foo (- n 1.0))
-         (foo (- n 2.0)))))
+;;; FIBFP -- Computes fib(35) using floating point
 
-(pp (foo 40.0))
+(println 3.3)
+
+;#t
+
 
 ;(define (foo n)
 ;  (if (< n 2)
