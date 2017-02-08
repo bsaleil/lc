@@ -590,7 +590,7 @@
                                                            (ctx-type-cst type)
                                                            (ctx-get-loc ctx 0))))
                                           (apply-moves cgc ctx moves)
-                                          (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue cst?)
+                                          (codegen-define-bind cgc (ctx-fs ctx) (ctx-ffs ctx) pos reg lvalue cst?)
                                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))))
                          (lazy-drop
                            (make-lazy-code
@@ -675,6 +675,7 @@
                    (codegen-prologue-rest>
                      cgc
                      (ctx-fs ctx)
+                     (ctx-ffs ctx)
                      nb-rest-stack
                      (reverse rest-regs)
                      reg))
@@ -1601,6 +1602,7 @@
   (let* ((prim (primitive-get op))
          (gen  (primitive-codegen prim))
          (fs (ctx-fs ctx))
+         (ffs (ctx-ffs ctx))
          (nargs (primitive-nbargs prim))
          (r  (build-list
                   nargs
@@ -1611,7 +1613,7 @@
                           (cons #f (ctx-get-loc ctx n)))))))
          (cst? (map car r))
          (locs (map cdr r))
-         (args (append (list cgc fs op reg inlined-cond?)
+         (args (append (list cgc fs ffs op reg inlined-cond?)
                        (reverse locs)
                        (reverse cst?)))
          (rtype (primitive-rettype prim)))
@@ -1704,7 +1706,7 @@
           (jump-to-version cgc (lazy-code-lco-false succ) nctx)
           ;;
           (begin
-            (codegen-p-eq? cgc (ctx-fs ctx) 'eq? #f #t ll lr lcst? rcst?)
+            (codegen-p-eq? cgc (ctx-fs ctx) (ctx-ffs ctx) 'eq? #f #t ll lr lcst? rcst?)
             ((lazy-code-generator succ) cgc nctx x86-jne)))))
 
   (define (gen-eq? cgc ctx typel typer lcst? rcst?)
@@ -1721,7 +1723,7 @@
           ;; Types are known and !=
           (codegen-set-bool cgc #f reg)
           ;;
-          (codegen-p-eq? cgc (ctx-fs ctx) 'eq? reg #f ll lr lcst? rcst?))
+          (codegen-p-eq? cgc (ctx-fs ctx) (ctx-ffs ctx) 'eq? reg #f ll lr lcst? rcst?))
       (jump-to-version cgc succ nctx)))
 
   (make-lazy-code
@@ -2213,7 +2215,7 @@
                                     (jump-to-version cgc lazy-code0 (ctx-pop ctx)))
                                  (else
                                     (let ((lcond (ctx-get-loc ctx 0)))
-                                      (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond))))))))))))
+                                      (codegen-if cgc (ctx-fs ctx) (ctx-ffs ctx) label-jump label-false label-true lcond))))))))))))
 
     (gen-ast
       (cadr ast)
