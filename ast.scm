@@ -412,13 +412,8 @@
   (make-lazy-code
     #f
     (lambda (cgc ctx)
-      (let ((literal
-              (if (and (##mem-allocated? lit)
-                       (not (eq? (mem-allocated-kind lit) 'PERM)))
-                  (copy-permanent lit #f perm-domain)
-                  lit)))
-        (let ((ctx (ctx-push ctx (literal->ctx-type literal) #f)))
-          (jump-to-version cgc succ ctx))))))
+      (let ((ctx (ctx-push ctx (literal->ctx-type lit) #f)))
+        (jump-to-version cgc succ ctx)))))
 
 ;;-----------------------------------------------------------------------------
 ;; VARIABLES GET
@@ -701,6 +696,7 @@
       #f
       (lambda (cgc ctx)
         (let* ((fs (ctx-fs ctx))
+               (ffs (ctx-ffs ctx))
                ;; Return value loc
                (type-ret (ctx-get-type ctx 0))
                (lret     (ctx-get-loc ctx 0))
@@ -712,8 +708,8 @@
           ;; Gen return
           (if opt-return-points
               (let* ((crtable-offset (ctx-type->cridx type-ret)))
-                (codegen-return-cr cgc fs fs laddr lret crtable-offset (ctx-tflo? type-ret)))
-              (codegen-return-rp cgc fs fs laddr lret))))))
+                (codegen-return-cr cgc fs ffs fs laddr lret crtable-offset (ctx-tflo? type-ret)))
+              (codegen-return-rp cgc fs ffs fs laddr lret))))))
   ;; TODO: write a generic lazy-drop function (this function is used by multiple mlc-*)
   (make-lazy-code-ret
     #f
@@ -1552,7 +1548,7 @@
                                     (x86-upush cgc (x86-rax))
                                     (loop (- idx 1)))
                              ;; !Float, push value
-                             (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
+                             (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
                                     (x86-upush cgc (x86-rax))
                                     (loop (- idx 1)))))))
                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding nargs)))
@@ -1761,7 +1757,7 @@
              ast
              (lambda (cgc ctx)
                (let* ((vec-loc  (ctx-get-loc ctx 0))
-                      (vec-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) vec-loc)))
+                      (vec-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) vec-loc)))
 
                  (let loop ((idx nbargs))
                    (if (= idx 0)
@@ -1773,7 +1769,7 @@
                               (cst? (ctx-type-is-cst type))
                               (val-opnd (if cst?
                                             (x86-imm-int (obj-encoding (ctx-type-cst type)))
-                                            (codegen-loc-to-x86opnd (ctx-fs ctx) val-loc)))
+                                            (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) val-loc)))
                               (offset (- (* 8 (+ (- nbargs idx) 1)) TAG_MEMOBJ)))
                          (if (or (x86-imm? val-opnd)
                                  (x86-mem? val-opnd))
@@ -1815,7 +1811,7 @@
                 (let ((opnd
                         (if cst?
                             (x86-imm-int (obj-encoding loc))
-                            (codegen-loc-to-x86opnd (ctx-fs ctx) loc))))
+                            (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))))
                   (if (or (x86-mem? opnd)
                           (x86-imm? opnd))
                       (begin
@@ -1847,7 +1843,7 @@
                 (let ((opnd
                         (if cst?
                             (x86-imm-int (obj-encoding loc))
-                            (codegen-loc-to-x86opnd (ctx-fs ctx) loc))))
+                            (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))))
                   (if (or (x86-imm? opnd)
                           (x86-mem? opnd))
                       (begin (x86-mov cgc (x86-rax) opnd)
@@ -1887,7 +1883,7 @@
              (error "NYI - apply (other cst)"))
           (else
              (let* ((llst  (ctx-get-loc ctx 0))
-                    (oplst (codegen-loc-to-x86opnd (ctx-fs ctx) llst)))
+                    (oplst (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) llst)))
                ;; r11, selector & r15 are used as tmp registers
                ;; It is safe because they are not used for parameters.
                ;; And if they are used after, they already are saved on the stack
@@ -1908,7 +1904,7 @@
                        (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
                        (x86-je cgc label-end)
                          (x86-add cgc (x86-r11) (x86-imm-int 4))
-                         (x86-mov cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (car args-regs)) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
+                         (x86-mov cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) (car args-regs)) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
                          (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
                        (loop (cdr args-regs)))))
                (x86-label cgc label-end)
@@ -2297,7 +2293,7 @@
                   ((eq? (caar locs) 'const)
                      (x86-upush cgc (x86-imm-int (obj-encoding (cdar locs)))))
                   (else
-                     (x86-upush cgc (codegen-loc-to-x86opnd fs (car locs)))))
+                     (x86-upush cgc (codegen-loc-to-x86opnd fs (ctx-ffs ctx) (car locs)))))
             (loop (+ fs 1) (cdr locs)))))
 
     (let* ((used-regs
@@ -2560,7 +2556,7 @@
                                           #f
                                           (lambda (cgc ctx)
                                             (let ((type (make-ctx-tflo)))
-                                              (codegen-num-ff cgc (ctx-fs ctx) op reg lleft #t lright #t lcst? rcst? #t)
+                                              (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lleft #t lright #t lcst? rcst? #t)
                                               (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))
                                    (gen-version-first lco ctx))))))
       (list-ref labels 0)))
@@ -2616,7 +2612,7 @@
                     (jump-to-version cgc lco (ctx-pop-n ctx 2))))
                 ;; Inlined if condition
                 (inlined-if-cond?
-                  (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) op #f lloc rloc lcst? rcst? #t)))
+                  (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op #f lloc rloc lcst? rcst? #t)))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
                 ;; In these cases, we need a free register
                 ;; Then, get a free register, apply moves, and use it.
@@ -2626,10 +2622,10 @@
                     (cond
                       (num-op?
                         (let ((overflow-label (get-stub-overflow-label cgc ctx reg lloc lcst? rloc rcst?)))
-                          (codegen-num-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t overflow-label))
+                          (codegen-num-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc rloc lcst? rcst? #t overflow-label))
                         (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
                       (else
-                          (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #f)
+                          (codegen-cmp-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc rloc lcst? rcst? #f)
                           (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))))
 
   ;;
@@ -2648,23 +2644,26 @@
                (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
 
           (cond ((and (not inlined-if-cond?) lcst? rcst?)
-                  (error "NYI1"))
+                  (let* ((r (eval (list op lloc rloc)))
+                         (type (literal->ctx-type r))
+                         (ctx (ctx-push (ctx-pop-n ctx 2) type #f)))
+                    (jump-to-version cgc succ ctx)))
                 ((and lcst? rcst?)
                   (error "NYI2"))
                 (inlined-if-cond?
-                  (let ((x86-op (codegen-cmp-ff cgc (ctx-fs ctx) op #f lloc leftint? rloc rightint? lcst? rcst? #t)))
+                  (let ((x86-op (codegen-cmp-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op #f lloc leftint? rloc rightint? lcst? rcst? #t)))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
                 ;; In these cases, we need a free register
                 ;; Then, get a free register, apply moves, and use it.
                 (num-op?
                   (mlet ((moves/reg/ctx (ctx-get-free-freg ast ctx succ 2)))
                     (apply-moves cgc ctx moves)
-                    (codegen-num-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #t)
+                    (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #t)
                     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg))))
                 (else
                   (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 2)))
                     (apply-moves cgc ctx moves)
-                    (codegen-cmp-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #f)
+                    (codegen-cmp-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #f)
                     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))
 
   (assert (not (and inlined-if-cond? (member op '(+ - * /))))
@@ -2900,7 +2899,7 @@
                      ((ctx-loc-is-freemem? loc)
                        (let* (;; Get closure loc
                               (closure-loc  (ctx-get-closure-loc ctx))
-                              (closure-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) closure-loc))
+                              (closure-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) closure-loc))
                               ;; Get free var offset
                               (fvar-pos (cdr loc))
                               (fvar-offset (+ 16 (* 8 fvar-pos)))) ;; 16:header,entrypoint -1: pos starts from 1 and not 0
@@ -2911,7 +2910,7 @@
                          (x86-rax)))
                      ;;
                      ((ctx-loc-is-memory? loc)
-                       (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
+                       (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
                        (x86-rax))
                      ;;
                      (else

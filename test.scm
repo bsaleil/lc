@@ -3,12 +3,20 @@
 ;; TODO: use kill set for let & letrec
 
 (define (foo n)
-  (if (= n 0.0)
+  (if (< n 2.0)
       1.0
-      (* n (foo (- n 1.0)))))
+      (+ (foo (- n 1.0))
+         (foo (- n 2.0)))))
 
-(pp (foo 1.0))
-;(foo 1.4)
+(pp (foo 40.0))
+
+;(define (foo n)
+;  (if (< n 2)
+;      1
+;      (+ (foo (- n 1))
+;         (foo (- n 2)))))
+;
+;(pp (foo 40))
 
 
 ;; WIP:

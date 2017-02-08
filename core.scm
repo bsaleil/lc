@@ -1102,19 +1102,20 @@
   ;; Filter moves
   ;; Return a pair with fs to add in first and moves except fs moves
   ;; ex. (4 . ((r0 . r1) (r2 . r3)))
-  (define (filter-fs moves fs filtered)
+  (define (filter-fs moves fs ffs filtered)
     (if (null? moves)
-        (cons fs (reverse filtered))
+        (cons (cons fs ffs) (reverse filtered))
         (let ((move (car moves)))
-          (if (eq? (car move) 'fs)
-              (filter-fs (cdr moves) (+ fs (cdr move)) filtered)
-              (filter-fs (cdr moves) fs (cons move filtered))))))
+          (cond
+            ((eq? (car move) 'fs)  (filter-fs (cdr moves) (+ fs (cdr move)) ffs filtered))
+            ((eq? (car move) 'ffs) (filter-fs (cdr moves) fs (+ ffs (cdr move)) filtered))
+            (else (filter-fs (cdr moves) fs ffs (cons move filtered)))))))
 
   ;; Return tmp register to use for 'rtmp operand
   ;; Use given temporary register if given, rax otherwise
   (define (get-tmp)
     (if tmpreg
-        (codegen-loc-to-x86opnd (ctx-fs ctx) tmpreg)
+        (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) tmpreg)
         (x86-rax)))
 
   ;; Is selector used to apply moves? If it is used, reset it after all moves
@@ -1143,7 +1144,7 @@
                (dst
                  (cond ((not (cdr move)) #f)
                        ((eq? (cdr move) 'rtmp) (get-tmp))
-                       (else (codegen-loc-to-x86opnd (ctx-fs ctx) (cdr move)))))
+                       (else (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) (cdr move)))))
                ;; Compute x86 src operand
                (src
                  (cond ((and (pair? (car move))
@@ -1158,7 +1159,7 @@
                        ((eq? (car move) 'rtmp)
                           (get-tmp))
                        (else
-                          (codegen-loc-to-x86opnd (ctx-fs ctx) (car move))))))
+                          (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) (car move))))))
 
           (cond ;; dst is #f, src need to be a cst (cst -> cst)
                 ((not dst)
@@ -1191,19 +1192,29 @@
                    (cond ((x86-imm? src)
                             (x86-mov cgc (x86-rax) src)
                             (x86-movd/movq cgc dst (x86-rax)))
+                         ((x86-mem? src)
+                            (x86-movsd cgc dst src))
                          ((x86-xmm? src)
                             (x86-movsd cgc dst src))
                          (else (error "NYI apply-moves"))))
+                ((and (x86-reg? src)
+                      (x86-xmm? src))
+                   ;; NOTE: dst can't be xmm
+                   (if (x86-reg? dst)
+                       (error "NYI")
+                       (x86-movsd cgc dst src)))
                 ;; direct x86 mov is possible
                 (else
                    (x86-mov cgc dst src)))
           ;;
           (apply-filtered (cdr moves)))))
 
-  (let ((r (filter-fs moves 0 '())))
+  (let ((r (filter-fs moves 0 0 '())))
     ;; Update sp
-    (if (not (= (car r) 0))
-        (x86-sub cgc (x86-usp) (x86-imm-int (* 8 (car r)))))
+    (if (not (= (caar r) 0))
+        (x86-sub cgc (x86-usp) (x86-imm-int (* 8 (caar r)))))
+    (if (not (= (cdar r) 0))
+        (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 (cdar r)))))
     ;; Apply other moves
     (apply-filtered (cdr r))
     (if selector-used?
@@ -1728,7 +1739,7 @@
                    (gen-inc-slot cgc 'tests))
 
                   (let* ((lval (ctx-get-loc ctx stack-idx))
-                         (opval (codegen-loc-to-x86opnd (ctx-fs ctx) lval)))
+                         (opval (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) lval)))
 
                     (cond ;; Number type check
                           ((ctx-tint? ctx-type)
