@@ -2911,8 +2911,13 @@
                          (x86-mov cgc (x86-rax) (x86-mem (- fvar-offset TAG_MEMOBJ) closure-opnd))
                          (x86-rax)))
                      ;;
-                     ((ctx-loc-is-memory? loc)
+                     ((or (ctx-loc-is-memory? loc)
+                          (ctx-loc-is-fmemory? loc))
                        (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
+                       (x86-rax))
+                     ;;
+                     ((ctx-loc-is-fregister? loc)
+                       (x86-movd/movq cgc (x86-rax) (codegen-freg-to-x86reg loc))
                        (x86-rax))
                      ;;
                      (else

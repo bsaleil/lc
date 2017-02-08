@@ -4,7 +4,15 @@
 
 ;;; FIBFP -- Computes fib(35) using floating point
 
-(println 3.3)
+(define (foo n)
+  (lambda (m)
+    (+ m n)))
+
+(define (bar n)
+  (pp 11.4)
+  (+ n 2.4))
+
+(pp ((foo 33.4) (bar 3.4)))
 
 ;#t
 

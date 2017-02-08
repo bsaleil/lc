@@ -344,13 +344,14 @@
 
   (let ((copnd (codegen-loc-to-x86opnd fs ffs lclo))
         (coffset (- (* 8 (+ (cdr lvar) 2)) TAG_MEMOBJ))
-        (dest (codegen-reg-to-x86reg reg)))
+        (dest (codegen-loc-to-x86opnd fs ffs reg))
+        (x86-op (if (ctx-loc-is-fregister? reg) x86-movsd x86-mov)))
 
   (if (x86-reg? copnd)
-      (x86-mov cgc dest (x86-mem coffset copnd))
+      (x86-op cgc dest (x86-mem coffset copnd))
       (begin
         (x86-mov cgc (x86-rax) copnd) ;; Get closure
-        (x86-mov cgc dest (x86-mem coffset (x86-rax)))))))
+        (x86-op cgc dest (x86-mem coffset (x86-rax)))))))
 
 ;;-----------------------------------------------------------------------------
 ;; set
