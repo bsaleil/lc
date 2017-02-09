@@ -622,17 +622,38 @@
         ;;
         (if (not rest-param)
             (codegen-prologue-gen-nrest cgc nb-args)
-            (codegen-prologue-gen-rest  cgc (ctx-fs ctx) nb-args))
+            (codegen-prologue-gen-rest  cgc (ctx-fs ctx) (ctx-ffs ctx) nb-args))
         ;;
         (jump-to-version cgc succ ctx)))))
+
+;; TODO WIP MOVE
+(define (gen-drop-float cgc ctx ast idx-from idx-to)
+  (if (= idx-from idx-to)
+      ctx
+      (let* ((type (ctx-get-type ctx idx-from)))
+        (if (ctx-tflo? type)
+            (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx #f 0))
+                   (loc   (ctx-get-loc ctx idx-from))
+                   (opnd  (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
+                   (ropnd (codegen-reg-to-x86reg reg)))
+              (apply-moves cgc ctx moves)
+              (gen-allocation-imm cgc STAG_FLONUM 8)
+              (if (ctx-loc-is-fregister? loc)
+                  (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opnd)
+                  (error "NYI"))
+              (x86-lea cgc ropnd (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
+              (let* ((ctx (ctx-set-loc ctx (stack-idx-to-slot ctx idx-from) reg))
+                     (ctx (ctx-set-type ctx idx-from (make-ctx-tunk) #t)))
+                (gen-drop-float cgc ctx ast (+ idx-from 1) idx-to)))
+            (gen-drop-float cgc ctx ast (+ idx-from 1) idx-to)))))
 
 ;;
 ;; Create and return a prologue lco
 (define (get-lazy-prologue ast succ rest-param)
+
   (make-lazy-code-entry
     #f
     (lambda (cgc ctx)
-
       (let* ((nb-actual (ctx-nb-actual ctx))
              (nb-formal (ctx-nb-args ctx)))
 
@@ -648,39 +669,60 @@
               ;; rest AND actual > formal
               ;; TODO merge > and == (?)
               ((and rest-param (> nb-actual (- nb-formal 1)))
-               (let* ((nb-extra (- nb-actual (- nb-formal 1)))
-                      (nctx (ctx-pop-n ctx (- nb-extra 1)))
-                      (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f)))
-                 (set! ctx nctx)
-                 (let* ((nb-formal-stack
-                          (if (> (- nb-formal 1) (length args-regs))
-                              (- nb-formal 1 (length args-regs))
-                              0))
-                        (r
-                          (if (<= nb-actual (length args-regs))
-                              0
-                              (- nb-actual (length args-regs))))
-                        (nb-rest-stack (- r nb-formal-stack))
-                        (rest-regs
-                          (if (>= (- nb-formal 1) (length args-regs))
-                              '()
-                              (list-head
-                                (list-tail args-regs (- nb-formal 1))
-                                (- nb-actual nb-rest-stack nb-formal -1))))
-                        (reg
-                          (if (<= nb-formal (length args-regs))
-                              (list-ref args-regs (- nb-formal 1))
-                              #f)))
 
-                   (codegen-prologue-rest>
-                     cgc
-                     (ctx-fs ctx)
-                     (ctx-ffs ctx)
-                     nb-rest-stack
-                     (reverse rest-regs)
-                     reg))
+                 (set! ctx (gen-drop-float cgc ctx ast 0 (- nb-actual (- nb-formal 1))))
 
-                 (jump-to-version cgc succ ctx)))
+                 (let* ((nb-extra (- nb-actual (- nb-formal 1)))
+                        (rloc     (ctx-get-loc ctx (- nb-extra 1))))
+
+                   (let loop ((idx (- nb-extra 1))
+                              (locs '()))
+                     (if (< idx 0)
+                         (codegen-prologue-rest> cgc (ctx-fs ctx) (ctx-ffs ctx) locs rloc)
+                         (let ((loc (ctx-get-loc ctx idx)))
+                           (loop (- idx 1) (cons loc locs)))))
+
+                   (let* ((ctx (ctx-pop-n ctx (- nb-extra 1)))
+                          (ctx (ctx-set-type ctx 0 (make-ctx-tpai) #f)))
+
+                     (jump-to-version cgc succ ctx))))
+
+
+            ;     (pp ctx)
+               ;
+            ;   (let* ((nb-extra (- nb-actual (- nb-formal 1)))
+            ;          (nctx (ctx-pop-n ctx (- nb-extra 1)))
+            ;          (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f)))
+            ;     (set! ctx nctx)
+            ;     (let* ((nb-formal-stack
+            ;              (if (> (- nb-formal 1) (length args-regs))
+            ;                  (- nb-formal 1 (length args-regs))
+            ;                  0))
+            ;            (r
+            ;              (if (<= nb-actual (length args-regs))
+            ;                  0
+            ;                  (- nb-actual (length args-regs))))
+            ;            (nb-rest-stack (- r nb-formal-stack))
+            ;            (rest-regs
+            ;              (if (>= (- nb-formal 1) (length args-regs))
+            ;                  '()
+            ;                  (list-head
+            ;                    (list-tail args-regs (- nb-formal 1))
+            ;                    (- nb-actual nb-rest-stack nb-formal -1))))
+            ;            (reg
+            ;              (if (<= nb-formal (length args-regs))
+            ;                  (list-ref args-regs (- nb-formal 1))
+            ;                  #f)))
+               ;
+            ;       (codegen-prologue-rest>
+            ;         cgc
+            ;         (ctx-fs ctx)
+            ;         (ctx-ffs ctx)
+            ;         nb-rest-stack
+            ;         (reverse rest-regs)
+            ;         reg))
+               ;
+            ;     (jump-to-version cgc succ ctx)))
               ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
               ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
                (gen-error cgc ERR_WRONG_NUM_ARGS))
@@ -2272,8 +2314,9 @@
 ;; Push closure, put it in rax, and return updated ctx
 (define (call-get-closure cgc ctx closure-idx)
   (let* ((fs (ctx-fs ctx))
+         (ffs (ctx-ffs ctx))
          (loc  (ctx-get-loc     ctx closure-idx)))
-    (codegen-load-closure cgc fs loc)))
+    (codegen-load-closure cgc fs ffs loc)))
 
 ;; Move args in regs or mem following calling convention
 (define (call-prep-args cgc ctx ast nbargs const-fn)

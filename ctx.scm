@@ -33,6 +33,8 @@
 (define lazy-code-flags #f)
 (define mem-allocated-kind #f)
 (define live-out? #f)
+(define copy-permanent #f)
+(define perm-domain #f)
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx
@@ -410,6 +412,7 @@
   ;;
   ;; FREE REGS
   (define (init-free-regs)
+    ;; init free regs if the context is *not* generic (stack != #f)
     (define (init stack regs)
       (if (or (null? stack) (null? regs))
           '()
@@ -417,7 +420,12 @@
               (init (cdr stack) regs)
               (cons (car regs)
                     (init (cdr stack) (cdr regs))))))
-    (let ((used (cons '(r . 2) (init stack args-regs))))
+    (let ((used
+            (if stack
+                (cons '(r . 2) (init stack args-regs))
+                (cons '(r . 2) (if (<= (length args) (length args-regs))
+                                   (list-head args-regs (length args))
+                                   args-regs)))))
       (set-sub (ctx-init-free-regs) used '())))
 
   ;; FREE FREGS
@@ -429,7 +437,9 @@
           (if (ctx-tflo? (car stack))
               (init (cdr stack) (cdr fregs))
               (init (cdr stack) fregs))))
-    (init stack (ctx-init-free-fregs)))
+    (if stack
+        (init stack (ctx-init-free-fregs))
+        (ctx-init-free-fregs)))
 
   ;;
   ;; ENV
@@ -474,39 +484,68 @@
   ;;
   ;; SLOT-LOC
   (define (init-slot-loc nb-free-const)
-    (append
-      (reverse (init-slot-loc-local (+ nb-free-const 2) (list-head stack (length args)) args-regs (ctx-init-free-fregs) 1))
-      (init-slot-loc-base nb-free-const)))
+    (let* ((types (and stack (reverse (list-head stack (length stack)))))
+           (r
+             (if (not stack)
+                 (init-slot-loc-local-gen (+ nb-free-const 2) args-regs 1 args)
+                 (let ((r (init-slot-loc-local (+ nb-free-const 2) types args-regs (ctx-init-free-fregs) 1)))
+                   (cons (reverse (car r)) (cdr r))))))
+      (list
+        (append
+          (car r)
+          (init-slot-loc-base nb-free-const))
+        (cdr r))))
 
+  ;; Init slot-loc set if the context is generic (stack is #f)
+  ;; Return (slot-loc . mem)
+  (define (init-slot-loc-local-gen slot regs mem args)
+    (if (null? args)
+        (cons '() mem)
+        (if (null? regs)
+            (let ((loc (cons 'm mem))
+                  (r   (init-slot-loc-local-gen (+ slot 1) '() (+ mem 1) (cdr args))))
+              (cons (cons (cons slot loc)
+                          (car r))
+                    (cdr r)))
+            (let ((loc (car regs))
+                  (r   (init-slot-loc-local-gen (+ slot 1) (cdr regs) mem (cdr args))))
+              (cons (cons (cons slot loc)
+                          (car r))
+                    (cdr r))))))
+
+  ;; Init slot-loc set if the context is not generic (stack is *not* #f)
+  ;; Return (slot-loc . mem)
   (define (init-slot-loc-local slot argtypes regs fregs mem)
+
+    (define (return slot loc r)
+      (cons (cons (cons slot loc)
+                  (car r))
+            (cdr r)))
+
     (if (null? argtypes)
-        '()
-        (let* ((type (car argtypes)))
+        (cons '() mem)
+        (let ((type (or (and argtypes (car argtypes))
+                         (make-ctx-tunk)))
+              (types (and argtypes (cdr argtypes))))
           (if (ctx-tflo? type)
               (if (null? fregs)
                   (error "NYI")
-                  (cons (cons slot (car fregs))
-                        (init-slot-loc-local (+ slot 1) (cdr argtypes) regs (cdr fregs) mem)))
+                  (let ((r (init-slot-loc-local (+ slot 1) types regs (cdr fregs) mem)))
+                    (return slot (car fregs) r)))
               (if (null? regs)
-                  (cons (cons slot (cons 'm mem))
-                        (init-slot-loc-local (+ slot 1) (cdr argtypes) '() fregs (+ mem 1)))
-                  (cons (cons slot (car regs))
-                        (init-slot-loc-local (+ slot 1) (cdr argtypes) (cdr regs) fregs mem)))))))
+                  (let ((r (init-slot-loc-local (+ slot 1) types '() fregs (+ mem 1))))
+                    (return slot (cons 'm mem) r))
+                  (let ((r (init-slot-loc-local (+ slot 1) types (cdr regs) fregs mem)))
+                    (return slot (car regs) r)))))))
 
   (define (init-slot-loc-base nb-free-const)
     (append (reverse (build-list nb-free-const (lambda (n) (cons (+ n 2) #f))))
             '((1 r . 2) (0 m . 0))))
 
-  ;;
-  ;; FS
-  (define (init-fs nb-args)
-    (if (<= nb-args (length args-regs))
-        1
-        (+ (- nb-args (length args-regs)) 1)))
-
   (let* ((r (find-const-free free-vars))
          (free-const (car r))
-         (free-nconst (cdr r)))
+         (free-nconst (cdr r))
+         (slot-loc/fs (init-slot-loc (length free-const))))
 
     ;;
     (make-ctx
@@ -514,7 +553,7 @@
           (append (make-list (length args) (make-ctx-tunk))
                   (init-const-stack free-const)
                   (list (make-ctx-tclo) (make-ctx-tret))))
-      (init-slot-loc (length free-const))
+      (car slot-loc/fs)
       (init-free-regs)
       '()
       (init-free-fregs)
@@ -522,7 +561,7 @@
       (init-env free-const free-nconst)
       (and stack (length stack))
       (length args)
-      (init-fs (length args))
+      (cadr slot-loc/fs)
       0
       fn-num)))
 

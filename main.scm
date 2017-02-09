@@ -191,6 +191,9 @@
                         (x86-mov cgc (x86-rax) (x86-imm-int 0)))
                       (else (error "NYI main"))))
 
+              (if (> (ctx-ffs ctx) 0)
+                  (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (ctx-ffs ctx)))))
+
               ;; Restore registers values from pstack
               (ppop-regs-reverse cgc all-regs)
               (x86-ret cgc)))))

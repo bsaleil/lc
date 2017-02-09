@@ -107,6 +107,8 @@
 (define selector-reg #f)
 (define x86-call-label-aligned-ret #f)
 
+(define OFFSET_FLONUM #f)
+
 ;;-----------------------------------------------------------------------------
 
 ;; Object life

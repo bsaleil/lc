@@ -430,7 +430,7 @@
   (x86-jne cgc label-err-wrong-num-args))
 
 ;; Generate a generic function prologue with rest param
-(define (codegen-prologue-gen-rest cgc fs fn-nb-args)
+(define (codegen-prologue-gen-rest cgc fs ffs fn-nb-args)
 
   (let ((nb-args-regs       (length args-regs))
         (label-rest         (asm-make-label #f (new-sym 'prologue-rest)))
@@ -453,7 +453,7 @@
         (if (> i 0)
             (begin
                 (x86-cmp cgc (x86-rdi) (x86-imm-int (obj-encoding i)))
-                (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs (car regs)))
+                (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs ffs (car regs)))
                 (x86-je cgc label-next-arg-end)
                 (loop (- i 1) (cdr regs)))))
       (x86-jmp cgc label-next-arg-end)
@@ -496,44 +496,70 @@
         (x86-upush cgc (x86-imm-int (obj-encoding '()))))))
 
 ;; Generate specialized function prologue with rest param and actual > formal
-(define (codegen-prologue-rest> cgc fs ffs nb-rest-stack rest-regs destreg)
+(define (codegen-prologue-rest> cgc fs ffs locs rloc)
 
-  (let ((regs
-          (map (lambda (el) (codegen-loc-to-x86opnd fs ffs el))
-               rest-regs))
-        (dest
-          (and destreg (codegen-loc-to-x86opnd fs ffs destreg)))
-        (label-loop-end (asm-make-label #f (new-sym 'prologue-loop-end)))
-        (label-loop     (asm-make-label #f (new-sym 'prologue-loop))))
+  ;; TODO: one allocation for list
+  ;; TODO: use x86 loop for mem locs
 
-    ;; TODO: Only one alloc
-    ;; r11 is available because it's the ctx reg
-    (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding '())))
-    ;; Stack
-    (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding nb-rest-stack)))
-    (x86-label cgc label-loop)
-    (x86-cmp cgc (x86-rdx) (x86-imm-int 0))
-    (x86-je cgc label-loop-end)
-    (gen-allocation-imm cgc STAG_PAIR 16)
-    (x86-upop cgc (x86-rax))
-    (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
-    (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r11))
-    (x86-lea cgc (x86-r11) (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
-    (x86-sub cgc (x86-rdx) (x86-imm-int (obj-encoding 1)))
-    (x86-jmp cgc label-loop)
-    (x86-label cgc label-loop-end)
-    ;; Regs
-    (for-each
-      (lambda (src)
-        (gen-allocation-imm cgc STAG_PAIR 16)
-        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) src)
-        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r11))
-        (x86-lea cgc (x86-r11) (x86-mem (+ -24 TAG_PAIR) alloc-ptr)))
-      regs)
-    ;; Dest
-    (if dest
-        (x86-mov cgc dest (x86-r11))
-        (x86-upush cgc (x86-r11)))))
+  (let ((dest (codegen-loc-to-x86opnd fs ffs rloc)))
+
+    (x86-mov cgc (x86-rcx) (x86-imm-int (obj-encoding '())))
+
+    (let loop ((locs locs))
+      (if (not (null? locs))
+          (let* ((loc (car locs))
+                 (opnd (codegen-loc-to-x86opnd fs ffs loc)))
+
+            (gen-allocation-imm cgc STAG_PAIR 16)
+            (if (x86-mem? opnd)
+                (begin (x86-mov cgc (x86-rax) opnd)
+                       (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax)))
+                (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) opnd))
+            (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-rcx))
+            (x86-lea cgc (x86-rcx) (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
+            (loop (cdr locs)))))
+
+    (x86-mov cgc dest (x86-rcx))
+    (x86-mov cgc (x86-rcx) (x86-imm-int 0))))
+
+;(define (codegen-prologue-rest> cgc fs ffs nb-rest-stack rest-regs destreg)
+;
+;  (let ((regs
+;          (map (lambda (el) (codegen-loc-to-x86opnd fs ffs el))
+;               rest-regs))
+;        (dest
+;          (and destreg (codegen-loc-to-x86opnd fs ffs destreg)))
+;        (label-loop-end (asm-make-label #f (new-sym 'prologue-loop-end)))
+;        (label-loop     (asm-make-label #f (new-sym 'prologue-loop))))
+;
+;    ;; TODO: Only one alloc
+;    ;; r11 is available because it's the ctx reg
+;    (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding '())))
+;    ;; Stack
+;    (x86-mov cgc (x86-rdx) (x86-imm-int (obj-encoding nb-rest-stack)))
+;    (x86-label cgc label-loop)
+;    (x86-cmp cgc (x86-rdx) (x86-imm-int 0))
+;    (x86-je cgc label-loop-end)
+;    (gen-allocation-imm cgc STAG_PAIR 16)
+;    (x86-upop cgc (x86-rax))
+;    (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
+;    (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r11))
+;    (x86-lea cgc (x86-r11) (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
+;    (x86-sub cgc (x86-rdx) (x86-imm-int (obj-encoding 1)))
+;    (x86-jmp cgc label-loop)
+;    (x86-label cgc label-loop-end)
+;    ;; Regs
+;    (for-each
+;      (lambda (src)
+;        (gen-allocation-imm cgc STAG_PAIR 16)
+;        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) src)
+;        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-r11))
+;        (x86-lea cgc (x86-r11) (x86-mem (+ -24 TAG_PAIR) alloc-ptr)))
+;      regs)
+;    ;; Dest
+;    (if dest
+;        (x86-mov cgc dest (x86-r11))
+;        (x86-upush cgc (x86-r11)))))
 
 ;; Alloc closure and write header
 (define (codegen-closure-create cgc nb-free)
@@ -554,8 +580,8 @@
     (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))))
 
 ;; Load closure in tmp register
-(define (codegen-load-closure cgc fs loc)
-  (let ((opnd (codegen-loc-to-x86opnd fs loc)))
+(define (codegen-load-closure cgc fs ffs loc)
+  (let ((opnd (codegen-loc-to-x86opnd fs ffs loc)))
     (x86-mov cgc (x86-rax) opnd)))
 
 ;;; Push closure
