@@ -268,7 +268,7 @@
     (modulo              ,cst-binop     ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (remainder           ,dummy-cst-all ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (zero?               ,dummy-cst-all ,lco-p-zero?      #f                        ,ATX_BOO 1 ,ATX_NUM                   )
-    (not                 ,cst-not       #f                ,codegen-p-not            ,ATX_BOO 1 ,ATX_ALL                   )
+    (not                 ,cst-not       ,lco-p-not        ,codegen-p-not            ,ATX_BOO 1 ,ATX_ALL                   )
     (set-car!            #f             #f                ,codegen-p-set-cxr!       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (set-cdr!            #f             #f                ,codegen-p-set-cxr!       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (vector-length       ,dummy-cst-all #f                ,codegen-p-vector-length  ,ATX_INT 1 ,ATX_VEC                   )
@@ -282,7 +282,7 @@
     (exit                #f             #f                 #f                       ,ATX_VOI 0                            )
     (make-vector         #f             #f                ,codegen-p-make-vector    ,ATX_VEC 2 ,ATX_INT ,ATX_ALL          )
     (make-string         #f             #f                ,codegen-p-make-string    ,ATX_STR 2 ,ATX_INT ,ATX_CHA          )
-    (eof-object?         ,dummy-cst-all #f                ,codegen-p-eof-object?    ,ATX_BOO 1 ,ATX_ALL                   )
+    (eof-object?         ,dummy-cst-all ,lco-p-eof-obj    ,codegen-p-eof-object?    ,ATX_BOO 1 ,ATX_ALL                   )
     (symbol->string      ,dummy-cst-all #f                ,codegen-p-symbol->string ,ATX_STR 1 ,ATX_SYM                   )
     (current-output-port #f             ,lco-p-cur-x-port #f                        ,ATX_OPO 0                            )
     (current-input-port  #f             ,lco-p-cur-x-port #f                        ,ATX_IPO 0                            )
@@ -1702,6 +1702,35 @@
            succ)))
 
 ;;
+;; Special primitive 'not'
+(define (lco-p-not ast op succ)
+  (make-lazy-code
+    ast
+    (lambda (cgc ctx)
+      (let ((type (ctx-get-type ctx 0)))
+        (if (or (ctx-tboo? type)
+                (ctx-tunk? type))
+            (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 1)))
+              (apply-moves cgc ctx moves)
+              (codegen-p-not cgc (ctx-fs ctx) (ctx-ffs ctx) op reg #f (ctx-get-loc ctx 0) #f)
+              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg)))
+            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (literal->ctx-type #f) #f)))))))
+
+;;
+;; Special primitive 'eof-object?'
+(define (lco-p-eof-obj ast op succ)
+  (make-lazy-code
+    ast
+    (lambda (cgc ctx)
+      (let ((type (ctx-get-type ctx 0)))
+        (if (ctx-tunk? type)
+            (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 1)))
+              (apply-moves cgc ctx moves)
+              (codegen-p-eof-object? cgc (ctx-fs ctx) (ctx-ffs ctx) op reg #f (ctx-get-loc ctx 0) #f)
+              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg)))
+            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (literal->ctx-type #f) #f)))))))
+
+;;
 ;; Special primitive 'char=?'
 (define (lco-p-char=? ast op succ)
   (let ((node (atom-node-make 'eq?)))
@@ -1741,9 +1770,10 @@
           (lr (if rcst? (ctx-type-cst typer)
                         (ctx-get-loc  ctx 0)))
           (nctx (ctx-pop-n ctx 2)))
-      (if (and (not (ctx-tunk? typel))
-               (not (ctx-tunk? typer))
-               (not (ctx-type-teq? typel typer)))
+      (if (or (and (not (ctx-tunk? typel))
+                   (not (ctx-tunk? typer))
+                   (not (ctx-type-teq? typel typer)))
+              (and (ctx-tflo? typel) (ctx-tflo? typer)))
           ;; Types are known and !=
           (jump-to-version cgc (lazy-code-lco-false succ) nctx)
           ;;
@@ -1759,9 +1789,10 @@
                          (ctx-get-loc  ctx 0)))
            (nctx (ctx-push (ctx-pop-n ctx 2) (make-ctx-tboo) reg)))
       (apply-moves cgc ctx moves)
-      (if (and (not (ctx-tunk? typel))
-               (not (ctx-tunk? typer))
-               (not (ctx-type-teq? typel typer)))
+      (if (or (and (not (ctx-tunk? typel))
+                   (not (ctx-tunk? typer))
+                   (not (ctx-type-teq? typel typer)))
+              (and (ctx-tflo? typel) (ctx-tflo? typer)))
           ;; Types are known and !=
           (codegen-set-bool cgc #f reg)
           ;;
