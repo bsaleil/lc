@@ -911,7 +911,6 @@
     (cond ((and rightint? rcst?)
              (error "NYI1"))
           (rightint?
-             (pp "I")
              (x86-mov cgc (x86-rax) opright)
              (x86-shr cgc (x86-rax) (x86-imm-int 2))
              (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
@@ -923,7 +922,6 @@
           ((x86-mem? opright)
              (error "NYI"))
           (else
-             (pp "K")
              (x86-comisd cgc opleft opright)))
 
     ;; NOTE: check that mlc-if patch is able to patch ieee jcc instructions (ja, jb, etc...)

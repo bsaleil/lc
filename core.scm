@@ -106,6 +106,7 @@
 (define global-offset #f)
 (define selector-reg #f)
 (define x86-call-label-aligned-ret #f)
+(define codegen-freg-to-x86reg #f)
 
 (define OFFSET_FLONUM #f)
 
@@ -1666,8 +1667,19 @@
 
        (define type-ctor (ctx-type-ctor ctx-type))
 
-       ;; TODO: plus nettoyer tout ca
-       (let* ((ctx-success (ctx-set-type ctx stack-idx (type-ctor) #t))
+       ;; TODO: clean & comments
+       (let* (;;
+              (r (and (ctx-tflo? ctx-type)
+                      (ctx-get-free-freg ast ctx lazy-success 0)))
+              (moves (and r (car r)))
+              (freg  (and r (cadr r)))
+              (ctx   (if  r (caddr r) ctx))
+              ;;
+              (ctx-success
+                  (if (ctx-tflo? ctx-type)
+                      (let ((tctx (ctx-set-type ctx stack-idx (type-ctor) #t)))
+                        (ctx-set-loc tctx (stack-idx-to-slot tctx stack-idx) freg))
+                      (ctx-set-type ctx stack-idx (type-ctor) #t)))
               (ctx-success-known ctx);; If know type is tested type, do not change ctx (TODO?)
               (ctx-fail ctx)
               (known-type  (ctx-get-type ctx stack-idx)))
@@ -1733,6 +1745,10 @@
                         (min (asm-label-pos (list-ref stub-labels 0))
                              (asm-label-pos (list-ref stub-labels 1))))
 
+                  ;; If we check a flonum, apply moves
+                  (if moves
+                      (apply-moves cgc ctx moves))
+
                   (if opt-verbose-jit
                       (println ">>> Gen dynamic type test at index " stack-idx))
 
@@ -1783,12 +1799,19 @@
                                (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) opval)))
                            (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
                            ;; stag xxx << 3
-                           (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (ctx-type->stag ctx-type)))))
+                           (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (ctx-type->stag ctx-type))))
+
+                           (if (ctx-tflo? ctx-type)
+                               (let ((opnd (codegen-freg-to-x86reg freg)))
+                                 (x86-jne cgc label-jump)
+                                 (x86-mov cgc (x86-rax) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opval))
+                                 (x86-movsd cgc (codegen-freg-to-x86reg freg) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opval)))))
+
                           ;; Other
                           (else (error "Unknown type " ctx-type)))
 
                     (x86-label cgc label-jump)
-                    (x86-je cgc (list-ref stub-labels 0))
+                    (x86-je cgc  (list-ref stub-labels 0))
                     (x86-jmp cgc (list-ref stub-labels 1))))))))))
 
 ;;-----------------------------------------------------------------------------

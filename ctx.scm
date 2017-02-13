@@ -72,6 +72,20 @@
         (begin (println "WIP: alpha conversion needed for " r)
                (pp local-ids)
                (exit 0))))
+
+  (let* ((used-fregs
+          (foldr (lambda (sl r)
+                   (if (and (cdr sl) (ctx-loc-is-fregister? (cdr sl)))
+                       (cons (cdr sl) r)
+                       r))
+                 '()
+                 slot-loc))
+         (total (set-union used-fregs free-fregs)))
+    (if (not (= (length total)
+                (length (ctx-init-free-fregs))))
+        (begin
+          (pp (make-ctx* stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num))
+          (error "CHECK FAILED"))))
   (make-ctx* stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num))
 ;; TODO: end wip alpha conversion
 
@@ -583,9 +597,11 @@
 
   (let ((free-fregs (ctx-free-fregs ctx)))
     (if (null? free-fregs)
-        (error "NYI wip error")
+        (begin
+          (pp ctx)
+          (error "NYI wip error"))
         (let* ((reg (car free-fregs))
-               (free (set-sub free-fregs (list reg) '())))
+               (free free-fregs));(set-sub free-fregs (list reg) '())))
           (list '()
                 reg
                 (ctx-copy ctx #f #f #f #f free))))))
