@@ -1155,6 +1155,9 @@
 
 ;; TODO: use stack idx to match public api
 ;; Change loc associated to given slot
+;; change ONE SLOT only
+;; TODO: use extra bool arg to change for associated identifier too  to match public api
+;;       (see ctx-set-type)
 (define (ctx-set-loc ctx slot loc)
 
   (define (get-slot-loc slot-loc)

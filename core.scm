@@ -1677,8 +1677,13 @@
               ;;
               (ctx-success
                   (if (ctx-tflo? ctx-type)
-                      (let ((tctx (ctx-set-type ctx stack-idx (type-ctor) #t)))
-                        (ctx-set-loc tctx (stack-idx-to-slot tctx stack-idx) freg))
+                      (let* ((ident (ctx-ident-at ctx stack-idx))
+                             (tctx (ctx-set-type ctx stack-idx (type-ctor) #t)))
+                        (if ident
+                            (foldr (lambda (slot ctx) (ctx-set-loc ctx slot freg))
+                                   tctx
+                                   (identifier-sslots (cdr ident)))
+                            (ctx-set-loc tctx (stack-idx-to-slot tctx stack-idx) freg)))
                       (ctx-set-type ctx stack-idx (type-ctor) #t)))
               (ctx-success-known ctx);; If know type is tested type, do not change ctx (TODO?)
               (ctx-fail ctx)
@@ -1804,7 +1809,6 @@
                            (if (ctx-tflo? ctx-type)
                                (let ((opnd (codegen-freg-to-x86reg freg)))
                                  (x86-jne cgc label-jump)
-                                 (x86-mov cgc (x86-rax) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opval))
                                  (x86-movsd cgc (codegen-freg-to-x86reg freg) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opval)))))
 
                           ;; Other

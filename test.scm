@@ -16,10 +16,11 @@
 
 
 (define (foo n)
-  (+ (car n) (cdr n)))
+  (pp (+ n n))
+  (cons n n))
 
 
-(pp (foo (cons 1.1 2.2)))
+(pp (foo (read)))
 
 
   ;(println (= result 9227465.)))
