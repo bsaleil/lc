@@ -41,11 +41,14 @@
 
 (c-declare
 "
+#include <stdio.h>  // puts
 #include <stdlib.h> // exit
+#include <unistd.h> // getpid
+
+int ___heap_limit(); // Gambit ___heap_limit
 
 ___U64 alloc_still(___U64 stag, ___U64 bytes)
 {
-
   ___U64 r = ___alloc_scmobj(___PSTATE,stag,bytes);
   if ((r & 3)==0)
   {
