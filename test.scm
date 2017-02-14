@@ -2,36 +2,14 @@
 ;; out.scm 1333
 ;; TODO: use kill set for let & letrec
 
-(define (pt-in-poly2 xp yp x y)
-  (let loop ((c #f) (i (- (vector-length xp) 1)) (j 0))
-    (if (< i 0)
-      1
-      (if (or (and (or (> (vector-ref yp i) y)
-                       (>= y (vector-ref yp j)))
-                   (or (> (vector-ref yp j) y)
-                       (>= y (vector-ref yp i))))
-              ((>= x
-                       (+ (vector-ref xp i)
-                               (/ (*
-                                        (- (vector-ref xp j)
-                                                (vector-ref xp i))
-                                        (- y (vector-ref yp i)))
-                                       (- (vector-ref yp j)
-                                               (vector-ref yp i)))))))
-        (loop c (- i 1) i)
-        (loop (not c) (- i 1) i)))))
+;(define integer->char ascii->char)
+;(define char->integer char->ascii)
 
-(define (run)
-  (let ((xp (vector))
-        (yp (vector)))
-
-    (gambit$$pp (pt-in-poly2 xp yp .5 .5))))
-
-(run)
+(define read-table
+  (make-vector 256 0))
 
 
-  ;(println (= result 9227465.)))
-;#t
+
 
 
 ;(define (foo n)

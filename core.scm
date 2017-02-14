@@ -912,15 +912,19 @@
   (for-each (lambda (reg) (x86-ppop cgc reg)) (reverse regs)))
 
 (define (ppush-pop-xmm cgc proc)
-  (for-each (lambda (xmm)
-              (x86-movd/movq cgc (x86-rax) xmm)
-              (x86-ppush cgc (x86-rax)))
-            xmm-regs)
+  (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 (length xmm-regs))))
+  (let loop ((n 0) (xmms xmm-regs))
+    (if (not (null? xmms))
+        (begin
+          (x86-movsd cgc (x86-mem (* 8 n) (x86-rsp)) (car xmms))
+          (loop (+ n 1) (cdr xmms)))))
   (proc cgc)
-  (for-each (lambda (xmm)
-              (x86-ppop cgc (x86-rax))
-              (x86-movd/movq cgc xmm (x86-rax)))
-            (reverse xmm-regs)))
+  (let loop ((n 0) (xmms xmm-regs))
+    (if (not (null? xmms))
+        (begin
+          (x86-movsd cgc (car xmms) (x86-mem (* 8 n) (x86-rsp)))
+          (loop (+ n 1) (cdr xmms)))))
+  (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (length xmm-regs)))))
 
 (define (upush-regs cgc regs)
   (for-each (lambda (reg) (x86-upush cgc reg)) regs))
