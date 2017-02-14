@@ -2475,6 +2475,8 @@
                                 (if (ctx-tflo? type)
                                     (loop (+ idx 1) (+ n 1))
                                     (loop (+ idx 1) n)))))))
+                 (if (> nfargs (length regalloc-fregs))
+                     (error "NYI")) ;; Fl args that are on the pstack need to be shifted
                  (call-tail-shift cgc ctx ast tail? (- nargs nfargs)))
 
                ;; Generate call sequence
