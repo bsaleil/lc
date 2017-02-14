@@ -746,6 +746,7 @@
     (make-lazy-code-ret ;; Lazy-code with 'ret flag
       #f
       (lambda (cgc ctx)
+
         (let* ((fs (ctx-fs ctx))
                (ffs (ctx-ffs ctx))
                ;; Return value loc
@@ -2414,14 +2415,17 @@
       ctx)))
 
 ;; Shift args and closure for tail call
-(define (call-tail-shift cgc ctx ast tail? nbargs)
+;; nb-nfl-args is the number of non flonum arguments
+;; nb-fl-args  is the number of flonum arguments
+(define (call-tail-shift cgc ctx ast tail? nb-nfl-args nb-fl-args)
 
   ;; r11 is available because it's the ctx register
   (if tail?
-      (let ((fs (ctx-fs ctx))
+      (let ((fs  (ctx-fs ctx))
+            (ffs (ctx-ffs ctx))
             (nshift
-              (if (> (- nbargs (length args-regs)) 0)
-                  (- nbargs (length args-regs))
+              (if (> (- nb-nfl-args (length args-regs)) 0)
+                  (- nb-nfl-args (length args-regs))
                   0)))
         (let loop ((curr (- nshift 1)))
           (if (>= curr 0)
@@ -2430,6 +2434,9 @@
                 (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift 1) curr)) (x86-usp)) (x86-r11))
                 (loop (- curr 1)))))
 
+        ;; Clean stacks
+        (if (> ffs 0)
+            (x86-add cgc (x86-rsp) (x86-imm-int (* 8 ffs)))) ;; TODO: NYI case if nfargs > number of fargs regs
         (if (not (= (- fs nshift 1) 0))
             (x86-add cgc (x86-usp) (x86-imm-int (* 8 (- fs nshift 1))))))))
 
@@ -2477,7 +2484,7 @@
                                     (loop (+ idx 1) n)))))))
                  (if (> nfargs (length regalloc-fregs))
                      (error "NYI")) ;; Fl args that are on the pstack need to be shifted
-                 (call-tail-shift cgc ctx ast tail? (- nargs nfargs)))
+                 (call-tail-shift cgc ctx ast tail? (- nargs nfargs) nfargs))
 
                ;; Generate call sequence
                ;; Build call ctx
