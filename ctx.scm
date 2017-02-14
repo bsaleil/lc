@@ -1030,6 +1030,21 @@
       (free-loc loc ctx-loc-is-fmemory?   (ctx-free-fmems ctx))
       (env-remove-slot (ctx-env ctx) slot))))      ;; env: remove popped slot from env
 
+;; Check if given stack idx belongs to an id
+;; If so, remove this link
+(define (ctx-remove-slot-info ctx stack-idx)
+  (define (get-env env slot)
+    (if (null? env)
+        '()
+        (let ((sslots (identifier-sslots (cdar env))))
+          (if (member slot sslots)
+              (cons (cons (caar env)
+                          (identifier-copy (cdar env) #f (set-sub sslots (list slot) '())))
+                    (cdr env))
+              (cons (car env) (get-env (cdr env) slot))))))
+  (let ((env (get-env (ctx-env ctx) (stack-idx-to-slot ctx stack-idx))))
+    (ctx-copy ctx #f #f #f #f #f #f env)))
+
 ;;
 ;; GET LOC
 (define (ctx-get-loc ctx stack-idx)

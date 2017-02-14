@@ -2,25 +2,32 @@
 ;; out.scm 1333
 ;; TODO: use kill set for let & letrec
 
-;; Si on check un float et on a unknown:
-	;; on libère un fregistre.
-	;; on applique les mov
-	;; on récupère la valeur du dessus de la pile
-	;; on teste si c'est un float
-	;;   si oui:
-	;;     on le déboxe, on le déplace dans le freg
-	;;     on utilise le new ctx
-	;;   si non:
-	;;     on ne fait rien,
-	;;     on utilise le new ctx ou le registre reste libre
+(define (pt-in-poly2 xp yp x y)
+  (let loop ((c #f) (i (- (vector-length xp) 1)) (j 0))
+    (if (< i 0)
+      1
+      (if (or (and (or (> (vector-ref yp i) y)
+                       (>= y (vector-ref yp j)))
+                   (or (> (vector-ref yp j) y)
+                       (>= y (vector-ref yp i))))
+              ((>= x
+                       (+ (vector-ref xp i)
+                               (/ (*
+                                        (- (vector-ref xp j)
+                                                (vector-ref xp i))
+                                        (- y (vector-ref yp i)))
+                                       (- (vector-ref yp j)
+                                               (vector-ref yp i)))))))
+        (loop c (- i 1) i)
+        (loop (not c) (- i 1) i)))))
 
+(define (run)
+  (let ((xp (vector))
+        (yp (vector)))
 
-(define (foo n)
-  (pp (+ n n))
-  (cons n n))
+    (gambit$$pp (pt-in-poly2 xp yp .5 .5))))
 
-
-(pp (foo (read)))
+(run)
 
 
   ;(println (= result 9227465.)))
