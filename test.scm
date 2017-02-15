@@ -1,25 +1,14 @@
 
 ;; out.scm 1333
 
-(define *primitives*
-  (list
-    (cons  10  1)
-    (cons  20  2)
-    (cons  30  3)
-    (cons  40  4)
-    (cons  50  5)
-    (cons  60  6)
-    (cons  70  7)
-    (cons  80  8)
-    (cons  90  9)
-    (cons 100 10)
-    (cons 103 (lambda () 33))))
 
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-;-----
-
-;(test)
-(pp *primitives*)
+(pp (fib 40))
 
 
 
