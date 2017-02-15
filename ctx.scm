@@ -27,7 +27,6 @@
 ;;
 ;;---------------------------------------------------------------------------
 
-(define mem-header #f)
 (define regalloc-regs #f)
 (define regalloc-fregs #f)
 (define lazy-code-flags #f)
@@ -35,6 +34,7 @@
 (define live-out? #f)
 (define copy-permanent #f)
 (define perm-domain #f)
+(define opt-entry-points #f)
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx
@@ -1366,21 +1366,27 @@
     (if (< curr-idx 0)
         (cons (reverse pushed) moves)
         (let* ((type (ctx-get-type ctx curr-idx))
+               (loc (ctx-get-loc ctx curr-idx))
                (from
-                 (let ((loc (ctx-get-loc ctx curr-idx)))
-                   (or loc
-                       (cond ((and (ctx-type-is-cst type)
-                                   (ctx-tclo? type))
-                              (cons 'constfn (ctx-type-cst type)))
-                             ((ctx-type-is-cst type)
-                                (cons 'const (ctx-type-cst type)))
-                             (else
-                                (error "Internal error")))))))
+                   (cond ((and (not opt-entry-points)
+                               (ctx-tflo? type))
+                            (if (ctx-type-is-cst type)
+                                (cons 'flbox (cons 'const (ctx-type-cst type)))
+                                (cons 'flbox loc)))
+                         (loc loc)
+                         ((and (ctx-type-is-cst type)
+                               (ctx-tclo? type))
+                            (cons 'constfn (ctx-type-cst type)))
+                         ((ctx-type-is-cst type)
+                            (cons 'const (ctx-type-cst type)))
+                         (else
+                            (error "Internal error")))))
 
           (cond ((and (ctx-tflo? type)
                       (null? rem-fregs))
                     (error "NYI1"))
-                ((ctx-tflo? type)
+                ((and opt-entry-points
+                      (ctx-tflo? type))
                     (get-req-moves
                       (- curr-idx 1)
                       rem-regs

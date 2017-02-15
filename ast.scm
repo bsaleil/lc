@@ -2438,13 +2438,15 @@
                ;; Shift args and closure for tail call
                (let* ((nargs (length args))
                       (nfargs
-                        (let loop ((idx 0) (n 0))
-                          (if (= idx nargs)
-                              n
-                              (let ((type (ctx-get-type ctx idx)))
-                                (if (ctx-tflo? type)
-                                    (loop (+ idx 1) (+ n 1))
-                                    (loop (+ idx 1) n)))))))
+                        (if (not opt-entry-points)
+                            0
+                            (let loop ((idx 0) (n 0))
+                              (if (= idx nargs)
+                                  n
+                                  (let ((type (ctx-get-type ctx idx)))
+                                    (if (ctx-tflo? type)
+                                        (loop (+ idx 1) (+ n 1))
+                                        (loop (+ idx 1) n))))))))
                  (if (> nfargs (length regalloc-fregs))
                      (error "NYI")) ;; Fl args that are on the pstack need to be shifted
                  (call-tail-shift cgc ctx ast tail? (- nargs nfargs) nfargs))

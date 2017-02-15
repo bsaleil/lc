@@ -109,6 +109,7 @@
 (define codegen-freg-to-x86reg #f)
 
 (define OFFSET_FLONUM #f)
+(define gen-allocation-imm #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -1155,6 +1156,23 @@
                ;; Compute x86 src operand
                (src
                  (cond ((and (pair? (car move))
+                             (eq? (caar move) 'flbox))
+                          ;; Check move validity
+                          (assert (or (and (eq? (cadar move) 'const) (flonum? (cddar move)))
+                                      (ctx-loc-is-fregister? (cdar move))
+                                      (ctx-loc-is-fmemory?   (cdar move)))
+                                  "Internal error, unexpected operand in move")
+                          (if (eq? (cadar move) 'const)
+                              (x86-imm-int (obj-encoding (cddar move)))
+                              (let* ((loc (cdar move))
+                                     (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc)))
+                                (gen-allocation-imm cgc STAG_FLONUM 8)
+                                (if (x86-mem? loc)
+                                    (error "NYI")
+                                    (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opnd))
+                                (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
+                                (x86-rax))))
+                       ((and (pair? (car move))
                              (eq? (caar move) 'constfn))
                           ;; If src is a constfn, create closure in move
                           (car move))
