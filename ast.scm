@@ -3070,10 +3070,11 @@
          (cst? (ctx-type-is-cst type)))
     (if cst?
         (mlet ((cst (ctx-type-cst type))
-               (r   (if (ctx-tflo? type)
-                        (ctx-get-free-freg ast ctx #f 0)
-                        (ctx-get-free-reg ast ctx #f 0)))
-               (moves/reg/ctx r))
+               (moves/reg/ctx
+                 (if (ctx-tflo? type)
+                     (ctx-get-free-freg ast ctx #f 0)
+                     (ctx-get-free-reg ast ctx #f 0))))
+          (apply-moves cgc ctx moves)
           ;; Alloc cst
           (cond ((ctx-tflo? type) (alloc-cst-flo reg cst))
                 ((ctx-tclo? type) (alloc-cst-clo reg cst))

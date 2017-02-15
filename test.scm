@@ -1,42 +1,25 @@
 
 ;; out.scm 1333
-;; TODO: use kill set for let & letrec
+
+(define *primitives*
+  (list
+    (cons  10  1)
+    (cons  20  2)
+    (cons  30  3)
+    (cons  40  4)
+    (cons  50  5)
+    (cons  60  6)
+    (cons  70  7)
+    (cons  80  8)
+    (cons  90  9)
+    (cons 100 10)
+    (cons 103 (lambda () 33))))
 
 
-;;; MBROT -- Generation of Mandelbrot set fractal.
+;-----
 
-;;; PNPOLY - Test if a point is contained in a 2D polygon.
-
-(define (pt-in-poly2 xp yp x y)
-  (let loop ((c #f) (i (- (vector-length xp) 1)) (j 0))
-    (if (< i 0)
-      c
-      (if (or (and (or (> (vector-ref yp i) y)
-                       (>= y (vector-ref yp j)))
-                   (or (> (vector-ref yp j) y)
-                       (>= y (vector-ref yp i))))
-              (>= x
-                       (+ (vector-ref xp i)
-                               (/ (*
-                                        (- (vector-ref xp j)
-                                                (vector-ref xp i))
-                                        (- y (vector-ref yp i)))
-                                       (- (vector-ref yp j)
-                                               (vector-ref yp i))))))
-        (loop c (- i 1) i)
-        (loop (not c) (- i 1) i)))))
-
-(define (run)
-  (let ((count 0)
-        (xp (vector))
-        (yp (vector)))
-    (pt-in-poly2 xp yp .5 .5)
-    count))
-
-(run)
-
-
-
+;(test)
+(pp *primitives*)
 
 
 
