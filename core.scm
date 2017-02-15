@@ -1813,7 +1813,10 @@
                            (if (ctx-tflo? ctx-type)
                                (let ((opnd (codegen-freg-to-x86reg freg)))
                                  (x86-jne cgc label-jump)
-                                 (x86-movsd cgc (codegen-freg-to-x86reg freg) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opval)))))
+                                 (if (x86-mem? opval)
+                                     (begin (x86-mov cgc (x86-rax) opval)
+                                            (set! opval (x86-rax))))
+                                 (x86-movsd cgc opnd (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opval)))))
 
                           ;; Other
                           (else (error "Unknown type " ctx-type)))

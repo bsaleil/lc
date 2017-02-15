@@ -694,43 +694,6 @@
                           (ctx (ctx-set-type ctx 0 (make-ctx-tpai) #f)))
 
                      (jump-to-version cgc succ ctx))))
-
-
-            ;     (pp ctx)
-               ;
-            ;   (let* ((nb-extra (- nb-actual (- nb-formal 1)))
-            ;          (nctx (ctx-pop-n ctx (- nb-extra 1)))
-            ;          (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f)))
-            ;     (set! ctx nctx)
-            ;     (let* ((nb-formal-stack
-            ;              (if (> (- nb-formal 1) (length args-regs))
-            ;                  (- nb-formal 1 (length args-regs))
-            ;                  0))
-            ;            (r
-            ;              (if (<= nb-actual (length args-regs))
-            ;                  0
-            ;                  (- nb-actual (length args-regs))))
-            ;            (nb-rest-stack (- r nb-formal-stack))
-            ;            (rest-regs
-            ;              (if (>= (- nb-formal 1) (length args-regs))
-            ;                  '()
-            ;                  (list-head
-            ;                    (list-tail args-regs (- nb-formal 1))
-            ;                    (- nb-actual nb-rest-stack nb-formal -1))))
-            ;            (reg
-            ;              (if (<= nb-formal (length args-regs))
-            ;                  (list-ref args-regs (- nb-formal 1))
-            ;                  #f)))
-               ;
-            ;       (codegen-prologue-rest>
-            ;         cgc
-            ;         (ctx-fs ctx)
-            ;         (ctx-ffs ctx)
-            ;         nb-rest-stack
-            ;         (reverse rest-regs)
-            ;         reg))
-               ;
-            ;     (jump-to-version cgc succ ctx)))
               ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
               ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
                (gen-error cgc ERR_WRONG_NUM_ARGS))
@@ -761,7 +724,7 @@
           (if opt-return-points
               (let* ((crtable-offset (ctx-type->cridx type-ret)))
                 (codegen-return-cr cgc fs ffs fs laddr lret crtable-offset (ctx-tflo? type-ret)))
-              (codegen-return-rp cgc fs ffs fs laddr lret))))))
+              (codegen-return-rp cgc fs ffs fs laddr lret (ctx-tflo? type-ret)))))))
   ;; TODO: write a generic lazy-drop function (this function is used by multiple mlc-*)
   (make-lazy-code-ret
     #f

@@ -591,17 +591,8 @@
     (x86-lea cgc dest (x86-mem offset alloc-ptr))))
 
 ;;
-(define (codegen-return-common cgc fs ffs clean-nb lretobj lretval float?)
-  (let ((opretobj (codegen-loc-to-x86opnd fs ffs lretobj))
-        (opretval (codegen-loc-to-x86opnd fs ffs lretval))
-        (opret    (if float?
-                      (codegen-freg-to-x86reg return-freg)
-                      (codegen-reg-to-x86reg return-reg))))
-    ;; Move return value to return register
-    (if (not (eq? opret opretval))
-        (if float?
-            (x86-movsd cgc opret opretval)
-            (x86-mov cgc opret opretval)))
+(define (codegen-return-common cgc fs ffs clean-nb lretobj)
+  (let ((opretobj (codegen-loc-to-x86opnd fs ffs lretobj)))
     ;; Move return address (or cctable address) in rdx
     (if (not (eq? opretobj (x86-rdx)))
         (x86-mov cgc (x86-rdx) opretobj))
@@ -613,15 +604,41 @@
 
 ;; Generate function return using a return address
 ;; Retaddr (or cctable) is in rdx
-(define (codegen-return-rp cgc fs ffs clean-nb lretobj lretval)
-    (error "Handle return of float")
-    (codegen-return-common cgc fs ffs clean-nb lretobj lretval)
+(define (codegen-return-rp cgc fs ffs clean-nb lretobj lretval float?)
+    (let ((opret    (codegen-reg-to-x86reg return-reg))
+          (opretval (codegen-loc-to-x86opnd fs ffs lretval)))
+
+      ;; Move return value to return register
+      (if float?
+          ;; Box float
+          (begin
+            (gen-allocation-imm cgc STAG_FLONUM 8)
+            (if (x86-mem? opretval)
+                (error "NYI")
+                (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opretval))
+            (x86-lea cgc opret (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))
+          ;;
+          (if (not (eq? opret opretval))
+              (x86-mov cgc opret opretval))))
+
+    (codegen-return-common cgc fs ffs clean-nb lretobj)
     (x86-jmp cgc (x86-rdx)))
 
 ;; Generate function return using a crtable
 ;; Retaddr (or cctable) is in rdx
 (define (codegen-return-cr cgc fs ffs clean-nb lretobj lretval crtable-offset float?)
-    (codegen-return-common cgc fs ffs clean-nb lretobj lretval float?)
+
+    (let ((opret (if float?
+                     (codegen-freg-to-x86reg return-freg)
+                     (codegen-reg-to-x86reg return-reg)))
+          (opretval (codegen-loc-to-x86opnd fs ffs lretval)))
+
+      (if (not (eq? opret opretval))
+          (if float?
+              (x86-movsd cgc opret opretval)
+              (x86-mov cgc opret opretval))))
+
+    (codegen-return-common cgc fs ffs clean-nb lretobj)
     (x86-mov cgc (x86-rax) (x86-mem crtable-offset (x86-rdx)))
     (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding crtable-offset)))
     (x86-jmp cgc (x86-rax)))

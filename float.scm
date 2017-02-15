@@ -211,7 +211,6 @@
   (x86-sse-op cgc "cvtsi2sd" dst src #xf2 #x2a))
 
 (define (x86-sse-op cgc mnemonic dst src opcode1 opcode2)
-
   (if opcode1
     (asm-8 cgc opcode1)) ;; opcode
 

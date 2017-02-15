@@ -2,6 +2,11 @@
 ;; out.scm 1333
 
 
+;; X désactiver les pt de retour
+;; 1 désactiver les pt d'entrée
+;; 2 imposer un max de versions
+;; 3 enlever les todo + nettoyage + merge
+
 (define (fib n)
   (if (< n 2)
       1
