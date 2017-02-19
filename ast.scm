@@ -642,7 +642,9 @@
               (gen-allocation-imm cgc STAG_FLONUM 8)
               (if (ctx-loc-is-fregister? loc)
                   (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opnd)
-                  (error "NYI"))
+                  (begin
+                    (x86-mov cgc (x86-rax) opnd)
+                    (x86-mov cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-rax))))
               (x86-lea cgc ropnd (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
               (let* ((ident (ctx-ident-at ctx idx-from))
                      (ctx

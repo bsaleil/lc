@@ -9,42 +9,13 @@
 
 ;;; PNPOLY - Test if a point is contained in a 2D polygon.
 
-(define (pt-in-poly2 xp yp x y)
-  (let loop ((c #f) (i (- (vector-length xp) 1)) (j 0))
-    (if (< i 0)
-      c
-      (if (or (and (or (> (vector-ref yp i) y)
-                       (>= y (vector-ref yp j)))
-                   (or (> (vector-ref yp j) y)
-                       (>= y (vector-ref yp i))))
-              (>= x
-                       (+ (vector-ref xp i)
-                               (/ (*
-                                        (- (vector-ref xp j)
-                                                (vector-ref xp i))
-                                        (- y (vector-ref yp i)))
-                                       (- (vector-ref yp j)
-                                               (vector-ref yp i))))))
-        (loop c (- i 1) i)
-        (loop (not c) (- i 1) i)))))
+(define (foo n)
+  (if (< n 2.0)
+      1.0
+      (+ (foo (- n 1.0))
+         (foo (- n 2.0)))))
 
-(define (run)
-  (let ((count 0)
-        (xp (vector 0.))
-        (yp (vector 0.)))
-    (pt-in-poly2 xp yp .5 .5)
-    count))
-
-(run)
-
-
-;(define (foo n)
-;  (if (< n 2)
-;      1
-;      (+ (foo (- n 1))
-;         (foo (- n 2)))))
-;
-;(pp (foo 40))
+(pp (foo 40.0))
 
 
 ;; WIP:
