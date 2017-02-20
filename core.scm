@@ -1354,6 +1354,8 @@
          (fn-patch label-merge #t)))
     ;; No version for this ctx, limit reached, and generic version does not exist
     (else
+      (if (member 'entry (lazy-code-flags lazy-code))
+          (error "WIP nyi"))
       ;; TODO what if fn-opt-label is set ?
       (let* ((entry-lco? (member 'entry (lazy-code-flags lazy-code)))
              (gctx (if entry-lco? ctx (ctx-generic ctx)))

@@ -9,13 +9,20 @@
 
 ;;; PNPOLY - Test if a point is contained in a 2D polygon.
 
-(define (foo n)
-  (if (< n 2.0)
-      1.0
-      (+ (foo (- n 1.0))
-         (foo (- n 2.0)))))
+;;; FIBFP -- Computes fib(35) using floating point
 
-(pp (foo 30.0))
+(define (fibfp n)
+  (if (< n 2.)
+    n
+    (+ (fibfp (- n 1.))
+       (fibfp (- n 2.)))))
+
+(let ((result (fibfp 25.)))
+  (pp result)
+  (println (= result 9227465.)))
+
+;#t
+
 
 
 ;; WIP:

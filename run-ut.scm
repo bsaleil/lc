@@ -106,7 +106,7 @@
         ((equal? mode "lc-m5")
          (run-lc file "--max-versions 5"))
         ((equal? mode "lc-m1")
-         (run-lc mfile "--max-versions 1"))
+         (run-lc file "--max-versions 1"))
         (else (error "Unknown mode " mode))))
 
 (define (get-expected-output filename)
