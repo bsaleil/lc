@@ -352,9 +352,11 @@
     (if (null? slot-loc)
         '()
         (let ((first (car slot-loc)))
-          (if (and (cdr first)
-                   (find (lambda (el) (eq? (cdr el) (cdr first)))
-                     (cdr slot-loc)))
+          (if (or (ctx-loc-is-fregister? (cdr first))
+                  (ctx-loc-is-fmemory?   (cdr first))
+                  (and (cdr first)
+                       (find (lambda (el) (eq? (cdr el) (cdr first)))
+                             (cdr slot-loc))))
               ;; Loc is also used by at least one other slot
               (let ((loc (get-new-loc)))
                 (cons (cons (car first) loc)
@@ -373,7 +375,7 @@
   (let ((env   (compute-env   (ctx-env ctx)))
         (slot-loc (compute-slot-loc slot-loc)))
 
-    (ctx-copy ctx stack slot-loc free-regs free-mems #f #f env #f #f fs)))
+    (ctx-copy ctx stack slot-loc free-regs free-mems (ctx-init-free-fregs) '() env #f #f fs 0)))
 ;;
 ;; CTX INIT FN
 (define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
@@ -1327,6 +1329,20 @@
 ;; Compute and returns moves needed to merge reg alloc from src-ctx to dst-ctx
 (define (ctx-regalloc-merge-moves src-ctx dst-ctx)
 
+  (define (add-boxes moves)
+    (if (null? moves)
+        '()
+        (let ((move (car moves)))
+          (if (or (ctx-loc-is-fregister? (car move))
+                  (ctx-loc-is-fmemory?   (car move))
+                  (and (pair? (car move))
+                       (eq?   (caar move) 'const)
+                       (flonum? (cdar move))))
+              (let ((move (cons (cons 'flbox (car move)) (cdr move))))
+                (cons move
+                      (add-boxes (cdr moves))))
+              (cons move (add-boxes (cdr moves)))))))
+
   (define (get-req-moves)
     (define sl-dst (ctx-slot-loc dst-ctx))
     (let loop ((sl (ctx-slot-loc src-ctx)))
@@ -1353,10 +1369,12 @@
                     (cons (cons src dst) (loop (cdr sl))))))))))
 
   (let* ((req-moves (get-req-moves))
-         (moves (steps req-moves))
+         (moves (add-boxes (steps req-moves)))
          (fs-move (cons 'fs (- (ctx-fs dst-ctx)
-                               (ctx-fs src-ctx)))))
-    (cons fs-move moves)))
+                               (ctx-fs src-ctx))))
+         (ffs-move (cons 'ffs (- (ctx-ffs dst-ctx)
+                                 (ctx-ffs src-ctx)))))
+    (cons fs-move (cons ffs-move moves))))
 
 (define (ctx-get-call-args-moves ctx nb-args cloloc)
 

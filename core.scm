@@ -1167,8 +1167,10 @@
                               (let* ((loc (cdar move))
                                      (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc)))
                                 (gen-allocation-imm cgc STAG_FLONUM 8)
-                                (if (x86-mem? loc)
-                                    (error "NYI")
+                                (if (x86-mem? opnd)
+                                    (begin
+                                      (x86-mov cgc (x86-rax) opnd)
+                                      (x86-mov cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-rax)))
                                     (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opnd))
                                 (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
                                 (x86-rax))))
