@@ -2941,6 +2941,8 @@
             (list (ctx-slot-loc ctx)
                   (ctx-free-regs ctx)
                   (ctx-free-mems ctx)
+                  (ctx-free-fregs ctx)
+                  (ctx-free-fmems ctx)
                   (ctx-stack ctx)
                   (ctx-env ctx)))
            (crtable (table-ref crtables key #f)))

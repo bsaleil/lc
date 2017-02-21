@@ -8,20 +8,13 @@
 ;; 3 enlever les todo + nettoyage + merge
 
 
-(define fibfp
-   (lambda (n0)
-     (if (($$atom <) ($$atom n0) ($$atom 2.))
-         ($$atom n0)
-         (($$atom +)
-          (let ((n1 (($$atom -) ($$atom n0) ($$atom 1.))))
-            (if (($$atom <) ($$atom n1) ($$atom 2.))
-                ($$atom n1)
-                (($$atom +)
-                 (($$atom fibfp) (($$atom -) ($$atom n1) ($$atom 1.)))
-                 (($$atom fibfp) (($$atom -) ($$atom n1) ($$atom 2.))))))
-          (($$atom fibfp) (($$atom -) ($$atom n0) ($$atom 2.)))))))
+(define (fibfp n)
+  (if (< n 2.)
+    n
+    (+ (fibfp (- n 1.))
+       (fibfp (- n 2.)))))
 
-(($$atom fibfp) ($$atom 4.0))
+(gambit$$pp (fibfp 28.))
 
 
 

@@ -195,7 +195,8 @@
 
 (define (know-dest-symbol dest-addr)
   (let ((str (string-append "dest_"
-                            (number->string dest-addr 16))))
+                            (number->string dest-addr 16)
+                            "_")))
     (new-sym (string->symbol str))))
 
 (define (int32? n)
