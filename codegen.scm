@@ -193,6 +193,11 @@
 (define-macro (neq? l r)
   `(not (eq? ,l ,r)))
 
+(define (know-dest-symbol dest-addr)
+  (let ((str (string-append "dest_"
+                            (number->string dest-addr 16))))
+    (new-sym (string->symbol str))))
+
 (define (int32? n)
   (and (integer? n)
        (>= n (expt -2 31))
@@ -654,7 +659,7 @@
           (if (eq? (car direct-eploc) 'stub)
               (let ((load-label (caddr direct-eploc)))
                 (x86-label cgc load-label)))
-          (let ((label (asm-make-label #f (new-sym 'known_dest_) (cadr direct-eploc))))
+          (let ((label (asm-make-label #f (know-dest-symbol (cadr direct-eploc)) (cadr direct-eploc))))
             (x86-jmp cgc label)))
         (eploc
           (error "NYI codegen-call-ep"))
@@ -694,7 +699,7 @@
               (if (eq? (car direct-eploc) 'stub)
                   (let ((load-label (caddr direct-eploc)))
                     (x86-label cgc load-label)))
-              (let ((label (asm-make-label #f (new-sym 'known_dest_) (cadr direct-eploc))))
+              (let ((label (asm-make-label #f (know-dest-symbol (cadr direct-eploc)) (cadr direct-eploc))))
                 (x86-jmp cgc label)))
             (eploc
               (x86-mov cgc (x86-rdx) (x86-imm-int eploc))
@@ -915,7 +920,10 @@
     (cond ((and leftint? lcst?)
              (error "NYI1"))
           (leftint?
-             (error "NYI2"))
+             (x86-mov cgc (x86-rax) opleft)
+             (x86-shr cgc (x86-rax) (x86-imm-int 2))
+             (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))
+             (set! opleft (x86-xmm0)))
           (lcst?
              (error "NYI3"))
           ((x86-mem? opleft)
@@ -926,7 +934,10 @@
 
     ;; Right operand
     (cond ((and rightint? rcst?)
-             (error "NYI1"))
+             (assert (not leftint?) "Internal error")
+             (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 (fixnum->flonum lright))))
+             (x86-movd/movq cgc (x86-xmm1) (x86-rax))
+             (x86-comisd cgc opleft (x86-xmm1)))
           (rightint?
              (x86-mov cgc (x86-rax) opright)
              (x86-shr cgc (x86-rax) (x86-imm-int 2))

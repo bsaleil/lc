@@ -382,7 +382,7 @@
           (vector-ref (get-scmobj ret-addr) 0))
 
          (selector
-          (encoding-obj (get-i64 (+ usp (selector-sp-offset)))))
+           (encoding-obj (get-i64 (- psp 16))))
 
          (new-ret-addr
           (run-add-to-ctime
@@ -861,6 +861,7 @@
     (x86-label cgc label-rtlib-skip)
 
     ;; Save all regs to pstack (because the GC must *not* scan these values)
+    (ppush-xmm cgc)
     (ppush-regs cgc all-regs)
 
     ;; Set usp to ustack init
@@ -927,6 +928,22 @@
           (loop (+ n 1) (cdr xmms)))))
   (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (length xmm-regs)))))
 
+(define (ppush-xmm cgc)
+  (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 (length xmm-regs))))
+  (let loop ((n 0) (xmms xmm-regs))
+    (if (not (null? xmms))
+        (begin
+          (x86-movsd cgc (x86-mem (* 8 n) (x86-rsp)) (car xmms))
+          (loop (+ n 1) (cdr xmms))))))
+
+(define (ppop-xmm cgc)
+  (let loop ((n 0) (xmms xmm-regs))
+    (if (not (null? xmms))
+        (begin
+          (x86-movsd cgc (car xmms) (x86-mem (* 8 n) (x86-rsp)))
+          (loop (+ n 1) (cdr xmms)))))
+  (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (length xmm-regs)))))
+
 (define (upush-regs cgc regs)
   (for-each (lambda (reg) (x86-upush cgc reg)) regs))
 
@@ -982,7 +999,9 @@
         (x86-xmm10) (x86-xmm11) (x86-xmm12) (x86-xmm13) (x86-xmm14)
         (x86-xmm15)))
 
-(define xmm-regs (cons (x86-xmm0) regalloc-fregs))
+(define xmm-regs (cons (x86-xmm0)
+                       (cons (x86-xmm1)
+                             regalloc-fregs)))
 
 (define nb-c-caller-save-regs
   (length c-caller-save-regs))

@@ -2324,7 +2324,6 @@
         (if opt-return-points
             (gen-continuation-cr cgc ast succ nctx apply?)
             (gen-continuation-rp cgc ast succ nctx apply?))
-
         fctx)))
 
 ;; Push closure, put it in rax, and return updated ctx
@@ -2616,6 +2615,7 @@
 ;;
 ;; Make lazy code from N-ARY OPERATOR
 ;;
+
 (define (mlc-op-n ast succ op) ;; '(+ - * < > <= >= = /)
   (assert (= (length ast) 3) "Internal error")
   (gen-ast-l (cdr ast)
