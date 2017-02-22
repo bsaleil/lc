@@ -1165,14 +1165,14 @@
 
   ;; Apply move. A move is one of possible moves except fs move
   ;;
-  (define (apply-filtered moves ffs-offset)
+  (define (apply-filtered moves fs-offset ffs-offset)
     (if (not (null? moves))
         (let* ((move (car moves))
                ;; Compute x86 dst operand
                (dst
                  (cond ((not (cdr move)) #f)
                        ((eq? (cdr move) 'rtmp) (get-tmp))
-                       (else (codegen-loc-to-x86opnd (ctx-fs ctx) (- (ctx-ffs ctx) ffs-offset) (cdr move)))))
+                       (else (codegen-loc-to-x86opnd (- (ctx-fs ctx) fs-offset) (- (ctx-ffs ctx) ffs-offset) (cdr move)))))
                ;; Compute x86 src operand
                (src
                  (cond ((and (pair? (car move))
@@ -1187,7 +1187,7 @@
                                 (assert (eq? (mem-allocated-kind (cddar move)) 'PERM) "Internal error")
                                 (x86-imm-int (obj-encoding (cddar move))))
                               (let* ((loc (cdar move))
-                                     (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (- (ctx-ffs ctx) ffs-offset) loc)))
+                                     (opnd (codegen-loc-to-x86opnd (- (ctx-fs ctx) fs-offset) (- (ctx-ffs ctx) ffs-offset) loc)))
                                 (gen-allocation-imm cgc STAG_FLONUM 8)
                                 (if (x86-mem? opnd)
                                     (begin
@@ -1208,7 +1208,7 @@
                        ((eq? (car move) 'rtmp)
                           (get-tmp))
                        (else
-                          (codegen-loc-to-x86opnd (ctx-fs ctx) (- (ctx-ffs ctx) ffs-offset) (car move))))))
+                          (codegen-loc-to-x86opnd (- (ctx-fs ctx) fs-offset) (- (ctx-ffs ctx) ffs-offset) (car move))))))
 
           (cond ;; dst is #f, src need to be a cst (cst -> cst)
                 ((not dst)
@@ -1256,17 +1256,19 @@
                 (else
                    (x86-mov cgc dst src)))
           ;;
-          (apply-filtered (cdr moves) ffs-offset))))
+          (apply-filtered (cdr moves) fs-offset ffs-offset))))
 
   (let ((r (filter-fs moves 0 0 '())))
     ;; Update sp
-    (if (not (= (caar r) 0))
+    (if (> (caar r) 0)
         (x86-sub cgc (x86-usp) (x86-imm-int (* 8 (caar r)))))
     (if (> (cdar r) 0)
         (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 (cdar r)))))
     ;; Apply other moves
-    (apply-filtered (cdr r) (if (< (cdar r) 0) (cdar r) 0))
+    (apply-filtered (cdr r) (if (< (caar r) 0) (caar r) 0) (if (< (cdar r) 0) (cdar r) 0))
     ;; TODO WIP
+    (if (< (caar r) 0)
+        (x86-add cgc (x86-usp) (x86-imm-int (* -8 (caar r)))))
     (if (< (cdar r) 0)
         (x86-add cgc (x86-rsp) (x86-imm-int (* -8 (cdar r)))))
     ;; TODO WIP

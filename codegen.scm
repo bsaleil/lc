@@ -238,7 +238,7 @@
         ((ctx-loc-is-fregister? loc)
          (codegen-freg-to-x86reg loc))
         ((ctx-loc-is-fmemory? loc)
-         (codegen-fmem-to-x86reg ffs loc))
+         (codegen-fmem-to-x86mem ffs loc))
         (else (error "Internal error"))))
 
 (define (codegen-mem-to-x86mem fs mem)
@@ -253,7 +253,7 @@
 (define (codegen-freg-to-x86reg freg)
   (list-ref regalloc-fregs (cdr freg)))
 
-(define (codegen-fmem-to-x86reg ffs fmem)
+(define (codegen-fmem-to-x86mem ffs fmem)
   (x86-mem (* 8 (- ffs (cdr fmem) 1)) (x86-rsp)))
 
 (define (codegen-is-imm-64? imm)

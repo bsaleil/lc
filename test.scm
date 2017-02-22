@@ -7,14 +7,38 @@
 ;; 2 imposer un max de versions
 ;; 3 enlever les todo + nettoyage + merge
 
+(define fibfp
+   (lambda (n0)
+     (if (($$atom <) ($$atom n0) ($$atom 2.))
+         ($$atom n0)
+         (($$atom +)
+          (let ((n1 (($$atom -) ($$atom n0) ($$atom 1.))))
+            (if (($$atom <) ($$atom n1) ($$atom 2.))
+                ($$atom n1)
+                (($$atom +)
+                 (($$atom fibfp) (($$atom -) ($$atom n1) ($$atom 1.)))
+                 (($$atom fibfp) (($$atom -) ($$atom n1) ($$atom 2.))))))
+          (let ((n1 (($$atom -) ($$atom n0) ($$atom 2.))))
+            (if (($$atom <) ($$atom n1) ($$atom 2.))
+                ($$atom n1)
+                (($$atom +)
+                 (($$atom fibfp) (($$atom -) ($$atom n1) ($$atom 1.)))
+                 (($$atom fibfp) (($$atom -) ($$atom n1) ($$atom 2.))))))))))
+ (let ((result0 (($$atom fibfp) ($$atom 7.))))
+   (($$atom gambit$$pp) ($$atom result0)))
 
-(define (fibfp n)
-  (if (< n 2.)
-    n
-    (+ (fibfp (- n 1.))
-       (fibfp (- n 2.)))))
 
-(gambit$$pp (fibfp 28.))
+;(define (fibfp n)
+;  (if (FLOAT< n 2.)
+;    n
+;    (FLOAT+ (fibfp (FLOAT- n 1.))
+;            (fibfp (FLOAT- n 2.)))))
+;
+;(let ((result (fibfp 7.)))
+;  (println result))
+
+;#t
+
 
 
 
