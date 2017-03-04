@@ -766,11 +766,7 @@
             ;; CASE 2 - Function is called using generic entry point
             ((= selector 1)
                (fn-generator #f lazy-prologue-gen #f #t))
-            ;; CASE 3 - Use multiple entry points AND use max-versions limit AND this limit is reached
-            ((and opt-max-versions
-                  (>= (lazy-code-nb-real-versions lazy-prologue) opt-max-versions))
-               (fn-generator #f lazy-prologue-gen stack #t))
-            ;; CASE 4 - Use multiple entry points AND limit is not reached or there is no limit
+            ;; CASE 3 - Use multiple entry points
             (else
                (fn-generator #f lazy-prologue stack #f))))))
 
