@@ -437,7 +437,7 @@
          (stack
            (if (or (not opt-entry-points) (= selector 1))
                #f
-               (global-cc-get-ctx ctx-idx)))
+               (cctable-get-data ctx-idx)))
 
          ;; Closure is used as a Gambit procedure to keep an updated reference
          (closure
@@ -1910,12 +1910,15 @@
 (define cctable-get-idx (cxtable-get-idx global-cc-table global-cc-table-maxsize))
 (define crtable-get-idx (cxtable-get-idx global-cc-table global-cr-table-maxsize))
 
-(define (global-cc-get-ctx ctx-idx)
-  (define (get lst)
-    (if (null? lst)
-        (error "Internal error (global-cc-get-ctx)")
-        (let ((first (car lst)))
-          (if (eq? (cdr first) ctx-idx)
-              (car first)
-              (get (cdr lst))))))
-  (get (table->list global-cc-table)))
+(define (cxtable-get-data global-table)
+  (lambda (idx)
+    (let loop ((lst (table->list global-table)))
+      (if (null? lst)
+          (error "Internal error")
+          (let ((first (car lst)))
+            (if (eq? (cdr first) idx)
+                (car first)
+                (loop (cdr lst))))))))
+
+(define cctable-get-data (cxtable-get-data global-cc-table))
+(define crtable-get-data (cxtable-get-data global-cr-table))
