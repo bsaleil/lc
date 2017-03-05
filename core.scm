@@ -1661,7 +1661,7 @@
   (let* ((cctable-loc (- (obj-encoding cctable) 1))
          (label-addr (asm-label-pos  label))
          (label-name (asm-label-name label))
-         (index (or (get-closure-index stack) -1)) ;; -1 TODO to patch generic
+         (index (or (cctable-get-idx stack) -1)) ;; -1 TODO to patch generic
          (offset (+ 16 (* index 8)))) ;; +16 (header & generic)
 
     ;; Patch cctable entry
@@ -1880,30 +1880,35 @@
 
 ;; Current fixed global-cc-table max size
 (define global-cc-table-maxsize 430)
-(define global-cr-table-maxsize (length cridx-type)) ;; TODO number of types
+(define global-cr-table-maxsize  40)
 ;; Holds the current shape of the global cc table
 (define global-cc-table (make-table))
+(define global-cr-table (make-table))
 
-;; Get closure index associated to ctx. If ctx is not in the
-;; global cc table, then this function adds it and returns
+;; Get cc/cr table index associated to ctx. If ctx is not in the
+;; global cc/cr table, then this function adds it and returns
 ;; the new associated index. Index starts from 0.
 ;; Store and compare ctx-stack in enough because environment is
 ;; the same for all versions of a lazy-object.
-(define (get-closure-index stack)
-  (let ((res (table-ref global-cc-table stack #f)))
-    (if res
-      ;; Ctx exists in global table
-      res
-      ;; Ctx does not exists yet
-      (if (= (table-length global-cc-table) global-cc-table-maxsize)
-        ;; Global table is full
-        (if opt-overflow-fallback
-            #f
-            (error "Global entry points table overflow!"))
-        ;; Global table is not full
-        (let ((value (table-length global-cc-table)))
-          (table-set! global-cc-table stack value)
-          value)))))
+(define (cxtable-get-idx global-table global-table-maxsize)
+  (lambda (data)
+    (let ((res (table-ref global-table data #f)))
+      (if res
+        ;; Ctx exists in global table
+        res
+        ;; Ctx does not exists yet
+        (if (= (table-length global-table) global-table-maxsize)
+          ;; Global table is full
+          (if opt-overflow-fallback
+              #f
+              (error "Global cc/cr table overflow!"))
+          ;; Global table is not full
+          (let ((value (table-length global-table)))
+            (table-set! global-table data value)
+            value))))))
+
+(define cctable-get-idx (cxtable-get-idx global-cc-table global-cc-table-maxsize))
+(define crtable-get-idx (cxtable-get-idx global-cc-table global-cr-table-maxsize))
 
 (define (global-cc-get-ctx ctx-idx)
   (define (get lst)

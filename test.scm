@@ -2,10 +2,14 @@
 ;; out.scm 1333
 
 
-;; X désactiver les pt de retour
-;; 1 désactiver les pt d'entrée
-;; 2 imposer un max de versions
-;; 3 enlever les todo + nettoyage + merge
+
+;; Pt de retour multiples:
+
+;; 1. Créer des tables de retour de taille max-retour-table
+;; 2. Modifier la fonction qui associe un index à un type pour attribuer le field suivant dans la table
+;; 3. Dépassement de table
+
+
 
 (define (fibfp n)
   (if (< n 2.)
