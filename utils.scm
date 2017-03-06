@@ -253,11 +253,11 @@
              "___result = ___EXT(___make_vector) (___PSTATE, ___arg1, ___FAL);")
    len))
 
-(define (alloc-still-s64vector-0 len)
+(define (alloc-still-s64vector len init)
   (let ((r (alloc-still-s64vector-0-h len)))
     (let loop ((i 0))
       (if (< i len)
-          (begin (s64vector-set! r i 0)
+          (begin (s64vector-set! r i init)
                  (loop (+ i 1)))))
     r))
 

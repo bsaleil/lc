@@ -2863,7 +2863,7 @@
 
 ;; Create a new cr table with 'init' as stub value
 (define (make-cc)
-  (alloc-still-vector-i64 (+ 1 global-cc-table-maxsize) 0))
+  (alloc-still-s64vector (+ 1 global-cc-table-maxsize) 0))
 
 ;; This is the key used in hash table to find the cc-table for this closure.
 ;; The key represents captured values used to specialize tables
@@ -2917,7 +2917,7 @@
 
 ;; Create a new cr table with 'init' as stub value
 (define (make-cr len init)
-  (alloc-still-vector-i64 len init))
+  (alloc-still-s64vector len init))
 
 ;; all-crtables associates an ast to a table ('equal?' table)
 ;; to get a crtable, we first use the eq? table to get crtables associated to this ast
