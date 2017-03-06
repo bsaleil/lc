@@ -187,10 +187,16 @@
                           (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding cst)))))
                       ((ctx-loc-is-register? loc)
                         (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc)))
+                      ((ctx-loc-is-fregister? loc)
+                        (x86-mov cgc (x86-rax) (x86-imm-int 0)))
                       (else (error "NYI main"))))
+
+              (if (> (ctx-ffs ctx) 0)
+                  (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (ctx-ffs ctx)))))
 
               ;; Restore registers values from pstack
               (ppop-regs-reverse cgc all-regs)
+              (ppop-xmm cgc)
               (x86-ret cgc)))))
 
 
@@ -251,16 +257,6 @@
 
   (init-backend)
 
-  ;(liveness-prog prog)
-  ;(println "--------------- PROG:")
-  ;(pp prog)
-  ;(println "--------------- TABLE:")
-  ;(liveness-prog prog)
-  ;(for-each (lambda (el)
-  ;            (pp el))
-  ;          (table->list liveness-out))
-  ;(error "OK")
-
   (let ((lco (lazy-exprs prog #f)))
     (gen-version-first lco (ctx-init)))
 
@@ -283,7 +279,7 @@
              (##gc)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
-      (begin (##machine-code-block-exec mcb))))
+       (##machine-code-block-exec mcb)))
 
 ;;-----------------------------------------------------------------------------
 ;; Main
@@ -320,13 +316,11 @@
         ;; Can only exec 1 file
         ((= (length files) 1)
           (copy-with-declare (car files) "./tmp")
-        (let ((content (c#expand-program "./tmp" #f locat-table))) ;(read-all (open-input-file (car files)))))
+        (let ((content (c#expand-program "./tmp" #f locat-table)));(read-all (open-input-file (car files)))))
               (let ((exp-content (expand-tl content)))
                 (analyses-find-global-types! exp-content)
                 (analyses-a-conversion! exp-content)
                 (compute-liveness exp-content)
-                ;(pp exp-content)
-                ;(pp exp-content))))
                 ;(pp content))))
                 ;(exec content))))
                 (exec exp-content))))

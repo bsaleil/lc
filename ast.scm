@@ -243,9 +243,10 @@
 (define (primitive-lco-cst prim)       (list-ref  prim 1))
 (define (primitive-lcofun prim)        (list-ref  prim 2))
 (define (primitive-codegen prim)       (list-ref  prim 3))
-(define (primitive-rettype prim)       (list-ref  prim 4))
-(define (primitive-nbargs prim)        (list-ref  prim 5))
-(define (primitive-argtypes prim)      (list-tail prim 6))
+(define (primitive-box-fl-args? prim)  (list-ref  prim 4))
+(define (primitive-rettype prim)       (list-ref  prim 5))
+(define (primitive-nbargs prim)        (list-ref  prim 6))
+(define (primitive-argtypes prim)      (list-tail prim 7))
 
 ;; TODO: remove or add ?/! from codegen-p functions
 ;; * Most primitives are "simple", they only need to call code generator.
@@ -258,45 +259,45 @@
 (define primitives '())
 (define (init-primitives)
   (set! primitives `(
-    ;; Symbol            LCO cst all    LCO getter        Codegen function          Return-type Nb-args Args-type
-    (car                 ,cst-car       #f                ,codegen-p-cxr            ,ATX_UNK 1 ,ATX_PAI                   )
-    (cdr                 ,cst-cdr       #f                ,codegen-p-cxr            ,ATX_UNK 1 ,ATX_PAI                   )
-    (cons                #f             #f                ,codegen-p-cons           ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL          )
-    (eq?                 ,cst-eq?       ,lco-p-eq?        #f                        ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          )
-    (char=?              ,dummy-cst-all ,lco-p-char=?     #f                        ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA          )
-    (quotient            ,cst-binop     ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
-    (modulo              ,cst-binop     ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
-    (remainder           ,dummy-cst-all ,lco-p-binop      #f                        ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
-    (zero?               ,dummy-cst-all ,lco-p-zero?      #f                        ,ATX_BOO 1 ,ATX_NUM                   )
-    (not                 ,cst-not       #f                ,codegen-p-not            ,ATX_BOO 1 ,ATX_ALL                   )
-    (set-car!            #f             #f                ,codegen-p-set-cxr!       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
-    (set-cdr!            #f             #f                ,codegen-p-set-cxr!       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
-    (vector-length       ,dummy-cst-all #f                ,codegen-p-vector-length  ,ATX_INT 1 ,ATX_VEC                   )
-    (vector-ref          ,dummy-cst-all #f                ,codegen-p-vector-ref     ,ATX_UNK 2 ,ATX_VEC ,ATX_INT          )
-    (char->integer       ,dummy-cst-all #f                ,codegen-p-ch<->int       ,ATX_INT 1 ,ATX_CHA                   )
-    (integer->char       ,cst-int->char #f                ,codegen-p-ch<->int       ,ATX_CHA 1 ,ATX_INT                   )
-    (string-ref          ,dummy-cst-all #f                ,codegen-p-string-ref     ,ATX_CHA 2 ,ATX_STR ,ATX_INT          )
-    (string-set!         #f             #f                ,codegen-p-string-set!    ,ATX_VOI 3 ,ATX_STR ,ATX_INT ,ATX_CHA )
-    (vector-set!         #f             #f                ,codegen-p-vector-set!    ,ATX_VOI 3 ,ATX_VEC ,ATX_INT ,ATX_ALL )
-    (string-length       ,dummy-cst-all #f                ,codegen-p-string-length  ,ATX_INT 1 ,ATX_STR                   )
-    (exit                #f             #f                 #f                       ,ATX_VOI 0                            )
-    (make-vector         #f             #f                ,codegen-p-make-vector    ,ATX_VEC 2 ,ATX_INT ,ATX_ALL          )
-    (make-string         #f             #f                ,codegen-p-make-string    ,ATX_STR 2 ,ATX_INT ,ATX_CHA          )
-    (eof-object?         ,dummy-cst-all #f                ,codegen-p-eof-object?    ,ATX_BOO 1 ,ATX_ALL                   )
-    (symbol->string      ,dummy-cst-all #f                ,codegen-p-symbol->string ,ATX_STR 1 ,ATX_SYM                   )
-    (current-output-port #f             ,lco-p-cur-x-port #f                        ,ATX_OPO 0                            )
-    (current-input-port  #f             ,lco-p-cur-x-port #f                        ,ATX_IPO 0                            )
-    (number?             ,cst-number?   ,lco-p-number?    #f                        ,ATX_BOO 1 ,ATX_ALL                   )
-    (##apply             #f             ,lco-p-apply      #f                        ,ATX_UNK 2 ,ATX_CLO ,ATX_ALL          )
-    (##box               #f             #f                ,codegen-p-box            ,ATX_BOX 1 ,ATX_ALL                   )
-    (##unbox             #f             #f                ,codegen-p-unbox          ,ATX_UNK 1 ,ATX_ALL                   )
-    (##set-box!          #f             #f                ,codegen-p-set-box        ,ATX_VOI 2 ,ATX_ALL ,ATX_ALL          )
-    (##gettime-ns        #f             #f                ,codegen-p-gettime-ns     ,ATX_INT 0                            )
-    (vector              #f             ,lco-p-vector     #f                        ,ATX_VEC #f                           )
-    (list                #f             ,lco-p-list       #f                        ,ATX_PAI #f                           )
+    ;; Symbol            LCO cst all    LCO getter        Codegen function          Box fl args? Return-type Nb-args Args-type
+    (car                 ,cst-car       #f                ,codegen-p-cxr                #f       ,ATX_UNK 1 ,ATX_PAI                   )
+    (cdr                 ,cst-cdr       #f                ,codegen-p-cxr                #f       ,ATX_UNK 1 ,ATX_PAI                   )
+    (cons                #f             #f                ,codegen-p-cons               #t       ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL          )
+    (eq?                 ,cst-eq?       ,lco-p-eq?        #f                            #f       ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          )
+    (char=?              ,dummy-cst-all ,lco-p-char=?     #f                            #f       ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA          )
+    (quotient            ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
+    (modulo              ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
+    (remainder           ,dummy-cst-all ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
+    (zero?               ,dummy-cst-all ,lco-p-zero?      #f                            #f       ,ATX_BOO 1 ,ATX_NUM                   )
+    (not                 ,cst-not       ,lco-p-not        ,codegen-p-not                #f       ,ATX_BOO 1 ,ATX_ALL                   )
+    (set-car!            #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
+    (set-cdr!            #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
+    (vector-length       ,dummy-cst-all #f                ,codegen-p-vector-length      #f       ,ATX_INT 1 ,ATX_VEC                   )
+    (vector-ref          ,dummy-cst-all #f                ,codegen-p-vector-ref         #f       ,ATX_UNK 2 ,ATX_VEC ,ATX_INT          )
+    (char->integer       ,dummy-cst-all #f                ,codegen-p-ch<->int           #f       ,ATX_INT 1 ,ATX_CHA                   )
+    (integer->char       ,cst-int->char #f                ,codegen-p-ch<->int           #f       ,ATX_CHA 1 ,ATX_INT                   )
+    (string-ref          ,dummy-cst-all #f                ,codegen-p-string-ref         #f       ,ATX_CHA 2 ,ATX_STR ,ATX_INT          )
+    (string-set!         #f             #f                ,codegen-p-string-set!        #t       ,ATX_VOI 3 ,ATX_STR ,ATX_INT ,ATX_CHA )
+    (vector-set!         #f             #f                ,codegen-p-vector-set!        #f       ,ATX_VOI 3 ,ATX_VEC ,ATX_INT ,ATX_ALL )
+    (string-length       ,dummy-cst-all #f                ,codegen-p-string-length      #f       ,ATX_INT 1 ,ATX_STR                   )
+    (exit                #f             #f                 #f                           #f       ,ATX_VOI 0                            )
+    (make-vector         #f             #f                ,codegen-p-make-vector        #t       ,ATX_VEC 2 ,ATX_INT ,ATX_ALL          )
+    (make-string         #f             #f                ,codegen-p-make-string        #f       ,ATX_STR 2 ,ATX_INT ,ATX_CHA          )
+    (eof-object?         ,dummy-cst-all ,lco-p-eof-obj    ,codegen-p-eof-object?        #f       ,ATX_BOO 1 ,ATX_ALL                   )
+    (symbol->string      ,dummy-cst-all #f                ,codegen-p-symbol->string     #f       ,ATX_STR 1 ,ATX_SYM                   )
+    (current-output-port #f             ,lco-p-cur-x-port #f                            #f       ,ATX_OPO 0                            )
+    (current-input-port  #f             ,lco-p-cur-x-port #f                            #f       ,ATX_IPO 0                            )
+    (number?             ,cst-number?   ,lco-p-number?    #f                            #f       ,ATX_BOO 1 ,ATX_ALL                   )
+    (##apply             #f             ,lco-p-apply      #f                            #f       ,ATX_UNK 2 ,ATX_CLO ,ATX_ALL          )
+    (##box               #f             #f                ,codegen-p-box                #t       ,ATX_BOX 1 ,ATX_ALL                   )
+    (##unbox             #f             #f                ,codegen-p-unbox              #t       ,ATX_UNK 1 ,ATX_ALL                   )
+    (##set-box!          #f             #f                ,codegen-p-set-box            #t       ,ATX_VOI 2 ,ATX_ALL ,ATX_ALL          )
+    (##gettime-ns        #f             #f                ,codegen-p-gettime-ns         #f       ,ATX_INT 0                            )
+    (vector              #f             ,lco-p-vector     #f                            #t       ,ATX_VEC #f                           )
+    (list                #f             ,lco-p-list       #f                            #t       ,ATX_PAI #f                           )
     ;; These primitives are inlined during expansion but still here to build lambda
-    (real?               ,dummy-cst-all #f                #f                        ,ATX_BOO 1 ,ATX_ALL                   )
-    (eqv?                ,dummy-cst-all #f                #f                        ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          ))))
+    (real?               ,dummy-cst-all #f                #f                            #f       ,ATX_BOO 1 ,ATX_ALL                   )
+    (eqv?                ,dummy-cst-all #f                #f                            #f       ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          ))))
 
 (define (get-prim-lambda ast sym primitive)
   (let ((nbargs (primitive-nbargs primitive)))
@@ -412,13 +413,8 @@
   (make-lazy-code
     #f
     (lambda (cgc ctx)
-      (let ((literal
-              (if (and (##mem-allocated? lit)
-                       (not (eq? (mem-allocated-kind lit) 'PERM)))
-                  (copy-permanent lit #f perm-domain)
-                  lit)))
-        (let ((ctx (ctx-push ctx (literal->ctx-type literal) #f)))
-          (jump-to-version cgc succ ctx))))))
+      (let ((ctx (ctx-push ctx (literal->ctx-type lit) #f)))
+        (jump-to-version cgc succ ctx)))))
 
 ;;-----------------------------------------------------------------------------
 ;; VARIABLES GET
@@ -479,16 +475,19 @@
               (else (gen-error cgc (ERR_UNKNOWN_VAR sym))))))))
 
 (define (gen-get-localvar cgc ast ctx local succ)
-  (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 0))
-         (loc (ctx-identifier-loc ctx (cdr local)))
-         (type (ctx-identifier-type ctx (cdr local))))
+  (mlet ((type (ctx-identifier-type ctx (cdr local)))
+         (moves/reg/ctx
+           (if (ctx-tflo? type)
+               (ctx-get-free-freg ast ctx succ 0)
+               (ctx-get-free-reg ast ctx succ 0)))
+         (loc (ctx-identifier-loc ctx (cdr local))))
 
     (apply-moves cgc ctx moves)
 
     (if (ctx-loc-is-freemem? loc)
         ;; It's a free var that is only in closure
         (let ((lclo (ctx-get-closure-loc ctx)))
-          (codegen-get-free cgc (ctx-fs ctx) reg lclo loc))
+          (codegen-get-free cgc (ctx-fs ctx) (ctx-ffs ctx) reg lclo loc))
         ;; The variable is in a register or in non closure memory
         (apply-moves cgc ctx (list (cons loc reg))))
 
@@ -545,7 +544,7 @@
                    (ctx-type-cst tval)
                    (ctx-get-loc ctx 0))))
     (apply-moves cgc ctx moves)
-    (codegen-set-global cgc (ctx-fs ctx) reg pos lval cst?)
+    (codegen-set-global cgc (ctx-fs ctx) (ctx-ffs ctx) reg pos lval cst?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))
 
 ;;-----------------------------------------------------------------------------
@@ -592,7 +591,7 @@
                                                            (ctx-type-cst type)
                                                            (ctx-get-loc ctx 0))))
                                           (apply-moves cgc ctx moves)
-                                          (codegen-define-bind cgc (ctx-fs ctx) pos reg lvalue cst?)
+                                          (codegen-define-bind cgc (ctx-fs ctx) (ctx-ffs ctx) pos reg lvalue cst?)
                                           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))))
                          (lazy-drop
                            (make-lazy-code
@@ -624,13 +623,44 @@
         ;;
         (if (not rest-param)
             (codegen-prologue-gen-nrest cgc nb-args)
-            (codegen-prologue-gen-rest  cgc (ctx-fs ctx) nb-args))
+            (codegen-prologue-gen-rest  cgc (ctx-fs ctx) (ctx-ffs ctx) nb-args))
         ;;
         (jump-to-version cgc succ ctx)))))
+
+;; TODO WIP MOVE
+(define (gen-drop-float cgc ctx ast idx-from idx-to)
+  (if (= idx-from idx-to)
+      ctx
+      (let* ((type (ctx-get-type ctx idx-from)))
+        (if (and (ctx-tflo? type)
+                 (not (ctx-type-is-cst type)))
+            (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx #f 0))
+                   (loc   (ctx-get-loc ctx idx-from))
+                   (opnd  (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
+                   (ropnd (codegen-reg-to-x86reg reg)))
+              (apply-moves cgc ctx moves)
+              (gen-allocation-imm cgc STAG_FLONUM 8)
+              (if (ctx-loc-is-fregister? loc)
+                  (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opnd)
+                  (begin
+                    (x86-mov cgc (x86-rax) opnd)
+                    (x86-mov cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-rax))))
+              (x86-lea cgc ropnd (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
+              (let* ((ident (ctx-ident-at ctx idx-from))
+                     (ctx
+                       ;; Remove slot-info if the slot belongs to an identifier with > 1 slots
+                       (if (and ident (= (length (identifier-sslots (cdr ident))) 1))
+                           ctx
+                           (ctx-remove-slot-info ctx idx-from)))
+                     (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx idx-from) reg))
+                     (ctx (ctx-set-type ctx idx-from (make-ctx-tunk) #f)))
+                (gen-drop-float cgc ctx ast (+ idx-from 1) idx-to)))
+            (gen-drop-float cgc ctx ast (+ idx-from 1) idx-to)))))
 
 ;;
 ;; Create and return a prologue lco
 (define (get-lazy-prologue ast succ rest-param)
+
   (make-lazy-code-entry
     #f
     (lambda (cgc ctx)
@@ -649,38 +679,23 @@
               ;; rest AND actual > formal
               ;; TODO merge > and == (?)
               ((and rest-param (> nb-actual (- nb-formal 1)))
-               (let* ((nb-extra (- nb-actual (- nb-formal 1)))
-                      (nctx (ctx-pop-n ctx (- nb-extra 1)))
-                      (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f)))
-                 (set! ctx nctx)
-                 (let* ((nb-formal-stack
-                          (if (> (- nb-formal 1) (length args-regs))
-                              (- nb-formal 1 (length args-regs))
-                              0))
-                        (r
-                          (if (<= nb-actual (length args-regs))
-                              0
-                              (- nb-actual (length args-regs))))
-                        (nb-rest-stack (- r nb-formal-stack))
-                        (rest-regs
-                          (if (>= (- nb-formal 1) (length args-regs))
-                              '()
-                              (list-head
-                                (list-tail args-regs (- nb-formal 1))
-                                (- nb-actual nb-rest-stack nb-formal -1))))
-                        (reg
-                          (if (<= nb-formal (length args-regs))
-                              (list-ref args-regs (- nb-formal 1))
-                              #f)))
 
-                   (codegen-prologue-rest>
-                     cgc
-                     (ctx-fs ctx)
-                     nb-rest-stack
-                     (reverse rest-regs)
-                     reg))
+                 (set! ctx (gen-drop-float cgc ctx ast 0 (- nb-actual (- nb-formal 1))))
 
-                 (jump-to-version cgc succ ctx)))
+                 (let* ((nb-extra (- nb-actual (- nb-formal 1)))
+                        (rloc     (ctx-get-loc ctx (- nb-extra 1))))
+
+                   (let loop ((idx (- nb-extra 1))
+                              (locs '()))
+                     (if (< idx 0)
+                         (codegen-prologue-rest> cgc (ctx-fs ctx) (ctx-ffs ctx) locs rloc)
+                         (let ((loc (ctx-get-loc ctx idx)))
+                           (loop (- idx 1) (cons loc locs)))))
+
+                   (let* ((ctx (ctx-pop-n ctx (- nb-extra 1)))
+                          (ctx (ctx-set-type ctx 0 (make-ctx-tpai) #f)))
+
+                     (jump-to-version cgc succ ctx))))
               ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
               ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
                (gen-error cgc ERR_WRONG_NUM_ARGS))
@@ -696,7 +711,9 @@
     (make-lazy-code-ret ;; Lazy-code with 'ret flag
       #f
       (lambda (cgc ctx)
+
         (let* ((fs (ctx-fs ctx))
+               (ffs (ctx-ffs ctx))
                ;; Return value loc
                (type-ret (ctx-get-type ctx 0))
                (lret     (ctx-get-loc ctx 0))
@@ -707,9 +724,9 @@
 
           ;; Gen return
           (if opt-return-points
-              (let* ((crtable-offset (ctx-type->cridx type-ret)))
-                (codegen-return-cr cgc fs fs laddr lret crtable-offset))
-              (codegen-return-rp cgc fs fs laddr lret))))))
+              (let* ((cridx (crtable-get-idx (ctx-init-return ctx))))
+                (codegen-return-cr cgc fs ffs fs laddr lret cridx (ctx-tflo? type-ret)))
+              (codegen-return-rp cgc fs ffs fs laddr lret (ctx-tflo? type-ret)))))))
   ;; TODO: write a generic lazy-drop function (this function is used by multiple mlc-*)
   (make-lazy-code-ret
     #f
@@ -749,11 +766,7 @@
             ;; CASE 2 - Function is called using generic entry point
             ((= selector 1)
                (fn-generator #f lazy-prologue-gen #f #t))
-            ;; CASE 3 - Use multiple entry points AND use max-versions limit AND this limit is reached
-            ((and opt-max-versions
-                  (>= (lazy-code-nb-real-versions lazy-prologue) opt-max-versions))
-               (fn-generator #f lazy-prologue-gen stack #t))
-            ;; CASE 4 - Use multiple entry points AND limit is not reached or there is no limit
+            ;; CASE 3 - Use multiple entry points
             (else
                (fn-generator #f lazy-prologue stack #f))))))
 
@@ -1536,13 +1549,21 @@
                       (gsym (get-gambit-sym (atom-node-val (car ast))))
                       (nargs (length (cdr ast))))
                  (apply-moves cgc ctx moves)
-                 (let ((locs (get-locs ctx nargs)))
-                   (let loop ((clocs locs)
-                              (fs (ctx-fs ctx)))
-                     (if (not (null? clocs))
-                         (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs (car clocs)))
-                                (x86-upush cgc (x86-rax))
-                                (loop (cdr clocs) (+ fs 1))))))
+                 (let loop ((idx (- nargs 1)))
+                   (if (>= idx 0)
+                       (let ((loc  (ctx-get-loc ctx idx))
+                             (type (ctx-get-type ctx idx)))
+                         (if (ctx-tflo? type)
+                             ;; Float, push a boxed float
+                             (begin (gen-allocation-imm cgc STAG_FLONUM 8)
+                                    (x86-movsd cgc (x86-mem -8 alloc-ptr) (codegen-freg-to-x86reg loc))
+                                    (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
+                                    (x86-upush cgc (x86-rax))
+                                    (loop (- idx 1)))
+                             ;; !Float, push value
+                             (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
+                                    (x86-upush cgc (x86-rax))
+                                    (loop (- idx 1)))))))
                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding nargs)))
                  (x86-upush cgc (x86-rax))
                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding gsym)))
@@ -1593,6 +1614,7 @@
   (let* ((prim (primitive-get op))
          (gen  (primitive-codegen prim))
          (fs (ctx-fs ctx))
+         (ffs (ctx-ffs ctx))
          (nargs (primitive-nbargs prim))
          (r  (build-list
                   nargs
@@ -1603,7 +1625,7 @@
                           (cons #f (ctx-get-loc ctx n)))))))
          (cst? (map car r))
          (locs (map cdr r))
-         (args (append (list cgc fs op reg inlined-cond?)
+         (args (append (list cgc fs ffs op reg inlined-cond?)
                        (reverse locs)
                        (reverse cst?)))
          (rtype (primitive-rettype prim)))
@@ -1650,6 +1672,35 @@
            succ)))
 
 ;;
+;; Special primitive 'not'
+(define (lco-p-not ast op succ)
+  (make-lazy-code
+    ast
+    (lambda (cgc ctx)
+      (let ((type (ctx-get-type ctx 0)))
+        (if (or (ctx-tboo? type)
+                (ctx-tunk? type))
+            (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 1)))
+              (apply-moves cgc ctx moves)
+              (codegen-p-not cgc (ctx-fs ctx) (ctx-ffs ctx) op reg #f (ctx-get-loc ctx 0) #f)
+              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg)))
+            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (literal->ctx-type #f) #f)))))))
+
+;;
+;; Special primitive 'eof-object?'
+(define (lco-p-eof-obj ast op succ)
+  (make-lazy-code
+    ast
+    (lambda (cgc ctx)
+      (let ((type (ctx-get-type ctx 0)))
+        (if (ctx-tunk? type)
+            (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 1)))
+              (apply-moves cgc ctx moves)
+              (codegen-p-eof-object? cgc (ctx-fs ctx) (ctx-ffs ctx) op reg #f (ctx-get-loc ctx 0) #f)
+              (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg)))
+            (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (literal->ctx-type #f) #f)))))))
+
+;;
 ;; Special primitive 'char=?'
 (define (lco-p-char=? ast op succ)
   (let ((node (atom-node-make 'eq?)))
@@ -1673,7 +1724,7 @@
         (apply-moves cgc ctx moves)
         (if (and lcst? rcst?)
             (error "NN"))
-        (codegen-p-binop cgc (ctx-fs ctx) op label-div0 reg lleft lright lcst? rcst?)
+        (codegen-p-binop cgc (ctx-fs ctx) (ctx-ffs ctx) op label-div0 reg lleft lright lcst? rcst?)
         (jump-to-version cgc
                          succ
                          (ctx-push (ctx-pop-n ctx 2) (make-ctx-tint) reg))))))
@@ -1689,14 +1740,15 @@
           (lr (if rcst? (ctx-type-cst typer)
                         (ctx-get-loc  ctx 0)))
           (nctx (ctx-pop-n ctx 2)))
-      (if (and (not (ctx-tunk? typel))
-               (not (ctx-tunk? typer))
-               (not (ctx-type-teq? typel typer)))
+      (if (or (and (not (ctx-tunk? typel))
+                   (not (ctx-tunk? typer))
+                   (not (ctx-type-teq? typel typer)))
+              (and (ctx-tflo? typel) (ctx-tflo? typer)))
           ;; Types are known and !=
           (jump-to-version cgc (lazy-code-lco-false succ) nctx)
           ;;
           (begin
-            (codegen-p-eq? cgc (ctx-fs ctx) 'eq? #f #t ll lr lcst? rcst?)
+            (codegen-p-eq? cgc (ctx-fs ctx) (ctx-ffs ctx) 'eq? #f #t ll lr lcst? rcst?)
             ((lazy-code-generator succ) cgc nctx x86-jne)))))
 
   (define (gen-eq? cgc ctx typel typer lcst? rcst?)
@@ -1707,13 +1759,14 @@
                          (ctx-get-loc  ctx 0)))
            (nctx (ctx-push (ctx-pop-n ctx 2) (make-ctx-tboo) reg)))
       (apply-moves cgc ctx moves)
-      (if (and (not (ctx-tunk? typel))
-               (not (ctx-tunk? typer))
-               (not (ctx-type-teq? typel typer)))
+      (if (or (and (not (ctx-tunk? typel))
+                   (not (ctx-tunk? typer))
+                   (not (ctx-type-teq? typel typer)))
+              (and (ctx-tflo? typel) (ctx-tflo? typer)))
           ;; Types are known and !=
           (codegen-set-bool cgc #f reg)
           ;;
-          (codegen-p-eq? cgc (ctx-fs ctx) 'eq? reg #f ll lr lcst? rcst?))
+          (codegen-p-eq? cgc (ctx-fs ctx) (ctx-ffs ctx) 'eq? reg #f ll lr lcst? rcst?))
       (jump-to-version cgc succ nctx)))
 
   (make-lazy-code
@@ -1749,7 +1802,7 @@
              ast
              (lambda (cgc ctx)
                (let* ((vec-loc  (ctx-get-loc ctx 0))
-                      (vec-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) vec-loc)))
+                      (vec-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) vec-loc)))
 
                  (let loop ((idx nbargs))
                    (if (= idx 0)
@@ -1761,7 +1814,7 @@
                               (cst? (ctx-type-is-cst type))
                               (val-opnd (if cst?
                                             (x86-imm-int (obj-encoding (ctx-type-cst type)))
-                                            (codegen-loc-to-x86opnd (ctx-fs ctx) val-loc)))
+                                            (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) val-loc)))
                               (offset (- (* 8 (+ (- nbargs idx) 1)) TAG_MEMOBJ)))
                          (if (or (x86-imm? val-opnd)
                                  (x86-mem? val-opnd))
@@ -1803,7 +1856,7 @@
                 (let ((opnd
                         (if cst?
                             (x86-imm-int (obj-encoding loc))
-                            (codegen-loc-to-x86opnd (ctx-fs ctx) loc))))
+                            (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))))
                   (if (or (x86-mem? opnd)
                           (x86-imm? opnd))
                       (begin
@@ -1835,7 +1888,7 @@
                 (let ((opnd
                         (if cst?
                             (x86-imm-int (obj-encoding loc))
-                            (codegen-loc-to-x86opnd (ctx-fs ctx) loc))))
+                            (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))))
                   (if (or (x86-imm? opnd)
                           (x86-mem? opnd))
                       (begin (x86-mov cgc (x86-rax) opnd)
@@ -1875,7 +1928,7 @@
              (error "NYI - apply (other cst)"))
           (else
              (let* ((llst  (ctx-get-loc ctx 0))
-                    (oplst (codegen-loc-to-x86opnd (ctx-fs ctx) llst)))
+                    (oplst (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) llst)))
                ;; r11, selector & r15 are used as tmp registers
                ;; It is safe because they are not used for parameters.
                ;; And if they are used after, they already are saved on the stack
@@ -1896,7 +1949,7 @@
                        (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
                        (x86-je cgc label-end)
                          (x86-add cgc (x86-r11) (x86-imm-int 4))
-                         (x86-mov cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (car args-regs)) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
+                         (x86-mov cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) (car args-regs)) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
                          (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
                        (loop (cdr args-regs)))))
                (x86-label cgc label-end)
@@ -1971,13 +2024,24 @@
                 (apply-moves cgc ctx moves)
                 (gen-primitive cgc ctx succ reg prim)))))))
 
+  (define (get-box-fl-args-lco primitive next)
+    (if (primitive-box-fl-args? primitive)
+        (make-lazy-code #f
+          (lambda (cgc ctx)
+            (let* ((idx-to (or (primitive-nbargs primitive)
+                               (length (cdr ast))))
+                   (ctx (gen-drop-float cgc ctx ast 0 idx-to)))
+              (jump-to-version cgc next ctx))))
+        next))
+
   ;; Assert primitive nb args
   (assert-p-nbargs prim ast)
 
   ;;
   (let* ((primitive (primitive-get prim))
-         (lazy-primitive (get-prim-lco primitive))
-         (lazy-cst-check (get-lazy-cst-check primitive lazy-primitive)))
+         (lazy-primitive   (get-prim-lco primitive))
+         (lazy-box-fl-args (get-box-fl-args-lco primitive lazy-primitive))
+         (lazy-cst-check   (get-lazy-cst-check primitive lazy-box-fl-args)))
 
     (if (primitive-nbargs primitive)
         ;; Build args lco chain with type checks
@@ -2205,7 +2269,7 @@
                                     (jump-to-version cgc lazy-code0 (ctx-pop ctx)))
                                  (else
                                     (let ((lcond (ctx-get-loc ctx 0)))
-                                      (codegen-if cgc (ctx-fs ctx) label-jump label-false label-true lcond))))))))))))
+                                      (codegen-if cgc (ctx-fs ctx) (ctx-ffs ctx) label-jump label-false label-true lcond))))))))))))
 
     (gen-ast
       (cadr ast)
@@ -2256,14 +2320,14 @@
         (if opt-return-points
             (gen-continuation-cr cgc ast succ nctx apply?)
             (gen-continuation-rp cgc ast succ nctx apply?))
-
         fctx)))
 
 ;; Push closure, put it in rax, and return updated ctx
 (define (call-get-closure cgc ctx closure-idx)
   (let* ((fs (ctx-fs ctx))
+         (ffs (ctx-ffs ctx))
          (loc  (ctx-get-loc     ctx closure-idx)))
-    (codegen-load-closure cgc fs loc)))
+    (codegen-load-closure cgc fs ffs loc)))
 
 ;; Move args in regs or mem following calling convention
 (define (call-prep-args cgc ctx ast nbargs const-fn)
@@ -2285,7 +2349,7 @@
                   ((eq? (caar locs) 'const)
                      (x86-upush cgc (x86-imm-int (obj-encoding (cdar locs)))))
                   (else
-                     (x86-upush cgc (codegen-loc-to-x86opnd fs (car locs)))))
+                     (x86-upush cgc (codegen-loc-to-x86opnd fs (ctx-ffs ctx) (car locs)))))
             (loop (+ fs 1) (cdr locs)))))
 
     (let* ((used-regs
@@ -2311,14 +2375,17 @@
       ctx)))
 
 ;; Shift args and closure for tail call
-(define (call-tail-shift cgc ctx ast tail? nbargs)
+;; nb-nfl-args is the number of non flonum arguments
+;; nb-fl-args  is the number of flonum arguments
+(define (call-tail-shift cgc ctx ast tail? nb-nfl-args nb-fl-args)
 
   ;; r11 is available because it's the ctx register
   (if tail?
-      (let ((fs (ctx-fs ctx))
+      (let ((fs  (ctx-fs ctx))
+            (ffs (ctx-ffs ctx))
             (nshift
-              (if (> (- nbargs (length args-regs)) 0)
-                  (- nbargs (length args-regs))
+              (if (> (- nb-nfl-args (length args-regs)) 0)
+                  (- nb-nfl-args (length args-regs))
                   0)))
         (let loop ((curr (- nshift 1)))
           (if (>= curr 0)
@@ -2327,6 +2394,9 @@
                 (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift 1) curr)) (x86-usp)) (x86-r11))
                 (loop (- curr 1)))))
 
+        ;; Clean stacks
+        (if (> ffs 0)
+            (x86-add cgc (x86-rsp) (x86-imm-int (* 8 ffs)))) ;; TODO: NYI case if nfargs > number of fargs regs
         (if (not (= (- fs nshift 1) 0))
             (x86-add cgc (x86-usp) (x86-imm-int (* 8 (- fs nshift 1))))))))
 
@@ -2363,7 +2433,20 @@
                (set! ctx (call-prep-args cgc ctx ast (length args) (and fn-id-inf (car fn-id-inf))))
 
                ;; Shift args and closure for tail call
-               (call-tail-shift cgc ctx ast tail? (length args))
+               (let* ((nargs (length args))
+                      (nfargs
+                        (if (not opt-entry-points)
+                            0
+                            (let loop ((idx 0) (n 0))
+                              (if (= idx nargs)
+                                  n
+                                  (let ((type (ctx-get-type ctx idx)))
+                                    (if (ctx-tflo? type)
+                                        (loop (+ idx 1) (+ n 1))
+                                        (loop (+ idx 1) n))))))))
+                 (if (> nfargs (length regalloc-fregs))
+                     (error "NYI")) ;; Fl args that are on the pstack need to be shifted
+                 (call-tail-shift cgc ctx ast tail? (- nargs nfargs) nfargs))
 
                ;; Generate call sequence
                ;; Build call ctx
@@ -2459,7 +2542,7 @@
 
                      (gen-version-continuation-cr
                        lazy-continuation
-                       (ctx-push ctx (if generic? (make-ctx-tunk) type) return-reg)
+                       (ctx-push ctx (if generic? (make-ctx-tunk) type) (if (ctx-tflo? type) return-freg return-reg))
                        type
                        generic?
                        table)))))
@@ -2516,7 +2599,7 @@
         ((not nb-args) ;; apply
            (codegen-call-cc-gen cgc #f eploc))
         (else
-           (let* ((idx (get-closure-index (list-head (ctx-stack call-ctx) nb-args)))
+           (let* ((idx (cctable-get-idx (list-head (ctx-stack call-ctx) nb-args)))
                   (direct (get-cc-direct idx)))
              (if idx
                  (codegen-call-cc-spe cgc idx nb-args eploc direct)
@@ -2528,6 +2611,7 @@
 ;;
 ;; Make lazy code from N-ARY OPERATOR
 ;;
+
 (define (mlc-op-n ast succ op) ;; '(+ - * < > <= >= = /)
   (assert (= (length ast) 3) "Internal error")
   (gen-ast-l (cdr ast)
@@ -2548,7 +2632,7 @@
                                           #f
                                           (lambda (cgc ctx)
                                             (let ((type (make-ctx-tflo)))
-                                              (codegen-num-ff cgc (ctx-fs ctx) op reg lleft #t lright #t lcst? rcst? #t)
+                                              (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lleft #t lright #t lcst? rcst? #t)
                                               (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))
                                    (gen-version-first lco ctx))))))
       (list-ref labels 0)))
@@ -2604,7 +2688,7 @@
                     (jump-to-version cgc lco (ctx-pop-n ctx 2))))
                 ;; Inlined if condition
                 (inlined-if-cond?
-                  (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) op #f lloc rloc lcst? rcst? #t)))
+                  (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op #f lloc rloc lcst? rcst? #t)))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
                 ;; In these cases, we need a free register
                 ;; Then, get a free register, apply moves, and use it.
@@ -2614,10 +2698,10 @@
                     (cond
                       (num-op?
                         (let ((overflow-label (get-stub-overflow-label cgc ctx reg lloc lcst? rloc rcst?)))
-                          (codegen-num-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #t overflow-label))
+                          (codegen-num-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc rloc lcst? rcst? #t overflow-label))
                         (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
                       (else
-                          (codegen-cmp-ii cgc (ctx-fs ctx) op reg lloc rloc lcst? rcst? #f)
+                          (codegen-cmp-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc rloc lcst? rcst? #f)
                           (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))))
 
   ;;
@@ -2636,25 +2720,27 @@
                (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
 
           (cond ((and (not inlined-if-cond?) lcst? rcst?)
-                  (error "NYI1"))
+                  (let* ((r (eval (list op lloc rloc)))
+                         (type (literal->ctx-type r))
+                         (ctx (ctx-push (ctx-pop-n ctx 2) type #f)))
+                    (jump-to-version cgc succ ctx)))
                 ((and lcst? rcst?)
                   (error "NYI2"))
                 (inlined-if-cond?
-                  (let ((x86-op (codegen-cmp-ff cgc (ctx-fs ctx) op #f lloc leftint? rloc rightint? lcst? rcst? #t)))
+                  (let ((x86-op (codegen-cmp-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op #f lloc leftint? rloc rightint? lcst? rcst? #t)))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
                 ;; In these cases, we need a free register
                 ;; Then, get a free register, apply moves, and use it.
+                (num-op?
+                  (mlet ((moves/reg/ctx (ctx-get-free-freg ast ctx succ 2)))
+                    (apply-moves cgc ctx moves)
+                    (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #t)
+                    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg))))
                 (else
                   (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 2)))
                     (apply-moves cgc ctx moves)
-                    (cond
-                      (num-op?
-                        (codegen-num-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #t)
-                        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
-
-                      (else
-                        (codegen-cmp-ff cgc (ctx-fs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #f)
-                        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))))
+                    (codegen-cmp-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #f)
+                    (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))
 
   (assert (not (and inlined-if-cond? (member op '(+ - * /))))
           "Internal compiler error")
@@ -2851,6 +2937,8 @@
             (list (ctx-slot-loc ctx)
                   (ctx-free-regs ctx)
                   (ctx-free-mems ctx)
+                  (ctx-free-fregs ctx)
+                  (ctx-free-fmems ctx)
                   (ctx-stack ctx)
                   (ctx-env ctx)))
            (crtable (table-ref crtables key #f)))
@@ -2889,7 +2977,7 @@
                      ((ctx-loc-is-freemem? loc)
                        (let* (;; Get closure loc
                               (closure-loc  (ctx-get-closure-loc ctx))
-                              (closure-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) closure-loc))
+                              (closure-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) closure-loc))
                               ;; Get free var offset
                               (fvar-pos (cdr loc))
                               (fvar-offset (+ 16 (* 8 fvar-pos)))) ;; 16:header,entrypoint -1: pos starts from 1 and not 0
@@ -2899,8 +2987,13 @@
                          (x86-mov cgc (x86-rax) (x86-mem (- fvar-offset TAG_MEMOBJ) closure-opnd))
                          (x86-rax)))
                      ;;
-                     ((ctx-loc-is-memory? loc)
-                       (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) loc))
+                     ((or (ctx-loc-is-memory? loc)
+                          (ctx-loc-is-fmemory? loc))
+                       (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
+                       (x86-rax))
+                     ;;
+                     ((ctx-loc-is-fregister? loc)
+                       (x86-movd/movq cgc (x86-rax) (codegen-freg-to-x86reg loc))
                        (x86-rax))
                      ;;
                      (else
@@ -2925,7 +3018,12 @@
 ;; * Else return unmodified ctx
 (define (drop-cst-value cgc ast ctx ctx-idx)
 
-  (define (alloc-cstfn reg cst)
+  (define (alloc-cst-flo reg cst)
+    (let ((opnd (codegen-freg-to-x86reg reg)))
+      (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 cst)))
+      (x86-movd/movq cgc opnd (x86-rax))))
+
+  (define (alloc-cst-clo reg cst)
     (let ((entry-obj (asc-globalfn-entry-get cst)))
       (gen-closure cgc reg #f entry-obj '())))
 
@@ -2936,13 +3034,16 @@
   (let* ((type (ctx-get-type ctx ctx-idx))
          (cst? (ctx-type-is-cst type)))
     (if cst?
-        (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx #f 0))
-               (cst (ctx-type-cst type)))
+        (mlet ((cst (ctx-type-cst type))
+               (moves/reg/ctx
+                 (if (ctx-tflo? type)
+                     (ctx-get-free-freg ast ctx #f 0)
+                     (ctx-get-free-reg ast ctx #f 0))))
           (apply-moves cgc ctx moves)
-          ;; Move object to free register
-          (if (ctx-tclo? type)
-              (alloc-cstfn reg cst)
-              (alloc-cst   reg cst))
+          ;; Alloc cst
+          (cond ((ctx-tflo? type) (alloc-cst-flo reg cst))
+                ((ctx-tclo? type) (alloc-cst-clo reg cst))
+                (else             (alloc-cst reg cst)))
           ;; Update & return ctx
           (let* ((ntype ((ctx-type-ctor type)))
                  (ctx (ctx-set-type ctx ctx-idx ntype #f))

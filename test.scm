@@ -1,11 +1,23 @@
 
 ;; out.scm 1333
-;; TODO: use kill set for let & letrec
 
-(define lst '((2 . "two")))
 
-(pp (assq 0 lst))
-(define lst2 '(("one" . 1)))
+
+;; Pt de retour multiples:
+
+;; 1. Créer des tables de retour de taille max-retour-table
+;; 2. Modifier la fonction qui associe un index à un type pour attribuer le field suivant dans la table
+;; 3. Dépassement de table
+
+
+
+(define (foo a)
+  (gambit$$pp a)
+  a)
+
+(foo 10)
+(foo 2.2)
+
 
 
 

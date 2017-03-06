@@ -27,11 +27,14 @@
 ;;
 ;;---------------------------------------------------------------------------
 
-(define mem-header #f)
 (define regalloc-regs #f)
+(define regalloc-fregs #f)
 (define lazy-code-flags #f)
 (define mem-allocated-kind #f)
 (define live-out? #f)
+(define copy-permanent #f)
+(define perm-domain #f)
+(define opt-entry-points #f)
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx
@@ -43,10 +46,13 @@
   slot-loc  ;; alist which associates a virtual stack slot to a location
   free-regs ;; list of current free virtual registers
   free-mems ;; list of current free memory slots
+  free-fregs ;; list of current free virtual float registers
+  free-fmems ;; list of current free virtual float memory slots
   env       ;; alist which associates a variable symbol to an identifier object
   nb-actual ;;
   nb-args   ;; number of arguments of function of the current stack frame
   fs        ;; current frame size
+  ffs       ;; curent float stack frame size
   fn-num    ;; fn-num of current function
 )
 
@@ -59,36 +65,57 @@
           (car ids)
           (contains-dbl (cdr ids)))))
 
-(define (make-ctx stack slot-loc free-regs free-mems env nb-actual nb-args fs fn-num)
+(define (make-ctx stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num)
   (let* ((local-ids (map car env))
          (r         (contains-dbl local-ids)))
     (if r
         (begin (println "WIP: alpha conversion needed for " r)
                (pp local-ids)
                (exit 0))))
-  (make-ctx* stack slot-loc free-regs free-mems env nb-actual nb-args fs fn-num))
+
+  (let* ((used-fregs
+          (foldr (lambda (sl r)
+                   (if (and (cdr sl) (ctx-loc-is-fregister? (cdr sl)))
+                       (cons (cdr sl) r)
+                       r))
+                 '()
+                 slot-loc))
+         (total (set-union used-fregs free-fregs)))
+    (if (not (= (length total)
+                (length (ctx-init-free-fregs))))
+        (begin
+          (pp (make-ctx* stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num))
+          (error "CHECK FAILED"))))
+  (make-ctx* stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num))
 ;; TODO: end wip alpha conversion
 
 
-(define (ctx-copy ctx #!optional stack slot-loc free-regs free-mems env nb-actual nb-args fs fn-num)
+(define (ctx-copy ctx #!optional stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num)
   (make-ctx
     (or stack      (ctx-stack ctx))
     (or slot-loc   (ctx-slot-loc ctx))
     (or free-regs  (ctx-free-regs ctx))
     (or free-mems  (ctx-free-mems ctx))
+    (or free-fregs (ctx-free-fregs ctx))
+    (or free-fmems (ctx-free-fmems ctx))
     (or env        (ctx-env ctx))
     (or nb-actual  (ctx-nb-actual ctx))
     (or nb-args    (ctx-nb-args ctx))
     (or fs         (ctx-fs ctx))
+    (or ffs        (ctx-ffs ctx))
     (or fn-num     (ctx-fn-num ctx))))
 
 ;; Return ctx that only contains regalloc information
 (define (ctx-rm-regalloc ctx)
-  (ctx-copy ctx #f 0 0 0 #f #f #f 0))
+  (ctx-copy ctx #f 0 0 0 #f #f #f #f #f 0 0))
 
 ;; Generate initial free regs list
 (define (ctx-init-free-regs)
   (build-list (length regalloc-regs) (lambda (i) (cons 'r i))))
+
+;; Generate initial free fregs list
+(define (ctx-init-free-fregs)
+  (build-list (length regalloc-fregs) (lambda (i) (cons 'fr i))))
 
 ;; Create an empty context
 (define (ctx-init)
@@ -96,9 +123,12 @@
             '()
             (ctx-init-free-regs)
             '()
+            (ctx-init-free-fregs)
+            '()
             '()
             #f
             -1
+            0
             0
             #f))
 
@@ -176,6 +206,9 @@
 
 ;; Build and return a ctx type from a literal
 (define (literal->ctx-type l)
+  (if (and (##mem-allocated? l)
+           (not (eq? (mem-allocated-kind l) 'PERM)))
+      (set! l (copy-permanent l #f perm-domain)))
   (cond
     ((char?    l) (make-ctx-tcha #t l))
     ((null?    l) (make-ctx-tnul #t l))
@@ -213,10 +246,10 @@
 
 ;;
 (define (ctx-fs-inc ctx)
-  (ctx-copy ctx #f #f #f #f #f #f #f (+ (ctx-fs ctx) 1)))
+  (ctx-copy ctx #f #f #f #f #f #f #f #f #f (+ (ctx-fs ctx) 1)))
 
 (define (ctx-fs-update ctx fs)
-  (ctx-copy ctx #f #f #f #f #f #f #f fs))
+  (ctx-copy ctx #f #f #f #f #f #f #f #f #f fs))
 
 ;;
 ;; CTX INIT CALL
@@ -233,6 +266,12 @@
   (ctx-copy
     (ctx-init)
     (get-stack)))
+
+;;
+;; CTX INIT RETURN
+(define (ctx-init-return ctx)
+  (let ((type (ctx-get-type ctx 0)))
+    (ctx-type-nocst type)))
 
 ;;
 ;; GENERIC
@@ -319,9 +358,11 @@
     (if (null? slot-loc)
         '()
         (let ((first (car slot-loc)))
-          (if (and (cdr first)
-                   (find (lambda (el) (eq? (cdr el) (cdr first)))
-                     (cdr slot-loc)))
+          (if (or (ctx-loc-is-fregister? (cdr first))
+                  (ctx-loc-is-fmemory?   (cdr first))
+                  (and (cdr first)
+                       (find (lambda (el) (eq? (cdr el) (cdr first)))
+                             (cdr slot-loc))))
               ;; Loc is also used by at least one other slot
               (let ((loc (get-new-loc)))
                 (cons (cons (car first) loc)
@@ -340,11 +381,10 @@
   (let ((env   (compute-env   (ctx-env ctx)))
         (slot-loc (compute-slot-loc slot-loc)))
 
-    (ctx-copy ctx stack slot-loc free-regs free-mems env #f #f fs)))
+    (ctx-copy ctx stack slot-loc free-regs free-mems (ctx-init-free-fregs) '() env #f #f fs 0)))
 ;;
 ;; CTX INIT FN
 (define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
-
   ;; Separate constant and non constant free vars
   ;; Return a pair with const and nconst sets
   ;; const contains id and type of all constant free vars
@@ -394,13 +434,34 @@
   ;;
   ;; FREE REGS
   (define (init-free-regs)
-    (let* ((all (ctx-init-free-regs))
-           (used-args
-             (if (<= (length args) (length args-regs))
-                 (list-head args-regs (length args))
-                 args-regs))
-           (used (cons '(r . 2) used-args)))
-      (set-sub all used '())))
+    ;; init free regs if the context is *not* generic (stack != #f)
+    (define (init stack regs)
+      (if (or (null? stack) (null? regs))
+          '()
+          (if (ctx-tflo? (car stack))
+              (init (cdr stack) regs)
+              (cons (car regs)
+                    (init (cdr stack) (cdr regs))))))
+    (let ((used
+            (if stack
+                (cons '(r . 2) (init stack args-regs))
+                (cons '(r . 2) (if (<= (length args) (length args-regs))
+                                   (list-head args-regs (length args))
+                                   args-regs)))))
+      (set-sub (ctx-init-free-regs) used '())))
+
+  ;; FREE FREGS
+  (define (init-free-fregs)
+    (define (init stack fregs)
+      (if (or (null? stack)
+              (null? fregs))
+          fregs
+          (if (ctx-tflo? (car stack))
+              (init (cdr stack) (cdr fregs))
+              (init (cdr stack) fregs))))
+    (if stack
+        (init stack (ctx-init-free-fregs))
+        (ctx-init-free-fregs)))
 
   ;;
   ;; ENV
@@ -445,35 +506,68 @@
   ;;
   ;; SLOT-LOC
   (define (init-slot-loc nb-free-const)
-    (append
-      (reverse (init-slot-loc-local 1 args-regs (+ nb-free-const 2) 0)) ;; Reverse for best display for debug purposes
-      (init-slot-loc-base nb-free-const)))
+    (let* ((types (and stack (reverse (list-head stack (length stack)))))
+           (r
+             (if (not stack)
+                 (init-slot-loc-local-gen (+ nb-free-const 2) args-regs 1 args)
+                 (let ((r (init-slot-loc-local (+ nb-free-const 2) types args-regs (ctx-init-free-fregs) 1)))
+                   (cons (reverse (car r)) (cdr r))))))
+      (list
+        (append
+          (car r)
+          (init-slot-loc-base nb-free-const))
+        (cdr r))))
 
-  (define (init-slot-loc-local mem avail-regs slot nvar)
-    (if (= nvar (length args))
-        '()
-        (if (null? avail-regs)
-            (let ((loc (cons 'm mem)))
-              (cons (cons slot loc)
-                    (init-slot-loc-local (+ mem 1) '() (+ slot 1) (+ nvar 1))))
-            (let ((loc (car avail-regs)))
-              (cons (cons slot loc)
-                    (init-slot-loc-local mem (cdr avail-regs) (+ slot 1) (+ nvar 1)))))))
+  ;; Init slot-loc set if the context is generic (stack is #f)
+  ;; Return (slot-loc . mem)
+  (define (init-slot-loc-local-gen slot regs mem args)
+    (if (null? args)
+        (cons '() mem)
+        (if (null? regs)
+            (let ((loc (cons 'm mem))
+                  (r   (init-slot-loc-local-gen (+ slot 1) '() (+ mem 1) (cdr args))))
+              (cons (cons (cons slot loc)
+                          (car r))
+                    (cdr r)))
+            (let ((loc (car regs))
+                  (r   (init-slot-loc-local-gen (+ slot 1) (cdr regs) mem (cdr args))))
+              (cons (cons (cons slot loc)
+                          (car r))
+                    (cdr r))))))
+
+  ;; Init slot-loc set if the context is not generic (stack is *not* #f)
+  ;; Return (slot-loc . mem)
+  (define (init-slot-loc-local slot argtypes regs fregs mem)
+
+    (define (return slot loc r)
+      (cons (cons (cons slot loc)
+                  (car r))
+            (cdr r)))
+
+    (if (null? argtypes)
+        (cons '() mem)
+        (let ((type (or (and argtypes (car argtypes))
+                         (make-ctx-tunk)))
+              (types (and argtypes (cdr argtypes))))
+          (if (ctx-tflo? type)
+              (if (null? fregs)
+                  (error "NYI")
+                  (let ((r (init-slot-loc-local (+ slot 1) types regs (cdr fregs) mem)))
+                    (return slot (car fregs) r)))
+              (if (null? regs)
+                  (let ((r (init-slot-loc-local (+ slot 1) types '() fregs (+ mem 1))))
+                    (return slot (cons 'm mem) r))
+                  (let ((r (init-slot-loc-local (+ slot 1) types (cdr regs) fregs mem)))
+                    (return slot (car regs) r)))))))
 
   (define (init-slot-loc-base nb-free-const)
     (append (reverse (build-list nb-free-const (lambda (n) (cons (+ n 2) #f))))
             '((1 r . 2) (0 m . 0))))
 
-  ;;
-  ;; FS
-  (define (init-fs nb-args)
-    (if (<= nb-args (length args-regs))
-        1
-        (+ (- nb-args (length args-regs)) 1)))
-
   (let* ((r (find-const-free free-vars))
          (free-const (car r))
-         (free-nconst (cdr r)))
+         (free-nconst (cdr r))
+         (slot-loc/fs (init-slot-loc (length free-const))))
 
     ;;
     (make-ctx
@@ -481,13 +575,16 @@
           (append (make-list (length args) (make-ctx-tunk))
                   (init-const-stack free-const)
                   (list (make-ctx-tclo) (make-ctx-tret))))
-      (init-slot-loc (length free-const))
+      (car slot-loc/fs)
       (init-free-regs)
+      '()
+      (init-free-fregs)
       '()
       (init-env free-const free-nconst)
       (and stack (length stack))
       (length args)
-      (init-fs (length args))
+      (cadr slot-loc/fs)
+      0
       fn-num)))
 
 ;; TODO WIP MOVE
@@ -501,6 +598,21 @@
              #f)
           (else
              (loop (cdr sls))))))
+
+;;
+;; GET FREE FREG
+(define (ctx-get-free-freg ast ctx succ nb-opnds)
+
+  (let ((free-fregs (ctx-free-fregs ctx)))
+    (if (null? free-fregs)
+        (begin
+          (pp ctx)
+          (error "NYI wip error"))
+        (let* ((reg (car free-fregs))
+               (free free-fregs));(set-sub free-fregs (list reg) '())))
+          (list '()
+                reg
+                (ctx-copy ctx #f #f #f #f free))))))
 
 ;;
 ;; GET FREE REG
@@ -603,7 +715,7 @@
   (let ((r (assoc id (ctx-env ctx))))
     (if r
         (let ((env (build-env (ctx-env ctx))))
-          (ctx-copy ctx #f #f #f #f env))
+          (ctx-copy ctx #f #f #f #f #f #f env))
         ctx)))
 
 ;; Take a ctx and an s-expression (ast)
@@ -659,7 +771,7 @@
                 (cons (cons slot #f) slot-loc)))))
 
   (let ((r (bind cst-set (ctx-env ctx) (ctx-stack ctx) (ctx-slot-loc ctx))))
-   (ctx-copy ctx (cadr r) (caddr r) #f #f (car r))))
+   (ctx-copy ctx (cadr r) (caddr r) #f #f #f #f (car r))))
 
 ;;
 ;; BIND LOCALS
@@ -701,7 +813,7 @@
          (env
            (gen-env env id-idx)))
 
-    (ctx-copy ctx #f #f #f #f env)))
+    (ctx-copy ctx #f #f #f #f #f #f env)))
 
 ;; This is one of the few ctx function with side effect!
 ;; The side effect is used to update letrec constant bindings
@@ -729,7 +841,7 @@
               (cons ident
                     (gen-env (cdr env) ids))))))
 
-  (ctx-copy ctx #f #f #f #f (gen-env (ctx-env ctx) ids)))
+  (ctx-copy ctx #f #f #f #f #f #f (gen-env (ctx-env ctx) ids)))
 
 ;;
 ;; IDENTIFIER TYPE
@@ -765,33 +877,42 @@
   (define (save-one curr-idx ctx)
     (let ((loc (ctx-get-loc ctx curr-idx)))
       (if (or (not loc)
-              (ctx-loc-is-memory? loc))
+              (ctx-loc-is-memory? loc)
+              (ctx-loc-is-fmemory? loc))
           ;; If loc associated to current index is a memory loc, nothing to do
           (cons '() ctx)
           ;; Loc is a register, we need to save it
           (let* ((ident (ctx-ident-at ctx curr-idx))
                  (mloc  (and ident (ctx-ident-mloc ctx ident))))
             (if (and ident mloc)
-                ;; Is this slot is associated to a variable, and this variable already have a memory location
+                ;; This slot is associated to a variable, and this variable already has a memory location
                 ;; Then, simply update slot-loc set
                 (cons '()
                       (ctx-set-loc ctx (stack-idx-to-slot ctx curr-idx) mloc))
                 ;; Else, we need a new memory slot
-                (let* ((r (ctx-get-free-mem ctx))
+                (let* ((type (ctx-get-type ctx curr-idx))
+                       (r (if (ctx-tflo? type)
+                              (ctx-get-free-fmem ctx)
+                              (ctx-get-free-mem ctx)))
                        (moves (car r))
                        (mem (cadr r))
                        (ctx (caddr r))
                        (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx curr-idx) mem)))
                   ;; Remove all 'fs moves
-                  (cons (append (set-sub moves (list (assoc 'fs moves)) '())
+                  (cons (append (set-sub (set-sub moves (list (assoc 'ffs moves)) '())
+                                         (list (assoc 'fs moves))
+                                         '())
                                 (list (cons loc mem)))
                         ctx)))))))
 
 
   (define (save-all curr-idx moves ctx)
     (if (= curr-idx (length (ctx-stack ctx)))
-        (let ((nb-new-slots (- (ctx-fs ctx) (ctx-fs octx))))
-          (list (cons (cons 'fs nb-new-slots) moves)
+        (let ((nfs  (- (ctx-fs ctx) (ctx-fs octx)))
+              (nffs (- (ctx-ffs ctx) (ctx-ffs octx))))
+          (list (append (list (cons 'fs nfs)
+                              (cons 'ffs nffs))
+                        moves)
                 ctx))
         (let ((r (save-one curr-idx ctx)))
           (save-all
@@ -800,8 +921,8 @@
             (cdr r)))))
 
   ;; Free dead locations
-
   (set! octx (ctx-free-dead-locs octx ast))
+
   (save-all idx-start '() octx))
 
 ;;
@@ -849,6 +970,8 @@
            (ctx-slot-loc ctx))
      (set-sub (ctx-free-regs ctx) (list loc) '())
      (set-sub (ctx-free-mems ctx) (list loc) '())
+     (set-sub (ctx-free-fregs ctx) (list loc) '())
+     (set-sub (ctx-free-fmems ctx) (list loc) '())
      (if id
          (get-env (ctx-env ctx) id slot)
          #f)
@@ -898,21 +1021,37 @@
          (loc (and (car r) (cdar r)))
          (slot-loc (cdr r)))
 
+    (define (free-loc loc ctx-loc-is*? locs-set)
+      (if (and loc
+               (not (loc-used? loc slot-loc))
+               (ctx-loc-is*? loc))
+          (cons loc locs-set)
+          locs-set))
+
     (ctx-copy
       ctx
       (cdr (ctx-stack ctx))                        ;; stack: remove top
       slot-loc                                     ;; slot-loc: remove popped slot
-      (if (and loc
-               (not (loc-used? loc slot-loc))      ;; free-regs: add popped loc if it's an unused reg
-               (ctx-loc-is-register? loc))
-          (cons loc (ctx-free-regs ctx))
-          #f)
-      (if (and loc
-               (not (loc-used? loc slot-loc))      ;; free-mems: add popped loc if it's an unused mem
-               (ctx-loc-is-memory? loc))
-          (cons loc (ctx-free-mems ctx))
-          #f)
+      (free-loc loc ctx-loc-is-register?  (ctx-free-regs ctx))
+      (free-loc loc ctx-loc-is-memory?    (ctx-free-mems ctx))
+      (free-loc loc ctx-loc-is-fregister? (ctx-free-fregs ctx))
+      (free-loc loc ctx-loc-is-fmemory?   (ctx-free-fmems ctx))
       (env-remove-slot (ctx-env ctx) slot))))      ;; env: remove popped slot from env
+
+;; Check if given stack idx belongs to an id
+;; If so, remove this link
+(define (ctx-remove-slot-info ctx stack-idx)
+  (define (get-env env slot)
+    (if (null? env)
+        '()
+        (let ((sslots (identifier-sslots (cdar env))))
+          (if (member slot sslots)
+              (cons (cons (caar env)
+                          (identifier-copy (cdar env) #f (set-sub sslots (list slot) '())))
+                    (cdr env))
+              (cons (car env) (get-env (cdr env) slot))))))
+  (let ((env (get-env (ctx-env ctx) (stack-idx-to-slot ctx stack-idx))))
+    (ctx-copy ctx #f #f #f #f #f #f env)))
 
 ;;
 ;; GET LOC
@@ -941,6 +1080,16 @@
 (define (ctx-loc-is-memory? loc)
   (and (pair? loc)
        (eq? (car loc) 'm)))
+
+;; Is fregister ?
+(define (ctx-loc-is-fregister? loc)
+  (and (pair? loc)
+       (eq? (car loc) 'fr)))
+
+;; Is fmemory ?
+(define (ctx-loc-is-fmemory? loc)
+  (and (pair? loc)
+       (eq? (car loc) 'fm)))
 
 ;; Is free variable loc ?
 (define (ctx-loc-is-freemem? loc)
@@ -996,6 +1145,7 @@
 ;; Return reg is one of the last registers to increase the chances it is chosen
 ;; if it is preferred register in ctx-get-free-reg (which is the case each time succ lco is a 'ret lco)
 (define return-reg '(r . 8)) ;; TODO move
+(define return-freg '(fr . 0))
 
 ;;
 ;;
@@ -1028,6 +1178,9 @@
 
 ;; TODO: use stack idx to match public api
 ;; Change loc associated to given slot
+;; change ONE SLOT only
+;; TODO: use extra bool arg to change for associated identifier too  to match public api
+;;       (see ctx-set-type)
 (define (ctx-set-loc ctx slot loc)
 
   (define (get-slot-loc slot-loc)
@@ -1051,12 +1204,18 @@
     (get-free-* slot-loc curr-free old-loc loc ctx-loc-is-register?))
   (define (get-free-mems slot-loc curr-free old-loc loc)
     (get-free-* slot-loc curr-free old-loc loc ctx-loc-is-memory?))
+  (define (get-free-fregs slot-loc curr-free old-loc loc)
+    (get-free-* slot-loc curr-free old-loc loc ctx-loc-is-fregister?))
+  (define (get-free-fmems slot-loc curr-free old-loc loc)
+    (get-free-* slot-loc curr-free old-loc loc ctx-loc-is-fmemory?))
 
   (let* ((old-loc (cdr (assoc slot (ctx-slot-loc ctx))))
          (slot-loc (get-slot-loc (ctx-slot-loc ctx)))
-         (free-regs (get-free-regs slot-loc (ctx-free-regs ctx) old-loc loc))
-         (free-mems (get-free-mems slot-loc (ctx-free-mems ctx) old-loc loc)))
-    (ctx-copy ctx #f slot-loc free-regs free-mems)))
+         (free-regs  (get-free-regs  slot-loc (ctx-free-regs ctx)  old-loc loc))
+         (free-mems  (get-free-mems  slot-loc (ctx-free-mems ctx)  old-loc loc))
+         (free-fregs (get-free-fregs slot-loc (ctx-free-fregs ctx) old-loc loc))
+         (free-fmems (get-free-fmems slot-loc (ctx-free-fmems ctx) old-loc loc)))
+    (ctx-copy ctx #f slot-loc free-regs free-mems free-fregs free-fmems)))
 
 ;; Return a free memory slot
 ;; Return moves, mloc and updated ctx
@@ -1069,11 +1228,17 @@
       (let ((mloc (cons 'm (ctx-fs ctx))))
         (list (list (cons 'fs 1))
               mloc
-              (ctx-copy ctx #f #f #f (cons mloc (ctx-free-mems ctx)) #f #f #f (+ (ctx-fs ctx) 1))))))
+              (ctx-copy ctx #f #f #f (cons mloc (ctx-free-mems ctx)) #f #f #f #f #f (+ (ctx-fs ctx) 1))))))
 
-
-  ;; Si un emplacement mémoire est libre, on le retourne sans rien modifier
-  ;; sinon on en alloue un
+(define (ctx-get-free-fmem ctx)
+  (if (not (null? (ctx-free-fmems ctx)))
+      ;; An existing memory slot is empty, use it
+      (list '() (car (ctx-free-fmems ctx)) ctx)
+      ;; Alloc a new memory slot
+      (let ((mloc (cons 'fm (ctx-ffs ctx))))
+        (list (list (cons 'ffs 1))
+              mloc
+              (ctx-copy ctx #f #f #f #f #f (cons mloc (ctx-free-fmems ctx)) #f #f #f #f (+ (ctx-ffs ctx) 1))))))
 
 ;; Return memory location associated to ident or #f if no memory slot
 (define (ctx-ident-mloc ctx ident)
@@ -1082,7 +1247,9 @@
     (if (null? sslots)
         #f
         (let ((r (assoc (car sslots) slot-loc)))
-          (or (and r (ctx-loc-is-memory? (cdr r)) (cdr r))
+          (if (or (ctx-loc-is-memory? (cdr r))
+                  (ctx-loc-is-fmemory? (cdr r)))
+              (cdr r)
               (get-mloc slot-loc (cdr sslots))))))
 
   (let ((sslots (identifier-sslots (cdr ident))))
@@ -1168,6 +1335,20 @@
 ;; Compute and returns moves needed to merge reg alloc from src-ctx to dst-ctx
 (define (ctx-regalloc-merge-moves src-ctx dst-ctx)
 
+  (define (add-boxes moves)
+    (if (null? moves)
+        '()
+        (let ((move (car moves)))
+          (if (or (ctx-loc-is-fregister? (car move))
+                  (ctx-loc-is-fmemory?   (car move))
+                  (and (pair? (car move))
+                       (eq?   (caar move) 'const)
+                       (flonum? (cdar move))))
+              (let ((move (cons (cons 'flbox (car move)) (cdr move))))
+                (cons move
+                      (add-boxes (cdr moves))))
+              (cons move (add-boxes (cdr moves)))))))
+
   (define (get-req-moves)
     (define sl-dst (ctx-slot-loc dst-ctx))
     (let loop ((sl (ctx-slot-loc src-ctx)))
@@ -1194,39 +1375,61 @@
                     (cons (cons src dst) (loop (cdr sl))))))))))
 
   (let* ((req-moves (get-req-moves))
-         (moves (steps req-moves))
+         (moves (add-boxes (steps req-moves)))
          (fs-move (cons 'fs (- (ctx-fs dst-ctx)
-                               (ctx-fs src-ctx)))))
-    (cons fs-move moves)))
+                               (ctx-fs src-ctx))))
+         (ffs-move (cons 'ffs (- (ctx-ffs dst-ctx)
+                                 (ctx-ffs src-ctx)))))
+    (cons fs-move (cons ffs-move moves))))
 
 (define (ctx-get-call-args-moves ctx nb-args cloloc)
 
   (define clomove (and cloloc (cons cloloc '(r . 2))))
 
-  (define (get-req-moves curr-idx rem-regs moves pushed)
+  (define (get-req-moves curr-idx rem-regs rem-fregs moves pushed)
     (if (< curr-idx 0)
         (cons (reverse pushed) moves)
         (let* ((type (ctx-get-type ctx curr-idx))
+               (loc (ctx-get-loc ctx curr-idx))
                (from
-                 (let ((loc (ctx-get-loc ctx curr-idx)))
-                   (or loc
-                       (cond ((and (ctx-type-is-cst type)
-                                   (ctx-tclo? type))
-                              (cons 'constfn (ctx-type-cst type)))
-                             ((ctx-type-is-cst type)
-                                (cons 'const (ctx-type-cst type)))
-                             (else
-                                (error "Internal error")))))))
-          (if (null? rem-regs)
-              (get-req-moves (- curr-idx 1) '() moves (cons from pushed))
-              (get-req-moves
-                (- curr-idx 1)
-                (cdr rem-regs)
-                (cons (cons from (car rem-regs))
-                      moves)
-                pushed)))))
+                   (cond ((and (not opt-entry-points)
+                               (ctx-tflo? type))
+                            (if (ctx-type-is-cst type)
+                                (cons 'flbox (cons 'const (ctx-type-cst type)))
+                                (cons 'flbox loc)))
+                         (loc loc)
+                         ((and (ctx-type-is-cst type)
+                               (ctx-tclo? type))
+                            (cons 'constfn (ctx-type-cst type)))
+                         ((ctx-type-is-cst type)
+                            (cons 'const (ctx-type-cst type)))
+                         (else
+                            (error "Internal error")))))
 
-  (let ((pushed/moves (get-req-moves (- nb-args 1) args-regs '() '())))
+          (cond ((and (ctx-tflo? type)
+                      (null? rem-fregs))
+                    (error "NYI1"))
+                ((and opt-entry-points
+                      (ctx-tflo? type))
+                    (get-req-moves
+                      (- curr-idx 1)
+                      rem-regs
+                      (cdr rem-fregs)
+                      (cons (cons from (car rem-fregs))
+                            moves)
+                      pushed))
+                ((null? rem-regs)
+                    (get-req-moves (- curr-idx 1) '() rem-fregs moves (cons from pushed)))
+                (else
+                    (get-req-moves
+                      (- curr-idx 1)
+                      (cdr rem-regs)
+                      rem-fregs
+                      (cons (cons from (car rem-regs))
+                            moves)
+                      pushed))))))
+
+  (let ((pushed/moves (get-req-moves (- nb-args 1) args-regs (ctx-init-free-fregs) '() '())))
 
     (cons (car pushed/moves)
           (if clomove

@@ -57,6 +57,7 @@ full-test:
 	./run-ut.scm -lc-nrp
 	./run-ut.scm -lc-nep-nrp
 	./run-ut.scm -lc-m5
+	./run-ut.scm -lc-m1
 
 # Clean
 clean:
