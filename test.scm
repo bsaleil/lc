@@ -15,13 +15,13 @@
 
 
 
+(define (fib n)
+  (if (< n 2)
+    n
+    (+ (fib (- n 1))
+       (fib (- n 2)))))
 
-(define (foo a)
-  (gambit$$pp a)
-  a)
-
-(foo 10)
-(foo 2.2)
+(gambit$$pp (fib 40))
 
 
 
