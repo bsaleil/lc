@@ -2535,16 +2535,12 @@
                           (ctx
                             (if apply?
                                 (ctx-pop-n ctx 2) ;; Pop operator and args
-                                (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
-                          (generic?
-                            (and opt-max-versions
-                                 (>= (lazy-code-nb-real-versions lazy-continuation) opt-max-versions))))
+                                (ctx-pop-n ctx (+ (length args) 1))))) ;; Remove closure and args from virtual stack
 
                      (gen-version-continuation-cr
                        lazy-continuation
-                       (ctx-push ctx (if generic? (make-ctx-tunk) type) (if (ctx-tflo? type) return-freg return-reg))
+                       (ctx-push ctx type (if (ctx-tflo? type) return-freg return-reg))
                        type
-                       generic?
                        table)))))
          ;; CRtable
          (stub-addr (vector-ref (list-ref stub-labels 0) 1))

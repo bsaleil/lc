@@ -3,11 +3,16 @@
 
 
 
-;; Pt de retour multiples:
+;; Pt générique dans la table de retour:
 
-;; 1. Créer des tables de retour de taille max-retour-table
-;; 2. Modifier la fonction qui associe un index à un type pour attribuer le field suivant dans la table
-;; 3. Dépassement de table
+;; Cas1: la table est pleine, pas d'idx pour le ctx courant
+;; Cas2: la limite du nb de versions de la continuation est atteinte
+
+;; Cas1:
+;;  * on utilise l'index du ctx generique
+;;  * codegen: on saute à cet idx
+;;  * callback: on récupère l'info ctx générique, on envoit le type unk
+
 
 
 

@@ -1353,7 +1353,8 @@
          (fn-patch label-merge #t)))
     ;; No version for this ctx, limit reached, and generic version does not exist
     (else
-      (if (member 'entry (lazy-code-flags lazy-code))
+      (if (or (member 'entry  (lazy-code-flags lazy-code))
+              (member 'return (lazy-code-flags lazy-code)))
           (error "WIP nyi"))
       ;; TODO what if fn-opt-label is set ?
       (let* ((entry-lco? (member 'entry (lazy-code-flags lazy-code)))
@@ -1433,7 +1434,7 @@
 
 ;; #### CONTINUATION CR
 ;; Generate continuation using cr table (patch cr entry)
-(define (gen-version-continuation-cr lazy-code ctx type generic? table)
+(define (gen-version-continuation-cr lazy-code ctx type table)
 
   (define (fn-verbose)
     (print "GEN VERSION CONTINUATION (CR)")
@@ -1443,7 +1444,7 @@
     (pp ctx))
 
   (define (fn-patch label-dest new-version?)
-    (patch-continuation-cr label-dest type generic? table))
+    (patch-continuation-cr label-dest type table))
 
   (define (fn-codepos)
     code-alloc)
@@ -1575,10 +1576,8 @@
   (asm-label-pos continuation-label))
 
 ;; Patch continuation if using cr (write label addr in table instead of compiler stub addr)
-(define (patch-continuation-cr continuation-label type generic? table)
+(define (patch-continuation-cr continuation-label type table)
   ;; TODO: msg if opt-verbose-jit (see patch-continuation)
-  (if generic?
-      (put-i64 (+ 8 (* 8 (crtable-get-idx ATX_UNK)) table) (asm-label-pos continuation-label)))
   (put-i64 (+ 8 (* 8 (crtable-get-idx type)) table) (asm-label-pos continuation-label))
   (asm-label-pos continuation-label))
 
