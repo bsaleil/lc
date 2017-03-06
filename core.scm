@@ -174,35 +174,6 @@
         ((ctx-tclo? type) STAG_PROCEDURE)
         (else (pp type) (error "Internal error (ctx-type->stag)"))))
 
-;; cridx<->ctx-type table
-(define cridx-type
-  `(( 8  ,ctx-tint? ,make-ctx-tint) ;; Start from 8 because of header
-    (16  ,ctx-tcha? ,make-ctx-tcha)
-    (24  ,ctx-tboo? ,make-ctx-tboo)
-    (32  ,ctx-tclo? ,make-ctx-tclo)
-    (40  ,ctx-tpai? ,make-ctx-tpai)
-    (48  ,ctx-tvoi? ,make-ctx-tvoi)
-    (56  ,ctx-tnul? ,make-ctx-tnul)
-    (64  ,ctx-tvec? ,make-ctx-tvec)
-    (72  ,ctx-tstr? ,make-ctx-tstr)
-    (80  ,ctx-tsym? ,make-ctx-tsym)
-    (88  ,ctx-tipo? ,make-ctx-tipo)
-    (96  ,ctx-topo? ,make-ctx-topo)
-    (104 ,ctx-tflo? ,make-ctx-tflo)
-    (112 ,ctx-tunk? ,make-ctx-tunk)))
-
-(define (ctx-type->cridx type)
-  (let loop ((l cridx-type))
-    (let ((test (cadar l)))
-      (if (test type)
-          (caar l)
-          (loop (cdr l))))))
-
-(define (cridx->ctx-type cridx)
-  (let* ((r (assoc cridx cridx-type))
-         (ctor (caddr r)))
-    (ctor)))
-
 ;;-----------------------------------------------------------------------------
 
 ;; Errors
@@ -482,7 +453,7 @@
          (table
           (get-i64 (+ usp (reg-sp-offset-r (x86-rdx)))))
 
-         (type (cridx->ctx-type type-idx))
+         (type (crtable-get-data type-idx))
 
          (new-ret-addr
            (run-add-to-ctime
@@ -1607,8 +1578,8 @@
 (define (patch-continuation-cr continuation-label type generic? table)
   ;; TODO: msg if opt-verbose-jit (see patch-continuation)
   (if generic?
-      (put-i64 (+ (ctx-type->cridx ATX_UNK) table) (asm-label-pos continuation-label)))
-  (put-i64 (+ (ctx-type->cridx type) table) (asm-label-pos continuation-label))
+      (put-i64 (+ 8 (* 8 (crtable-get-idx ATX_UNK)) table) (asm-label-pos continuation-label)))
+  (put-i64 (+ 8 (* 8 (crtable-get-idx type)) table) (asm-label-pos continuation-label))
   (asm-label-pos continuation-label))
 
 ;; Patch jump at jump-addr: change jump destination to dest-addr
@@ -1908,7 +1879,7 @@
             value))))))
 
 (define cctable-get-idx (cxtable-get-idx global-cc-table global-cc-table-maxsize))
-(define crtable-get-idx (cxtable-get-idx global-cc-table global-cr-table-maxsize))
+(define crtable-get-idx (cxtable-get-idx global-cr-table global-cr-table-maxsize))
 
 (define (cxtable-get-data global-table)
   (lambda (idx)

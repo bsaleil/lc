@@ -268,6 +268,12 @@
     (get-stack)))
 
 ;;
+;; CTX INIT RETURN
+(define (ctx-init-return ctx)
+  (let ((type (ctx-get-type ctx 0)))
+    (ctx-type-nocst type)))
+
+;;
 ;; GENERIC
 ;; TODO wip
 (define (ctx-generic ctx)

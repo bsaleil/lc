@@ -632,7 +632,7 @@
 
 ;; Generate function return using a crtable
 ;; Retaddr (or cctable) is in rdx
-(define (codegen-return-cr cgc fs ffs clean-nb lretobj lretval crtable-offset float?)
+(define (codegen-return-cr cgc fs ffs clean-nb lretobj lretval cridx float?)
 
     (let ((opret (if float?
                      (codegen-freg-to-x86reg return-freg)
@@ -645,8 +645,8 @@
               (x86-mov cgc opret opretval))))
 
     (codegen-return-common cgc fs ffs clean-nb lretobj)
-    (x86-mov cgc (x86-rax) (x86-mem crtable-offset (x86-rdx)))
-    (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding crtable-offset)))
+    (x86-mov cgc (x86-rax) (x86-mem (+ 8 (* 8 cridx)) (x86-rdx)))
+    (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding cridx)))
     (x86-jmp cgc (x86-rax)))
 
 ;; Generate function call using a single entry point

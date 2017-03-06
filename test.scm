@@ -11,15 +11,12 @@
 
 
 
-(define (fibfp n)
-  (if (< n 2.)
-    n
-    (+ (fibfp (- n 1.))
-       (fibfp (- n 2.)))))
+(define (foo a)
+  (gambit$$pp a)
+  a)
 
-(gambit$$pp (fibfp 7))
-
-;#t
+(foo 10)
+(foo 2.2)
 
 
 

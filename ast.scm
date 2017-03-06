@@ -724,8 +724,8 @@
 
           ;; Gen return
           (if opt-return-points
-              (let* ((crtable-offset (ctx-type->cridx type-ret)))
-                (codegen-return-cr cgc fs ffs fs laddr lret crtable-offset (ctx-tflo? type-ret)))
+              (let* ((cridx (crtable-get-idx (ctx-init-return ctx))))
+                (codegen-return-cr cgc fs ffs fs laddr lret cridx (ctx-tflo? type-ret)))
               (codegen-return-rp cgc fs ffs fs laddr lret (ctx-tflo? type-ret)))))))
   ;; TODO: write a generic lazy-drop function (this function is used by multiple mlc-*)
   (make-lazy-code-ret
