@@ -725,6 +725,8 @@
           ;; Gen return
           (if opt-return-points
               (let* ((cridx (crtable-get-idx (ctx-init-return ctx))))
+                (if (not cridx)
+                    (error "NYI"))
                 (codegen-return-cr cgc fs ffs fs laddr lret cridx (ctx-tflo? type-ret)))
               (codegen-return-rp cgc fs ffs fs laddr lret (ctx-tflo? type-ret)))))))
   ;; TODO: write a generic lazy-drop function (this function is used by multiple mlc-*)
@@ -2597,6 +2599,10 @@
         (else
            (let* ((idx (cctable-get-idx (list-head (ctx-stack call-ctx) nb-args)))
                   (direct (get-cc-direct idx)))
+             (if (and (not idx)
+                      (or (find (lambda (l) (ctx-tflo? l))       (ctx-stack call-ctx))
+                          (find (lambda (l) (ctx-type-is-cst l)) (ctx-stack call-ctx))))
+                 (error "NYI"))
              (if idx
                  (codegen-call-cc-spe cgc idx nb-args eploc direct)
                  (codegen-call-cc-gen cgc nb-args eploc))))))
@@ -2857,7 +2863,7 @@
 
 ;; Create a new cr table with 'init' as stub value
 (define (make-cc)
-  (make-s64vector (+ 1 global-cc-table-maxsize)))
+  (alloc-still-vector-i64 (+ 1 global-cc-table-maxsize) 0))
 
 ;; This is the key used in hash table to find the cc-table for this closure.
 ;; The key represents captured values used to specialize tables

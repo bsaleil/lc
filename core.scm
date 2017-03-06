@@ -53,6 +53,8 @@
 (define opt-use-lib              #t) ;; Use scheme std lib (see lib/ folder)
 (define opt-vers-regalloc        #t) ;; Use register allocation for code specialization
 (define opt-dump-bin             #f) ;; Print generated binary bytes to stdout
+(define opt-cc-max               #f) ;; Global cctable max size
+(define opt-cr-max               #f) ;; Global crtable max size
 
 ;; Macro to compute compilation time
 (define user-compilation-time 0)
@@ -866,6 +868,7 @@
 
   (init-c)
   (init-code-allocator)
+  (init-interprocedural)
 
   (code-add
    (lambda (cgc)
@@ -1849,8 +1852,8 @@
 ;; Interprocedural BBV (cr/cc-tables)
 
 ;; Current fixed global-cc-table max size
-(define global-cc-table-maxsize 430)
-(define global-cr-table-maxsize  40)
+(define global-cc-table-maxsize  #f)
+(define global-cr-table-maxsize  #f)
 ;; Holds the current shape of the global cc table
 (define global-cc-table (make-table))
 (define global-cr-table (make-table))
@@ -1877,8 +1880,8 @@
             (table-set! global-table data value)
             value))))))
 
-(define cctable-get-idx (cxtable-get-idx global-cc-table global-cc-table-maxsize))
-(define crtable-get-idx (cxtable-get-idx global-cr-table global-cr-table-maxsize))
+(define cctable-get-idx #f)
+(define crtable-get-idx #f)
 
 (define (cxtable-get-data global-table)
   (lambda (idx)
@@ -1892,3 +1895,9 @@
 
 (define cctable-get-data (cxtable-get-data global-cc-table))
 (define crtable-get-data (cxtable-get-data global-cr-table))
+
+(define (init-interprocedural)
+  (set! global-cc-table-maxsize (or opt-cc-max 430))
+  (set! global-cr-table-maxsize (or opt-cr-max  20))
+  (set! cctable-get-idx (cxtable-get-idx global-cc-table global-cc-table-maxsize))
+  (set! crtable-get-idx (cxtable-get-idx global-cr-table global-cr-table-maxsize)))

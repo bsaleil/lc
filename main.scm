@@ -42,19 +42,16 @@
 ;; Contains all compiler options
 ;; An option contains (option-text help-text option-lambda)
 (define compiler-options `(
-  (--all-tests
-    "DEPRECATED"
-    ,(lambda (args) (set! opt-all-tests #t) args))
 
-  (--cctable-maxsize
-    "Set the maximum size of the global entry points table"
-    ,(lambda (args) (set! global-cc-table-maxsize (string->number (cadr args))) (cdr args))) ;; TODO: use a variable opt-cctable-maxsize
+  (--cc-max
+    "Set the max size of the global entry points table"
+    ,(lambda (args) (set! opt-cc-max (string->number (cadr args)))
+                    (cdr args)))
 
-  (--count-calls
-    "DEPRECATED"
-    ,(lambda (args) (set! opt-count-calls (string->symbol (cadr args)))
-                    (set! args (cdr args)) ;; Remove one more arg
-                    args))
+  (--cr-max
+    "Set the max size of the global return points table"
+    ,(lambda (args) (set! opt-cr-max (string->number (cadr args)))
+                    (cdr args)))
 
   (--ctime
     "Print compilation time after execution"
@@ -72,13 +69,9 @@
       "Disable the use of multiple return points use only one generic return point"
       ,(lambda (args) (set! opt-return-points #f) args))
 
-  (--enable-ccoverflow-fallback
-    "Enable automatic fallback to generic entry point when cctable overflows, default throws an error"
+  (--enable-cxoverflow-fallback
+    "Enable automatic fallback to generic entry/return point when cxtable overflows, default throws an error"
     ,(lambda (args) (set! opt-overflow-fallback #t) args))
-
-  (--heap-max
-    "Set maximum heap size in kilobytes"
-    ,(lambda (args) (set! space-len (* 1000 (string->number (cadr args)))) (cdr args))) ;; TODO: use a variable opt-space-len
 
   (--help
     "Print help"
