@@ -35,6 +35,7 @@
 (define copy-permanent #f)
 (define perm-domain #f)
 (define opt-entry-points #f)
+(define opt-const-vers #f)
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx
@@ -206,20 +207,21 @@
 
 ;; Build and return a ctx type from a literal
 (define (literal->ctx-type l)
+  (if (##bignum? l)
+      (set! l (exact->inexact l)))
   (if (and (##mem-allocated? l)
            (not (eq? (mem-allocated-kind l) 'PERM)))
       (set! l (copy-permanent l #f perm-domain)))
   (cond
-    ((char?    l) (make-ctx-tcha #t l))
-    ((null?    l) (make-ctx-tnul #t l))
-    ((fixnum?  l) (make-ctx-tint #t l))
-    ((boolean? l) (make-ctx-tboo #t l))
-    ((pair?    l) (make-ctx-tpai #t l))
-    ((vector?  l) (make-ctx-tvec #t l))
-    ((string?  l) (make-ctx-tstr #t l))
-    ((symbol?  l) (make-ctx-tsym #t l))
-    ((flonum?  l) (make-ctx-tflo #t l))
-    ((##bignum? l) (make-ctx-tflo #t (exact->inexact l)))
+    ((char?    l)  (make-ctx-tcha #t l))
+    ((null?    l)  (make-ctx-tnul #t l))
+    ((fixnum?  l)  (make-ctx-tint #t l))
+    ((boolean? l)  (make-ctx-tboo #t l))
+    ((pair?    l)  (make-ctx-tpai #t l))
+    ((vector?  l)  (make-ctx-tvec #t l))
+    ((string?  l)  (make-ctx-tstr #t l))
+    ((symbol?  l)  (make-ctx-tsym #t l))
+    ((flonum?  l)  (make-ctx-tflo #t l))
     (else (pp l) (error "Internal error (literal->ctx-type)"))))
 
 ;; CTX IDENTIFIER LOC
@@ -256,6 +258,10 @@
 (define (ctx-init-call ctx nb-args)
 
   (define (get-stack)
+    (append (list-head (ctx-stack ctx) nb-args)
+            (list (make-ctx-tclo) (make-ctx-tret))))
+
+  (define (get-stack-nocst)
     (let loop ((head (list-head (ctx-stack ctx) nb-args)))
       (if (null? head)
           (list (make-ctx-tclo) (make-ctx-tret))
@@ -265,13 +271,17 @@
 
   (ctx-copy
     (ctx-init)
-    (get-stack)))
+    (if opt-const-vers
+        (get-stack)
+        (get-stack-nocst))))
 
 ;;
 ;; CTX INIT RETURN
 (define (ctx-init-return ctx)
   (let ((type (ctx-get-type ctx 0)))
-    (ctx-type-nocst type)))
+    (if opt-const-vers
+        type
+        (ctx-type-nocst type))))
 
 ;;
 ;; GENERIC
@@ -412,7 +422,9 @@
   ;;
   ;; STACK
   (define (init-stack stack free-const)
-    (append (init-local-stack stack)
+    (append (if opt-const-vers
+                stack
+                (init-local-stack stack))
             (init-const-stack free-const)
             (list (make-ctx-tclo) (make-ctx-tret))))
 
@@ -438,7 +450,9 @@
     (define (init stack regs)
       (if (or (null? stack) (null? regs))
           '()
-          (if (ctx-tflo? (car stack))
+          (if (or (ctx-tflo? (car stack))
+                  (and opt-const-vers
+                       (ctx-type-is-cst (car stack))))
               (init (cdr stack) regs)
               (cons (car regs)
                     (init (cdr stack) (cdr regs))))))
@@ -456,9 +470,12 @@
       (if (or (null? stack)
               (null? fregs))
           fregs
-          (if (ctx-tflo? (car stack))
-              (init (cdr stack) (cdr fregs))
-              (init (cdr stack) fregs))))
+          (if (or (not (ctx-tflo? (car stack)))
+                  (and opt-const-vers
+                       (ctx-type-is-cst (car stack))))
+              (init (cdr stack) fregs)
+              (init (cdr stack) (cdr fregs)))))
+
     (if stack
         (init stack (ctx-init-free-fregs))
         (ctx-init-free-fregs)))
@@ -549,16 +566,22 @@
         (let ((type (or (and argtypes (car argtypes))
                          (make-ctx-tunk)))
               (types (and argtypes (cdr argtypes))))
-          (if (ctx-tflo? type)
-              (if (null? fregs)
-                  (error "NYI")
-                  (let ((r (init-slot-loc-local (+ slot 1) types regs (cdr fregs) mem)))
-                    (return slot (car fregs) r)))
-              (if (null? regs)
-                  (let ((r (init-slot-loc-local (+ slot 1) types '() fregs (+ mem 1))))
-                    (return slot (cons 'm mem) r))
-                  (let ((r (init-slot-loc-local (+ slot 1) types (cdr regs) fregs mem)))
-                    (return slot (car regs) r)))))))
+
+          (cond ((and opt-const-vers
+                      (ctx-type-is-cst type))
+                   (let ((r (init-slot-loc-local (+ slot 1) types regs fregs mem)))
+                     (return slot #f r)))
+                ((ctx-tflo? type)
+                   (if (null? fregs)
+                       (error "NYI")
+                       (let ((r (init-slot-loc-local (+ slot 1) types regs (cdr fregs) mem)))
+                         (return slot (car fregs) r))))
+                (else
+                  (if (null? regs)
+                      (let ((r (init-slot-loc-local (+ slot 1) types '() fregs (+ mem 1))))
+                        (return slot (cons 'm mem) r))
+                      (let ((r (init-slot-loc-local (+ slot 1) types (cdr regs) fregs mem)))
+                        (return slot (car regs) r))))))))
 
   (define (init-slot-loc-base nb-free-const)
     (append (reverse (build-list nb-free-const (lambda (n) (cons (+ n 2) #f))))
@@ -1382,7 +1405,7 @@
                                  (ctx-ffs src-ctx)))))
     (cons fs-move (cons ffs-move moves))))
 
-(define (ctx-get-call-args-moves ctx nb-args cloloc)
+(define (ctx-get-call-args-moves ast ctx nb-args cloloc)
 
   (define clomove (and cloloc (cons cloloc '(r . 2))))
 
@@ -1392,7 +1415,10 @@
         (let* ((type (ctx-get-type ctx curr-idx))
                (loc (ctx-get-loc ctx curr-idx))
                (from
-                   (cond ((and (not opt-entry-points)
+                   (cond ((and opt-const-vers
+                               (ctx-type-is-cst type))
+                            #f)
+                         ((and (not opt-entry-points)
                                (ctx-tflo? type))
                             (if (ctx-type-is-cst type)
                                 (cons 'flbox (cons 'const (ctx-type-cst type)))
@@ -1406,7 +1432,10 @@
                          (else
                             (error "Internal error")))))
 
-          (cond ((and (ctx-tflo? type)
+          (cond ((and opt-const-vers
+                      (ctx-type-is-cst type))
+                    (get-req-moves (- curr-idx 1) rem-regs rem-fregs moves pushed))
+                ((and (ctx-tflo? type)
                       (null? rem-fregs))
                     (error "NYI1"))
                 ((and opt-entry-points

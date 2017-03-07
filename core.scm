@@ -55,6 +55,7 @@
 (define opt-dump-bin             #f) ;; Print generated binary bytes to stdout
 (define opt-cc-max               #f) ;; Global cctable max size
 (define opt-cr-max               #f) ;; Global crtable max size
+(define opt-const-vers           #f) ;; Use cst information in code versioning
 
 ;; Macro to compute compilation time
 (define user-compilation-time 0)
@@ -1863,7 +1864,7 @@
 ;; the new associated index. Index starts from 0.
 ;; Store and compare ctx-stack in enough because environment is
 ;; the same for all versions of a lazy-object.
-(define (cxtable-get-idx global-table global-table-maxsize)
+(define (cxtable-get-idx global-table name global-table-maxsize)
   (lambda (data)
     (let ((res (table-ref global-table data #f)))
       (if res
@@ -1874,7 +1875,7 @@
           ;; Global table is full
           (if opt-overflow-fallback
               #f
-              (error "Global cc/cr table overflow!"))
+              (error (string-append "Global " name " table overflow!")))
           ;; Global table is not full
           (let ((value (table-length global-table)))
             (table-set! global-table data value)
@@ -1898,6 +1899,6 @@
 
 (define (init-interprocedural)
   (set! global-cc-table-maxsize (or opt-cc-max 430))
-  (set! global-cr-table-maxsize (or opt-cr-max  20))
-  (set! cctable-get-idx (cxtable-get-idx global-cc-table global-cc-table-maxsize))
-  (set! crtable-get-idx (cxtable-get-idx global-cr-table global-cr-table-maxsize)))
+  (set! global-cr-table-maxsize (or opt-cr-max 200))
+  (set! cctable-get-idx (cxtable-get-idx global-cc-table "cc" global-cc-table-maxsize))
+  (set! crtable-get-idx (cxtable-get-idx global-cr-table "cr" global-cr-table-maxsize)))

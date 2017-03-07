@@ -1,29 +1,31 @@
 
 ;; out.scm 1333
 
+;; 1. Au retour, on regarde le nb de params, et si c'est des csts
+;;    Si c'est pas le cas, rien à faire.
+;;    Si c'est le cas, on ajoute une entrés dans la table d'assoc fib: cst -> res
+;;      avec res la cst si c'est une cst, ou la valeur du registre sinon
+
+;; 2. A chaque compilation d'un appel à fib, si l'association existe,
+;;    -> on push simplement la cst
 
 
-;; Pt générique dans la table de retour:
+;fib(n) {
+;    if n is 1 or 2, return 1;
+;    if memo[n] is not zero, return memo[n];
+;    memo[n] = fib(n-1) + fib(n-2);
+;    return memo[n];
+; }
 
-;; Cas1: la table est pleine, pas d'idx pour le ctx courant
-;; Cas2: la limite du nb de versions de la continuation est atteinte
+(define (string-append-h strings)
+   (if (null? (cdr strings))
+       1
+       3))
 
-;; Cas1:
-;;  * on utilise l'index du ctx generique
-;;  * codegen: on saute à cet idx
-;;  * callback: on récupère l'info ctx générique, on envoit le type unk
+(define (string-append . strings)
+   (string-append-h strings))
 
-
-
-(define (fib n)
-  (if (< n 2)
-    n
-    (+ (fib (- n 1))
-       (fib (- n 2)))))
-
-(gambit$$pp (fib 40))
-
-
+(gambit$$pp (string-append "Hi World"))
 
 
 ;; WIP:

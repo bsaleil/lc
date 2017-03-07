@@ -515,7 +515,6 @@
       (if (not (null? locs))
           (let* ((loc (car locs))
                  (opnd (codegen-loc-to-x86opnd fs ffs loc)))
-
             (gen-allocation-imm cgc STAG_PAIR 16)
             (if (x86-mem? opnd)
                 (begin (x86-mov cgc (x86-rax) opnd)
@@ -610,7 +609,11 @@
 
 ;; Generate function return using a return address
 ;; Retaddr (or cctable) is in rdx
-(define (codegen-return-rp cgc fs ffs clean-nb lretobj lretval float?)
+(define (codegen-return-rp cgc fs ffs clean-nb lretobj lretval float? cst?)
+
+    (if cst?
+        (error "NYI"))
+
     (let ((opret    (codegen-reg-to-x86reg return-reg))
           (opretval (codegen-loc-to-x86opnd fs ffs lretval)))
 
@@ -632,14 +635,18 @@
 
 ;; Generate function return using a crtable
 ;; Retaddr (or cctable) is in rdx
-(define (codegen-return-cr cgc fs ffs clean-nb lretobj lretval cridx float?)
+(define (codegen-return-cr cgc fs ffs clean-nb lretobj lretval cridx float? cst?)
 
     (let ((opret (if float?
                      (codegen-freg-to-x86reg return-freg)
                      (codegen-reg-to-x86reg return-reg)))
-          (opretval (codegen-loc-to-x86opnd fs ffs lretval)))
+          (opretval (and (not cst?) (codegen-loc-to-x86opnd fs ffs lretval))))
 
-      (if (not (eq? opret opretval))
+      (assert (not (and cst? (not opt-const-vers)))
+              "Internal error")
+
+      (if (and opretval
+               (not (eq? opret opretval)))
           (if float?
               (x86-movsd cgc opret opretval)
               (x86-mov cgc opret opretval))))
