@@ -693,13 +693,25 @@
                                 (let ((loc (ctx-get-loc ctx idx)))
                                   (loop (- idx 1) (cons loc locs)))))))
 
-                   (let* ((nctx (ctx-pop-n ctx (- nb-extra 1)))
-                          (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f)))
+                   (let* ((mctx (ctx-pop-n ctx (- nb-extra 1)))
+                          (nctx (ctx-set-type mctx 0 (make-ctx-tpai) #f)))
                      (cond ((and (not rloc)
                                  (find (lambda (el) el) locs))
-                              (error "WIP NYI"))
+                              (error "WIP NYI 1"))
                            ((not rloc)
-                              (error "WIP NYI"))
+                              ;; TODO: merge 3 cases. use (c . cst) in locs to avoid this loop
+                              (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 0)))
+                                (apply-moves cgc ctx moves)
+                                (let loop ((csts '()) (i 0))
+                                  (if (= i nb-extra)
+                                      (begin
+                                        (codegen-prologue-rest> cgc (ctx-fs ctx) (ctx-ffs ctx) (reverse csts) reg)
+                                        (set! nctx (ctx-pop-n ctx (- nb-extra 1)))
+                                        (set! nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f))
+                                        (set! nctx (ctx-set-loc nctx (stack-idx-to-slot nctx 0) reg)))
+                                      (loop (cons (cons 'c (ctx-type-cst (ctx-get-type ctx i)))
+                                                  csts)
+                                            (+ i 1))))))
                            (else
                              (codegen-prologue-rest> cgc (ctx-fs ctx) (ctx-ffs ctx) locs rloc)))
                      (jump-to-version cgc succ nctx))))
@@ -1984,7 +1996,7 @@
           (if (and (not opt-entry-points) fn-id-inf (car fn-id-inf))
               (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f)))
               (x86-mov cgc (x86-rsi) (x86-rax))) ;; Move closure in closure reg
-          (gen-call-sequence ast cgc #f #f (and fn-id-inf (cdr fn-id-inf))))))))
+          (gen-call-sequence ast cgc #f #f #f (and fn-id-inf (cdr fn-id-inf))))))))
 
 (define (mlc-primitive-d prim ast succ)
 
@@ -2488,8 +2500,13 @@
 
                        ;; Generate call sequence
                        ;; Build call ctx
-                       (let ((call-ctx (ctx-init-call ctx (length (cdr ast)))))
-                         (gen-call-sequence ast cgc call-ctx (length args) (and fn-id-inf (cdr fn-id-inf)))))))))))
+                       (let* ((nb-args (length args))
+                              (call-ctx (ctx-init-call ctx (length (cdr ast))))
+                              (cc-idx
+                                (if opt-entry-points
+                                    (cctable-get-idx (list-head (ctx-stack call-ctx) nb-args))
+                                    #f)))
+                         (gen-call-sequence ast cgc call-ctx cc-idx (length args) (and fn-id-inf (cdr fn-id-inf)))))))))))
 
     ;; Gen and check types of args
     (make-lazy-code
@@ -2592,7 +2609,7 @@
 
 ;; Gen call sequence (call instructions)
 ;; fn-num is fn identifier or #f
-(define (gen-call-sequence ast cgc call-ctx nb-args fn-num)
+(define (gen-call-sequence ast cgc call-ctx cc-idx nb-args fn-num)
 
   (define entry-obj (and fn-num (asc-globalfn-entry-get fn-num)))
   ;; TODO: eploc -> entry-obj-loc
@@ -2632,18 +2649,20 @@
   (cond ((not opt-entry-points)
            (let ((direct (get-ep-direct)))
              (codegen-call-ep cgc nb-args eploc direct)))
-        ((not nb-args) ;; apply
-           (codegen-call-cc-gen cgc #f eploc))
+        ((not cc-idx) ;; apply or cc-full
+           ;; cctable is full, we need to use generic ep
+           ;; BUT, we have a float and / or csts in call stack
+           ;; we need to 1. drop floats
+           ;;            2. drop csts
+           ;; generate jump to the generic version
+           (if (and call-ctx
+                    (or (find (lambda (l) (ctx-tflo? l))       (ctx-stack call-ctx))
+                        (find (lambda (l) (ctx-type-is-cst l)) (ctx-stack call-ctx))))
+               (error "KK"))
+           (codegen-call-cc-gen cgc nb-args eploc))
         (else
-           (let* ((idx (cctable-get-idx (list-head (ctx-stack call-ctx) nb-args)))
-                  (direct (get-cc-direct idx)))
-             (if (and (not idx)
-                      (or (find (lambda (l) (ctx-tflo? l))       (ctx-stack call-ctx))
-                          (find (lambda (l) (ctx-type-is-cst l)) (ctx-stack call-ctx))))
-                 (error "NYI"))
-             (if idx
-                 (codegen-call-cc-spe cgc idx nb-args eploc direct)
-                 (codegen-call-cc-gen cgc nb-args eploc))))))
+           (let ((direct (get-cc-direct cc-idx)))
+             (codegen-call-cc-spe cgc cc-idx nb-args eploc direct)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators

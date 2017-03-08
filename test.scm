@@ -17,15 +17,13 @@
 ;    return memo[n];
 ; }
 
-(define (string-append-h strings)
-   (if (null? (cdr strings))
-       1
-       3))
 
-(define (string-append . strings)
-   (string-append-h strings))
+(define (foo . a)
+  (pp a)
+  (set-car! a 11)
+  100)
 
-(gambit$$pp (string-append "Hi World"))
+(foo 1 2 3)
 
 
 ;; WIP:
