@@ -937,7 +937,9 @@
              (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))
              (set! opleft (x86-xmm0)))
           (lcst?
-             (error "NYI3"))
+             (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lleft)))
+             (x86-movd/movq cgc (x86-xmm0) (x86-rax))
+             (set! opleft (x86-xmm0)))
           ((x86-mem? opleft)
              (error "N1"))
           ;; Nothing to do, left operand is in a xmm register

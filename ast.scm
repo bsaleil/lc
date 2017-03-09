@@ -684,36 +684,29 @@
                  (set! ctx (gen-drop-float cgc ctx ast 0 (- nb-actual (- nb-formal 1))))
 
                  (let* ((nb-extra (- nb-actual (- nb-formal 1)))
-                        (rloc     (ctx-get-loc ctx (- nb-extra 1)))
+                        (rloc
+                          (let ((r (ctx-get-loc ctx (- nb-extra 1))))
+                            (or r ;; loc exists
+                                ;; Else, get a free register
+                                (mlet ((moves/reg/nctx (ctx-get-free-reg ast ctx succ 0)))
+                                  (apply-moves cgc nctx moves)
+                                  (set! ctx nctx)
+                                  reg))))
                         (locs
                           (let loop ((idx (- nb-extra 1))
                                      (locs '()))
                             (if (< idx 0)
                                 locs
                                 (let ((loc (ctx-get-loc ctx idx)))
-                                  (loop (- idx 1) (cons loc locs)))))))
+                                  (if loc
+                                      (loop (- idx 1) (cons loc locs))
+                                      (let ((cst (ctx-type-cst (ctx-get-type ctx idx))))
+                                        (loop (- idx 1) (cons (cons 'c cst) locs)))))))))
 
-                   (let* ((mctx (ctx-pop-n ctx (- nb-extra 1)))
-                          (nctx (ctx-set-type mctx 0 (make-ctx-tpai) #f)))
-                     (cond ((and (not rloc)
-                                 (find (lambda (el) el) locs))
-                              (error "WIP NYI 1"))
-                           ((not rloc)
-                              ;; TODO: merge 3 cases. use (c . cst) in locs to avoid this loop
-                              (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 0)))
-                                (apply-moves cgc ctx moves)
-                                (let loop ((csts '()) (i 0))
-                                  (if (= i nb-extra)
-                                      (begin
-                                        (codegen-prologue-rest> cgc (ctx-fs ctx) (ctx-ffs ctx) (reverse csts) reg)
-                                        (set! nctx (ctx-pop-n ctx (- nb-extra 1)))
-                                        (set! nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f))
-                                        (set! nctx (ctx-set-loc nctx (stack-idx-to-slot nctx 0) reg)))
-                                      (loop (cons (cons 'c (ctx-type-cst (ctx-get-type ctx i)))
-                                                  csts)
-                                            (+ i 1))))))
-                           (else
-                             (codegen-prologue-rest> cgc (ctx-fs ctx) (ctx-ffs ctx) locs rloc)))
+                   (let* ((nctx (ctx-pop-n ctx (- nb-extra 1)))
+                          (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f))
+                          (nctx (ctx-set-loc nctx (stack-idx-to-slot nctx 0) rloc)))
+                     (codegen-prologue-rest> cgc (ctx-fs ctx) (ctx-ffs ctx) locs rloc)
                      (jump-to-version cgc succ nctx))))
               ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
               ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
@@ -2799,7 +2792,10 @@
                          (ctx (ctx-push (ctx-pop-n ctx 2) type #f)))
                     (jump-to-version cgc succ ctx)))
                 ((and lcst? rcst?)
-                  (error "NYI2"))
+                  (let* ((r (eval (list op lloc rloc)))
+                         (lco (if r (lazy-code-lco-true succ)
+                                    (lazy-code-lco-false succ))))
+                    (jump-to-version cgc lco (ctx-pop-n ctx 2))))
                 (inlined-if-cond?
                   (let ((x86-op (codegen-cmp-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op #f lloc leftint? rloc rightint? lcst? rcst? #t)))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
