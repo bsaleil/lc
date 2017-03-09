@@ -2365,10 +2365,10 @@
     (codegen-load-closure cgc fs ffs loc)))
 
 ;; Move args in regs or mem following calling convention
-(define (call-prep-args cgc ctx ast nbargs const-fn)
+(define (call-prep-args cgc ctx ast nbargs const-fn generic-entry?)
 
   (let* ((cloloc (if const-fn #f (ctx-get-loc ctx nbargs)))
-         (stackp/moves (ctx-get-call-args-moves ast ctx nbargs cloloc))
+         (stackp/moves (ctx-get-call-args-moves ast ctx nbargs cloloc generic-entry?))
          (stackp (car stackp/moves))
          (moves (cdr stackp/moves)))
 
@@ -2476,37 +2476,38 @@
                      ;;
                      ;;
                      (begin
-                       ;; Save used registers, generate and push continuation stub
-                       (set! ctx (call-save/cont cgc ctx ast succ tail? (+ (length args) 1) #f))
 
-                       ;; Move args to regs or stack following calling convention
-                       (set! ctx (call-prep-args cgc ctx ast (length args) (and fn-id-inf (car fn-id-inf))))
-
-                       ;; Shift args and closure for tail call
-                       (let* ((nargs (length args))
-                              (nfargs
-                                (if (not opt-entry-points)
-                                    0
-                                    (let loop ((idx 0) (n 0))
-                                      (if (= idx nargs)
-                                          n
-                                          (let ((type (ctx-get-type ctx idx)))
-                                            (if (ctx-tflo? type)
-                                                (loop (+ idx 1) (+ n 1))
-                                                (loop (+ idx 1) n))))))))
-                         (if (> nfargs (length regalloc-fregs))
-                             (error "NYI")) ;; Fl args that are on the pstack need to be shifted
-                         (call-tail-shift cgc ctx ast tail? (- nargs nfargs) nfargs))
-
-                       ;; Generate call sequence
-                       ;; Build call ctx
                        (let* ((nb-args (length args))
-                              (call-ctx (ctx-init-call ctx (length (cdr ast))))
-                              (cc-idx
+                              (call-ctx (ctx-init-call ctx nb-args))
+                              (cctable-idx
                                 (if opt-entry-points
                                     (cctable-get-idx (list-head (ctx-stack call-ctx) nb-args))
-                                    #f)))
-                         (gen-call-sequence ast cgc call-ctx cc-idx (length args) (and fn-id-inf (cdr fn-id-inf)))))))))))
+                                    #f))
+                              (generic-entry? (and opt-entry-points (not cctable-idx))))
+
+                         ;; Save used registers, generate and push continuation stub
+                         (set! ctx (call-save/cont cgc ctx ast succ tail? (+ nb-args 1) #f))
+
+                         ;; Move args to regs or stack following calling convention
+                         (set! ctx (call-prep-args cgc ctx ast nb-args (and fn-id-inf (car fn-id-inf)) generic-entry?))
+
+                         ;; Shift args and closure for tail call
+                         (let ((nfargs
+                                 (if (not opt-entry-points)
+                                     0
+                                     (let loop ((idx 0) (n 0))
+                                       (if (= idx nb-args)
+                                           n
+                                           (let ((type (ctx-get-type ctx idx)))
+                                             (if (ctx-tflo? type)
+                                                 (loop (+ idx 1) (+ n 1))
+                                                 (loop (+ idx 1) n))))))))
+                           (if (> nfargs (length regalloc-fregs))
+                               (error "NYI")) ;; Fl args that are on the pstack need to be shifted
+                           (call-tail-shift cgc ctx ast tail? (- nb-args nfargs) nfargs))
+
+                         ;; Generate call sequence
+                         (gen-call-sequence ast cgc call-ctx cctable-idx nb-args (and fn-id-inf (cdr fn-id-inf)))))))))))
 
     ;; Gen and check types of args
     (make-lazy-code
@@ -2655,10 +2656,10 @@
            ;; we need to 1. drop floats
            ;;            2. drop csts
            ;; generate jump to the generic version
-           (if (and call-ctx
-                    (or (find (lambda (l) (ctx-tflo? l))       (ctx-stack call-ctx))
-                        (find (lambda (l) (ctx-type-is-cst l)) (ctx-stack call-ctx))))
-               (error "KK"))
+        ;   (if (and call-ctx
+        ;            (or (find (lambda (l) (ctx-tflo? l))       (ctx-stack call-ctx))
+        ;                (find (lambda (l) (ctx-type-is-cst l)) (ctx-stack call-ctx))))
+        ;       (error "KK"))
            (codegen-call-cc-gen cgc nb-args eploc))
         (else
            (let ((direct (get-cc-direct cc-idx)))

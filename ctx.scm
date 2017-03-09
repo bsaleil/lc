@@ -1405,58 +1405,65 @@
                                  (ctx-ffs src-ctx)))))
     (cons fs-move (cons ffs-move moves))))
 
-(define (ctx-get-call-args-moves ast ctx nb-args cloloc)
+(define (ctx-get-call-args-moves ast ctx nb-args cloloc generic-entry?)
 
   (define clomove (and cloloc (cons cloloc '(r . 2))))
 
   (define (get-req-moves curr-idx rem-regs rem-fregs moves pushed)
+
+    (define (next-not)
+      (get-req-moves (- curr-idx 1) rem-regs rem-fregs moves pushed))
+    (define (next-nor from)
+      (if (null? rem-regs)
+          (get-req-moves (- curr-idx 1) '() rem-fregs moves (cons from pushed))
+          (let ((moves (cons (cons from (car rem-regs)) moves)))
+            (get-req-moves (- curr-idx 1) (cdr rem-regs) rem-fregs moves pushed))))
+    (define (next-flo from)
+      (let ((moves (cons (cons from (car rem-fregs)) moves)))
+        (get-req-moves (- curr-idx 1) rem-regs (cdr rem-fregs) moves pushed)))
+
+    (error "WIP clean")
+
     (if (< curr-idx 0)
         (cons (reverse pushed) moves)
         (let* ((type (ctx-get-type ctx curr-idx))
-               (loc (ctx-get-loc ctx curr-idx))
-               (from
-                   (cond ((and opt-const-vers
-                               (ctx-type-is-cst type))
-                            #f)
-                         ((and (not opt-entry-points)
-                               (ctx-tflo? type))
-                            (if (ctx-type-is-cst type)
-                                (cons 'flbox (cons 'const (ctx-type-cst type)))
-                                (cons 'flbox loc)))
-                         (loc loc)
-                         ((and (ctx-type-is-cst type)
-                               (ctx-tclo? type))
-                            (cons 'constfn (ctx-type-cst type)))
-                         ((ctx-type-is-cst type)
-                            (cons 'const (ctx-type-cst type)))
-                         (else
-                            (error "Internal error")))))
+               (loc (ctx-get-loc ctx curr-idx)))
 
-          (cond ((and opt-const-vers
-                      (ctx-type-is-cst type))
-                    (get-req-moves (- curr-idx 1) rem-regs rem-fregs moves pushed))
-                ((and (ctx-tflo? type)
-                      (null? rem-fregs))
-                    (error "NYI1"))
-                ((and opt-entry-points
-                      (ctx-tflo? type))
-                    (get-req-moves
-                      (- curr-idx 1)
-                      rem-regs
-                      (cdr rem-fregs)
-                      (cons (cons from (car rem-fregs))
-                            moves)
-                      pushed))
-                ((null? rem-regs)
-                    (get-req-moves (- curr-idx 1) '() rem-fregs moves (cons from pushed)))
-                (else
-                    (get-req-moves
-                      (- curr-idx 1)
-                      (cdr rem-regs)
-                      rem-fregs
-                      (cons (cons from (car rem-regs))
-                            moves)
-                      pushed))))))
+            ;   (from
+          (cond
+            ;;
+            ((and opt-entry-points
+                  opt-const-vers
+                  (ctx-type-is-cst type)
+                  (not generic-entry?))
+               (next-not))
+            ;;
+            ((ctx-type-is-cst type)
+               (cond ((ctx-tclo? type)
+                        (next-nor
+                          (cons 'constfn (ctx-type-cst type))))
+                     ((ctx-tflo? type)
+                        (if (or (not opt-entry-points)
+                                generic-entry?)
+                            (next-nor
+                              (cons 'flbox (cons 'const (ctx-type-cst type))))
+                            (next-flo
+                              (cons 'const (ctx-type-cst type)))))
+                     (else
+                        (next-nor
+                          (cons 'const (ctx-type-cst type))))))
+            ;;
+            ((and (ctx-tflo? type)
+                  (or (not opt-entry-points)
+                      generic-entry?))
+               ;; TODO NEXT REC IN REG
+               (next-nor
+                 (cons 'flbox loc)))
+            ;;
+            (else
+               (if (ctx-tflo? type)
+                   (next-flo loc)
+                   (next-nor loc)))))))
 
   (let ((pushed/moves (get-req-moves (- nb-args 1) args-regs (ctx-init-free-fregs) '() '())))
 
