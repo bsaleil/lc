@@ -1411,59 +1411,56 @@
 
   (define (get-req-moves curr-idx rem-regs rem-fregs moves pushed)
 
-    (define (next-not)
+    (define (next-nothing)
       (get-req-moves (- curr-idx 1) rem-regs rem-fregs moves pushed))
-    (define (next-nor from)
+    (define (next-float from)
+      (let ((moves (cons (cons from (car rem-fregs)) moves)))
+        (get-req-moves (- curr-idx 1) rem-regs (cdr rem-fregs) moves pushed)))
+    (define (next-other from)
       (if (null? rem-regs)
           (get-req-moves (- curr-idx 1) '() rem-fregs moves (cons from pushed))
           (let ((moves (cons (cons from (car rem-regs)) moves)))
             (get-req-moves (- curr-idx 1) (cdr rem-regs) rem-fregs moves pushed))))
-    (define (next-flo from)
-      (let ((moves (cons (cons from (car rem-fregs)) moves)))
-        (get-req-moves (- curr-idx 1) rem-regs (cdr rem-fregs) moves pushed)))
 
-    (error "WIP clean")
 
     (if (< curr-idx 0)
         (cons (reverse pushed) moves)
         (let* ((type (ctx-get-type ctx curr-idx))
                (loc (ctx-get-loc ctx curr-idx)))
 
-            ;   (from
           (cond
-            ;;
+            ;; Type is cst, opt-const-vers is #t, and we do not use generic ep
             ((and opt-entry-points
                   opt-const-vers
                   (ctx-type-is-cst type)
                   (not generic-entry?))
-               (next-not))
-            ;;
+               (next-nothing))
+            ;; Type is cst
             ((ctx-type-is-cst type)
                (cond ((ctx-tclo? type)
-                        (next-nor
+                        (next-other
                           (cons 'constfn (ctx-type-cst type))))
                      ((ctx-tflo? type)
                         (if (or (not opt-entry-points)
                                 generic-entry?)
-                            (next-nor
+                            (next-other
                               (cons 'flbox (cons 'const (ctx-type-cst type))))
-                            (next-flo
+                            (next-float
                               (cons 'const (ctx-type-cst type)))))
                      (else
-                        (next-nor
+                        (next-other
                           (cons 'const (ctx-type-cst type))))))
-            ;;
+            ;; Type is float !cst
             ((and (ctx-tflo? type)
                   (or (not opt-entry-points)
                       generic-entry?))
-               ;; TODO NEXT REC IN REG
-               (next-nor
+               (next-other
                  (cons 'flbox loc)))
-            ;;
+            ;; Others
             (else
                (if (ctx-tflo? type)
-                   (next-flo loc)
-                   (next-nor loc)))))))
+                   (next-float loc)
+                   (next-other loc)))))))
 
   (let ((pushed/moves (get-req-moves (- nb-args 1) args-regs (ctx-init-free-fregs) '() '())))
 
