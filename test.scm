@@ -18,12 +18,13 @@
 ; }
 
 
-(define (foo . a)
-  (pp a)
-  (set-car! a 11)
-  100)
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-(foo 1 2 3)
+(gambit$$pp (fib 40))
 
 
 ;; WIP:

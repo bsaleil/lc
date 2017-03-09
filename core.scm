@@ -55,7 +55,7 @@
 (define opt-dump-bin             #f) ;; Print generated binary bytes to stdout
 (define opt-cc-max               #f) ;; Global cctable max size
 (define opt-cr-max               #f) ;; Global crtable max size
-(define opt-const-vers           #f) ;; Use cst information in code versioning
+(define opt-const-vers           #t) ;; Use cst information in code versioning
 
 ;; Macro to compute compilation time
 (define user-compilation-time 0)

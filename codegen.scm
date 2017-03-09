@@ -960,7 +960,7 @@
              (x86-movd/movq cgc (x86-xmm1) (x86-rax))
              (x86-comisd cgc opleft (x86-xmm1)))
           ((x86-mem? opright)
-             (error "NYI"))
+             (error "NYI a"))
           (else
              (x86-comisd cgc opleft opright)))
 
@@ -1677,7 +1677,7 @@
                (and (x86-reg? opidx) val-cst?)
                (and (x86-reg? opidx) (x86-mem? opval)))
              (if (eq? opvec (x86-rax))
-                 (error "NYI"))
+                 (error "NYI b"))
              (x86-mov cgc selector-reg opval)
              (x86-mov cgc (x86-rax) opidx)
              (x86-shl cgc (x86-rax) (x86-imm-int 1))

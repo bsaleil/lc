@@ -264,7 +264,7 @@
     (cdr                 ,cst-cdr       #f                ,codegen-p-cxr                #f       ,ATX_UNK 1 ,ATX_PAI                   )
     (cons                #f             #f                ,codegen-p-cons               #t       ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL          )
     (eq?                 ,cst-eq?       ,lco-p-eq?        #f                            #f       ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          )
-    (char=?              ,dummy-cst-all ,lco-p-char=?     #f                            #f       ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA          )
+    (char=?              ,cst-char=?    ,lco-p-char=?     #f                            #f       ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA          )
     (quotient            ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (modulo              ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (remainder           ,dummy-cst-all ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
@@ -274,17 +274,17 @@
     (set-cdr!            #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (vector-length       ,dummy-cst-all #f                ,codegen-p-vector-length      #f       ,ATX_INT 1 ,ATX_VEC                   )
     (vector-ref          ,dummy-cst-all #f                ,codegen-p-vector-ref         #f       ,ATX_UNK 2 ,ATX_VEC ,ATX_INT          )
-    (char->integer       ,dummy-cst-all #f                ,codegen-p-ch<->int           #f       ,ATX_INT 1 ,ATX_CHA                   )
+    (char->integer       ,cst-char->int #f                ,codegen-p-ch<->int           #f       ,ATX_INT 1 ,ATX_CHA                   )
     (integer->char       ,cst-int->char #f                ,codegen-p-ch<->int           #f       ,ATX_CHA 1 ,ATX_INT                   )
-    (string-ref          ,dummy-cst-all #f                ,codegen-p-string-ref         #f       ,ATX_CHA 2 ,ATX_STR ,ATX_INT          )
+    (string-ref          ,cst-str-ref   #f                ,codegen-p-string-ref         #f       ,ATX_CHA 2 ,ATX_STR ,ATX_INT          )
     (string-set!         #f             #f                ,codegen-p-string-set!        #t       ,ATX_VOI 3 ,ATX_STR ,ATX_INT ,ATX_CHA )
     (vector-set!         #f             #f                ,codegen-p-vector-set!        #f       ,ATX_VOI 3 ,ATX_VEC ,ATX_INT ,ATX_ALL )
-    (string-length       ,dummy-cst-all #f                ,codegen-p-string-length      #f       ,ATX_INT 1 ,ATX_STR                   )
+    (string-length       ,cst-str-len   #f                ,codegen-p-string-length      #f       ,ATX_INT 1 ,ATX_STR                   )
     (exit                #f             #f                 #f                           #f       ,ATX_VOI 0                            )
     (make-vector         #f             #f                ,codegen-p-make-vector        #t       ,ATX_VEC 2 ,ATX_INT ,ATX_ALL          )
     (make-string         #f             #f                ,codegen-p-make-string        #f       ,ATX_STR 2 ,ATX_INT ,ATX_CHA          )
     (eof-object?         ,dummy-cst-all ,lco-p-eof-obj    ,codegen-p-eof-object?        #f       ,ATX_BOO 1 ,ATX_ALL                   )
-    (symbol->string      ,dummy-cst-all #f                ,codegen-p-symbol->string     #f       ,ATX_STR 1 ,ATX_SYM                   )
+    (symbol->string      ,cst-sym->str  #f                ,codegen-p-symbol->string     #f       ,ATX_STR 1 ,ATX_SYM                   )
     (current-output-port #f             ,lco-p-cur-x-port #f                            #f       ,ATX_OPO 0                            )
     (current-input-port  #f             ,lco-p-cur-x-port #f                            #f       ,ATX_IPO 0                            )
     (number?             ,cst-number?   ,lco-p-number?    #f                            #f       ,ATX_BOO 1 ,ATX_ALL                   )
@@ -493,7 +493,7 @@
 
     (if (and (ctx-type-is-cst type)
              reg)
-        (error "NYI")) ;; TODO: Free a register only if type is not a cst
+        (error "NYI d")) ;; TODO: Free a register only if type is not a cst
     (jump-to-version cgc succ (ctx-push ctx type reg (car local)))))
 
 (define (gen-get-globalvar cgc ast ctx global succ)
@@ -764,7 +764,7 @@
           (if opt-return-points
               (let* ((cridx (crtable-get-idx (ctx-init-return ctx))))
                 (if (not cridx)
-                    (error "NYI"))
+                    (error "NYI e"))
                 (codegen-return-cr cgc fs ffs fs laddr lret cridx (ctx-tflo? type-ret) cst?))
               (codegen-return-rp cgc fs ffs fs laddr lret (ctx-tflo? type-ret) cst?))))))
   lazy-ret)
@@ -1813,7 +1813,7 @@
              (rcst? (ctx-type-is-cst typer))
              (if-cond? (member 'cond (lazy-code-flags succ))))
         (cond ((and lcst? rcst? if-cond?)
-                 (error "NYI"))
+                 (error "NYI a"))
               ((and lcst? rcst?)
                  (if (or (ctx-tclo? typel)
                          (ctx-tclo? typer))
@@ -2131,7 +2131,8 @@
 
 ;; NYI cst function
 (define (dummy-cst-all cgc succ op ctx csts)
-  (error "NYI"))
+  (pp op)
+  (error "NYI dummy-cst-all"))
 
 (define-macro (cst-prim-n pop-n compute-cst)
   `(lambda (cgc succ op ctx csts)
@@ -2147,7 +2148,10 @@
 (define cst-car       (cst-prim-1 (lambda (cst) (car (ctx-type-cst cst)))))
 (define cst-cdr       (cst-prim-1 (lambda (cst) (cdr (ctx-type-cst cst)))))
 (define cst-not       (cst-prim-1 (lambda (cst) (not (ctx-type-cst cst)))))
+(define cst-char->int (cst-prim-1 (lambda (cst) (char->integer (ctx-type-cst cst)))))
 (define cst-int->char (cst-prim-1 (lambda (cst) (integer->char (ctx-type-cst cst)))))
+(define cst-str-len   (cst-prim-1 (lambda (cst) (string-length (ctx-type-cst cst)))))
+(define cst-sym->str  (cst-prim-1 (lambda (cst) (symbol->string (ctx-type-cst cst)))))
 (define cst-number?   (cst-prim-1 (lambda (cst)
                                     (and (not     (ctx-tclo?    cst))
                                          (number? (ctx-type-cst cst))))))
@@ -2159,11 +2163,21 @@
                      (not (ctx-tclo? cst2))
                      (eq? (ctx-type-cst cst1)
                           (ctx-type-cst cst2))))))
+(define cst-char=?
+  (cst-prim-2 (lambda (cst1 cst2)
+                (char=? (ctx-type-cst cst1)
+                        (ctx-type-cst cst2)))))
 (define cst-binop
   (cst-prim-2 (lambda (cst1 cst2)
                 (eval (list op
                             (ctx-type-cst cst1)
                             (ctx-type-cst cst2))))))
+
+(define cst-str-ref
+  (cst-prim-2 (lambda (cst1 cst2)
+                (string-ref
+                  (ctx-type-cst cst1)
+                  (ctx-type-cst cst2)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Branches
@@ -2503,7 +2517,7 @@
                                                  (loop (+ idx 1) (+ n 1))
                                                  (loop (+ idx 1) n))))))))
                            (if (> nfargs (length regalloc-fregs))
-                               (error "NYI")) ;; Fl args that are on the pstack need to be shifted
+                               (error "NYI c")) ;; Fl args that are on the pstack need to be shifted
                            (call-tail-shift cgc ctx ast tail? (- nb-args nfargs) nfargs))
 
                          ;; Generate call sequence
