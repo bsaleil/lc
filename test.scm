@@ -1,9 +1,7 @@
 
-;; mbrot
-;; paraffins
-;; browse
-;; graphs
-;; earley
+
+;; mazefun
+;; compiler
 
 ;; out.scm 1333
 

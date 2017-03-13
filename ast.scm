@@ -267,7 +267,7 @@
     (char=?              ,cst-char=?    ,lco-p-char=?     #f                            #f       ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA          )
     (quotient            ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (modulo              ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
-    (remainder           ,dummy-cst-all ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
+    (remainder           ,cst-remainder ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (zero?               ,dummy-cst-all ,lco-p-zero?      #f                            #f       ,ATX_BOO 1 ,ATX_NUM                   )
     (not                 ,cst-not       ,lco-p-not        ,codegen-p-not                #f       ,ATX_BOO 1 ,ATX_ALL                   )
     (set-car!            #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
@@ -2166,6 +2166,11 @@
                             (ctx-type-cst cst1)
                             (ctx-type-cst cst2))))))
 
+(define cst-remainder
+  (cst-prim-2 (lambda (cst1 cst2)
+                (eval (remainder (ctx-type-cst cst1)
+                                 (ctx-type-cst cst2))))))
+
 (define cst-vec-ref
   (cst-prim-2 (lambda (cst1 cst2)
                 (vector-ref
@@ -2469,6 +2474,7 @@
              #f
              (lambda (cgc ctx)
 
+
                ;; Handle const fn
                (let ((type (ctx-get-type ctx (length args))))
                  (if (ctx-type-is-cst type)
@@ -2506,7 +2512,8 @@
 
                          ;; Shift args and closure for tail call
                          (mlet ((nfargs/ncstargs
-                                  (if (not opt-entry-points)
+                                  (if (or (not opt-entry-points)
+                                          generic-entry?)
                                       (list 0 0)
                                       (let loop ((idx 0) (nf 0) (ncst 0))
                                         (if (= idx nb-args)
@@ -2521,6 +2528,7 @@
                                                        (loop (+ idx 1) nf ncst)))))))))
                            (if (> nfargs (length regalloc-fregs))
                                (error "NYI c")) ;; Fl args that are on the pstack need to be shifted
+
                            (call-tail-shift cgc ctx ast tail? (- nb-args nfargs ncstargs)))
 
                          ;; Generate call sequence
