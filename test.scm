@@ -1,4 +1,10 @@
 
+;; mbrot
+;; paraffins
+;; browse
+;; graphs
+;; earley
+
 ;; out.scm 1333
 
 ;; 1. Au retour, on regarde le nb de params, et si c'est des csts
@@ -10,21 +16,67 @@
 ;;    -> on push simplement la cst
 
 
-;fib(n) {
-;    if n is 1 or 2, return 1;
-;    if memo[n] is not zero, return memo[n];
-;    memo[n] = fib(n-1) + fib(n-2);
-;    return memo[n];
-; }
+
+; Given a graph, a partial permutation vector, the next input and the next
+; output, return 'less, 'equal or 'more depending on the lexicographic
+; comparison between the permuted and un-permuted graph.
+(define cmp-next-vertex
+    (lambda (graph perm x perm-x)
+        (let ((from-x
+                    (string-ref "KKKKK" x))
+                (from-perm-x
+                    (string-ref "KKKKK" x)))
+            (let _-*-
+                ((y
+                        0))
+                (if (= x y)
+                    'equal
+                    (let ((uuu (error "TTT"))
+                          (x->y?
+                                (vector-ref from-x y))
+                            (perm-y
+                                (vector-ref perm y)))
+                        ;;
+                        ;;
+                        ;;
+
+                        (cond ((eq? x->y?
+                                    (vector-ref from-perm-x perm-y))
+                                (let ((y->x?
+                                            (vector-ref (vector-ref graph y)
+                                                x)))
+                                    (cond ((eq? y->x?
+                                                (vector-ref (vector-ref graph perm-y)
+                                                    perm-x))
+                                            (_-*- (+ y 1)))
+                                        (y->x?
+                                            'less)
+                                        (else
+                                            'more))))
+                            (x->y?
+                                'less)
+                            (else
+                                'more))))))))
+
+(define fold-over-rdg
+    (lambda ()
+      (gambit$$pp (cmp-next-vertex '#(#(#f)) '#() 0 0))))
+
+  (fold-over-rdg)
 
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
 
-(gambit$$pp (fib 40))
+
+
+
+
+
+
+
+
+
+
+
 
 
 ;; WIP:

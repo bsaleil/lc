@@ -273,7 +273,7 @@
     (set-car!            #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (set-cdr!            #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (vector-length       ,dummy-cst-all #f                ,codegen-p-vector-length      #f       ,ATX_INT 1 ,ATX_VEC                   )
-    (vector-ref          ,dummy-cst-all #f                ,codegen-p-vector-ref         #f       ,ATX_UNK 2 ,ATX_VEC ,ATX_INT          )
+    (vector-ref          ,cst-vec-ref    #f                ,codegen-p-vector-ref         #f       ,ATX_UNK 2 ,ATX_VEC ,ATX_INT          )
     (char->integer       ,cst-char->int #f                ,codegen-p-ch<->int           #f       ,ATX_INT 1 ,ATX_CHA                   )
     (integer->char       ,cst-int->char #f                ,codegen-p-ch<->int           #f       ,ATX_CHA 1 ,ATX_INT                   )
     (string-ref          ,cst-str-ref   #f                ,codegen-p-string-ref         #f       ,ATX_CHA 2 ,ATX_STR ,ATX_INT          )
@@ -2166,6 +2166,12 @@
                             (ctx-type-cst cst1)
                             (ctx-type-cst cst2))))))
 
+(define cst-vec-ref
+  (cst-prim-2 (lambda (cst1 cst2)
+                (vector-ref
+                  (ctx-type-cst cst1)
+                  (ctx-type-cst cst2)))))
+
 (define cst-str-ref
   (cst-prim-2 (lambda (cst1 cst2)
                 (string-ref
@@ -2419,15 +2425,15 @@
 ;; Shift args and closure for tail call
 ;; nb-nfl-args is the number of non flonum arguments
 ;; nb-fl-args  is the number of flonum arguments
-(define (call-tail-shift cgc ctx ast tail? nb-nfl-args nb-fl-args)
+(define (call-tail-shift cgc ctx ast tail? nb-actual-args)
 
   ;; r11 is available because it's the ctx register
   (if tail?
       (let ((fs  (ctx-fs ctx))
             (ffs (ctx-ffs ctx))
             (nshift
-              (if (> (- nb-nfl-args (length args-regs)) 0)
-                  (- nb-nfl-args (length args-regs))
+              (if (> (- nb-actual-args (length args-regs)) 0)
+                  (- nb-actual-args (length args-regs))
                   0)))
         (let loop ((curr (- nshift 1)))
           (if (>= curr 0)
@@ -2499,19 +2505,23 @@
                          (set! ctx (call-prep-args cgc ctx ast nb-args (and fn-id-inf (car fn-id-inf)) generic-entry?))
 
                          ;; Shift args and closure for tail call
-                         (let ((nfargs
-                                 (if (not opt-entry-points)
-                                     0
-                                     (let loop ((idx 0) (n 0))
-                                       (if (= idx nb-args)
-                                           n
-                                           (let ((type (ctx-get-type ctx idx)))
-                                             (if (ctx-tflo? type)
-                                                 (loop (+ idx 1) (+ n 1))
-                                                 (loop (+ idx 1) n))))))))
+                         (mlet ((nfargs/ncstargs
+                                  (if (not opt-entry-points)
+                                      (list 0 0)
+                                      (let loop ((idx 0) (nf 0) (ncst 0))
+                                        (if (= idx nb-args)
+                                            (list nf ncst)
+                                            (let ((type (ctx-get-type ctx idx)))
+                                              (cond ((and opt-const-vers
+                                                          (ctx-type-is-cst type))
+                                                       (loop (+ idx 1) nf (+ ncst 1)))
+                                                    ((ctx-tflo? type)
+                                                       (loop (+ idx 1) (+ nf 1) ncst))
+                                                    (else
+                                                       (loop (+ idx 1) nf ncst)))))))))
                            (if (> nfargs (length regalloc-fregs))
                                (error "NYI c")) ;; Fl args that are on the pstack need to be shifted
-                           (call-tail-shift cgc ctx ast tail? (- nb-args nfargs) nfargs))
+                           (call-tail-shift cgc ctx ast tail? (- nb-args nfargs ncstargs)))
 
                          ;; Generate call sequence
                          (gen-call-sequence ast cgc call-ctx cctable-idx nb-args (and fn-id-inf (cdr fn-id-inf)))))))))))
