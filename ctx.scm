@@ -392,6 +392,41 @@
         (slot-loc (compute-slot-loc slot-loc)))
 
     (ctx-copy ctx stack slot-loc free-regs free-mems (ctx-init-free-fregs) '() env #f #f fs 0)))
+
+(define (ctx-generic-prologue ctx)
+
+  (define (get-stack stack nb-rem)
+    (assert (> nb-rem 0) "NYI no rest param")
+    (let* ((nstack (list-tail stack nb-rem))
+           (nstack (list-head nstack (- (length nstack) 2))))
+      (assert
+        (not
+            (foldr (lambda (el r)
+                     (or (ctx-tflo? el)
+                         (ctx-type-is-cst el)
+                         r))
+                   #f
+                   nstack))
+        "NYI case, we need to generate extra move!")
+      (append (build-list (length nstack) (lambda (i) (make-ctx-tunk)))
+              (list (make-ctx-tclo) (make-ctx-tret)))))
+
+  (let* ((nactual (ctx-nb-actual ctx))
+         (nargs   (ctx-nb-args ctx))
+         (nb-rem  (- nactual nargs))
+         (stack      (get-stack (ctx-stack ctx) nb-rem))
+         (slot-loc   (list-tail (ctx-slot-loc ctx) nb-rem))
+         (free-regs  (set-sub (ctx-init-free-regs) (map cdr slot-loc) '()))
+         (free-mems  '())
+         (free-fregs (ctx-init-free-fregs))
+         (free-fmems '())
+         (env        (ctx-env ctx)))
+  (make-ctx
+    stack slot-loc free-regs free-mems free-fregs free-fmems env #f nargs
+    (ctx-fs ctx)
+    (ctx-ffs ctx)
+    (ctx-fn-num ctx))))
+
 ;;
 ;; CTX INIT FN
 (define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)

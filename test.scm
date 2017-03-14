@@ -1,5 +1,13 @@
 
 
+;; Si on atteint la limite du nb de versions:
+;; Si c'est un entry un tail, on doit forcément avoir un fallback.
+;; 1. Déplacer les arguments dans les bons registres. (rien à faire si pas de cst ni flo)
+;; 2. Récupérer un ctx générique, ou le ctx generique du fallback
+;; 3. Set le ctx générique (si n'existe pas)
+;; 4. Récupérer la version générique du fallback, ou la générer si elle n'existe pas
+
+
 ;; mazefun
 ;; compiler
 
