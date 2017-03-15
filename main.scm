@@ -69,6 +69,10 @@
       "Disable the use of multiple return points use only one generic return point"
       ,(lambda (args) (set! opt-return-points #f) args))
 
+  (--enable-const-vers
+    "Enable Interprocedural versioning based on constants"
+    ,(lambda (args) (set! opt-const-vers #t) args))
+
   (--enable-cxoverflow-fallback
     "Enable automatic fallback to generic entry/return point when cxtable overflows, default throws an error"
     ,(lambda (args) (set! opt-overflow-fallback #t) args))
