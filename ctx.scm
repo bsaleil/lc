@@ -393,39 +393,24 @@
 
     (ctx-copy ctx stack slot-loc free-regs free-mems (ctx-init-free-fregs) '() env #f #f fs 0)))
 
+;; This function is *only* used with entry-point & rest lco
 (define (ctx-generic-prologue ctx)
 
-  (define (get-stack stack nb-rem)
-    (assert (> nb-rem 0) "NYI no rest param")
-    (let* ((nstack (list-tail stack nb-rem))
-           (nstack (list-head nstack (- (length nstack) 2))))
-      (assert
-        (not
-            (foldr (lambda (el r)
-                     (or (ctx-tflo? el)
-                         (ctx-type-is-cst el)
-                         r))
-                   #f
-                   nstack))
-        "NYI case, we need to generate extra move!")
-      (append (build-list (length nstack) (lambda (i) (make-ctx-tunk)))
-              (list (make-ctx-tclo) (make-ctx-tret)))))
+  (define (add-rest ctx)
+    (let* ((last (cdar (ctx-slot-loc ctx)))
+           (lst  (member last args-regs)))
+      (if (or (not lst)
+              (< (length lst) 2))
+          (ctx-push ctx (make-ctx-tunk) (cons 'm (+ (cdr last) 1)))
+          (ctx-push ctx (make-ctx-tunk) (cadr lst)))))
 
-  (let* ((nactual (ctx-nb-actual ctx))
-         (nargs   (ctx-nb-args ctx))
-         (nb-rem  (- nactual nargs))
-         (stack      (get-stack (ctx-stack ctx) nb-rem))
-         (slot-loc   (list-tail (ctx-slot-loc ctx) nb-rem))
-         (free-regs  (set-sub (ctx-init-free-regs) (map cdr slot-loc) '()))
-         (free-mems  '())
-         (free-fregs (ctx-init-free-fregs))
-         (free-fmems '())
-         (env        (ctx-env ctx)))
-  (make-ctx
-    stack slot-loc free-regs free-mems free-fregs free-fmems env #f nargs
-    (ctx-fs ctx)
-    (ctx-ffs ctx)
-    (ctx-fn-num ctx))))
+
+  (let ((gctx (ctx-generic ctx))
+        (nrem (- (length (ctx-stack ctx)) (ctx-nb-args ctx) 2)))
+
+    (if (< nrem 0)
+        (add-rest gctx)
+        (ctx-pop-n gctx nrem))))
 
 ;;
 ;; CTX INIT FN
