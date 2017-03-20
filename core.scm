@@ -1273,22 +1273,28 @@
   (define (generate-merge-code src-ctx dst-ctx label-dest)
     (let ((moves (ctx-regalloc-merge-moves src-ctx dst-ctx))
           (label (asm-make-label #f (new-sym 'merge_))))
-      (set! code-alloc (fn-codepos))
-      (if cgc
-          ;;
-          (begin (x86-label cgc label)
-                 (apply-moves cgc dst-ctx moves)
-                 (if label-dest
-                     (x86-jmp cgc label-dest)))
-          ;;
-          (code-add
-            (lambda (cgc)
-              (asm-align cgc 4 0 #x90)
-              (x86-label cgc label)
-              (apply-moves cgc dst-ctx moves)
-              (if label-dest
-                  (x86-jmp cgc label-dest)))))
-      label))
+      (if (and label-dest
+               (null? moves))
+          ;; No merge code is generated, return label-dest
+          label-dest
+          ;; Genereate moves
+          (begin
+            (set! code-alloc (fn-codepos))
+            (if cgc
+                ;;
+                (begin (x86-label cgc label)
+                       (apply-moves cgc dst-ctx moves)
+                       (if label-dest
+                           (x86-jmp cgc label-dest)))
+                ;;
+                (code-add
+                  (lambda (cgc)
+                    (asm-align cgc 4 0 #x90)
+                    (x86-label cgc label)
+                    (apply-moves cgc dst-ctx moves)
+                    (if label-dest
+                        (x86-jmp cgc label-dest)))))
+            label))))
 
   ;; Todo: merge with generate-new-version
   (define (generate-generic ctx use-fallback?)
@@ -1351,13 +1357,16 @@
     ;; No version for this ctx, limit reached, and generic version exists
     ((lazy-code-generic-vers lazy-code)
        ;; TODO what if fn-opt-label is set ?
-       (let* ((entry? (member 'entry (lazy-code-flags lazy-code)))
-              (gctx (lazy-code-generic-ctx lazy-code))
-              (label-generic (lazy-code-generic-vers lazy-code))
-              (label-merge   (and (not entry?) (generate-merge-code ctx gctx label-generic)))
-              (label-first   (or label-merge label-generic)))
-         (put-version lazy-code ctx label-first #f)
-         (fn-patch label-first #t)))
+       (if (and (member 'entry  (lazy-code-flags lazy-code))
+                (member 'rest   (lazy-code-flags lazy-code)))
+           (let ((label-generic (lazy-code-generic-vers lazy-code)))
+             (put-version lazy-code ctx label-generic #f)
+             (fn-patch label-generic #f))
+           (let* ((gctx (lazy-code-generic-ctx lazy-code))
+                  (label-generic (lazy-code-generic-vers lazy-code))
+                  (label-merge   (generate-merge-code ctx gctx label-generic)))
+             (put-version lazy-code ctx label-merge #f)
+             (fn-patch label-merge #t))))
     ;; No version for this ctx, limit reached, and generic version does not exist
     (else
 
@@ -1372,8 +1381,7 @@
             (lazy-code-generic-vers-set! fallback-lazy-code label-generic)
             (fn-patch label-generic #t))
           ;; TODO what if fn-opt-label is set ?
-          (let* ((entry-lco? (member 'entry (lazy-code-flags lazy-code)))
-                 (gctx (ctx-generic ctx))
+          (let* ((gctx (ctx-generic ctx))
                  ;; Generate merge only if not entry
                  (label-merge   (generate-merge-code ctx gctx #f))
                  (label-generic (generate-generic gctx #f))
