@@ -404,13 +404,19 @@
           (ctx-push ctx (make-ctx-tunk) (cons 'm (+ (cdr last) 1)))
           (ctx-push ctx (make-ctx-tunk) (cadr lst)))))
 
+  ;; TODO wip: rename ctx-get-call-args-moves to match this use too ?
+  (let* ((moves (ctx-get-call-args-moves #f ctx (ctx-nb-actual ctx) #f #t))
+         (moves
+           (if (null? (car moves)) ;; no stacked
+               (cdr moves)
+               (error "wip nyi (create stack moves)")))
+         (gctx (ctx-generic ctx))
+         (nrem (- (length (ctx-stack ctx)) (ctx-nb-args ctx) 2)))
 
-  (let ((gctx (ctx-generic ctx))
-        (nrem (- (length (ctx-stack ctx)) (ctx-nb-args ctx) 2)))
-
-    (if (< nrem 0)
-        (add-rest gctx)
-        (ctx-pop-n gctx nrem))))
+    (cons moves
+          (if (< nrem 0)
+              (add-rest gctx)
+              (ctx-pop-n gctx nrem)))))
 
 ;;
 ;; CTX INIT FN
@@ -1525,7 +1531,9 @@
                  (cond ((and r (eq? (cdr r) 'rtmp))
                           (let ((r (assoc 'rtmp step-real-moves)))
                             (cons (cdr r) (cdr move))))
-                       (r
+                       ((and r
+                             (not (eq? (caar move) 'const))
+                             (not (eq? (caar move) 'constfn)))
                           (cons (cdr r) (cdr move)))
                        (else
                           move))))
@@ -1560,7 +1568,7 @@
                    (req-moves  (set-sub req-moves (list move) '())))
                (cons real-moves
                      (update-req-moves req-moves real-moves))))
-          ;; Case X: src is dst
+          ;; Case 2: src is dst
           ((equal? src dst)
              (step (cons src visited)
                    (set-sub req-moves (list move) '())

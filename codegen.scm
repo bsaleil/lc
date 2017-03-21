@@ -703,8 +703,7 @@
               (not (eq? (car direct-eploc) 'ep))) ;; ctx needed if it's a direct call to a stub
           (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding idx))))
       ;; 2 - Put nbargs in rdi if needed
-      (if #t;opt-max-versions
-          (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args))))
+      (x86-mov cgc (x86-rdi) (x86-imm-int (* 4 nb-args)))
       ;; 3- Get cc-table
       (cond (direct-eploc
               ;; If it's a direct call to a not yet generated entry point, add stub_load label

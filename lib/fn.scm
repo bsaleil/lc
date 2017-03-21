@@ -42,7 +42,7 @@
                (print-msgs (cdr msgs)))))
 
   (print "!!! ERROR - ")
-  (print-msgs (cons msg msgs))
+  (for-each pp (cons msg msgs))
   (exit))
 
 (define fatal-error

@@ -23,60 +23,89 @@
 
 
 
-; Given a graph, a partial permutation vector, the next input and the next
-; output, return 'less, 'equal or 'more depending on the lexicographic
-; comparison between the permuted and un-permuted graph.
-(define cmp-next-vertex
-    (lambda (graph perm x perm-x)
-        (let ((from-x
-                    (string-ref "KKKKK" x))
-                (from-perm-x
-                    (string-ref "KKKKK" x)))
-            (let _-*-
-                ((y
-                        0))
-                (if (= x y)
-                    'equal
-                    (let ((uuu (error "TTT"))
-                          (x->y?
-                                (vector-ref from-x y))
-                            (perm-y
-                                (vector-ref perm y)))
-                        ;;
-                        ;;
-                        ;;
+(define foldl
+  (lambda (f base lst)
 
-                        (cond ((eq? x->y?
-                                    (vector-ref from-perm-x perm-y))
-                                (let ((y->x?
-                                            (vector-ref (vector-ref graph y)
-                                                x)))
-                                    (cond ((eq? y->x?
-                                                (vector-ref (vector-ref graph perm-y)
-                                                    perm-x))
-                                            (_-*- (+ y 1)))
-                                        (y->x?
-                                            'less)
-                                        (else
-                                            'more))))
-                            (x->y?
-                                'less)
-                            (else
-                                'more))))))))
+    (define foldl-aux
+      (lambda (base lst)
+        (if (null? lst)
+          base
+          (foldl-aux (f base (car lst)) (cdr lst)))))
 
-(define fold-over-rdg
-    (lambda ()
-      (gambit$$pp (cmp-next-vertex '#(#(#f)) '#() 0 0))))
-
-  (fold-over-rdg)
+    (foldl-aux base lst)))
 
 
 
+(define list-read
+  (lambda (lst i)
+    (if (= i 0)
+        (car lst)
+        (list-read (cdr lst) (- i 1)))))
+
+(define list-write
+  (lambda (lst i val)
+    (if (= i 0)
+        (cons val (cdr lst))
+        (cons (car lst) (list-write (cdr lst) (- i 1) val)))))
+
+(define matrix-read
+  (lambda (mat i j)
+    (list-read (list-read mat i) j)))
+
+(define matrix-write
+  (lambda (mat i j val)
+    (list-write mat i (list-write (list-read mat i) j val))))
+
+(define matrix-size
+  (lambda (mat)
+    (cons (length mat) (length (car mat)))))
+
+(define change-cavity
+  (lambda (cave pos new-cavity-id)
+    (let ((i (car pos)) (j (cdr pos)))
+      (change-cavity-aux cave pos new-cavity-id (matrix-read cave i j)))))
+
+(define change-cavity-aux
+  (lambda (cave pos new-cavity-id old-cavity-id)
+    (let ((i (car pos)) (j (cdr pos)))
+      (let ((cavity-id (matrix-read cave i j)))
+        (if (equal? cavity-id old-cavity-id)
+            (foldl (lambda (c nc)
+                     (change-cavity-aux c nc new-cavity-id old-cavity-id))
+                   (matrix-write cave i j new-cavity-id)
+                   (neighboring-cavities pos cave))
+            cave)))))
+
+(define neighboring-cavities
+  (lambda (pos cave)
+    (let ((size (matrix-size cave)))
+      (let ((n (car size)) (m (cdr size)))
+        (let ((i (car pos)) (j (cdr pos)))
+          (append (if (and (> i 0) (matrix-read cave (- i 1) j))
+                      (list (cons (- i 1) j))
+                      '())
+                  (if (and (< i (- n 1)) (matrix-read cave (+ i 1) j))
+                      (list (cons (+ i 1) j))
+                      '())
+                  (if (and (> j 0) (matrix-read cave i (- j 1)))
+                      (list (cons i (- j 1)))
+                      '())
+                  (if (and (< j (- m 1)) (matrix-read cave i (+ j 1)))
+                      (list (cons i (+ j 1)))
+                      '())))))))
 
 
-
-
-
+  (let* ((pos  '(3 . 2))
+         (ncs  '((2 . 2) (4 . 2)))
+         (cave '(((0 . 0) #f (1 . 2) #f (0 . 4))
+                   (#f #f (1 . 2) #f #f)
+                   ((4 . 1) #f (1 . 2) #f (2 . 4))
+                   ((4 . 1) #f #f #f #f)
+                   ((4 . 1) (4 . 1) (4 . 1) #f (4 . 4)))))
+   (foldl (lambda (c nc) (change-cavity c nc pos))
+          cave
+          ncs)
+   (error "eK"))
 
 
 

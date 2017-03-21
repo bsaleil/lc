@@ -180,19 +180,19 @@
 ;;-----------------------------------------------------------------------------
 
 ;; Errors
-(define ERR_MSG              "EXEC ERROR")
-(define ERR_ARR_OVERFLOW     "ARITHMETIC OVERFLOW")
-(define ERR_WRONG_NUM_ARGS   "WRONG NUMBER OF ARGUMENTS")
-(define ERR_OPEN_INPUT_FILE  "CAN'T OPEN INPUT FILE")
-(define ERR_OPEN_OUTPUT_FILE "CAN'T OPEN OUTPUT FILE")
-(define ERR_READ_CHAR        "CAN'T READ CHAR")
-(define ERR_WRITE_CHAR       "CAN'T WRITE CHAR")
-(define ERR_DIVIDE_ZERO      "DIVIDE BY ZERO")
-(define ERR_INTERNAL         "INTERNAL ERROR")
-(define ERR_BEGIN            "ILL-FORMED BEGIN")
-(define ERR_LET              "ILL-FORMED LET")
-(define ERR_LET*             "ILL-FORMED LET*")
-(define ERR_LETREC           "ILL-FORMED LETREC")
+(define ERR_MSG              "!!! ERROR - EXEC ERROR")
+(define ERR_ARR_OVERFLOW     "!!! ERROR - ARITHMETIC OVERFLOW")
+(define ERR_WRONG_NUM_ARGS   "!!! ERROR - WRONG NUMBER OF ARGUMENTS")
+(define ERR_OPEN_INPUT_FILE  "!!! ERROR - CAN'T OPEN INPUT FILE")
+(define ERR_OPEN_OUTPUT_FILE "!!! ERROR - CAN'T OPEN OUTPUT FILE")
+(define ERR_READ_CHAR        "!!! ERROR - CAN'T READ CHAR")
+(define ERR_WRITE_CHAR       "!!! ERROR - CAN'T WRITE CHAR")
+(define ERR_DIVIDE_ZERO      "!!! ERROR - DIVIDE BY ZERO")
+(define ERR_INTERNAL         "!!! ERROR - INTERNAL ERROR")
+(define ERR_BEGIN            "!!! ERROR - ILL-FORMED BEGIN")
+(define ERR_LET              "!!! ERROR - ILL-FORMED LET")
+(define ERR_LET*             "!!! ERROR - ILL-FORMED LET*")
+(define ERR_LETREC           "!!! ERROR - ILL-FORMED LETREC")
 
 (define (ERR_TYPE_EXPECTED type)
   (string-append (string-upcase (ctx-type-sym type))
@@ -233,8 +233,8 @@
 ;; This function print the error message in rax
 (c-define (rt-error usp psp) (long long) void "rt_error" ""
   (let ((msg (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-rbx)))))))
-    (print "*** ERROR -- ")
-    (println msg)
+    (if (not (equal? msg ""))
+        (println msg))
     (exit 0)))
 
 ;;-----------------------------------------------------------------------------
@@ -1270,6 +1270,31 @@
 
 (define (gen-version-* cgc lazy-code fallback-lazy-code ctx label-sym fn-verbose fn-patch fn-codepos #!optional fn-opt-label)
 
+  (define (generate-prologue-moves ctx moves label-dest)
+    (assert label-dest "Internal error")
+    (if (null? moves)
+        ;; No moves, return label-dest as merge label
+        label-dest
+        ;; Else, generate moves and return new label
+        (let ((label (asm-make-label #f (new-sym 'prologue_merge_))))
+          ;; TODO wip: set code-alloc ?
+          (if cgc
+              ;;
+              (begin (x86-label cgc label)
+                     (apply-moves cgc ctx moves)
+                     (if label-dest
+                         (x86-jmp cgc label-dest)))
+              ;;
+              (code-add
+                (lambda (cgc)
+                  (asm-align cgc 4 0 #x90)
+                  (x86-label cgc label)
+                  (apply-moves cgc ctx moves)
+                  (if label-dest
+                      (x86-jmp cgc label-dest)))))
+          ;;
+          label)))
+
   (define (generate-merge-code src-ctx dst-ctx label-dest)
     (let ((moves (ctx-regalloc-merge-moves src-ctx dst-ctx))
           (label (asm-make-label #f (new-sym 'merge_))))
@@ -1359,9 +1384,13 @@
        ;; TODO what if fn-opt-label is set ?
        (if (and (member 'entry  (lazy-code-flags lazy-code))
                 (member 'rest   (lazy-code-flags lazy-code)))
-           (let ((label-generic (lazy-code-generic-vers lazy-code)))
-             (put-version lazy-code ctx label-generic #f)
-             (fn-patch label-generic #f))
+           (let* ((r (ctx-generic-prologue ctx))
+                  (moves (car r))
+                  (gctx  (cdr r)) ;; Discard ctx
+                  (label-generic (lazy-code-generic-vers lazy-code))
+                  (label-merge   (generate-prologue-moves gctx moves label-generic)))
+             (put-version lazy-code ctx label-merge #f)
+             (fn-patch label-merge #f))
            (let* ((gctx (lazy-code-generic-ctx lazy-code))
                   (label-generic (lazy-code-generic-vers lazy-code))
                   (label-merge   (generate-merge-code ctx gctx label-generic)))
@@ -1372,14 +1401,17 @@
 
       (if (and (member 'entry  (lazy-code-flags lazy-code))
                (member 'rest   (lazy-code-flags lazy-code)))
-          (let* ((gctx (ctx-generic-prologue ctx))
-                 (label-generic (generate-generic gctx #t)))
-            (put-version lazy-code ctx label-generic #f)
+          (let* ((r (ctx-generic-prologue ctx))
+                 (moves (car r))
+                 (gctx  (cdr r))
+                 (label-generic (generate-generic gctx #t))
+                 (label-merge   (generate-prologue-moves gctx moves label-generic)))
+            (put-version lazy-code ctx label-merge #f)
             (lazy-code-generic-ctx-set!  lazy-code gctx)
             (lazy-code-generic-vers-set! lazy-code label-generic)
             (lazy-code-generic-ctx-set!  fallback-lazy-code gctx)
             (lazy-code-generic-vers-set! fallback-lazy-code label-generic)
-            (fn-patch label-generic #t))
+            (fn-patch label-merge #t))
           ;; TODO what if fn-opt-label is set ?
           (let* ((gctx (ctx-generic ctx))
                  ;; Generate merge only if not entry
