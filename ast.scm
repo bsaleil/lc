@@ -264,7 +264,7 @@
     (cdr                 ,cst-cdr       #f                ,codegen-p-cxr                #f       ,ATX_UNK 1 ,ATX_PAI                   )
     (cons                #f             #f                ,codegen-p-cons               #t       ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL          )
     (eq?                 ,cst-eq?       ,lco-p-eq?        #f                            #f       ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          )
-    (char=?              ,cst-char=?    ,lco-p-char=?     #f                            #f       ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA          )
+    (char=?              ,cst-char=?    ,lco-p-eq?        #f                            #f       ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA          )
     (quotient            ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (modulo              ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (remainder           ,cst-remainder ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
@@ -1732,13 +1732,6 @@
               (codegen-p-eof-object? cgc (ctx-fs ctx) (ctx-ffs ctx) op reg #f (ctx-get-loc ctx 0) #f)
               (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg)))
             (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (literal->ctx-type #f) #f)))))))
-
-;;
-;; Special primitive 'char=?'
-(define (lco-p-char=? ast op succ)
-  (let ((node (atom-node-make 'eq?)))
-    (gen-ast (cons node (cdr ast))
-             succ)))
 
 ;;
 ;; Special primitives 'quotient', 'modulo', 'remainder'
