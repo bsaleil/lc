@@ -1020,6 +1020,9 @@
   constructor: make-lazy-code*
   ast
   generator
+  ;; 'versions' is a table which associates a version (a label) to a context
+  ;; if the lco has the flag 'entry (i.e. it's a prologue lco), the table
+  ;; associates a version (a label) to a *stack* instead.
   versions
   flags     ;; entry, return, continuation, rest
   lco-true  ;; lco of true branch if it's a cond lco
@@ -1055,8 +1058,9 @@
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
-(define (make-lazy-code-entry ast generator)
-  (let ((lc (make-lazy-code* ast generator (make-versions-table) '(entry) #f #f #f #f)))
+(define (make-lazy-code-entry ast rest? generator)
+  (let* ((flags (if rest? '(rest entry) '(entry)))
+         (lc (make-lazy-code* ast generator (make-versions-table) flags #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
@@ -1071,24 +1075,21 @@
     lc))
 
 (define (get-version lazy-code ctx)
-  (let* ((versions (lazy-code-versions lazy-code))
-         (version  (table-ref versions ctx #f)))
+  (let* ((key
+          (if (member 'entry (lazy-code-flags lazy-code))
+              (ctx-stack ctx)
+              ctx))
+         (versions (lazy-code-versions lazy-code))
+         (version  (table-ref versions key #f)))
     (and version (car version))))
 
 (define (put-version lazy-code ctx version real-version?)
-  (let ((versions (lazy-code-versions lazy-code)))
-    (table-set! versions ctx (cons version real-version?))))
-
-;; Return ctx associated to the version
-(define (get-version-ctx lazy-code version)
-  (let ((versions (lazy-code-versions lazy-code)))
-    (let loop ((lst (table->list versions)))
-      (if (null? lst)
-          (error "Internal error")
-          (if (eq? (cadar lst)
-                   version)
-              (caar lst)
-              (loop (cdr lst)))))))
+  (let ((key
+          (if (member 'entry (lazy-code-flags lazy-code))
+              (ctx-stack ctx)
+              ctx))
+        (versions (lazy-code-versions lazy-code)))
+    (table-set! versions key (cons version real-version?))))
 
 ;;-----------------------------------------------------------------------------
 ;; ctx regalloc

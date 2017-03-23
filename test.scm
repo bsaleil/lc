@@ -1,4 +1,10 @@
 
+;; Versions: ctx -> label
+;; EPTable:  stack -> label
+
+
+
+
 
 ;; Si on atteint la limite du nb de versions:
 ;; Si c'est un entry un tail, on doit forcément avoir un fallback.

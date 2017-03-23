@@ -617,6 +617,7 @@
 (define (get-lazy-generic-prologue ast succ rest-param nb-formal)
   (make-lazy-code-entry
     #f
+    rest-param
     (lambda (cgc ctx)
       (let ((nb-args (ctx-nb-args ctx))
             (label-next (asm-make-label #f (new-sym 'label-next))))
@@ -663,6 +664,7 @@
 
   (make-lazy-code-entry
     #f
+    rest-param
     (lambda (cgc ctx)
 
       (let* ((nb-actual (ctx-nb-actual ctx))
@@ -778,20 +780,16 @@
   (define lazy-ret (get-lazy-return))
   ;; Lazy lambda body
   (define lazy-body (gen-ast (caddr ast) lazy-ret))
-  ;; Lazy function prologue
-  (define lazy-prologue (get-lazy-prologue ast lazy-body rest-param))
-  ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
-  (define lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params)))
-
-  (if rest-param
-      (begin
-        (lazy-code-flags-set! lazy-prologue     (cons 'rest (lazy-code-flags lazy-prologue)))
-        (lazy-code-flags-set! lazy-prologue-gen (cons 'rest (lazy-code-flags lazy-prologue-gen)))))
 
   (add-fn-callback
     1
     fn-num
     (lambda (stack ret-addr selector closure)
+
+      ;; Lazy function prologue
+      (define lazy-prologue (get-lazy-prologue ast lazy-body rest-param))
+      ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
+      (define lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params)))
 
       (cond ;; CASE 1 - Use entry point (no cctable)
             ((eq? opt-entry-points #f)
