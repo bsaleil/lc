@@ -199,7 +199,7 @@
   (table-set! asc-entryobj-globalclo entry-obj-loc clo-ptr))
 
 ;;
-;; Associate an ep entry object to an ast (eq? on ast)
+;; Associate an fn-num & ep entry object to an ast (eq? on ast)
 (define asc-ast-epentry (make-table test: eq?))
 (define (asc-ast-epentry-get ast)
   (table-ref asc-ast-epentry ast #f))
@@ -801,7 +801,10 @@
             (else
                (fn-generator #f lazy-prologue stack #f lazy-prologue-gen))))))
 
-(define (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params bound-id)
+(define (get-entry-obj ast ctx fvars-imm fvars-late all-params bound-id)
+
+  (define fn-num #f)
+
   ;; Generator used to generate function code waiting for runtime data
   ;; First create function entry ctx
   ;; Then generate function prologue code
@@ -819,7 +822,8 @@
   (define (get-entry-obj-cc)
     (let* ((r (get-cctable ast ctx fvars-imm fvars-late))
            (new? (car r))
-           (cctable (cdr r)))
+           (cctable (cadr r)))
+      (set! fn-num (cddr r))
       (if new?
           (let* (;; Create stub only if cctable is new
                  (stub-labels  (create-fn-stub ast fn-num fn-generator))
@@ -827,33 +831,35 @@
                  (generic-addr (asm-label-pos (list-ref stub-labels 1))))
             (asc-entry-stub-add cctable generic-addr stub-addr)
             (cctable-fill cctable stub-addr generic-addr)))
-      cctable))
+      (values fn-num cctable)))
 
   ;; In the case of -ep, entry object is the still vector of size 1 that contain the single entry point
   (define (get-entry-obj-ep)
     (let ((existing (asc-ast-epentry-get ast)))
       (if existing
           ;; An entry points object already exists for this ast, use it!
-          existing
+          (values (car existing) (cdr existing))
           ;; TODO: we are supposed to use only one e.p. with -ep objects
           ;;       use a max-selector of 0 in create-fn-stub, and use only one -addr
           (let* (;; Create stub
+                 (fn-num       (new-fn-num))
                  (stub-labels  (create-fn-stub ast fn-num fn-generator))
                  (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
                  (generic-addr (asm-label-pos (list-ref stub-labels 1)))
-                 (entryvec (get-entry-points-loc ast stub-addr)))
+                 (entryvec     (get-entry-points-loc ast stub-addr)))
             (asc-entry-stub-add entryvec generic-addr stub-addr)
-            (asc-ast-epentry-add ast entryvec)
-            entryvec))))
+            (asc-ast-epentry-add ast (cons fn-num entryvec))
+            (values fn-num entryvec)))))
 
   (define entry-obj #f)
 
-  (set! entry-obj
-    (if opt-entry-points
-        (get-entry-obj-cc)
-        (get-entry-obj-ep)))
-
-  entry-obj)
+  (call-with-values
+      (if opt-entry-points
+          get-entry-obj-cc
+          get-entry-obj-ep)
+      (lambda (fn-num obj)
+        (set! entry-obj obj)
+        (values fn-num obj))))
 
 
 ;;
@@ -863,16 +869,11 @@
   ;; Flatten list of param (include rest param)
   (define all-params (flatten (cadr ast)))
 
-  (letrec (;; Closure unique number
-           (fn-num (new-fn-num))
-           (entry-obj (get-entry-obj ast ctx fn-num free '() all-params #f))
-           (entry-obj-loc (- (obj-encoding entry-obj) 1)))
-
-      ;; Add association fn-num -> entry point
+  (call-with-values
+    (lambda () (get-entry-obj ast ctx free '() all-params #f))
+    (lambda (fn-num entry-obj)
       (asc-globalfn-entry-add fn-num entry-obj)
-
-      ;; Return lambda identity
-      fn-num))
+      fn-num)))
 
 ;;
 ;; Init non constant lambda
@@ -881,15 +882,11 @@
   ;; Flatten list of param (include rest param)
   (define all-params (flatten (cadr ast)))
 
-  (letrec (;; Closure unique number
-           (fn-num (new-fn-num))
-           (entry-obj (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params bound-id))
-           (entry-obj-loc (- (obj-encoding entry-obj) 1)))
-
-      ;; Add association fn-num -> entry point
+  (call-with-values
+    (lambda () (get-entry-obj ast ctx fvars-imm fvars-late all-params bound-id))
+    (lambda (fn-num entry-obj)
       (asc-globalfn-entry-add fn-num entry-obj)
-
-      (list fn-num entry-obj)))
+      (list fn-num entry-obj))))
 
 ;; Compute free var sets for given lambda ast
 ;; return list (cst imm late) with:
@@ -2980,9 +2977,10 @@
            (cctable (table-ref cctables key #f)))
       (if cctable
           (cons #f cctable)
-          (let ((cctable (make-cc)))
-            (table-set! cctables key cctable)
-            (cons #t cctable))))))
+          (let ((cctable (make-cc))
+                (fn-num (new-fn-num)))
+            (table-set! cctables key (cons cctable fn-num))
+            (cons #t (cons cctable fn-num)))))))
 
 ;; Fill cctable with stub and generic addresses
 (define (cctable-fill cctable stub-addr generic-addr)
