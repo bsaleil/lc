@@ -1752,7 +1752,7 @@
 
       (x86-mov cgc dest (x86-imm-int ENCODING_VOID)))))
 
-(define (codegen-p-gettime-ns cgc fs op reg inlined-cond?)
+(define (codegen-p-gettime-ns cgc fs ffs op reg inlined-cond?)
   (let ((opnd (codegen-reg-to-x86reg reg)))
     ;; Get monotonic time in rax
     (gen-syscall-clock-gettime cgc)
