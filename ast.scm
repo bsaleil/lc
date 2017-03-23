@@ -2952,7 +2952,7 @@
 ;; This is the key used in hash table to find the cc-table for this closure.
 ;; The key represents captured values used to specialize tables
 (define (get-cc-key ctx fvars-imm fvars-late)
-  (append (map (lambda (n) (cons n 'closure)) fvars-late)
+  (append fvars-late
           (foldr (lambda (n r)
                    (if (member (car n) fvars-imm) ;; If this id is a free var of future lambda
                        (cons (cons (car n)
