@@ -1077,7 +1077,7 @@
 (define (get-version lazy-code ctx)
   (let* ((key
           (if (member 'entry (lazy-code-flags lazy-code))
-              (list-head (ctx-stack ctx) (ctx-nb-actual ctx))
+              (list-head (ctx-stack ctx) (or (ctx-nb-actual ctx) (ctx-nb-args ctx)))
               ctx))
          (versions (lazy-code-versions lazy-code))
          (version  (table-ref versions key #f)))
@@ -1368,6 +1368,11 @@
   (set! ctx (ctx-free-dead-locs ctx (lazy-code-ast lazy-code)))
 
   (cond
+    ;; A version already exists
+    ((get-version lazy-code ctx)
+       ;; Use existing version
+       (let ((label (get-version lazy-code ctx)))
+         (fn-patch label #f)))
     ;; No version for this ctx, but limit is not reached
     ((or (not opt-max-versions)
          (< nb-versions opt-max-versions))
@@ -1375,11 +1380,6 @@
        (let ((label (generate-new-version ctx)))
          (put-version lazy-code ctx label #t)
          (fn-patch label #t)))
-    ;; A version already exists
-    ((get-version lazy-code ctx)
-       ;; Use existing version
-       (let ((label (get-version lazy-code ctx)))
-         (fn-patch label #f)))
     ;; No version for this ctx, limit reached, and generic version exists
     ((lazy-code-generic-vers lazy-code)
        ;; TODO what if fn-opt-label is set ?
