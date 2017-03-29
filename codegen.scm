@@ -1677,13 +1677,15 @@
                (and (x86-mem? opidx) (x86-mem? opval))
                (and (x86-reg? opidx) val-cst?)
                (and (x86-reg? opidx) (x86-mem? opval)))
-             (if (eq? opvec (x86-rax))
-                 (error "NYI b"))
-             (x86-mov cgc selector-reg opval)
-             (x86-mov cgc (x86-rax) opidx)
-             (x86-shl cgc (x86-rax) (x86-imm-int 1))
-             (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opvec (x86-rax)) selector-reg)
-             (x86-mov cgc selector-reg (x86-imm-int 0)))
+             (let* ((saved (if (eq? opvec (x86-rax)) (x86-rbx) #f))
+                    (tmpidx (or saved (x86-rax))))
+               (if saved (x86-ppush cgc saved))
+               (x86-mov cgc selector-reg opval)
+               (x86-mov cgc tmpidx opidx)
+               (x86-shl cgc tmpidx (x86-imm-int 1))
+               (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opvec tmpidx) selector-reg)
+               (if saved (x86-ppop cgc saved))
+               (x86-mov cgc selector-reg (x86-imm-int 0))))
           ;; reg/reg
           ;; mem/reg
           (else
