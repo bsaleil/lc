@@ -417,12 +417,6 @@
          (closure
           (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-rsi))))))
 
-         (nb-args
-           (if (or (not opt-entry-points) (= selector 1))
-               (let ((encoded (get-i64 (+ usp (reg-sp-offset-r (x86-rdi))))))
-                 (encoding-obj encoded))
-               (- (length stack) 2)))
-
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
 
