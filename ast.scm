@@ -732,12 +732,28 @@
 ;; Create and return a function return lco
 (define (get-lazy-return)
 
-  (define lazy-ret
-    (make-lazy-code-ret ;; Lazy-code with 'ret flag
-      #f
-      (lambda (cgc ctx)
+  (define (gen-return-rp cgc ctx)
+    (set! ctx (drop-cst-value cgc #f ctx 0))
+    (let* ((fs (ctx-fs ctx))
+           (ffs (ctx-ffs ctx))
+           ;; Return value loc
+           (type-ret (ctx-get-type ctx 0))
+           ;(type-arg (ctx-identifier-type ctx (cdr (ctx-ident ctx 'n0))))
+           (lret     (ctx-get-loc ctx 0))
+           ;; Return address object loc
+           (laddr (ctx-get-retobj-loc ctx)))
+      (codegen-return-rp cgc fs ffs fs laddr lret (ctx-tflo? type-ret))))
 
-        (if (not opt-const-vers)
+  (define (gen-return-cr cgc ctx)
+
+    (let ((cridx (crtable-get-idx (ctx-init-return ctx))))
+
+        (assert (not (and (not cridx)
+                          (ctx-tflo? (ctx-get-type ctx 0))))
+                "NYI case, cr overflow and ret value is a tflo")
+
+        (if (or (not opt-const-vers)
+                (not cridx))
             (set! ctx (drop-cst-value cgc #f ctx 0)))
 
         (let* ((fs (ctx-fs ctx))
@@ -751,18 +767,14 @@
                ;;
                (cst? (ctx-type-is-cst type-ret)))
 
-        ;   (if (and (ctx-type-is-cst type-ret)
-        ;            (ctx-type-is-cst type-arg))
-        ;       (pure-fn-add (ctx-fn-num ctx) (ctx-type-cst type-arg) (ctx-type-cst type-ret)))
+          (codegen-return-cr cgc fs ffs fs laddr lret cridx (ctx-tflo? type-ret) cst?))))
 
-          ;; Gen return
+      (make-lazy-code-ret ;; Lazy-code with 'ret flag
+        #f
+        (lambda (cgc ctx)
           (if opt-return-points
-              (let* ((cridx (crtable-get-idx (ctx-init-return ctx))))
-                (if (not cridx)
-                    (error "NYI e"))
-                (codegen-return-cr cgc fs ffs fs laddr lret cridx (ctx-tflo? type-ret) cst?))
-              (codegen-return-rp cgc fs ffs fs laddr lret (ctx-tflo? type-ret) cst?))))))
-  lazy-ret)
+              (gen-return-cr cgc ctx)
+              (gen-return-rp cgc ctx)))))
 
 ;;
 ;; Create fn entry stub
@@ -2601,11 +2613,13 @@
          (stub-labels
            (add-cont-callback
              cgc
-             0
+             1
              (lambda (ret-addr selector type table)
 
                    ;;
-                   (let* ((args (cdr ast))
+                   (let* ((generic? (not type))
+                          (type (or type (make-ctx-tunk)))
+                          (args (cdr ast))
                           (ctx
                             (if apply?
                                 (ctx-pop-n ctx 2) ;; Pop operator and args
@@ -2619,10 +2633,12 @@
                        lazy-continuation
                        (ctx-push ctx type reg)
                        type
-                       table)))))
+                       table
+                       generic?)))))
          ;; CRtable
-         (stub-addr (vector-ref (list-ref stub-labels 0) 1))
-         (crtable (get-crtable ast ctx stub-addr))
+         (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
+         (generic-addr (asm-label-pos (list-ref stub-labels 1)))
+         (crtable (get-crtable ast ctx stub-addr generic-addr))
          (crtable-loc (- (obj-encoding crtable) 1)))
 
     ;; Generate code
@@ -2980,8 +2996,10 @@
 ;; CR TABLES
 
 ;; Create a new cr table with 'init' as stub value
-(define (make-cr len init)
-  (alloc-still-s64vector len init))
+(define (make-cr stub-addr generic-addr)
+  (let ((v (alloc-still-s64vector (+ 1 global-cr-table-maxsize) stub-addr)))
+    (s64vector-set! v 0 generic-addr)
+    v))
 
 ;; all-crtables associates an ast to a table ('equal?' table)
 ;; to get a crtable, we first use the eq? table to get crtables associated to this ast
@@ -2991,7 +3009,7 @@
 
 ;; Return crtable from crtable-key
 ;; Return the existing table if already created or create one, add entry, and return it
-(define (get-crtable ast ctx stub-addr)
+(define (get-crtable ast ctx stub-addr generic-addr)
   ;; Use 'eq?' table to get prleiminary result
   (let ((crtables (table-ref all-crtables ast #f)))
     (if (not crtables)
@@ -3009,7 +3027,7 @@
                   (ctx-env ctx)))
            (crtable (table-ref crtables key #f)))
       (or crtable
-          (let ((crtable (make-cr global-cr-table-maxsize stub-addr)))
+          (let ((crtable (make-cr stub-addr generic-addr)))
             (table-set! crtables key crtable)
             crtable)))))
 

@@ -450,7 +450,10 @@
          (table
           (get-i64 (+ usp (reg-sp-offset-r (x86-rdx)))))
 
-         (type (crtable-get-data type-idx))
+         (type
+           (if (or (not opt-return-points) (= selector 1))
+               #f
+               (crtable-get-data type-idx)))
 
          (new-ret-addr
            (run-add-to-ctime
@@ -1483,7 +1486,7 @@
 
 ;; #### CONTINUATION CR
 ;; Generate continuation using cr table (patch cr entry)
-(define (gen-version-continuation-cr lazy-code ctx type table)
+(define (gen-version-continuation-cr lazy-code ctx type table generic?)
 
   (define (fn-verbose)
     (print "GEN VERSION CONTINUATION (CR)")
@@ -1493,7 +1496,7 @@
     (pp ctx))
 
   (define (fn-patch label-dest new-version?)
-    (patch-continuation-cr label-dest type table))
+    (patch-continuation-cr label-dest type table generic?))
 
   (define (fn-codepos)
     code-alloc)
@@ -1627,9 +1630,11 @@
   (asm-label-pos continuation-label))
 
 ;; Patch continuation if using cr (write label addr in table instead of compiler stub addr)
-(define (patch-continuation-cr continuation-label type table)
+(define (patch-continuation-cr continuation-label type table generic?)
   ;; TODO: msg if opt-verbose-jit (see patch-continuation)
-  (put-i64 (+ 8 (* 8 (crtable-get-idx type)) table) (asm-label-pos continuation-label))
+  (if generic?
+      (put-i64 (+ 8 table) (asm-label-pos continuation-label))
+      (put-i64 (+ 16 (* 8 (crtable-get-idx type)) table) (asm-label-pos continuation-label)))
   (asm-label-pos continuation-label))
 
 ;; Patch jump at jump-addr: change jump destination to dest-addr

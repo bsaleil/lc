@@ -613,10 +613,7 @@
 
 ;; Generate function return using a return address
 ;; Retaddr (or cctable) is in rdx
-(define (codegen-return-rp cgc fs ffs clean-nb lretobj lretval float? cst?)
-
-    (if cst?
-        (error "NYI"))
+(define (codegen-return-rp cgc fs ffs clean-nb lretobj lretval float?)
 
     (let ((opret    (codegen-reg-to-x86reg return-reg))
           (opretval (codegen-loc-to-x86opnd fs ffs lretval)))
@@ -656,7 +653,9 @@
               (x86-mov cgc opret opretval))))
 
     (codegen-return-common cgc fs ffs clean-nb lretobj)
-    (x86-mov cgc (x86-rax) (x86-mem (+ 8 (* 8 cridx)) (x86-rdx)))
+    (if cridx
+        (x86-mov cgc (x86-rax) (x86-mem (+ 16 (* 8 cridx)) (x86-rdx)))
+        (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rdx))))
     (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding cridx)))
     (x86-jmp cgc (x86-rax)))
 
