@@ -57,6 +57,26 @@
 (define opt-cr-max               #f) ;; Global crtable max size
 (define opt-const-vers           #f) ;; Use cst information in code versioning
 
+;; This is the list of cst types used for versioning (if opt-const-vers is #t)
+;; All csts types are enabled by default
+(define opt-cv-preds
+  (list ctx-tcha? ctx-tvoi?
+        ctx-tnul? ctx-tint?
+        ctx-tboo? ctx-tpai?
+        ctx-tvec? ctx-tstr?
+        ctx-tsym? ctx-tflo?
+        ctx-tclo?))
+
+;; Is the type a cst used for versioning ?
+(define (const-versioned? type)
+  (and opt-const-vers
+       (ctx-type-is-cst type)
+       (let loop ((preds opt-cv-preds))
+         (if (null? preds)
+             #f
+             (or ((car preds) type)
+                 (loop (cdr preds)))))))
+
 ;; Macro to compute compilation time
 (define user-compilation-time 0)
 (define-macro (run-add-to-ctime f)

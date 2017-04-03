@@ -36,6 +36,7 @@
 (define perm-domain #f)
 (define opt-entry-points #f)
 (define opt-const-vers #f)
+(define const-versioned? #f)
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx
@@ -253,33 +254,33 @@
 (define (ctx-fs-update ctx fs)
   (ctx-copy ctx #f #f #f #f #f #f #f #f #f fs))
 
+;; Init a stack for a call ctx or a fn ctx
+;; This function removes the csts not used for versioning from 'stack'
+(define (ctx-init-stack stack add-suffix?)
+  (let ((nstack
+          (map (lambda (type)
+                 (if (and (ctx-type-is-cst type)
+                          (not (const-versioned? type)))
+                     ;; it's a non versioned cst, remove it
+                     (ctx-type-nocst type)
+                     type))
+               stack)))
+    (if add-suffix?
+        (append nstack (list (make-ctx-tclo) (make-ctx-tret)))
+        stack)))
+
 ;;
 ;; CTX INIT CALL
 (define (ctx-init-call ctx nb-args)
-
-  (define (get-stack)
-    (append (list-head (ctx-stack ctx) nb-args)
-            (list (make-ctx-tclo) (make-ctx-tret))))
-
-  (define (get-stack-nocst)
-    (let loop ((head (list-head (ctx-stack ctx) nb-args)))
-      (if (null? head)
-          (list (make-ctx-tclo) (make-ctx-tret))
-          (let ((first (car head)))
-            (cons (ctx-type-nocst first)
-                  (loop (cdr head)))))))
-
   (ctx-copy
     (ctx-init)
-    (if opt-const-vers
-        (get-stack)
-        (get-stack-nocst))))
+    (ctx-init-stack (ctx-stack ctx) #t)))
 
 ;;
 ;; CTX INIT RETURN
 (define (ctx-init-return ctx)
   (let ((type (ctx-get-type ctx 0)))
-    (if opt-const-vers
+    (if (const-versioned? type)
         type
         (ctx-type-nocst type))))
 
@@ -449,9 +450,7 @@
   ;;
   ;; STACK
   (define (init-stack stack free-const)
-    (append (if opt-const-vers
-                stack
-                (init-local-stack stack))
+    (append (ctx-init-stack stack #f)
             (init-const-stack free-const)
             (list (make-ctx-tclo) (make-ctx-tret))))
 
@@ -463,13 +462,6 @@
                 (init (cdr free-const)))))
     (reverse (init free-const)))
 
-  (define (init-local-stack stack)
-    (let loop ((stack stack))
-      (if (null? stack)
-          '()
-          (cons (ctx-type-nocst (car stack))
-                (loop (cdr stack))))))
-
   ;;
   ;; FREE REGS
   (define (init-free-regs)
@@ -478,8 +470,7 @@
       (if (or (null? stack) (null? regs))
           '()
           (if (or (ctx-tflo? (car stack))
-                  (and opt-const-vers
-                       (ctx-type-is-cst (car stack))))
+                  (const-versioned? (car stack)))
               (init (cdr stack) regs)
               (cons (car regs)
                     (init (cdr stack) (cdr regs))))))
@@ -498,8 +489,7 @@
               (null? fregs))
           fregs
           (if (or (not (ctx-tflo? (car stack)))
-                  (and opt-const-vers
-                       (ctx-type-is-cst (car stack))))
+                  (const-versioned? (car stack)))
               (init (cdr stack) fregs)
               (init (cdr stack) (cdr fregs)))))
 
@@ -594,8 +584,7 @@
                          (make-ctx-tunk)))
               (types (and argtypes (cdr argtypes))))
 
-          (cond ((and opt-const-vers
-                      (ctx-type-is-cst type))
+          (cond ((const-versioned? type)
                    (let ((r (init-slot-loc-local (+ slot 1) types regs fregs mem)))
                      (return slot #f r)))
                 ((ctx-tflo? type)
@@ -1456,10 +1445,9 @@
                (loc (ctx-get-loc ctx curr-idx)))
 
           (cond
-            ;; Type is cst, opt-const-vers is #t, and we do not use generic ep
+            ;; Type is cst, cst is versioned, and we do not use generic ep
             ((and opt-entry-points
-                  opt-const-vers
-                  (ctx-type-is-cst type)
+                  (const-versioned? type)
                   (not generic-entry?))
                (next-nothing))
             ;; Type is cst

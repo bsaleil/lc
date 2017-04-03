@@ -179,28 +179,36 @@ def userWants(str):
 systems = []
 
 # LC
-l1 = System("LC5",
+l1 = System("LC",
+            "",
+            ".scm",
+            ["lazy-comp","{0}","--time"],
+            "(\d+.\d+) ms real time\\n\(",
+            "accounting for (\d+) ms real time")
+
+# LC
+l2 = System("LC5",
             "",
             ".scm",
             ["lazy-comp","{0}","--time","--max-versions 5"],
             "(\d+.\d+) ms real time\\n\(",
             "accounting for (\d+) ms real time")
 
-l2 = System("LC5-nep-nrp",
+l3 = System("LC5-nep-nrp",
             "",
             ".scm",
             ["lazy-comp","{0}","--time","--disable-entry-points","--disable-return-points","--max-versions 5"],
             "(\d+.\d+) ms real time\\n\(",
             "accounting for (\d+) ms real time")
 
-l3 = System("LC5-cv",
+l4 = System("LC5-cv",
             "",
             ".scm",
             ["lazy-comp","{0}","--time","--enable-const-vers","--enable-cxoverflow-fallback","--max-versions 5"],
             "(\d+.\d+) ms real time\\n\(",
             "accounting for (\d+) ms real time")
 
-l4 = System("LC-cv",
+l5 = System("LC-cv",
             "",
             ".scm",
             ["lazy-comp","{0}","--time","--enable-const-vers","--enable-cxoverflow-fallback"],
@@ -279,6 +287,7 @@ systems.append(l1)
 systems.append(l2)
 systems.append(l3)
 systems.append(l4)
+systems.append(l5)
 # systems.append(l2)
 # systems.append(g1)
 # systems.append(l3)

@@ -752,7 +752,7 @@
                           (ctx-tflo? (ctx-get-type ctx 0))))
                 "NYI case, cr overflow and ret value is a tflo")
 
-        (if (or (not opt-const-vers)
+        (if (or (not (const-versioned? (ctx-get-type ctx 0)))
                 (not cridx))
             (set! ctx (drop-cst-value cgc #f ctx 0)))
 
@@ -2526,8 +2526,7 @@
                                         (if (= idx nb-args)
                                             (list nf ncst)
                                             (let ((type (ctx-get-type ctx idx)))
-                                              (cond ((and opt-const-vers
-                                                          (ctx-type-is-cst type))
+                                              (cond ((const-versioned? type)
                                                        (loop (+ idx 1) nf (+ ncst 1)))
                                                     ((ctx-tflo? type)
                                                        (loop (+ idx 1) (+ nf 1) ncst))
