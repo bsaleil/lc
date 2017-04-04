@@ -682,7 +682,6 @@
               ;; rest AND actual > formal
               ;; TODO merge > and == (?)
               ((and rest-param (> nb-actual (- nb-formal 1)))
-
                  (set! ctx (gen-drop-float cgc ctx ast 0 (- nb-actual (- nb-formal 1))))
 
                  (let* ((nb-extra (- nb-actual (- nb-formal 1)))
@@ -702,8 +701,11 @@
                                 (let ((loc (ctx-get-loc ctx idx)))
                                   (if loc
                                       (loop (- idx 1) (cons loc locs))
-                                      (let ((cst (ctx-type-cst (ctx-get-type ctx idx))))
-                                        (loop (- idx 1) (cons (cons 'c cst) locs)))))))))
+                                      (let* ((type (ctx-get-type ctx idx))
+                                             (cst (ctx-type-cst type)))
+                                        (if (ctx-tclo? type)
+                                            (loop (- idx 1) (cons (cons 'cf cst) locs))
+                                            (loop (- idx 1) (cons (cons 'c cst) locs))))))))))
 
                    (let* ((nctx (ctx-pop-n ctx (- nb-extra 1)))
                           (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f))

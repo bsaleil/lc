@@ -4,6 +4,14 @@
 
 
 
+;; Vérifier tous les opt-const-vers:
+
+    ;; ast.scm 2
+    ;; ctx.scm 9
+    ;; OK core.scm 1
+    ;; OK main.scm 1
+    ;; OK codegen  1
+
 
 
 ;; Si on atteint la limite du nb de versions:
@@ -27,25 +35,10 @@
 ;; 2. A chaque compilation d'un appel à fib, si l'association existe,
 ;;    -> on push simplement la cst
 
+(define (foo . n)
+  (gambit$$pp n))
 
-
-
-(define inport (gambit$$open-input-file "./unit-tests/benchmarks/bib"))
-
-(define (foo)
-  (let ((x (gambit$$read-char inport)))
-    (if (eof-object? x)
-        0
-        (begin
-          (if (or (eq? x #\space)
-                  (char=? x #\newline))
-              1)
-          (foo)))))
-
-(foo)
-
-
-
+(foo (lambda () 22))
 
 
 
