@@ -35,10 +35,15 @@
 ;; 2. A chaque compilation d'un appel à fib, si l'association existe,
 ;;    -> on push simplement la cst
 
-(define (foo . n)
-  (gambit$$pp n))
+(define lst '(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20))
 
-(foo (lambda () 22))
+(define (lengthk lst k)
+  (if (null? lst)
+      (k 0)
+      (lengthk (cdr lst) (lambda (r) (k (+ 1 r))))))
+
+
+(gambit$$pp (lengthk lst (lambda (r) r)))
 
 
 
