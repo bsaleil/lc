@@ -1,4 +1,29 @@
 
+;;
+
+;; On peut versionner avec le type null.
+;;   -> à la construction d'une liste, la constante est retournée.
+;;   -> à chaque cons, on peut conserver dans le contexte le type: liste/length/type (0/1/2)
+;; Ex. * fonctionne avec une fonction récursive qui créé une liste, mais une version par appel
+;;     * fonctionne avec (list ...), on a l'information tout de suite.
+;;     * fonctionne avec (make-list .. ..)
+;; * Permet de conserver le type au car
+;; * Permet de conserver le type au cdr
+;; * Permet d'optimiser (length l)
+
+;; -> On peut faire pareil avec le type vector: conserver le type: vector/length/type
+;; ex. avec (make-vector 10 #\R) -> vector/10/char
+;; Permet de conserver le type au vector-ref
+;; Permet d'éventuellement conserver le type au vector-set
+;; Permet d'optimiser (vector-length v)
+;; Permet déviter l'utilisation des vecteurs homogènes -> comportement dynamique
+
+(define (foo n)
+  (println (+ n n)))
+
+(foo 44)
+
+
 ;; Versions: ctx -> label
 ;; EPTable:  stack -> label
 
@@ -34,18 +59,6 @@
 
 ;; 2. A chaque compilation d'un appel à fib, si l'association existe,
 ;;    -> on push simplement la cst
-
-(define lst '(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20))
-
-(define (lengthk lst k)
-  (if (null? lst)
-      (k 0)
-      (lengthk (cdr lst) (lambda (r) (k (+ 1 r))))))
-
-
-(gambit$$pp (lengthk lst (lambda (r) r)))
-
-
 
 ;; WIP:
 ;; -> Quand on génère un E.P. générique, il faut patcher le pt générique + la fermeture a l'index
