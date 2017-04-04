@@ -472,7 +472,7 @@
 
 (define (export-locat-info)
 
-  (define restable (make-table))
+  (define restable '())
 
   (define (restable-add locat lco)
     (set! restable
@@ -520,7 +520,7 @@
               (for-each
                 (lambda (stype)
                   (if (ctx-type-is-cst stype)
-                      (print (ctx-type-cst stype) " ")
+                      (print (ctx-type-sym stype) "(" (ctx-type-cst stype) ") ")
                       (print (ctx-type-sym stype) " ")))
                 (ctx-stack ctx))))))
       ;; Slot loc
