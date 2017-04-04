@@ -21,8 +21,9 @@ class Config:
 
 class System:
 
-    def __init__(self,name,ccmd,eext,ecmd,regexms,regexgc):
+    def __init__(self,name,prefixsuffix,ccmd,eext,ecmd,regexms,regexgc):
         self.name = name
+        self.prefixsuffix = prefixsuffix
         self.ccmd = ccmd # Compilation cmd
         self.eext = eext # Execution extension
         self.ecmd = ecmd # Execution cmd
@@ -54,8 +55,8 @@ class System:
 
         # Copy benchmarks in system tmp dir
         os.makedirs(self.tmpDir)
-        prefixPath = config.prefixPath + '/' + self.name + '.scm'
-        suffixPath = config.suffixPath + '/' + self.name + '.scm'
+        prefixPath = config.prefixPath + '/' + self.prefixsuffix + '.scm'
+        suffixPath = config.suffixPath + '/' + self.prefixsuffix + '.scm'
         # Read prefix
         with open(prefixPath, 'r') as prefixfile, \
              open(suffixPath, 'r') as suffixfile:
@@ -180,40 +181,22 @@ systems = []
 
 # LC
 l1 = System("LC",
-            "",
-            ".scm",
-            ["lazy-comp","{0}","--time"],
-            "(\d+.\d+) ms real time\\n\(",
-            "accounting for (\d+) ms real time")
-
-# LC
-l2 = System("LC5",
+            "LC", # prefix/suffix
             "",
             ".scm",
             ["lazy-comp","{0}","--time","--max-versions 5"],
             "(\d+.\d+) ms real time\\n\(",
             "accounting for (\d+) ms real time")
 
-l3 = System("LC5-nep-nrp",
+# LC
+l2 = System("LC5",
+            "LC", # prefix/suffix
             "",
             ".scm",
-            ["lazy-comp","{0}","--time","--disable-entry-points","--disable-return-points","--max-versions 5"],
+            ["lazy-comp","{0}","--time","--max-versions 5","--enable-const-vers","--const-vers-types sym"],
             "(\d+.\d+) ms real time\\n\(",
             "accounting for (\d+) ms real time")
 
-l4 = System("LC5-cv",
-            "",
-            ".scm",
-            ["lazy-comp","{0}","--time","--enable-const-vers","--enable-cxoverflow-fallback","--max-versions 5"],
-            "(\d+.\d+) ms real time\\n\(",
-            "accounting for (\d+) ms real time")
-
-l5 = System("LC-cv",
-            "",
-            ".scm",
-            ["lazy-comp","{0}","--time","--enable-const-vers","--enable-cxoverflow-fallback"],
-            "(\d+.\d+) ms real time\\n\(",
-            "accounting for (\d+) ms real time")
 
 
 # l2 = System("LC5-ep",
@@ -285,9 +268,9 @@ l5 = System("LC-cv",
 
 systems.append(l1)
 systems.append(l2)
-systems.append(l3)
-systems.append(l4)
-systems.append(l5)
+# systems.append(l3)
+# systems.append(l4)
+# systems.append(l5)
 # systems.append(l2)
 # systems.append(g1)
 # systems.append(l3)
