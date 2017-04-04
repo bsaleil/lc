@@ -1,5 +1,9 @@
 
-;;
+;; CONST VERS HEURISTIQUES:
+  ;; * Nb versions cst/non-cst
+  ;; * Certains entiers petits / grands
+  ;; * Cas spéciaux p.e. map, etc...
+  ;; * Versioner si la cst est dans l'appel
 
 ;; On peut versionner avec le type null.
 ;;   -> à la construction d'une liste, la constante est retournée.
