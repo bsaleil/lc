@@ -187,6 +187,22 @@
 (def-ctx-type oport   #t)
 (def-ctx-type closure #t)
 
+(define (ctx-string->tpred str)
+  (define (is s) (string=? s str))
+  (cond
+    ((is "cha") ctx-tcha?)
+    ((is "voi") ctx-tvoi?)
+    ((is "nul") ctx-tnul?)
+    ((is "int") ctx-tint?)
+    ((is "boo") ctx-tboo?)
+    ((is "vec") ctx-tvec?)
+    ((is "str") ctx-tstr?)
+    ((is "sym") ctx-tsym?)
+    ((is "flo") ctx-tflo?)
+    ((is "pai") ctx-tpai?)
+    ((is "clo") ctx-tclo?)
+    (else (error "Internal error"))))
+
 (define (ctx-type-ctor t)
   (let loop ((l ctx-type-ctors))
     (let ((pred (caar l)))

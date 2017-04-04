@@ -53,6 +53,27 @@
     ,(lambda (args) (set! opt-cr-max (string->number (cadr args)))
                     (cdr args)))
 
+  (--const-vers-types
+    "Select the type of the constants used for interprocedural versioning. (ex. --const-vers-types boo cha str)"
+    ,(lambda (args)
+       ;; TODO: types -> preds
+       (define (end next-args types)
+         (set! opt-cv-preds types)
+         (cons (car args) next-args))
+       (assert opt-const-vers "--const-vers-types needs --opt-const-vers")
+       (let loop ((curr (cdr args))
+                  (types '()))
+         (if (null? curr)
+             (end curr types)
+             (let* ((next  (car curr))
+                    (chars (string->list next)))
+               (if (char=? (car chars) #\-)
+                   (end curr types)
+                   (loop
+                     (cdr curr)
+                     (cons (ctx-string->tpred next)
+                           types))))))))
+
   (--ctime
     "Print compilation time after execution"
     ,(lambda (args) (set! opt-ctime #t) args))
