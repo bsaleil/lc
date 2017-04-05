@@ -1615,18 +1615,24 @@
 ;; string-ref
 (define (codegen-p-string-ref cgc fs ffs op reg inlined-cond? lstr lidx str-cst? idx-cst?)
 
-  (assert (not str-cst?) "Internal error, unexpected cst operand")
+  (assert (or (not str-cst?)
+              (and (##mem-allocated? lstr)
+                   (not idx-cst?)))
+          "Internal error")
 
   (let ((dest  (codegen-reg-to-x86reg reg))
-        (opstr (codegen-loc-to-x86opnd fs ffs lstr))
+        (opstr (and (not str-cst?) (codegen-loc-to-x86opnd fs ffs lstr)))
         (opidx (and (not idx-cst?) (codegen-loc-to-x86opnd fs ffs lidx)))
         (str-mem? (ctx-loc-is-memory? lstr))
         (idx-mem? (ctx-loc-is-memory? lidx))
         (use-selector #f))
 
-    (if (x86-mem? opstr)
-        (begin (x86-mov cgc (x86-rax) opstr)
-               (set! opstr (x86-rax))))
+    (cond ((not opstr)
+             (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding lstr)))
+             (set! opstr (x86-rax)))
+          ((x86-mem? opstr)
+             (x86-mov cgc (x86-rax) opstr)
+             (set! opstr (x86-rax))))
     (if (and opidx
              (x86-mem? opidx))
         (if (eq? opstr (x86-rax))
