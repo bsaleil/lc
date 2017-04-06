@@ -22,10 +22,31 @@
 ;; Permet d'optimiser (vector-length v)
 ;; Permet déviter l'utilisation des vecteurs homogènes -> comportement dynamique
 
-(define (foo n)
-  (println (+ n n)))
+;* Full interp versions 5 8 10 15
+;* EP only 5 8 10 15
+;* RP only 5 8 10 15
+;
+;--max-versions 5
+;--max-versions 5 --enable-const-vers --const-vers-types boo --enable-cxoverflow-fallback
+;--max-versions 5 --enable-const-vers --const-vers-types cha --enable-cxoverflow-fallback
+;--max-versions 5 --enable-const-vers --const-vers-types clo --enable-cxoverflow-fallback
+;--max-versions 5 --enable-const-vers --const-vers-types str --enable-cxoverflow-fallback
+;--max-versions 5 --enable-const-vers --const-vers-types vec --enable-cxoverflow-fallback
+;--max-versions 5 --enable-const-vers --const-vers-types nul --enable-cxoverflow-fallback
+;--max-versions 5 --enable-const-vers --const-vers-types pai --enable-cxoverflow-fallback
+;--max-versions 5 --enable-const-vers --const-vers-types int --enable-cxoverflow-fallback
+;--max-versions 5 --enable-const-vers --const-vers-types flo --enable-cxoverflow-fallback
+;--max-versions 5 --enable-const-vers --const-vers-types voi --enable-cxoverflow-fallback
+;--max-versions 5 --enable-const-vers --const-vers-types sym --enable-cxoverflow-fallback
 
-(foo 44)
+
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
+
+(gambit$$pp (fib 30))
 
 
 ;; Versions: ctx -> label

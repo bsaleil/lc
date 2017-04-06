@@ -121,6 +121,11 @@
     ,(lambda (args) (set! opt-dump-bin #t)
                     args))
 
+  (--dump-versions
+    "Dump versions for each lco"
+    ,(lambda (args) (set! opt-dump-versions #t)
+                    args))
+
   (--export-locat-info
     "Export locat info so it can be used by locatview tool"
     ,(lambda (args) (set! opt-export-locat-info #t)
@@ -407,7 +412,9 @@
   (if opt-export-locat-info
       (export-locat-info))
   (if opt-dump-bin
-      (print-mcb)))
+      (print-mcb))
+  (if opt-dump-versions
+      (print-versions)))
 
 (define (print-ctime)
   (println
@@ -425,6 +432,38 @@
       (print-mcb-h code-addr code-alloc)
       (println ">> Dump written in dump.bin")
       (close-output-port f)))
+
+(define (print-versions)
+  (let loop ((lcos all-lazy-code) (i 0))
+    (if (not (null? lcos))
+        (let ((lco (car lcos)))
+          (if (> (lazy-code-nb-real-versions lco) 0)
+              (let* ((versions (lazy-code-versions lco))
+                     (real-versions (keep cddr (table->list (lazy-code-versions lco)))))
+                (print "-- LCO #" i)
+                (println " --------------------------------------------------")
+                (print "FLAGS: ") (for-each (lambda (flag) (print flag ",")) (lazy-code-flags lco)) (newline)
+                (let loop2 ((rv real-versions))
+                  (if (not (null? rv))
+                      (let* ((version (car rv))
+                             (ctx (car version))
+                             (stack
+                                 (if (ctx? ctx)
+                                     (ctx-stack ctx)
+                                     ctx)))
+                        (for-each
+                          (lambda (type)
+                            (if (not (ctx-tret? type))
+                                (begin
+                                  (print (ctx-type-sym type))
+                                  (if (ctx-type-is-cst type)
+                                      (print "(" (ctx-type-cst type) ") ")
+                                      (print " ")))))
+                          stack)
+                        (newline)
+                        (loop2 (cdr rv)))))))
+          (loop (cdr lcos) (+ i 1))))
+    all-lazy-code))
 
 (define (print-stats)
   ;; Print stats report
