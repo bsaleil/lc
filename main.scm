@@ -442,6 +442,7 @@
                      (real-versions (keep cddr (table->list (lazy-code-versions lco)))))
                 (print "-- LCO #" i)
                 (println " --------------------------------------------------")
+                (println "SERIAL: #" (##object->serial-number lco) "#")
                 (print "FLAGS: ") (for-each (lambda (flag) (print flag ",")) (lazy-code-flags lco)) (newline)
                 (let loop2 ((rv real-versions))
                   (if (not (null? rv))
@@ -546,6 +547,10 @@
     (print-array-item "~#versions")
     (print-array-item n))
 
+  (define (format-serial s)
+    (print-array-item "~#serial")
+    (print-array-item s))
+
   (define (format-ctxs versions)
     (define (format-ctx ctx n)
       ;; Ctx id
@@ -585,6 +590,7 @@
     (let ((n (next-linecol-n lin col)))
       (print "  \"" lin "." col "." n "\"" ": [")
       (format-n-versions (lazy-code-nb-real-versions lco))
+      (format-serial (##object->serial-number lco))
       (format-ctxs (lazy-code-versions lco))
       (println "],")))
 
