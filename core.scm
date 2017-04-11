@@ -423,7 +423,6 @@
          (selector
           (encoding-obj (get-i64 (- psp 16))))
 
-         ;; TODO
          (ctx-idx
           (if opt-entry-points
               (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-r11)))))
@@ -859,12 +858,6 @@
     ;; Set usp to ustack init
     (x86-mov cgc (x86-usp) (x86-imm-int ustack-init))
 
-    ;; Init debug slots
-    ;; TODO
-    ;(for-each (lambda (s)
-    ;            (gen-set-slot cgc (car s) 0))
-    ;          debug-slots)
-
     ;; Put heaplimit in heaplimit slot
     ;; TODO: remove cst slots
     (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
@@ -1260,12 +1253,10 @@
         (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 (cdar r)))))
     ;; Apply other moves
     (apply-filtered (cdr r) (if (< (caar r) 0) (caar r) 0) (if (< (cdar r) 0) (cdar r) 0))
-    ;; TODO WIP
     (if (< (caar r) 0)
         (x86-add cgc (x86-usp) (x86-imm-int (* -8 (caar r)))))
     (if (< (cdar r) 0)
         (x86-add cgc (x86-rsp) (x86-imm-int (* -8 (cdar r)))))
-    ;; TODO WIP
     (if selector-used?
         (x86-xor cgc selector-reg selector-reg))))
 
@@ -1357,8 +1348,6 @@
               (asm-align cgc 4 0 #x90)
               (x86-label cgc version-label)
               ((lazy-code-generator lazy-code) cgc ctx))))
-      ;(if fn-opt-label
-      ;    (error "Internal error")) ;; TODO wip
       version-label))
 
   (define (generate-new-version ctx)
@@ -1597,44 +1586,6 @@
 (define (gen-generic cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos)
   (error "NYI"))
 
-;; TODO WIP
-(define (gen-merge cgc ctx generic-ctx generic-vers fn-verbose fn-patch fn-codepos)
-
-  ;; pour chaque id de l'environnement
-  ;; ne garder que la position de droite (position d'origine)
-  ;;  - si l'id est mutable, des boxer les autres avant de les enlever
-
-  ;; Return (sp-add moves)
-  ;; sp-add: number of word added to adjust sp for ctx merging
-  ;; moves: moves required for ctx merging
-  (define (ctx-merge src-ctx dst-ctx)
-    (define (get-sp-add)
-      (- (ctx-fs src-ctx) (ctx-fs dst-ctx)))
-    (define (get-moves)
-      (let loop ((sl (ctx-slot-loc src-ctx)))
-        (if (null? sl)
-            '()
-            (cons (cons (cdar sl)
-                        (cdr (assoc (caar sl) (ctx-slot-loc dst-ctx))))
-                        (loop (cdr sl))))))
-
-    (list
-      (steps (get-moves))
-      (get-sp-add)))
-
-  (let* ((r (ctx-merge ctx generic-ctx))
-         (moves  (car r))
-         (sp-add (cadr r))
-         (merge-label (asm-make-label #f (new-sym 'merge_version_))))
-
-    (set! code-alloc (fn-codepos))
-    (x86-label cgc merge-label)
-    (apply-moves cgc ctx moves)
-    ;; Update fs (sp)
-    (x86-add cgc (x86-usp) (x86-imm-int (* 8 sp-add)))
-    (x86-jmp cgc generic-vers)
-    (fn-patch merge-label #t)))
-
 ;;-----------------------------------------------------------------------------
 
 ;; Patch load at a call site to load continuation addr instead of continuation stub addr
@@ -1708,7 +1659,7 @@
   (let* ((cctable-loc (- (obj-encoding cctable) 1))
          (label-addr (asm-label-pos  label))
          (label-name (asm-label-name label))
-         (index (or (cctable-get-idx stack) -1)) ;; -1 TODO to patch generic
+         (index (or (cctable-get-idx stack) -1)) ;; -1 to patch generic
          (offset (+ 16 (* index 8)))) ;; +16 (header & generic)
 
     ;; Patch cctable entry

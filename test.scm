@@ -40,13 +40,30 @@
 ;--max-versions 5 --enable-const-vers --const-vers-types sym --enable-cxoverflow-fallback
 
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
+(letrec
+  ((fn1
+     (lambda (i) (if (= i 0) 'impair (fn2 (- i 1)))))
+   (fn2
+     (lambda (j) (if (= j 0) 'pair (fn1 (- j 1))))))
+  (pp (fn2 42)))
 
-(gambit$$pp (fib 30))
+
+* FN2 générée avec:
+  ctx (j=42)
+* Test, tag
+  ctx (j=42, t)
+* FN1 générée avec:
+  ctx (i=41, t)
+
+
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1))
+;         (fib (- n 2)))))
+;
+;(gambit$$pp (fib 30))
+
 
 
 ;; Versions: ctx -> label
