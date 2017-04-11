@@ -47,17 +47,19 @@ analyses.o1: analyses.scm
 # Run unit tests
 test:
 	rm ./unit-tests/mutable-out -rf
-	./run-ut.scm -lc
+	./run-ut.scm
 
 # Run full unit tests with and without entry and return points
 full-test:
 	rm ./unit-tests/mutable-out -rf
-	./run-ut.scm -lc
-	./run-ut.scm -lc-nep
-	./run-ut.scm -lc-nrp
-	./run-ut.scm -lc-nep-nrp
-	./run-ut.scm -lc-m5
-	./run-ut.scm -lc-m1
+	./run-ut.scm
+	./run-ut.scm --disable-entry-points
+	./run-ut.scm --disable-return-points
+	./run-ut.scm --disable-entry-points --disable-return-points
+	./run-ut.scm --enable-const-vers --enable-cxoverflow-fallback
+	./run-ut.scm --max-versions 5
+	./run-ut.scm --max-versions 5 --enable-const-vers --enable-cxoverflow-fallback
+	./run-ut.scm --max-versions 1
 
 # Clean
 clean:

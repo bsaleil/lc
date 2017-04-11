@@ -11,13 +11,15 @@
 ;;; This is a modified version of the run-unit-tests.scm
 ;;; file from Gambit Scheme (http://gambitscheme.org/)
 
-(define cleanup? #f)
-
 (define nb-good 0)
 (define nb-fail 0)
 (define nb-other 0)
 (define nb-total 0)
 (define start 0)
+
+(define PATH "")
+(define EXEC "")
+(define ARGS '())
 
 (define (num->string num w d) ; w = total width, d = decimals
   (let ((n (floor (inexact->exact (round (* (abs num) (expt 10 d)))))))
@@ -90,25 +92,6 @@
                   (cons 1 (cdr y)))))
         x)))
 
-(define (test-using-mode file mode)
-
-  (cond ((equal? mode "gsi")
-         (run "gsi" "-:d-,fu,=.." file))
-        ((equal? mode "lc")
-         (run-lc file))
-        ((equal? mode "lc-nep")
-         (run-lc file "--disable-entry-points"))
-        ((equal? mode "lc-nrp")
-         (run-lc file "--disable-return-points"))
-        ((or (equal? mode "lc-nep-nrp")
-             (equal? mode "lc-nrp-nep"))
-         (run-lc file "--disable-entry-points" "--disable-return-points"))
-        ((equal? mode "lc-m5")
-         (run-lc file "--max-versions 5"))
-        ((equal? mode "lc-m1")
-         (run-lc file "--max-versions 1"))
-        (else (error "Unknown mode " mode))))
-
 (define (get-expected-output filename)
   (call-with-input-file
       filename
@@ -126,33 +109,30 @@
                           output))
               (apply string-append output)))))))
 
+
 (define (test file)
-  (for-each
 
-   (lambda (mode)
-     (let ((result (test-using-mode file mode)))
-       (if (= 0 (car result))
-           (set! nb-good (+ nb-good 1))
-           (begin
-             (set! nb-fail (+ nb-fail 1))
-             (print "\n")
-             (print "*********************** FAILED TEST " mode " " file "\n")
-             (print (cdr result))))
+ (let ((result (apply run-lc (cons file ARGS))))
+   (if (= 0 (car result))
+       (set! nb-good (+ nb-good 1))
+       (begin
+         (set! nb-fail (+ nb-fail 1))
+         (print "\n")
+         (print "*********************** FAILED TEST " file "\n")
+         (print (cdr result))))
 
-       (show-bar nb-good
-                 nb-fail
-                 nb-other
-                 nb-total
-                 (- (time->seconds (current-time)) start))))
-
-   modes))
+   (show-bar nb-good
+             nb-fail
+             nb-other
+             nb-total
+             (- (time->seconds (current-time)) start))))
 
 (define (run-tests files)
 
   (set! nb-good 0)
   (set! nb-fail 0)
   (set! nb-other 0)
-  (set! nb-total (* (length modes) (length files)))
+  (set! nb-total (length files))
   (set! start (time->seconds (current-time)))
 
   (for-each test files)
@@ -191,27 +171,12 @@
                     (equal? (path-extension filename) ".scm"))))
     args)))
 
-(define modes '())
-
 (define (main . args)
 
-  (let loop ()
-    (if (and (pair? args)
-             (> (string-length (car args)) 1)
-             (char=? #\- (string-ref (car args) 0)))
-        (begin
-          (set! modes
-                (cons (substring (car args) 1 (string-length (car args)))
-                      modes))
-          (set! args (cdr args))
-          (loop))))
+  (set! PATH "unit-tests")
+  (set! EXEC "lazy-comp")
+  (set! ARGS args)
 
-  (if (null? args)
-      (set! args '("unit-tests")))
-
-  (if (null? modes)
-      (set! modes '("lc")))
-
-  (run-tests (list-of-scm-files args)))
+  (run-tests (list-of-scm-files (list PATH))))
 
 ;;;============================================================================

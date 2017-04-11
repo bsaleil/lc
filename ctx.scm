@@ -35,6 +35,8 @@
 (define copy-permanent #f)
 (define perm-domain #f)
 (define opt-entry-points #f)
+(define opt-const-vers #f)
+(define const-versioned? #f)
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx
@@ -185,6 +187,22 @@
 (def-ctx-type oport   #t)
 (def-ctx-type closure #t)
 
+(define (ctx-string->tpred str)
+  (define (is s) (string=? s str))
+  (cond
+    ((is "cha") ctx-tcha?)
+    ((is "voi") ctx-tvoi?)
+    ((is "nul") ctx-tnul?)
+    ((is "int") ctx-tint?)
+    ((is "boo") ctx-tboo?)
+    ((is "vec") ctx-tvec?)
+    ((is "str") ctx-tstr?)
+    ((is "sym") ctx-tsym?)
+    ((is "flo") ctx-tflo?)
+    ((is "pai") ctx-tpai?)
+    ((is "clo") ctx-tclo?)
+    (else (error "Internal error"))))
+
 (define (ctx-type-ctor t)
   (let loop ((l ctx-type-ctors))
     (let ((pred (caar l)))
@@ -206,20 +224,21 @@
 
 ;; Build and return a ctx type from a literal
 (define (literal->ctx-type l)
+  (if (##bignum? l)
+      (set! l (exact->inexact l)))
   (if (and (##mem-allocated? l)
            (not (eq? (mem-allocated-kind l) 'PERM)))
       (set! l (copy-permanent l #f perm-domain)))
   (cond
-    ((char?    l) (make-ctx-tcha #t l))
-    ((null?    l) (make-ctx-tnul #t l))
-    ((fixnum?  l) (make-ctx-tint #t l))
-    ((boolean? l) (make-ctx-tboo #t l))
-    ((pair?    l) (make-ctx-tpai #t l))
-    ((vector?  l) (make-ctx-tvec #t l))
-    ((string?  l) (make-ctx-tstr #t l))
-    ((symbol?  l) (make-ctx-tsym #t l))
-    ((flonum?  l) (make-ctx-tflo #t l))
-    ((##bignum? l) (make-ctx-tflo #t (exact->inexact l)))
+    ((char?    l)  (make-ctx-tcha #t l))
+    ((null?    l)  (make-ctx-tnul #t l))
+    ((fixnum?  l)  (make-ctx-tint #t l))
+    ((boolean? l)  (make-ctx-tboo #t l))
+    ((pair?    l)  (make-ctx-tpai #t l))
+    ((vector?  l)  (make-ctx-tvec #t l))
+    ((string?  l)  (make-ctx-tstr #t l))
+    ((symbol?  l)  (make-ctx-tsym #t l))
+    ((flonum?  l)  (make-ctx-tflo #t l))
     (else (pp l) (error "Internal error (literal->ctx-type)"))))
 
 ;; CTX IDENTIFIER LOC
@@ -251,27 +270,35 @@
 (define (ctx-fs-update ctx fs)
   (ctx-copy ctx #f #f #f #f #f #f #f #f #f fs))
 
+;; Init a stack for a call ctx or a fn ctx
+;; This function removes the csts not used for versioning from 'stack'
+(define (ctx-init-stack stack add-suffix?)
+  (let ((nstack
+          (map (lambda (type)
+                 (if (and (ctx-type-is-cst type)
+                          (not (const-versioned? type)))
+                     ;; it's a non versioned cst, remove it
+                     (ctx-type-nocst type)
+                     type))
+               stack)))
+    (if add-suffix?
+        (append nstack (list (make-ctx-tclo) (make-ctx-tret)))
+        stack)))
+
 ;;
 ;; CTX INIT CALL
 (define (ctx-init-call ctx nb-args)
-
-  (define (get-stack)
-    (let loop ((head (list-head (ctx-stack ctx) nb-args)))
-      (if (null? head)
-          (list (make-ctx-tclo) (make-ctx-tret))
-          (let ((first (car head)))
-            (cons (ctx-type-nocst first)
-                  (loop (cdr head)))))))
-
   (ctx-copy
     (ctx-init)
-    (get-stack)))
+    (ctx-init-stack (ctx-stack ctx) #t)))
 
 ;;
 ;; CTX INIT RETURN
 (define (ctx-init-return ctx)
   (let ((type (ctx-get-type ctx 0)))
-    (ctx-type-nocst type)))
+    (if (const-versioned? type)
+        type
+        (ctx-type-nocst type))))
 
 ;;
 ;; GENERIC
@@ -382,6 +409,33 @@
         (slot-loc (compute-slot-loc slot-loc)))
 
     (ctx-copy ctx stack slot-loc free-regs free-mems (ctx-init-free-fregs) '() env #f #f fs 0)))
+
+;; This function is *only* used with entry-point & rest lco
+(define (ctx-generic-prologue ctx)
+
+  (define (add-rest ctx)
+    (let* ((last (cdar (ctx-slot-loc ctx)))
+           (lst  (member last args-regs)))
+      (if (or (not lst)
+              (< (length lst) 2))
+          (ctx-push ctx (make-ctx-tunk) (cons 'm (+ (cdr last) 1)))
+          (ctx-push ctx (make-ctx-tunk) (cadr lst)))))
+
+  ;; TODO wip: rename ctx-get-call-args-moves to match this use too ?
+  ;; TODO wip: create stack moves in ctx-get-call-args-moves
+  (let* ((moves (ctx-get-call-args-moves #f ctx (ctx-nb-actual ctx) #f #t))
+         (moves
+           (if (null? (car moves)) ;; no stacked
+               (cdr moves)
+               (error "wip nyi (create stack moves)")))
+         (gctx (ctx-generic ctx))
+         (nrem (- (length (ctx-stack ctx)) (ctx-nb-args ctx) 2)))
+
+    (cons moves
+          (if (< nrem 0)
+              (add-rest gctx)
+              (ctx-pop-n gctx nrem)))))
+
 ;;
 ;; CTX INIT FN
 (define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
@@ -412,7 +466,7 @@
   ;;
   ;; STACK
   (define (init-stack stack free-const)
-    (append (init-local-stack stack)
+    (append (ctx-init-stack stack #f)
             (init-const-stack free-const)
             (list (make-ctx-tclo) (make-ctx-tret))))
 
@@ -424,13 +478,6 @@
                 (init (cdr free-const)))))
     (reverse (init free-const)))
 
-  (define (init-local-stack stack)
-    (let loop ((stack stack))
-      (if (null? stack)
-          '()
-          (cons (ctx-type-nocst (car stack))
-                (loop (cdr stack))))))
-
   ;;
   ;; FREE REGS
   (define (init-free-regs)
@@ -438,7 +485,8 @@
     (define (init stack regs)
       (if (or (null? stack) (null? regs))
           '()
-          (if (ctx-tflo? (car stack))
+          (if (or (ctx-tflo? (car stack))
+                  (const-versioned? (car stack)))
               (init (cdr stack) regs)
               (cons (car regs)
                     (init (cdr stack) (cdr regs))))))
@@ -456,9 +504,11 @@
       (if (or (null? stack)
               (null? fregs))
           fregs
-          (if (ctx-tflo? (car stack))
-              (init (cdr stack) (cdr fregs))
-              (init (cdr stack) fregs))))
+          (if (or (not (ctx-tflo? (car stack)))
+                  (const-versioned? (car stack)))
+              (init (cdr stack) fregs)
+              (init (cdr stack) (cdr fregs)))))
+
     (if stack
         (init stack (ctx-init-free-fregs))
         (ctx-init-free-fregs)))
@@ -549,16 +599,21 @@
         (let ((type (or (and argtypes (car argtypes))
                          (make-ctx-tunk)))
               (types (and argtypes (cdr argtypes))))
-          (if (ctx-tflo? type)
-              (if (null? fregs)
-                  (error "NYI")
-                  (let ((r (init-slot-loc-local (+ slot 1) types regs (cdr fregs) mem)))
-                    (return slot (car fregs) r)))
-              (if (null? regs)
-                  (let ((r (init-slot-loc-local (+ slot 1) types '() fregs (+ mem 1))))
-                    (return slot (cons 'm mem) r))
-                  (let ((r (init-slot-loc-local (+ slot 1) types (cdr regs) fregs mem)))
-                    (return slot (car regs) r)))))))
+
+          (cond ((const-versioned? type)
+                   (let ((r (init-slot-loc-local (+ slot 1) types regs fregs mem)))
+                     (return slot #f r)))
+                ((ctx-tflo? type)
+                   (if (null? fregs)
+                       (error "NYI")
+                       (let ((r (init-slot-loc-local (+ slot 1) types regs (cdr fregs) mem)))
+                         (return slot (car fregs) r))))
+                (else
+                  (if (null? regs)
+                      (let ((r (init-slot-loc-local (+ slot 1) types '() fregs (+ mem 1))))
+                        (return slot (cons 'm mem) r))
+                      (let ((r (init-slot-loc-local (+ slot 1) types (cdr regs) fregs mem)))
+                        (return slot (car regs) r))))))))
 
   (define (init-slot-loc-base nb-free-const)
     (append (reverse (build-list nb-free-const (lambda (n) (cons (+ n 2) #f))))
@@ -1382,52 +1437,61 @@
                                  (ctx-ffs src-ctx)))))
     (cons fs-move (cons ffs-move moves))))
 
-(define (ctx-get-call-args-moves ctx nb-args cloloc)
+(define (ctx-get-call-args-moves ast ctx nb-args cloloc generic-entry?)
 
   (define clomove (and cloloc (cons cloloc '(r . 2))))
 
   (define (get-req-moves curr-idx rem-regs rem-fregs moves pushed)
+
+    (define (next-nothing)
+      (get-req-moves (- curr-idx 1) rem-regs rem-fregs moves pushed))
+    (define (next-float from)
+      (let ((moves (cons (cons from (car rem-fregs)) moves)))
+        (get-req-moves (- curr-idx 1) rem-regs (cdr rem-fregs) moves pushed)))
+    (define (next-other from)
+      (if (null? rem-regs)
+          (get-req-moves (- curr-idx 1) '() rem-fregs moves (cons from pushed))
+          (let ((moves (cons (cons from (car rem-regs)) moves)))
+            (get-req-moves (- curr-idx 1) (cdr rem-regs) rem-fregs moves pushed))))
+
+
     (if (< curr-idx 0)
         (cons (reverse pushed) moves)
         (let* ((type (ctx-get-type ctx curr-idx))
-               (loc (ctx-get-loc ctx curr-idx))
-               (from
-                   (cond ((and (not opt-entry-points)
-                               (ctx-tflo? type))
-                            (if (ctx-type-is-cst type)
-                                (cons 'flbox (cons 'const (ctx-type-cst type)))
-                                (cons 'flbox loc)))
-                         (loc loc)
-                         ((and (ctx-type-is-cst type)
-                               (ctx-tclo? type))
-                            (cons 'constfn (ctx-type-cst type)))
-                         ((ctx-type-is-cst type)
-                            (cons 'const (ctx-type-cst type)))
-                         (else
-                            (error "Internal error")))))
+               (loc (ctx-get-loc ctx curr-idx)))
 
-          (cond ((and (ctx-tflo? type)
-                      (null? rem-fregs))
-                    (error "NYI1"))
-                ((and opt-entry-points
-                      (ctx-tflo? type))
-                    (get-req-moves
-                      (- curr-idx 1)
-                      rem-regs
-                      (cdr rem-fregs)
-                      (cons (cons from (car rem-fregs))
-                            moves)
-                      pushed))
-                ((null? rem-regs)
-                    (get-req-moves (- curr-idx 1) '() rem-fregs moves (cons from pushed)))
-                (else
-                    (get-req-moves
-                      (- curr-idx 1)
-                      (cdr rem-regs)
-                      rem-fregs
-                      (cons (cons from (car rem-regs))
-                            moves)
-                      pushed))))))
+          (cond
+            ;; Type is cst, cst is versioned, and we do not use generic ep
+            ((and opt-entry-points
+                  (const-versioned? type)
+                  (not generic-entry?))
+               (next-nothing))
+            ;; Type is cst
+            ((ctx-type-is-cst type)
+               (cond ((ctx-tclo? type)
+                        (next-other
+                          (cons 'constfn (ctx-type-cst type))))
+                     ((ctx-tflo? type)
+                        (if (or (not opt-entry-points)
+                                generic-entry?)
+                            (next-other
+                              (cons 'flbox (cons 'const (ctx-type-cst type))))
+                            (next-float
+                              (cons 'const (ctx-type-cst type)))))
+                     (else
+                        (next-other
+                          (cons 'const (ctx-type-cst type))))))
+            ;; Type is float !cst
+            ((and (ctx-tflo? type)
+                  (or (not opt-entry-points)
+                      generic-entry?))
+               (next-other
+                 (cons 'flbox loc)))
+            ;; Others
+            (else
+               (if (ctx-tflo? type)
+                   (next-float loc)
+                   (next-other loc)))))))
 
   (let ((pushed/moves (get-req-moves (- nb-args 1) args-regs (ctx-init-free-fregs) '() '())))
 
@@ -1472,7 +1536,9 @@
                  (cond ((and r (eq? (cdr r) 'rtmp))
                           (let ((r (assoc 'rtmp step-real-moves)))
                             (cons (cdr r) (cdr move))))
-                       (r
+                       ((and r
+                             (not (eq? (caar move) 'const))
+                             (not (eq? (caar move) 'constfn)))
                           (cons (cdr r) (cdr move)))
                        (else
                           move))))
@@ -1507,7 +1573,7 @@
                    (req-moves  (set-sub req-moves (list move) '())))
                (cons real-moves
                      (update-req-moves req-moves real-moves))))
-          ;; Case X: src is dst
+          ;; Case 2: src is dst
           ((equal? src dst)
              (step (cons src visited)
                    (set-sub req-moves (list move) '())

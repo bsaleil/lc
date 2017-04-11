@@ -53,6 +53,27 @@
     ,(lambda (args) (set! opt-cr-max (string->number (cadr args)))
                     (cdr args)))
 
+  (--const-vers-types
+    "Select the type of the constants used for interprocedural versioning. (ex. --const-vers-types boo cha str)"
+    ,(lambda (args)
+       ;; TODO: types -> preds
+       (define (end next-args types)
+         (set! opt-cv-preds types)
+         (cons (car args) next-args))
+       (assert opt-const-vers "--const-vers-types needs --opt-const-vers")
+       (let loop ((curr (cdr args))
+                  (types '()))
+         (if (null? curr)
+             (end curr types)
+             (let* ((next  (car curr))
+                    (chars (string->list next)))
+               (if (char=? (car chars) #\-)
+                   (end curr types)
+                   (loop
+                     (cdr curr)
+                     (cons (ctx-string->tpred next)
+                           types))))))))
+
   (--ctime
     "Print compilation time after execution"
     ,(lambda (args) (set! opt-ctime #t) args))
@@ -68,6 +89,10 @@
   (--disable-return-points
       "Disable the use of multiple return points use only one generic return point"
       ,(lambda (args) (set! opt-return-points #f) args))
+
+  (--enable-const-vers
+    "Enable Interprocedural versioning based on constants"
+    ,(lambda (args) (set! opt-const-vers #t) args))
 
   (--enable-cxoverflow-fallback
     "Enable automatic fallback to generic entry/return point when cxtable overflows, default throws an error"
@@ -94,6 +119,11 @@
   (--dump-binary
     "Dump machine code block"
     ,(lambda (args) (set! opt-dump-bin #t)
+                    args))
+
+  (--dump-versions
+    "Dump versions for each lco"
+    ,(lambda (args) (set! opt-dump-versions #t)
                     args))
 
   (--export-locat-info
@@ -314,6 +344,7 @@
                 (analyses-find-global-types! exp-content)
                 (analyses-a-conversion! exp-content)
                 (compute-liveness exp-content)
+
                 ;(pp content))))
                 ;(exec content))))
                 (exec exp-content))))
@@ -381,7 +412,9 @@
   (if opt-export-locat-info
       (export-locat-info))
   (if opt-dump-bin
-      (print-mcb)))
+      (print-mcb))
+  (if opt-dump-versions
+      (print-versions)))
 
 (define (print-ctime)
   (println
@@ -399,6 +432,40 @@
       (print-mcb-h code-addr code-alloc)
       (println ">> Dump written in dump.bin")
       (close-output-port f)))
+
+(define (print-versions)
+  (let loop ((lcos all-lazy-code) (i 0))
+    (if (not (null? lcos))
+        (let ((lco (car lcos)))
+          (if (> (lazy-code-nb-real-versions lco) 0)
+              (let* ((versions (lazy-code-versions lco))
+                     (real-versions (keep cddr (table->list (lazy-code-versions lco)))))
+                (print "#" (##object->serial-number lco) "# ")
+                (for-each (lambda (flag) (print flag ",")) (lazy-code-flags lco))
+                (newline)
+                (let loop2 ((rv real-versions))
+                  (if (not (null? rv))
+                      (let* ((version (car rv))
+                             (ctx (car version))
+                             (stack
+                                 (if (ctx? ctx)
+                                     (ctx-stack ctx)
+                                     ctx)))
+                        (if (null? stack)
+                            (print "EMPTY")
+                            (for-each
+                              (lambda (type)
+                                (if (not (ctx-tret? type))
+                                    (begin
+                                      (print (ctx-type-sym type))
+                                      (if (ctx-type-is-cst type)
+                                          (print "(" (ctx-type-cst type) ") ")
+                                          (print " ")))))
+                              stack))
+                        (newline)
+                        (loop2 (cdr rv)))))))
+          (loop (cdr lcos) (+ i 1))))
+    all-lazy-code))
 
 (define (print-stats)
   ;; Print stats report
@@ -446,7 +513,7 @@
 
 (define (export-locat-info)
 
-  (define restable (make-table))
+  (define restable '())
 
   (define (restable-add locat lco)
     (set! restable
@@ -481,6 +548,10 @@
     (print-array-item "~#versions")
     (print-array-item n))
 
+  (define (format-serial s)
+    (print-array-item "~#serial")
+    (print-array-item s))
+
   (define (format-ctxs versions)
     (define (format-ctx ctx n)
       ;; Ctx id
@@ -494,7 +565,7 @@
               (for-each
                 (lambda (stype)
                   (if (ctx-type-is-cst stype)
-                      (print (ctx-type-cst stype) " ")
+                      (print (ctx-type-sym stype) "(" (ctx-type-cst stype) ") ")
                       (print (ctx-type-sym stype) " ")))
                 (ctx-stack ctx))))))
       ;; Slot loc
@@ -520,6 +591,7 @@
     (let ((n (next-linecol-n lin col)))
       (print "  \"" lin "." col "." n "\"" ": [")
       (format-n-versions (lazy-code-nb-real-versions lco))
+      (format-serial (##object->serial-number lco))
       (format-ctxs (lazy-code-versions lco))
       (println "],")))
 

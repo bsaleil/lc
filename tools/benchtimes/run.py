@@ -21,8 +21,9 @@ class Config:
 
 class System:
 
-    def __init__(self,name,ccmd,eext,ecmd,regexms,regexgc):
+    def __init__(self,name,prefixsuffix,ccmd,eext,ecmd,regexms,regexgc):
         self.name = name
+        self.prefixsuffix = prefixsuffix
         self.ccmd = ccmd # Compilation cmd
         self.eext = eext # Execution extension
         self.ecmd = ecmd # Execution cmd
@@ -54,8 +55,8 @@ class System:
 
         # Copy benchmarks in system tmp dir
         os.makedirs(self.tmpDir)
-        prefixPath = config.prefixPath + '/' + self.name + '.scm'
-        suffixPath = config.suffixPath + '/' + self.name + '.scm'
+        prefixPath = config.prefixPath + '/' + self.prefixsuffix + '.scm'
+        suffixPath = config.suffixPath + '/' + self.prefixsuffix + '.scm'
         # Read prefix
         with open(prefixPath, 'r') as prefixfile, \
              open(suffixPath, 'r') as suffixfile:
@@ -175,45 +176,48 @@ def userWants(str):
 # systems.append(l2)
 
 
-# GC
+def lc_with_options(name,options):
+    opts = ["lazy-comp","{0}","--time"]
+    opts = opts + options
+    return System(name,"LC","",".scm",opts,"(\d+.\d+) ms real time\\n\(","accounting for (\d+) ms real time");
+#
 systems = []
 
-# LC ep only
-l1 = System("LC",
-            "",
-            ".scm",
-            ["lazy-comp","{0}","--time"],
-            "(\d+.\d+) ms real time\\n\(",
-            "accounting for (\d+) ms real time")
+systems.append(lc_with_options("LC5",      ["--max-versions 5"]))
+systems.append(lc_with_options("LC5-bs",   ["--max-versions 5","--enable-const-vers","--const-vers-types boo sym","--enable-cxoverflow-fallback"]))
+systems.append(lc_with_options("LC5-bsv",   ["--max-versions 5","--enable-const-vers","--const-vers-types boo sym voi","--enable-cxoverflow-fallback"]))
+systems.append(lc_with_options("LC5-bsvc",   ["--max-versions 5","--enable-const-vers","--const-vers-types boo sym voi cha","--enable-cxoverflow-fallback"]))
+systems.append(lc_with_options("LC5-bsvcv",   ["--max-versions 5","--enable-const-vers","--const-vers-types boo sym voi cha vec","--enable-cxoverflow-fallback"]))
+systems.append(lc_with_options("LC5-bsvcvs",   ["--max-versions 5","--enable-const-vers","--const-vers-types boo sym voi cha vec str","--enable-cxoverflow-fallback"]))
 
-# l2 = System("LC5-ep",
+systems.append(lc_with_options("LC10",      ["--max-versions 10"]))
+systems.append(lc_with_options("LC10-bs",   ["--max-versions 10","--enable-const-vers","--const-vers-types boo sym","--enable-cxoverflow-fallback"]))
+systems.append(lc_with_options("LC10-bsv",   ["--max-versions 10","--enable-const-vers","--const-vers-types boo sym voi","--enable-cxoverflow-fallback"]))
+systems.append(lc_with_options("LC10-bsvc",   ["--max-versions 10","--enable-const-vers","--const-vers-types boo sym voi cha","--enable-cxoverflow-fallback"]))
+systems.append(lc_with_options("LC10-bsvcv",   ["--max-versions 10","--enable-const-vers","--const-vers-types boo sym voi cha vec","--enable-cxoverflow-fallback"]))
+systems.append(lc_with_options("LC10-bsvcvs",   ["--max-versions 10","--enable-const-vers","--const-vers-types boo sym voi cha vec str","--enable-cxoverflow-fallback"]))
+# systems.append(lc_with_options("LC15",    ["--max-versions 15"]))
+# systems.append(lc_with_options("LC15-boo",["--max-versions 15","--enable-const-vers","--const-vers-types boo","--enable-cxoverflow-fallback"]))
+# systems.append(lc_with_options("LC15-cha",["--max-versions 15","--enable-const-vers","--const-vers-types cha","--enable-cxoverflow-fallback"]))
+# systems.append(lc_with_options("LC15-clo",["--max-versions 15","--enable-const-vers","--const-vers-types clo","--enable-cxoverflow-fallback"]))
+# systems.append(lc_with_options("LC15-str",["--max-versions 15","--enable-const-vers","--const-vers-types str","--enable-cxoverflow-fallback"]))
+# systems.append(lc_with_options("LC15-vec",["--max-versions 15","--enable-const-vers","--const-vers-types vec","--enable-cxoverflow-fallback"]))
+# systems.append(lc_with_options("LC15-nul",["--max-versions 15","--enable-const-vers","--const-vers-types nul","--enable-cxoverflow-fallback"]))
+# systems.append(lc_with_options("LC15-pai",["--max-versions 15","--enable-const-vers","--const-vers-types pai","--enable-cxoverflow-fallback"]))
+# systems.append(lc_with_options("LC15-int",["--max-versions 15","--enable-const-vers","--const-vers-types int","--enable-cxoverflow-fallback"]))
+# systems.append(lc_with_options("LC15-flo",["--max-versions 15","--enable-const-vers","--const-vers-types flo","--enable-cxoverflow-fallback"]))
+# systems.append(lc_with_options("LC15-voi",["--max-versions 15","--enable-const-vers","--const-vers-types voi","--enable-cxoverflow-fallback"]))
+# systems.append(lc_with_options("LC15-sym",["--max-versions 15","--enable-const-vers","--const-vers-types sym","--enable-cxoverflow-fallback"]))
+
+# # LC
+# l1 = System("LC",
+#             "LC", # prefix/suffix
 #             "",
 #             ".scm",
-#             ["lazy-comp","{0}","--time","--disable-return-points","--max-versions 5"],
+#             ["lazy-comp","{0}","--time","--max-versions 5"],
 #             "(\d+.\d+) ms real time\\n\(",
 #             "accounting for (\d+) ms real time")
-#
-# # Gambit not safe
-# g1 = System("GambitNS",
-#             "gsc -:m8000 -exe -o {0}.o1 {0}",".o1",
-#             ["{0}"],
-#             "(\d+) ms real time\\n",
-#             "accounting for (\d+) ms real time")
-#
-# # LC rp only
-# l3 = System("LCi-rp",
-#             "",
-#             ".scm",
-#             ["lazy-comp","{0}","--time","--disable-entry-points"],
-#             "(\d+.\d+) ms real time\\n\(",
-#             "accounting for (\d+) ms real time")
-#
-# l4 = System("LC5-rp",
-#             "",
-#             ".scm",
-#             ["lazy-comp","{0}","--time","--disable-entry-points","--max-versions 5"],
-#             "(\d+.\d+) ms real time\\n\(",
-#             "accounting for (\d+) ms real time")
+
 #
 # # Gambit safe
 # g2 = System("GambitS",
@@ -223,47 +227,6 @@ l1 = System("LC",
 #             "(\d+) ms real time\\n",
 #             "accounting for (\d+) ms real time")
 #
-# # LC ep & rp
-# l5 = System("LCi-ep-rp",
-#             "",
-#             ".scm",
-#             ["lazy-comp","{0}","--time"],
-#             "(\d+.\d+) ms real time\\n\(",
-#             "accounting for (\d+) ms real time")
-#
-# l6 = System("LC5-ep-rp",
-#             "",
-#             ".scm",
-#             ["lazy-comp","{0}","--time","--max-versions 5"],
-#             "(\d+.\d+) ms real time\\n\(",
-#             "accounting for (\d+) ms real time")
-#
-# # LC no interp
-# l7 = System("LCi",
-#             "",
-#             ".scm",
-#             ["lazy-comp","{0}","--time","--disable-entry-points","--disable-return-points"],
-#             "(\d+.\d+) ms real time\\n\(",
-#             "accounting for (\d+) ms real time")
-#
-# l8 = System("LC5",
-#             "",
-#             ".scm",
-#             ["lazy-comp","{0}","--time","--max-versions 5","--disable-entry-points","--disable-return-points"],
-#             "(\d+.\d+) ms real time\\n\(",
-#             "accounting for (\d+) ms real time")
-
-systems.append(l1)
-# systems.append(l2)
-# systems.append(g1)
-# systems.append(l3)
-# systems.append(l4)
-# systems.append(g2)
-# systems.append(l5)
-# systems.append(l6)
-# systems.append(l7)
-# systems.append(l8)
-
 
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))
@@ -294,10 +257,19 @@ else:
     runner.compile()
     runner.execute()
 
+# Print header line
+print("benchmark;",end='')
 for system in systems:
-    print('SYSTEM ' + system.name)
-    keys = sorted(list(system.times.keys()))
-    for key in keys:
-        filename = os.path.splitext(os.path.basename(key))[0]
-        filename = os.path.splitext(filename)[0]
-        print("{0} {1}".format(filename,system.times[key]))
+    print(system.name,end=';')
+print("")
+# Print times
+for benchmark in config.benchmarks:
+    # Get and print benchmark name
+    benchname = os.path.splitext(os.path.basename(benchmark))[0]
+    print(benchname,end=';')
+    # For each system, print time
+    for system in systems:
+        key = system.tmpDir + "/" + os.path.basename(benchmark) + system.eext
+        assert(key in system.times.keys())
+        print(system.times[key],end=';')
+    print("");

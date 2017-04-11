@@ -1,6 +1,7 @@
 *.o1
 /tools/graphs.pdf
 /tools/benchtimes/result
+/tools/locatview/locat.js
 lazy-comp
 *~
 out

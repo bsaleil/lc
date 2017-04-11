@@ -151,29 +151,29 @@
   (table-ref asc-entry-stub cctable #f))
 
 ;;
-;; (entry-obj . idx) -> label list
-;; Associate a list of label to a pair entry-obj/idx
+;; (entry-obj . stack) -> label list
+;; Associate a list of label to a pair entry-obj/stack
 ;; This structure is used to store all addresses where the compiler generated a
 ;; direct jump to a stub.
-;; When the stub generate a version stored in this entry object
+;; When the stub generates a version stored in this entry object
 ;; it patches all stored labels and clear the table entry
 ;;
-;; idx is the ctx idx if using cctable, 0 otherwise
+;; stack is the call stack if using cctable, '() otherwise
 (define asc-entry-load
   (make-table
     test: (lambda (k1 k2)
-            (and (eq? (car k1) (car k2))     ;; eq? on cctables
-                 (=   (cdr k1) (cdr k2)))))) ;; = on idx
+            (and (eq?    (car k1) (car k2))     ;; eq? on cctables
+                 (equal? (cdr k1) (cdr k2)))))) ;; = on stacks
 ;; Add an entry to the table
-(define (asc-entry-load-add entry-obj ctxidx label)
-  (let ((r (table-ref asc-entry-load (cons entry-obj ctxidx) '())))
-    (table-set! asc-entry-load (cons entry-obj ctxidx) (cons label r))))
-;; Get all labels from entry object and ctxidx
-(define (asc-entry-load-get entry-obj ctxidx)
-  (table-ref asc-entry-load (cons entry-obj ctxidx) '()))
-;; Clear the entry for the entry-object/ctxidx
-(define (asc-entry-load-clear entry-obj ctxidx)
-  (table-set! asc-entry-load (cons entry-obj ctxidx) '())) ;; TODO: remove table entry
+(define (asc-entry-load-add entry-obj stack label)
+  (let ((r (table-ref asc-entry-load (cons entry-obj stack) '())))
+    (table-set! asc-entry-load (cons entry-obj stack) (cons label r))))
+;; Get all labels from entry object and stack
+(define (asc-entry-load-get entry-obj stack)
+  (table-ref asc-entry-load (cons entry-obj stack) '()))
+;; Clear the entry for the entry-object/stack
+(define (asc-entry-load-clear entry-obj stack)
+  (table-set! asc-entry-load (cons entry-obj stack) '())) ;; TODO: remove table entry
 
 ;; Global variables information
 (define nb-globals 0)
@@ -199,7 +199,7 @@
   (table-set! asc-entryobj-globalclo entry-obj-loc clo-ptr))
 
 ;;
-;; Associate an ep entry object to an ast (eq? on ast)
+;; Associate an fn-num & ep entry object to an ast (eq? on ast)
 (define asc-ast-epentry (make-table test: eq?))
 (define (asc-ast-epentry-get ast)
   (table-ref asc-ast-epentry ast #f))
@@ -264,27 +264,27 @@
     (cdr                 ,cst-cdr       #f                ,codegen-p-cxr                #f       ,ATX_UNK 1 ,ATX_PAI                   )
     (cons                #f             #f                ,codegen-p-cons               #t       ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL          )
     (eq?                 ,cst-eq?       ,lco-p-eq?        #f                            #f       ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          )
-    (char=?              ,dummy-cst-all ,lco-p-char=?     #f                            #f       ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA          )
+    (char=?              ,cst-char=?    ,lco-p-eq?        #f                            #f       ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA          )
     (quotient            ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (modulo              ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
-    (remainder           ,dummy-cst-all ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
+    (remainder           ,cst-remainder ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (zero?               ,dummy-cst-all ,lco-p-zero?      #f                            #f       ,ATX_BOO 1 ,ATX_NUM                   )
     (not                 ,cst-not       ,lco-p-not        ,codegen-p-not                #f       ,ATX_BOO 1 ,ATX_ALL                   )
     (set-car!            #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (set-cdr!            #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (vector-length       ,dummy-cst-all #f                ,codegen-p-vector-length      #f       ,ATX_INT 1 ,ATX_VEC                   )
-    (vector-ref          ,dummy-cst-all #f                ,codegen-p-vector-ref         #f       ,ATX_UNK 2 ,ATX_VEC ,ATX_INT          )
-    (char->integer       ,dummy-cst-all #f                ,codegen-p-ch<->int           #f       ,ATX_INT 1 ,ATX_CHA                   )
+    (vector-ref          ,cst-vec-ref    #f                ,codegen-p-vector-ref         #f       ,ATX_UNK 2 ,ATX_VEC ,ATX_INT          )
+    (char->integer       ,cst-char->int #f                ,codegen-p-ch<->int           #f       ,ATX_INT 1 ,ATX_CHA                   )
     (integer->char       ,cst-int->char #f                ,codegen-p-ch<->int           #f       ,ATX_CHA 1 ,ATX_INT                   )
-    (string-ref          ,dummy-cst-all #f                ,codegen-p-string-ref         #f       ,ATX_CHA 2 ,ATX_STR ,ATX_INT          )
+    (string-ref          ,cst-str-ref   #f                ,codegen-p-string-ref         #f       ,ATX_CHA 2 ,ATX_STR ,ATX_INT          )
     (string-set!         #f             #f                ,codegen-p-string-set!        #t       ,ATX_VOI 3 ,ATX_STR ,ATX_INT ,ATX_CHA )
     (vector-set!         #f             #f                ,codegen-p-vector-set!        #f       ,ATX_VOI 3 ,ATX_VEC ,ATX_INT ,ATX_ALL )
-    (string-length       ,dummy-cst-all #f                ,codegen-p-string-length      #f       ,ATX_INT 1 ,ATX_STR                   )
+    (string-length       ,cst-str-len   #f                ,codegen-p-string-length      #f       ,ATX_INT 1 ,ATX_STR                   )
     (exit                #f             #f                 #f                           #f       ,ATX_VOI 0                            )
     (make-vector         #f             #f                ,codegen-p-make-vector        #t       ,ATX_VEC 2 ,ATX_INT ,ATX_ALL          )
     (make-string         #f             #f                ,codegen-p-make-string        #f       ,ATX_STR 2 ,ATX_INT ,ATX_CHA          )
     (eof-object?         ,dummy-cst-all ,lco-p-eof-obj    ,codegen-p-eof-object?        #f       ,ATX_BOO 1 ,ATX_ALL                   )
-    (symbol->string      ,dummy-cst-all #f                ,codegen-p-symbol->string     #f       ,ATX_STR 1 ,ATX_SYM                   )
+    (symbol->string      ,cst-sym->str  #f                ,codegen-p-symbol->string     #f       ,ATX_STR 1 ,ATX_SYM                   )
     (current-output-port #f             ,lco-p-cur-x-port #f                            #f       ,ATX_OPO 0                            )
     (current-input-port  #f             ,lco-p-cur-x-port #f                            #f       ,ATX_IPO 0                            )
     (number?             ,cst-number?   ,lco-p-number?    #f                            #f       ,ATX_BOO 1 ,ATX_ALL                   )
@@ -493,7 +493,7 @@
 
     (if (and (ctx-type-is-cst type)
              reg)
-        (error "NYI")) ;; TODO: Free a register only if type is not a cst
+        (error "NYI d")) ;; TODO: Free a register only if type is not a cst
     (jump-to-version cgc succ (ctx-push ctx type reg (car local)))))
 
 (define (gen-get-globalvar cgc ast ctx global succ)
@@ -617,6 +617,7 @@
 (define (get-lazy-generic-prologue ast succ rest-param nb-formal)
   (make-lazy-code-entry
     #f
+    rest-param
     (lambda (cgc ctx)
       (let ((nb-args (ctx-nb-args ctx))
             (label-next (asm-make-label #f (new-sym 'label-next))))
@@ -663,7 +664,9 @@
 
   (make-lazy-code-entry
     #f
+    rest-param
     (lambda (cgc ctx)
+
       (let* ((nb-actual (ctx-nb-actual ctx))
              (nb-formal (ctx-nb-args ctx)))
 
@@ -679,23 +682,36 @@
               ;; rest AND actual > formal
               ;; TODO merge > and == (?)
               ((and rest-param (> nb-actual (- nb-formal 1)))
-
                  (set! ctx (gen-drop-float cgc ctx ast 0 (- nb-actual (- nb-formal 1))))
 
                  (let* ((nb-extra (- nb-actual (- nb-formal 1)))
-                        (rloc     (ctx-get-loc ctx (- nb-extra 1))))
+                        (rloc
+                          (let ((r (ctx-get-loc ctx (- nb-extra 1))))
+                            (or r ;; loc exists
+                                ;; Else, get a free register
+                                (mlet ((moves/reg/nctx (ctx-get-free-reg ast ctx succ 0)))
+                                  (apply-moves cgc nctx moves)
+                                  (set! ctx nctx)
+                                  reg))))
+                        (locs
+                          (let loop ((idx (- nb-extra 1))
+                                     (locs '()))
+                            (if (< idx 0)
+                                locs
+                                (let ((loc (ctx-get-loc ctx idx)))
+                                  (if loc
+                                      (loop (- idx 1) (cons loc locs))
+                                      (let* ((type (ctx-get-type ctx idx))
+                                             (cst (ctx-type-cst type)))
+                                        (if (ctx-tclo? type)
+                                            (loop (- idx 1) (cons (cons 'cf cst) locs))
+                                            (loop (- idx 1) (cons (cons 'c cst) locs))))))))))
 
-                   (let loop ((idx (- nb-extra 1))
-                              (locs '()))
-                     (if (< idx 0)
-                         (codegen-prologue-rest> cgc (ctx-fs ctx) (ctx-ffs ctx) locs rloc)
-                         (let ((loc (ctx-get-loc ctx idx)))
-                           (loop (- idx 1) (cons loc locs)))))
-
-                   (let* ((ctx (ctx-pop-n ctx (- nb-extra 1)))
-                          (ctx (ctx-set-type ctx 0 (make-ctx-tpai) #f)))
-
-                     (jump-to-version cgc succ ctx))))
+                   (let* ((nctx (ctx-pop-n ctx (- nb-extra 1)))
+                          (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f))
+                          (nctx (ctx-set-loc nctx (stack-idx-to-slot nctx 0) rloc)))
+                     (codegen-prologue-rest> cgc (ctx-fs ctx) (ctx-ffs ctx) locs rloc)
+                     (jump-to-version cgc succ nctx))))
               ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
               ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
                (gen-error cgc ERR_WRONG_NUM_ARGS))
@@ -707,34 +723,49 @@
 ;; Create and return a function return lco
 (define (get-lazy-return)
 
-  (define lazy-ret
-    (make-lazy-code-ret ;; Lazy-code with 'ret flag
-      #f
-      (lambda (cgc ctx)
+  (define (gen-return-rp cgc ctx)
+    (set! ctx (drop-cst-value cgc #f ctx 0))
+    (let* ((fs (ctx-fs ctx))
+           (ffs (ctx-ffs ctx))
+           ;; Return value loc
+           (type-ret (ctx-get-type ctx 0))
+           ;(type-arg (ctx-identifier-type ctx (cdr (ctx-ident ctx 'n0))))
+           (lret     (ctx-get-loc ctx 0))
+           ;; Return address object loc
+           (laddr (ctx-get-retobj-loc ctx)))
+      (codegen-return-rp cgc fs ffs fs laddr lret (ctx-tflo? type-ret))))
+
+  (define (gen-return-cr cgc ctx)
+
+    (let ((cridx (crtable-get-idx (ctx-init-return ctx))))
+
+        (assert (not (and (not cridx)
+                          (ctx-tflo? (ctx-get-type ctx 0))))
+                "NYI case, cr overflow and ret value is a tflo")
+
+        (if (or (not (const-versioned? (ctx-get-type ctx 0)))
+                (not cridx))
+            (set! ctx (drop-cst-value cgc #f ctx 0)))
 
         (let* ((fs (ctx-fs ctx))
                (ffs (ctx-ffs ctx))
                ;; Return value loc
                (type-ret (ctx-get-type ctx 0))
+               ;(type-arg (ctx-identifier-type ctx (cdr (ctx-ident ctx 'n0))))
                (lret     (ctx-get-loc ctx 0))
                ;; Return address object loc
-               (laddr (ctx-get-retobj-loc ctx)))
+               (laddr (ctx-get-retobj-loc ctx))
+               ;;
+               (cst? (ctx-type-is-cst type-ret)))
 
-          (assert (not (ctx-type-is-cst type-ret)) "Internal error")
+          (codegen-return-cr cgc fs ffs fs laddr lret cridx (ctx-tflo? type-ret) cst?))))
 
-          ;; Gen return
+      (make-lazy-code-ret ;; Lazy-code with 'ret flag
+        #f
+        (lambda (cgc ctx)
           (if opt-return-points
-              (let* ((cridx (crtable-get-idx (ctx-init-return ctx))))
-                (if (not cridx)
-                    (error "NYI"))
-                (codegen-return-cr cgc fs ffs fs laddr lret cridx (ctx-tflo? type-ret)))
-              (codegen-return-rp cgc fs ffs fs laddr lret (ctx-tflo? type-ret)))))))
-  ;; TODO: write a generic lazy-drop function (this function is used by multiple mlc-*)
-  (make-lazy-code-ret
-    #f
-    (lambda (cgc ctx)
-      (let ((ctx (drop-cst-value cgc #f ctx 0)))
-        (jump-to-version cgc lazy-ret ctx)))))
+              (gen-return-cr cgc ctx)
+              (gen-return-rp cgc ctx)))))
 
 ;;
 ;; Create fn entry stub
@@ -752,36 +783,42 @@
   (define lazy-ret (get-lazy-return))
   ;; Lazy lambda body
   (define lazy-body (gen-ast (caddr ast) lazy-ret))
+
   ;; Lazy function prologue
   (define lazy-prologue (get-lazy-prologue ast lazy-body rest-param))
   ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
   (define lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params)))
 
-  (add-fn-callback
-    1
-    fn-num
-    (lambda (stack ret-addr selector closure)
+  (list
+    lazy-prologue
+    (add-fn-callback
+      1
+      fn-num
+      (lambda (stack ret-addr selector closure)
 
-      (cond ;; CASE 1 - Use entry point (no cctable)
-            ((eq? opt-entry-points #f)
-               (fn-generator closure lazy-prologue-gen #f #f))
-            ;; CASE 2 - Function is called using generic entry point
-            ((= selector 1)
-               (fn-generator #f lazy-prologue-gen #f #t))
-            ;; CASE 3 - Use multiple entry points
-            (else
-               (fn-generator #f lazy-prologue stack #f))))))
+        (cond ;; CASE 1 - Use entry point (no cctable)
+              ((eq? opt-entry-points #f)
+                 (fn-generator closure lazy-prologue-gen #f #f #f))
+              ;; CASE 2 - Function is called using generic entry point
+              ((= selector 1)
+                 (fn-generator #f lazy-prologue-gen #f #t #f))
+              ;; CASE 3 - Use multiple entry points
+              (else
+                 (fn-generator #f lazy-prologue stack #f lazy-prologue-gen)))))))
 
-(define (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params bound-id)
+(define (get-entry-obj ast ctx fvars-imm fvars-late all-params bound-id)
+
+  (define fn-num #f)
+
   ;; Generator used to generate function code waiting for runtime data
   ;; First create function entry ctx
   ;; Then generate function prologue code
-  (define (fn-generator closure prologue stack generic?)
+  (define (fn-generator closure prologue stack generic? fallback-prologue)
     ;; In case the limit in the number of version is reached, we give #f to ctx-init-fn to get a generic ctx
     ;; but we still want to patch cctable at index corresponding to stack
-    (let* ((ctx-stack (if generic? #f stack))
-           (ctx (ctx-init-fn ctx-stack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id)))
-      (gen-version-fn ast closure entry-obj prologue ctx stack generic?)))
+    (let* ((ctxstack (if generic? #f stack))
+           (ctx (ctx-init-fn ctxstack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id)))
+      (gen-version-fn ast closure entry-obj prologue ctx stack generic? fallback-prologue)))
 
   ;; ---------------------------------------------------------------------------
   ;; Return 'entry-obj' (entry object)
@@ -790,41 +827,46 @@
   (define (get-entry-obj-cc)
     (let* ((r (get-cctable ast ctx fvars-imm fvars-late))
            (new? (car r))
-           (cctable (cdr r)))
+           (cctable (cadr r)))
+      (set! fn-num (cddr r))
       (if new?
-          (let* (;; Create stub only if cctable is new
-                 (stub-labels  (create-fn-stub ast fn-num fn-generator))
+          (mlet (;; Create stub only if cctable is new
+                 (lco/stub-labels  (create-fn-stub ast fn-num fn-generator))
                  (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
                  (generic-addr (asm-label-pos (list-ref stub-labels 1))))
+            (asc-globalfn-entry-add fn-num (cons cctable (cons lco stub-addr)))
             (asc-entry-stub-add cctable generic-addr stub-addr)
             (cctable-fill cctable stub-addr generic-addr)))
-      cctable))
+      (values fn-num cctable)))
 
   ;; In the case of -ep, entry object is the still vector of size 1 that contain the single entry point
   (define (get-entry-obj-ep)
     (let ((existing (asc-ast-epentry-get ast)))
       (if existing
           ;; An entry points object already exists for this ast, use it!
-          existing
+          (values (car existing) (cdr existing))
           ;; TODO: we are supposed to use only one e.p. with -ep objects
           ;;       use a max-selector of 0 in create-fn-stub, and use only one -addr
-          (let* (;; Create stub
-                 (stub-labels  (create-fn-stub ast fn-num fn-generator))
+          (mlet (;; Create stub
+                 (fn-num       (new-fn-num))
+                 (lco/stub-labels  (create-fn-stub ast fn-num fn-generator))
                  (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
                  (generic-addr (asm-label-pos (list-ref stub-labels 1)))
-                 (entryvec (get-entry-points-loc ast stub-addr)))
+                 (entryvec     (get-entry-points-loc ast stub-addr)))
+            (asc-globalfn-entry-add fn-num (cons entryvec (cons lco stub-addr)))
             (asc-entry-stub-add entryvec generic-addr stub-addr)
-            (asc-ast-epentry-add ast entryvec)
-            entryvec))))
+            (asc-ast-epentry-add ast (cons fn-num entryvec))
+            (values fn-num entryvec)))))
 
   (define entry-obj #f)
 
-  (set! entry-obj
+  (call-with-values
     (if opt-entry-points
-        (get-entry-obj-cc)
-        (get-entry-obj-ep)))
-
-  entry-obj)
+        get-entry-obj-cc
+        get-entry-obj-ep)
+    (lambda (fn-num obj)
+      (set! entry-obj obj)
+      (values fn-num entry-obj))))
 
 
 ;;
@@ -834,16 +876,10 @@
   ;; Flatten list of param (include rest param)
   (define all-params (flatten (cadr ast)))
 
-  (letrec (;; Closure unique number
-           (fn-num (new-fn-num))
-           (entry-obj (get-entry-obj ast ctx fn-num free '() all-params #f))
-           (entry-obj-loc (- (obj-encoding entry-obj) 1)))
-
-      ;; Add association fn-num -> entry point
-      (asc-globalfn-entry-add fn-num entry-obj)
-
-      ;; Return lambda identity
-      fn-num))
+  (call-with-values
+    (lambda () (get-entry-obj ast ctx free '() all-params #f))
+    (lambda (fn-num entry-obj)
+      fn-num)))
 
 ;;
 ;; Init non constant lambda
@@ -852,15 +888,10 @@
   ;; Flatten list of param (include rest param)
   (define all-params (flatten (cadr ast)))
 
-  (letrec (;; Closure unique number
-           (fn-num (new-fn-num))
-           (entry-obj (get-entry-obj ast ctx fn-num fvars-imm fvars-late all-params bound-id))
-           (entry-obj-loc (- (obj-encoding entry-obj) 1)))
-
-      ;; Add association fn-num -> entry point
-      (asc-globalfn-entry-add fn-num entry-obj)
-
-      (list fn-num entry-obj)))
+  (call-with-values
+    (lambda () (get-entry-obj ast ctx fvars-imm fvars-late all-params bound-id))
+    (lambda (fn-num entry-obj)
+      (list fn-num entry-obj))))
 
 ;; Compute free var sets for given lambda ast
 ;; return list (cst imm late) with:
@@ -1703,13 +1734,6 @@
             (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (literal->ctx-type #f) #f)))))))
 
 ;;
-;; Special primitive 'char=?'
-(define (lco-p-char=? ast op succ)
-  (let ((node (atom-node-make 'eq?)))
-    (gen-ast (cons node (cdr ast))
-             succ)))
-
-;;
 ;; Special primitives 'quotient', 'modulo', 'remainder'
 (define (lco-p-binop ast op succ)
   (make-lazy-code
@@ -1780,7 +1804,7 @@
              (rcst? (ctx-type-is-cst typer))
              (if-cond? (member 'cond (lazy-code-flags succ))))
         (cond ((and lcst? rcst? if-cond?)
-                 (error "NYI"))
+                 (error "NYI a"))
               ((and lcst? rcst?)
                  (if (or (ctx-tclo? typel)
                          (ctx-tclo? typer))
@@ -1963,7 +1987,7 @@
           (if (and (not opt-entry-points) fn-id-inf (car fn-id-inf))
               (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f)))
               (x86-mov cgc (x86-rsi) (x86-rax))) ;; Move closure in closure reg
-          (gen-call-sequence ast cgc #f #f (and fn-id-inf (cdr fn-id-inf))))))))
+          (gen-call-sequence ast cgc #f #f #f (and fn-id-inf (cdr fn-id-inf))))))))
 
 (define (mlc-primitive-d prim ast succ)
 
@@ -2098,7 +2122,8 @@
 
 ;; NYI cst function
 (define (dummy-cst-all cgc succ op ctx csts)
-  (error "NYI"))
+  (pp op)
+  (error "NYI dummy-cst-all"))
 
 (define-macro (cst-prim-n pop-n compute-cst)
   `(lambda (cgc succ op ctx csts)
@@ -2114,7 +2139,10 @@
 (define cst-car       (cst-prim-1 (lambda (cst) (car (ctx-type-cst cst)))))
 (define cst-cdr       (cst-prim-1 (lambda (cst) (cdr (ctx-type-cst cst)))))
 (define cst-not       (cst-prim-1 (lambda (cst) (not (ctx-type-cst cst)))))
+(define cst-char->int (cst-prim-1 (lambda (cst) (char->integer (ctx-type-cst cst)))))
 (define cst-int->char (cst-prim-1 (lambda (cst) (integer->char (ctx-type-cst cst)))))
+(define cst-str-len   (cst-prim-1 (lambda (cst) (string-length (ctx-type-cst cst)))))
+(define cst-sym->str  (cst-prim-1 (lambda (cst) (symbol->string (ctx-type-cst cst)))))
 (define cst-number?   (cst-prim-1 (lambda (cst)
                                     (and (not     (ctx-tclo?    cst))
                                          (number? (ctx-type-cst cst))))))
@@ -2126,11 +2154,32 @@
                      (not (ctx-tclo? cst2))
                      (eq? (ctx-type-cst cst1)
                           (ctx-type-cst cst2))))))
+(define cst-char=?
+  (cst-prim-2 (lambda (cst1 cst2)
+                (char=? (ctx-type-cst cst1)
+                        (ctx-type-cst cst2)))))
 (define cst-binop
   (cst-prim-2 (lambda (cst1 cst2)
                 (eval (list op
                             (ctx-type-cst cst1)
                             (ctx-type-cst cst2))))))
+
+(define cst-remainder
+  (cst-prim-2 (lambda (cst1 cst2)
+                (eval (remainder (ctx-type-cst cst1)
+                                 (ctx-type-cst cst2))))))
+
+(define cst-vec-ref
+  (cst-prim-2 (lambda (cst1 cst2)
+                (vector-ref
+                  (ctx-type-cst cst1)
+                  (ctx-type-cst cst2)))))
+
+(define cst-str-ref
+  (cst-prim-2 (lambda (cst1 cst2)
+                (string-ref
+                  (ctx-type-cst cst1)
+                  (ctx-type-cst cst2)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Branches
@@ -2332,10 +2381,10 @@
     (codegen-load-closure cgc fs ffs loc)))
 
 ;; Move args in regs or mem following calling convention
-(define (call-prep-args cgc ctx ast nbargs const-fn)
+(define (call-prep-args cgc ctx ast nbargs const-fn generic-entry?)
 
   (let* ((cloloc (if const-fn #f (ctx-get-loc ctx nbargs)))
-         (stackp/moves (ctx-get-call-args-moves ctx nbargs cloloc))
+         (stackp/moves (ctx-get-call-args-moves ast ctx nbargs cloloc generic-entry?))
          (stackp (car stackp/moves))
          (moves (cdr stackp/moves)))
 
@@ -2345,7 +2394,7 @@
           (set! ctx (ctx-fs-update ctx fs))
           (begin
             (cond ((eq? (caar locs) 'constfn)
-                     (let ((entry-obj (asc-globalfn-entry-get (cdar locs))))
+                     (let ((entry-obj (car (asc-globalfn-entry-get (cdar locs)))))
                        (gen-closure cgc 'tmp #f entry-obj '())
                        (x86-upush cgc (codegen-reg-to-x86reg 'tmp))))
                   ((eq? (caar locs) 'const)
@@ -2379,15 +2428,15 @@
 ;; Shift args and closure for tail call
 ;; nb-nfl-args is the number of non flonum arguments
 ;; nb-fl-args  is the number of flonum arguments
-(define (call-tail-shift cgc ctx ast tail? nb-nfl-args nb-fl-args)
+(define (call-tail-shift cgc ctx ast tail? nb-actual-args)
 
   ;; r11 is available because it's the ctx register
   (if tail?
       (let ((fs  (ctx-fs ctx))
             (ffs (ctx-ffs ctx))
             (nshift
-              (if (> (- nb-nfl-args (length args-regs)) 0)
-                  (- nb-nfl-args (length args-regs))
+              (if (> (- nb-actual-args (length args-regs)) 0)
+                  (- nb-actual-args (length args-regs))
                   0)))
         (let loop ((curr (- nshift 1)))
           (if (>= curr 0)
@@ -2423,39 +2472,50 @@
              #f
              (lambda (cgc ctx)
 
+
                ;; Handle const fn
                (let ((type (ctx-get-type ctx (length args))))
                  (if (ctx-type-is-cst type)
                      (set! fn-id-inf (cons #t (ctx-type-cst type)))))
 
-               ;; Save used registers, generate and push continuation stub
-               (set! ctx (call-save/cont cgc ctx ast succ tail? (+ (length args) 1) #f))
 
-               ;; Move args to regs or stack following calling convention
-               (set! ctx (call-prep-args cgc ctx ast (length args) (and fn-id-inf (car fn-id-inf))))
 
-               ;; Shift args and closure for tail call
-               (let* ((nargs (length args))
-                      (nfargs
-                        (if (not opt-entry-points)
-                            0
-                            (let loop ((idx 0) (n 0))
-                              (if (= idx nargs)
-                                  n
-                                  (let ((type (ctx-get-type ctx idx)))
-                                    (if (ctx-tflo? type)
-                                        (loop (+ idx 1) (+ n 1))
-                                        (loop (+ idx 1) n))))))))
-                 (if (> nfargs (length regalloc-fregs))
-                     (error "NYI")) ;; Fl args that are on the pstack need to be shifted
-                 (call-tail-shift cgc ctx ast tail? (- nargs nfargs) nfargs))
+               (let* ((nb-args (length args))
+                      (call-ctx (ctx-init-call ctx nb-args))
+                      (cctable-idx
+                        (if opt-entry-points
+                            (cctable-get-idx (list-head (ctx-stack call-ctx) nb-args))
+                            #f))
+                      (generic-entry? (and opt-entry-points (not cctable-idx))))
 
-               ;; Generate call sequence
-               ;; Build call ctx
-               (let ((call-ctx (ctx-init-call ctx (length (cdr ast)))))
-                 (gen-call-sequence ast cgc call-ctx (length args) (and fn-id-inf (cdr fn-id-inf)))))))
-         ;; Lazy code object to build the continuation
-         (lazy-tail-operator (check-types (list ATX_CLO) (list (car ast)) lazy-call ast)))
+                 ;; Save used registers, generate and push continuation stub
+                 (set! ctx (call-save/cont cgc ctx ast succ tail? (+ nb-args 1) #f))
+
+                 ;; Move args to regs or stack following calling convention
+                 (set! ctx (call-prep-args cgc ctx ast nb-args (and fn-id-inf (car fn-id-inf)) generic-entry?))
+
+                 ;; Shift args and closure for tail call
+                 (mlet ((nfargs/ncstargs
+                          (if (or (not opt-entry-points)
+                                  generic-entry?)
+                              (list 0 0)
+                              (let loop ((idx 0) (nf 0) (ncst 0))
+                                (if (= idx nb-args)
+                                    (list nf ncst)
+                                    (let ((type (ctx-get-type ctx idx)))
+                                      (cond ((const-versioned? type)
+                                               (loop (+ idx 1) nf (+ ncst 1)))
+                                            ((ctx-tflo? type)
+                                               (loop (+ idx 1) (+ nf 1) ncst))
+                                            (else
+                                               (loop (+ idx 1) nf ncst)))))))))
+                   (if (> nfargs (length regalloc-fregs))
+                       (error "NYI c")) ;; Fl args that are on the pstack need to be shifted
+
+                   (call-tail-shift cgc ctx ast tail? (- nb-args nfargs ncstargs)))
+
+                 ;; Generate call sequence
+                 (gen-call-sequence ast cgc call-ctx cctable-idx nb-args (and fn-id-inf (cdr fn-id-inf))))))))
 
     ;; Gen and check types of args
     (make-lazy-code
@@ -2529,24 +2589,32 @@
          (stub-labels
            (add-cont-callback
              cgc
-             0
+             1
              (lambda (ret-addr selector type table)
 
                    ;;
-                   (let* ((args (cdr ast))
+                   (let* ((generic? (not type))
+                          (type (or type (make-ctx-tunk)))
+                          (args (cdr ast))
                           (ctx
                             (if apply?
                                 (ctx-pop-n ctx 2) ;; Pop operator and args
-                                (ctx-pop-n ctx (+ (length args) 1))))) ;; Remove closure and args from virtual stack
+                                (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
+                          (reg
+                            (cond ((ctx-type-is-cst type) #f)
+                                  ((ctx-tflo? type)       return-freg)
+                                  (else                   return-reg))))
 
                      (gen-version-continuation-cr
                        lazy-continuation
-                       (ctx-push ctx type (if (ctx-tflo? type) return-freg return-reg))
+                       (ctx-push ctx type reg)
                        type
-                       table)))))
+                       table
+                       generic?)))))
          ;; CRtable
-         (stub-addr (vector-ref (list-ref stub-labels 0) 1))
-         (crtable (get-crtable ast ctx stub-addr))
+         (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
+         (generic-addr (asm-label-pos (list-ref stub-labels 1)))
+         (crtable (get-crtable ast ctx stub-addr generic-addr))
          (crtable-loc (- (obj-encoding crtable) 1)))
 
     ;; Generate code
@@ -2554,58 +2622,42 @@
 
 ;; Gen call sequence (call instructions)
 ;; fn-num is fn identifier or #f
-(define (gen-call-sequence ast cgc call-ctx nb-args fn-num)
+(define (gen-call-sequence ast cgc call-ctx cc-idx nb-args fn-num)
 
-  (define entry-obj (and fn-num (asc-globalfn-entry-get fn-num)))
+  (define obj (and fn-num (asc-globalfn-entry-get fn-num)))
+  (define entry-obj (and obj (car obj)))
+  (define lazy-code (and obj (cadr obj)))
+  (define stub-addr (and obj (cddr obj)))
   ;; TODO: eploc -> entry-obj-loc
   (define eploc (and entry-obj (- (obj-encoding entry-obj) 1)))
 
-  (define (get-cc-direct cc-idx)
-    (if (and cc-idx entry-obj)
-        (get-xx-direct cc-idx)
-        #f))
+  (define (get-cc-direct)
+    (and lazy-code
+         (let* ((stack (list-head (ctx-stack call-ctx) nb-args))
+                (version (table-ref (lazy-code-versions lazy-code) stack #f)))
+           (if version
+               (list 'ep (asm-label-pos (car version)))
+               (let ((label (asm-make-label #f (new-sym 'stub_load_))))
+                 (asc-entry-load-add entry-obj stack label)
+                 (list 'stub stub-addr label))))))
 
   (define (get-ep-direct)
-    (if entry-obj
-        (get-xx-direct 0)
-        #f))
-
-  (define (get-xx-direct idx)
-    (let ((r (asc-entry-stub-get entry-obj))
-          (ep (if opt-entry-points
-                  (s64vector-ref entry-obj (+ idx 1))
-                  (* 4 (vector-ref entry-obj 0)))))
-
-      (cond ;; It's a call to an already generated entry point
-            ((and (not (= ep (car r)))
-                  (not (= ep (cdr r))))
-               (list 'ep ep))
-            ;; It's a call to a known stub
-            ((or (= ep (car r))
-                 (= ep (cdr r)))
+    (and entry-obj
+         (let ((ep (* 4 (vector-ref entry-obj 0))))
+           (if (= ep stub-addr)
                (let ((label (asm-make-label #f (new-sym 'stub_load_))))
-                 (asc-entry-load-add entry-obj idx label)
-                 (list 'stub ep label)))
-            ;;
-            (else
-               #f))))
-
+                 (asc-entry-load-add entry-obj '() label)
+                 (list 'stub stub-addr label))
+               (list 'ep ep)))))
 
   (cond ((not opt-entry-points)
            (let ((direct (get-ep-direct)))
              (codegen-call-ep cgc nb-args eploc direct)))
-        ((not nb-args) ;; apply
-           (codegen-call-cc-gen cgc #f eploc))
+        ((not cc-idx) ;; apply or cc-full
+           (codegen-call-cc-gen cgc nb-args eploc))
         (else
-           (let* ((idx (cctable-get-idx (list-head (ctx-stack call-ctx) nb-args)))
-                  (direct (get-cc-direct idx)))
-             (if (and (not idx)
-                      (or (find (lambda (l) (ctx-tflo? l))       (ctx-stack call-ctx))
-                          (find (lambda (l) (ctx-type-is-cst l)) (ctx-stack call-ctx))))
-                 (error "NYI"))
-             (if idx
-                 (codegen-call-cc-spe cgc idx nb-args eploc direct)
-                 (codegen-call-cc-gen cgc nb-args eploc))))))
+           (let ((direct (get-cc-direct)))
+             (codegen-call-cc-spe cgc cc-idx nb-args eploc direct)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
@@ -2727,7 +2779,10 @@
                          (ctx (ctx-push (ctx-pop-n ctx 2) type #f)))
                     (jump-to-version cgc succ ctx)))
                 ((and lcst? rcst?)
-                  (error "NYI2"))
+                  (let* ((r (eval (list op lloc rloc)))
+                         (lco (if r (lazy-code-lco-true succ)
+                                    (lazy-code-lco-false succ))))
+                    (jump-to-version cgc lco (ctx-pop-n ctx 2))))
                 (inlined-if-cond?
                   (let ((x86-op (codegen-cmp-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op #f lloc leftint? rloc rightint? lcst? rcst? #t)))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
@@ -2868,7 +2923,7 @@
 ;; This is the key used in hash table to find the cc-table for this closure.
 ;; The key represents captured values used to specialize tables
 (define (get-cc-key ctx fvars-imm fvars-late)
-  (append (map (lambda (n) (cons n 'closure)) fvars-late)
+  (append fvars-late
           (foldr (lambda (n r)
                    (if (member (car n) fvars-imm) ;; If this id is a free var of future lambda
                        (cons (cons (car n)
@@ -2898,9 +2953,10 @@
            (cctable (table-ref cctables key #f)))
       (if cctable
           (cons #f cctable)
-          (let ((cctable (make-cc)))
-            (table-set! cctables key cctable)
-            (cons #t cctable))))))
+          (let ((cctable (make-cc))
+                (fn-num (new-fn-num)))
+            (table-set! cctables key (cons cctable fn-num))
+            (cons #t (cons cctable fn-num)))))))
 
 ;; Fill cctable with stub and generic addresses
 (define (cctable-fill cctable stub-addr generic-addr)
@@ -2916,8 +2972,10 @@
 ;; CR TABLES
 
 ;; Create a new cr table with 'init' as stub value
-(define (make-cr len init)
-  (alloc-still-s64vector len init))
+(define (make-cr stub-addr generic-addr)
+  (let ((v (alloc-still-s64vector (+ 1 global-cr-table-maxsize) stub-addr)))
+    (s64vector-set! v 0 generic-addr)
+    v))
 
 ;; all-crtables associates an ast to a table ('equal?' table)
 ;; to get a crtable, we first use the eq? table to get crtables associated to this ast
@@ -2927,7 +2985,7 @@
 
 ;; Return crtable from crtable-key
 ;; Return the existing table if already created or create one, add entry, and return it
-(define (get-crtable ast ctx stub-addr)
+(define (get-crtable ast ctx stub-addr generic-addr)
   ;; Use 'eq?' table to get prleiminary result
   (let ((crtables (table-ref all-crtables ast #f)))
     (if (not crtables)
@@ -2945,7 +3003,7 @@
                   (ctx-env ctx)))
            (crtable (table-ref crtables key #f)))
       (or crtable
-          (let ((crtable (make-cr global-cr-table-maxsize stub-addr)))
+          (let ((crtable (make-cr stub-addr generic-addr)))
             (table-set! crtables key crtable)
             crtable)))))
 
@@ -3026,7 +3084,7 @@
       (x86-movd/movq cgc opnd (x86-rax))))
 
   (define (alloc-cst-clo reg cst)
-    (let ((entry-obj (asc-globalfn-entry-get cst)))
+    (let ((entry-obj (car (asc-globalfn-entry-get cst))))
       (gen-closure cgc reg #f entry-obj '())))
 
   (define (alloc-cst reg cst)
