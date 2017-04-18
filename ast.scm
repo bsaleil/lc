@@ -429,13 +429,13 @@
   (define (inlined-cond? type-fn)
     (and next-is-cond
          (let ((type (type-fn)))
-           (cond ((and (ctx-tboo? type)
-                       (ctx-type-is-cst type))
+           (cond ((and (ctx-type-boo? type)
+                       (ctx-type-cst? type))
                     (if (ctx-type-cst type)
                         (lazy-code-lco-true succ)
                         (lazy-code-lco-false succ)))
-                 ((and (not (ctx-tboo? type))
-                       (not (ctx-tunk? type)))
+                 ((and (not (ctx-type-boo? type))
+                       (not (ctx-type-unk? type)))
                     (lazy-code-lco-true succ))
                  (else #f)))))
 
@@ -463,7 +463,7 @@
                  (jump-to-version cgc lco ctx)))
               ;; Identifier local and cst literal
               ((and local
-                    (ctx-type-is-cst (ctx-identifier-type ctx (cdr local))))
+                    (ctx-type-cst? (ctx-identifier-type ctx (cdr local))))
                  ;; TODO use =>
                  (let* ((cst (ctx-type-cst (ctx-identifier-type ctx (cdr local))))
                         (ctx (ctx-push ctx (ctx-identifier-type ctx (cdr local)) #f sym)))
@@ -484,7 +484,7 @@
 (define (gen-get-localvar cgc ast ctx local succ)
   (mlet ((type (ctx-identifier-type ctx (cdr local)))
          (moves/reg/ctx
-           (if (ctx-tflo? type)
+           (if (ctx-type-flo? type)
                (ctx-get-free-freg ast ctx succ 0)
                (ctx-get-free-reg ast ctx succ 0)))
          (loc (ctx-identifier-loc ctx (cdr local))))
@@ -498,7 +498,7 @@
         ;; The variable is in a register or in non closure memory
         (apply-moves cgc ctx (list (cons loc reg))))
 
-    (if (and (ctx-type-is-cst type)
+    (if (and (ctx-type-cst? type)
              reg)
         (error "NYI d")) ;; TODO: Free a register only if type is not a cst
     (jump-to-version cgc succ (ctx-push ctx type reg (car local)))))
@@ -507,7 +507,7 @@
 
   (let ((type (or (global-stype global) (make-ctx-tunk))))
 
-    (if (ctx-type-is-cst type)
+    (if (ctx-type-cst? type)
         ;; Type is cst, push cst to ctx
         (jump-to-version cgc succ (ctx-push ctx type #f))
         ;; Type is not a cst, free a register and use it
@@ -546,7 +546,7 @@
   (mlet ((pos (global-pos global))
          (moves/reg/ctx (ctx-get-free-reg ast ctx succ 1))
          (tval (ctx-get-type ctx 0))
-         (cst? (ctx-type-is-cst tval))
+         (cst? (ctx-type-cst? tval))
          (lval (if cst?
                    (ctx-type-cst tval)
                    (ctx-get-loc ctx 0))))
@@ -563,7 +563,7 @@
 (define (mlc-define ast succ)
   (let ((global (asc-globals-get (cadr ast))))
     (cond
-          ((and global (ctx-tclo? (global-stype global)))
+          ((and global (ctx-type-clo? (global-stype global)))
             ;; CONST FN TODO: remove when const versioning implemented!
             (let* ((identifier (cadr ast))
                    (fn-num (init-entry-cst (caddr ast) '() (ctx-init))))
@@ -593,7 +593,7 @@
                                                ;;
                                                (moves/reg/ctx (ctx-get-free-reg ast ctx succ 1))
                                                (type (ctx-get-type ctx 0))
-                                               (cst? (ctx-type-is-cst type))
+                                               (cst? (ctx-type-cst? type))
                                                (lvalue (if cst?
                                                            (ctx-type-cst type)
                                                            (ctx-get-loc ctx 0))))
@@ -605,8 +605,8 @@
                             #f
                              (lambda (cgc ctx)
                                (let ((type (ctx-get-type ctx 0)))
-                                 (if (and (ctx-type-is-cst type)
-                                          (ctx-tclo? type))
+                                 (if (and (ctx-type-cst? type)
+                                          (ctx-type-clo? type))
                                      (let ((ctx (drop-cst-value cgc ast ctx 0)))
                                        (jump-to-version cgc lazy-bind ctx))
                                      (jump-to-version cgc lazy-bind ctx))))))
@@ -640,8 +640,8 @@
   (if (= idx-from idx-to)
       ctx
       (let* ((type (ctx-get-type ctx idx-from)))
-        (if (and (ctx-tflo? type)
-                 (not (ctx-type-is-cst type)))
+        (if (and (ctx-type-flo? type)
+                 (not (ctx-type-cst? type)))
             (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx #f 0))
                    (loc   (ctx-get-loc ctx idx-from))
                    (opnd  (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
@@ -710,7 +710,7 @@
                                       (loop (- idx 1) (cons loc locs))
                                       (let* ((type (ctx-get-type ctx idx))
                                              (cst (ctx-type-cst type)))
-                                        (if (ctx-tclo? type)
+                                        (if (ctx-type-clo? type)
                                             (loop (- idx 1) (cons (cons 'cf cst) locs))
                                             (loop (- idx 1) (cons (cons 'c cst) locs))))))))))
 
@@ -740,14 +740,14 @@
            (lret     (ctx-get-loc ctx 0))
            ;; Return address object loc
            (laddr (ctx-get-retobj-loc ctx)))
-      (codegen-return-rp cgc fs ffs fs laddr lret (ctx-tflo? type-ret))))
+      (codegen-return-rp cgc fs ffs fs laddr lret (ctx-type-flo? type-ret))))
 
   (define (gen-return-cr cgc ctx)
 
     (let ((cridx (crtable-get-idx (ctx-init-return ctx))))
 
         (assert (not (and (not cridx)
-                          (ctx-tflo? (ctx-get-type ctx 0))))
+                          (ctx-type-flo? (ctx-get-type ctx 0))))
                 "NYI case, cr overflow and ret value is a tflo")
 
         (if (or (not (const-versioned? (ctx-get-type ctx 0)))
@@ -763,9 +763,9 @@
                ;; Return address object loc
                (laddr (ctx-get-retobj-loc ctx))
                ;;
-               (cst? (ctx-type-is-cst type-ret)))
+               (cst? (ctx-type-cst? type-ret)))
 
-          (codegen-return-cr cgc fs ffs fs laddr lret cridx (ctx-tflo? type-ret) cst?))))
+          (codegen-return-cr cgc fs ffs fs laddr lret cridx (ctx-type-flo? type-ret) cst?))))
 
       (make-lazy-code-ret ;; Lazy-code with 'ret flag
         #f
@@ -923,10 +923,10 @@
           (let ((id (car ids)))
             (let* ((identifier (cdr (assoc id (ctx-env ctx))))
                    (type (ctx-identifier-type ctx identifier)))
-              (cond ((and (ctx-type-is-cst type)
+              (cond ((and (ctx-type-cst? type)
                           (identifier-cst identifier))
                        (loop (cdr ids) imm cst (cons id cstid)))
-                    ((ctx-type-is-cst type)
+                    ((ctx-type-cst? type)
                        (loop (cdr ids) imm (cons id cst) cstid))
                     (else
                        (loop (cdr ids) (cons id imm) cst cstid)))))))))
@@ -1593,7 +1593,7 @@
                    (if (>= idx 0)
                        (let ((loc  (ctx-get-loc ctx idx))
                              (type (ctx-get-type ctx idx)))
-                         (if (ctx-tflo? type)
+                         (if (ctx-type-flo? type)
                              ;; Float, push a boxed float
                              (begin (gen-allocation-imm cgc STAG_FLONUM 8)
                                     (x86-movsd cgc (x86-mem -8 alloc-ptr) (codegen-freg-to-x86reg loc))
@@ -1660,7 +1660,7 @@
                   nargs
                   (lambda (n)
                     (let ((type (ctx-get-type ctx n)))
-                      (if (ctx-type-is-cst type)
+                      (if (ctx-type-cst? type)
                           (cons #t (ctx-type-cst type))
                           (cons #f (ctx-get-loc ctx n)))))))
          (cst? (map car r))
@@ -1718,8 +1718,8 @@
     ast
     (lambda (cgc ctx)
       (let ((type (ctx-get-type ctx 0)))
-        (if (or (ctx-tboo? type)
-                (ctx-tunk? type))
+        (if (or (ctx-type-boo? type)
+                (ctx-type-unk? type))
             (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 1)))
               (apply-moves cgc ctx moves)
               (codegen-p-not cgc (ctx-fs ctx) (ctx-ffs ctx) op reg #f (ctx-get-loc ctx 0) #f)
@@ -1733,7 +1733,7 @@
     ast
     (lambda (cgc ctx)
       (let ((type (ctx-get-type ctx 0)))
-        (if (ctx-tunk? type)
+        (if (ctx-type-unk? type)
             (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 1)))
               (apply-moves cgc ctx moves)
               (codegen-p-eof-object? cgc (ctx-fs ctx) (ctx-ffs ctx) op reg #f (ctx-get-loc ctx 0) #f)
@@ -1750,8 +1750,8 @@
              (moves/reg/ctx (ctx-get-free-reg ast ctx succ 2))
              (tleft  (ctx-get-type ctx 1))
              (tright (ctx-get-type ctx 0))
-             (lcst?  (ctx-type-is-cst tleft))
-             (rcst?  (ctx-type-is-cst tright))
+             (lcst?  (ctx-type-cst? tleft))
+             (rcst?  (ctx-type-cst? tright))
              (lleft  (if lcst? (ctx-type-cst tleft)  (ctx-get-loc ctx 1)))
              (lright (if rcst? (ctx-type-cst tright) (ctx-get-loc ctx 0))))
         (apply-moves cgc ctx moves)
@@ -1773,10 +1773,10 @@
           (lr (if rcst? (ctx-type-cst typer)
                         (ctx-get-loc  ctx 0)))
           (nctx (ctx-pop-n ctx 2)))
-      (if (or (and (not (ctx-tunk? typel))
-                   (not (ctx-tunk? typer))
+      (if (or (and (not (ctx-type-unk? typel))
+                   (not (ctx-type-unk? typer))
                    (not (ctx-type-teq? typel typer)))
-              (and (ctx-tflo? typel) (ctx-tflo? typer)))
+              (and (ctx-type-flo? typel) (ctx-type-flo? typer)))
           ;; Types are known and !=
           (jump-to-version cgc (lazy-code-lco-false succ) nctx)
           ;;
@@ -1792,10 +1792,10 @@
                          (ctx-get-loc  ctx 0)))
            (nctx (ctx-push (ctx-pop-n ctx 2) (make-ctx-tboo) reg)))
       (apply-moves cgc ctx moves)
-      (if (or (and (not (ctx-tunk? typel))
-                   (not (ctx-tunk? typer))
+      (if (or (and (not (ctx-type-unk? typel))
+                   (not (ctx-type-unk? typer))
                    (not (ctx-type-teq? typel typer)))
-              (and (ctx-tflo? typel) (ctx-tflo? typer)))
+              (and (ctx-type-flo? typel) (ctx-type-flo? typer)))
           ;; Types are known and !=
           (codegen-set-bool cgc #f reg)
           ;;
@@ -1807,14 +1807,14 @@
     (lambda (cgc ctx)
       (let* ((typel (ctx-get-type ctx 1))
              (typer (ctx-get-type ctx 0))
-             (lcst? (ctx-type-is-cst typel))
-             (rcst? (ctx-type-is-cst typer))
+             (lcst? (ctx-type-cst? typel))
+             (rcst? (ctx-type-cst? typer))
              (if-cond? (member 'cond (lazy-code-flags succ))))
         (cond ((and lcst? rcst? if-cond?)
                  (error "NYI a"))
               ((and lcst? rcst?)
-                 (if (or (ctx-tclo? typel)
-                         (ctx-tclo? typer))
+                 (if (or (ctx-type-clo? typel)
+                         (ctx-type-clo? typer))
                      (error "NYI, can't use literal->ctx-type with fn-num"))
                  (let ((ctx (ctx-pop-n ctx 2))
                        (r (eq? (ctx-type-cst typel) (ctx-type-cst typer))))
@@ -1844,7 +1844,7 @@
                          (jump-to-version cgc succ ctx))
                        (let* ((val-loc  (ctx-get-loc ctx idx))
                               (type (ctx-get-type ctx idx))
-                              (cst? (ctx-type-is-cst type))
+                              (cst? (ctx-type-cst? type))
                               (val-opnd (if cst?
                                             (x86-imm-int (obj-encoding (ctx-type-cst type)))
                                             (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) val-loc)))
@@ -1876,7 +1876,7 @@
           #f
           (lambda (cgc ctx)
             (let* ((type (ctx-get-type ctx n))
-                   (cst? (ctx-type-is-cst type))
+                   (cst? (ctx-type-cst? type))
                    (loc (if cst?
                             (ctx-type-cst type)
                             (ctx-get-loc ctx n))))
@@ -1907,7 +1907,7 @@
           #f
           (lambda (cgc ctx)
             (let* ((type (ctx-get-type ctx n))
-                   (cst? (ctx-type-is-cst type))
+                   (cst? (ctx-type-cst? type))
                    (loc (if cst?
                             (ctx-type-cst type)
                             (ctx-get-loc ctx n))))
@@ -1953,11 +1953,11 @@
       (let* ((label-end (asm-make-label #f (new-sym 'apply-end-args)))
              (lsttype (ctx-get-type ctx 0)))
         (cond
-          ((and (ctx-type-is-cst lsttype)
+          ((and (ctx-type-cst? lsttype)
                 (null? (ctx-type-cst lsttype)))
              ;; Only write the number of arguments (0)
              (x86-mov cgc (x86-r11) (x86-imm-int 0)))
-          ((ctx-type-is-cst lsttype)
+          ((ctx-type-cst? lsttype)
              (error "NYI - apply (other cst)"))
           (else
              (let* ((llst  (ctx-get-loc ctx 0))
@@ -2006,9 +2006,9 @@
       (if (< idx 0)
           (reverse r)
           (let ((type (ctx-get-type ctx idx)))
-            (if (ctx-type-is-cst type)
+            (if (ctx-type-cst? type)
                 (let ((cst (ctx-type-cst type)))
-                  (assert (or (not (ctx-tclo? type))
+                  (assert (or (not (ctx-type-clo? type))
                               (not (##mem-allocated? cst))
                               (permanent-object? cst))
                           "Internal error")
@@ -2039,8 +2039,8 @@
           (if (< i 0)
               (jump-to-version cgc succ ctx)
               (let ((type (ctx-get-type ctx i)))
-                (if (and (ctx-type-is-cst type)
-                         (ctx-tclo? type))
+                (if (and (ctx-type-cst? type)
+                         (ctx-type-clo? type))
                     (loop (- i 1) (drop-cst-value cgc ast ctx i))
                     (loop (- i 1) ctx))))))))
 
@@ -2151,14 +2151,14 @@
 (define cst-str-len   (cst-prim-1 (lambda (cst) (string-length (ctx-type-cst cst)))))
 (define cst-sym->str  (cst-prim-1 (lambda (cst) (symbol->string (ctx-type-cst cst)))))
 (define cst-number?   (cst-prim-1 (lambda (cst)
-                                    (and (not     (ctx-tclo?    cst))
+                                    (and (not     (ctx-type-clo?    cst))
                                          (number? (ctx-type-cst cst))))))
 
 ;; 2 args cst primitives
 (define cst-eq?
   (cst-prim-2 (lambda (cst1 cst2)
-                (and (not (ctx-tclo? cst1))
-                     (not (ctx-tclo? cst2))
+                (and (not (ctx-type-clo? cst1))
+                     (not (ctx-type-clo? cst2))
                      (eq? (ctx-type-cst cst1)
                           (ctx-type-cst cst2))))))
 (define cst-char=?
@@ -2319,7 +2319,7 @@
                      (if x86-op
                          (codegen-inlined-if cgc label-jump label-false label-true x86-op)
                          (let* ((type (ctx-get-type ctx 0))
-                                (cst? (ctx-type-is-cst type)))
+                                (cst? (ctx-type-cst? type)))
                            ;; TODO WIP: do *not* create stub in the first two cases
                            (cond ((and cst? (ctx-type-cst type))
                                     (jump-to-version cgc lazy-code1 (ctx-pop ctx)))
@@ -2350,8 +2350,8 @@
           (let ((global (asc-globals-get sym)))
             (if (and global
                      (not (assoc sym (ctx-env ctx)))
-                     (ctx-tclo? (global-stype global))
-                     (ctx-type-is-cst (global-stype global)))
+                     (ctx-type-clo? (global-stype global))
+                     (ctx-type-cst? (global-stype global)))
                 (cons #t (ctx-type-cst (global-stype global)))
                 #f)))
 
@@ -2482,7 +2482,7 @@
 
                ;; Handle const fn
                (let ((type (ctx-get-type ctx (length args))))
-                 (if (ctx-type-is-cst type)
+                 (if (ctx-type-cst? type)
                      (set! fn-id-inf (cons #t (ctx-type-cst type)))))
 
 
@@ -2512,7 +2512,7 @@
                                     (let ((type (ctx-get-type ctx idx)))
                                       (cond ((const-versioned? type)
                                                (loop (+ idx 1) nf (+ ncst 1)))
-                                            ((ctx-tflo? type)
+                                            ((ctx-type-flo? type)
                                                (loop (+ idx 1) (+ nf 1) ncst))
                                             (else
                                                (loop (+ idx 1) nf ncst)))))))))
@@ -2608,8 +2608,8 @@
                                 (ctx-pop-n ctx 2) ;; Pop operator and args
                                 (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
                           (reg
-                            (cond ((ctx-type-is-cst type) #f)
-                                  ((ctx-tflo? type)       return-freg)
+                            (cond ((ctx-type-cst? type) #f)
+                                  ((ctx-type-flo? type)       return-freg)
                                   (else                   return-reg))))
 
                      (gen-version-continuation-cr
@@ -2729,11 +2729,11 @@
                (nopnd-regalloc (if num-op? 0 2))
                ;; right info
                (rtype (ctx-get-type ctx 0))
-               (rcst? (ctx-type-is-cst rtype))
+               (rcst? (ctx-type-cst? rtype))
                (rloc  (if rcst? (ctx-type-cst rtype) (ctx-get-loc ctx 0)))
                ;; left info
                (ltype (ctx-get-type ctx 1))
-               (lcst? (ctx-type-is-cst ltype))
+               (lcst? (ctx-type-cst? ltype))
                (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
 
           (cond ((and (not inlined-if-cond?) lcst? rcst?)
@@ -2773,11 +2773,11 @@
         (let* ((type  (if num-op? (make-ctx-tflo) (make-ctx-tboo)))
                ;; right info
                (rtype (ctx-get-type ctx 0))
-               (rcst? (ctx-type-is-cst rtype))
+               (rcst? (ctx-type-cst? rtype))
                (rloc  (if rcst? (ctx-type-cst rtype) (ctx-get-loc ctx 0)))
                ;; left info
                (ltype (ctx-get-type ctx 1))
-               (lcst? (ctx-type-is-cst ltype))
+               (lcst? (ctx-type-cst? ltype))
                (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
 
           (cond ((and (not inlined-if-cond?) lcst? rcst?)
@@ -2859,7 +2859,7 @@
             (lambda (cgc ctx)
               (define sym (atom-node-val (cadr ast)))
               (define vartype (ctx-id-type ctx sym))
-              (cond ((or (not vartype) (ctx-tunk? vartype))
+              (cond ((or (not vartype) (ctx-type-unk? vartype))
                        (jump-to-version cgc (gen-ast (cadr ast) check) ctx))
                     ((ctx-type-teq? type vartype)
                        (jump-to-version cgc (lazy-code-lco-true succ) ctx))
@@ -3099,17 +3099,17 @@
       (x86-mov cgc opnd (x86-imm-int (obj-encoding cst)))))
 
   (let* ((type (ctx-get-type ctx ctx-idx))
-         (cst? (ctx-type-is-cst type)))
+         (cst? (ctx-type-cst? type)))
     (if cst?
         (mlet ((cst (ctx-type-cst type))
                (moves/reg/ctx
-                 (if (ctx-tflo? type)
+                 (if (ctx-type-flo? type)
                      (ctx-get-free-freg ast ctx #f 0)
                      (ctx-get-free-reg ast ctx #f 0))))
           (apply-moves cgc ctx moves)
           ;; Alloc cst
-          (cond ((ctx-tflo? type) (alloc-cst-flo reg cst))
-                ((ctx-tclo? type) (alloc-cst-clo reg cst))
+          (cond ((ctx-type-flo? type) (alloc-cst-flo reg cst))
+                ((ctx-type-clo? type) (alloc-cst-clo reg cst))
                 (else             (alloc-cst reg cst)))
           ;; Update & return ctx
           (let* ((ntype ((ctx-type-ctor type)))

@@ -455,10 +455,10 @@
                             (print "EMPTY")
                             (for-each
                               (lambda (type)
-                                (if (not (ctx-tret? type))
+                                (if (not (ctx-type-ret? type))
                                     (begin
                                       (print (ctx-type-sym type))
-                                      (if (ctx-type-is-cst type)
+                                      (if (ctx-type-cst? type)
                                           (print "(" (ctx-type-cst type) ") ")
                                           (print " ")))))
                               stack))
@@ -564,7 +564,7 @@
             (lambda ()
               (for-each
                 (lambda (stype)
-                  (if (ctx-type-is-cst stype)
+                  (if (ctx-type-cst? stype)
                       (print (ctx-type-sym stype) "(" (ctx-type-cst stype) ") ")
                       (print (ctx-type-sym stype) " ")))
                 (ctx-stack ctx))))))
