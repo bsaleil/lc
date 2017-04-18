@@ -40,21 +40,13 @@
 ;--max-versions 5 --enable-const-vers --const-vers-types sym --enable-cxoverflow-fallback
 
 
-(letrec
-  ((fn1
-     (lambda (i) (if (= i 0) 'impair (fn2 (- i 1)))))
-   (fn2
-     (lambda (j) (if (= j 0) 'pair (fn1 (- j 1))))))
-  (pp (fn2 42)))
+(define (foo n)
+  (gambit$$pp n)
+  (if n
+      (gambit$$pp 100)
+      (gambit$$pp 200)))
 
-
-* FN2 générée avec:
-  ctx (j=42)
-* Test, tag
-  ctx (j=42, t)
-* FN1 générée avec:
-  ctx (i=41, t)
-
+(foo 500)
 
 ;(define (fib n)
 ;  (if (< n 2)

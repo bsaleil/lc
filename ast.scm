@@ -429,10 +429,15 @@
   (define (inlined-cond? type-fn)
     (and next-is-cond
          (let ((type (type-fn)))
-           (and
-             type
-             (not (ctx-tboo? type))     ;; If it's a bool, we must check the value
-             (not (ctx-tunk? type)))))) ;; If it's a unk, we must check the type
+           (cond ((and (ctx-tboo? type)
+                       (ctx-type-is-cst type))
+                    (if (ctx-type-cst type)
+                        (lazy-code-lco-true succ)
+                        (lazy-code-lco-false succ)))
+                 ((and (not (ctx-tboo? type))
+                       (not (ctx-tunk? type)))
+                    (lazy-code-lco-true succ))
+                 (else #f)))))
 
   (define (lcl-inlined-cond? ctx identifier)
     (inlined-cond? (lambda () (ctx-identifier-type ctx identifier))))
@@ -451,9 +456,11 @@
 
         ;;
         (cond ;; Identifier local or global and inlined condition
-              ((or (and local  (lcl-inlined-cond? ctx (cdr local))) ;; TODO wip add bool cst
+              ((or (and local  (lcl-inlined-cond? ctx (cdr local)))
                    (and global (gbl-inlined-cond? sym)))
-                (jump-to-version cgc (lazy-code-lco-true succ) ctx))
+               =>
+               (lambda (lco)
+                 (jump-to-version cgc lco ctx)))
               ;; Identifier local and cst literal
               ((and local
                     (ctx-type-is-cst (ctx-identifier-type ctx (cdr local))))
