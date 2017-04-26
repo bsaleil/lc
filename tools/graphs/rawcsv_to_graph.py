@@ -1,19 +1,26 @@
 # Usage: python thisscript.py path/to/csv/file.csv refexec "col1:col2:col3" "name1:name2:name3"
 # ex.
-# python test.py test.csv exec1 "%exec3:%exec2" "Une barre:Une seconde barre" && evince test.pdf
 
 import sys
 
+if len(sys.argv) != 6:
+    print("Invalid arguments")
+    print("Usage:")
+    print('   python thisscript.py path/to/file.csv ref_col sort_col "col1:col2:...:coln" "name1:name2:...:name3"')
+    sys.exit(0)
+
 CSV_FILE  = sys.argv[1]
 REF_COL   = sys.argv[2]
-DRAW_COLS = sys.argv[3].split(":")
-BAR_NAMES = sys.argv[4].split(":")
-
+SORT_COL  = False
+if sys.argv[3] != "no":
+    SORT_COL = sys.argv[3]
+DRAW_COLS = sys.argv[4].split(":")
+BAR_NAMES = sys.argv[5].split(":")
 
 FONT_SIZE = 10
 
-COLOR_MAX = 0.1
-COLOR_MIN = 0.5
+COLOR_MAX = 0.4
+COLOR_MIN = 0.7
 
 import matplotlib.pyplot as plt; plt.rcdefaults()
 import numpy as np
@@ -103,7 +110,7 @@ class Graph:
             plt.bar(y_pos+margin,d,width=bar_width, align='edge', alpha=1.0,label=bar_labels[i],color=colors[i])
             margin += bar_width
             i += 1
-        plt.xticks(y_pos+((1.0-bar_width)/2.0), xlabels)
+        plt.xticks(y_pos+((1.0-bar_width)/2.0)+0.25, xlabels, ha='right')
 
     def draw(self,bar_labels):
         xlabels, data = self.prepare_data()
@@ -117,7 +124,7 @@ class Graph:
         # Setup axes & grid
         self.setup_axes(self.axes,len(xlabels));
         # Export to pdf or show
-        self.export("./test.pdf");
+        self.export("./graph.pdf");
 
 class Data:
     def __init__(self,rowLabels,colLabels,data):
@@ -153,6 +160,10 @@ class Data:
             data.append(line_data)
         return Data(self.rowLabels,colLabels,data)
 
+    def sort_name(self,colName):
+        idx = self.colLabels.index(colName)
+        self.data = sorted(self.data,key=lambda x:x[idx])
+
     @staticmethod
     def from_csv_file(path):
         with open(CSV_FILE, 'r') as file:
@@ -168,6 +179,7 @@ class Data:
             return Data(rowLabels,colLabels,data)
 
 dataobj = Data.from_csv_file(CSV_FILE);
+
 labels = list(dataobj.colLabels) # Copy label list
 for colLabel in labels:
     if colLabel != REF_COL:
@@ -175,6 +187,9 @@ for colLabel in labels:
         dataobj.insert_col("%"+colLabel,r)
 
 do = dataobj.extract_cols(DRAW_COLS);
+
+if SORT_COL:
+    do.sort_name(SORT_COL)
 
 graph = Graph(do)
 graph.draw(BAR_NAMES)
