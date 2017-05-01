@@ -161,8 +161,24 @@ class Data:
         return Data(self.rowLabels,colLabels,data)
 
     def sort_name(self,colName):
-        idx = self.colLabels.index(colName)
+        if (colName == "X"):
+            idx = 0
+        else:
+            idx = self.colLabels.index(colName)
         self.data = sorted(self.data,key=lambda x:x[idx])
+
+    def to_tex_table(self):
+        rstr  = '\\begin{tabular}{|l|' + 'c'*len(self.colLabels) + '|}' + '\n'
+        rstr += '\\hline' + '\n'
+        rstr += ' & \\bf ' + ' & \\bf '.join(self.colLabels) + ' \\\\ \\hline' + '\n'
+        i = 0
+        for line in self.data:
+            rstr += '\\bf ' + self.rowLabels[i] + ' & '
+            rstr += ' & '.join("{0:.2f}".format(x) for x in line) + ' \\\\ \\hline' + '\n'
+            i+=1
+        rstr += '\\end{tabular}'
+        rstr = rstr.replace('%','\\%')
+        return rstr
 
     @staticmethod
     def from_csv_file(path):
@@ -185,6 +201,11 @@ for colLabel in labels:
     if colLabel != REF_COL:
         r = dataobj.compute_relative_col(colLabel,REF_COL)
         dataobj.insert_col("%"+colLabel,r)
+
+# Export tex table
+dataobj.sort_name('X')
+tex = dataobj.to_tex_table()
+print(tex)
 
 do = dataobj.extract_cols(DRAW_COLS);
 
