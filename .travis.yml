@@ -1,11 +1,13 @@
 language: c
 
 install:
-  - git clone https://github.com/gambit/gambit.git
+  - wget https://github.com/gambit/gambit/archive/v4.8.8.zip -O gambit.zip
+  - unzip gambit.zip
+  - mv gambit-4.8.8 gambit
   - cd gambit
   - mkdir build
   - ./configure --prefix=$TRAVIS_BUILD_DIR/gambit/build/
-  - make -j4 latest-release
+  - make -j4 current-gsc-boot
   - ./configure --prefix=$TRAVIS_BUILD_DIR/gambit/build/ --enable-single-host
   - make -j4 from-scratch
   - make install
