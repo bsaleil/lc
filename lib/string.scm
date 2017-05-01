@@ -30,13 +30,16 @@
 (define (string->symbol str)
   (gambit$$string->symbol str))
 
-(define (string->list-h s pos)
-  (if (= (string-length s) pos)
-      '()
-      (cons (string-ref s pos) (string->list-h s (+ pos 1)))))
-
 (define (string->list s)
-  (string->list-h s 0))
+  (let ((len (string-length s)))
+    (let loop ((i (- len 1)) (lst '()))
+      (if (< i 0)
+          lst
+          (loop
+            (- i 1)
+            (cons
+              (string-ref s i)
+              lst))))))
 
 (define (string-fill!-h str char pos len)
   (if (< pos len)
@@ -69,21 +72,18 @@
       (let ((str (make-string (length chars))))
          (string-h str chars 0))))
 
-(define (substring-h to from posf post end)
-  (if (= posf end)
-     to
-     (begin (string-set! to post (string-ref from posf))
-            (substring-h to from (+ posf 1) (+ post 1) end))))
-
 (define (substring string start end)
-   (if (or (< start 0) (> end (string-length string)) (< end start))
-      (error "Substring")
-      (let ((new-str (make-string (- end start))))
-        (substring-h new-str string start 0 end))))
+  (let ((new-str (make-string (- end start))))
+    (let loop ((i start))
+      (if (= i end)
+          new-str
+          (begin
+            (string-set! new-str (- i start) (string-ref string i))
+            (loop (+ i 1)))))))
 
 (define (string-append-two str str2)
   (list->string
-    (append
+    (##append-two
       (string->list str)
       (string->list str2))))
 
