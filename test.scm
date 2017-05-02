@@ -39,14 +39,10 @@
 ;--max-versions 5 --enable-const-vers --const-vers-types voi --enable-cxoverflow-fallback
 ;--max-versions 5 --enable-const-vers --const-vers-types sym --enable-cxoverflow-fallback
 
-
-(define (foo n)
-  (gambit$$pp n)
-  (if n
-      (gambit$$pp 100)
-      (gambit$$pp 200)))
-
-(foo 500)
+(pp (sin 1))
+(pp (sin 0.34))
+(pp (sin 2.2))
+(pp (sin -10))
 
 ;(define (fib n)
 ;  (if (< n 2)
