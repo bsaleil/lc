@@ -69,3 +69,6 @@
             (min-h (cdr els) (car els))
             (min-h (cdr els) m)))))
   (min-h l a))
+
+(define (bitwise-and a b)
+  (gambit$$bitwise-and a b))

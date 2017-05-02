@@ -39,10 +39,10 @@
 ;--max-versions 5 --enable-const-vers --const-vers-types voi --enable-cxoverflow-fallback
 ;--max-versions 5 --enable-const-vers --const-vers-types sym --enable-cxoverflow-fallback
 
-(pp (sin 1))
-(pp (sin 0.34))
-(pp (sin 2.2))
-(pp (sin -10))
+(pp (number? (gambit$$sin 1)))
+(pp (number? (gambit$$sin 0.34)))
+(pp (number? (gambit$$sin 2.2)))
+(pp (number? (gambit$$sin -10)))
 
 ;(define (fib n)
 ;  (if (< n 2)

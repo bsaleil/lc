@@ -278,7 +278,7 @@
     (integer->char       ,cst-int->char #f                ,codegen-p-ch<->int           #f       ,ATX_CHA 1 ,ATX_INT                   )
     (string-ref          ,cst-str-ref   #f                ,codegen-p-string-ref         #f       ,ATX_CHA 2 ,ATX_STR ,ATX_INT          )
     (string-set!         #f             #f                ,codegen-p-string-set!        #t       ,ATX_VOI 3 ,ATX_STR ,ATX_INT ,ATX_CHA )
-    (vector-set!         #f             #f                ,codegen-p-vector-set!        #f       ,ATX_VOI 3 ,ATX_VEC ,ATX_INT ,ATX_ALL )
+    (vector-set!         #f             #f                ,codegen-p-vector-set!        #t       ,ATX_VOI 3 ,ATX_VEC ,ATX_INT ,ATX_ALL )
     (string-length       ,cst-str-len   #f                ,codegen-p-string-length      #f       ,ATX_INT 1 ,ATX_STR                   )
     (exit                #f             #f                 #f                           #f       ,ATX_VOI 0                            )
     (make-vector         #f             #f                ,codegen-p-make-vector        #t       ,ATX_VEC 2 ,ATX_INT ,ATX_ALL          )
