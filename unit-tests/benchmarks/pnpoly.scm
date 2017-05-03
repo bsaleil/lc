@@ -1,5 +1,14 @@
 ;;; PNPOLY - Test if a point is contained in a 2D polygon.
 
+(##define-macro (def-macro form . body)
+  `(##define-macro ,form (let () ,@body)))
+
+(def-macro (FLOATvector-const . lst) `',(list->vector lst))
+(def-macro (FLOATvector-ref v i)     `(vector-ref ,v ,i))
+(def-macro (FLOATvector-length v)    `(vector-length ,v))
+
+;;------------------------------------------------------------------------------
+
 (define (pt-in-poly2 xp yp x y)
   (let loop ((c #f) (i (- (FLOATvector-length xp) 1)) (j 0))
     (if (< i 0)

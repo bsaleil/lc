@@ -33,7 +33,3 @@
         v
         (begin (vector-set! v l el)
                (loop (- l 1))))))
-
-(define FLOATvector-const  vector)
-(define FLOATvector-length vector-length)
-(define FLOATvector-ref    vector-ref)

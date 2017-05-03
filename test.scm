@@ -39,10 +39,13 @@
 ;--max-versions 5 --enable-const-vers --const-vers-types voi --enable-cxoverflow-fallback
 ;--max-versions 5 --enable-const-vers --const-vers-types sym --enable-cxoverflow-fallback
 
-(pp (number? (gambit$$sin 1)))
-(pp (number? (gambit$$sin 0.34)))
-(pp (number? (gambit$$sin 2.2)))
-(pp (number? (gambit$$sin -10)))
+(##define-macro (def-macro form . body)
+  `(##define-macro ,form (let () ,@body)))
+
+(def-macro (FLOATvector . lst) `(vector ,@lst))
+
+(pp (vector 1 2 3 4 5))
+(pp (FLOATvector 6 7 8 9 0))
 
 ;(define (fib n)
 ;  (if (< n 2)
