@@ -161,11 +161,14 @@ class Data:
         return Data(self.rowLabels,colLabels,data)
 
     def sort_name(self,colName):
-        if (colName == "X"):
-            idx = 0
-        else:
-            idx = self.colLabels.index(colName)
-        self.data = sorted(self.data,key=lambda x:x[idx])
+        # Get col index
+        colIdx = 0
+        if (colName != "X"):
+            colIdx = self.colLabels.index(colName)
+        # Sort data and row labels
+        data, labels = (list(t) for t in zip(*sorted(zip(self.data, self.rowLabels),key=lambda x:x[0][colIdx])))
+        self.data = data;
+        self.rowLabels = labels;
 
     def to_tex_table(self):
         rstr  = '\\begin{tabular}{|l|' + 'c'*len(self.colLabels) + '|}' + '\n'

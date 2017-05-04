@@ -183,31 +183,7 @@ def lc_with_options(name,options):
 #
 systems = []
 
-systems.append(lc_with_options("LC5",      ["--max-versions 5"]))
-systems.append(lc_with_options("LC5-bs",   ["--max-versions 5","--enable-const-vers","--const-vers-types boo sym","--enable-cxoverflow-fallback"]))
-systems.append(lc_with_options("LC5-bsv",   ["--max-versions 5","--enable-const-vers","--const-vers-types boo sym voi","--enable-cxoverflow-fallback"]))
-systems.append(lc_with_options("LC5-bsvc",   ["--max-versions 5","--enable-const-vers","--const-vers-types boo sym voi cha","--enable-cxoverflow-fallback"]))
-systems.append(lc_with_options("LC5-bsvcv",   ["--max-versions 5","--enable-const-vers","--const-vers-types boo sym voi cha vec","--enable-cxoverflow-fallback"]))
-systems.append(lc_with_options("LC5-bsvcvs",   ["--max-versions 5","--enable-const-vers","--const-vers-types boo sym voi cha vec str","--enable-cxoverflow-fallback"]))
-
-systems.append(lc_with_options("LC10",      ["--max-versions 10"]))
-systems.append(lc_with_options("LC10-bs",   ["--max-versions 10","--enable-const-vers","--const-vers-types boo sym","--enable-cxoverflow-fallback"]))
-systems.append(lc_with_options("LC10-bsv",   ["--max-versions 10","--enable-const-vers","--const-vers-types boo sym voi","--enable-cxoverflow-fallback"]))
-systems.append(lc_with_options("LC10-bsvc",   ["--max-versions 10","--enable-const-vers","--const-vers-types boo sym voi cha","--enable-cxoverflow-fallback"]))
-systems.append(lc_with_options("LC10-bsvcv",   ["--max-versions 10","--enable-const-vers","--const-vers-types boo sym voi cha vec","--enable-cxoverflow-fallback"]))
-systems.append(lc_with_options("LC10-bsvcvs",   ["--max-versions 10","--enable-const-vers","--const-vers-types boo sym voi cha vec str","--enable-cxoverflow-fallback"]))
-# systems.append(lc_with_options("LC15",    ["--max-versions 15"]))
-# systems.append(lc_with_options("LC15-boo",["--max-versions 15","--enable-const-vers","--const-vers-types boo","--enable-cxoverflow-fallback"]))
-# systems.append(lc_with_options("LC15-cha",["--max-versions 15","--enable-const-vers","--const-vers-types cha","--enable-cxoverflow-fallback"]))
-# systems.append(lc_with_options("LC15-clo",["--max-versions 15","--enable-const-vers","--const-vers-types clo","--enable-cxoverflow-fallback"]))
-# systems.append(lc_with_options("LC15-str",["--max-versions 15","--enable-const-vers","--const-vers-types str","--enable-cxoverflow-fallback"]))
-# systems.append(lc_with_options("LC15-vec",["--max-versions 15","--enable-const-vers","--const-vers-types vec","--enable-cxoverflow-fallback"]))
-# systems.append(lc_with_options("LC15-nul",["--max-versions 15","--enable-const-vers","--const-vers-types nul","--enable-cxoverflow-fallback"]))
-# systems.append(lc_with_options("LC15-pai",["--max-versions 15","--enable-const-vers","--const-vers-types pai","--enable-cxoverflow-fallback"]))
-# systems.append(lc_with_options("LC15-int",["--max-versions 15","--enable-const-vers","--const-vers-types int","--enable-cxoverflow-fallback"]))
-# systems.append(lc_with_options("LC15-flo",["--max-versions 15","--enable-const-vers","--const-vers-types flo","--enable-cxoverflow-fallback"]))
-# systems.append(lc_with_options("LC15-voi",["--max-versions 15","--enable-const-vers","--const-vers-types voi","--enable-cxoverflow-fallback"]))
-# systems.append(lc_with_options("LC15-sym",["--max-versions 15","--enable-const-vers","--const-vers-types sym","--enable-cxoverflow-fallback"]))
+systems.append(lc_with_options("LC", []))
 
 # # LC
 # l1 = System("LC",
