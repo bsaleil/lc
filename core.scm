@@ -1922,7 +1922,7 @@
 (define crtable-get-data (cxtable-get-data global-cr-table))
 
 (define (init-interprocedural)
-  (set! global-cc-table-maxsize (or opt-cc-max 430))
+  (set! global-cc-table-maxsize (or opt-cc-max 610))
   (set! global-cr-table-maxsize (or opt-cr-max 200))
   (set! cctable-get-idx (cxtable-get-idx global-cc-table "cc" global-cc-table-maxsize))
   (set! crtable-get-idx (cxtable-get-idx global-cr-table "cr" global-cr-table-maxsize)))
