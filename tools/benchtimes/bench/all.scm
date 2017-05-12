@@ -1,5 +1,5 @@
 ;; ALL benchmarks
-;; This benchmark contains all the benchmarks
+;; This benchmark contains all the benchmarks (alphabetically sorted)
 ;; The benchmarks are slightly modified to avoid global duplicates
 
 (define (run-single-bench name count ok? run)
