@@ -39,13 +39,16 @@
 ;--max-versions 5 --enable-const-vers --const-vers-types voi --enable-cxoverflow-fallback
 ;--max-versions 5 --enable-const-vers --const-vers-types sym --enable-cxoverflow-fallback
 
-(##define-macro (def-macro form . body)
-  `(##define-macro ,form (let () ,@body)))
 
-(def-macro (FLOATvector . lst) `(vector ,@lst))
+(define foo (lambda (n) (pp (+ n 11))))
 
-(pp (vector 1 2 3 4 5))
-(pp (FLOATvector 6 7 8 9 0))
+(foo 140)
+
+(define bar (lambda (n) (pp (+ n 111))))
+
+(bar 200)
+(bar 300)
+
 
 ;(define (fib n)
 ;  (if (< n 2)

@@ -17,7 +17,7 @@ if sys.argv[3] != "no":
 DRAW_COLS = sys.argv[4].split(":")
 BAR_NAMES = sys.argv[5].split(":")
 
-FONT_SIZE = 10
+FONT_SIZE = 9
 
 COLOR_MAX = 0.4
 COLOR_MIN = 0.7
