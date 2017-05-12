@@ -18115,5 +18115,3 @@
     1
     (lambda (result) (equal? result #t))
     (lambda () (lambda () (run-all)))))
-
-(main)

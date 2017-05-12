@@ -20,10 +20,11 @@ BAR_NAMES = sys.argv[5].split(":")
 FONT_SIZE = 9
 
 COLOR_MAX = 0.4
-COLOR_MIN = 0.7
+COLOR_MIN = 0.8
 
 import matplotlib.pyplot as plt; plt.rcdefaults()
 import numpy as np
+from scipy import stats
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.ticker import FuncFormatter
 
@@ -41,7 +42,10 @@ class Graph:
             'weight' : 'normal',
             'size'   : FONT_SIZE}
         plt.rc('font', **font)
+        # ytick every 50%
         fig, axes = plt.subplots(figsize=(7,2.5))
+        ticks = np.arange(0, 320, 50)
+        axes.set_yticks(ticks)
         # Hide small guide lines of y axis and hide top lines of x axis
         plt.tick_params(axis=u'both', which=u'both',length=0)
         self.fig = fig
@@ -57,7 +61,7 @@ class Graph:
             line.set_linestyle(':')
             line.set_linewidth(0.3)
         # Set x axis limit
-        axes.set_xlim([0,nb_x_els])
+        axes.set_xlim([0,nb_x_els+1]) # +1 for mean
         # Rotate x labels
         labels = axes.get_xticklabels()
         plt.setp(labels, rotation=45)
@@ -102,14 +106,22 @@ class Graph:
         colors = np.arange(COLOR_MIN,COLOR_MAX+color_step,color_step)
         colors = list(map(str, colors))
         #
-        y_pos = np.arange(len(xlabels))
+        y_pos = np.arange(len(xlabels)+1) # +1 for mean
         bar_width = 1.0/(len(data)+1)
         margin = 0
         i = 0
+
         for d in data:
+            # compute MEAN
+            #mean = np.mean(d);
+            mean = stats.mstats.gmean(d);
+            d = d + [mean];
+            # draw
             plt.bar(y_pos+margin,d,width=bar_width, align='edge', alpha=1.0,label=bar_labels[i],color=colors[i])
             margin += bar_width
             i += 1
+        #xlabels = xlabels + ['arith-mean']
+        xlabels = xlabels + ['geo-mean']
         plt.xticks(y_pos+((1.0-bar_width)/2.0)+0.25, xlabels, ha='right')
 
     def draw(self,bar_labels):
