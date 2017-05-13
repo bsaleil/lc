@@ -7,6 +7,8 @@ import subprocess
 import sys
 import re
 
+NEXEC = 10
+
 #---------------------------------------------------------------------------
 
 class Config:
@@ -21,7 +23,7 @@ class Config:
 
 class System:
 
-    def __init__(self,name,prefixsuffix,ccmd,eext,ecmd,regexms,regexgc):
+    def __init__(self,name,prefixsuffix,ccmd,eext,ecmd,regexms,regexgc,time_to_ms):
         self.name = name
         self.prefixsuffix = prefixsuffix
         self.ccmd = ccmd # Compilation cmd
@@ -30,6 +32,7 @@ class System:
         self.regexms = regexms # regex to extract ms time
         self.regexgc = regexgc # regex to extract gc ms time
         self.times = {}
+        self.time_to_ms = time_to_ms
 
         self.green = 2
         self.yellow = 3
@@ -114,30 +117,45 @@ class System:
 
         for file in files:
             filename = os.path.splitext(os.path.basename(file))[0]
-            print('   ' + filename + '...')
-            def f (x): return x.format(file)
-            cmd = list(map(f,self.ecmd))
-            pipe = subprocess.PIPE
-            p = subprocess.Popen(cmd, universal_newlines=True, stdin=pipe, stdout=pipe, stderr=pipe)
-            sout, serr = p.communicate()
-            rc = p.returncode
+            print('   ' + filename, end='')
+            sys.stdout.flush()
 
-            if (rc != 0) or (serr != '') or ("***" in sout):
-                self.execError(file)
+            rawTimes = []
+            for i in range(0,NEXEC):
+                print('.', end='')
+                sys.stdout.flush()
+                def f (x): return x.format(file)
+                cmd = list(map(f,self.ecmd))
+                pipe = subprocess.PIPE
+                p = subprocess.Popen(cmd, universal_newlines=True, stdin=pipe, stdout=pipe, stderr=pipe)
+                sout, serr = p.communicate()
+                rc = p.returncode
 
-            res = re.findall(self.regexms, sout)
-            assert (len(res) == 1)
-            timems = res[0]
+                if (rc != 0) or (serr != '') or ("***" in sout):
+                    self.execError(file)
 
-            # Remove gc time
-            res = re.findall(self.regexgc, sout)
-            assert (len(res) == 0 or len(res) == 1)
-            if (len(res) == 1):
-                timems = (float(timems) - float(res[0]))
-            else:
-                timems = float(timems)
+                res = re.findall(self.regexms, sout)
+                assert (len(res) == 1)
+                timems = res[0]
 
-            self.times[file] = timems
+                # Remove gc time
+                res = re.findall(self.regexgc, sout)
+                assert (len(res) == 0 or len(res) == 1)
+                if (len(res) == 1):
+                    timems = (float(timems) - float(res[0]))
+                else:
+                    assert "no collections" in sout, "Invalid regexp"
+                    timems = float(timems)
+
+                timems = self.time_to_ms(timems)
+                rawTimes.append(timems)
+
+            print('')
+            # Remove min, max and compute mean
+            rawTimes.remove(max(rawTimes))
+            rawTimes.remove(min(rawTimes))
+            mean = sum(rawTimes) / float(len(rawTimes))
+            self.times[file] = mean
 
 #---------------------------------------------------------------------------
 
@@ -163,46 +181,33 @@ class Runner:
 
 #---------------------------------------------------------------------------
 
-
 def userWants(str):
     r = input(str + ' (y/N) ')
     return r == 'y'
 
-#
-# systems = []
-# l1 = System("LC-old","",".scm",["lazy-comp-old","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
-# l2 = System("LC-new","",".scm",["lazy-comp-new","{0}","--time"],"(\d+.\d+) ms real time\\n\(")
-# systems.append(l1)
-# systems.append(l2)
-
-
 def lc_with_options(name,options):
-    opts = ["lazy-comp","{0}","--time"]
+    opts = ["/home/bapt/Bureau/lc-ECOOP/lazy-comp","{0}","--time"]
     opts = opts + options
-    return System(name,"LC","",".scm",opts,"(\d+.\d+) ms real time\\n\(","accounting for (\d+) ms real time");
+    return System(name,"LC","",".scm",opts,"(?:.*\n){11}Real time: (\d*.\d*)\n","(?:.*\n){14}GC real time: (\d*.\d*)\n",lambda x: x*1000.0)
+
+def gambit_no_options(name,gcsize):
+    opts = []
+    cmd = "/home/bapt/Bureau/gambit-4.8.7/gsc/gsc -:m"+ str(gcsize) + " -exe -o {0}.o1 {0}"
+    return System(name,name,cmd,".o1",["{0}"],"(\d+) ms real time\\n","accounting for (\d+) ms real time",lambda x: x)
+
 #
 systems = []
 
-systems.append(lc_with_options("LC", []))
+# LC
+systems.append(lc_with_options("m5intra",  ["--max-versions 5","--disable-entry-points","--disable-return-points"]))
+systems.append(lc_with_options("m5eponly", ["--max-versions 5","--disable-return-points"]))
+systems.append(lc_with_options("m5rponly", ["--max-versions 5","--disable-entry-points"]))
+systems.append(lc_with_options("m5inter",  ["--max-versions 5"]))
 
-# # LC
-# l1 = System("LC",
-#             "LC", # prefix/suffix
-#             "",
-#             ".scm",
-#             ["lazy-comp","{0}","--time","--max-versions 5"],
-#             "(\d+.\d+) ms real time\\n\(",
-#             "accounting for (\d+) ms real time")
-
-#
-# # Gambit safe
-# g2 = System("GambitS",
-#             "gsc -:m8000 -exe -o {0}.o1 {0}",
-#             ".o1",
-#             ["{0}"],
-#             "(\d+) ms real time\\n",
-#             "accounting for (\d+) ms real time")
-#
+# Gambit
+systems.append(gambit_no_options("GambitS",    8000))
+systems.append(gambit_no_options("GambitNS",   8000))
+systems.append(gambit_no_options("GambitSGC",1000000))
 
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))

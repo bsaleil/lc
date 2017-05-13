@@ -52,6 +52,36 @@
 (def-macro (GENERICexpt . lst) `(expt ,@lst))
 
 ;;------------------------------------------------------------------------------
+;; Functions used by LC to get time info
+
+(def-macro (##lc-time expr)
+  (let ((sym (gensym)))
+    `(let ((r (##lc-exec-stats (lambda () ,expr))))
+       (println "CPU time: "
+         (+ (cdr (assoc "User time" (cdr r)))
+            (cdr (assoc "Sys time" (cdr r)))))
+       (map (lambda (el) (println (car el) ": " (cdr el))) (cdr r))
+       r)))
+
+(define (##lc-exec-stats thunk)
+  (let* ((at-start (gambit$$##process-statistics))
+         (result (thunk))
+         (at-end (gambit$$##process-statistics)))
+    (define (get-info msg idx)
+      (cons msg
+            (- (gambit$$##f64vector-ref at-end idx)
+            (gambit$$##f64vector-ref at-start idx))))
+    (list
+      result
+      (get-info "User time" 0)
+      (get-info "Sys time" 1)
+      (get-info "Real time" 2)
+      (get-info "GC user time" 3)
+      (get-info "GC sys time" 4)
+      (get-info "GC real time" 5)
+      (get-info "Nb gcs" 6))))
+
+;;------------------------------------------------------------------------------
 
 (define ###TIME_BEFORE### 0)
 (define ###TIME_AFTER###  0)
@@ -64,16 +94,11 @@
 
 (define (run-benchmark name count ok? run-maker . args)
   (let ((run (apply run-maker args)))
-    (set! ###TIME_BEFORE### (##gettime-ns))
-    (let ((result (run-bench name count ok? run)))
-      (set! ###TIME_AFTER### (##gettime-ns))
-      (let ((ms (/ (- ###TIME_AFTER### ###TIME_BEFORE###) 1000000)))
-        (print ms)
-        (println " ms real time")
-        (if (not (ok? result))
-          (begin
-            (display "*** wrong result ***")
-            (newline)
-            (display "*** got: ")
-            (write result)
-            (newline)))))))
+    (let ((result (car (##lc-time (run-bench name count ok? run)))))
+      (if (not (ok? result))
+        (begin
+          (display "*** wrong result ***")
+          (newline)
+          (display "*** got: ")
+          (write result)
+          (newline))))))

@@ -30,7 +30,7 @@
 (define (exact? n) (fixnum? n))
 
 (define (exact->inexact n)
-  (gambit$$exact->inexact n))
+  (+ n 0.0))
 
 ;(define call/cc (lambda (r) (r #f)))
 (define (call/cc . n)

@@ -36,6 +36,19 @@
 (define-macro (string-bold str)
     `(string-append "\033[1m" ,str "\033[0m"))
 
+(define-macro (run-add-to-ctime f)
+  (let ((tmp (gensym)))
+    `(if opt-ctime
+         (let ((,tmp (##exec-stats ,f)))
+           (set! user-compilation-time
+                 (+ (- (+ (cdr (assoc 'user-time ,tmp))
+                          (cdr (assoc 'sys-time  ,tmp)))
+                       (+ (cdr (assoc 'gc-user-time ,tmp))
+                          (cdr (assoc 'gc-sys-time ,tmp))))
+                    user-compilation-time))
+           (cdr (assoc 'result ,tmp)))
+         (,f))))
+
 ;;--------------------------------------------------------------------------------
 ;; Compiler options
 
@@ -281,7 +294,9 @@
   (init-backend)
 
   (let ((lco (lazy-exprs prog #f)))
-    (gen-version-first lco (ctx-init)))
+    (run-add-to-ctime
+      (lambda ()
+        (gen-version-first lco (ctx-init)))))
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)
