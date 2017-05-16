@@ -7,7 +7,16 @@ import subprocess
 import sys
 import re
 
-NEXEC = 10
+if len(sys.argv) < 2:
+    print('Invalid option.')
+    print('  run.py nexecs [--exec-only]')
+    sys.exit(0)
+
+NEXEC = int(sys.argv[1])
+EXEC_ONLY = False
+
+if '--exec-only' in sys.argv:
+    EXEC_ONLY = True
 
 #---------------------------------------------------------------------------
 
@@ -198,16 +207,17 @@ def gambit_no_options(name,gcsize):
 #
 systems = []
 
-# LC
-systems.append(lc_with_options("m5intra",  ["--max-versions 5","--disable-entry-points","--disable-return-points"]))
-systems.append(lc_with_options("m5eponly", ["--max-versions 5","--disable-return-points"]))
-systems.append(lc_with_options("m5rponly", ["--max-versions 5","--disable-entry-points"]))
-systems.append(lc_with_options("m5inter",  ["--max-versions 5"]))
-
-# Gambit
-systems.append(gambit_no_options("GambitS",    8000))
-systems.append(gambit_no_options("GambitNS",   8000))
-systems.append(gambit_no_options("GambitSGC",1000000))
+systems.append(lc_with_options("LC", []))
+# # LC
+# systems.append(lc_with_options("m5intra",  ["--max-versions 5","--disable-entry-points","--disable-return-points"]))
+# systems.append(lc_with_options("m5eponly", ["--max-versions 5","--disable-return-points"]))
+# systems.append(lc_with_options("m5rponly", ["--max-versions 5","--disable-entry-points"]))
+# systems.append(lc_with_options("m5inter",  ["--max-versions 5"]))
+#
+# # Gambit
+# systems.append(gambit_no_options("GambitS",    8000))
+# systems.append(gambit_no_options("GambitNS",   8000))
+# #systems.append(gambit_no_options("GambitSGC",1000000))
 
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))
@@ -226,7 +236,7 @@ with open(scriptPath + '/num-iters.scm', 'r') as itersfile:
 
 runner = Runner(config,systems)
 
-if userWants('Execute only?'):
+if EXEC_ONLY or userWants('Execute only?'):
     runner.execute()
 else:
     if os.path.exists(config.resPath):

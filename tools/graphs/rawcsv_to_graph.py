@@ -23,7 +23,7 @@ COLOR_MAX = 0.4
 COLOR_MIN = 0.8
 
 # MEAN is False, "geo" or "arith"
-MEAN = "geo"
+MEAN = False
 
 import matplotlib.pyplot as plt; plt.rcdefaults()
 import numpy as np
@@ -47,9 +47,9 @@ class Graph:
         plt.rc('font', **font)
         # ytick every 50%
         fig, axes = plt.subplots(figsize=(7,2.5))
-        # ticks = np.arange(0, 301, 50)
+        # ticks = np.arange(0, 401, 50)
         # axes.set_yticks(ticks)
-        # axes.set_ylim(0,300)
+        # axes.set_ylim(0,400)
         # Hide small guide lines of y axis and hide top lines of x axis
         plt.tick_params(axis=u'both', which=u'both',length=0)
         self.fig = fig
@@ -130,6 +130,7 @@ class Graph:
                 elif MEAN == "geo":
                     mean = stats.mstats.gmean(d);
                 d = d + [mean];
+                print('Mean ' + bar_labels[i] + ': ' + str(mean))
             # draw
             plt.bar(y_pos+margin,d,width=bar_width, align='edge', alpha=1.0,label=bar_labels[i],color=colors[i])
             margin += bar_width
