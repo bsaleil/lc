@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-ROOT=/home/bapt/Bureau/lc-ECOOP
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+ROOT="$SCRIPT_DIR/../"
 
 BENCH_PATH="$ROOT/tools/benchtimes/result/LC/"
 LC_PATH="$ROOT/lazy-comp"
@@ -12,6 +13,7 @@ GET_ETIME_PATH="$ROOT/tools/benchtimes/run.py"
 NEXEC="3"
 
 function type_checks {
+    echo "## Number of type checks"
     python $KEY_TO_CSV_PATH \
     $BENCH_PATH \
     $LC_PATH \
@@ -24,6 +26,7 @@ function type_checks {
 }
 
 function code_size {
+    echo "## Code size (bytes)"
     python $KEY_TO_CSV_PATH \
     $BENCH_PATH \
     $LC_PATH \
@@ -36,14 +39,14 @@ function code_size {
 }
 
 function tables_size {
-    echo "## Function entry point tables"
+    echo "## Function entry point tables size (kbytes)"
     python $KEY_TO_CSV_PATH \
     $BENCH_PATH \
     $LC_PATH \
     "CC table space (kbytes)" \
     "Max=5, Entry and return points;--max-versions 5"
 
-    echo "## Continuation entry point tables"
+    echo "## Continuation entry point tables size (kbytes)"
     python $KEY_TO_CSV_PATH \
     $BENCH_PATH \
     $LC_PATH \
@@ -53,11 +56,13 @@ function tables_size {
 }
 
 function exec_time {
+    echo "## Execution time"
     python $GET_ETIME_PATH $NEXEC --exec-only
     exit
 }
 
 function compil_time {
+    echo "## Compilation time"
     python $GET_CTIME_PATH $NEXEC \
     $BENCH_PATH \
     $LC_PATH \
@@ -69,6 +74,7 @@ function compil_time {
 }
 
 function total_time {
+    echo "## Total time"
     python $GET_TTIME_PATH $NEXEC \
     $BENCH_PATH \
     $LC_PATH \
@@ -107,18 +113,33 @@ function help {
     echo "      Example: ./ecoop17-paper --execution-time 10"
     echo
     echo "    --compilation-time"
-    echo "      Extract the compilation time. This option mey be followed by the number of executions (default is 3)."
+    echo "      Extract the compilation time. This option may be followed by the number of executions (default is 3)."
     echo "      Because min and max values are removed, the number of executions must be greater than 2."
     echo "      Example: ./ecoop17-paper --compilation-time 10"
     echo
     echo "    --total-time"
-    echo "      Extract the total time. This option mey be followed by the number of executions (default is 3)."
+    echo "      Extract the total time. This option may be followed by the number of executions (default is 3)."
     echo "      Because min and max values are removed, the number of executions must be greater than 2."
     echo "      Example: ./ecoop17-paper --total-time 10"
+    echo
+    echo "    --all"
+    echo "      Extract all of the data with a single option. This option may be followed by the number of executions to extract time values (default is 3)."
+    echo "      Because min and max values are removed, the number of executions must be greater than 2."
+    echo "      Example: ./ecoop17-paper --all 10"
     exit
 }
 
-if [ "$1" == "--type-checks" ]; then
+if [ "$1" == "--all" ]; then
+    if [ "$2" != "" ]; then
+        NEXEC="$2"
+    fi
+    type_checks
+    code_size
+    tables_size
+    exec_time
+    compil_time
+    total_time
+elif [ "$1" == "--type-checks" ]; then
     type_checks
 elif [ "$1" == "--code-size" ]; then
     code_size
