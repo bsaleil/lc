@@ -457,7 +457,7 @@
                               (lambda (type)
                                 (if (not (ctx-type-ret? type))
                                     (begin
-                                      (print (ctx-type-sym type))
+                                      (print (ctx-type-symbol type))
                                       (if (ctx-type-cst? type)
                                           (print "(" (ctx-type-cst type) ") ")
                                           (print " ")))))
@@ -565,8 +565,8 @@
               (for-each
                 (lambda (stype)
                   (if (ctx-type-cst? stype)
-                      (print (ctx-type-sym stype) "(" (ctx-type-cst stype) ") ")
-                      (print (ctx-type-sym stype) " ")))
+                      (print (ctx-type-symbol stype) "(" (ctx-type-cst stype) ") ")
+                      (print (ctx-type-symbol stype) " ")))
                 (ctx-stack ctx))))))
       ;; Slot loc
       (print-array-item

@@ -150,23 +150,36 @@
   (table-set! table type-name tags))
 ;; Ctx type utils
 (define (ctx-make-type sym . dynamic-tags) (cons sym dynamic-tags))
-(define (ctx-type-sym type)   (car type))
+(define (ctx-type-symbol type)   (car type))
 (define (ctx-type-dtags type) (cdr type))
 (define (ctx-type-tag type i) (list-ref type (+ i 1)))
+(define (ctx-type-tag-set! type i val)
+  (let loop ((i i) (lst (cdr type)))
+    (if (= i 0)
+        (set-car! lst val)
+        (loop (- i 1) (cdr lst)))))
 ;; Generic type predicate
 ;; check if given tag exists in the set of tags associated to given type
 (define (ctx-type-predicate tag)
-  (lambda (type) (member tag (table-ref meta-type-tags (ctx-type-sym type)))))
-;; Generic type tag accessor
-;; check if given dynamic tag exists in the set of dynamic tags associated to given type
+  (lambda (type) (member tag (table-ref meta-type-tags (ctx-type-symbol type)))))
+;; Generic type tag accessor (get)
+;; check that given dynamic tag exists in the set of dynamic tags associated to given type
 ;; then, return the value associated to the tag from the type object
 (define (ctx-type-accessor tag)
   (lambda (type)
-    (let* ((dtags (table-ref meta-dynamic-type-tags (ctx-type-sym type)))
+    (let* ((dtags (table-ref meta-dynamic-type-tags (ctx-type-symbol type)))
            (idx (index-of tag dtags)))
       (assert idx "Internal error")
       (ctx-type-tag type idx))))
-
+;; Generic type tag accessor (set)
+;; check that given dynamic tag exists in the set of dynamic tags associated to given type
+;; then, replace the value associated to the tag from the type object
+(define (ctx-type-accessor! tag)
+  (lambda (type val)
+    (let* ((dtags (table-ref meta-dynamic-type-tags (ctx-type-symbol type)))
+           (idx (index-of tag dtags)))
+      (assert idx "Internal error")
+      (ctx-type-tag-set! type idx val))))
 ;;---------------------------------------------------------------------------
 
 ;; Register type tags
@@ -189,9 +202,11 @@
     (if (null? tags)
         '()
         (let ((sym-pred (format-sym "ctx-type-" (car tags) "?"))
-              (sym-accs (format-sym "ctx-type-" (car tags))))
-          (append `((define ,sym-pred (ctx-type-predicate ',(car tags)))
-                    (define ,sym-accs (ctx-type-accessor  ',(car tags))))
+              (sym-accs (format-sym "ctx-type-" (car tags)))
+              (sym-accss (format-sym "ctx-type-" (car tags) "-set!")))
+          (append `((define ,sym-pred  (ctx-type-predicate ',(car tags)))
+                    (define ,sym-accs  (ctx-type-accessor  ',(car tags)))
+                    (define ,sym-accss (ctx-type-accessor! ',(car tags))))
                    (generate-pred-accs (cdr tags))))))
 
   `(begin
@@ -266,6 +281,7 @@
 (meta-add-type clo (clo) ())
 
 (meta-add-type chac (cha cst) (cst))
+(meta-add-type nulc (nul cst) (cst))
 (meta-add-type intc (int cst) (cst))
 (meta-add-type booc (boo cst) (cst))
 (meta-add-type paic (pai cst) (cst))
@@ -307,21 +323,31 @@
     ((is "clo") ctx-type-clo?)
     (else (error "Internal error"))))
 
-(define (ctx-type-cst-set! type v)
-  (error "K"))
-
-(define (ctx-type-ctor t)
-  (error "K")
-  (let loop ((l ctx-type-ctors))
-    (let ((pred (caar l)))
-      (if (pred t)
-          (cdar l)
-          (loop (cdr l))))))
+(define (ctx-type-ctor type)
+  (cond
+    ((ctx-type-cha? type) make-ctx-tcha)
+    ((ctx-type-voi? type) make-ctx-tvoi)
+    ((ctx-type-nul? type) make-ctx-tnul)
+    ((ctx-type-int? type) make-ctx-tint)
+    ((ctx-type-boo? type) make-ctx-tboo)
+    ((ctx-type-vec? type) make-ctx-tvec)
+    ((ctx-type-str? type) make-ctx-tstr)
+    ((ctx-type-sym? type) make-ctx-tsym)
+    ((ctx-type-flo? type) make-ctx-tflo)
+    ((ctx-type-pai? type) make-ctx-tpai)
+    ((ctx-type-clo? type) make-ctx-tclo)
+    (else (error "Internal error"))))
 
 ;; Check if two ctx-type objects represent the same type
 (define (ctx-type-teq? t1 t2)
-  (eq? (ctx-type-sym t1)
-       (ctx-type-sym t2)))
+  (eq? (ctx-type-symbol t1)
+       (ctx-type-symbol t2)))
+
+;; Check if t1 'is-a' t2
+;; (t1 has the tag associated to t2)
+(define (ctx-type-is-a? t1 t2)
+  (let ((pred (ctx-type-predicate (ctx-type-symbol t2))))
+    (pred t1)))
 
 ;; Return a new type instance without any constant information
 (define (ctx-type-nocst t)
@@ -339,7 +365,7 @@
       (set! l (copy-permanent l #f perm-domain)))
   (cond
     ((char?    l)  (make-ctx-tchac l))
-    ;((null?    l)  (make-ctx-tnulc l))
+    ((null?    l)  (make-ctx-tnulc l))
     ((fixnum?  l)  (make-ctx-tintc l))
     ((boolean? l)  (make-ctx-tbooc l))
     ((pair?    l)  (make-ctx-tpaic l))
@@ -922,7 +948,7 @@
                (fn?  (caddr info))
                (type
                  (if fn?
-                     (make-ctx-tclo #t cst)
+                     (make-ctx-tcloc cst)
                      (literal->ctx-type cst)))
                (slot (length stack))
                (stack (cons type stack)))

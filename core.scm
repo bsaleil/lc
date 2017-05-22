@@ -168,7 +168,7 @@
 ;; Used to avoid type creation for simple operations
 ;; MUST NOT BE MUTATED
 ;; NOTE: we need to reorganize 'primitives' data structure in ast.scm
-;; to replace ATX_* uses by symbols uses to identify types (e.g. in ctx-type-teq?)
+;; to replace ATX_* uses by symbols uses to identify types
 (define ATX_ALL 'CTX_SPECIAL_ALL) ; Represents all ctx types
 (define ATX_NUM 'CTX_SPECIAL_NUM) ; Represents number types
 (define ATX_UNK (make-ctx-tunk))
@@ -216,7 +216,7 @@
 (define ERR_LETREC           "!!! ERROR - ILL-FORMED LETREC")
 
 (define (ERR_TYPE_EXPECTED type)
-  (string-append (string-upcase (ctx-type-sym type))
+  (string-append (string-upcase (ctx-type-symbol type))
                  " EXPECTED"))
 
 (define ERR_NUMBER_EXPECTED "NUMBER EXPECTED")
@@ -1363,6 +1363,7 @@
               (asm-align cgc 4 0 #x90)
               (x86-label cgc version-label)
               ((lazy-code-generator lazy-code) cgc ctx))))
+
       (if fn-opt-label
           (fn-opt-label version-label)
           version-label)))
@@ -1700,9 +1701,6 @@
              (lambda (cgc ctx)
                (pp "FAIL TEST")
                (pp ast)
-              ; (pp ctx-type)
-              ; (pp stack-idx)
-              ; (pp ctx)
                (if (or (ctx-type-flo? ctx-type) (ctx-type-int? ctx-type))
                    (gen-error cgc ERR_NUMBER_EXPECTED)
                    (gen-error cgc (ERR_TYPE_EXPECTED ctx-type)))))))
@@ -1742,7 +1740,7 @@
               (known-type  (ctx-get-type ctx stack-idx)))
 
          (cond ;; known == expected
-               ((ctx-type-teq? ctx-type known-type)
+               ((ctx-type-is-a? known-type ctx-type)
                 (jump-to-version cgc lazy-success ctx-success-known))
                ;; known != expected && known != unknown
                ((not (ctx-type-unk? known-type))

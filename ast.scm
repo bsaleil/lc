@@ -582,7 +582,7 @@
                                  primitives))
                          (make-lazy-code #f
                              (lambda (cgc ctx)
-                               (jump-to-version cgc succ (ctx-push ctx (make-ctx-tboo #t #f) #f)))))
+                               (jump-to-version cgc succ (ctx-push ctx (make-ctx-tbooc #f) #f)))))
                   ;; other
                   (let* ((identifier (cadr ast))
                          (lazy-bind (make-lazy-code
@@ -679,7 +679,7 @@
 
         (cond ;; rest AND actual == formal
               ((and rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
-               (set! ctx (ctx-push ctx (make-ctx-tnul #t '()) #f))
+               (set! ctx (ctx-push ctx (make-ctx-tnulc '()) #f))
                (let ((reg
                        (if (<= nb-formal (length args-regs))
                            (list-ref args-regs (- nb-formal 1))
@@ -952,7 +952,7 @@
         (if (null? fvars-ncst)
 
             ;; Cst function, add information to ctx
-            (let* ((type (make-ctx-tclo #t fn-num))
+            (let* ((type (make-ctx-tcloc fn-num))
                    (ctx  (ctx-push ctx type #f)))
               (jump-to-version cgc succ ctx))
 
@@ -1775,7 +1775,8 @@
           (nctx (ctx-pop-n ctx 2)))
       (if (or (and (not (ctx-type-unk? typel))
                    (not (ctx-type-unk? typer))
-                   (not (ctx-type-teq? typel typer)))
+                   (not (ctx-type-is-a? typel typer))
+                   (not (ctx-type-is-a? typer typel)))
               (and (ctx-type-flo? typel) (ctx-type-flo? typer)))
           ;; Types are known and !=
           (jump-to-version cgc (lazy-code-lco-false succ) nctx)
@@ -1794,7 +1795,8 @@
       (apply-moves cgc ctx moves)
       (if (or (and (not (ctx-type-unk? typel))
                    (not (ctx-type-unk? typer))
-                   (not (ctx-type-teq? typel typer)))
+                   (not (ctx-type-is-a? typel typer))
+                   (not (ctx-type-is-a? typer typel)))
               (and (ctx-type-flo? typel) (ctx-type-flo? typer)))
           ;; Types are known and !=
           (codegen-set-bool cgc #f reg)
@@ -2548,7 +2550,7 @@
             (jump-to-version
               cgc
               (gen-ast-l (cdr ast) lazy-call)
-              (ctx-push ctx (make-ctx-tclo #t (cdr fn-id-inf)) #f (atom-node-val (car ast))))
+              (ctx-push ctx (make-ctx-tcloc (cdr fn-id-inf)) #f (atom-node-val (car ast))))
             (jump-to-version
               cgc
               (check-types (list ATX_CLO) (list (car ast)) (gen-ast-l (cdr ast) lazy-call) ast)
@@ -2861,7 +2863,7 @@
               (define vartype (ctx-id-type ctx sym))
               (cond ((or (not vartype) (ctx-type-unk? vartype))
                        (jump-to-version cgc (gen-ast (cadr ast) check) ctx))
-                    ((ctx-type-teq? type vartype)
+                    ((ctx-type-is-a? vartype type)
                        (jump-to-version cgc (lazy-code-lco-true succ) ctx))
                     (else
                        (jump-to-version cgc (lazy-code-lco-false succ) ctx)))))
