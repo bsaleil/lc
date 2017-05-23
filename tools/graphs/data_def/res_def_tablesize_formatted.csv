@@ -1,0 +1,28 @@
+\begin{figure}[H]
+    \centering
+    \begin{tabular}{|l|C{1.9cm}|C{1.9cm}||l|C{1.9cm}|C{1.9cm}|}
+    \hline
+    Benchmark & Function & \begin{tabular}{@{}c@{}}Function \\ (E.P only)\end{tabular} & Benchmark & Continuation & \begin{tabular}{@{}c@{}}Continuation \\ (R.P. only)\end{tabular} \\ \hline
+    all & 14097.06 & 12347.80 & all & 618.62 & 481.28 \\
+    compiler & 5097.80 & 4374.49 & compiler & 398.08 & 323.84 \\
+    earley & 155.80 & 161.68 & peval & 31.87 & 30.46 \\
+    graphs & 101.38 & 89.96 & conform & 23.17 & 23.68 \\
+    sboyer & 87.98 & 76.75 & paraffins & 22.53 & 5.63 \\
+    conform & 87.81 & 79.15 & nboyer & 18.69 & 13.06 \\
+    nboyer & 87.61 & 76.42 & sboyer & 18.18 & 12.42 \\
+    peval & 76.83 & 63.84 & earley & 17.41 & 10.75 \\
+    paraffins & 72.93 & 46.90 & mazefun & 16.77 & 16.26 \\
+    browse & 65.42 & 57.41 & graphs & 13.31 & 8.19 \\
+    mazefun & 59.98 & 53.73 & browse & 12.93 & 9.34 \\
+    lattice & 52.56 & 46.72 & boyer & 12.03 & 8.32 \\
+    simplex & 38.00 & 40.00 & lattice & 10.75 & 8.19 \\
+    perm9 & 31.23 & 27.78 & simplex & 5.38 & 5.38 \\
+    nqueens & 30.53 & 28.83 & takl & 5.38 & 3.58 \\
+    boyer & 28.56 & 26.66 & nqueens & 5.25 & 2.69 \\
+    destruc & 20.93 & 22.20 & perm9 & 5.12 & 4.74 \\
+    \textit{others} & < 20.00 & < 20.00 & \textit{others} & < 4.50 & < 4.50 \\
+    \hline
+    \end{tabular}
+    \caption{TODO: move to xp section}
+    \label{fig:00}
+\end{figure}

@@ -54,8 +54,7 @@
                             (cadr el)))
                     (global (asc-globals-get id))
                     (stype (get-global-type el)))
-               (if (and global
-                        (not (ctx-type-teq? stype (global-stype global))))
+               (if global
                    (global-stype-set! global #f)
                    (asc-globals-add id stype))))
          (find-types! (cdr expr)))))

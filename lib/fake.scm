@@ -27,9 +27,10 @@
 ;;
 ;;---------------------------------------------------------------------------
 
-(define (exact? n) #t)
+(define (exact? n) (fixnum? n))
 
-(define exact->inexact (lambda (x) x))
+(define (exact->inexact n)
+  (+ n 0.0))
 
 ;(define call/cc (lambda (r) (r #f)))
 (define (call/cc . n)

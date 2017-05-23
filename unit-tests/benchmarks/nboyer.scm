@@ -70,7 +70,7 @@
 ; within the symbol-records.
 
 (let ()
-  
+
   (define (setup)
     (add-lemma-lst
      (quote ((equal (compile form)
@@ -442,13 +442,13 @@
                     (if (eqp j i)
                         val
                         (get j mem)))))))
-  
+
   (define (add-lemma-lst lst)
     (cond ((null? lst)
            #t)
           (else (add-lemma (car lst))
                 (add-lemma-lst (cdr lst)))))
-  
+
   (define (add-lemma term)
     (cond ((and (pair? term)
                 (eq? (car term)
@@ -460,40 +460,40 @@
                  (translate-term term)
                  (get (car (cadr term)) (quote lemmas)))))
           (else (fatal-error "ADD-LEMMA did not like term:  " term))))
-  
+
   ; Translates a term by replacing its constructor symbols by symbol-records.
-  
+
   (define (translate-term term)
     (cond ((not (pair? term))
            term)
           (else (cons (symbol->symbol-record (car term))
                       (translate-args (cdr term))))))
-  
+
   (define (translate-args lst)
     (cond ((null? lst)
            '())
           (else (cons (translate-term (car lst))
                       (translate-args (cdr lst))))))
-  
+
   ; For debugging only, so the use of MAP does not change
   ; the first-order character of the benchmark.
-  
+
   (define (untranslate-term term)
     (cond ((not (pair? term))
            term)
           (else (cons (get-name (car term))
                       (map untranslate-term (cdr term))))))
-  
+
   ; A symbol-record is represented as a vector with two fields:
   ; the symbol (for debugging) and
   ; the list of lemmas associated with the symbol.
-  
+
   (define (put sym property value)
     (put-lemmas! (symbol->symbol-record sym) value))
-  
+
   (define (get sym property)
     (get-lemmas (symbol->symbol-record sym)))
-  
+
   (define (symbol->symbol-record sym)
     (let ((x (assq sym *symbol-records-alist*)))
       (if x
@@ -503,36 +503,36 @@
                   (cons (cons sym r)
                         *symbol-records-alist*))
             r))))
-  
+
   ; Association list of symbols and symbol-records.
-  
+
   (define *symbol-records-alist* '())
-  
+
   ; A symbol-record is represented as a vector with two fields:
   ; the symbol (for debugging) and
   ; the list of lemmas associated with the symbol.
-  
+
   (define (make-symbol-record sym)
     (vector sym '()))
-  
+
   (define (put-lemmas! symbol-record lemmas)
     (vector-set! symbol-record 1 lemmas))
-  
+
   (define (get-lemmas symbol-record)
     (vector-ref symbol-record 1))
-  
+
   (define (get-name symbol-record)
     (vector-ref symbol-record 0))
-  
+
   (define (symbol-record-equal? r1 r2)
     (eq? r1 r2))
-  
+
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
   ;
   ; The second phase.
   ;
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-  
+
   (define (test alist term n)
     (let ((term
            (apply-subst
@@ -542,14 +542,14 @@
                   (n n (- n 1)))
                  ((zero? n) term))))))
     (tautp term)))
-  
+
   (define (translate-alist alist)
     (cond ((null? alist)
            '())
           (else (cons (cons (caar alist)
                             (translate-term (cdar alist)))
                       (translate-alist (cdr alist))))))
-  
+
   (define (apply-subst alist term)
     (cond ((not (pair? term))
            (let ((temp-temp (assq term alist)))
@@ -558,17 +558,17 @@
                  term)))
           (else (cons (car term)
                       (apply-subst-lst alist (cdr term))))))
-  
+
   (define (apply-subst-lst alist lst)
     (cond ((null? lst)
            '())
           (else (cons (apply-subst alist (car lst))
                       (apply-subst-lst alist (cdr lst))))))
-  
+
   (define (tautp x)
     (tautologyp (rewrite x)
                 '() '()))
-  
+
   (define (tautologyp x true-lst false-lst)
     (cond ((truep x true-lst)
            #t)
@@ -594,11 +594,11 @@
                                         (cons (cadr x)
                                               false-lst))))))
           (else #f)))
-  
+
   (define if-constructor '*) ; becomes (symbol->symbol-record 'if)
-  
+
   (define rewrite-count 0) ; sanity check
-  
+
   (define (rewrite term)
     (set! rewrite-count (+ rewrite-count 1))
     (cond ((not (pair? term))
@@ -606,26 +606,26 @@
           (else (rewrite-with-lemmas (cons (car term)
                                            (rewrite-args (cdr term)))
                                      (get-lemmas (car term))))))
-  
+
   (define (rewrite-args lst)
     (cond ((null? lst)
            '())
           (else (cons (rewrite (car lst))
                       (rewrite-args (cdr lst))))))
-  
+
   (define (rewrite-with-lemmas term lst)
     (cond ((null? lst)
            term)
           ((one-way-unify term (cadr (car lst)))
            (rewrite (apply-subst unify-subst (caddr (car lst)))))
           (else (rewrite-with-lemmas term (cdr lst)))))
-  
+
   (define unify-subst '*)
-  
+
   (define (one-way-unify term1 term2)
     (begin (set! unify-subst '())
            (one-way-unify1 term1 term2)))
-  
+
   (define (one-way-unify1 term1 term2)
     (cond ((not (pair? term2))
            (let ((temp-temp (assq term2 unify-subst)))
@@ -644,7 +644,7 @@
            (one-way-unify1-lst (cdr term1)
                                (cdr term2)))
           (else #f)))
-  
+
   (define (one-way-unify1-lst lst1 lst2)
     (cond ((null? lst1)
            (null? lst2))
@@ -655,28 +655,28 @@
            (one-way-unify1-lst (cdr lst1)
                                (cdr lst2)))
           (else #f)))
-  
+
   (define (falsep x lst)
     (or (term-equal? x false-term)
         (term-member? x lst)))
-  
+
   (define (truep x lst)
     (or (term-equal? x true-term)
         (term-member? x lst)))
-  
+
   (define false-term '*)  ; becomes (translate-term '(f))
   (define true-term '*)   ; becomes (translate-term '(t))
-  
+
   ; The next two procedures were in the original benchmark
   ; but were never used.
-  
+
   (define (trans-of-implies n)
     (translate-term
      (list (quote implies)
            (trans-of-implies1 n)
            (list (quote implies)
                  0 n))))
-  
+
   (define (trans-of-implies1 n)
     (cond ((equal? n 1)
            (list (quote implies)
@@ -686,18 +686,18 @@
                             (- n 1)
                             n)
                       (trans-of-implies1 (- n 1))))))
-  
+
   ; Translated terms can be circular structures, which can't be
   ; compared using Scheme's equal? and member procedures, so we
   ; use these instead.
-  
+
   (define (term-equal? x y)
     (cond ((pair? x)
            (and (pair? y)
                 (symbol-record-equal? (car x) (car y))
                 (term-args-equal? (cdr x) (cdr y))))
           (else (equal? x y))))
-  
+
   (define (term-args-equal? lst1 lst2)
     (cond ((null? lst1)
            (null? lst2))
@@ -706,14 +706,14 @@
           ((term-equal? (car lst1) (car lst2))
            (term-args-equal? (cdr lst1) (cdr lst2)))
           (else #f)))
-  
+
   (define (term-member? x lst)
     (cond ((null? lst)
            #f)
           ((term-equal? x (car lst))
            #t)
           (else (term-member? x (cdr lst)))))
-  
+
   (set! setup-boyer
         (lambda ()
           (set! *symbol-records-alist* '())
@@ -721,7 +721,7 @@
           (set! false-term (translate-term '(f)))
           (set! true-term  (translate-term '(t)))
           (setup)))
-  
+
   (set! test-boyer
         (lambda (alist term n)
           (set! rewrite-count 0)
@@ -733,30 +733,36 @@
                 rewrite-count
                 #f)))))
 
-;-----
-
 (define (run n)
-  (setup-boyer)
   (test-boyer
-       '((x f (plus (plus a b)
-                    (plus c (zero))))
-         (y f (times (times a b)
-                     (plus c d)))
-         (z f (reverse (append (append a b)
-                               (nil))))
-         (u equal (plus a b)
-            (difference x y))
-         (w lessp (remainder a b)
-            (member a (length b))))
-        '(implies (and (implies x y)
-                       (and (implies y z)
-                            (and (implies z u)
-                                 (implies u w))))
-                  (implies x w))
-        n))
+    (quote ((x f (plus (plus a b)
+                       (plus c (zero))))
+            (y f (times (times a b)
+                        (plus c d)))
+            (z f (reverse (append (append a b)
+                                  (nil))))
+            (u equal (plus a b)
+               (difference x y))
+            (w lessp (remainder a b)
+               (member a (length b)))))
+    (quote (implies (and (implies x y)
+                         (and (implies y z)
+                              (and (implies z u)
+                                   (implies u w))))
+                    (implies x w)))
+    n))
 
+(setup-boyer)
 (pp (run 0))
 (pp (run 1))
+(pp (run 2))
+(pp (run 3))
+(pp (run 4))
+(pp (run 5))
 
 ;95024
 ;591777
+;1813975
+;5375678
+;16445406
+;51507739

@@ -42,6 +42,9 @@
 (define (odd? x)
   (= (modulo x 2) 1))
 
+(define (sin x)
+  (gambit$$sin x))
+
 (define (expt n m)
   (if (= m 0)
      1
@@ -66,3 +69,6 @@
             (min-h (cdr els) (car els))
             (min-h (cdr els) m)))))
   (min-h l a))
+
+(define (bitwise-and a b)
+  (gambit$$bitwise-and a b))
