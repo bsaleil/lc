@@ -1,40 +1,12 @@
 
-(##define-macro (def-macro form . body)
-  `(##define-macro ,form (let () ,@body)))
-
-(def-macro (##lc-time expr)
-  (let ((sym (gensym)))
-    `(let ((r (##lc-exec-stats (lambda () ,expr))))
-       (println "CPU time: "
-         (+ (cdr (assoc "User time" (cdr r)))
-            (cdr (assoc "Sys time" (cdr r)))))
-       (map (lambda (el) (println (car el) ": " (cdr el))) (cdr r))
-       r)))
-
-(define (##lc-exec-stats thunk)
-  (let* ((at-start (gambit$$##process-statistics))
-         (result (thunk))
-         (at-end (gambit$$##process-statistics)))
-    (define (get-info msg idx)
-      (cons msg
-            (- (gambit$$##f64vector-ref at-end idx)
-            (gambit$$##f64vector-ref at-start idx))))
-    (list
-      result
-      (get-info "User time" 0)
-      (get-info "Sys time" 1)
-      (get-info "Real time" 2)
-      (get-info "GC user time" 3)
-      (get-info "GC sys time" 4)
-      (get-info "GC real time" 5)
-      (get-info "Nb gcs" 6))))
-
 (define (fib n)
-  (gambit$$##gc)
   (if (< n 2)
-      1
+      n
       (+ (fib (- n 1))
          (fib (- n 2)))))
+
+(pp (fib 40))
+
 
 ;(pp (##lc-exec-stats (lambda () (fib 40))))
 
@@ -111,8 +83,6 @@
     ;; OK core.scm 1
     ;; OK main.scm 1
     ;; OK codegen  1
-
-(println 11)
 
 
 ;; Si on atteint la limite du nb de versions:

@@ -43,9 +43,6 @@
 (define opt-export-locat-info    #f) ;; Pretty print number of versions for each locat object
 (define opt-time                 #f) ;; Print exec time in processor cycles
 (define opt-verbose-jit          #f) ;; JIT Verbose debugging
-(define opt-verbose-gc           #f) ;; GC  Verbose debugging
-(define opt-count-calls          #f) ;; Count call for a given identifier
-(define opt-all-tests            #f) ;; Remove type information (execute all type tests)
 (define opt-max-versions         #f) ;; Limit of number of versions (#f=no limit, 0=only generic, ...)
 (define opt-entry-points         #t) ;; Use multiple entry points (#t to use cc-tables, #f to use flat closures)
 (define opt-return-points        #t) ;; Use multiple return points (#t to use cr-tables, #f to use a generic return point)

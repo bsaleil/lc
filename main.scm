@@ -95,9 +95,9 @@
     "Disable the use of multiple entry points use only one generic entry point"
     ,(lambda (args) (set! opt-entry-points #f) args))
 
-  (--disable-regalloc-vers
-    "Do not use register allocation information to specialize generated code"
-    ,(lambda (args) (set! opt-vers-regalloc #f) args))
+  ;(--disable-regalloc-vers
+  ;  "Do not use register allocation information to specialize generated code"
+  ;  ,(lambda (args) (set! opt-vers-regalloc #f) args))
 
   (--disable-return-points
       "Disable the use of multiple return points use only one generic return point"
@@ -164,23 +164,12 @@
   (--time
     "Print exec time information"
     ,(lambda (args) (assert (not opt-stats) "--time option can't be used with --stats")
-                    (assert (not opt-count-calls) "--time option can't be used with --count-calls")
                     (set! opt-time #t)
-                    args))
-
-  (--verbose
-    "Full verbose"
-    ,(lambda (args) (set! opt-verbose-jit #t)
-                    (set! opt-verbose-gc  #t)
                     args))
 
   (--verbose-jit
     "Set jit as verbose"
     ,(lambda (args) (set! opt-verbose-jit #t) args))
-
-  (--verbose-gc
-    "Set gc as verbose"
-    ,(lambda (args) (set! opt-verbose-gc #t) args))
 ))
 
 (define (parse-args args)
@@ -412,8 +401,6 @@
 ;;-----------------------------------------------------------------------------
 
 (define (rt-print-opts)
-  (if opt-count-calls
-    (println "Calls '" opt-count-calls "': " (get-slot 'calls)))
   (if opt-stats
     (begin (println "Closures: " (get-slot 'closures))
            (println "Executed tests: " (get-slot 'tests)))))
