@@ -134,90 +134,224 @@
             0
             #f))
 
-;;-----------------------------------------------------------------------------
-;; Ctx types
+;;---------------------------------------------------------------------------
+;; META CTX TYPES
 
-;; Represent all ctx-types
-;; sym must be different for each type because it is used to test if two types
-;; represents the same type (symbol, integer, etc...)
-(define-type ctx-type
-  extender: define-ctx-type
-  sym
-  mem-allocated?
-  is-cst
-  cst)
+;; List of all registered tags
+(define meta-tags '())
+;; Table type symbol -> tags associated to this type
+(define meta-type-tags (make-table))
+;; Table type symbol -> dynamic tags associated to this type
+(define meta-dynamic-type-tags (make-table))
+;; Set the value of meta-(dynamic)-type-tags
+(define (meta-type-tags-set table type-name tags)
+  (assert (not (table-ref table type-name #f))
+          "Internal error")
+  (table-set! table type-name tags))
+;; Ctx type utils
+(define (ctx-make-type sym . dynamic-tags) (cons sym dynamic-tags))
+(define (ctx-type-symbol type)   (car type))
+(define (ctx-type-dtags type) (cdr type))
+(define (ctx-type-tag type i) (list-ref type (+ i 1)))
+(define (ctx-type-tag-set! type i val)
+  (let loop ((i i) (lst (cdr type)))
+    (if (= i 0)
+        (set-car! lst val)
+        (loop (- i 1) (cdr lst)))))
+;; Generic type predicate
+;; check if given tag exists in the set of tags associated to given type
+(define (ctx-type-predicate tag)
+  (lambda (type) (member tag (table-ref meta-type-tags (ctx-type-symbol type)))))
+;; Generic type tag accessor (get)
+;; check that given dynamic tag exists in the set of dynamic tags associated to given type
+;; then, return the value associated to the tag from the type object
+(define (ctx-type-accessor tag)
+  (lambda (type)
+    (let* ((dtags (table-ref meta-dynamic-type-tags (ctx-type-symbol type)))
+           (idx (index-of tag dtags)))
+      (assert idx "Internal error")
+      (ctx-type-tag type idx))))
+;; Generic type tag accessor (set)
+;; check that given dynamic tag exists in the set of dynamic tags associated to given type
+;; then, replace the value associated to the tag from the type object
+(define (ctx-type-accessor! tag)
+  (lambda (type val)
+    (let* ((dtags (table-ref meta-dynamic-type-tags (ctx-type-symbol type)))
+           (idx (index-of tag dtags)))
+      (assert idx "Internal error")
+      (ctx-type-tag-set! type idx val))))
+;;---------------------------------------------------------------------------
 
-;; Define a new ctx type based on ctx-type
-;; (def-ctx-type closure #f ident) expand to:
-;;   (define-ctx-type ctx-tclo constructor: ctx-tclo* ident)
-;;   (define (make-ctx-tclo #!optional ident) (make-ctx-tclo* 'closure #f ident))
-(define-macro (def-ctx-type sym mem-allocated? . fields)
-  (let* ((short (substring (symbol->string sym) 0 3))
-         (typename  (string->symbol (string-append "ctx-t" short)))
-         (typector  (string->symbol (string-append "make-ctx-t" short)))
-         (typector* (string->symbol (string-append "make-ctx-t" short "*")))
-         (typepred  (string->symbol (string-append "ctx-t" short "?"))))
-  `(begin (define-ctx-type ,typename constructor: ,typector* ,@fields)
-          (define (,typector #!optional is-cst cst ,@fields)
-            (,typector* (quote ,sym) ,mem-allocated? is-cst cst ,@fields))
-          (set! ctx-type-ctors
-                (cons (cons ,typepred ,typector) ctx-type-ctors)))))
+;; Register type tags
+(define-macro (meta-add-tags . tags)
 
-;; associate ctx type predicate to ctx type constructor
-;; (filled by def-ctx-type macro)
-(define ctx-type-ctors `())
+  ;; Example with the call (meta-add-tags (cst)):
+  ;;   (define ctx-type-cst? (ctx-type-predicate 'cst))
+  ;;   (define ctx-type-cst  (ctx-type-accessor 'cst))
+  ;;   (set! meta-tags '(cst))
 
-;; Define all used ctx-types
-(def-ctx-type all     #f) ;; Special type used for primitives
-(def-ctx-type number  #f) ;; Special type used for primitives
-(def-ctx-type unknown #f)
-(def-ctx-type char    #f)
-(def-ctx-type void    #f)
-(def-ctx-type null    #f)
-(def-ctx-type retaddr #f)
-(def-ctx-type integer #f)
-(def-ctx-type boolean #f)
-(def-ctx-type box     #t)
-(def-ctx-type pair    #t)
-(def-ctx-type vector  #t)
-(def-ctx-type string  #t)
-(def-ctx-type symbol  #t)
-(def-ctx-type iport   #t)
-(def-ctx-type float   #t)
-(def-ctx-type oport   #t)
-(def-ctx-type closure #t)
+  ;; pref is a str prefix, suf is a list of str suffix
+  ;; Add prefix and suffix to the symbol 'sym' and return the new symbol
+  (define (format-sym pref sym . suf)
+    (let* ((sym-str (symbol->string sym))
+           (str (string-append pref sym-str (apply string-append suf))))
+      (string->symbol str)))
+
+  ;; Generate predicate and accessor for each tag
+  (define (generate-pred-accs tags)
+    (if (null? tags)
+        '()
+        (let ((sym-pred (format-sym "ctx-type-" (car tags) "?"))
+              (sym-accs (format-sym "ctx-type-" (car tags)))
+              (sym-accss (format-sym "ctx-type-" (car tags) "-set!")))
+          (append `((define ,sym-pred  (ctx-type-predicate ',(car tags)))
+                    (define ,sym-accs  (ctx-type-accessor  ',(car tags)))
+                    (define ,sym-accss (ctx-type-accessor! ',(car tags))))
+                   (generate-pred-accs (cdr tags))))))
+
+  `(begin
+     ,@(generate-pred-accs tags)
+     (set! meta-tags ',tags)))
+
+;;---------------------------------------------------------------------------
+
+;; Register a new type with a name, a list of tags and a list of dynamic (instantiated tags)
+(define-macro (meta-add-type name tags dynamic-tags)
+
+  ;; Example with the call (meta-add-type chac (cha cst) (cst)):
+  ;;   (assert (null? (keep (lambda (el) (not (member el  meta-tags))) '(cha cst))) "Internal error")
+  ;;   (assert (null? (keep (lambda (el) (not (member el '(cha cst)))) '(cst))) "Internal error")
+  ;;   (meta-type-tags-set meta-type-tags 'chac '(cha cst))
+  ;;   (meta-type-tags-set meta-dynamic-type-tags 'chac '(cst))
+  ;;   (define make-ctx-tchac (lambda (cst) (ctx-make-type 'chac cst)))
+
+  ;; pref is a str prefix, suf is a list of str suffix
+  ;; Add prefix and suffix to the symbol 'sym' and return the new symbol
+  (define (format-sym pref sym . suf)
+    (let* ((sym-str (symbol->string sym))
+           (str (string-append pref sym-str (apply string-append suf))))
+      (string->symbol str)))
+
+  ;; Generate various assertions
+  (define (generate-asserts)
+    `(;; Check tags exist
+      (assert (null? (keep (lambda (el) (not (member el meta-tags))) ',tags))
+              "Internal error")
+      ;; Check dynamic tags exist for this type
+      (assert (null? (keep (lambda (el) (not (member el ',tags))) ',dynamic-tags))
+              "Internal error")))
+
+  ;; Generate constructor
+  (define (generate-constructor)
+    (let ((sym (format-sym "make-ctx-t" name)))
+      `(define (,sym ,@dynamic-tags) (ctx-make-type ',name ,@dynamic-tags))))
+
+  `(begin
+     ;; generate assertions
+     ,@(generate-asserts)
+     ;; add static tags
+     (meta-type-tags-set meta-type-tags         ',name ',tags)
+     (meta-type-tags-set meta-dynamic-type-tags ',name ',dynamic-tags)
+     ;; generate constructor
+     ,(generate-constructor)))
+
+;;---------------------------------------------------------------------------
+
+(meta-add-tags
+    ;; Type tags
+    unk cha voi nul ret int boo box pai vec str sym ipo flo opo clo
+    ;; Other tags
+    cst)
+
+(meta-add-type unk (unk) ())
+(meta-add-type cha (cha) ())
+(meta-add-type voi (voi) ())
+(meta-add-type nul (nul) ())
+(meta-add-type ret (ret) ())
+(meta-add-type int (int) ())
+(meta-add-type boo (boo) ())
+(meta-add-type box (box) ())
+(meta-add-type pai (pai) ())
+(meta-add-type vec (vec) ())
+(meta-add-type str (str) ())
+(meta-add-type sym (sym) ())
+(meta-add-type ipo (ipo) ())
+(meta-add-type flo (flo) ())
+(meta-add-type opo (opo) ())
+(meta-add-type clo (clo) ())
+
+(meta-add-type chac (cha cst) (cst))
+(meta-add-type nulc (nul cst) (cst))
+(meta-add-type intc (int cst) (cst))
+(meta-add-type booc (boo cst) (cst))
+(meta-add-type paic (pai cst) (cst))
+(meta-add-type vecc (vec cst) (cst))
+(meta-add-type strc (str cst) (cst))
+(meta-add-type symc (sym cst) (cst))
+(meta-add-type floc (flo cst) (cst))
+(meta-add-type cloc (clo cst) (cst))
+
+;;;; TODO: WIP
+;;;; TODO: WIP
+;;;; TODO: WIP
+;;;; TODO: WIP
+
+(define (ctx-type-mem-allocated? type)
+  (or (ctx-type-box? type)
+      (ctx-type-pai? type)
+      (ctx-type-vec? type)
+      (ctx-type-str? type)
+      (ctx-type-sym? type)
+      (ctx-type-ipo? type)
+      (ctx-type-flo? type)
+      (ctx-type-opo? type)
+      (ctx-type-clo? type)))
 
 (define (ctx-string->tpred str)
   (define (is s) (string=? s str))
   (cond
-    ((is "cha") ctx-tcha?)
-    ((is "voi") ctx-tvoi?)
-    ((is "nul") ctx-tnul?)
-    ((is "int") ctx-tint?)
-    ((is "boo") ctx-tboo?)
-    ((is "vec") ctx-tvec?)
-    ((is "str") ctx-tstr?)
-    ((is "sym") ctx-tsym?)
-    ((is "flo") ctx-tflo?)
-    ((is "pai") ctx-tpai?)
-    ((is "clo") ctx-tclo?)
+    ((is "cha") ctx-type-cha?)
+    ((is "voi") ctx-type-voi?)
+    ((is "nul") ctx-type-nul?)
+    ((is "int") ctx-type-int?)
+    ((is "boo") ctx-type-boo?)
+    ((is "vec") ctx-type-vec?)
+    ((is "str") ctx-type-str?)
+    ((is "sym") ctx-type-sym?)
+    ((is "flo") ctx-type-flo?)
+    ((is "pai") ctx-type-pai?)
+    ((is "clo") ctx-type-clo?)
     (else (error "Internal error"))))
 
-(define (ctx-type-ctor t)
-  (let loop ((l ctx-type-ctors))
-    (let ((pred (caar l)))
-      (if (pred t)
-          (cdar l)
-          (loop (cdr l))))))
+(define (ctx-type-ctor type)
+  (cond
+    ((ctx-type-cha? type) make-ctx-tcha)
+    ((ctx-type-voi? type) make-ctx-tvoi)
+    ((ctx-type-nul? type) make-ctx-tnul)
+    ((ctx-type-int? type) make-ctx-tint)
+    ((ctx-type-boo? type) make-ctx-tboo)
+    ((ctx-type-vec? type) make-ctx-tvec)
+    ((ctx-type-str? type) make-ctx-tstr)
+    ((ctx-type-sym? type) make-ctx-tsym)
+    ((ctx-type-flo? type) make-ctx-tflo)
+    ((ctx-type-pai? type) make-ctx-tpai)
+    ((ctx-type-clo? type) make-ctx-tclo)
+    (else (error "Internal error"))))
 
 ;; Check if two ctx-type objects represent the same type
 (define (ctx-type-teq? t1 t2)
-  (eq? (ctx-type-sym t1)
-       (ctx-type-sym t2)))
+  (eq? (ctx-type-symbol t1)
+       (ctx-type-symbol t2)))
+
+;; Check if t1 'is-a' t2
+;; (t1 has the tag associated to t2)
+(define (ctx-type-is-a? t1 t2)
+  (let ((pred (ctx-type-predicate (ctx-type-symbol t2))))
+    (pred t1)))
 
 ;; Return a new type instance without any constant information
 (define (ctx-type-nocst t)
-  (if (ctx-type-is-cst t)
+  (if (ctx-type-cst? t)
       (let ((ctor (ctx-type-ctor t)))
         (ctor))
       t))
@@ -230,15 +364,15 @@
            (not (eq? (mem-allocated-kind l) 'PERM)))
       (set! l (copy-permanent l #f perm-domain)))
   (cond
-    ((char?    l)  (make-ctx-tcha #t l))
-    ((null?    l)  (make-ctx-tnul #t l))
-    ((fixnum?  l)  (make-ctx-tint #t l))
-    ((boolean? l)  (make-ctx-tboo #t l))
-    ((pair?    l)  (make-ctx-tpai #t l))
-    ((vector?  l)  (make-ctx-tvec #t l))
-    ((string?  l)  (make-ctx-tstr #t l))
-    ((symbol?  l)  (make-ctx-tsym #t l))
-    ((flonum?  l)  (make-ctx-tflo #t l))
+    ((char?    l)  (make-ctx-tchac l))
+    ((null?    l)  (make-ctx-tnulc l))
+    ((fixnum?  l)  (make-ctx-tintc l))
+    ((boolean? l)  (make-ctx-tbooc l))
+    ((pair?    l)  (make-ctx-tpaic l))
+    ((vector?  l)  (make-ctx-tvecc l))
+    ((string?  l)  (make-ctx-tstrc l))
+    ((symbol?  l)  (make-ctx-tsymc l))
+    ((flonum?  l)  (make-ctx-tfloc l))
     (else (pp l) (error "Internal error (literal->ctx-type)"))))
 
 ;; CTX IDENTIFIER LOC
@@ -275,7 +409,7 @@
 (define (ctx-init-stack stack add-suffix?)
   (let ((nstack
           (map (lambda (type)
-                 (if (and (ctx-type-is-cst type)
+                 (if (and (ctx-type-cst? type)
                           (not (const-versioned? type)))
                      ;; it's a non versioned cst, remove it
                      (ctx-type-nocst type)
@@ -349,7 +483,7 @@
         '()
         (let* ((first (car stack))
                (ntype
-                 (if (ctx-type-is-cst first)
+                 (if (ctx-type-cst? first)
                      (let ((ident (ctx-ident-at ctx (slot-to-stack-idx ctx slot))))
                        (if (and ident (identifier-cst (cdr ident)))
                            ;; It's a cst associated to a cst identifier
@@ -400,7 +534,7 @@
 
   (let* ((r (assoc 1 (ctx-slot-loc ctx)))
          (type (and r (ctx-get-type ctx (- (length (ctx-stack ctx)) 2)))))
-    (if (and r (not (cdr r)) (not (ctx-type-is-cst type)))
+    (if (and r (not (cdr r)) (not (ctx-type-cst? type)))
         (error "nyi?")))
 
   (set! stack (compute-stack (ctx-stack ctx) (- (length (ctx-stack ctx)) 1)))
@@ -453,7 +587,7 @@
                  (late? (member id late-fbinds))
                  (enc-identifier (and (not late?) (cdr (ctx-ident enclosing-ctx id))))
                  (enc-type       (and (not late?) (ctx-identifier-type enclosing-ctx enc-identifier)))
-                 (cst?           (and (not late?) (ctx-type-is-cst enc-type))))
+                 (cst?           (and (not late?) (ctx-type-cst? enc-type))))
             ;; If an enclosing identifer is cst, type *must* represent a cst
             (assert (or (not enc-identifier)
                         (not (identifier-cst enc-identifier))
@@ -485,7 +619,7 @@
     (define (init stack regs)
       (if (or (null? stack) (null? regs))
           '()
-          (if (or (ctx-tflo? (car stack))
+          (if (or (ctx-type-flo? (car stack))
                   (const-versioned? (car stack)))
               (init (cdr stack) regs)
               (cons (car regs)
@@ -504,7 +638,7 @@
       (if (or (null? stack)
               (null? fregs))
           fregs
-          (if (or (not (ctx-tflo? (car stack)))
+          (if (or (not (ctx-type-flo? (car stack)))
                   (const-versioned? (car stack)))
               (init (cdr stack) fregs)
               (init (cdr stack) (cdr fregs)))))
@@ -603,7 +737,7 @@
           (cond ((const-versioned? type)
                    (let ((r (init-slot-loc-local (+ slot 1) types regs fregs mem)))
                      (return slot #f r)))
-                ((ctx-tflo? type)
+                ((ctx-type-flo? type)
                    (if (null? fregs)
                        (error "NYI")
                        (let ((r (init-slot-loc-local (+ slot 1) types regs (cdr fregs) mem)))
@@ -740,8 +874,8 @@
     (if r
         ;; Const closure
         (let ((type (ctx-identifier-type ctx (cdr r))))
-          (and (ctx-tclo? type)
-               (ctx-type-is-cst type)
+          (and (ctx-type-clo? type)
+               (ctx-type-cst? type)
                (cons #t (ctx-type-cst type))))
         ;; This id
         (and r
@@ -814,7 +948,7 @@
                (fn?  (caddr info))
                (type
                  (if fn?
-                     (make-ctx-tclo #t cst)
+                     (make-ctx-tcloc cst)
                      (literal->ctx-type cst)))
                (slot (length stack))
                (stack (cons type stack)))
@@ -876,8 +1010,8 @@
   (let* ((r (assoc id (ctx-env ctx))))
     (assert (and r
                  (= (length (identifier-sslots (cdr r))) 1)
-                 (ctx-type-is-cst (ctx-identifier-type ctx (cdr r)))
-                 (ctx-tclo?       (ctx-identifier-type ctx (cdr r))))
+                 (ctx-type-cst? (ctx-identifier-type ctx (cdr r)))
+                 (ctx-type-clo?       (ctx-identifier-type ctx (cdr r))))
             "Internal error (ctx-cst-fnnum-set!)")
     (let ((stype (ctx-identifier-type ctx (cdr r))))
       (ctx-type-cst-set! stype fn-num)
@@ -946,7 +1080,7 @@
                       (ctx-set-loc ctx (stack-idx-to-slot ctx curr-idx) mloc))
                 ;; Else, we need a new memory slot
                 (let* ((type (ctx-get-type ctx curr-idx))
-                       (r (if (ctx-tflo? type)
+                       (r (if (ctx-type-flo? type)
                               (ctx-get-free-fmem ctx)
                               (ctx-get-free-mem ctx)))
                        (moves (car r))
@@ -999,19 +1133,19 @@
                     (get-env (cdr env) id slot))))))
 
   ;; If ltype is a constant, loc must be #f
-  (assert (if (ctx-type-is-cst type)
+  (assert (if (ctx-type-cst? type)
               (not loc)
               #t)
           "Internal error")
 
   ;; If loc is #f, type must be a constant
   (assert (if (not loc)
-              (ctx-type-is-cst type)
+              (ctx-type-cst? type)
               #t)
           "Internal error")
 
   ;; We do *NOT* want non permanent constant in ctx
-  (assert (not (and (ctx-type-is-cst type)
+  (assert (not (and (ctx-type-cst? type)
                     (##mem-allocated? (ctx-type-cst type))
                     (not (eq? (mem-allocated-kind (ctx-type-cst type)) 'PERM))))
           "Internal error")
@@ -1172,7 +1306,7 @@
 (define (ctx-set-type ctx data type change-id-type)
 
   ;; We do *NOT* want non permanent constant in ctx
-  (assert (not (and (ctx-type-is-cst type)
+  (assert (not (and (ctx-type-cst? type)
                     (##mem-allocated? (ctx-type-cst type))
                     (not (eq? (mem-allocated-kind (ctx-type-cst type)) 'PERM))))
           "Internal error")
@@ -1354,7 +1488,7 @@
   (keep (lambda (el)
           (let* ((identifier (cdr (assoc el (ctx-env ctx))))
                  (type (ctx-identifier-type ctx identifier)))
-            (not (ctx-type-is-cst type))))
+            (not (ctx-type-cst? type))))
         ids))
 
 ;;-----------------------------------------------------------------------------
@@ -1420,11 +1554,11 @@
                 ;; Loc is #f
                 (let* ((slot (car first))
                        (type (list-ref (ctx-stack src-ctx) (slot-to-stack-idx src-ctx slot))))
-                  (assert (ctx-type-is-cst type) "Internal error2")
+                  (assert (ctx-type-cst? type) "Internal error2")
                   (let* ((dst
                            (cdr (assoc slot (ctx-slot-loc dst-ctx))))
                          (src
-                           (if (ctx-tclo? type)
+                           (if (ctx-type-clo? type)
                                (cons 'constfn (ctx-type-cst type))
                                (cons 'const (ctx-type-cst type)))))
                     (cons (cons src dst) (loop (cdr sl))))))))))
@@ -1467,11 +1601,11 @@
                   (not generic-entry?))
                (next-nothing))
             ;; Type is cst
-            ((ctx-type-is-cst type)
-               (cond ((ctx-tclo? type)
+            ((ctx-type-cst? type)
+               (cond ((ctx-type-clo? type)
                         (next-other
                           (cons 'constfn (ctx-type-cst type))))
-                     ((ctx-tflo? type)
+                     ((ctx-type-flo? type)
                         (if (or (not opt-entry-points)
                                 generic-entry?)
                             (next-other
@@ -1482,14 +1616,14 @@
                         (next-other
                           (cons 'const (ctx-type-cst type))))))
             ;; Type is float !cst
-            ((and (ctx-tflo? type)
+            ((and (ctx-type-flo? type)
                   (or (not opt-entry-points)
                       generic-entry?))
                (next-other
                  (cons 'flbox loc)))
             ;; Others
             (else
-               (if (ctx-tflo? type)
+               (if (ctx-type-flo? type)
                    (next-float loc)
                    (next-other loc)))))))
 

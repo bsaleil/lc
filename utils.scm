@@ -113,6 +113,12 @@
         #t
         #f)))
 
+(define (index-of el lst)
+  (let loop ((lst lst) (idx 0))
+    (cond ((null? lst) #f)
+          ((eq? (car lst) el) idx)
+          (else (loop (cdr lst) (+ idx 1))))))
+
 ;; Return #t if lst contains at least one duplicate
 ;; Return #f if lst contains no duplicate
 ;; Check for duplicate using test function (eq?, equal?, ...)

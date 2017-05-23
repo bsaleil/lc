@@ -61,17 +61,17 @@
 ;; This is the list of cst types used for versioning (if opt-const-vers is #t)
 ;; All csts types are enabled by default
 (define opt-cv-preds
-  (list ctx-tcha? ctx-tvoi?
-        ctx-tnul? ctx-tint?
-        ctx-tboo? ctx-tpai?
-        ctx-tvec? ctx-tstr?
-        ctx-tsym? ctx-tflo?
-        ctx-tclo?))
+  (list ctx-type-cha? ctx-type-voi?
+        ctx-type-nul? ctx-type-int?
+        ctx-type-boo? ctx-type-pai?
+        ctx-type-vec? ctx-type-str?
+        ctx-type-sym? ctx-type-flo?
+        ctx-type-clo?))
 
 ;; Is the type a cst used for versioning ?
 (define (const-versioned? type)
   (and opt-const-vers
-       (ctx-type-is-cst type)
+       (ctx-type-cst? type)
        (let loop ((preds opt-cv-preds))
          (if (null? preds)
              #f
@@ -168,9 +168,9 @@
 ;; Used to avoid type creation for simple operations
 ;; MUST NOT BE MUTATED
 ;; NOTE: we need to reorganize 'primitives' data structure in ast.scm
-;; to replace ATX_* uses by symbols uses to identify types (e.g. in ctx-type-teq?)
-(define ATX_ALL (make-ctx-tall)) ; Represents all ctx types
-(define ATX_NUM (make-ctx-tnum)) ; Represents number types
+;; to replace ATX_* uses by symbols uses to identify types
+(define ATX_ALL 'CTX_SPECIAL_ALL) ; Represents all ctx types
+(define ATX_NUM 'CTX_SPECIAL_NUM) ; Represents number types
 (define ATX_UNK (make-ctx-tunk))
 (define ATX_CHA (make-ctx-tcha))
 (define ATX_VOI (make-ctx-tvoi))
@@ -189,13 +189,13 @@
 (define ATX_CLO (make-ctx-tclo))
 
 (define (ctx-type->stag type)
-  (cond ((ctx-tbox? type) STAG_MOBJECT)
-        ((ctx-tpai? type) STAG_PAIR)
-        ((ctx-tvec? type) STAG_VECTOR)
-        ((ctx-tstr? type) STAG_STRING)
-        ((ctx-tsym? type) STAG_SYMBOL)
-        ((ctx-tflo? type) STAG_FLONUM)
-        ((ctx-tclo? type) STAG_PROCEDURE)
+  (cond ((ctx-type-box? type) STAG_MOBJECT)
+        ((ctx-type-pai? type) STAG_PAIR)
+        ((ctx-type-vec? type) STAG_VECTOR)
+        ((ctx-type-str? type) STAG_STRING)
+        ((ctx-type-sym? type) STAG_SYMBOL)
+        ((ctx-type-flo? type) STAG_FLONUM)
+        ((ctx-type-clo? type) STAG_PROCEDURE)
         (else (pp type) (error "Internal error (ctx-type->stag)"))))
 
 ;;-----------------------------------------------------------------------------
@@ -216,7 +216,7 @@
 (define ERR_LETREC           "!!! ERROR - ILL-FORMED LETREC")
 
 (define (ERR_TYPE_EXPECTED type)
-  (string-append (string-upcase (ctx-type-sym type))
+  (string-append (string-upcase (ctx-type-symbol type))
                  " EXPECTED"))
 
 (define ERR_NUMBER_EXPECTED "NUMBER EXPECTED")
@@ -1363,6 +1363,7 @@
               (asm-align cgc 4 0 #x90)
               (x86-label cgc version-label)
               ((lazy-code-generator lazy-code) cgc ctx))))
+
       (if fn-opt-label
           (fn-opt-label version-label)
           version-label)))
@@ -1700,10 +1701,7 @@
              (lambda (cgc ctx)
                (pp "FAIL TEST")
                (pp ast)
-              ; (pp ctx-type)
-              ; (pp stack-idx)
-              ; (pp ctx)
-               (if (or (ctx-tflo? ctx-type) (ctx-tint? ctx-type))
+               (if (or (ctx-type-flo? ctx-type) (ctx-type-int? ctx-type))
                    (gen-error cgc ERR_NUMBER_EXPECTED)
                    (gen-error cgc (ERR_TYPE_EXPECTED ctx-type)))))))
    (gen-dyn-type-test ctx-type stack-idx succ lazy-error ast)))
@@ -1721,14 +1719,14 @@
 
        ;; TODO: clean & comments
        (let* (;;
-              (r (and (ctx-tflo? ctx-type)
+              (r (and (ctx-type-flo? ctx-type)
                       (ctx-get-free-freg ast ctx lazy-success 0)))
               (moves (and r (car r)))
               (freg  (and r (cadr r)))
               (ctx   (if  r (caddr r) ctx))
               ;;
               (ctx-success
-                  (if (ctx-tflo? ctx-type)
+                  (if (ctx-type-flo? ctx-type)
                       (let* ((ident (ctx-ident-at ctx stack-idx))
                              (tctx (ctx-set-type ctx stack-idx (type-ctor) #t)))
                         (if ident
@@ -1742,10 +1740,10 @@
               (known-type  (ctx-get-type ctx stack-idx)))
 
          (cond ;; known == expected
-               ((ctx-type-teq? ctx-type known-type)
+               ((ctx-type-is-a? known-type ctx-type)
                 (jump-to-version cgc lazy-success ctx-success-known))
                ;; known != expected && known != unknown
-               ((not (ctx-tunk? known-type))
+               ((not (ctx-type-unk? known-type))
                 (jump-to-version cgc lazy-fail ctx-fail))
                ;; known == unknown
                (else
@@ -1817,20 +1815,20 @@
                          (opval (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) lval)))
 
                     (cond ;; Number type check
-                          ((ctx-tint? ctx-type)
+                          ((ctx-type-int? ctx-type)
                            (x86-mov cgc (x86-rax) (x86-imm-int 3))
                            (x86-and cgc (x86-rax) opval))
                           ;; Null type test
-                          ((ctx-tnul? ctx-type)
+                          ((ctx-type-nul? ctx-type)
                            (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
                            (x86-cmp cgc (x86-rax) opval))
                           ;; Pair type test
-                          ((ctx-tpai? ctx-type)
+                          ((ctx-type-pai? ctx-type)
                            (x86-mov cgc (x86-rax) (x86-imm-int 3))
                            (x86-and cgc (x86-rax) opval)
                            (x86-cmp cgc (x86-rax) (x86-imm-int TAG_PAIR)))
                           ;; Char type check
-                          ((ctx-tcha? ctx-type)
+                          ((ctx-type-cha? ctx-type)
                            ;; char if val is tagged with TAG_SPECIAL and val > 0
                            (x86-mov cgc (x86-rax) opval)
                            (x86-mov cgc selector-reg (x86-imm-int SPECIAL_MASK))
@@ -1858,7 +1856,7 @@
                            ;; stag xxx << 3
                            (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (ctx-type->stag ctx-type))))
 
-                           (if (ctx-tflo? ctx-type)
+                           (if (ctx-type-flo? ctx-type)
                                (let ((opnd (codegen-freg-to-x86reg freg)))
                                  (x86-jne cgc label-jump)
                                  (if (x86-mem? opval)

@@ -85,6 +85,10 @@
 ;--max-versions 5 --enable-const-vers --const-vers-types voi --enable-cxoverflow-fallback
 ;--max-versions 5 --enable-const-vers --const-vers-types sym --enable-cxoverflow-fallback
 
+<<<<<<< HEAD
+
+=======
+>>>>>>> master
 ;(define (fib n)
 ;  (if (< n 2)
 ;      1
@@ -108,6 +112,7 @@
     ;; OK main.scm 1
     ;; OK codegen  1
 
+(println 11)
 
 
 ;; Si on atteint la limite du nb de versions:

@@ -80,7 +80,7 @@
                          (literal->ctx-type nodeval)))
                     ((and (pair? val)
                           (eq? (car val) 'lambda))
-                       (make-ctx-tclo #t val))
+                       (make-ctx-tcloc val))
                     (else (make-ctx-tunk))))
           ((pair? (cadr g)) (error "Internal error"))
           (else (error "NYI"))))
