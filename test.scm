@@ -1,11 +1,9 @@
 
-(define (fib n)
-  (if (< n 2)
-      n
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
+(define (foo a . n)
+  (pp a)
+  (pp n))
 
-(pp (fib 40))
+(foo 1 2)
 
 
 ;(pp (##lc-exec-stats (lambda () (fib 40))))

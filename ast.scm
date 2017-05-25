@@ -668,64 +668,11 @@
 ;;
 ;; Create and return a prologue lco
 (define (get-lazy-prologue ast succ rest-param)
-
   (make-lazy-code-entry
     #f
     rest-param
     (lambda (cgc ctx)
-
-      (let* ((nb-actual (ctx-nb-actual ctx))
-             (nb-formal (ctx-nb-args ctx)))
-
-        (cond ;; rest AND actual == formal
-              ((and rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
-               (set! ctx (ctx-push ctx (make-ctx-tnulc '()) #f))
-               (let ((reg
-                       (if (<= nb-formal (length args-regs))
-                           (list-ref args-regs (- nb-formal 1))
-                           #f)))
-                 (codegen-prologue-rest= cgc reg)
-                 (jump-to-version cgc succ ctx)))
-              ;; rest AND actual > formal
-              ;; TODO merge > and == (?)
-              ((and rest-param (> nb-actual (- nb-formal 1)))
-                 (set! ctx (gen-drop-float cgc ctx ast 0 (- nb-actual (- nb-formal 1))))
-
-                 (let* ((nb-extra (- nb-actual (- nb-formal 1)))
-                        (rloc
-                          (let ((r (ctx-get-loc ctx (- nb-extra 1))))
-                            (or r ;; loc exists
-                                ;; Else, get a free register
-                                (mlet ((moves/reg/nctx (ctx-get-free-reg ast ctx succ 0)))
-                                  (apply-moves cgc nctx moves)
-                                  (set! ctx nctx)
-                                  reg))))
-                        (locs
-                          (let loop ((idx (- nb-extra 1))
-                                     (locs '()))
-                            (if (< idx 0)
-                                locs
-                                (let ((loc (ctx-get-loc ctx idx)))
-                                  (if loc
-                                      (loop (- idx 1) (cons loc locs))
-                                      (let* ((type (ctx-get-type ctx idx))
-                                             (cst (ctx-type-cst type)))
-                                        (if (ctx-type-clo? type)
-                                            (loop (- idx 1) (cons (cons 'cf cst) locs))
-                                            (loop (- idx 1) (cons (cons 'c cst) locs))))))))))
-
-                   (let* ((nctx (ctx-pop-n ctx (- nb-extra 1)))
-                          (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f))
-                          (nctx (ctx-set-loc nctx (stack-idx-to-slot nctx 0) rloc)))
-                     (codegen-prologue-rest> cgc (ctx-fs ctx) (ctx-ffs ctx) locs rloc)
-                     (jump-to-version cgc succ nctx))))
-              ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
-              ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
-               (gen-error cgc ERR_WRONG_NUM_ARGS))
-              ;; Else, nothing to do
-              (else
-                 (jump-to-version cgc succ ctx)))))))
-
+      (jump-to-version cgc succ ctx))))
 ;;
 ;; Create and return a function return lco
 (define (get-lazy-return)

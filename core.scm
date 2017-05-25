@@ -1044,6 +1044,10 @@
 (define (lazy-code-nb-real-versions lazy-code)
   (count (table->list (lazy-code-versions lazy-code)) cddr))
 
+(define (lazy-code-rest? lazy-code)
+  (and (member 'entry  (lazy-code-flags lazy-code))
+       (member 'rest   (lazy-code-flags lazy-code))))
+
 (define (make-lazy-code ast generator)
   (let ((lc (make-lazy-code* ast generator '() #f #f #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
@@ -1355,8 +1359,7 @@
     ;; No version for this ctx, limit reached, and generic version exists
     ((lazy-code-generic lazy-code)
        ;; TODO what if fn-opt-label is set ?
-       (if (and (member 'entry  (lazy-code-flags lazy-code))
-                (member 'rest   (lazy-code-flags lazy-code)))
+       (if #f;(lazy-code-rest? lazy-code) TODO
            (let* ((r (ctx-generic-prologue ctx))
                   (moves (car r))
                   (gctx  (cdr r)) ;; Discard ctx
@@ -1374,8 +1377,7 @@
              (fn-patch label-merge #t))))
     ;; No version for this ctx, limit reached, and generic version does not exist
     (else
-      (if (and (member 'entry  (lazy-code-flags lazy-code))
-               (member 'rest   (lazy-code-flags lazy-code)))
+      (if #f; (lazy-code-rest? lazy-code) TODO
           (let* ((r (ctx-generic-prologue ctx))
                  (moves (car r))
                  (gctx  (cdr r))
@@ -1530,8 +1532,36 @@
             (else
                version-label))))
 
-  (gen-version-* #f lazy-code fallback-prologue gen-ctx 'fn_entry_ fn-verbose fn-patch fn-codepos fn-opt-label))
+  (define (generate-rest-block label-dest)
+    (let ((diff (- (ctx-nb-actual gen-ctx)
+                   (ctx-nb-args   gen-ctx))))
+      (cond ((< diff 0) label-dest)
+            ((= diff 0) (error "WIP"))
+            (else (error "NYI b")))))
 
+  (define (get-after-block-ctx)
+    (let ((diff (- (ctx-nb-actual gen-ctx)
+                   (ctx-nb-args   gen-ctx))))
+      (cond ((< diff 0) (ctx-push gen-ctx (make-ctx-tnulc '()) #f))
+            ((= diff 0) (ctx-set-type gen-ctx 0 (make-ctx-tpai) #f))
+            (else (error "NYI")))))
+
+  ;; TODO: the rest block must *not* be generated if generic ep is used.
+  ;; TODO: use fn-patch
+
+  (define (gen-vers ctx)
+    (gen-version-* #f lazy-code fallback-prologue ctx 'fn_entry_ fn-verbose fn-patch fn-codepos fn-opt-label))
+
+  ;; TODO
+  ;; TODO
+  ;; TODO
+  ;; TODO
+
+  (if (lazy-code-rest? lazy-code)
+      (let* ((gen-ctx (get-after-block-ctx))
+             (version (gen-vers gen-ctx)))
+        (generate-rest-block version))
+      (gen-vers gen-ctx)))
 
 ;; #### LAZY CODE OBJECT
 ;; Generate a normal lazy code object with known cgc and jump to it
