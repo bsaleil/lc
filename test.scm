@@ -1,9 +1,10 @@
 
-(define (foo a . n)
+(define (foo a b . n)
   (pp a)
+  (pp b)
   (pp n))
 
-(foo 1 2)
+(foo 1 2 3)
 
 
 ;(pp (##lc-exec-stats (lambda () (fib 40))))
@@ -55,10 +56,7 @@
 ;--max-versions 5 --enable-const-vers --const-vers-types voi --enable-cxoverflow-fallback
 ;--max-versions 5 --enable-const-vers --const-vers-types sym --enable-cxoverflow-fallback
 
-<<<<<<< HEAD
 
-=======
->>>>>>> master
 ;(define (fib n)
 ;  (if (< n 2)
 ;      1
