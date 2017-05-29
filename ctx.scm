@@ -1115,6 +1115,11 @@
   (save-all idx-start '() octx))
 
 ;;
+(define (ctx-rm-unused-mems ctx)
+  (let ((fmems (ctx-free-mems ctx)))
+    (ctx-copy ctx #f #f #f '() #f #f #f #f #f (- (ctx-fs ctx) (length fmems)))))
+
+;;
 ;; PUSH
 (define (ctx-push ctx type loc #!optional id)
 

@@ -1532,7 +1532,7 @@
             (else
                version-label))))
 
-  (define (generate-rest-block label-dest)
+  (define (generate-rest-block label-dest nmems)
     (let ((diff (- (ctx-nb-actual gen-ctx)
                    (ctx-nb-args   gen-ctx))))
       (if (< diff 0)
@@ -1568,11 +1568,11 @@
                         (begin (x86-lea cgc (x86-rax) (x86-mem (+ (* -24 (+ diff 1)) TAG_PAIR) alloc-ptr))
                                (x86-mov cgc opnd (x86-rax)))
                         (x86-lea cgc opnd (x86-mem (+ (* -24 (+ diff 1)) TAG_PAIR) alloc-ptr))))
+                  (x86-add cgc (x86-usp) (x86-imm-int (* nmems 8)))
                   (x86-jmp cgc version-label))))
             (asm-label-pos block-label))))
 
   (define (get-after-block-ctx)
-    (pp fallback-prologue)
     (let ((diff (- (ctx-nb-actual gen-ctx)
                    (ctx-nb-args   gen-ctx))))
       (cond ((< diff 0) (ctx-push gen-ctx (make-ctx-tnulc '()) #f))
@@ -1580,7 +1580,8 @@
             (else
               (let* ((ctx (ctx-pop-n gen-ctx diff))
                      (ctx (ctx-set-type ctx 0 (make-ctx-tpai) #f))
-                     (ctx (ctx-copy ctx #f #f #f #f #f #f #f (ctx-nb-args gen-ctx))))
+                     (ctx (ctx-copy ctx #f #f #f #f #f #f #f (ctx-nb-args gen-ctx)))
+                     (ctx (ctx-rm-unused-mems ctx)))
                 ctx)))))
 
   ;; TODO: the rest block must *not* be generated if generic ep is used.
@@ -1594,10 +1595,14 @@
   ;; TODO
   ;; TODO
 
-  (if (lazy-code-rest? lazy-code)
-      (let* ((gen-ctx (get-after-block-ctx))
+  (if (and (not generic)
+           (lazy-code-rest? lazy-code))
+      (let* ((nmems
+               (let ((n (- (ctx-nb-actual gen-ctx) (length args-regs))))
+                 (if (> n 0) n 0)))
+             (gen-ctx (get-after-block-ctx))
              (version (gen-vers gen-ctx)))
-        (generate-rest-block version))
+        (generate-rest-block version nmems))
       (gen-vers gen-ctx)))
 
 ;; #### LAZY CODE OBJECT
