@@ -405,6 +405,9 @@
 (define (ctx-fs-update ctx fs)
   (ctx-copy ctx #f #f #f #f #f #f #f #f #f fs))
 
+(define (ctx-reset-nb-actual ctx)
+  (ctx-copy ctx #f #f #f #f #f #f #f (ctx-nb-args ctx)))
+
 ;; Init a stack for a call ctx or a fn ctx
 ;; This function removes the csts not used for versioning from 'stack'
 (define (ctx-init-stack stack add-suffix?)

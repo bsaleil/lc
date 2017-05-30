@@ -133,9 +133,9 @@
 (define gen-allocation-imm #f)
 
 ;; TODO: for rest prologue
-(define OFFSET_PAIR_CAR #f)
-(define OFFSET_PAIR_CDR #f)
-(define mem-header #f)
+(define codegen-prologue-rest> #f)
+(define gen-drop-float #f)
+
 
 ;;-----------------------------------------------------------------------------
 
@@ -1545,95 +1545,75 @@
             (else
                version-label))))
 
-  (define (generate-rest-block label-dest nmems)
-    (let ((diff (- (ctx-nb-actual gen-ctx)
-                   (ctx-nb-args   gen-ctx))))
-      (if (< diff 0)
-          (begin
-            (fn-patch patch-label #t)
-            label-dest)
-          (let ((locs (map (lambda (i) (ctx-get-loc gen-ctx i))
-                           (build-list (+ diff 1) (lambda (n) n))))
-                (version-label (asm-make-label #f (new-sym 'TODO_) label-dest))
-                (block-label (asm-make-label #f (new-sym 'BLOCK_))))
-            (code-add
-              (lambda (cgc)
-                (define (gen-one offset opnd cdr)
-                  (let ((header (mem-header 16 STAG_PAIR)))
-                    (x86-mov cgc (x86-mem (- -24 offset) alloc-ptr) (x86-imm-int header) 64))
-                  (x86-mov cgc (x86-rax) opnd)
-                  (x86-mov cgc (x86-mem (+ (- -24 offset) OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
-                  (if cdr
-                      (x86-lea cgc (x86-rax) cdr)
-                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '()))))
-                  (x86-mov cgc (x86-mem (+ (- -24 offset) OFFSET_PAIR_CDR) alloc-ptr) (x86-rax)))
+  (define block-label (asm-make-label #f (new-sym 'TODO)))
+  (define to-version-label (asm-make-label #f (new-sym 'TODO2)))
 
-                (let ((opnds (map (lambda (l) (codegen-loc-to-x86opnd (ctx-fs gen-ctx) (ctx-ffs gen-ctx) l))
-                                  locs))
-                      (nfloats (foldr (lambda (el r)
-                                        (if (or (ctx-loc-is-fregister? el)
-                                                (ctx-loc-is-fmemory? el))
-                                            (+ 1 r)
-                                            r))
-                                      0
-                                      locs)))
-                  (asm-align cgc 4 0 #x90)
-                  (x86-label cgc block-label)
-                  (if (> nfloats 0)
-                      (error "NYI"))
-                  (gen-allocation-imm cgc STAG_PAIR (- (* 24 (length locs)) 8))
-                  (gen-one 0 (car opnds) #f)
-                  (let loop ((opnds (cdr opnds)) (offset 24))
-                    (if (not (null? opnds))
-                        (begin (gen-one offset (car opnds) (x86-mem (+ (- offset) TAG_PAIR) alloc-ptr))
-                               (loop (cdr opnds) (+ offset 24)))))
-                  (let* ((loc-list (ctx-get-loc gen-ctx diff))
-                         (opnd (codegen-loc-to-x86opnd (ctx-fs gen-ctx) (ctx-ffs gen-ctx) loc-list)))
-                    (if (x86-mem? opnd)
-                        (begin (x86-lea cgc (x86-rax) (x86-mem (+ (* -24 (+ diff 1)) TAG_PAIR) alloc-ptr))
-                               (x86-mov cgc opnd (x86-rax)))
-                        (x86-lea cgc opnd (x86-mem (+ (* -24 (+ diff 1)) TAG_PAIR) alloc-ptr))))
-                  (x86-add cgc (x86-usp) (x86-imm-int (* nmems 8)))
-                  (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-                  (x86-jmp cgc version-label))))
-            (fn-patch block-label #t)
-            (asm-label-pos block-label)))))
+  (let* ((rest-param (lazy-code-rest? lazy-code))
+         (ctx gen-ctx)
+         (nb-actual (ctx-nb-actual ctx))
+         (nb-formal (ctx-nb-args ctx)))
 
-  (define (get-after-block-ctx)
-    (let ((diff (- (ctx-nb-actual gen-ctx)
-                   (ctx-nb-args   gen-ctx))))
-      (cond ((< diff 0) (ctx-push gen-ctx (make-ctx-tnulc '()) #f))
-            ((= diff 0) (ctx-set-type gen-ctx 0 (make-ctx-tpai) #f))
-            (else
-              (let* ((ctx (ctx-pop-n gen-ctx diff))
-                     (ctx (ctx-set-type ctx 0 (make-ctx-tpai) #f))
-                     (ctx (ctx-copy ctx #f #f #f #f #f #f #f (ctx-nb-args gen-ctx)))
-                     (ctx (ctx-rm-unused-mems ctx)))
-                ctx)))))
+    (cond ;; rest AND actual == formal
+          ((and opt-entry-points (not generic) rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
+             (set! ctx (ctx-push ctx (make-ctx-tnulc '()) #f))
+             (set! ctx (ctx-reset-nb-actual ctx))
+             (gen-version-* #f lazy-code fallback-prologue ctx 'fn_entry_ fn-verbose fn-patch fn-codepos fn-opt-label))
+          ;; rest AND actual > formal
+          ((and opt-entry-points (not generic) rest-param (> nb-actual (- nb-formal 1)))
+             (code-add
+               (lambda (cgc)
+                 (asm-align cgc 4 0 #x90)
+                 (x86-label cgc block-label)
+                 (set! ctx (gen-drop-float cgc ctx ast 0 (- nb-actual (- nb-formal 1))))
 
-  ;; TODO: the rest block must *not* be generated if generic ep is used.
-  ;;
-
-  (define (gen-vers ctx fn-patch)
-    (gen-version-* #f lazy-code fallback-prologue ctx 'fn_entry_ fn-verbose fn-patch fn-codepos fn-opt-label))
-
-  ;; TODO
-  ;; TODO
-  ;; TODO
-  ;; TODO
-
-  (if (and (not generic)
-           (lazy-code-rest? lazy-code))
-      (let* ((nmems (let* ((nm (- (ctx-nb-actual gen-ctx) (length args-regs)))
-                           (nm (if (< nm 0) 0 nm))
-                           (no (- (ctx-nb-actual gen-ctx) (ctx-nb-args gen-ctx))))
-                      (if (> nm no)
-                          no
-                          nm)))
-             (gen-ctx (get-after-block-ctx))
-             (version (gen-vers gen-ctx tmp-fn-patch)))
-        (generate-rest-block version nmems))
-      (gen-vers gen-ctx fn-patch)))
+                 (let* ((nb-extra (- nb-actual (- nb-formal 1)))
+                        (rloc
+                          (let ((r (ctx-get-loc ctx (- nb-extra 1))))
+                            (or r ;; loc exists
+                                ;; Else, get a free register
+                                (let* ((r (ctx-get-free-reg #f ctx #f 0))
+                                       (moves (car r))
+                                       (reg (cadr r))
+                                       (nctx (caddr r)))
+                                  (apply-moves cgc nctx moves)
+                                  (set! ctx nctx)
+                                  reg))))
+                        (locs
+                          (let loop ((idx (- nb-extra 1))
+                                     (locs '()))
+                            (if (< idx 0)
+                                locs
+                                (let ((loc (ctx-get-loc ctx idx)))
+                                  (if loc
+                                      (loop (- idx 1) (cons loc locs))
+                                      (let* ((type (ctx-get-type ctx idx))
+                                             (cst (ctx-type-cst type)))
+                                        (if (ctx-type-clo? type)
+                                            (loop (- idx 1) (cons (cons 'cf cst) locs))
+                                            (loop (- idx 1) (cons (cons 'c cst) locs))))))))))
+                   (let* ((nctx (ctx-pop-n ctx (- nb-extra 1)))
+                          (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f))
+                          (nctx (ctx-set-loc nctx (stack-idx-to-slot nctx 0) rloc)))
+                     (codegen-prologue-rest> cgc (ctx-fs ctx) (ctx-ffs ctx) locs rloc)
+                     (x86-label cgc to-version-label)
+                     (x86-nop cgc) (x86-nop cgc) (x86-nop cgc) (x86-nop cgc)
+                     (x86-nop cgc) (x86-nop cgc) (x86-nop cgc) (x86-nop cgc)
+                     (set! ctx nctx)))))
+             (set! ctx (ctx-reset-nb-actual ctx))
+             (let ((version-addr
+                     (gen-version-* #f lazy-code fallback-prologue ctx 'fn_entry_ fn-verbose tmp-fn-patch fn-codepos fn-opt-label)))
+               (let ((tmp code-alloc))
+                 (set! code-alloc (asm-label-pos to-version-label))
+                 (code-add
+                   (lambda (cgc)
+                     (x86-jmp cgc (asm-make-label #f (new-sym 'TODO) version-addr))))
+                 (set! code-alloc tmp))
+               (fn-patch block-label #t)
+               (asm-label-pos block-label)))
+          ;; TODO: no rest param
+          (else
+            (set! ctx (ctx-reset-nb-actual ctx))
+            (gen-version-* #f lazy-code fallback-prologue ctx 'fn_entry_ fn-verbose fn-patch fn-codepos fn-opt-label)))))
 
 ;; #### LAZY CODE OBJECT
 ;; Generate a normal lazy code object with known cgc and jump to it

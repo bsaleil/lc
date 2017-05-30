@@ -1,9 +1,11 @@
 
+(define (foo a b . c)
+  (pp a)
+  (pp b)
+  (pp c))
 
-(define (foo . l)
-  (pp l))
+(foo 1 2 3 4 5)
 
-(foo 1 2 3 4 5 6 7)
 
 ;(pp (##lc-exec-stats (lambda () (fib 40))))
 
