@@ -132,6 +132,11 @@
 (define OFFSET_FLONUM #f)
 (define gen-allocation-imm #f)
 
+;; TODO: for rest prologue
+(define OFFSET_PAIR_CAR #f)
+(define OFFSET_PAIR_CDR #f)
+(define mem-header #f)
+
 ;;-----------------------------------------------------------------------------
 
 ;; Object life
@@ -1076,8 +1081,9 @@
 
 (define (get-version lazy-code ctx)
   (let* ((key
+          ;; TODO
           (if (member 'entry (lazy-code-flags lazy-code))
-              (list-head (ctx-stack ctx) (or (ctx-nb-actual ctx) (ctx-nb-args ctx)))
+              (ctx-stack ctx);(list-head (ctx-stack ctx) (or (ctx-nb-actual ctx) (ctx-nb-args ctx)))
               ctx))
          (versions (lazy-code-versions lazy-code))
          (version  (table-ref versions key #f)))
@@ -1085,8 +1091,9 @@
 
 (define (put-version lazy-code ctx version real-version?)
   (let ((key
+          ;; TODO
           (if (member 'entry (lazy-code-flags lazy-code))
-              (list-head (ctx-stack ctx) (or (ctx-nb-actual ctx) (ctx-nb-args ctx)))
+              (ctx-stack ctx);(list-head (ctx-stack ctx) (or (ctx-nb-actual ctx) (ctx-nb-args ctx)))
               ctx))
         (versions (lazy-code-versions lazy-code)))
     (table-set! versions key (cons version real-version?))))
@@ -1493,6 +1500,12 @@
     (pp gen-ctx)
     (pp call-stack))
 
+  (define patch-label #f)
+
+  (define (tmp-fn-patch label-dest new-version?)
+    (set! patch-label label-dest)
+    (asm-label-pos label-dest))
+
   (define (fn-patch label-dest new-version?)
 
     (cond ((not opt-entry-points)
@@ -1536,7 +1549,9 @@
     (let ((diff (- (ctx-nb-actual gen-ctx)
                    (ctx-nb-args   gen-ctx))))
       (if (< diff 0)
-          label-dest)
+          (begin
+            (fn-patch patch-label #t)
+            label-dest)
           (let ((locs (map (lambda (i) (ctx-get-loc gen-ctx i))
                            (build-list (+ diff 1) (lambda (n) n))))
                 (version-label (asm-make-label #f (new-sym 'TODO_) label-dest))
@@ -1552,10 +1567,20 @@
                       (x86-lea cgc (x86-rax) cdr)
                       (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '()))))
                   (x86-mov cgc (x86-mem (+ (- -24 offset) OFFSET_PAIR_CDR) alloc-ptr) (x86-rax)))
+
                 (let ((opnds (map (lambda (l) (codegen-loc-to-x86opnd (ctx-fs gen-ctx) (ctx-ffs gen-ctx) l))
-                                  locs)))
+                                  locs))
+                      (nfloats (foldr (lambda (el r)
+                                        (if (or (ctx-loc-is-fregister? el)
+                                                (ctx-loc-is-fmemory? el))
+                                            (+ 1 r)
+                                            r))
+                                      0
+                                      locs)))
                   (asm-align cgc 4 0 #x90)
                   (x86-label cgc block-label)
+                  (if (> nfloats 0)
+                      (error "NYI"))
                   (gen-allocation-imm cgc STAG_PAIR (- (* 24 (length locs)) 8))
                   (gen-one 0 (car opnds) #f)
                   (let loop ((opnds (cdr opnds)) (offset 24))
@@ -1569,8 +1594,10 @@
                                (x86-mov cgc opnd (x86-rax)))
                         (x86-lea cgc opnd (x86-mem (+ (* -24 (+ diff 1)) TAG_PAIR) alloc-ptr))))
                   (x86-add cgc (x86-usp) (x86-imm-int (* nmems 8)))
+                  (x86-mov cgc (x86-rcx) (x86-imm-int 0))
                   (x86-jmp cgc version-label))))
-            (asm-label-pos block-label))))
+            (fn-patch block-label #t)
+            (asm-label-pos block-label)))))
 
   (define (get-after-block-ctx)
     (let ((diff (- (ctx-nb-actual gen-ctx)
@@ -1587,7 +1614,7 @@
   ;; TODO: the rest block must *not* be generated if generic ep is used.
   ;;
 
-  (define (gen-vers ctx)
+  (define (gen-vers ctx fn-patch)
     (gen-version-* #f lazy-code fallback-prologue ctx 'fn_entry_ fn-verbose fn-patch fn-codepos fn-opt-label))
 
   ;; TODO
@@ -1597,13 +1624,16 @@
 
   (if (and (not generic)
            (lazy-code-rest? lazy-code))
-      (let* ((nmems
-               (let ((n (- (ctx-nb-actual gen-ctx) (length args-regs))))
-                 (if (> n 0) n 0)))
+      (let* ((nmems (let* ((nm (- (ctx-nb-actual gen-ctx) (length args-regs)))
+                           (nm (if (< nm 0) 0 nm))
+                           (no (- (ctx-nb-actual gen-ctx) (ctx-nb-args gen-ctx))))
+                      (if (> nm no)
+                          no
+                          nm)))
              (gen-ctx (get-after-block-ctx))
-             (version (gen-vers gen-ctx)))
+             (version (gen-vers gen-ctx tmp-fn-patch)))
         (generate-rest-block version nmems))
-      (gen-vers gen-ctx)))
+      (gen-vers gen-ctx fn-patch)))
 
 ;; #### LAZY CODE OBJECT
 ;; Generate a normal lazy code object with known cgc and jump to it

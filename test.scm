@@ -1,16 +1,9 @@
 
-(define (foo a b . n)
-  (gambit$$pp a)
-  (gambit$$pp b)
-  (gambit$$pp n))
 
-(foo 1 2 3 4)
+(define (foo . l)
+  (pp l))
+
 (foo 1 2 3 4 5 6 7)
-(foo 1 2 3 4 5 6 7 8 9)
-(foo #f 2 3 4 5 6 7 8 9)
-(foo #f #f 3 4 5 6 7 8 9)
-(foo "kk" 2 3 4 5 6 7 8 9)
-
 
 ;(pp (##lc-exec-stats (lambda () (fib 40))))
 

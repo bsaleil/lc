@@ -161,7 +161,8 @@
 ;; Generic type predicate
 ;; check if given tag exists in the set of tags associated to given type
 (define (ctx-type-predicate tag)
-  (lambda (type) (member tag (table-ref meta-type-tags (ctx-type-symbol type)))))
+  (lambda (type)
+    (member tag (table-ref meta-type-tags (ctx-type-symbol type)))))
 ;; Generic type tag accessor (get)
 ;; check that given dynamic tag exists in the set of dynamic tags associated to given type
 ;; then, return the value associated to the tag from the type object
