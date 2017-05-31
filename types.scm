@@ -17,6 +17,40 @@
           (table-set! lco_versions lco versions)
           versions))))
 
+(define (get-version lazy-code ctx)
+  (let* ((key ctx)
+         (versions (lazy-code-versions lazy-code))
+         (version  (table-ref versions key #f)))
+    (and version (car version))))
+
+(define (put-version lazy-code ctx version real-version?)
+  (let ((key ctx)
+        (versions (lazy-code-versions lazy-code)))
+    (table-set! versions key (cons version real-version?))))
+
+;;------------------------------------------------------------------------------
+
+;;;; return version, context, callback
+;(define (meta-get-version lco ctx)
+;  (let ((versions (lazy-code-versions lco)))
+;    (let ((version (get-version lco ctx)))
+;      (if version
+;          ;; A version exists for this ctx
+;          (list version ctx #f)
+;          ;; No version for this ctx
+;          (if (>= (table-length versions) MAX_VERSIONS)
+;              ;; Limit is reached
+;              (let ((generic (lco-get-generic lco)))
+;                (if generic
+;                    ;; The generic version already exists
+;                    (list generic ctx #f)
+;                    ;; The generic version does not exist
+;                    (let ((gctx (get-generic-ctx ctx)))
+;                      (list #f gctx (lambda (version) (new-version-callback version #t))))))
+;              ;; Limit is not reached
+;              (list #f ctx (lambda (version) (new-version-callback version #f))))))))
+
+
 ;(define (lazy-code-version versions ctx)
 ;  (table-ref versions ctx #f))
 ;

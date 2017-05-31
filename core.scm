@@ -1079,17 +1079,6 @@
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
-(define (get-version lazy-code ctx)
-  (let* ((key ctx)
-         (versions (lazy-code-versions lazy-code))
-         (version  (table-ref versions key #f)))
-    (and version (car version))))
-
-(define (put-version lazy-code ctx version real-version?)
-  (let ((key ctx)
-        (versions (lazy-code-versions lazy-code)))
-    (table-set! versions key (cons version real-version?))))
-
 ;;-----------------------------------------------------------------------------
 ;; ctx regalloc
 
@@ -1336,45 +1325,62 @@
 
   (define nb-versions (lazy-code-nb-real-versions lazy-code))
 
+  (define (meta-get-version lco ctx)
+    (let ((version (get-version lco ctx)))
+      (if version
+          ;;
+          (list version ctx (lambda (r) r))
+          ;;
+          (if (or (not opt-max-versions)
+                  (< nb-versions opt-max-versions))
+              ;;
+              (list #f ctx (lambda (label) (put-version lco ctx label #t)))
+              ;;
+              (let ((generic (lazy-code-generic lazy-code)))
+                ;;
+                (if generic
+                    ;;
+                    (let ((callback (lambda (label-merge) (put-version lco ctx label-merge #f))))
+                      (list (cdr generic) (car generic) callback))
+                    ;;
+                    (let* ((gctx (ctx-generic ctx))
+                           (callback (lambda (label-merge label-version)
+                                       (put-version lco ctx label-merge #f)
+                                       (lazy-code-generic-set! lco gctx label-version))))
+                      (list #f gctx callback))))))))
+
   (if opt-verbose-jit
       (fn-verbose))
 
   (set! ctx (ctx-free-dead-locs ctx (lazy-code-ast lazy-code)))
 
+  (let* ((r (meta-get-version lazy-code ctx))
+         (version  (car r))
+         (vctx     (cadr r))
+         (callback (caddr r)))
+
   (cond
-    ;; A version already exists
-    ((get-version lazy-code ctx)
-       ;; Use existing version
-       (let ((label (get-version lazy-code ctx)))
-         (fn-patch label #f)))
-    ;; No version for this ctx, but limit is not reached
-    ((or (not opt-max-versions)
-         (< nb-versions opt-max-versions))
-       ;; Generate new real version
+    ;; A version exists for this exact context
+    ((and version (eq? vctx ctx))
+       (callback version)
+       (fn-patch version #f))
+    ;; A version exists but another context is used
+    (version
+       (let ((label-merge (generate-merge-code ctx vctx version)))
+         (callback label-merge)
+         (fn-patch label-merge #t))) ;; TODO: check if real new version
+    ;; No version, but we can generate one for this exact context
+    ((eq? vctx ctx)
        (let ((label (generate-new-version ctx)))
-         (put-version lazy-code ctx label #t)
+         (callback label)
          (fn-patch label #t)))
-    ;; No version for this ctx, limit reached, and generic version exists
-    ((lazy-code-generic lazy-code)
-       ;; TODO what if fn-opt-label is set ?
-       (let* ((generic       (lazy-code-generic lazy-code))
-              (gctx          (car generic))
-              (label-generic (cdr generic))
-              (label-merge   (generate-merge-code ctx gctx label-generic)))
-         (put-version lazy-code ctx label-merge #f)
-         (fn-patch label-merge #t)))
-    ;; No version for this ctx, limit reached, and generic version does not exist
+    ;; No version, and we need to generate one for another context
     (else
-       ;; TODO what if fn-opt-label is set ?
-       (let* ((gctx (ctx-generic ctx))
-              ;; Generate merge only if not entry
-              (label-merge   (generate-merge-code ctx gctx #f))
-              (label-generic (generate-generic gctx))
-              ;; If merge label exists, first label is merge label. Else first label is generic label
-              (label-first   (or label-merge label-generic)))
-         (put-version lazy-code ctx label-first #f)
-         (lazy-code-generic-set! lazy-code gctx label-generic)
-         (fn-patch label-first #t)))))
+       (let* ((label-merge   (generate-merge-code ctx vctx #f))
+              (label-version (generate-generic vctx))
+              (label-first   (or label-merge label-version)))
+       (callback label-first label-version)
+       (fn-patch label-first #t))))))
 
 ;; #### FIRST LAZY CODE OBJECT
 ;; This is a special gen-version used to generate the first lco of the program
