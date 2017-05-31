@@ -1039,9 +1039,8 @@
   ;versions
   flags     ;; entry, return, continuation, rest
   lco-true  ;; lco of true branch if it's a cond lco
-  lco-false ;; lco of false branch if it's a cond lco
-  generic-ctx
-  generic-vers)
+  lco-false ;; lco of false branch if it's a cond lco)
+  )
 
 (define (lazy-code-nb-versions lazy-code)
   (table-length (lazy-code-versions lazy-code)))
@@ -1054,28 +1053,28 @@
        (member 'rest   (lazy-code-flags lazy-code))))
 
 (define (make-lazy-code ast generator)
-  (let ((lc (make-lazy-code* ast generator '() #f #f #f #f)))
+  (let ((lc (make-lazy-code* ast generator '() #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-cont ast generator)
-  (let ((lc (make-lazy-code* ast generator '(cont) #f #f #f #f)))
+  (let ((lc (make-lazy-code* ast generator '(cont) #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-entry ast rest? generator)
   (let* ((flags (if rest? '(rest entry) '(entry)))
-         (lc (make-lazy-code* ast generator flags #f #f #f #f)))
+         (lc (make-lazy-code* ast generator flags #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-ret ast generator)
-  (let ((lc (make-lazy-code* ast generator '(ret) #f #f #f #f)))
+  (let ((lc (make-lazy-code* ast generator '(ret) #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
 (define (make-lazy-code-cond ast lco-true lco-false generator)
-  (let ((lc (make-lazy-code* ast generator '(cond) lco-true lco-false #f #f)))
+  (let ((lc (make-lazy-code* ast generator '(cond) lco-true lco-false)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
@@ -1323,38 +1322,12 @@
           (fn-opt-label version-label)
           version-label)))
 
-  (define nb-versions (lazy-code-nb-real-versions lazy-code))
-
-  (define (meta-get-version lco ctx)
-    (let ((version (get-version lco ctx)))
-      (if version
-          ;;
-          (list version ctx (lambda (r) r))
-          ;;
-          (if (or (not opt-max-versions)
-                  (< nb-versions opt-max-versions))
-              ;;
-              (list #f ctx (lambda (label) (put-version lco ctx label #t)))
-              ;;
-              (let ((generic (lazy-code-generic lazy-code)))
-                ;;
-                (if generic
-                    ;;
-                    (let ((callback (lambda (label-merge) (put-version lco ctx label-merge #f))))
-                      (list (cdr generic) (car generic) callback))
-                    ;;
-                    (let* ((gctx (ctx-generic ctx))
-                           (callback (lambda (label-merge label-version)
-                                       (put-version lco ctx label-merge #f)
-                                       (lazy-code-generic-set! lco gctx label-version))))
-                      (list #f gctx callback))))))))
-
   (if opt-verbose-jit
       (fn-verbose))
 
   (set! ctx (ctx-free-dead-locs ctx (lazy-code-ast lazy-code)))
 
-  (let* ((r (meta-get-version lazy-code ctx))
+  (let* ((r (strat-get-version lazy-code ctx))
          (version  (car r))
          (vctx     (cadr r))
          (callback (caddr r)))
