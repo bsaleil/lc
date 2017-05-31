@@ -132,7 +132,6 @@
 (define OFFSET_FLONUM #f)
 (define gen-allocation-imm #f)
 
-;; TODO: for rest prologue
 (define codegen-prologue-rest> #f)
 (define gen-drop-float #f)
 

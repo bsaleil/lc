@@ -1,4 +1,7 @@
 
+(define opt-max-versions #f)
+(define lazy-code-nb-real-versions #f)
+
 (define lco_versions (make-table test: eq?))
 (define lco_generic  (make-table test: eq?))
 
@@ -32,9 +35,9 @@
 ;; Then fallback to a generic version
 
 (define (limit-reached? lco)
-  (and opt-max-versions)
+  (and opt-max-versions
        (let ((nb-versions (lazy-code-nb-real-versions lco)))
-         (>= nb-versions opt-max-versions)))
+         (>= nb-versions opt-max-versions))))
 
 (define (strat-get-version lco ctx)
 
