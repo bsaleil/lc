@@ -1,11 +1,12 @@
 
-(define (fib n)
-  (if (< n 2)
-      n
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
+(define (foo . strings)
+  (gambit$$pp strings))
 
-(pp (fib 40))
+
+;; string-append
+(foo 1 (cons 1 2))
+(foo 1 100)
+
 
 
 ;(pp (##lc-exec-stats (lambda () (fib 40))))
@@ -57,10 +58,7 @@
 ;--max-versions 5 --enable-const-vers --const-vers-types voi --enable-cxoverflow-fallback
 ;--max-versions 5 --enable-const-vers --const-vers-types sym --enable-cxoverflow-fallback
 
-<<<<<<< HEAD
 
-=======
->>>>>>> master
 ;(define (fib n)
 ;  (if (< n 2)
 ;      1

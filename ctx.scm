@@ -161,7 +161,8 @@
 ;; Generic type predicate
 ;; check if given tag exists in the set of tags associated to given type
 (define (ctx-type-predicate tag)
-  (lambda (type) (member tag (table-ref meta-type-tags (ctx-type-symbol type)))))
+  (lambda (type)
+    (member tag (table-ref meta-type-tags (ctx-type-symbol type)))))
 ;; Generic type tag accessor (get)
 ;; check that given dynamic tag exists in the set of dynamic tags associated to given type
 ;; then, return the value associated to the tag from the type object
@@ -404,6 +405,9 @@
 (define (ctx-fs-update ctx fs)
   (ctx-copy ctx #f #f #f #f #f #f #f #f #f fs))
 
+(define (ctx-reset-nb-actual ctx)
+  (ctx-copy ctx #f #f #f #f #f #f #f (ctx-nb-args ctx)))
+
 ;; Init a stack for a call ctx or a fn ctx
 ;; This function removes the csts not used for versioning from 'stack'
 (define (ctx-init-stack stack add-suffix?)
@@ -543,33 +547,6 @@
         (slot-loc (compute-slot-loc slot-loc)))
 
     (ctx-copy ctx stack slot-loc free-regs free-mems (ctx-init-free-fregs) '() env #f #f fs 0)))
-
-;; This function is *only* used with entry-point & rest lco
-(define (ctx-generic-prologue ctx)
-
-  (define (add-rest ctx)
-    (let* ((last (cdar (ctx-slot-loc ctx)))
-           (lst  (member last args-regs)))
-      (if (or (not lst)
-              (< (length lst) 2))
-          (ctx-push ctx (make-ctx-tunk) (cons 'm (+ (cdr last) 1)))
-          (ctx-push ctx (make-ctx-tunk) (cadr lst)))))
-
-  ;; TODO wip: rename ctx-get-call-args-moves to match this use too ?
-  ;; TODO wip: create stack moves in ctx-get-call-args-moves
-  (let* ((moves (ctx-get-call-args-moves #f ctx (ctx-nb-actual ctx) #f #t))
-         (moves
-           (if (null? (car moves)) ;; no stacked
-               (cdr moves)
-               (error "wip nyi (create stack moves)")))
-         (gctx (ctx-generic ctx))
-         (nrem (- (length (ctx-stack ctx)) (ctx-nb-args ctx) 2)))
-
-    (cons moves
-          (if (< nrem 0)
-              (add-rest gctx)
-              (ctx-pop-n gctx nrem)))))
-
 ;;
 ;; CTX INIT FN
 (define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
@@ -1113,6 +1090,11 @@
   (set! octx (ctx-free-dead-locs octx ast))
 
   (save-all idx-start '() octx))
+
+;;
+(define (ctx-rm-unused-mems ctx)
+  (let ((fmems (ctx-free-mems ctx)))
+    (ctx-copy ctx #f #f #f '() #f #f #f #f #f (- (ctx-fs ctx) (length fmems)))))
 
 ;;
 ;; PUSH

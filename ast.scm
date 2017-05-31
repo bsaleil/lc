@@ -668,64 +668,11 @@
 ;;
 ;; Create and return a prologue lco
 (define (get-lazy-prologue ast succ rest-param)
-
   (make-lazy-code-entry
     #f
     rest-param
     (lambda (cgc ctx)
-
-      (let* ((nb-actual (ctx-nb-actual ctx))
-             (nb-formal (ctx-nb-args ctx)))
-
-        (cond ;; rest AND actual == formal
-              ((and rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
-               (set! ctx (ctx-push ctx (make-ctx-tnulc '()) #f))
-               (let ((reg
-                       (if (<= nb-formal (length args-regs))
-                           (list-ref args-regs (- nb-formal 1))
-                           #f)))
-                 (codegen-prologue-rest= cgc reg)
-                 (jump-to-version cgc succ ctx)))
-              ;; rest AND actual > formal
-              ;; TODO merge > and == (?)
-              ((and rest-param (> nb-actual (- nb-formal 1)))
-                 (set! ctx (gen-drop-float cgc ctx ast 0 (- nb-actual (- nb-formal 1))))
-
-                 (let* ((nb-extra (- nb-actual (- nb-formal 1)))
-                        (rloc
-                          (let ((r (ctx-get-loc ctx (- nb-extra 1))))
-                            (or r ;; loc exists
-                                ;; Else, get a free register
-                                (mlet ((moves/reg/nctx (ctx-get-free-reg ast ctx succ 0)))
-                                  (apply-moves cgc nctx moves)
-                                  (set! ctx nctx)
-                                  reg))))
-                        (locs
-                          (let loop ((idx (- nb-extra 1))
-                                     (locs '()))
-                            (if (< idx 0)
-                                locs
-                                (let ((loc (ctx-get-loc ctx idx)))
-                                  (if loc
-                                      (loop (- idx 1) (cons loc locs))
-                                      (let* ((type (ctx-get-type ctx idx))
-                                             (cst (ctx-type-cst type)))
-                                        (if (ctx-type-clo? type)
-                                            (loop (- idx 1) (cons (cons 'cf cst) locs))
-                                            (loop (- idx 1) (cons (cons 'c cst) locs))))))))))
-
-                   (let* ((nctx (ctx-pop-n ctx (- nb-extra 1)))
-                          (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f))
-                          (nctx (ctx-set-loc nctx (stack-idx-to-slot nctx 0) rloc)))
-                     (codegen-prologue-rest> cgc (ctx-fs ctx) (ctx-ffs ctx) locs rloc)
-                     (jump-to-version cgc succ nctx))))
-              ;; (rest AND actual < formal) OR (!rest AND actual < formal) OR (!rest AND actual > formal)
-              ((or (< nb-actual nb-formal) (> nb-actual nb-formal))
-               (gen-error cgc ERR_WRONG_NUM_ARGS))
-              ;; Else, nothing to do
-              (else
-                 (jump-to-version cgc succ ctx)))))))
-
+      (jump-to-version cgc succ ctx))))
 ;;
 ;; Create and return a function return lco
 (define (get-lazy-return)
@@ -793,8 +740,6 @@
 
   ;; Lazy function prologue
   (define lazy-prologue (get-lazy-prologue ast lazy-body rest-param))
-  ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
-  (define lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params)))
 
   (list
     lazy-prologue
@@ -805,13 +750,15 @@
 
         (cond ;; CASE 1 - Use entry point (no cctable)
               ((eq? opt-entry-points #f)
-                 (fn-generator closure lazy-prologue-gen #f #f #f))
+                 (let ((lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params))))
+                   (fn-generator closure lazy-prologue-gen #f #f)))
               ;; CASE 2 - Function is called using generic entry point
               ((= selector 1)
-                 (fn-generator #f lazy-prologue-gen #f #t #f))
+                 (let ((lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params))))
+                   (fn-generator #f lazy-prologue-gen #f #t)))
               ;; CASE 3 - Use multiple entry points
               (else
-                 (fn-generator #f lazy-prologue stack #f lazy-prologue-gen)))))))
+                 (fn-generator #f lazy-prologue stack #f)))))))
 
 (define (get-entry-obj ast ctx fvars-imm fvars-late all-params bound-id)
 
@@ -820,12 +767,12 @@
   ;; Generator used to generate function code waiting for runtime data
   ;; First create function entry ctx
   ;; Then generate function prologue code
-  (define (fn-generator closure prologue stack generic? fallback-prologue)
+  (define (fn-generator closure prologue stack generic?)
     ;; In case the limit in the number of version is reached, we give #f to ctx-init-fn to get a generic ctx
     ;; but we still want to patch cctable at index corresponding to stack
     (let* ((ctxstack (if generic? #f stack))
            (ctx (ctx-init-fn ctxstack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id)))
-      (gen-version-fn ast closure entry-obj prologue ctx stack generic? fallback-prologue)))
+      (gen-version-fn ast closure entry-obj prologue ctx stack generic?)))
 
   ;; ---------------------------------------------------------------------------
   ;; Return 'entry-obj' (entry object)
