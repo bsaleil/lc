@@ -1041,11 +1041,8 @@
   lco-false ;; lco of false branch if it's a cond lco)
   )
 
-(define (lazy-code-nb-versions lazy-code)
-  (table-length (lazy-code-versions lazy-code)))
-
-(define (lazy-code-nb-real-versions lazy-code)
-  (count (table->list (lazy-code-versions lazy-code)) cddr))
+(define (lazy-code-entry? lazy-code)
+  (member 'entry (lazy-code-flags lazy-code)))
 
 (define (lazy-code-rest? lazy-code)
   (and (member 'entry  (lazy-code-flags lazy-code))
@@ -1503,6 +1500,7 @@
           ((and opt-entry-points (not generic) rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
              (set! ctx (ctx-push ctx (make-ctx-tnulc '()) #f))
              (set! ctx (ctx-reset-nb-actual ctx))
+             (assert (null? (ctx-free-mems ctx)) "Internal error")
              (gen-version-* #f lazy-code ctx 'fn_entry_ fn-verbose fn-patch fn-codepos fn-opt-label))
           ;; rest AND actual > formal
           ((and opt-entry-points (not generic) rest-param (> nb-actual (- nb-formal 1)))
@@ -1511,7 +1509,6 @@
                  (asm-align cgc 4 0 #x90)
                  (x86-label cgc block-label)
                  (set! ctx (gen-drop-float cgc ctx ast 0 (- nb-actual (- nb-formal 1))))
-
                  (let* ((nb-extra (- nb-actual (- nb-formal 1)))
                         (rloc
                           (let ((r (ctx-get-loc ctx (- nb-extra 1))))
@@ -1541,6 +1538,11 @@
                           (nctx (ctx-set-type nctx 0 (make-ctx-tpai) #f))
                           (nctx (ctx-set-loc nctx (stack-idx-to-slot nctx 0) rloc)))
                      (codegen-prologue-rest> cgc (ctx-fs ctx) (ctx-ffs ctx) locs rloc)
+                     (let ((nfree-mems (length (ctx-free-mems nctx))))
+                       (if (> nfree-mems 0)
+                           (begin
+                             (x86-add cgc (x86-usp) (x86-imm-int (* 8 (length (ctx-free-mems nctx)))))
+                             (set! nctx (ctx-remove-free-mems nctx)))))
                      (x86-label cgc to-version-label)
                      (x86-nop cgc) (x86-nop cgc) (x86-nop cgc) (x86-nop cgc)
                      (x86-nop cgc) (x86-nop cgc) (x86-nop cgc) (x86-nop cgc)

@@ -1,11 +1,16 @@
 
-(define (foo . strings)
-  (gambit$$pp strings))
+(define (foo n)
+  (gambit$$pp n))
+
+(foo 1)
+(foo 400)
 
 
-;; string-append
-(foo 1 (cons 1 2))
-(foo 1 100)
+
+
+
+
+
 
 
 

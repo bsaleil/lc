@@ -1224,6 +1224,10 @@
   (let ((env (get-env (ctx-env ctx) (stack-idx-to-slot ctx stack-idx))))
     (ctx-copy ctx #f #f #f #f #f #f env)))
 
+(define (ctx-remove-free-mems ctx)
+  (let ((nfree-mems (length (ctx-free-mems ctx))))
+    (ctx-copy ctx #f #f #f '() #f #f #f #f #f (- (ctx-fs ctx) nfree-mems))))
+
 ;;
 ;; GET LOC
 (define (ctx-get-loc ctx stack-idx)
