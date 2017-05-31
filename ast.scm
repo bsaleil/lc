@@ -2595,8 +2595,11 @@
   (define (get-cc-direct)
     (and lazy-code
          (let* ((stack (list-head (ctx-stack call-ctx) nb-args))
-                (version (table-ref (lazy-code-versions lazy-code) stack #f)))
-           (if version
+                (version (table-ref (lazy-code-versions lazy-code)
+                                    (append stack (list (make-ctx-tclo) (make-ctx-tret)))
+                                    #f)))
+           (if (and version
+                    (not (lazy-code-rest? lazy-code)))
                (list 'ep (asm-label-pos (car version)))
                (let ((label (asm-make-label #f (new-sym 'stub_load_))))
                  (asc-entry-load-add entry-obj stack label)

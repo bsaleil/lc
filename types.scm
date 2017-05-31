@@ -64,18 +64,36 @@
 
 (define (get-version lazy-code ctx)
   (let* ((key (if (lazy-code-entry? lazy-code)
-                  ctx;(ctx-stack ctx)
+                  (ctx-stack ctx)
                   ctx))
          (versions (lazy-code-versions lazy-code))
          (version  (table-ref versions key #f)))
     (and version (car version))))
 
 (define (put-version lazy-code ctx version real-version?)
+
+  (define (rt-check versions)
+    #f)
+      ;(if (null? versions)
+      ;    #f
+      ;    (let* ((version (car versions))
+      ;           (vctx (car version)))
+      ;      (if (and (lazy-code-entry? lazy-code)
+      ;               (equal? (ctx-stack ctx) (ctx-stack vctx))
+      ;               (not (equal? ctx vctx)))
+      ;          (begin (pp "## DIFF:")
+      ;                 (pp ctx)
+      ;                 (pp vctx)
+      ;                 (rt-check (cdr versions)))
+      ;          (rt-check (cdr versions))))))
+
+
   (let ((key (if (lazy-code-entry? lazy-code)
-                 ctx;(ctx-stack ctx)
+                 (ctx-stack ctx)
                  ctx))
         (versions (lazy-code-versions lazy-code)))
-    (table-set! versions key (cons version real-version?))))
+    (table-set! versions key (cons version real-version?))
+    (rt-check (table->list (lazy-code-versions lazy-code)))))
 
 (define (limit-reached? lco)
   (and opt-max-versions
