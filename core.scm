@@ -1080,21 +1080,13 @@
     lc))
 
 (define (get-version lazy-code ctx)
-  (let* ((key
-          ;; TODO
-          (if (member 'entry (lazy-code-flags lazy-code))
-              (ctx-stack ctx);(list-head (ctx-stack ctx) (or (ctx-nb-actual ctx) (ctx-nb-args ctx)))
-              ctx))
+  (let* ((key ctx)
          (versions (lazy-code-versions lazy-code))
          (version  (table-ref versions key #f)))
     (and version (car version))))
 
 (define (put-version lazy-code ctx version real-version?)
-  (let ((key
-          ;; TODO
-          (if (member 'entry (lazy-code-flags lazy-code))
-              (ctx-stack ctx);(list-head (ctx-stack ctx) (or (ctx-nb-actual ctx) (ctx-nb-args ctx)))
-              ctx))
+  (let ((key ctx)
         (versions (lazy-code-versions lazy-code)))
     (table-set! versions key (cons version real-version?))))
 
@@ -1274,7 +1266,7 @@
 ;;-----------------------------------------------------------------------------
 ;; JIT
 
-(define (gen-version-* cgc lazy-code fallback-lazy-code ctx label-sym fn-verbose fn-patch fn-codepos #!optional fn-opt-label)
+(define (gen-version-* cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos #!optional fn-opt-label)
 
   (define (generate-moves ctx moves label-dest)
     (assert (not (null? moves)) "Internal error")
@@ -1307,9 +1299,8 @@
           (generate-moves dst-ctx moves label-dest))))
 
   ;; Todo: merge with generate-new-version
-  (define (generate-generic ctx use-fallback?)
-    (let ((lazy-code (if use-fallback? fallback-lazy-code lazy-code))
-          (version-label (asm-make-label #f (new-sym label-sym))))
+  (define (generate-generic ctx)
+    (let ((version-label (asm-make-label #f (new-sym label-sym))))
       ;; NOTE: generate-generic is NEVER called without a previous call to generate-merge-code
       ;;       generate-merge-code calls fn-codepos
       ;(set! code-alloc (fn-codepos))
@@ -1366,45 +1357,24 @@
     ;; No version for this ctx, limit reached, and generic version exists
     ((lazy-code-generic lazy-code)
        ;; TODO what if fn-opt-label is set ?
-       (if #f;(lazy-code-rest? lazy-code) TODO
-           (let* ((r (ctx-generic-prologue ctx))
-                  (moves (car r))
-                  (gctx  (cdr r)) ;; Discard ctx
-                  (label-generic (cdr (lazy-code-generic lazy-code)))
-                  (label-first   (if (null? moves)
-                                     label-generic
-                                     (generate-moves gctx moves label-generic))))
-             (put-version lazy-code ctx label-first #f)
-             (fn-patch label-first #f))
-           (let* ((generic       (lazy-code-generic lazy-code))
-                  (gctx          (car generic))
-                  (label-generic (cdr generic))
-                  (label-merge   (generate-merge-code ctx gctx label-generic)))
-             (put-version lazy-code ctx label-merge #f)
-             (fn-patch label-merge #t))))
+       (let* ((generic       (lazy-code-generic lazy-code))
+              (gctx          (car generic))
+              (label-generic (cdr generic))
+              (label-merge   (generate-merge-code ctx gctx label-generic)))
+         (put-version lazy-code ctx label-merge #f)
+         (fn-patch label-merge #t)))
     ;; No version for this ctx, limit reached, and generic version does not exist
     (else
-      (if #f; (lazy-code-rest? lazy-code) TODO
-          (let* ((r (ctx-generic-prologue ctx))
-                 (moves (car r))
-                 (gctx  (cdr r))
-                 (label-merge   (and (not (null? moves)) (generate-moves gctx moves #f)))
-                 (label-generic (generate-generic gctx #t))
-                 (label-first   (or label-merge label-generic)))
-            (put-version lazy-code ctx label-first #f)
-            (lazy-code-generic-set! lazy-code gctx label-generic)
-            (lazy-code-generic-set! fallback-lazy-code gctx label-generic)
-            (fn-patch label-first #t))
-          ;; TODO what if fn-opt-label is set ?
-          (let* ((gctx (ctx-generic ctx))
-                 ;; Generate merge only if not entry
-                 (label-merge   (generate-merge-code ctx gctx #f))
-                 (label-generic (generate-generic gctx #f))
-                 ;; If merge label exists, first label is merge label. Else first label is generic label
-                 (label-first   (or label-merge label-generic)))
-            (put-version lazy-code ctx label-first #f)
-            (lazy-code-generic-set! lazy-code gctx label-generic)
-            (fn-patch label-first #t))))))
+       ;; TODO what if fn-opt-label is set ?
+       (let* ((gctx (ctx-generic ctx))
+              ;; Generate merge only if not entry
+              (label-merge   (generate-merge-code ctx gctx #f))
+              (label-generic (generate-generic gctx))
+              ;; If merge label exists, first label is merge label. Else first label is generic label
+              (label-first   (or label-merge label-generic)))
+         (put-version lazy-code ctx label-first #f)
+         (lazy-code-generic-set! lazy-code gctx label-generic)
+         (fn-patch label-first #t)))))
 
 ;; #### FIRST LAZY CODE OBJECT
 ;; This is a special gen-version used to generate the first lco of the program
@@ -1417,7 +1387,7 @@
   (define (fn-patch label-dest new-version?)
     (asm-label-pos label-dest))
 
-  (gen-version-* #f lazy-code #f ctx 'version_ fn-verbose fn-patch fn-codepos))
+  (gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
 
 ;; #### LAZY CODE OBJECT
 ;; Generate a lco. Handle fall-through optimization
@@ -1446,7 +1416,7 @@
         (patch-jump jump-addr (asm-label-pos label-dest)))
     (asm-label-pos label-dest))
 
-  (gen-version-* #f lazy-code #f ctx 'version_ fn-verbose fn-patch fn-codepos))
+  (gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
 
 ;; #### CONTINUATION
 ;; Generate a continuation
@@ -1466,7 +1436,7 @@
   (define (fn-codepos)
     code-alloc)
 
-  (gen-version-* #f lazy-code #f ctx 'continuation_ fn-verbose fn-patch fn-codepos))
+  (gen-version-* #f lazy-code ctx 'continuation_ fn-verbose fn-patch fn-codepos))
 
 ;; #### CONTINUATION CR
 ;; Generate continuation using cr table (patch cr entry)
@@ -1485,13 +1455,11 @@
   (define (fn-codepos)
     code-alloc)
 
-  (gen-version-* #f lazy-code #f ctx 'continuation_ fn-verbose fn-patch fn-codepos))
+  (gen-version-* #f lazy-code ctx 'continuation_ fn-verbose fn-patch fn-codepos))
 
 ;; #### FUNCTION ENTRY
 ;; Generate an entry point
-;; If lco is not a generic prologue, fallback-prologue is the generic prologue lco, else it is #f
-;; fallback-prologue is used in case the maximum number of versions of the prologue is reached
-(define (gen-version-fn ast closure entry-obj lazy-code gen-ctx call-stack generic fallback-prologue)
+(define (gen-version-fn ast closure entry-obj lazy-code gen-ctx call-stack generic)
 
   (define (fn-verbose)
     (print "GEN VERSION FN")
@@ -1545,8 +1513,8 @@
             (else
                version-label))))
 
-  (define block-label (asm-make-label #f (new-sym 'TODO)))
-  (define to-version-label (asm-make-label #f (new-sym 'TODO2)))
+  (define block-label (asm-make-label #f (new-sym 'rest_block_)))
+  (define to-version-label (asm-make-label #f (new-sym 'block_to_version)))
 
   (let* ((rest-param (lazy-code-rest? lazy-code))
          (ctx gen-ctx)
@@ -1557,7 +1525,7 @@
           ((and opt-entry-points (not generic) rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
              (set! ctx (ctx-push ctx (make-ctx-tnulc '()) #f))
              (set! ctx (ctx-reset-nb-actual ctx))
-             (gen-version-* #f lazy-code fallback-prologue ctx 'fn_entry_ fn-verbose fn-patch fn-codepos fn-opt-label))
+             (gen-version-* #f lazy-code ctx 'fn_entry_ fn-verbose fn-patch fn-codepos fn-opt-label))
           ;; rest AND actual > formal
           ((and opt-entry-points (not generic) rest-param (> nb-actual (- nb-formal 1)))
              (code-add
@@ -1601,19 +1569,19 @@
                      (set! ctx nctx)))))
              (set! ctx (ctx-reset-nb-actual ctx))
              (let ((version-addr
-                     (gen-version-* #f lazy-code fallback-prologue ctx 'fn_entry_ fn-verbose tmp-fn-patch fn-codepos fn-opt-label)))
+                     (gen-version-* #f lazy-code ctx 'fn_entry_ fn-verbose tmp-fn-patch fn-codepos fn-opt-label)))
                (let ((tmp code-alloc))
                  (set! code-alloc (asm-label-pos to-version-label))
                  (code-add
                    (lambda (cgc)
-                     (x86-jmp cgc (asm-make-label #f (new-sym 'TODO) version-addr))))
+                     (x86-jmp cgc (asm-make-label #f (new-sym 'version_) version-addr))))
                  (set! code-alloc tmp))
                (fn-patch block-label #t)
                (asm-label-pos block-label)))
-          ;; TODO: no rest param
+          ;;
           (else
             (set! ctx (ctx-reset-nb-actual ctx))
-            (gen-version-* #f lazy-code fallback-prologue ctx 'fn_entry_ fn-verbose fn-patch fn-codepos fn-opt-label)))))
+            (gen-version-* #f lazy-code ctx 'fn_entry_ fn-verbose fn-patch fn-codepos fn-opt-label)))))
 
 ;; #### LAZY CODE OBJECT
 ;; Generate a normal lazy code object with known cgc and jump to it
@@ -1628,7 +1596,7 @@
   (define (fn-codepos)
     code-alloc)
 
-  (gen-version-* cgc lazy-code #f ctx 'version_ fn-verbose fn-patch fn-codepos))
+  (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
 
 (define (gen-generic cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos)
   (error "NYI"))

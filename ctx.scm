@@ -547,33 +547,6 @@
         (slot-loc (compute-slot-loc slot-loc)))
 
     (ctx-copy ctx stack slot-loc free-regs free-mems (ctx-init-free-fregs) '() env #f #f fs 0)))
-
-;; This function is *only* used with entry-point & rest lco
-(define (ctx-generic-prologue ctx)
-
-  (define (add-rest ctx)
-    (let* ((last (cdar (ctx-slot-loc ctx)))
-           (lst  (member last args-regs)))
-      (if (or (not lst)
-              (< (length lst) 2))
-          (ctx-push ctx (make-ctx-tunk) (cons 'm (+ (cdr last) 1)))
-          (ctx-push ctx (make-ctx-tunk) (cadr lst)))))
-
-  ;; TODO wip: rename ctx-get-call-args-moves to match this use too ?
-  ;; TODO wip: create stack moves in ctx-get-call-args-moves
-  (let* ((moves (ctx-get-call-args-moves #f ctx (ctx-nb-actual ctx) #f #t))
-         (moves
-           (if (null? (car moves)) ;; no stacked
-               (cdr moves)
-               (error "wip nyi (create stack moves)")))
-         (gctx (ctx-generic ctx))
-         (nrem (- (length (ctx-stack ctx)) (ctx-nb-args ctx) 2)))
-
-    (cons moves
-          (if (< nrem 0)
-              (add-rest gctx)
-              (ctx-pop-n gctx nrem)))))
-
 ;;
 ;; CTX INIT FN
 (define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)

@@ -1,10 +1,12 @@
 
-(define (foo a b . c)
-  (pp a)
-  (pp b)
-  (pp c))
+(define (foo . strings)
+  (gambit$$pp strings))
 
-(foo 1 2 3 4 5)
+
+;; string-append
+(foo 1 (cons 1 2))
+(foo 1 100)
+
 
 
 ;(pp (##lc-exec-stats (lambda () (fib 40))))

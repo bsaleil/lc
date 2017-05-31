@@ -740,8 +740,6 @@
 
   ;; Lazy function prologue
   (define lazy-prologue (get-lazy-prologue ast lazy-body rest-param))
-  ;; Same as lazy-prologue but generate a generic prologue (no matter what the arguments are)
-  (define lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params)))
 
   (list
     lazy-prologue
@@ -752,13 +750,15 @@
 
         (cond ;; CASE 1 - Use entry point (no cctable)
               ((eq? opt-entry-points #f)
-                 (fn-generator closure lazy-prologue-gen #f #f #f))
+                 (let ((lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params))))
+                   (fn-generator closure lazy-prologue-gen #f #f)))
               ;; CASE 2 - Function is called using generic entry point
               ((= selector 1)
-                 (fn-generator #f lazy-prologue-gen #f #t #f))
+                 (let ((lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params))))
+                   (fn-generator #f lazy-prologue-gen #f #t)))
               ;; CASE 3 - Use multiple entry points
               (else
-                 (fn-generator #f lazy-prologue stack #f lazy-prologue-gen)))))))
+                 (fn-generator #f lazy-prologue stack #f)))))))
 
 (define (get-entry-obj ast ctx fvars-imm fvars-late all-params bound-id)
 
@@ -767,12 +767,12 @@
   ;; Generator used to generate function code waiting for runtime data
   ;; First create function entry ctx
   ;; Then generate function prologue code
-  (define (fn-generator closure prologue stack generic? fallback-prologue)
+  (define (fn-generator closure prologue stack generic?)
     ;; In case the limit in the number of version is reached, we give #f to ctx-init-fn to get a generic ctx
     ;; but we still want to patch cctable at index corresponding to stack
     (let* ((ctxstack (if generic? #f stack))
            (ctx (ctx-init-fn ctxstack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id)))
-      (gen-version-fn ast closure entry-obj prologue ctx stack generic? fallback-prologue)))
+      (gen-version-fn ast closure entry-obj prologue ctx stack generic?)))
 
   ;; ---------------------------------------------------------------------------
   ;; Return 'entry-obj' (entry object)
