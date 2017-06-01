@@ -1,4 +1,5 @@
 *.o1
+config.scm
 /tools/benchtimes/result
 /tools/locatview/locat.js
 lazy-comp
