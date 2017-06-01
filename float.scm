@@ -27,15 +27,13 @@
 ;;
 ;;---------------------------------------------------------------------------
 
+(include "config.scm")
+
 (include "~~lib/_asm#.scm")
 (include "~~lib/_x86#.scm")
 (include "~~lib/_codegen#.scm")
 
 ;;-----------------------------------------------------------------------------
-
-(define (assert c msg . l)
-  (if (not c)
-     (error msg)))
 
 (define (x86-reg-xmm? x)
   (and (x86-reg? x) (x86-xmm? x)))
@@ -477,7 +475,7 @@
             (assert (not (and rex?
                               (or (x86-reg8-h? reg)
                                   (x86-reg8-h? opnd))))
-                    "cannot use high 8 bit register here" reg opnd)
+                    "cannot use high 8 bit register here")
             rex?))
         (x86-opnd-prefix cgc
                          width
@@ -519,7 +517,7 @@
                              (assert (or (x86-reg32? reg1)
                                          (and (x86-reg64? reg1)
                                               (x86-64bit-mode? cgc)))
-                                     "invalid width base register" reg1)
+                                     "invalid width base register")
                              (fx+ ;; if needed emit REX.B (Extension of
                                   ;; the ModR/M r/m field, SIB base field,
                                   ;; or Opcode reg field)
@@ -532,7 +530,7 @@
                                           (assert (if (x86-reg32? reg1)
                                                       (x86-reg32? reg2)
                                                       (x86-reg64? reg2))
-                                                  "index register must have same width as base" reg2)
+                                                  "index register must have same width as base")
                                           ;; if needed emit REX.X (Extension
                                           ;; of the SIB index field)
                                           (fxarithmetic-shift-left
@@ -611,7 +609,7 @@
                                    (if reg2
                                        (let ((field2 (x86-reg-field reg2)))
                                          (assert (not (fx= field2 4))
-                                                 "SP not allowed as index" reg2)
+                                                 "SP not allowed as index")
                                          (fx+ (fxarithmetic-shift-left
                                                (fxand 7 field2)
                                                3)

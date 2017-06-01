@@ -28,7 +28,8 @@
 ;;---------------------------------------------------------------------------
 
 (include "~~lib/_asm#.scm")
-(include "~~lib/_x86#.scm") ;; TODO regalloc remove when finished
+(include "~~lib/_x86#.scm")
+(include "config.scm")
 (include "extern/copy-permanent.scm")
 
 (define free-vars #f)
@@ -45,12 +46,6 @@
 
 ;;-----------------------------------------------------------------------------
 ;; Macros
-
-(define-macro (assert c err)
-  `(if (not ,c)
-       (begin
-        (println "!!! ERROR : " ,err)
-        (exit 1))))
 
 ;; Multiple bindings let
 ;; ex: (let ((a/b/c (foo))) (println a b c))

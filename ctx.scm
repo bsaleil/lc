@@ -27,6 +27,8 @@
 ;;
 ;;---------------------------------------------------------------------------
 
+(include "config.scm")
+
 (define regalloc-regs #f)
 (define regalloc-fregs #f)
 (define lazy-code-flags #f)

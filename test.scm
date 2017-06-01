@@ -1,10 +1,13 @@
 
 
-(define (foo n)
-  (gambit$$pp n))
+(define (run n)
+  (let loop ((i n) (sum 0.))
+    (if (FLOAT< i 0.)
+      sum
+      (loop (FLOAT- i 1.) (FLOAT+ i sum)))))
 
-(foo 1)
-(foo 42)
+(let ((result (run 10000.)))
+  (pp result))
 
 
 

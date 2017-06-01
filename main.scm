@@ -29,6 +29,7 @@
 ;;---------------------------------------------------------------------------
 
 (include "~~lib/_x86#.scm")
+(include "config.scm")
 (include "./extern/Sort.scm")
 
 (define pp pretty-print)
