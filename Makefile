@@ -1,5 +1,6 @@
 GSC_FLAGS= -prelude "(declare (not safe))"
 CONFIG_FILE= config-release.scm
+LC_STRAT=strat1.scm
 
 all: config types.o1 analyses.o1 float.o1 utils.o1 main.o1 native.o1 mem.o1 codegen.o1 ast.o1 core.o1 expand.o1 ctx.o1 lib
 	cp lazy-comp.template lazy-comp
@@ -11,15 +12,18 @@ debug: GSC_FLAGS= -debug
 debug: CONFIG_FILE= config-debug.scm
 debug: all
 
-.PHONY: lib config
+dummy:
+	@:
+
+.PHONY: lib config dummy
 lib:
 	gsi ./build-lib
 
 config:
 	cp $(CONFIG_FILE) config.scm
 
-types.o1: types.scm
-	gsc $(GSC_FLAGS) -o $@ $<
+types.o1: $(and $(LC_STRAT),dummy)
+	gsc $(GSC_FLAGS) -o $@ $(LC_STRAT)
 
 ctx.o1: ctx.scm
 	gsc $(GSC_FLAGS) -o $@ $<
