@@ -1,13 +1,12 @@
 
 
-(define (run n)
-  (let loop ((i n) (sum 0.))
-    (if (FLOAT< i 0.)
-      sum
-      (loop (FLOAT- i 1.) (FLOAT+ i sum)))))
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-(let ((result (run 10000.)))
-  (pp result))
+(pp (fib 40))
 
 
 
