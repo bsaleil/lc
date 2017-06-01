@@ -27,6 +27,8 @@
 ;;
 ;;---------------------------------------------------------------------------
 
+(include "config.scm")
+
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
@@ -841,8 +843,10 @@
             ((x86-mem? opleft)
                (x86-movsd cgc dest opleft))
             ;; Nothing to do, left operand is in a xmm register
-            (else
-               (x86-movsd cgc dest opleft)))
+            ((x86-xmm? opleft)
+               (x86-movsd cgc dest opleft))
+            (else ;; x86-reg
+               (x86-movsd cgc dest (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opleft))))
 
       ;; Right operand
       (cond ((and rightint? rcst?)
@@ -861,8 +865,10 @@
             ((x86-mem? opright)
                (error "N3"))
             ;; Right operand is in a xmm register
-            (else
-               (x86-op cgc dest opright))))))
+            ((x86-xmm? opright)
+               (x86-op cgc dest opright))
+            (else ;; x86-reg
+               (x86-op cgc dest (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opright)))))))
 
 ;;-----------------------------------------------------------------------------
 ;; N-ary comparison operators
@@ -950,9 +956,12 @@
              (set! opleft (x86-xmm0)))
           ((x86-mem? opleft)
              (error "N1"))
+          ((x86-xmm? opleft)
+             #f)
           ;; Nothing to do, left operand is in a xmm register
-          (else
-             #f))
+          (else ;; x86-reg
+             (x86-movsd cgc (x86-xmm0) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opleft))
+             (set! opleft (x86-xmm0))))
 
     ;; Right operand
     (cond ((and rightint? rcst?)
@@ -971,8 +980,10 @@
              (x86-comisd cgc opleft (x86-xmm1)))
           ((x86-mem? opright)
              (error "NYI a"))
-          (else
-             (x86-comisd cgc opleft opright)))
+          ((x86-xmm? opright)
+             (x86-comisd cgc opleft opright))
+          (else ;; x86-reg
+             (x86-comisd cgc opleft (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opright))))
 
     ;; NOTE: check that mlc-if patch is able to patch ieee jcc instructions (ja, jb, etc...)
     (if inline-if-cond?
