@@ -28,10 +28,7 @@
 ;;---------------------------------------------------------------------------
 
 ;; TODO DESCRIPTION
-
-(define opt-max-versions #f)
 (define lazy-code-entry? #f)
-
 (define lco_versions (make-table test: eq?))
 (define lco_generic  (make-table test: eq?))
 
@@ -87,11 +84,6 @@
                  ctx))
         (versions (lazy-code-versions lazy-code)))
     (table-set! versions key (cons version real-version?))))
-
-(define (limit-reached? lco)
-  (and opt-max-versions
-       (let ((nb-versions (lazy-code-nb-real-versions lco)))
-         (>= nb-versions opt-max-versions))))
 
 (define (strat-get-version lco ctx)
 
