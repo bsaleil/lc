@@ -332,7 +332,14 @@
 (define (main . args)
 
   ;; Set options and get files from cl args
-  (define files (parse-args args))
+  (define files #f)
+
+  ;; Extend compiler options using strat options
+  (set! compiler-options
+        (append compiler-options
+                (strat-get-options)))
+
+  (set! files (parse-args args))
 
   (init-frontend)
 
@@ -349,7 +356,7 @@
                 (analyses-find-global-types! exp-content)
                 (analyses-a-conversion! exp-content)
                 (compute-liveness exp-content)
-                ;(pp content))))
+                ;(pp exp-content)
                 ;(exec content))))
                 (exec exp-content))))
         (else (error "NYI")))
@@ -402,6 +409,7 @@
 ;;-----------------------------------------------------------------------------
 
 (define (rt-print-opts)
+
   (if opt-stats
     (begin (println "Closures: " (get-slot 'closures))
            (println "Executed tests: " (get-slot 'tests)))))
@@ -575,7 +583,13 @@
         (string-append
           "Reg-alloc -> "
           (with-output-to-string '()
-            (lambda () (display (ctx-slot-loc ctx)))))))
+            (lambda () (display (ctx-slot-loc ctx))))))
+
+      (print-array-item
+        (string-append
+          "env -> "
+          (with-output-to-string '()
+            (lambda () (display (ctx-env ctx)))))))
 
     (let loop ((versions (table->list versions))
                (n 1))

@@ -51,8 +51,21 @@
 (define (lazy-code-nb-real-versions lazy-code)
   (count (table->list (lazy-code-versions lazy-code)) cddr))
 
+(define (strat-get-options)
+  strat-options)
+
 ;;------------------------------------------------------------------------------
 ;; PRIVATE
+
+(define opt-cst-variation-limit 10)
+
+;; Options specific to this strat
+(define strat-options `(
+    (--strat-cst-variation-limit
+      "(strat) Set the maximum number of times a constant can be used to generate a version"
+      ,(lambda (args) (set! opt-cst-variation-limit (string->number (cadr args)))
+                      (cdr args)))
+))
 
 (define (lazy-code-generic lco)
   (table-ref lco_generic lco #f))
@@ -131,8 +144,6 @@
 ;;----- TODO
 ;;----- TODO
 
-(define NCST_LIM 300)
-
 ;; TODO: problème des fonctions qui doivent quand meme etre propagées
 
 (define lco-cst-lst (make-table test: eq?))
@@ -154,10 +165,9 @@
   (table-set! lco-cst-lst lco lst))
 
 (define (RETROGRADE ctx sum-lst idx)
-  ;; TODO WIP: ajouter le mouvement cst
   (cond ((null? sum-lst)
            ctx)
-        ((> (car sum-lst) NCST_LIM)
+        ((> (car sum-lst) opt-cst-variation-limit)
            (let* ((r (ctx-get-free-reg #f ctx #f 0)) ;; moves/reg/ctx
                   (reg (cadr r))
                   (ctx (caddr r))
@@ -173,7 +183,7 @@
   (let* ((lco-lst (lco-cst-lst-get lco ctx))
          (cur-lst (map (lambda (n) (if (ctx-type-cst? n) 1 0)) (ctx-stack ctx)))
          (sum-lst (map + lco-lst cur-lst))
-         (ok? (foldr (lambda (el r) (and (<= el NCST_LIM) r)) #t sum-lst)))
+         (ok? (foldr (lambda (el r) (and (<= el opt-cst-variation-limit) r)) #t sum-lst)))
     (if ok?
         (begin (lco-cst-lst-update lco sum-lst)
                ctx)

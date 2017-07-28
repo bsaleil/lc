@@ -61,6 +61,9 @@
 (define (lazy-code-nb-real-versions lazy-code versions-accessor)
   (count (table->list (versions-accessor lazy-code)) cddr))
 
+(define (strat-get-options)
+  '())
+
 ;;------------------------------------------------------------------------------
 ;; PRIVATE
 
