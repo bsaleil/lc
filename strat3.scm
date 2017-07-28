@@ -61,8 +61,7 @@
     (--strat-cst-variation-limit
       "(strat) Set the maximum number of times a constant can be used to generate a version"
       ,(lambda (args) (set! opt-cst-variation-limit (string->number (cadr args)))
-                      (cdr args)))
-))
+                      (cdr args)))))
 
 (define (lazy-code-generic lco)
   (table-ref lco_generic lco #f))

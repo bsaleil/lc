@@ -23,7 +23,7 @@ COLOR_MAX = 0.4
 COLOR_MIN = 0.8
 
 # MEAN is False, "geo" or "arith"
-MEAN = False
+MEAN = "arith"
 
 import matplotlib.pyplot as plt; plt.rcdefaults()
 import numpy as np

@@ -1,20 +1,42 @@
 
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
 
-(pp (fib 40))
+(pp "OK")
 
 
+;loop sans const:
+;main:
+;    mov r1, i
+;    mov r2, sum
+;    cmp r1, r2
+;    jge belse
+;    mov rr, sum
+;    ret
+;belse:
+;    mov r1, i
+;    sub r1, 1
+;    mov r2, i
+;    add r2, sum
+;    call main
 
 
 
+;(define (create-n n)
+;  (do ((n n (- n 1))
+;       (a '() (cons '() a)))
+;      ((= n 0) a)))
+;
+;(define *ll* (create-n 200))
+;
+;(define (recursive-div2 l)
+;  (cond ((null? l) '())
+;        (else (cons (car l) (recursive-div2 (cddr l))))))
+;
+;(pp (length (recursive-div2 (create-n 1000))))
 
 
 
+;;-------------------------
 
 ;(pp (##lc-exec-stats (lambda () (fib 40))))
 

@@ -1,5 +1,5 @@
 ;;; TRIANGL -- Board game benchmark.
- 
+
 (define *board*
   (list->vector '(1 1 1 1 1 0 1 1 1 1 1 1 1 1 1 1)))
 
@@ -24,7 +24,7 @@
                   3 6 2 5 4 11 12 13 7 8 4 4)))
 
 (define *answer* '())
- 
+
 (define (attempt i depth)
   (cond ((= depth 14)
          (set! *answer*
@@ -44,7 +44,7 @@
          (vector-set! *board* (vector-ref *b* i) 1)
          (vector-set! *board* (vector-ref *c* i) 0) #f)
         (else #f)))
- 
+
 (define (test i depth)
   (set! *answer* '())
   (attempt i depth)

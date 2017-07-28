@@ -31,7 +31,6 @@
 ;; Generate lazy-code objects with given contexts until hard limit is reached
 ;; Then fallback to a generic version
 
-(define opt-max-versions #f)
 (define lazy-code-entry? #f)
 
 (define lco_versions (make-table test: eq?))
@@ -54,10 +53,20 @@
   (count (table->list (lazy-code-versions lazy-code)) cddr))
 
 (define (strat-get-options)
-  '())
+  strat-options)
 
 ;;------------------------------------------------------------------------------
 ;; PRIVATE
+
+(define opt-max-versions #f) ;; Limit of number of versions (#f=no limit, 0=only generic, ...)
+
+;; Options specific to this strat
+(define strat-options `(
+  (--max-versions
+    "Set a limit on the number of versions of lazy code objects"
+    ,(lambda (args) (set! opt-max-versions (string->number (cadr args)))
+                    (set! args (cdr args))
+                    args))))
 
 (define (lazy-code-generic lco)
   (table-ref lco_generic lco #f))

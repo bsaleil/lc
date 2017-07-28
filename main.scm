@@ -145,12 +145,6 @@
     ,(lambda (args) (set! opt-export-locat-info #t)
                     args))
 
-  (--max-versions
-    "Set a limit on the number of versions of lazy code objects"
-    ,(lambda (args) (set! opt-max-versions (string->number (cadr args)))
-                    (set! args (cdr args))
-                    args))
-
   (--nolib
      "Do not include the standard library"
      ,(lambda (args) (set! opt-use-lib #f)
