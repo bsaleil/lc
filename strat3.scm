@@ -27,6 +27,8 @@
 ;;
 ;;---------------------------------------------------------------------------
 
+(include "config.scm")
+
 ;; TODO DESCRIPTION
 (define lazy-code-entry? #f)
 (define lco_versions (make-table test: eq?))
@@ -95,100 +97,67 @@
   (define (case-gen-version nctx)
     (list #f nctx (lambda (label-merge label-version)
                     (put-version lco ctx label-merge #f)
-                    (lazy-code-generic-set! lco nctx label-version))))
+                    (put-version lco nctx label-version #t))))
 
   ;;
   (define (case-gen-unchanged)
     (list #f ctx (lambda (label) (put-version lco ctx label #t))))
 
-  ;; CASE 3: no version for this ctx, limit reached, generic exists
-  ;; then use the generic version
-  (define (case-use-generic generic)
-    (let ((callback (lambda (label-merge) (put-version lco ctx label-merge #f))))
-      (list (cdr generic) (car generic) callback)))
-
-  ;; CASE 4: no version for this ctx, limit reached, generic does not exist
-  ;; then generate the generic version
-  (define (case-gen-generic)
-    (let* ((gctx (ctx-generic ctx))
-           (callback (lambda (label-merge label-version)
-                       (put-version lco ctx label-merge #f)
-                       (lazy-code-generic-set! lco gctx label-version))))
-      (list #f gctx callback)))
-
   (let ((version (get-version lco ctx)))
 
-    ;TODO reenable (if (not opt-const-vers)  (error "Internal error"))
+    (if (not opt-const-vers)  (error "Internal error"))
 
     (if version
         ;;
         (case-use-version version)
         ;;
-        (let ((ctx-mod (GET_CTX_MOD lco ctx)))
+        (let ((ctx-mod (get-modified-ctx lco ctx)))
           (if (eq? ctx ctx-mod)
               ;; CASE 2.1 there is no change, ctx can be used to generate new version
               (case-gen-unchanged)
               ;; CASE 2.2 ctx changed
               (case-gen-version ctx-mod))))))
 
+(define lco-cst-vec (make-table test: eq?))
 
-;;----- TODO
-;;----- TODO
-
-;; TODO: problème des fonctions qui doivent quand meme etre propagées
-
-(define lco-cst-lst (make-table test: eq?))
-
-(define (lco-cst-lst-get lco ctx)
-  (let ((r (table-ref lco-cst-lst lco #f)))
-    ;; TODO assert
-    (if (and r
-            (not (eq? (length r)
-                      (length (ctx-stack ctx)))))
-        (error "Internal error")
+(define (lco-cst-vec-get lco ctx)
+  (let ((r (table-ref lco-cst-vec lco #f)))
+    (assert (not (and r
+                      (not (eq? (vector-length r)
+                                (length (ctx-stack ctx))))))
+            "Internal error")
     ;;
     (or r
-        (let ((lst (map (lambda (n) 0) (ctx-stack ctx))))
-          (table-set! lco-cst-lst lco lst)
-          lst)))))
+        (let ((v (alloc-still-vector-i64 (length (ctx-stack ctx)) 0)))
+          (table-set! lco-cst-vec lco v)
+          v))))
 
-(define (lco-cst-lst-update lco lst)
-  (table-set! lco-cst-lst lco lst))
+(define (remove-one-const ctx type idx)
+  (let* ((r (ctx-get-free-reg #f ctx #f 0)) ;; moves/reg/ctx
+         (reg (cadr r))
+         (ctx (caddr r))
+         ;;
+         (ctx (ctx-set-type ctx idx (ctx-type-nocst type) #t))
+         (ctx (ctx-set-loc  ctx (stack-idx-to-slot ctx idx) reg)))
+    ctx))
 
-(define (RETROGRADE ctx sum-lst idx)
-  (cond ((null? sum-lst)
-           ctx)
-        ((> (car sum-lst) opt-cst-variation-limit)
-           (let* ((r (ctx-get-free-reg #f ctx #f 0)) ;; moves/reg/ctx
-                  (reg (cadr r))
-                  (ctx (caddr r))
-                  ;;
-                  (ctx (ctx-set-type ctx idx (ctx-type-nocst (list-ref (ctx-stack ctx) idx)) #t))
-                  (ctx (ctx-set-loc  ctx (stack-idx-to-slot ctx idx) reg)))
-             (RETROGRADE ctx (cdr sum-lst) (+ idx 1))))
-        (else
-           (RETROGRADE ctx (cdr sum-lst) (+ idx 1)))))
+(define (get-modified-ctx lco ctx)
+  (let* ((lco-vec (lco-cst-vec-get lco ctx))
+         (stack   (ctx-stack ctx))
+         (max-idx (length stack)))
 
-(define (GET_CTX_MOD lco ctx)
-  ;; TODO: add MAX_VERSIONS
-  (let* ((lco-lst (lco-cst-lst-get lco ctx))
-         (cur-lst (map (lambda (n) (if (ctx-type-cst? n) 1 0)) (ctx-stack ctx)))
-         (sum-lst (map + lco-lst cur-lst))
-         (ok? (foldr (lambda (el r) (and (<= el opt-cst-variation-limit) r)) #t sum-lst)))
-    (if ok?
-        (begin (lco-cst-lst-update lco sum-lst)
-               ctx)
-        (begin
-          ;;1. On rétrograde les cst en trop dans le ctx
-          (let ((ctx (RETROGRADE ctx sum-lst 0)))
-            ;; TODO test opt
-            (let ((nctx
-                    (let loop ((versions (table->list (lazy-code-versions lco))))
-                      (cond ((null? versions) #f)
-                            ((equal? (ctx-stack ctx)
-                                     (ctx-stack (caar versions)))
-                               (caar versions))
-                            (else (loop (cdr versions)))))))
-
-              (lco-cst-lst-update lco sum-lst)
-              (or nctx ctx)))))))
+    (let loop ((ctx ctx) (idx 0) (stack stack))
+      (if (= idx max-idx)
+          ;;
+          ctx
+          ;;
+          (let ((sum (+ (vector-ref lco-vec idx)
+                        (if (ctx-type-cst? (car stack)) 1 0))))
+            (if (<= sum opt-cst-variation-limit)
+                ;; this cst is ok
+                (begin (vector-set! lco-vec idx sum)
+                       (loop ctx (+ idx 1) (cdr stack)))
+                ;;
+                (let ((ctx (remove-one-const ctx (car stack) idx)))
+                  (vector-set! lco-vec idx opt-cst-variation-limit)
+                  (loop ctx (+ idx 1) (cdr stack)))))))))
