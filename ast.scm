@@ -2877,7 +2877,7 @@
 
 ;; Create a new cr table with 'init' as stub value
 (define (make-cc)
-  (alloc-still-s64vector (+ 1 global-cc-table-maxsize) 0))
+  (alloc-cx-table (+ 1 global-cc-table-maxsize) 0))
 
 ;; This is the key used in hash table to find the cc-table for this closure.
 ;; The key represents captured values used to specialize tables
@@ -2932,7 +2932,7 @@
 
 ;; Create a new cr table with 'init' as stub value
 (define (make-cr stub-addr generic-addr)
-  (let ((v (alloc-still-s64vector (+ 1 global-cr-table-maxsize) stub-addr)))
+  (let ((v (alloc-cx-table (+ 1 global-cr-table-maxsize) stub-addr)))
     (s64vector-set! v 0 generic-addr)
     v))
 
