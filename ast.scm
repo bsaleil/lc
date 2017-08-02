@@ -2882,15 +2882,12 @@
 ;; This is the key used in hash table to find the cc-table for this closure.
 ;; The key represents captured values used to specialize tables
 (define (get-cc-key ctx fvars-imm fvars-late)
-  (append fvars-late
-          (foldr (lambda (n r)
-                   (if (member (car n) fvars-imm) ;; If this id is a free var of future lambda
-                       (cons (cons (car n)
-                                   (ctx-identifier-type ctx (cdr n)))
-                             r)
-                       r))
-                 '()
-                 (ctx-env ctx))))
+  (foldr (lambda (n r)
+           (if (member (car n) fvars-imm)
+               (cons (ctx-identifier-type ctx (cdr n)) r)
+               (cons #f r)))
+         '()
+         (ctx-env ctx)))
 
 ;; all-cctables associates an ast to a table ('equal?' table)
 ;; to get a cctable, we first use the eq? table to get cctables associated to this ast
@@ -2954,10 +2951,8 @@
     ;; Then use 'equal?' table to get crtable
     (let* ((key
             (list (ctx-slot-loc ctx)
-                  (ctx-free-regs ctx)
-                  (ctx-free-mems ctx)
-                  (ctx-free-fregs ctx)
-                  (ctx-free-fmems ctx)
+                  (ctx-fs ctx)
+                  (ctx-ffs ctx)
                   (ctx-stack ctx)
                   (ctx-env ctx)))
            (crtable (table-ref crtables key #f)))

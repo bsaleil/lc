@@ -60,7 +60,7 @@
   fn-num    ;; fn-num of current function
 )
 
-;; TODO: begin wip alpha conversion:
+;; check for alpha conversion:
 ;; Check that every id is unique when creating a ctx
 (define (contains-dbl ids)
   (if (null? ids)
@@ -557,6 +557,7 @@
         (slot-loc (compute-slot-loc slot-loc)))
 
     (ctx-copy ctx stack slot-loc free-regs free-mems (ctx-init-free-fregs) '() env #f #f fs 0)))
+
 ;;
 ;; CTX INIT FN
 (define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
@@ -1494,7 +1495,7 @@
 (define-type identifier
   kind   ;; symbol 'free or 'local
   sslots ;; list of stack slots where the variable is
-  flags  ;; list of variable
+  flags  ;; list of variable flags
   stype  ;; ctx type (copied to virtual stack)
   cloc   ;; closure slot if free variable
   cst    ;; is this id constant ?
