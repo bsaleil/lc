@@ -105,7 +105,7 @@
 
   (let ((version (get-version lco ctx)))
 
-    (if (not opt-const-vers)  (error "Internal error"))
+    (assert opt-const-vers "Internal error")
 
     (if version
         ;;
