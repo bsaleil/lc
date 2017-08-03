@@ -420,15 +420,18 @@
 
 ;; Init a stack for a call ctx or a fn ctx
 ;; This function removes the csts not used for versioning from 'stack'
-(define (ctx-init-stack stack add-suffix?)
+(define (ctx-init-stack stack nels add-suffix?)
   (let ((nstack
-          (map (lambda (type)
-                 (if (and (ctx-type-cst? type)
-                          (not (const-versioned? type)))
-                     ;; it's a non versioned cst, remove it
-                     (ctx-type-nocst type)
-                     type))
-               stack)))
+          (let loop ((stack stack) (nels nels))
+            (if (or (null? stack)
+                    (and (number? nels) (= nels 0)))
+                '()
+                (let ((type (car stack)))
+                  (if (and (ctx-type-cst? type)
+                           (not (const-versioned? type)))
+                      ;; it's a non versioned cst, remove it
+                      (cons (ctx-type-nocst type) (loop (cdr stack) (and nels (- nels 1))))
+                      (cons type (loop (cdr stack) (and nels (- nels 1))))))))))
     (if add-suffix?
         (append nstack (list (make-ctx-tclo) (make-ctx-tret)))
         stack)))
@@ -438,7 +441,7 @@
 (define (ctx-init-call ctx nb-args)
   (ctx-copy
     (ctx-init)
-    (ctx-init-stack (ctx-stack ctx) #t)))
+    (ctx-init-stack (ctx-stack ctx) nb-args #t)))
 
 ;;
 ;; CTX INIT RETURN
@@ -588,7 +591,7 @@
   ;;
   ;; STACK
   (define (init-stack stack free-const)
-    (append (ctx-init-stack stack #f)
+    (append (ctx-init-stack stack #f #f)
             (init-const-stack free-const)
             (list (make-ctx-tclo) (make-ctx-tret))))
 
