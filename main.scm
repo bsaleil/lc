@@ -58,8 +58,9 @@
 (define compiler-options `(
 
   (--call-max-len
-    "Set the max number of args allowed to use a specialized entry point"
-    ,(lambda (args) (set! opt-call-max-len (string->number (cadr args)))
+    "Set the max number of args allowed when using a specialized entry point"
+    ,(lambda (args) (if (not opt-entry-points) (error "--call-max-len requires interprocedural extensions"))
+                    (set! opt-call-max-len (string->number (cadr args)))
                     (cdr args)))
 
   (--cc-max
@@ -79,7 +80,7 @@
        (define (end next-args types)
          (set! opt-cv-preds types)
          (cons (car args) next-args))
-       (assert opt-const-vers "--const-vers-types needs --opt-const-vers")
+       (if (not opt-const-vers) (error "--const-vers-types needs --opt-const-vers"))
        (let loop ((curr (cdr args))
                   (types '()))
          (if (null? curr)
@@ -99,7 +100,8 @@
 
   (--disable-entry-points
     "Disable the use of multiple entry points use only one generic entry point"
-    ,(lambda (args) (set! opt-entry-points #f) args))
+    ,(lambda (args) (if opt-call-max-len (error "--call-max-len requires interprocedural extensions"))
+                    (set! opt-entry-points #f) args))
 
   ;(--disable-regalloc-vers
   ;  "Do not use register allocation information to specialize generated code"
@@ -157,13 +159,13 @@
 
   (--stats
     "Print stats about execution"
-    ,(lambda (args) (assert (not opt-time) "--stats option can't be used with --time")
+    ,(lambda (args) (if opt-time (error "--stats option can't be used with --time"))
                     (set! opt-stats #t)
                     args))
 
   (--time
     "Print exec time information"
-    ,(lambda (args) (assert (not opt-stats) "--time option can't be used with --stats")
+    ,(lambda (args) (if opt-stats (error "--time option can't be used with --stats"))
                     (set! opt-time #t)
                     args))
 
