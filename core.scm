@@ -54,6 +54,7 @@
 (define opt-cc-max               #f) ;; Global cctable max size
 (define opt-cr-max               #f) ;; Global crtable max size
 (define opt-const-vers           #f) ;; Use cst information in code versioning
+(define opt-call-max-len         #f) ;; Max number of args allowed when using a specialized entry point (use a generic ep if nb-args > opt-call-max-len)
 
 ;; This is the list of cst types used for versioning (if opt-const-vers is #t)
 ;; All csts types are enabled by default

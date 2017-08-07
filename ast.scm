@@ -2434,12 +2434,12 @@
                  (if (ctx-type-cst? type)
                      (set! fn-id-inf (cons #t (ctx-type-cst type)))))
 
-
-
                (let* ((nb-args (length args))
                       (call-ctx (ctx-init-call ctx nb-args))
                       (cctable-idx
-                        (if opt-entry-points
+                        (if (and opt-entry-points
+                                 (or (not opt-call-max-len)
+                                     (<= nb-args opt-call-max-len)))
                             (cctable-get-idx (list-head (ctx-stack call-ctx) nb-args))
                             #f))
                       (generic-entry? (and opt-entry-points (not cctable-idx))))

@@ -57,6 +57,11 @@
 ;; An option contains (option-text help-text option-lambda)
 (define compiler-options `(
 
+  (--call-max-len
+    "Set the max number of args allowed to use a specialized entry point"
+    ,(lambda (args) (set! opt-call-max-len (string->number (cadr args)))
+                    (cdr args)))
+
   (--cc-max
     "Set the max size of the global entry points table"
     ,(lambda (args) (set! opt-cc-max (string->number (cadr args)))

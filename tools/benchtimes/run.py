@@ -195,7 +195,7 @@ def userWants(str):
     return r == 'y'
 
 def lc_with_options(name,options):
-    opts = ["/home/bapt/Bureau/lc-ECOOP/lazy-comp","{0}","--time"]
+    opts = ["/home/bapt/Bureau/these/lazy-comp/lazy-comp","{0}","--time"]
     opts = opts + options
     return System(name,"LC","",".scm",opts,"(?:.*\n){11}Real time: (\d*.\d*)\n","(?:.*\n){14}GC real time: (\d*.\d*)\n",lambda x: x*1000.0)
 
@@ -207,12 +207,16 @@ def gambit_no_options(name,gcsize):
 #
 systems = []
 
-systems.append(lc_with_options("LC", []))
+# systems.append(lc_with_options("LC", []))
 # # LC
 # systems.append(lc_with_options("m5intra",  ["--max-versions 5","--disable-entry-points","--disable-return-points"]))
 # systems.append(lc_with_options("m5eponly", ["--max-versions 5","--disable-return-points"]))
 # systems.append(lc_with_options("m5rponly", ["--max-versions 5","--disable-entry-points"]))
-# systems.append(lc_with_options("m5inter",  ["--max-versions 5"]))
+systems.append(lc_with_options("interH1", ["--max-versions 5 --heur 1"]))
+systems.append(lc_with_options("inter",  ["--max-versions 5"]))
+systems.append(lc_with_options("interH5", ["--max-versions 5 --heur 5"]))
+systems.append(lc_with_options("interH8", ["--max-versions 5 --heur 8"]))
+systems.append(lc_with_options("interH10", ["--max-versions 5 --heur 10"]))
 #
 # # Gambit
 # systems.append(gambit_no_options("GambitS",    8000))
@@ -222,12 +226,14 @@ systems.append(lc_with_options("LC", []))
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))
 
-config.benchPath = scriptPath + '/bench/'
+distPath = "/home/bapt/Bureau/lc-ECOOP/tools/benchtimes"
+
+config.benchPath = distPath + '/bench/'
 config.resPath = scriptPath + '/result/'
 config.benchmarks = sorted(glob.glob(config.benchPath + '*.scm'))
 
-config.prefixPath = scriptPath + '/prefix'
-config.suffixPath = scriptPath + '/suffix'
+config.prefixPath = distPath + '/prefix'
+config.suffixPath = distPath + '/suffix'
 
 with open(scriptPath + '/num-iters.scm', 'r') as itersfile:
     config.numitersContent = itersfile.read()
