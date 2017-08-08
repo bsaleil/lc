@@ -133,7 +133,9 @@
           v))))
 
 (define (remove-one-const ctx type idx)
-  (let* ((r (ctx-get-free-reg #f ctx #f 0)) ;; moves/reg/ctx
+  (let* ((r (if (ctx-type-flo? type)
+                (ctx-get-free-freg #f ctx #f 0)
+                (ctx-get-free-reg #f ctx #f 0))) ;; moves/reg/ctx
          (reg (cadr r))
          (ctx (caddr r))
          ;;

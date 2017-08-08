@@ -1528,11 +1528,13 @@
     (if (null? moves)
         '()
         (let ((move (car moves)))
-          (if (or (ctx-loc-is-fregister? (car move))
-                  (ctx-loc-is-fmemory?   (car move))
-                  (and (pair? (car move))
-                       (eq?   (caar move) 'const)
-                       (flonum? (cdar move))))
+          (if (and (not (ctx-loc-is-fregister? (cdr move)))
+                   (not (ctx-loc-is-fmemory?   (cdr move)))
+                   (or (ctx-loc-is-fregister?  (car move))
+                       (ctx-loc-is-fmemory?    (car move))
+                       (and (pair? (car move))
+                            (eq?   (caar move) 'const)
+                            (flonum? (cdar move)))))
               (let ((move (cons (cons 'flbox (car move)) (cdr move))))
                 (cons move
                       (add-boxes (cdr moves))))
@@ -1554,7 +1556,7 @@
                 ;; Loc is #f
                 (let* ((slot (car first))
                        (type (list-ref (ctx-stack src-ctx) (slot-to-stack-idx src-ctx slot))))
-                  (assert (ctx-type-cst? type) "Internal error2")
+                  (assert (ctx-type-cst? type) "internal error")
                   (let* ((dst
                            (cdr (assoc slot (ctx-slot-loc dst-ctx))))
                          (src
