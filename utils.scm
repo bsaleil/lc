@@ -259,17 +259,11 @@
              "___result = ___EXT(___make_vector) (___PSTATE, ___arg1, ___FAL);")
    len))
 
-(define (alloc-cx-table len init)
-  (let ((v (c-alloc-cx-table len)))
-    (if init
-        (s64vector-fill! v init))
-    v))
-
-(define (c-alloc-cx-table len)
- ((c-lambda (int)
+(define (alloc-perm-vector-i64 len init)
+ ((c-lambda (int64 int64)
             scheme-object
-            "___result = ___EXT(___alloc_scmobj) (___ps, ___sS64VECTOR, ___arg1<<3);")
-  len))
+            "___result = ___EXT(___make_vector) (NULL, ___arg1, ___arg2);")
+  len init))
 
 (define (release-still-vector vect)
   ((c-lambda (scheme-object)

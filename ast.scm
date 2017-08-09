@@ -2877,7 +2877,7 @@
 
 ;; Create a new cr table with 'init' as stub value
 (define (make-cc)
-  (alloc-cx-table (+ 1 global-cc-table-maxsize) 0))
+  (alloc-perm-vector-i64 (+ 1 global-cc-table-maxsize) 0))
 
 ;; This is the key used in hash table to find the cc-table for this closure.
 ;; The key represents captured values used to specialize tables
@@ -2917,20 +2917,16 @@
 ;; Fill cctable with stub and generic addresses
 (define (cctable-fill cctable stub-addr generic-addr)
   ;; Fill cctable
-  (put-i64 (+ 8 (- (obj-encoding cctable) 1)) generic-addr) ;; Write generic after header
-  (let loop ((i 1))
-    (if (< i (s64vector-length cctable))
-      (begin (put-i64 (+ 8 (* 8 i) (- (obj-encoding cctable) 1)) stub-addr)
-             (loop (+ i 1)))
-      cctable)))
+  (##u64vector-fill! cctable stub-addr)
+  (##u64vector-set!  cctable 0 generic-addr))
 
 ;-----------------------------------------------------------------------------
 ;; CR TABLES
 
 ;; Create a new cr table with 'init' as stub value
 (define (make-cr stub-addr generic-addr)
-  (let ((v (alloc-cx-table (+ 1 global-cr-table-maxsize) stub-addr)))
-    (s64vector-set! v 0 generic-addr)
+  (let ((v (alloc-perm-vector-i64 (+ 1 global-cr-table-maxsize) stub-addr)))
+    (##u64vector-set! v 0 generic-addr)
     v))
 
 ;; all-crtables associates an ast to a table ('equal?' table)
