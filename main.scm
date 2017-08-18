@@ -119,6 +119,10 @@
     "Enable automatic fallback to generic entry/return point when cxtable overflows, default throws an error"
     ,(lambda (args) (set! opt-overflow-fallback #t) args))
 
+  (--disable-cxoverflow-closest
+    "Use the closest ctx associated to an existing slot of the cx table when the table oferflows (if possible) instead of using generic ctx"
+    ,(lambda (args) (set! opt-closest-cx-overflow #f) args))
+
   (--help
     "Print help"
     ,(lambda (args)

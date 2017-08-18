@@ -2410,6 +2410,73 @@
 ;;
 ;; Make lazy code from CALL EXPR
 ;;
+(define (get-alt-idx types)
+
+  (define (compute-type-dist t1 t2)
+    (cond ((ctx-type-unk? t1)
+             (if (ctx-type-unk? t2) 0 #f))
+          ((ctx-type-cst? t1)
+             (cond ;; t1 cst, t2 cst
+                   ((ctx-type-cst? t2)
+                      (if (equal? (ctx-type-cst t1) (ctx-type-cst t2))
+                          0
+                          #f))
+                   ;;
+                   ((ctx-type-teq? t1 t2) 1)
+                   ;;
+                   ((ctx-type-unk? t2) 2)
+                   ;;
+                   (else #f)))
+          ((ctx-type-unk? t2) 1)    ;; t1 type, t2 unk
+          ((ctx-type-cst? t2) #f)   ;; t1 type, t2 cst
+          ((ctx-type-teq? t1 t2) 0) ;; t1 type, t2 type, teq
+          (else #f)))               ;; t1 type, t2 type, !teq
+
+  (define (compute-dist types1 types2)
+    (let loop ((types1 types1) (types2 types2)
+               (dist 0))
+      (cond ((null? types1) (if (null? types2) dist #f))
+            ((null? types2) #f)
+            (else
+              (let ((d (compute-type-dist (car types1) (car types2))))
+                (and d (loop (cdr types1) (cdr types2) (+ dist d))))))))
+
+
+  (let loop ((entries (table->list global-cc-table))
+             (r #f)
+             (mindist #f))
+    (if (null? entries)
+        r
+        (let ((dist (compute-dist types (caar entries))))
+          (if (and dist
+                   (or (not mindist) (< dist mindist)))
+              (loop (cdr entries) (car entries) dist)
+              (loop (cdr entries) r mindist))))))
+
+(define (get-ccidx-stack call-stack nb-args)
+
+  (define idx #f)
+  (define stack call-stack)
+  (define force-generic? #f)
+  (define need-merge? #f)
+
+  (if (and opt-entry-points
+           (or (not opt-call-max-len)
+               (<= nb-args opt-call-max-len)))
+      (set! idx (cctable-get-idx call-stack))
+      (set! force-generic? #t))
+
+  (if (and opt-closest-cx-overflow
+           (not force-generic?)
+           (not idx))
+      (let ((r (get-alt-idx call-stack)))
+        (if r
+            (begin (set! need-merge? #t)
+                   (set! stack (car r))
+                   (set! idx   (cdr r))))))
+
+  (list idx stack need-merge?))
+
 (define (mlc-call ast succ)
 
   (let* (;; fn-num. Computed when ctx is available
@@ -2428,7 +2495,6 @@
              #f
              (lambda (cgc ctx)
 
-
                ;; Handle const fn
                (let ((type (ctx-get-type ctx (length args))))
                  (if (ctx-type-cst? type)
@@ -2436,16 +2502,43 @@
 
                (let* ((nb-args (length args))
                       (call-ctx (ctx-init-call ctx nb-args))
-                      (cctable-idx
-                        (if (and opt-entry-points
-                                 (or (not opt-call-max-len)
-                                     (<= nb-args opt-call-max-len)))
-                            (cctable-get-idx (list-head (ctx-stack call-ctx) nb-args))
-                            #f))
+                      (call-stack (list-head (ctx-stack call-ctx) nb-args))
+                      ;;
+                      (r (get-ccidx-stack call-stack nb-args))
+                      (cctable-idx (car   r))
+                      (call-stack  (cadr  r))
+                      (need-merge? (caddr r))
+                      ;;
                       (generic-entry? (and opt-entry-points (not cctable-idx))))
 
                  ;; Save used registers, generate and push continuation stub
                  (set! ctx (call-save/cont cgc ctx ast succ tail? (+ nb-args 1) #f))
+
+                 (if need-merge?
+                   (let loop ((nctx ctx) (stack-dest call-stack) (idx 0) (NB nb-args))
+                     (if (= NB 0)
+                         (set! ctx nctx)
+                         (let ((type (list-ref (ctx-stack ctx) idx))
+                               (type-dst (car stack-dest)))
+                           (cond ((and (ctx-type-cst? type)
+                                       (not (ctx-type-cst? type-dst)))
+                                    (let* ((nctx (drop-cst-value cgc ast nctx idx))
+                                           (nctx (if (ctx-type-flo? type)
+                                                     (gen-drop-float cgc nctx ast idx (+ idx 1))
+                                                     nctx)))
+                                      (loop nctx (cdr stack-dest) (+ idx 1) (- NB 1))))
+                                 ((and (ctx-type-flo? type)
+                                       (not (ctx-type-flo? type-dst)))
+                                    (let ((nctx (gen-drop-float cgc nctx ast idx (+ idx 1))))
+                                      (loop nctx (cdr stack-dest) (+ idx 1) (- NB 1))))
+                                 (else
+                                    (loop nctx (cdr stack-dest) (+ idx 1) (- NB 1))))))))
+
+                 ;; pour chaque type de la pile du ctx qui fait partie du ctx (0 -> nb-args):
+                    ;; si stack[i] est une cst et que la dest n'est pas cst
+                        ;; on appelle drop cst
+                    ;; sinon si stack[i] est un float et que la dest n'est pas un float
+                        ;; on appelle drop float
 
                  ;; Move args to regs or stack following calling convention
                  (set! ctx (call-prep-args cgc ctx ast nb-args (and fn-id-inf (car fn-id-inf)) generic-entry?))
@@ -2471,7 +2564,7 @@
                    (call-tail-shift cgc ctx ast tail? (- nb-args nfargs ncstargs)))
 
                  ;; Generate call sequence
-                 (gen-call-sequence ast cgc call-ctx cctable-idx nb-args (and fn-id-inf (cdr fn-id-inf))))))))
+                 (gen-call-sequence ast cgc call-stack cctable-idx nb-args (and fn-id-inf (cdr fn-id-inf))))))))
 
     ;; Gen and check types of args
     (make-lazy-code
@@ -2578,7 +2671,7 @@
 
 ;; Gen call sequence (call instructions)
 ;; fn-num is fn identifier or #f
-(define (gen-call-sequence ast cgc call-ctx cc-idx nb-args fn-num)
+(define (gen-call-sequence ast cgc call-stack cc-idx nb-args fn-num)
 
   (define obj (and fn-num (asc-globalfn-entry-get fn-num)))
   (define entry-obj (and obj (car obj)))
@@ -2589,7 +2682,7 @@
 
   (define (get-cc-direct)
     (and lazy-code
-         (let* ((stack (list-head (ctx-stack call-ctx) nb-args))
+         (let* ((stack call-stack)
                 (version (table-ref (lazy-code-versions lazy-code)
                                     (append stack (list (make-ctx-tclo) (make-ctx-tret)))
                                     #f)))

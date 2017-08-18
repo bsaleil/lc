@@ -1,12 +1,24 @@
 
-(define (fibfp n)
-  (if (FLOAT< n 2.)
-    n
-    (FLOAT+ (fibfp (FLOAT- n 1.))
-            (fibfp (FLOAT- n 2.)))))
+(define (foo n m)
+  (set! a 111))
 
-(let ((result (fibfp 35.)))
-  (gambit$$pp (= result 9227465.)))
+(define a 33)
+
+(foo a a)
+(foo a 1)
+(foo 1 a)
+;(foo 1 2)
+(foo #f 4)
+
+(define (bar n m)
+  (if (> n m)
+      0
+      (+ 1 (bar (+ n 1) m))))
+
+
+(bar 10 (car (cons 2.2 4.4)))
+
+
 
 
 ;loop sans const:

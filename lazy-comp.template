@@ -1,6 +1,6 @@
 #!/bin/bash
 
-GSC="gsc -:m100000"
+GSC="gsc -:m512000"
 LC_FILES="float.o1 utils.o1 ctx.o1 types.o1 core.o1 native.o1 mem.o1 codegen.o1 ast.o1 expand.o1 analyses.o1 main.o1"
 ARGS=()
 
