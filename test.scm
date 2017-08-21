@@ -15,11 +15,7 @@
       0
       (+ 1 (bar (+ n 1) m))))
 
-
 (bar 10 (car (cons 2.2 4.4)))
-
-
-
 
 ;loop sans const:
 ;main:
@@ -35,8 +31,6 @@
 ;    mov r2, i
 ;    add r2, sum
 ;    call main
-
-
 
 ;(define (create-n n)
 ;  (do ((n n (- n 1))

@@ -125,8 +125,8 @@
             (case-use-version version))
           ((not (limit-reached? lco))
             (case-heuristic-1 lco ctx))
-          ((ctx-heuristic-2 lco ctx) => (lambda (ctx)
-            ctx))
+          ((ctx-heuristic-2 lco ctx) => (lambda (r)
+            r))
           ((lazy-code-generic lco) => (lambda (generic)
             (case-use-generic generic)))
           (else
@@ -147,7 +147,7 @@
 ;;       Si on a plus d'entrée dans la table de pt d'entrée, on peut chercher le ctx le plus proche et l'utiliser
 
 ;; TODO: H1, H2
-;; Suite: H3, optimiser la compilation de strat4 
+;; Suite: H3, optimiser la compilation de strat4
 
 ;; -----------------------------------------------------------------------------
 ;; -----------------------------------------------------------------------------
@@ -284,7 +284,6 @@
                           (list (car el) (cadr el) distance))))
                   (list #f #f #f) ;; ctx label distance (TODO move distance at pos 2 for perf?)
                   (table->list (lazy-code-versions lco)))))
-
     (if (car r)
-        (case-use-h2 lco (cadr r) ctx (car r)))
-    #f))
+        (case-use-h2 lco (cadr r) ctx (car r))
+        #f)))
