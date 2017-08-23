@@ -1,21 +1,47 @@
 
-(define (foo a b c . d)
-  (pp a)
-  (pp b)
-  (pp c)
-  (pp d))
+;(define (foo x0 yp0 x0 y0)
+;  (letrec ((loop0 (lambda (xp1 yp1 x1 y1 c0 i0 j0)
+;                    (if (< i0 0)
+;                        0
+;                        (if (let ((g00 (> (vector-ref yp1 0) y1)))
+;                              (if g00
+;                                  g00
+;                                  (>= x1 (vector-ref xp1 i0))))
+;                            (loop0 xp1 yp1 x1 y1 c0 (- i0 1) i0)
+;                            (loop0 xp1 yp1 x1 y1 c0 (- i0 1) i0))))))
+;    (loop0 xp0 yp0 x0 y0 #f 0 0)))
 
-(foo 1 2 3)
-(foo 10 20 30 40)
-(foo 100 200 300 400 500 600 700 800)
+(define loop
+    (lambda (xp1 yp1 x1 y1 c0 i0 j0)
+                      (if (($$atom <) ($$atom i0) ($$atom 0))
+                          ($$atom 0)
+                          (($$atom loop)
+                               ($$atom xp1)
+                               ($$atom yp1)
+                               ($$atom x1)
+                               ($$atom j0)
+                               ($$atom j0)
+                               ($$atom j0)
+                               ($$atom i0)))))
+
+(($$atom loop) ($$atom 1) ($$atom 2) ($$atom 3.) ($$atom 4) ($$atom 5) ($$atom 6) ($$atom -4))
 
 
+;;------------------------------------------------------------------------------
 
-
-
-
-
-
+;(define (foo xp yp x y)
+;  (let loop ((c #f) (i 0) (j 0))
+;
+;    (if (< i 0)
+;      0
+;      (if (or (> (vector-ref yp 0) y)
+;              (>= x (vector-ref xp i)))
+;        (loop c (- i 1) i)
+;        (loop c (- i 1) i)))))
+;
+;(let ((xp (vector  1.0))
+;      (yp (vector  2.0)))
+;  (gambit$$pp (foo xp yp .5 .5)))
 
 
 

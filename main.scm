@@ -103,6 +103,11 @@
     ,(lambda (args) (if opt-call-max-len (error "--call-max-len requires interprocedural extensions"))
                     (set! opt-entry-points #f) args))
 
+  (--disable-inlined-call
+    "Disable lazy call inlining when callee identity is known. Lazy call inlining causes function duplication which is
+     not necessarily expected if --disable-entry-points is provided"
+     ,(lambda (args) (set! opt-lazy-inlined-call #f) args))
+
   ;(--disable-regalloc-vers
   ;  "Do not use register allocation information to specialize generated code"
   ;  ,(lambda (args) (set! opt-vers-regalloc #f) args))
@@ -362,6 +367,7 @@
                 (analyses-a-conversion! exp-content)
                 (compute-liveness exp-content)
                 ;(pp exp-content)
+                ;(error "K")
                 ;(exec content))))
                 (exec exp-content))))
         (else (error "NYI")))

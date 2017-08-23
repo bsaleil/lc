@@ -2350,7 +2350,7 @@
 (define (call-prep-args cgc ctx ast nbargs const-fn generic-entry?)
 
   (let* ((cloloc (if const-fn #f (ctx-get-loc ctx nbargs)))
-         (stackp/moves (ctx-get-call-args-moves ast ctx nbargs cloloc generic-entry?))
+         (stackp/moves (ctx-get-call-args-moves ast ctx nbargs cloloc generic-entry? (and opt-lazy-inlined-call const-fn)))
          (stackp (car stackp/moves))
          (moves (cdr stackp/moves)))
 
@@ -2716,7 +2716,7 @@
                  (list 'stub stub-addr label))
                (list 'ep ep)))))
 
-  (cond ((and lazy-code (not (lazy-code-rest? lazy-code)))
+  (cond ((and opt-lazy-inlined-call lazy-code (not (lazy-code-rest? lazy-code)))
            (let* ((r (asc-fnnum-ctx-get fn-num))
                   (ctx (apply ctx-init-fn (cons call-stack r))))
              (x86-label cgc (asm-make-label #f (new-sym 'inlined_call_)))

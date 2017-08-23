@@ -67,6 +67,8 @@ test:
 full-test:
 	rm ./unit-tests/mutable-out -rf
 	./run-ut.scm
+	./run-ut.scm --disable-inlined-call
+	./run-ut.scm --disable-entry-points --disable-inlined-call
 	./run-ut.scm --disable-entry-points
 	./run-ut.scm --disable-return-points
 	./run-ut.scm --disable-entry-points --disable-return-points

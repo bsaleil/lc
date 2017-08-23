@@ -1573,7 +1573,7 @@
                                  (ctx-ffs src-ctx)))))
     (cons fs-move (cons ffs-move moves))))
 
-(define (ctx-get-call-args-moves ast ctx nb-args cloloc generic-entry?)
+(define (ctx-get-call-args-moves ast ctx nb-args cloloc generic-entry? inlined-call?)
 
   (define clomove (and cloloc (cons cloloc '(r . 2))))
 
@@ -1608,7 +1608,8 @@
                         (next-other
                           (cons 'constfn (ctx-type-cst type))))
                      ((ctx-type-flo? type)
-                        (if (or (not opt-entry-points)
+                        (if (or (and (not opt-entry-points)
+                                     (not inlined-call?))
                                 generic-entry?)
                             (next-other
                               (cons 'flbox (cons 'const (ctx-type-cst type))))
@@ -1619,7 +1620,8 @@
                           (cons 'const (ctx-type-cst type))))))
             ;; Type is float !cst
             ((and (ctx-type-flo? type)
-                  (or (not opt-entry-points)
+                  (or (and (not opt-entry-points)
+                           (not inlined-call?))
                       generic-entry?))
                (next-other
                  (cons 'flbox loc)))
