@@ -203,6 +203,19 @@
           "Internal error")
   (table-set! asc-ast-epentry ast eo))
 
+;; TODO
+(define asc-fnnum-ctx (make-table))
+(define (asc-fnnum-ctx-get fn-num)
+  (let ((r (table-ref asc-fnnum-ctx fn-num #f)))
+    (assert r "Internal error")
+    r))
+(define (asc-fnnum-ctx-set fn-num ctx)
+  ;; TODO: the same fn-num should be used for same ctx info
+  ;(assert (or (not (table-ref asc-fnnum-ctx fn-num #f))
+  ;            (equal? ctx (table-ref asc-fnnum-ctx fn-num)))
+  ;        "Internal error")
+  (table-set! asc-fnnum-ctx fn-num ctx))
+
 ;;-----------------------------------------------------------------------------
 ;; Type predicates
 
@@ -815,6 +828,7 @@
         get-entry-obj-ep)
     (lambda (fn-num obj)
       (set! entry-obj obj)
+      (asc-fnnum-ctx-set fn-num (list ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id))
       (values fn-num entry-obj))))
 
 
@@ -2702,7 +2716,11 @@
                  (list 'stub stub-addr label))
                (list 'ep ep)))))
 
-  (cond ((not opt-entry-points)
+  (cond ((and lazy-code (not (lazy-code-rest? lazy-code)))
+           (let* ((r (asc-fnnum-ctx-get fn-num))
+                  (ctx (apply ctx-init-fn (cons call-stack r))))
+             (jump-to-version cgc lazy-code ctx)))
+        ((not opt-entry-points)
            (let ((direct (get-ep-direct)))
              (codegen-call-ep cgc nb-args eploc direct)))
         ((not cc-idx) ;; apply or cc-full
