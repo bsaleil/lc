@@ -2719,6 +2719,7 @@
   (cond ((and lazy-code (not (lazy-code-rest? lazy-code)))
            (let* ((r (asc-fnnum-ctx-get fn-num))
                   (ctx (apply ctx-init-fn (cons call-stack r))))
+             (x86-label cgc (asm-make-label #f (new-sym 'inlined_call_)))
              (jump-to-version cgc lazy-code ctx)))
         ((not opt-entry-points)
            (let ((direct (get-ep-direct)))
