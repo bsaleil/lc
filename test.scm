@@ -1,31 +1,7 @@
 
-;(define (foo x0 yp0 x0 y0)
-;  (letrec ((loop0 (lambda (xp1 yp1 x1 y1 c0 i0 j0)
-;                    (if (< i0 0)
-;                        0
-;                        (if (let ((g00 (> (vector-ref yp1 0) y1)))
-;                              (if g00
-;                                  g00
-;                                  (>= x1 (vector-ref xp1 i0))))
-;                            (loop0 xp1 yp1 x1 y1 c0 (- i0 1) i0)
-;                            (loop0 xp1 yp1 x1 y1 c0 (- i0 1) i0))))))
-;    (loop0 xp0 yp0 x0 y0 #f 0 0)))
+(define (adder) (lambda (x y) (+ x y)))
 
-(define loop
-    (lambda (xp1 yp1 x1 y1 c0 i0 j0)
-                      (if (($$atom <) ($$atom i0) ($$atom 0))
-                          ($$atom 0)
-                          (($$atom loop)
-                               ($$atom xp1)
-                               ($$atom yp1)
-                               ($$atom x1)
-                               ($$atom j0)
-                               ($$atom j0)
-                               ($$atom j0)
-                               ($$atom i0)))))
-
-(($$atom loop) ($$atom 1) ($$atom 2) ($$atom 3.) ($$atom 4) ($$atom 5) ($$atom 6) ($$atom -4))
-
+((adder) 100 200)
 
 ;;------------------------------------------------------------------------------
 

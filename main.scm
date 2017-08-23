@@ -361,7 +361,7 @@
         ;; Can only exec 1 file
         ((= (length files) 1)
           (copy-with-declare (car files) "./tmp")
-        (let ((content (c#expand-program "./tmp" #f locat-table)));(read-all (open-input-file (car files)))))
+        (let ((content (c#expand-program "./tmp" #f locat-table))) ;(read-all (open-input-file (car files)))))
               (let ((exp-content (expand-tl content)))
                 (analyses-find-global-types! exp-content)
                 (analyses-a-conversion! exp-content)

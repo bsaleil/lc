@@ -2559,7 +2559,9 @@
 
                  ;; Shift args and closure for tail call
                  (mlet ((nfargs/ncstargs
-                          (if (or (not opt-entry-points)
+                          (if (or (and (not opt-entry-points)
+                                       (or (not opt-lazy-inlined-call)
+                                           (or (not fn-id-inf) (not (car fn-id-inf)))))
                                   generic-entry?)
                               (list 0 0)
                               (let loop ((idx 0) (nf 0) (ncst 0))
@@ -2572,6 +2574,7 @@
                                                (loop (+ idx 1) (+ nf 1) ncst))
                                             (else
                                                (loop (+ idx 1) nf ncst)))))))))
+
                    (if (> nfargs (length regalloc-fregs))
                        (error "NYI c")) ;; Fl args that are on the pstack need to be shifted
 
