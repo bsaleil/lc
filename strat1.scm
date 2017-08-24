@@ -86,8 +86,10 @@
   (let ((key (if (lazy-code-entry? lazy-code)
                  ctx;(ctx-stack ctx)
                  ctx))
-        (versions (lazy-code-versions lazy-code)))
-    (table-set! versions key (cons version real-version?))))
+        (versions (lazy-code-versions lazy-code))
+        (k (cons version real-version?)))
+    (table-set! versions key k)
+    k))
 
 (define (limit-reached? lco)
   (and opt-max-versions
@@ -103,7 +105,8 @@
   ;; CASE 2: no version for this ctx, and limit is not reached
   ;; then generate a new version
   (define (case-gen-version)
-    (list #f ctx (lambda (label) (put-version lco ctx label #t))))
+    (let ((k (put-version lco ctx #f #t)))
+      (list #f ctx (lambda (label) (set-car! k label)))))
 
   ;; CASE 3: no version for this ctx, limit reached, generic exists
   ;; then use the generic version
@@ -121,6 +124,7 @@
       (list #f gctx callback)))
 
   (let ((version (get-version lco ctx)))
+
     (if version
         (case-use-version version) ;; CASE 1
         (if (not (limit-reached? lco))

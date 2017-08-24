@@ -72,7 +72,6 @@ full-test:
 	./run-ut.scm --disable-entry-points
 	./run-ut.scm --disable-return-points
 	./run-ut.scm --disable-entry-points --disable-return-points
-	./run-ut.scm --enable-const-vers --enable-cxoverflow-fallback
 	./run-ut.scm --max-versions 5
 	./run-ut.scm --max-versions 5 --enable-const-vers --enable-cxoverflow-fallback
 	./run-ut.scm --max-versions 1

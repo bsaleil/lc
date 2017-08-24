@@ -1,25 +1,11 @@
 
-
- (define assq
-   (lambda (lst0)
-     (if (($$atom null?) ($$atom lst0))
-         ($$atom #f)
-         (($$atom assq) (($$atom cdr) ($$atom lst0))))))
-
- (define beta-subst
-   (lambda (exp0 env0)
-     (let ((bs0 (lambda () (($$atom assq) ($$atom env0)))))
-       (if (($$atom fixnum?) ($$atom exp0))
-           ($$atom exp0)
-           (($$atom bs0))))))
+(define (bar1 n)
+  (if (= n 0)
+    #t
+    (bar1 (- n 1))))
 
 
-
- (($$atom beta-subst) ($$atom 11) ($$atom '(a . 5)))
-
- (($$atom beta-subst) ($$atom #f) ($$atom '()))
-
-
+(pp (bar1 100000))
 
 
 ;
