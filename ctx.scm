@@ -671,7 +671,9 @@
       (if (null? ids)
           '()
           (let* ((id         (caar ids))
-                 (enc-type   (or (cdar ids) (make-ctx-tclo))) ;; enclosing type, or #f if late
+                 (enc-type   (if opt-entry-points ;; We can't use free variable type to specialize ctx if opt-entry-points is #f
+                                 (or (cdar ids) (make-ctx-tclo)) ;; enclosing type, or #f if late
+                                 (make-ctx-tunk)))
                  (late?      (member id late-fbinds))
                  (identifier (make-identifier 'free '() '() enc-type (cons 'f nvar) #f (eq? id bound-id))))
             (cons (cons id identifier)
@@ -1034,7 +1036,7 @@
                   "Internal error")
           stype)
         (let* ((sslots (identifier-sslots identifier))
-               (sidx (slot-to-stack-idx ctx (car sslots))))
+               (sidx   (slot-to-stack-idx ctx (car sslots))))
           (list-ref (ctx-stack ctx) sidx)))))
 
 ;;

@@ -1,7 +1,78 @@
 
-(define (adder) (lambda (x y) (+ x y)))
 
-((adder) 100 200)
+ (define assq
+   (lambda (lst0)
+     (if (($$atom null?) ($$atom lst0))
+         ($$atom #f)
+         (($$atom assq) (($$atom cdr) ($$atom lst0))))))
+
+ (define beta-subst
+   (lambda (exp0 env0)
+     (let ((bs0 (lambda () (($$atom assq) ($$atom env0)))))
+       (if (($$atom fixnum?) ($$atom exp0))
+           ($$atom exp0)
+           (($$atom bs0))))))
+
+
+
+ (($$atom beta-subst) ($$atom 11) ($$atom '(a . 5)))
+
+ (($$atom beta-subst) ($$atom #f) ($$atom '()))
+
+
+
+
+;
+;(define (map2 f l1 l2)
+;  (if (null? l1)
+;      l1
+;      (list (cons 'a 5))))
+;
+;(define (peval proc args)
+;    (let ((parms (cadr proc))  ; get the parameter list
+;          (body  (caddr proc))) ; get the body of the procedure
+;
+;      (list 'lambda
+;            (beta-subst ; in the body, replace variable refs to the constant
+;              body      ; parameters by the corresponding constant
+;              (map2 (lambda (x y) (cons x y))
+;                    parms
+;                    args)))))
+;
+;(define (assq el lst)
+;  (cond ((null? lst) #f)
+;        ((eq? el (car (car lst))) (car lst))
+;        (else (assq el (cdr lst)))))
+;
+;(define (beta-subst exp env) ; return a modified 'exp' where each var named in
+;  (define (bs exp)           ; 'env' is replaced by the corresponding expr (it
+;    (cond
+;          ((symbol? exp)
+;             (gambit$$pp env)
+;             (gambit$$pp exp)
+;             (gambit$$pp (assq exp env))
+;             (error "K"))
+;
+;
+;          (else
+;           (map bs exp))))
+;  (if (fixnum? exp)
+;      exp
+;      (bs (caddr exp))))
+;
+;
+;(define example5
+;    '(lambda (a) 11))
+;
+;(define example6
+;  '(lambda ()
+;     (let 11
+;       fib)))
+;
+;(peval example5 (list 5))
+;(peval example6 '())
+
+;-----
 
 ;;------------------------------------------------------------------------------
 

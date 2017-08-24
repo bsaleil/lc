@@ -3022,6 +3022,7 @@
     ;; Then use 'equal?' table to get cctable
     (let* ((key (get-cc-key ctx fvars-imm fvars-late))
            (cctable (table-ref cctables key #f)))
+
       (if cctable
           (cons #f cctable)
           (let ((cctable (make-cc))
