@@ -4,14 +4,17 @@ ex=[];
 #ex.append(["1.2","strat1","--max-versions 5"])
 #ex.append(["1.3","strat1","--max-versions 5 --cc-max 2000 --cr-max 2000"])
 
-ex.append(["intra","strat1","--disable-entry-points --disable-return-points"])
-ex.append(["interM5","strat1","--max-versions 5"])
-ex.append(["interM5-cv","strat1","--max-versions 5 --enable-const-vers --cc-max 1000 --cr-max 1000 --enable-cxoverflow-fallback"])
-# ex.append(["interM5-cv-s4-1","strat4","--max-versions 5 --enable-const-vers --cc-max 1000 --cr-max 1000 --enable-cxoverflow-fallback --disable-cxoverflow-closest"])
-# ex.append(["interM5-cv-s4-2","strat4","--max-versions 5 --enable-const-vers --cc-max 1000 --cr-max 1000 --enable-cxoverflow-fallback"])
-ex.append(["AA","strat4","--enable-const-vers --cc-max 1000 --enable-cxoverflow-fallback --cr-max 1000 --max-versions 5"])
-ex.append(["AA","strat4","--enable-const-vers --cc-max 1000 --enable-cxoverflow-fallback --cr-max 1000 --max-versions 5 --const-vers-types sym cha boo pai str vec nul voi"])
+# ex.append(["intra","strat1","--disable-entry-points --disable-return-points"])
+# ex.append(["interM5","strat1","--max-versions 5"])
+# ex.append(["interM5-cv","strat1","--max-versions 5 --enable-const-vers --cc-max 1000 --cr-max 1000 --enable-cxoverflow-fallback"])
+# # ex.append(["interM5-cv-s4-1","strat4","--max-versions 5 --enable-const-vers --cc-max 1000 --cr-max 1000 --enable-cxoverflow-fallback --disable-cxoverflow-closest"])
+# # ex.append(["interM5-cv-s4-2","strat4","--max-versions 5 --enable-const-vers --cc-max 1000 --cr-max 1000 --enable-cxoverflow-fallback"])
+# ex.append(["AA","strat4","--enable-const-vers --cc-max 1000 --enable-cxoverflow-fallback --cr-max 1000 --max-versions 5"])
+# ex.append(["AA","strat4","--enable-const-vers --cc-max 1000 --enable-cxoverflow-fallback --cr-max 1000 --max-versions 5 --const-vers-types sym cha boo pai str vec nul voi"])
 
+
+ex.append(["1","strat1","--max-versions 5 --cc-max 1000 --cr-max 1000 --enable-cxoverflow-fallback"])
+ex.append(["2","strat1","--max-versions 5 --cc-max 1000 --cr-max 1000 --enable-cxoverflow-fallback --disable-inlined-call"])
 
 #
 # #----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

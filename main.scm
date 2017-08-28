@@ -366,8 +366,6 @@
                 (analyses-find-global-types! exp-content)
                 (analyses-a-conversion! exp-content)
                 (compute-liveness exp-content)
-                ;(pp exp-content)
-                ;(error "K")
                 ;(exec content))))
                 (exec exp-content))))
         (else (error "NYI")))

@@ -1952,7 +1952,7 @@
           (if (and (not opt-entry-points) fn-id-inf (car fn-id-inf))
               (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f)))
               (x86-mov cgc (x86-rsi) (x86-rax))) ;; Move closure in closure reg
-          (gen-call-sequence ast cgc #f #f #f (and fn-id-inf (cdr fn-id-inf))))))))
+          (gen-call-sequence ast cgc #f #f #f (and fn-id-inf (cdr fn-id-inf)) #f))))))
 
 (define (mlc-primitive-d prim ast succ)
 
@@ -2347,10 +2347,10 @@
     (codegen-load-closure cgc fs ffs loc)))
 
 ;; Move args in regs or mem following calling convention
-(define (call-prep-args cgc ctx ast nbargs const-fn generic-entry?)
+(define (call-prep-args cgc ctx ast nbargs const-fn generic-entry? inlined-call?)
 
   (let* ((cloloc (if const-fn #f (ctx-get-loc ctx nbargs)))
-         (stackp/moves (ctx-get-call-args-moves ast ctx nbargs cloloc generic-entry? (and opt-lazy-inlined-call const-fn)))
+         (stackp/moves (ctx-get-call-args-moves ast ctx nbargs cloloc generic-entry? inlined-call?))
          (stackp (car stackp/moves))
          (moves (cdr stackp/moves)))
 
@@ -2523,7 +2523,13 @@
                       (call-stack  (cadr  r))
                       (need-merge? (caddr r))
                       ;;
-                      (generic-entry? (and opt-entry-points (not cctable-idx))))
+                      (generic-entry? (and opt-entry-points (not cctable-idx)))
+                      (inlined-call?
+                        (and opt-lazy-inlined-call
+                             (let* ((fn-num    (and fn-id-inf (cdr fn-id-inf)))
+                                    (obj       (and fn-num (asc-globalfn-entry-get fn-num)))
+                                    (lazy-code (and obj (cadr obj))))
+                               (and lazy-code (not generic-entry?) (not (lazy-code-rest? lazy-code)))))))
 
                  ;; Save used registers, generate and push continuation stub
                  (set! ctx (call-save/cont cgc ctx ast succ tail? (+ nb-args 1) #f))
@@ -2555,13 +2561,12 @@
                         ;; on appelle drop float
 
                  ;; Move args to regs or stack following calling convention
-                 (set! ctx (call-prep-args cgc ctx ast nb-args (and fn-id-inf (car fn-id-inf)) generic-entry?))
+                 (set! ctx (call-prep-args cgc ctx ast nb-args (and fn-id-inf (car fn-id-inf)) generic-entry? inlined-call?))
 
                  ;; Shift args and closure for tail call
                  (mlet ((nfargs/ncstargs
                           (if (or (and (not opt-entry-points)
-                                       (or (not opt-lazy-inlined-call)
-                                           (or (not fn-id-inf) (not (car fn-id-inf)))))
+                                       (not inlined-call?))
                                   generic-entry?)
                               (list 0 0)
                               (let loop ((idx 0) (nf 0) (ncst 0))
@@ -2581,7 +2586,7 @@
                    (call-tail-shift cgc ctx ast tail? (- nb-args nfargs ncstargs)))
 
                  ;; Generate call sequence
-                 (gen-call-sequence ast cgc call-stack cctable-idx nb-args (and fn-id-inf (cdr fn-id-inf))))))))
+                 (gen-call-sequence ast cgc call-stack cctable-idx nb-args (and fn-id-inf (cdr fn-id-inf)) inlined-call?))))))
 
     ;; Gen and check types of args
     (make-lazy-code
@@ -2688,7 +2693,7 @@
 
 ;; Gen call sequence (call instructions)
 ;; fn-num is fn identifier or #f
-(define (gen-call-sequence ast cgc call-stack cc-idx nb-args fn-num)
+(define (gen-call-sequence ast cgc call-stack cc-idx nb-args fn-num inlined-call?)
 
   (define obj (and fn-num (asc-globalfn-entry-get fn-num)))
   (define entry-obj (and obj (car obj)))
@@ -2719,7 +2724,7 @@
                  (list 'stub stub-addr label))
                (list 'ep ep)))))
 
-  (cond ((and opt-lazy-inlined-call lazy-code (not (lazy-code-rest? lazy-code)))
+  (cond (inlined-call?
            (let* ((r (asc-fnnum-ctx-get fn-num))
                   (ctx (apply ctx-init-fn (cons call-stack r))))
              (x86-label cgc (asm-make-label #f (new-sym 'inlined_call_)))
