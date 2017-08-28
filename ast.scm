@@ -203,18 +203,19 @@
           "Internal error")
   (table-set! asc-ast-epentry ast eo))
 
-;; TODO
 (define asc-fnnum-ctx (make-table))
 (define (asc-fnnum-ctx-get fn-num)
   (let ((r (table-ref asc-fnnum-ctx fn-num #f)))
     (assert r "Internal error")
     r))
 (define (asc-fnnum-ctx-set fn-num ctx)
-  ;; TODO: the same fn-num should be used for same ctx info
-  ;(assert (or (not (table-ref asc-fnnum-ctx fn-num #f))
-  ;            (equal? ctx (table-ref asc-fnnum-ctx fn-num)))
-  ;        "Internal error")
   (table-set! asc-fnnum-ctx fn-num ctx))
+
+(define asc-cnnum-lco (make-table))
+(define (asc-cnnum-lco-add cn-num lazy-code)
+  (table-set! asc-cnnum-lco cn-num lazy-code))
+(define (asc-cnnum-lco-get cn-num)
+  (table-ref asc-cnnum-lco cn-num))
 
 ;;-----------------------------------------------------------------------------
 ;; Type predicates
@@ -2686,7 +2687,10 @@
          (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
          (generic-addr (asm-label-pos (list-ref stub-labels 1)))
          (crtable (get-crtable ast ctx stub-addr generic-addr))
-         (crtable-loc (- (obj-encoding crtable) 1)))
+         (crtable-loc (- (obj-encoding crtable) 1))
+         (cn-num (new-cn-num)))
+
+    (asc-cnnum-lco-add cn-num lazy-continuation)
 
     ;; Generate code
     (codegen-load-cont-cr cgc crtable-loc)))

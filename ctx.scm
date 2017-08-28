@@ -301,6 +301,7 @@
 (meta-add-type symc (sym cst) (cst))
 (meta-add-type floc (flo cst) (cst))
 (meta-add-type cloc (clo cst) (cst))
+(meta-add-type retc (ret cst) (cst))
 
 ;;;; TODO: WIP
 ;;;; TODO: WIP

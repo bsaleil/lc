@@ -1020,11 +1020,15 @@
     (string->symbol (string-append (symbol->string sym) (number->string n)))))
 
 (define fn-count 0)
+(define cn-count 0)
 
-(define (new-fn-num)
-  (let ((n fn-count))
-    (set! fn-count (+ fn-count 1))
-    n))
+(define-macro (new-cx-num cpt)
+  `(let ((n ,cpt))
+     (set! ,cpt (+ ,cpt 1))
+     n))
+
+(define (new-fn-num) (new-cx-num fn-count))
+(define (new-cn-num) (new-cx-num cn-count))
 
 ;;-----------------------------------------------------------------------------
 
