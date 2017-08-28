@@ -1905,7 +1905,7 @@
     ast
     (lambda (cgc ctx)
       ;; Save used registers, generate and push continuation stub
-      (set! ctx (call-save/cont cgc ctx ast succ #f 2 #t))
+      (set! ctx (cdr (call-save/cont cgc ctx ast succ #f 2 #t)))
       ;; Push closure
       (call-get-closure cgc ctx 1)
 
@@ -2327,7 +2327,7 @@
 (define (call-save/cont cgc ctx ast succ tail? idx-offset apply?)
   (if tail?
       ;; Tail call, no register to save and no continuation to generate
-      ctx
+      (cons #f ctx)
       (mlet ((moves/nctx (ctx-save-call ast ctx idx-offset)))
         (define fctx (ctx-fs-inc nctx))
         ;; Save registers
@@ -2335,10 +2335,14 @@
         (apply-moves cgc fctx moves)
         ;; Generate & push continuation
         ;; gen-continuation-* needs ctx without return address slot
-        (if opt-return-points
-            (gen-continuation-cr cgc ast succ nctx apply?)
-            (gen-continuation-rp cgc ast succ nctx apply?))
-        fctx)))
+        (let ((lazy-cont
+                (if opt-return-points
+                    (gen-continuation-cr cgc ast succ nctx apply?)
+                    (gen-continuation-rp cgc ast succ nctx apply?)))
+              (cn-num (new-cn-num)))
+
+          (asc-cnnum-lco-add cn-num lazy-cont)
+          (cons cn-num fctx)))))
 
 ;; Push closure, put it in rax, and return updated ctx
 (define (call-get-closure cgc ctx closure-idx)
@@ -2510,10 +2514,15 @@
              #f
              (lambda (cgc ctx)
 
+               (define nb-args (length args))
+
                ;; Handle const fn
                (let ((type (ctx-get-type ctx (length args))))
                  (if (ctx-type-cst? type)
                      (set! fn-id-inf (cons #t (ctx-type-cst type)))))
+
+               ;; Save used registers, generate and push continuation stub
+               (set! ctx (cdr (call-save/cont cgc ctx ast succ tail? (+ nb-args 1) #f)))
 
                (let* ((nb-args (length args))
                       (call-ctx (ctx-init-call ctx nb-args))
@@ -2531,9 +2540,6 @@
                                     (obj       (and fn-num (asc-globalfn-entry-get fn-num)))
                                     (lazy-code (and obj (cadr obj))))
                                (and lazy-code (not generic-entry?) (not (lazy-code-rest? lazy-code)))))))
-
-                 ;; Save used registers, generate and push continuation stub
-                 (set! ctx (call-save/cont cgc ctx ast succ tail? (+ nb-args 1) #f))
 
                  (if need-merge?
                    (let loop ((nctx ctx) (stack-dest call-stack) (idx 0) (NB nb-args))
@@ -2649,7 +2655,8 @@
                                               (ctx-push ctx (make-ctx-tunk) return-reg)))))
                                 gen-flag))))
    ;; Generate code
-   (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0))))
+   (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0))
+   lazy-continuation))
 
 (define (gen-continuation-cr cgc ast succ ctx apply?)
 
@@ -2687,13 +2694,11 @@
          (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
          (generic-addr (asm-label-pos (list-ref stub-labels 1)))
          (crtable (get-crtable ast ctx stub-addr generic-addr))
-         (crtable-loc (- (obj-encoding crtable) 1))
-         (cn-num (new-cn-num)))
-
-    (asc-cnnum-lco-add cn-num lazy-continuation)
+         (crtable-loc (- (obj-encoding crtable) 1)))
 
     ;; Generate code
-    (codegen-load-cont-cr cgc crtable-loc)))
+    (codegen-load-cont-cr cgc crtable-loc)
+    lazy-continuation))
 
 ;; Gen call sequence (call instructions)
 ;; fn-num is fn identifier or #f
