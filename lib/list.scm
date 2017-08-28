@@ -34,22 +34,18 @@
           (else (error "LIST expected")))))
 
 (define (##append-two lst1 lst2)
-  (define (append-twon lst1 lst2)
-    (let loop ((lst1 (reverse lst1))
-               (r lst2))
-      (if (null? lst1)
-          r
-          (loop (cdr lst1) (cons (car lst1) r)))))
-  (define (append-twok lst1 lst2 k)
-    (if (null? lst1)
-        (k lst2)
-        (append-twok
-          (cdr lst1)
-          lst2
-          (lambda (r)
-            (k (cons (car lst1)
-                     r))))))
-  (append-twok lst1 lst2 (lambda (r) r)))
+  (if (null? lst1)
+      lst2
+      (let ((result (cons (car lst1) '())))
+        (let loop ((sentinel result)
+                   (src (cdr lst1)))
+          (if (null? src)
+              (begin
+                (set-cdr! sentinel lst2)
+                result)
+              (begin
+                (set-cdr! sentinel (cons (car src) '()))
+                (loop (cdr sentinel) (cdr src))))))))
 
 (define (append . lsts)
   (let loop ((lsts lsts))
