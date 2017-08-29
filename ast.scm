@@ -755,19 +755,19 @@
     (add-fn-callback
       1
       fn-num
-      (lambda (stack cc-idx ret-addr selector closure)
+      (lambda (stack cc-idx cn-num ret-addr selector closure)
 
         (cond ;; CASE 1 - Use entry point (no cctable)
               ((eq? opt-entry-points #f)
                  (let ((lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params))))
-                   (fn-generator closure lazy-prologue-gen #f cc-idx #f)))
+                   (fn-generator closure lazy-prologue-gen #f cc-idx cn-num #f)))
               ;; CASE 2 - Function is called using generic entry point
               ((= selector 1)
                  (let ((lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params))))
-                   (fn-generator #f lazy-prologue-gen #f cc-idx #t)))
+                   (fn-generator #f lazy-prologue-gen #f cc-idx cn-num #t)))
               ;; CASE 3 - Use multiple entry points
               (else
-                 (fn-generator #f lazy-prologue stack cc-idx #f)))))))
+                 (fn-generator #f lazy-prologue stack cc-idx cn-num #f)))))))
 
 (define (get-entry-obj ast ctx fvars-imm fvars-late all-params bound-id)
 
@@ -776,12 +776,12 @@
   ;; Generator used to generate function code waiting for runtime data
   ;; First create function entry ctx
   ;; Then generate function prologue code
-  (define (fn-generator closure prologue stack cc-idx generic?)
+  (define (fn-generator closure prologue stack cc-idx cn-num generic?)
     ;; In case the limit in the number of version is reached, we give #f to ctx-init-fn to get a generic ctx
     ;; but we still want to patch cctable at index corresponding to stack
     (let* ((ctxstack (if generic? #f stack))
            (ctx (ctx-init-fn ctxstack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id)))
-      (gen-version-fn ast closure entry-obj prologue ctx cc-idx generic?)))
+      (gen-version-fn ast closure entry-obj prologue ctx cc-idx cn-num generic?)))
 
   ;; ---------------------------------------------------------------------------
   ;; Return 'entry-obj' (entry object)
@@ -2451,7 +2451,7 @@
           ((ctx-type-teq? t1 t2) 0) ;; t1 type, t2 type, teq
           (else #f)))               ;; t1 type, t2 type, !teq
 
-  (define (compute-dist types1 types2)
+  (define (compute-stack-dist types1 types2)
     (let loop ((types1 types1) (types2 types2)
                (dist 0))
       (cond ((null? types1) (if (null? types2) dist #f))
@@ -2466,13 +2466,16 @@
              (mindist #f))
     (if (null? entries)
         r
-        (let ((dist (compute-dist types (caar entries))))
+        (let* ((cn-num (caaar entries))
+               (types  (cdaar entries))
+               (dist (and #f ;; TODO: use cn-num to compute stack distance
+                          (compute-stack-dist types types))))
           (if (and dist
                    (or (not mindist) (< dist mindist)))
               (loop (cdr entries) (car entries) dist)
               (loop (cdr entries) r mindist))))))
 
-(define (get-ccidx-stack call-stack nb-args)
+(define (get-ccidx-stack cn-num call-stack nb-args)
 
   (define idx #f)
   (define stack call-stack)
@@ -2482,7 +2485,7 @@
   (if (and opt-entry-points
            (or (not opt-call-max-len)
                (<= nb-args opt-call-max-len)))
-      (set! idx (cctable-get-idx call-stack))
+      (set! idx (cctable-get-idx (cons (and opt-propagate-continuation cn-num) call-stack))) ;; TODO wip
       (set! force-generic? #t))
 
   (if (and opt-closest-cx-overflow
@@ -2515,6 +2518,7 @@
              (lambda (cgc ctx)
 
                (define nb-args (length args))
+               (define cn-num #f)
 
                ;; Handle const fn
                (let ((type (ctx-get-type ctx (length args))))
@@ -2522,13 +2526,15 @@
                      (set! fn-id-inf (cons #t (ctx-type-cst type)))))
 
                ;; Save used registers, generate and push continuation stub
-               (set! ctx (cdr (call-save/cont cgc ctx ast succ tail? (+ nb-args 1) #f)))
+               (let ((r (call-save/cont cgc ctx ast succ tail? (+ nb-args 1) #f)))
+                 (set! cn-num (car r))
+                 (set! ctx    (cdr r)))
 
                (let* ((nb-args (length args))
                       (call-ctx (ctx-init-call ctx nb-args))
                       (call-stack (list-head (ctx-stack call-ctx) nb-args))
                       ;;
-                      (r (get-ccidx-stack call-stack nb-args))
+                      (r (get-ccidx-stack cn-num call-stack nb-args))
                       (cctable-idx (car   r))
                       (call-stack  (cadr  r))
                       (need-merge? (caddr r))

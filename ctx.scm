@@ -1011,6 +1011,20 @@
       (ctx-type-cst-set! stype fn-num)
       ctx)))
 
+(define (ctx-change-continuation ctx cn-num)
+  (let ((nstack
+          (let loop ((stack (ctx-stack ctx)))
+            (assert (not (null? stack)) "Unexpected stack")
+            (if (null? (cdr stack))
+                (begin
+                  (assert (ctx-type-ret? (car stack)) "Unexpected stack")
+                  (list (make-ctx-tretc cn-num)))
+                (cons (car stack)
+                      (loop (cdr stack)))))))
+    (if (ctx-get-loc ctx (- (length nstack) 1))
+        (ctx-set-loc (ctx-copy ctx nstack) 0 #f)
+        (ctx-copy ctx nstack))))
+
 ;;
 ;; UNBIND LOCALS
 (define (ctx-unbind-locals ctx ids)

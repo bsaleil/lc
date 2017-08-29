@@ -98,6 +98,11 @@
     "Print compilation time after execution"
     ,(lambda (args) (set! opt-ctime #t) args))
 
+  ;; TODO: switch to default when fully implemented ?
+  (--enable-continuation-propagation
+    "Disable continuation (cn-num) propagation"
+    ,(lambda (args) (set! opt-propagate-continuation #t) args))
+
   (--disable-entry-points
     "Disable the use of multiple entry points use only one generic entry point"
     ,(lambda (args) (if opt-call-max-len (error "--call-max-len requires interprocedural extensions"))

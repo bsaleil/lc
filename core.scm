@@ -57,6 +57,7 @@
 (define opt-call-max-len         #f) ;; Max number of args allowed when using a specialized entry point (use a generic ep if nb-args > opt-call-max-len)
 (define opt-closest-cx-overflow  #t) ;; Use the closest ctx associated to an existing slot of the cx table when the table oferflows (if possible) instead of using generic ctx
 (define opt-lazy-inlined-call    #t) ;; The function body is inlined at a call if (1) the identity of the callee is known, (2) there is no version of the function for this ctx
+(define opt-propagate-continuation #f) ;; TODO
 
 ;; This is the list of cst types used for versioning (if opt-const-vers is #t)
 ;; All csts types are enabled by default
@@ -432,10 +433,13 @@
               (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-r11)))))
               #f))
 
-         (stack
+         (cc-idx-data
            (if (or (not opt-entry-points) (= selector 1))
                #f
                (cctable-get-data cc-idx)))
+
+         (stack  (and cc-idx-data (cdr cc-idx-data)))
+         (cn-num (and cc-idx-data (car cc-idx-data)))
 
          ;; Closure is used as a Gambit procedure to keep an updated reference
          (closure
@@ -447,7 +451,7 @@
          (new-ret-addr
            (run-add-to-ctime
              (lambda ()
-               (callback-fn stack cc-idx ret-addr selector closure)))))
+               (callback-fn stack cc-idx cn-num ret-addr selector closure)))))
 
     ;; replace return address
     (put-i64 psp new-ret-addr)
@@ -1444,7 +1448,7 @@
 
 ;; #### FUNCTION ENTRY
 ;; Generate an entry point
-(define (gen-version-fn ast closure entry-obj lazy-code gen-ctx cc-idx generic)
+(define (gen-version-fn ast closure entry-obj lazy-code gen-ctx cc-idx cn-num generic)
 
   (define (fn-verbose)
     (print "GEN VERSION FN")
@@ -1499,6 +1503,9 @@
          (ctx gen-ctx)
          (nb-actual (ctx-nb-actual ctx))
          (nb-formal (ctx-nb-args ctx)))
+
+    (if cn-num
+        (set! ctx (ctx-change-continuation ctx cn-num)))
 
     (cond ;; rest AND actual == formal
           ((and opt-entry-points (not generic) rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest
@@ -1877,7 +1884,7 @@
 (define global-cc-table-maxsize  #f)
 (define global-cr-table-maxsize  #f)
 ;; Holds the current shape of the global cc table
-(define global-cc-table (make-table))
+(define global-cc-table (make-table test: equal?))
 (define global-cr-table (make-table))
 
 ;; Get cc/cr table index associated to ctx. If ctx is not in the
