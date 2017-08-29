@@ -153,22 +153,22 @@
 ;; When the stub generates a version stored in this entry object
 ;; it patches all stored labels and clear the table entry
 ;;
-;; stack is the call stack if using cctable, '() otherwise
+;; cc-idx is the cctable index if using cctable, #f otherwise
 (define asc-entry-load
   (make-table
     test: (lambda (k1 k2)
-            (and (eq?    (car k1) (car k2))     ;; eq? on cctables
-                 (equal? (cdr k1) (cdr k2)))))) ;; = on stacks
+            (and (eq? (car k1) (car k2))     ;; eq? on cctables
+                 (eq? (cdr k1) (cdr k2)))))) ;; eq? on cc-idx
 ;; Add an entry to the table
-(define (asc-entry-load-add entry-obj stack label)
-  (let ((r (table-ref asc-entry-load (cons entry-obj stack) '())))
-    (table-set! asc-entry-load (cons entry-obj stack) (cons label r))))
-;; Get all labels from entry object and stack
-(define (asc-entry-load-get entry-obj stack)
-  (table-ref asc-entry-load (cons entry-obj stack) '()))
-;; Clear the entry for the entry-object/stack
-(define (asc-entry-load-clear entry-obj stack)
-  (table-set! asc-entry-load (cons entry-obj stack) '())) ;; TODO: remove table entry
+(define (asc-entry-load-add entry-obj cc-idx label)
+  (let ((r (table-ref asc-entry-load (cons entry-obj cc-idx) '())))
+    (table-set! asc-entry-load (cons entry-obj cc-idx) (cons label r))))
+;; Get all labels from entry object and cc-idx
+(define (asc-entry-load-get entry-obj cc-idx)
+  (table-ref asc-entry-load (cons entry-obj cc-idx) '()))
+;; Clear the entry for the entry-object/cc-idx
+(define (asc-entry-load-clear entry-obj cc-idx)
+  (table-set! asc-entry-load (cons entry-obj cc-idx) '())) ;; TODO: remove table entry
 
 ;; Global variables information
 (define nb-globals 0)
@@ -755,19 +755,19 @@
     (add-fn-callback
       1
       fn-num
-      (lambda (stack ret-addr selector closure)
+      (lambda (stack cc-idx ret-addr selector closure)
 
         (cond ;; CASE 1 - Use entry point (no cctable)
               ((eq? opt-entry-points #f)
                  (let ((lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params))))
-                   (fn-generator closure lazy-prologue-gen #f #f)))
+                   (fn-generator closure lazy-prologue-gen #f cc-idx #f)))
               ;; CASE 2 - Function is called using generic entry point
               ((= selector 1)
                  (let ((lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params))))
-                   (fn-generator #f lazy-prologue-gen #f #t)))
+                   (fn-generator #f lazy-prologue-gen #f cc-idx #t)))
               ;; CASE 3 - Use multiple entry points
               (else
-                 (fn-generator #f lazy-prologue stack #f)))))))
+                 (fn-generator #f lazy-prologue stack cc-idx #f)))))))
 
 (define (get-entry-obj ast ctx fvars-imm fvars-late all-params bound-id)
 
@@ -776,12 +776,12 @@
   ;; Generator used to generate function code waiting for runtime data
   ;; First create function entry ctx
   ;; Then generate function prologue code
-  (define (fn-generator closure prologue stack generic?)
+  (define (fn-generator closure prologue stack cc-idx generic?)
     ;; In case the limit in the number of version is reached, we give #f to ctx-init-fn to get a generic ctx
     ;; but we still want to patch cctable at index corresponding to stack
     (let* ((ctxstack (if generic? #f stack))
            (ctx (ctx-init-fn ctxstack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id)))
-      (gen-version-fn ast closure entry-obj prologue ctx stack generic?)))
+      (gen-version-fn ast closure entry-obj prologue ctx cc-idx generic?)))
 
   ;; ---------------------------------------------------------------------------
   ;; Return 'entry-obj' (entry object)
@@ -2721,7 +2721,7 @@
                     (not (lazy-code-rest? lazy-code)))
                (list 'ep (asm-label-pos (car version)))
                (let ((label (asm-make-label #f (new-sym 'stub_load_))))
-                 (asc-entry-load-add entry-obj stack label)
+                 (asc-entry-load-add entry-obj cc-idx label)
                  (list 'stub stub-addr label))))))
 
   (define (get-ep-direct)
@@ -2729,7 +2729,7 @@
          (let ((ep (* 4 (vector-ref entry-obj 0))))
            (if (= ep stub-addr)
                (let ((label (asm-make-label #f (new-sym 'stub_load_))))
-                 (asc-entry-load-add entry-obj '() label)
+                 (asc-entry-load-add entry-obj -1 label)
                  (list 'stub stub-addr label))
                (list 'ep ep)))))
 
