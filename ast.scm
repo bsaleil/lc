@@ -702,7 +702,7 @@
            (lret     (ctx-get-loc ctx 0))
            ;; Return address object loc
            (laddr (ctx-get-retobj-loc ctx)))
-      (codegen-return-rp cgc fs ffs fs laddr lret (ctx-type-flo? type-ret))))
+      (codegen-return-rp cgc fs ffs laddr lret (ctx-type-flo? type-ret))))
 
   (define (gen-return-cr cgc ctx)
 
@@ -740,7 +740,7 @@
                       (x86-jmp cgc (x86-rax)))
                     ;; Direct jump to the generic entry point
                     (error "WIP")))
-              (codegen-return-cr cgc fs ffs fs laddr lret cridx (ctx-type-flo? type-ret) cst?)))))
+              (codegen-return-cr cgc fs ffs laddr lret cridx (ctx-type-flo? type-ret) cst?)))))
 
       (make-lazy-code-ret ;; Lazy-code with 'ret flag
         #f

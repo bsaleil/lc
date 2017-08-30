@@ -573,20 +573,21 @@
     (x86-lea cgc dest (x86-mem offset alloc-ptr))))
 
 ;;
-(define (codegen-return-common cgc fs ffs clean-nb lretobj)
+(define (codegen-return-retobj cgc fs ffs lretobj)
   (let ((opretobj (codegen-loc-to-x86opnd fs ffs lretobj)))
-    ;; Move return address (or cctable address) in rdx
     (if (not (eq? opretobj (x86-rdx)))
-        (x86-mov cgc (x86-rdx) opretobj))
-    ;; Clean stacks
-    (if (> clean-nb 0)
-        (x86-add cgc (x86-usp) (x86-imm-int (* 8 clean-nb 1))))
-    (if (> ffs 0)
-        (x86-add cgc (x86-rsp) (x86-imm-int (* 8 ffs))))))
+        (x86-mov cgc (x86-rdx) opretobj))))
+
+;;
+(define (codegen-return-clean cgc fs ffs)
+  (if (> fs 0)
+      (x86-add cgc (x86-usp) (x86-imm-int (* 8 fs))))
+  (if (> ffs 0)
+      (x86-add cgc (x86-rsp) (x86-imm-int (* 8 ffs)))))
 
 ;; Generate function return using a return address
 ;; Retaddr (or cctable) is in rdx
-(define (codegen-return-rp cgc fs ffs clean-nb lretobj lretval float?)
+(define (codegen-return-rp cgc fs ffs lretobj lretval float?)
 
     (let ((opret    (codegen-reg-to-x86reg return-reg))
           (opretval (codegen-loc-to-x86opnd fs ffs lretval)))
@@ -604,12 +605,13 @@
           (if (not (eq? opret opretval))
               (x86-mov cgc opret opretval))))
 
-    (codegen-return-common cgc fs ffs clean-nb lretobj)
+    (codegen-return-retobj cgc fs ffs lretobj)
+    (codegen-return-clean cgc fs ffs)
     (x86-jmp cgc (x86-rdx)))
 
 ;; Generate function return using a crtable
 ;; Retaddr (or cctable) is in rdx
-(define (codegen-return-cr cgc fs ffs clean-nb lretobj lretval cridx float? cst?)
+(define (codegen-return-cr cgc fs ffs lretobj lretval cridx float? cst?)
 
     (let ((opret (if float?
                      (codegen-freg-to-x86reg return-freg)
@@ -625,7 +627,8 @@
               (x86-movsd cgc opret opretval)
               (x86-mov cgc opret opretval))))
 
-    (codegen-return-common cgc fs ffs clean-nb lretobj)
+    (codegen-return-retobj cgc fs ffs lretobj)
+    (codegen-return-clean cgc fs ffs)
     (if cridx
         (x86-mov cgc (x86-rax) (x86-mem (+ 16 (* 8 cridx)) (x86-rdx)))
         (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rdx))))
