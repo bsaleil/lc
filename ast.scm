@@ -217,6 +217,12 @@
 (define (asc-cnnum-lco-get cn-num)
   (table-ref asc-cnnum-lco cn-num))
 
+(define asc-cnnum-table (make-table))
+(define (asc-cnnum-table-add cn-num crtable)
+  (table-set! asc-cnnum-table cn-num crtable))
+(define (asc-cnnum-table-get cn-num)
+  (table-ref asc-cnnum-table cn-num))
+
 ;;-----------------------------------------------------------------------------
 ;; Type predicates
 
@@ -718,10 +724,23 @@
                (lret     (ctx-get-loc ctx 0))
                ;; Return address object loc
                (laddr (ctx-get-retobj-loc ctx))
+               (taddr (ctx-get-type ctx (- (length (ctx-stack ctx)) 1)))
                ;;
                (cst? (ctx-type-cst? type-ret)))
 
-          (codegen-return-cr cgc fs ffs fs laddr lret cridx (ctx-type-flo? type-ret) cst?))))
+          ;; TODO WIP
+          (if (ctx-type-cst? taddr)
+              (let ((cctable (asc-cnnum-table-get (ctx-type-cst taddr))))
+                (if cridx
+                    ;; Direct jump to the entry point
+                    (begin
+                      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding cctable)))
+                      (x86-mov cgc (x86-rax) (x86-mem (+ 15 (* 8 cridx)) (x86-rax)))
+                      (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding cridx)))
+                      (x86-jmp cgc (x86-rax)))
+                    ;; Direct jump to the generic entry point
+                    (error "WIP")))
+              (codegen-return-cr cgc fs ffs fs laddr lret cridx (ctx-type-flo? type-ret) cst?)))))
 
       (make-lazy-code-ret ;; Lazy-code with 'ret flag
         #f
@@ -2335,11 +2354,11 @@
         (apply-moves cgc fctx moves)
         ;; Generate & push continuation
         ;; gen-continuation-* needs ctx without return address slot
-        (let ((lazy-cont
-                (if opt-return-points
-                    (gen-continuation-cr cgc ast succ nctx apply?)
-                    (gen-continuation-rp cgc ast succ nctx apply?)))
-              (cn-num (new-cn-num)))
+        (let* ((cn-num (new-cn-num))
+               (lazy-cont
+                 (if opt-return-points
+                     (gen-continuation-cr cgc ast succ nctx cn-num apply?)
+                     (gen-continuation-rp cgc ast succ nctx apply?))))
 
           (asc-cnnum-lco-add cn-num lazy-cont)
           (cons cn-num fctx)))))
@@ -2664,7 +2683,7 @@
    (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0))
    lazy-continuation))
 
-(define (gen-continuation-cr cgc ast succ ctx apply?)
+(define (gen-continuation-cr cgc ast succ ctx cn-num apply?)
 
   (let* ((lazy-continuation
            (make-lazy-code-cont
@@ -2702,6 +2721,7 @@
          (crtable (get-crtable ast ctx stub-addr generic-addr))
          (crtable-loc (- (obj-encoding crtable) 1)))
 
+    (asc-cnnum-table-add cn-num crtable)
     ;; Generate code
     (codegen-load-cont-cr cgc crtable-loc)
     lazy-continuation))

@@ -1,10 +1,32 @@
 
-(define (make-adder n)
-  (lambda (m) (+ n m)))
+(define (ack m n)
+  (cond ((= m 0) (+ n 1))
+        ((= n 0) (ack (- m 1) 1))
+        (else (ack (- m 1) (ack m (- n 1))))))
 
-(define add10 (make-adder 10))
+(println (ack 0 0))
+(println (ack 1 2))
+(println (ack 3 4))
+(println (ack 4 0))
+(println (ack 2 8))
 
-(pp (add10 11))
+;(define (make-adder n)
+;  (lambda (m) (+ n m)))
+;
+;(define add10 (make-adder 10))
+;
+;(pp (add10 11))
+
+
+;; WIP:
+;; 1. Propagate continuation when call is inlined
+;; 2. optimization when --disable-return-points ?
+;;
+;; a. continuation jmp optimization with return site patching (generic + specialized)
+;; b. continuation inlining
+
+;; c. do *not* allocate slot in cc/cr-table is call/return is inlined
+
 
 ;
 ;(define (map2 f l1 l2)
