@@ -592,6 +592,10 @@
     (let ((opret    (codegen-reg-to-x86reg return-reg))
           (opretval (codegen-loc-to-x86opnd fs ffs lretval)))
 
+      (if (and (eq? lretobj return-reg)
+               (not float?))
+          (error "NYI, see codegen-return-cr"))
+
       ;; Move return value to return register
       (if float?
           ;; Box float
@@ -613,27 +617,40 @@
 ;; Retaddr (or cctable) is in rdx
 (define (codegen-return-cr cgc fs ffs lretobj lretval cridx float? cst?)
 
-    (let ((opret (if float?
-                     (codegen-freg-to-x86reg return-freg)
-                     (codegen-reg-to-x86reg return-reg)))
-          (opretval (and (not cst?) (codegen-loc-to-x86opnd fs ffs lretval))))
+      (define cont-saved? #f)
+
+      (define (move-retval)
+        (let ((opret (if float?
+                         (codegen-freg-to-x86reg return-freg)
+                         (codegen-reg-to-x86reg return-reg)))
+              (opretval (and (not cst?) (codegen-loc-to-x86opnd fs ffs lretval))))
+          (if (and opretval
+                   (not (eq? opret opretval)))
+              (if float?
+                  (x86-movsd cgc opret opretval)
+                  (x86-mov cgc opret opretval)))))
 
       (assert (not (and cst? (not opt-const-vers)))
               "Internal error")
 
-      (if (and opretval
-               (not (eq? opret opretval)))
-          (if float?
-              (x86-movsd cgc opret opretval)
-              (x86-mov cgc opret opretval))))
+    ;; If the continuation is in the return register,
+    ;; save it to rax
+    (if (and (eq? lretobj return-reg)
+             (not float?))
+        (begin
+          (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg return-reg))
+          (set! cont-saved? #t)))
 
-    (codegen-return-retobj cgc fs ffs lretobj)
+    (move-retval)
+    (if (not cont-saved?)
+        (codegen-return-retobj cgc fs ffs lretobj))
     (codegen-return-clean cgc fs ffs)
-    (if cridx
-        (x86-mov cgc (x86-rax) (x86-mem (+ 16 (* 8 cridx)) (x86-rdx)))
-        (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rdx))))
-    (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding cridx)))
-    (x86-jmp cgc (x86-rax)))
+    (let ((table-reg (if cont-saved? (x86-rax) (x86-rdx))))
+      (if cridx
+          (x86-mov cgc (x86-rax) (x86-mem (+ 16 (* 8 cridx)) table-reg))
+          (x86-mov cgc (x86-rax) (x86-mem 8 table-reg)))
+      (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding cridx)))
+      (x86-jmp cgc (x86-rax))))
 
 ;; Generate function call using a single entry point
 ;; eploc is the cctable or entry points if it's known

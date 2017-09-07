@@ -238,6 +238,7 @@
               ;; Restore registers values from pstack
               (ppop-regs-reverse cgc all-regs)
               (ppop-xmm cgc)
+
               (x86-ret cgc)))))
 
 

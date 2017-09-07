@@ -138,6 +138,7 @@
 
 (define codegen-prologue-rest> #f)
 (define gen-drop-float #f)
+(define asc-cnnum-table-get #f)
 
 
 ;;-----------------------------------------------------------------------------
@@ -475,12 +476,6 @@
          (type-idx
           (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-r11))))))
 
-         (table
-           (let ((i64 (get-i64 (+ usp (reg-sp-offset-r (x86-rdx))))))
-             (if opt-return-points
-                 (encoding-obj (+ i64 TAG_MEMOBJ))
-                 i64)))
-
          (type
            (if (or (not opt-return-points) (= selector 1))
                #f
@@ -489,7 +484,7 @@
          (new-ret-addr
            (run-add-to-ctime
              (lambda ()
-               (callback-fn ret-addr selector type table)))))
+               (callback-fn ret-addr selector type)))))
 
     ;; replace return address
     (put-i64 psp
@@ -1170,7 +1165,8 @@
                                 (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
                                 (x86-rax))))
                        ((and (pair? (car move))
-                             (eq? (caar move) 'constfn))
+                             (or (eq? (caar move) 'constfn)
+                                 (eq? (caar move) 'constcont)))
                           ;; If src is a constfn, create closure in move
                           (car move))
                        ((and (pair? (car move))
@@ -1201,6 +1197,12 @@
                            (assert (eq? r (x86-rax)) "Internal error, nyi")
                            (gen-closure cgc 'tmp #f entry-obj '())
                            (x86-mov cgc dst r)))))
+                ;; TODO optimize move if dst is a register
+                ((and (pair? src) (eq? (car src) 'constcont))
+                  (x86-label cgc (asm-make-label #f (new-sym 'SYM_OPT_)))
+                  (let ((table (asc-cnnum-table-get (cdr src))))
+                    (x86-mov cgc (x86-rax) (x86-imm-int (- (obj-encoding table) TAG_MEMOBJ)))
+                    (x86-mov cgc dst (x86-rax))))
                 ;; Both in memory, use rax
                 ((and (or (x86-mem? src)
                           (x86-imm? src))
@@ -1448,7 +1450,7 @@
 
 ;; #### FUNCTION ENTRY
 ;; Generate an entry point
-(define (gen-version-fn ast closure entry-obj lazy-code gen-ctx cc-idx cn-num generic)
+(define (gen-version-fn ast closure entry-obj lazy-code gen-ctx cc-idx generic)
 
   (define (fn-verbose)
     (print "GEN VERSION FN")
@@ -1503,9 +1505,6 @@
          (ctx gen-ctx)
          (nb-actual (ctx-nb-actual ctx))
          (nb-formal (ctx-nb-args ctx)))
-
-    (if cn-num
-        (set! ctx (ctx-change-continuation ctx cn-num)))
 
     (cond ;; rest AND actual == formal
           ((and opt-entry-points (not generic) rest-param (= nb-actual (- nb-formal 1))) ;; -1 rest

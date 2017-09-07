@@ -39,6 +39,7 @@
 (define opt-entry-points #f)
 (define opt-const-vers #f)
 (define const-versioned? #f)
+(define opt-propagate-continuation #f)
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx
@@ -564,7 +565,7 @@
 
 ;;
 ;; CTX INIT FN
-(define (ctx-init-fn stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
+(define (ctx-init-fn cn-num stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
   ;; Separate constant and non constant free vars
   ;; Return a pair with const and nconst sets
   ;; const contains id and type of all constant free vars
@@ -591,10 +592,15 @@
 
   ;;
   ;; STACK
+  (define stack-suffix
+    (if cn-num
+        (list (make-ctx-tclo) (make-ctx-tretc cn-num))
+        (list (make-ctx-tclo) (make-ctx-tret))))
+
   (define (init-stack stack free-const)
     (append (ctx-init-stack stack #f #f)
             (init-const-stack free-const)
-            (list (make-ctx-tclo) (make-ctx-tret))))
+            stack-suffix))
 
   (define (init-const-stack free-const)
     (define (init free-const)
@@ -684,11 +690,12 @@
   ;;
   ;; SLOT-LOC
   (define (init-slot-loc nb-free-const)
-    (let* ((types (and stack (reverse (list-head stack (length stack)))))
+    (let* ((mem (if cn-num 0 1))
+           (types (and stack (reverse (list-head stack (length stack)))))
            (r
              (if (not stack)
-                 (init-slot-loc-local-gen (+ nb-free-const 2) args-regs 1 args)
-                 (let ((r (init-slot-loc-local (+ nb-free-const 2) types args-regs (ctx-init-free-fregs) 1)))
+                 (init-slot-loc-local-gen (+ nb-free-const 2) args-regs mem args)
+                 (let ((r (init-slot-loc-local (+ nb-free-const 2) types args-regs (ctx-init-free-fregs) mem)))
                    (cons (reverse (car r)) (cdr r))))))
       (list
         (append
@@ -745,19 +752,23 @@
 
   (define (init-slot-loc-base nb-free-const)
     (append (reverse (build-list nb-free-const (lambda (n) (cons (+ n 2) #f))))
-            '((1 r . 2) (0 m . 0))))
+            (if cn-num
+                '((1 r . 2) (0 . #f))
+                '((1 r . 2) (0 m . 0)))))
 
   (let* ((r (find-const-free free-vars))
          (free-const (car r))
          (free-nconst (cdr r))
-         (slot-loc/fs (init-slot-loc (length free-const))))
+         (slot-loc/fs (init-slot-loc (length free-const)))
+         (new-stack
+           (or (and stack (init-stack stack free-const))
+               (append (make-list (length args) (make-ctx-tunk))
+                       (init-const-stack free-const)
+                       stack-suffix))))
 
     ;;
     (make-ctx
-      (or (and stack (init-stack stack free-const))
-          (append (make-list (length args) (make-ctx-tunk))
-                  (init-const-stack free-const)
-                  (list (make-ctx-tclo) (make-ctx-tret))))
+      new-stack
       (car slot-loc/fs)
       (init-free-regs)
       '()
@@ -1043,7 +1054,6 @@
 ;;
 ;; IDENTIFIER TYPE
 (define (ctx-identifier-type ctx identifier)
-
   (let ((stype (identifier-stype identifier)))
     (if stype
         (begin
@@ -1239,6 +1249,15 @@
       (free-loc loc ctx-loc-is-fregister? (ctx-free-fregs ctx))
       (free-loc loc ctx-loc-is-fmemory?   (ctx-free-fmems ctx))
       (env-remove-slot (ctx-env ctx) slot))))      ;; env: remove popped slot from env
+
+(define (ctx-const-continuation? ctx)
+  (let ((type (ctx-get-type ctx (- (length (ctx-stack ctx)) 1))))
+    (ctx-type-cst? type)))
+
+(define (ctx-const-continuation ctx)
+  (assert (ctx-const-continuation? ctx) "Internal error")
+  (let ((type (ctx-get-type ctx (- (length (ctx-stack ctx)) 1))))
+    (ctx-type-cst type)))
 
 ;; Check if given stack idx belongs to an id
 ;; If so, remove this link
@@ -1577,9 +1596,12 @@
                   (let* ((dst
                            (cdr (assoc slot (ctx-slot-loc dst-ctx))))
                          (src
-                           (if (ctx-type-clo? type)
-                               (cons 'constfn (ctx-type-cst type))
-                               (cons 'const (ctx-type-cst type)))))
+                           (cond ((ctx-type-clo? type)
+                                    (cons 'constfn (ctx-type-cst type)))
+                                 ((ctx-type-ret? type)
+                                    (cons 'constcont (ctx-type-cst type)))
+                                 (else
+                                    (cons 'const (ctx-type-cst type))))))
                     (cons (cons src dst) (loop (cdr sl))))))))))
 
   (let* ((req-moves (get-req-moves))
@@ -1590,9 +1612,10 @@
                                  (ctx-ffs src-ctx)))))
     (cons fs-move (cons ffs-move moves))))
 
-(define (ctx-get-call-args-moves ast ctx nb-args cloloc generic-entry? inlined-call?)
+(define (ctx-get-call-args-moves ast ctx nb-args cloloc contloc tail? generic-entry? inlined-call?)
 
-  (define clomove (and cloloc (cons cloloc '(r . 2))))
+  (define clomove  (and cloloc (cons cloloc  '(r . 2))))
+  (define contmove (and tail? contloc  (cons contloc '(m . 0))))
 
   (define (get-req-moves curr-idx rem-regs rem-fregs moves pushed)
 
@@ -1611,7 +1634,7 @@
     (if (< curr-idx 0)
         (cons (reverse pushed) moves)
         (let* ((type (ctx-get-type ctx curr-idx))
-               (loc (ctx-get-loc ctx curr-idx)))
+               (loc  (ctx-get-loc ctx curr-idx)))
 
           (cond
             ;; Type is cst, cst is versioned, and we do not use generic ep
@@ -1649,6 +1672,11 @@
                    (next-other loc)))))))
 
   (let ((pushed/moves (get-req-moves (- nb-args 1) args-regs (ctx-init-free-fregs) '() '())))
+
+    (if contmove
+        (set! pushed/moves
+              (cons (car pushed/moves)
+                    (cons contmove (cdr pushed/moves)))))
 
     (cons (car pushed/moves)
           (if clomove

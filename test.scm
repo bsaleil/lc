@@ -1,14 +1,12 @@
 
-(define (ack m n)
-  (cond ((= m 0) (+ n 1))
-        ((= n 0) (ack (- m 1) 1))
-        (else (ack (- m 1) (ack m (- n 1))))))
+(define (list2vector lst)
+  (if (null? lst)
+      11
+      (let ((v (list2vector (cdr lst))))
+        v)))
 
-(println (ack 0 0))
-(println (ack 1 2))
-(println (ack 3 4))
-(println (ack 4 0))
-(println (ack 2 8))
+(list2vector '(1 1))
+
 
 ;(define (make-adder n)
 ;  (lambda (m) (+ n m)))
