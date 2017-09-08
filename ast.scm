@@ -1941,6 +1941,7 @@
   (make-lazy-code
     ast
     (lambda (cgc ctx)
+      (define cn-num #f)
       ;; Save used registers, generate and push continuation stub
       (set! ctx (cdr (call-save/cont cgc ctx ast succ #f 2 #t)))
       ;; Push closure
@@ -2370,7 +2371,8 @@
           (cons #f ctx))
       (mlet ((moves/nctx (ctx-save-call ast ctx idx-offset)))
         (define fctx nctx)
-        (if (not opt-propagate-continuation)
+        (if (or (not opt-propagate-continuation)
+                apply?)
             (begin
               (set! fctx (ctx-fs-inc fctx))
               (set! moves (cons (cons 'fs 1) moves))))
@@ -2457,12 +2459,15 @@
               (if (> (- nb-actual-args (length args-regs)) 0)
                   (- nb-actual-args (length args-regs))
                   0)))
-        (let loop ((curr (- nshift 1)))
-          (if (>= curr 0)
-              (begin
-                (x86-mov cgc (x86-r11) (x86-mem (* 8 curr) (x86-usp)))
-                (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift 1) curr)) (x86-usp)) (x86-r11))
-                (loop (- curr 1)))))
+
+        (let ((sup (if cn-num 0 1)))
+          (if (not (= (- fs nshift sup) 0))
+              (let loop ((curr (- nshift 1)))
+                (if (>= curr 0)
+                    (begin
+                      (x86-mov cgc (x86-r11) (x86-mem (* 8 curr) (x86-usp)))
+                      (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift sup) curr)) (x86-usp)) (x86-r11))
+                      (loop (- curr 1)))))))
 
         ;; Clean stacks
         (if (> ffs 0)
@@ -2649,10 +2654,6 @@
 
                    (call-tail-shift cgc ctx ast tail? (- nb-args nfargs ncstargs) cn-num))
 
-                 (x86-label cgc (asm-make-label #f (new-sym 'NORM_CALL_)))
-                 (if tail?
-                     (x86-label cgc (asm-make-label #f (new-sym 'TAIL_CALL_))))
-
                  ;; Generate call sequence
                  (gen-call-sequence ast cgc call-stack cctable-idx nb-args (and fn-id-inf (cdr fn-id-inf)) inlined-call? cn-num))))))
 
@@ -2716,7 +2717,8 @@
                                               (ctx-push ctx (make-ctx-tunk) return-reg)))))
                                 gen-flag))))
    ;; Generate code
-   (if (not opt-propagate-continuation)
+   (if (or (not opt-propagate-continuation)
+           apply?)
        (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0)))
    lazy-continuation))
 
@@ -2764,7 +2766,8 @@
 
       (asc-cnnum-table-add cn-num crtable)
       ;; Generate code
-      (if (not opt-propagate-continuation)
+      (if (or (not opt-propagate-continuation)
+              apply?)
           (codegen-load-cont-cr cgc crtable-loc))
       lazy-continuation)))
 

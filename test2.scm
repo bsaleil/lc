@@ -1,45 +1,3 @@
-(define (equal? x y)
-  (cond ((pair? x)
-         (and (pair? y) (equal? (car x) (car y)) (equal? (cdr x) (cdr y))))
-        ((string? x) (and (string? y) (string=? x y)))
-        ((vector? x)
-         (and (vector? y)
-              (eq? (vector-length x) (vector-length y))
-              (let loop ((idx (- (vector-length x) 1)))
-                (if (< idx 0)
-                    #t
-                    (and (equal? (vector-ref x idx) (vector-ref y idx))
-                         (loop (- idx 1)))))))
-        (else (eqv? x y))))
-
-(define (string->list s)
-  (let ((len (string-length s)))
-    (let loop ((i (- len 1)) (lst '()))
-      (if (< i 0) lst (loop (- i 1) (cons (string-ref s i) lst))))))
-
-(define (number->string num)
-(define (digit->string d) (make-string 1 (integer->char (+ d 48))))
-(define (number->string-h num)
-(if (= num 0)
-""
-(string-append
- (number->string-h (quotient num 10))
- (digit->string (modulo num 10)))))
-(cond ((= num 0) "0")
-((< num 0) (string-append "-" (number->string-h (* num -1))))
-(else (number->string-h num))))
-
-(define (##append-two lst1 lst2)
-  (if (null? lst1)
-      lst2
-      (let ((result (cons (car lst1) '())))
-        (let loop ((sentinel result) (src (cdr lst1)))
-          (if (null? src)
-              (begin (set-cdr! sentinel lst2) result)
-              (begin
-                (set-cdr! sentinel (cons (car src) '()))
-                (loop (cdr sentinel) (cdr src))))))))
-
 ;;; CONFORM -- Type checker, written by Jim Miller.
 
 ;;; Functional and unstable
@@ -72,11 +30,6 @@
 
 (define (adjoin element set)
   (if (memq element set) set (cons element set)))
-
-(define (eliminate element set)
-  (cond ((null? set) set)
-        ((eq? element (car set)) (cdr set))
-        (else (cons (car set) (eliminate element (cdr set))))))
 
 (define (intersect list1 list2)
   (let loop ((l list1))
@@ -174,7 +127,7 @@
 ; Constructor
 
 (define (make-graph . nodes)
-  (make-internal-graph nodes (make-empty-table) (make-empty-table)))
+  (vector nodes (make-empty-table) (make-empty-table)))
 
 ; Selectors
 
@@ -190,7 +143,7 @@
 (define (copy-graph g)
   (define (copy-list l) (vector->list (list->vector l)))
   (make-internal-graph
-   (copy-list (graph-nodes g))
+   (copy-list (vector-ref g 0))
    (already-met g)
    (already-joined g)))
 
@@ -200,7 +153,7 @@
         (begin
           (set-green-edges! node '())
           (set-red-edges! node '()))))
-  (for-each clean-node (graph-nodes g))
+  (for-each clean-node (vector-ref g 0))
   g)
 
 (define (canonicalize-graph graph classes)
@@ -366,7 +319,7 @@
 ; class and canonicalizing all outbound pointers
 
 (define (reduce graph)
-  (let ((classes (classify (graph-nodes graph))))
+  (let ((classes (classify (vector-ref graph 0))))
     (canonicalize-graph graph classes)))
 
 ;; TWO DIMENSIONAL TABLES
@@ -439,38 +392,29 @@
 
 ;; MAKE A LATTICE FROM A GRAPH
 
-(define (make-lattice g print?)
-  (define (step g)
-    (let* ((copy (copy-graph g))
-           (nodes (graph-nodes copy)))
-      (for-each (lambda (first)
-                  (for-each (lambda (second)
-                              (meet copy first second) (join copy first second))
-                            nodes))
-                nodes)
-      copy))
-  (define (loop g count)
-    (if print? (display count))
-    (let ((lattice (step g)))
-      (if print? (begin (display " -> ") (display (length (graph-nodes lattice)))))
-      (let* ((new-g (reduce lattice))
-             (new-count (length (graph-nodes new-g))))
-        (if (= new-count count)
-            (begin
-              (if print? (newline))
-              new-g)
-            (begin
-              (if print? (begin (display " -> ") (display new-count) (newline)))
-              (loop new-g new-count))))))
-  (pp "APPLY")
+(define (step g)
+  (let* ((copy (copy-graph g))
+         (nodes (vector-ref copy 0)))
+    (for-each (lambda (first)
+                (for-each (lambda (second)
+                            (meet copy first second) (join copy first second))
+                          nodes))
+              nodes)
+    copy))
 
-  (let* ((args (adjoin any-node (adjoin none-node (graph-nodes (clean-graph g)))))
-         (rrrr (pp "NA"))
-         (graph
+(define (make-lattice g print?)
+
+  (define (loop g)
+    (pp "loop")
+    (let ((lattice (step g)))
+      (pp "loop2")
+      (let ((new-g (reduce lattice)))
+        (error "KKK"))))
+  (let ((graph
          (apply make-graph
-                args)))
-    (pp "PAPPLY")
-    (loop graph (length (graph-nodes graph)))))
+                (adjoin any-node (adjoin none-node (graph-nodes (clean-graph g)))))))
+    (pp "NN")
+    (loop graph 5)))
 
 ;; DEBUG and TEST
 
@@ -479,268 +423,19 @@
 (define c '())
 (define d '())
 
-(define (setup)
-  (set! a (make-node 'a))
-  (set! b (make-node 'b))
-  (set-blue-edges! a (list (make-blue-edge 'phi any-node b)))
-  (set-blue-edges! b (list (make-blue-edge 'phi any-node a)
-                           (make-blue-edge 'theta any-node b)))
-  (set! c (make-node "c"))
-  (set! d (make-node "d"))
-  (set-blue-edges! c (list (make-blue-edge 'theta any-node b)))
-  (set-blue-edges! d (list (make-blue-edge 'phi any-node c)
-                           (make-blue-edge 'theta any-node d)))
-  )
+(set! a (make-node 'a))
+(set! b (make-node 'b))
+(set-blue-edges! a (list (make-blue-edge 'phi any-node b)))
+(set-blue-edges! b (list (make-blue-edge 'phi any-node a)
+                       (make-blue-edge 'theta any-node b)))
+(set! c (make-node "c"))
+(set! d (make-node "d"))
+(set-blue-edges! c (list (make-blue-edge 'theta any-node b)))
+(set-blue-edges! d (list (make-blue-edge 'phi any-node c)
+                       (make-blue-edge 'theta any-node d)))
 
-(setup)
-(make-lattice (make-graph a b c d any-node none-node) #f)
+(make-lattice (vector (list a b c d) (make-empty-table) (make-empty-table)) #f)
 
 
-;(define (make-adder n)
-;  (lambda (m) (+ n m)))
-;
-;(define add10 (make-adder 10))
-;
-;(pp (add10 11))
-
-
-;; WIP:
-;; 1. Propagate continuation when call is inlined
-;; 2. optimization when --disable-return-points ?
-;;
-;; a. continuation jmp optimization with return site patching (generic + specialized)
-;; b. continuation inlining
-
-;; c. do *not* allocate slot in cc/cr-table is call/return is inlined
-
-
-;
-;(define (map2 f l1 l2)
-;  (if (null? l1)
-;      l1
-;      (list (cons 'a 5))))
-;
-;(define (peval proc args)
-;    (let ((parms (cadr proc))  ; get the parameter list
-;          (body  (caddr proc))) ; get the body of the procedure
-;
-;      (list 'lambda
-;            (beta-subst ; in the body, replace variable refs to the constant
-;              body      ; parameters by the corresponding constant
-;              (map2 (lambda (x y) (cons x y))
-;                    parms
-;                    args)))))
-;
-;(define (assq el lst)
-;  (cond ((null? lst) #f)
-;        ((eq? el (car (car lst))) (car lst))
-;        (else (assq el (cdr lst)))))
-;
-;(define (beta-subst exp env) ; return a modified 'exp' where each var named in
-;  (define (bs exp)           ; 'env' is replaced by the corresponding expr (it
-;    (cond
-;          ((symbol? exp)
-;             (gambit$$pp env)
-;             (gambit$$pp exp)
-;             (gambit$$pp (assq exp env))
-;             (error "K"))
-;
-;
-;          (else
-;           (map bs exp))))
-;  (if (fixnum? exp)
-;      exp
-;      (bs (caddr exp))))
-;
-;
-;(define example5
-;    '(lambda (a) 11))
-;
-;(define example6
-;  '(lambda ()
-;     (let 11
-;       fib)))
-;
-;(peval example5 (list 5))
-;(peval example6 '())
-
-;-----
-
-;;------------------------------------------------------------------------------
-
-;(define (foo xp yp x y)
-;  (let loop ((c #f) (i 0) (j 0))
-;
-;    (if (< i 0)
-;      0
-;      (if (or (> (vector-ref yp 0) y)
-;              (>= x (vector-ref xp i)))
-;        (loop c (- i 1) i)
-;        (loop c (- i 1) i)))))
-;
-;(let ((xp (vector  1.0))
-;      (yp (vector  2.0)))
-;  (gambit$$pp (foo xp yp .5 .5)))
-
-
-
-
-;loop sans const:
-;main:
-;    mov r1, i
-;    mov r2, sum
-;    cmp r1, r2
-;    jge belse
-;    mov rr, sum
-;    ret
-;belse:
-;    mov r1, i
-;    sub r1, 1
-;    mov r2, i
-;    add r2, sum
-;    call main
-
-;(define (create-n n)
-;  (do ((n n (- n 1))
-;       (a '() (cons '() a)))
-;      ((= n 0) a)))
-;
-;(define *ll* (create-n 200))
-;
-;(define (recursive-div2 l)
-;  (cond ((null? l) '())
-;        (else (cons (car l) (recursive-div2 (cddr l))))))
-;
-;(pp (length (recursive-div2 (create-n 1000))))
-
-
-
-;;-------------------------
-
-;(pp (##lc-exec-stats (lambda () (fib 40))))
-
-
-;(let ((r (##lc-time (lambda () (fib 40)))))
-;  (pp "R IS")
-;  (pp r))
-
-
-
-;; CONST VERS HEURISTIQUES:
-  ;; * Nb versions cst/non-cst
-  ;; * Certains entiers petits / grands
-  ;; * Cas spéciaux p.e. map, etc...
-  ;; * Versioner si la cst est dans l'appel
-
-;; On peut versionner avec le type null.
-;;   -> à la construction d'une liste, la constante est retournée.
-;;   -> à chaque cons, on peut conserver dans le contexte le type: liste/length/type (0/1/2)
-;; Ex. * fonctionne avec une fonction récursive qui créé une liste, mais une version par appel
-;;     * fonctionne avec (list ...), on a l'information tout de suite.
-;;     * fonctionne avec (make-list .. ..)
-;; * Permet de conserver le type au car
-;; * Permet de conserver le type au cdr
-;; * Permet d'optimiser (length l)
-
-;; -> On peut faire pareil avec le type vector: conserver le type: vector/length/type
-;; ex. avec (make-vector 10 #\R) -> vector/10/char
-;; Permet de conserver le type au vector-ref
-;; Permet d'éventuellement conserver le type au vector-set
-;; Permet d'optimiser (vector-length v)
-;; Permet déviter l'utilisation des vecteurs homogènes -> comportement dynamique
-
-;* Full interp versions 5 8 10 15
-;* EP only 5 8 10 15
-;* RP only 5 8 10 15
-;
-;--max-versions 5
-;--max-versions 5 --enable-const-vers --const-vers-types boo --enable-cxoverflow-fallback
-;--max-versions 5 --enable-const-vers --const-vers-types cha --enable-cxoverflow-fallback
-;--max-versions 5 --enable-const-vers --const-vers-types clo --enable-cxoverflow-fallback
-;--max-versions 5 --enable-const-vers --const-vers-types str --enable-cxoverflow-fallback
-;--max-versions 5 --enable-const-vers --const-vers-types vec --enable-cxoverflow-fallback
-;--max-versions 5 --enable-const-vers --const-vers-types nul --enable-cxoverflow-fallback
-;--max-versions 5 --enable-const-vers --const-vers-types pai --enable-cxoverflow-fallback
-;--max-versions 5 --enable-const-vers --const-vers-types int --enable-cxoverflow-fallback
-;--max-versions 5 --enable-const-vers --const-vers-types flo --enable-cxoverflow-fallback
-;--max-versions 5 --enable-const-vers --const-vers-types voi --enable-cxoverflow-fallback
-;--max-versions 5 --enable-const-vers --const-vers-types sym --enable-cxoverflow-fallback
-
-
-;(define (fib n)
-;  (if (< n 2)
-;      1
-;      (+ (fib (- n 1))
-;         (fib (- n 2)))))
-;
-;(gambit$$pp (fib 30))
-
-
-
-;; Versions: ctx -> label
-;; EPTable:  stack -> label
-
-
-
-;; Vérifier tous les opt-const-vers:
-
-    ;; ast.scm 2
-    ;; ctx.scm 9
-    ;; OK core.scm 1
-    ;; OK main.scm 1
-    ;; OK codegen  1
-
-
-;; Si on atteint la limite du nb de versions:
-;; Si c'est un entry un tail, on doit forcément avoir un fallback.
-;; 1. Déplacer les arguments dans les bons registres. (rien à faire si pas de cst ni flo)
-;; 2. Récupérer un ctx générique, ou le ctx generique du fallback
-;; 3. Set le ctx générique (si n'existe pas)
-;; 4. Récupérer la version générique du fallback, ou la générer si elle n'existe pas
-
-
-;; mazefun
-;; compiler
-
-;; out.scm 1333
-
-;; 1. Au retour, on regarde le nb de params, et si c'est des csts
-;;    Si c'est pas le cas, rien à faire.
-;;    Si c'est le cas, on ajoute une entrés dans la table d'assoc fib: cst -> res
-;;      avec res la cst si c'est une cst, ou la valeur du registre sinon
-
-;; 2. A chaque compilation d'un appel à fib, si l'association existe,
-;;    -> on push simplement la cst
-
-;; WIP:
-;; -> Quand on génère un E.P. générique, il faut patcher le pt générique + la fermeture a l'index
-
-;; ->
-;; * Merge regalloc
-;; * Merge max versions
-;; * add bound tests
-
-
-;; NEXT:
-;; * check cc-key
-;; * utiliser un systeme pour les globales non mutables compatible avec le nouvel cst vers.
-;; * return value (type cr)
-
-;; TODO: quand on récupère l'emplacement d'une variable, regarder les slots pour trouver la meilleure loc (cst > reg > mem)
-;; TODO: #<ctx-tclo #3 sym: closure mem-allocated?: #t is-cst: (lambda () ($$atom 1)) cst: #f fn-num: 0>
-;;       pourquoi l'ast dans is-cst?
-;; TODO: merge de regalloc
-;; TODO: merge de version
-;; TODO: jitter le alloc-rt pour ne pas générer de code si la taille ne nécessite pas un still
-;; TODO: ajouter le support des constantes dans les globales non mutables
-
-;; Liveness: terminer le travail
-;; Letrec: attention aux lates !function
-;; Liveness: pb sur '() ?
-;; Liveness: cas spécial, set-box! est un kill
-;; Liveness: alpha conversion
-;; Regalloc: pb movs en trop (fib.s)
-
-;; TODO: optimization: pour un pt entrée:
-;;       * si on génère un pt entrée dont la 1ere instruction est un jump,
-;;       * on peut patcher le pt d'entrée pour sauter directement au bon endroit
+;31
+;(((b v d) ^ a) v c)(c ^ d)(b v (a ^ d))((a v d) ^ b)(b v d)(b ^ (a v c))(a v (c ^ d))((b v d) ^ a)(c v (a v d))(a v c)(d v (b ^ (a v c)))(d ^ (a v c))((a ^ d) v c)((a ^ b) v d)(((a v d) ^ b) v (a ^ d))(b ^ d)(b v (a v d))(a ^ c)(b ^ (c v d))(a ^ b)(a v b)((a ^ d) ^ b)(a ^ d)(a v d)d(c v d)abcanynone

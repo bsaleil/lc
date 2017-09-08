@@ -81,6 +81,7 @@
     (cons status output)))
 
 (define (run-lc file . args)
+  (pp file)
   (let* ((run-args (append (list "./lazy-comp" file) args))
          (x (apply run run-args)))
     (if (= (car x) 0)

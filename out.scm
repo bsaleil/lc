@@ -1,4 +1,4 @@
-((define for-each
+(define for-each
    (lambda (f0 lst0)
      (if (($$atom null?) ($$atom lst0))
          ($$atom #f)
@@ -1545,4 +1545,4 @@
                                         (+ (fib (- x 1)) (fib (- x 2)))))))
                       (fib 10))))
          ($$atom '()))))))
- (($$atom test)))
+ (($$atom test))
