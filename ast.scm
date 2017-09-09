@@ -2582,7 +2582,7 @@
                (let ((r (call-save/cont cgc ctx ast succ tail? (+ nb-args 1) #f)))
                  (if opt-propagate-continuation
                      (set! cn-num (car r)))
-                 (set! ctx    (cdr r)))
+                 (set! ctx (cdr r)))
 
                (let* ((nb-args (length args))
                       (call-ctx (ctx-init-call ctx nb-args))
@@ -2630,8 +2630,6 @@
                  ;; Move args to regs or stack following calling convention
                  (set! ctx (call-prep-args cgc ctx ast nb-args (and fn-id-inf (car fn-id-inf)) generic-entry? inlined-call? tail?))
 
-
-
                  ;; Shift args and closure for tail call
                  (mlet ((nfargs/ncstargs
                           (if (or (and (not opt-entry-points)
@@ -2653,6 +2651,21 @@
                        (error "NYI c")) ;; Fl args that are on the pstack need to be shifted
 
                    (call-tail-shift cgc ctx ast tail? (- nb-args nfargs ncstargs) cn-num))
+
+                   ;; TODO: wip continuation propagation
+                   ;; if we use the generic entry and the continuation is cst,
+                   ;; we need to 'drop' the cst.
+                   ;; To drop the cst, we move it on the stack.
+                   ;; The code below is correct but it is an error to use it if at least
+                   ;; 1 arg is on the stack.
+                   (if (and generic-entry?
+                            cn-num)
+                       (let ((table (asc-cnnum-table-get cn-num)))
+                         (if (> (length args) (length args-regs))
+                             (error "NYI"))
+                         (x86-mov cgc (x86-rax) (x86-imm-int (- (obj-encoding table) TAG_MEMOBJ)))
+                         (x86-upush cgc (x86-rax))
+                         (set! cn-num #f)))
 
                  ;; Generate call sequence
                  (gen-call-sequence ast cgc call-stack cctable-idx nb-args (and fn-id-inf (cdr fn-id-inf)) inlined-call? cn-num))))))
