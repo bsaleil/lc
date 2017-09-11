@@ -2449,7 +2449,7 @@
 ;; Shift args and closure for tail call
 ;; nb-nfl-args is the number of non flonum arguments
 ;; nb-fl-args  is the number of flonum arguments
-(define (call-tail-shift cgc ctx ast tail? nb-actual-args cn-num)
+(define (call-tail-shift cgc ctx ast tail? nb-actual-args cn-num continuation-dropped?)
 
   ;; r11 is available because it's the ctx register
   (if tail?
@@ -2460,24 +2460,27 @@
                   (- nb-actual-args (length args-regs))
                   0)))
 
-        (let ((sup (if cn-num 0 1)))
-          (if (not (= (- fs nshift sup) 0))
+        ;; If the continuation is dropped, we need to shift one more element
+        ;; and shift the elements one slot further
+        (if continuation-dropped?
+            (set! nshift (+ nshift 1)))
+
+        (let ((sup (if (or cn-num continuation-dropped?) 0 1)))
+          (if (not (= nshift
+                      (- fs sup)))
               (let loop ((curr (- nshift 1)))
                 (if (>= curr 0)
                     (begin
                       (x86-mov cgc (x86-r11) (x86-mem (* 8 curr) (x86-usp)))
                       (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift sup) curr)) (x86-usp)) (x86-r11))
-                      (loop (- curr 1)))))))
+                      (loop (- curr 1))))))
 
-        ;; Clean stacks
-        (if (> ffs 0)
-            (x86-add cgc (x86-rsp) (x86-imm-int (* 8 ffs)))) ;; TODO: NYI case if nfargs > number of fargs regs
-        (cond ((and cn-num
-                    (not (= (- fs nshift) 0)))
-                 (x86-add cgc (x86-usp) (x86-imm-int (* 8 (- fs nshift)))))
-              ((and (not cn-num)
-                    (not (= (- fs nshift 1) 0)))
-                 (x86-add cgc (x86-usp) (x86-imm-int (* 8 (- fs nshift 1)))))))))
+          ;; Clean stacks
+          (if (> ffs 0)
+              (x86-add cgc (x86-rsp) (x86-imm-int (* 8 ffs)))) ;; TODO: NYI case if nfargs > number of fargs regs
+          ;; TODO: merge two cases
+          (if (not (= (- fs nshift sup) 0))
+              (x86-add cgc (x86-usp) (x86-imm-int (* 8 (- fs nshift sup)))))))))
 
 ;;
 ;; Make lazy code from CALL EXPR
@@ -2593,6 +2596,8 @@
                       (call-stack  (cadr  r))
                       (need-merge? (caddr r))
                       ;;
+                      (continuation-dropped? #f)
+                      ;;
                       (generic-entry? (and opt-entry-points (not cctable-idx)))
                       (inlined-call?
                         (and opt-lazy-inlined-call
@@ -2600,6 +2605,17 @@
                                     (obj       (and fn-num (asc-globalfn-entry-get fn-num)))
                                     (lazy-code (and obj (cadr obj))))
                                (and lazy-code (not generic-entry?) (not (lazy-code-rest? lazy-code)))))))
+
+                 ;; If the continuation is a cst and we need to call the generic e.p
+                 ;; then we need to drop the cst continuation
+                 (if (and generic-entry?
+                          cn-num)
+                     (let ((table (asc-cnnum-table-get cn-num)))
+                       (x86-mov cgc (x86-rax) (x86-imm-int (- (obj-encoding table) TAG_MEMOBJ)))
+                       (x86-upush cgc (x86-rax))
+                       (set! ctx (ctx-fs-inc ctx))
+                       (set! continuation-dropped? #t)
+                       (set! cn-num #f)))
 
                  (if need-merge?
                    (let loop ((nctx ctx) (stack-dest call-stack) (idx 0) (NB nb-args))
@@ -2627,6 +2643,7 @@
                     ;; sinon si stack[i] est un float et que la dest n'est pas un float
                         ;; on appelle drop float
 
+
                  ;; Move args to regs or stack following calling convention
                  (set! ctx (call-prep-args cgc ctx ast nb-args (and fn-id-inf (car fn-id-inf)) generic-entry? inlined-call? tail?))
 
@@ -2650,22 +2667,7 @@
                    (if (> nfargs (length regalloc-fregs))
                        (error "NYI c")) ;; Fl args that are on the pstack need to be shifted
 
-                   (call-tail-shift cgc ctx ast tail? (- nb-args nfargs ncstargs) cn-num))
-
-                   ;; TODO: wip continuation propagation
-                   ;; if we use the generic entry and the continuation is cst,
-                   ;; we need to 'drop' the cst.
-                   ;; To drop the cst, we move it on the stack.
-                   ;; The code below is correct but it is an error to use it if at least
-                   ;; 1 arg is on the stack.
-                   (if (and generic-entry?
-                            cn-num)
-                       (let ((table (asc-cnnum-table-get cn-num)))
-                         (if (> (length args) (length args-regs))
-                             (error "NYI"))
-                         (x86-mov cgc (x86-rax) (x86-imm-int (- (obj-encoding table) TAG_MEMOBJ)))
-                         (x86-upush cgc (x86-rax))
-                         (set! cn-num #f)))
+                   (call-tail-shift cgc ctx ast tail? (- nb-args nfargs ncstargs) cn-num continuation-dropped?))
 
                  ;; Generate call sequence
                  (gen-call-sequence ast cgc call-stack cctable-idx nb-args (and fn-id-inf (cdr fn-id-inf)) inlined-call? cn-num))))))

@@ -57,6 +57,11 @@
      #t
      ((lambda () 100 (fun (- n 1))))))
 
+(define (fun2 a b c d e f g h i j k l)
+  (if (= n 0)
+      #t
+      ((lambda () 100 (fun a b c d e f g h i j k l)))))
+
 (pp (bar1 999999))
 (pp (bar2 999999))
 (pp (foo1 999999))
