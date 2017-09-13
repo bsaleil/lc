@@ -1251,13 +1251,23 @@
       (env-remove-slot (ctx-env ctx) slot))))      ;; env: remove popped slot from env
 
 (define (ctx-const-continuation? ctx)
-  (let ((type (ctx-get-type ctx (- (length (ctx-stack ctx)) 1))))
-    (ctx-type-cst? type)))
+  (and (> (length (ctx-stack ctx)) 0)
+       (let ((type (ctx-get-type ctx (- (length (ctx-stack ctx)) 1))))
+         (and (ctx-fn-num ctx)
+              (ctx-type-cst? type)))))
 
 (define (ctx-const-continuation ctx)
   (assert (ctx-const-continuation? ctx) "Internal error")
   (let ((type (ctx-get-type ctx (- (length (ctx-stack ctx)) 1))))
     (ctx-type-cst type)))
+
+(define (ctx-no-const-continuation ctx)
+  (assert (ctx-const-continuation? ctx) "Internal error")
+  (let* ((idx (- (length (ctx-stack ctx)) 1))
+         (slot (slot-to-stack-idx ctx idx))
+         (r (ctx-get-free-reg #f ctx #f 0)) ;; moves/reg/ctx
+         (ctx (ctx-set-type (caddr r) idx (make-ctx-tret) #f)))
+    (ctx-set-loc ctx slot (cadr r))))
 
 ;; Check if given stack idx belongs to an id
 ;; If so, remove this link

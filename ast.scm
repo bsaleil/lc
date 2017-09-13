@@ -223,6 +223,12 @@
 (define (asc-cnnum-table-get cn-num)
   (table-ref asc-cnnum-table cn-num))
 
+(define asc-cnnum-ctx (make-table))
+(define (asc-cnnum-ctx-add cn-num ctx)
+  (table-set! asc-cnnum-ctx cn-num ctx))
+(define (asc-cnnum-ctx-get cn-num)
+  (table-ref asc-cnnum-ctx cn-num))
+
 ;;-----------------------------------------------------------------------------
 ;; Type predicates
 
@@ -728,36 +734,32 @@
                ;;
                (cst? (ctx-type-cst? type-ret)))
 
-          ;; TODO WIP
           (if (ctx-type-cst? taddr)
-              (let ((cctable (asc-cnnum-table-get (ctx-type-cst taddr))))
-                (if cridx
-                    ;; Direct jump to the entry point
-                    ;; TODO: use codegen function
-                    (begin
-                      (let* ((addr  (get-i64 (+ (obj-encoding cctable) 15 (* 8 cridx))))
-                             (label (asm-make-label #f (know-dest-symbol addr) addr)))
+              (let ((lco (asc-cnnum-lco-get (ctx-type-cst taddr)))
+                    (opret (if (ctx-type-flo? type-ret)
+                               (codegen-freg-to-x86reg return-freg)
+                               (codegen-reg-to-x86reg return-reg)))
+                    (opretval (and (not cst?) (codegen-loc-to-x86opnd fs ffs lret))))
 
+                (assert (not (and cst? (not opt-const-vers)))
+                        "Internal error")
 
-                             (let ((opret (if (ctx-type-flo? type-ret)
-                                              (codegen-freg-to-x86reg return-freg)
-                                              (codegen-reg-to-x86reg return-reg)))
-                                   (opretval (and (not cst?) (codegen-loc-to-x86opnd fs ffs lret))))
+                (if (and opretval
+                         (not (eq? opret opretval)))
+                    (if (ctx-type-flo? type-ret)
+                        (x86-movsd cgc opret opretval)
+                        (x86-mov cgc opret opretval)))
 
-                               (assert (not (and cst? (not opt-const-vers)))
-                                       "Internal error")
-
-                               (if (and opretval
-                                        (not (eq? opret opretval)))
-                                   (if (ctx-type-flo? type-ret)
-                                       (x86-movsd cgc opret opretval)
-                                       (x86-mov cgc opret opretval))))
-
-                      (codegen-return-clean cgc fs ffs)
-                      (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding cridx)))
-                      (x86-jmp cgc label)))
-                    ;; Direct jump to the generic entry point
-                    (error "WIP")))
+                (codegen-return-clean cgc fs ffs)
+                (let* ((ctx (asc-cnnum-ctx-get (ctx-type-cst taddr)))
+                       (ctx
+                         (cond (cst?
+                                 (ctx-push ctx type-ret #f))
+                               ((ctx-type-flo? type-ret)
+                                 (ctx-push ctx type-ret return-freg))
+                               (else
+                                 (ctx-push ctx type-ret return-reg)))))
+                  (jump-to-version cgc lco ctx)))
               (codegen-return-cr cgc fs ffs laddr lret cridx (ctx-type-flo? type-ret) cst?)))))
 
       (make-lazy-code-ret ;; Lazy-code with 'ret flag
@@ -2762,8 +2764,8 @@
                                 (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
                           (reg
                             (cond ((ctx-type-cst? type) #f)
-                                  ((ctx-type-flo? type)       return-freg)
-                                  (else                   return-reg))))
+                                  ((ctx-type-flo? type) return-freg)
+                                  (else                 return-reg))))
 
                      (gen-version-continuation-cr
                        lazy-continuation
@@ -2780,6 +2782,7 @@
     (let ((crtable-loc (- (obj-encoding crtable) 1)))
 
       (asc-cnnum-table-add cn-num crtable)
+      (asc-cnnum-ctx-add cn-num (ctx-pop-n ctx (+ (length (cdr ast)) 1)))
       ;; Generate code
       (if (or (not opt-propagate-continuation)
               apply?)

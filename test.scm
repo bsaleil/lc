@@ -1,26 +1,12 @@
+(define (fib n)
+  (if (< n 2)
+     1
+     (+ (fib (- n 1))
+        (fib (- n 2)))))
 
-(define (bool? n) (eq? n #f))
+(define n (cons 40 40))
 
-(define (bar a b c d e f g h i j)
-  1)
-
-(define (foo n m)
-  (cond ((fixnum? n)  (bar n (+ n n) n n n n n n n n))
-        ((bool? n) (bar n n n n n n n n n n))))
-
-
-(define args (cons 10 #f))
-
-(foo (car args))
-(foo (cdr args))
-
-;(define (make-adder n)
-;  (lambda (m) (+ n m)))
-;
-;(define add10 (make-adder 10))
-;
-;(pp (add10 11))
-
+(gambit$$pp (fib (car n)))
 
 ;; WIP:
 ;; 1. Propagate continuation when call is inlined
