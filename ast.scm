@@ -2606,7 +2606,10 @@
                              (let* ((fn-num    (and fn-id-inf (cdr fn-id-inf)))
                                     (obj       (and fn-num (asc-globalfn-entry-get fn-num)))
                                     (lazy-code (and obj (cadr obj))))
-                               (and lazy-code (not generic-entry?) (not (lazy-code-rest? lazy-code)))))))
+                               (and lazy-code (not (lazy-code-rest? lazy-code)))))))
+
+                 (if inlined-call?
+                     (set! generic-entry? #f))
 
                  ;; If the continuation is a cst and we need to call the generic e.p
                  ;; then we need to drop the cst continuation
