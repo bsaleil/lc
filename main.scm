@@ -502,8 +502,9 @@
     (println "Stub size (bytes): " stub-bytes)
     ;; Code + Stub size
     (println "Total size (bytes): " (+ code-bytes stub-bytes))
-    ;; Global cc-table size
-    (println "Global table size: " (table-length global-cc-table))
+    ;; Global cx-table size
+    (println "Global cc table size: " (table-length global-cc-table))
+    (println "Global cr table size: " (table-length global-cr-table))
     ;; Number of cc tables
     (println "Number of cctables: " (cctables-total))
     ;; Number of cr tables
