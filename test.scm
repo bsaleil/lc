@@ -4,9 +4,7 @@
 ;* Fixer mov inutile au prep-args du test unitaire
 ;* vérifier que la constante des fonctions !purecst est propagée interprocéduralement si demandé
 ;* vérifier que la constante !purecst n'est PAS propagée au call/ret si pas demandé
-
-
-
+;* optimiser l'appel avec l'information d'id !cst
 ;; ADD THIS EXAMPLE TO UT
 ;(define (tak x k)
 ;  (if (= x 0)
