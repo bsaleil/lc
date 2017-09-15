@@ -733,7 +733,7 @@
 ;; Gen code for arithmetic operation on int/int
 (define (codegen-num-ii cgc fs ffs op reg lleft lright lcst? rcst? overflow? overflow-label)
 
-  (assert (not (and lcst? rcst?)) "Internal codegen error")
+  (assert (not (and lcst? rcst?)) "Internal error")
 
   (let ((dest    (codegen-reg-to-x86reg reg))
         (opleft  (and (not lcst?) (codegen-loc-to-x86opnd fs ffs lleft)))
@@ -859,7 +859,7 @@
   (define-macro (if-inline expr)
     `(if inline-if-cond? #f ,expr))
 
-  (assert (not (and lcst? rcst?)) "Internal codegen error")
+  (assert (not (and lcst? rcst?)) "Internal error")
 
   (let* ((x86-op  (cdr (assoc op `((< . ,x86-jl) (> . ,x86-jg) (<= . ,x86-jle) (>= . ,x86-jge) (= . ,x86-je)))))
          (x86-iop (cdr (assoc op `((< . ,x86-jg) (> . ,x86-jl) (<= . ,x86-jge) (>= . ,x86-jle) (= . ,x86-je)))))
@@ -915,7 +915,7 @@
   (define-macro (if-inline expr)
     `(if inline-if-cond? #f ,expr))
 
-  (assert (not (and lcst? rcst?)) "Internal codegen error")
+  (assert (not (and lcst? rcst?)) "Internal error")
 
   (let ((dest (if-inline (codegen-reg-to-x86reg reg)))
         (label-end (if-inline (asm-make-label #f (new-sym 'label-end))))

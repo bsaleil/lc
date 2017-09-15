@@ -1,12 +1,22 @@
-(define (fib n)
-  (if (< n 2)
-     1
-     (+ (fib (- n 1))
-        (fib (- n 2)))))
 
-(define n (cons 40 40))
 
-(gambit$$pp (fib (car n)))
+;* Ajouter test unitaire
+;* Fixer mov inutile au prep-args du test unitaire
+;* vérifier que la constante des fonctions !purecst est propagée interprocéduralement si demandé
+;* vérifier que la constante !purecst n'est PAS propagée au call/ret si pas demandé
+
+
+
+;; ADD THIS EXAMPLE TO UT
+;(define (tak x k)
+;  (if (= x 0)
+;      (k)
+;      (tak 0 (lambda ()
+;                   (k)))))
+;(tak 1 (lambda () 100))
+
+
+
 
 ;; WIP:
 ;; 1. Propagate continuation when call is inlined

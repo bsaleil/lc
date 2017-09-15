@@ -582,6 +582,7 @@
 ;; Make lazy code from DEFINE
 ;;
 (define (mlc-define ast succ)
+
   (let ((global (asc-globals-get (cadr ast))))
     (cond
           ((and global (ctx-type-clo? (global-stype global)))
@@ -609,12 +610,11 @@
                          (lazy-bind (make-lazy-code
                                       #f
                                       (lambda (cgc ctx)
-
                                         (mlet ((pos (global-pos (asc-globals-get identifier))) ;; Lookup in globals
                                                ;;
                                                (moves/reg/ctx (ctx-get-free-reg ast ctx succ 1))
                                                (type (ctx-get-type ctx 0))
-                                               (cst? (ctx-type-cst? type))
+                                               (cst? (and (ctx-type-cst? type) (not (ctx-get-loc ctx 0))))
                                                (lvalue (if cst?
                                                            (ctx-type-cst type)
                                                            (ctx-get-loc ctx 0))))
@@ -732,17 +732,16 @@
                (laddr (ctx-get-retobj-loc ctx))
                (taddr (ctx-get-type ctx (- (length (ctx-stack ctx)) 1)))
                ;;
-               (cst? (ctx-type-cst? type-ret)))
+               (cst? (not lret)))
+
+          (assert (if (not lret) (ctx-type-cst? type-ret) #t) "Internal error")
 
           (if (ctx-type-cst? taddr)
               (let ((lco (asc-cnnum-lco-get (ctx-type-cst taddr)))
                     (opret (if (ctx-type-flo? type-ret)
                                (codegen-freg-to-x86reg return-freg)
                                (codegen-reg-to-x86reg return-reg)))
-                    (opretval (and (not cst?) (codegen-loc-to-x86opnd fs ffs lret))))
-
-                (assert (not (and cst? (not opt-const-vers)))
-                        "Internal error")
+                    (opretval (and lret (codegen-loc-to-x86opnd fs ffs lret))))
 
                 (if (and opretval
                          (not (eq? opret opretval)))
@@ -753,7 +752,7 @@
                 (codegen-return-clean cgc fs ffs)
                 (let* ((ctx (asc-cnnum-ctx-get (ctx-type-cst taddr)))
                        (ctx
-                         (cond (cst?
+                         (cond ((not lret)
                                  (ctx-push ctx type-ret #f))
                                ((ctx-type-flo? type-ret)
                                  (ctx-push ctx type-ret return-freg))
@@ -1656,7 +1655,9 @@
                   nargs
                   (lambda (n)
                     (let ((type (ctx-get-type ctx n)))
-                      (if (ctx-type-cst? type)
+                      ;; assert that if we do not have a loc, type *must* be a cst
+                      (assert (or (ctx-get-loc ctx n) (ctx-type-cst? type)) "Internal error")
+                      (if (not (ctx-get-loc ctx n))
                           (cons #t (ctx-type-cst type))
                           (cons #f (ctx-get-loc ctx n)))))))
          (cst? (map car r))
@@ -2645,7 +2646,6 @@
                     ;; sinon si stack[i] est un float et que la dest n'est pas un float
                         ;; on appelle drop float
 
-
                  ;; Move args to regs or stack following calling convention
                  (set! ctx (call-prep-args cgc ctx ast nb-args (and fn-id-inf (car fn-id-inf)) generic-entry? inlined-call? tail?))
 
@@ -3262,8 +3262,10 @@
       (x86-mov cgc opnd (x86-imm-int (obj-encoding cst)))))
 
   (let* ((type (ctx-get-type ctx ctx-idx))
+         (loc  (ctx-get-loc  ctx ctx-idx))
          (cst? (ctx-type-cst? type)))
-    (if cst?
+    (if (and cst?
+             (not loc))
         (mlet ((cst (ctx-type-cst type))
                (moves/reg/ctx
                  (if (ctx-type-flo? type)

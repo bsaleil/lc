@@ -1155,12 +1155,6 @@
               (cons ident
                     (get-env (cdr env) id slot))))))
 
-  ;; If ltype is a constant, loc must be #f
-  (assert (if (ctx-type-cst? type)
-              (not loc)
-              #t)
-          "Internal error")
-
   ;; If loc is #f, type must be a constant
   (assert (if (not loc)
               (ctx-type-cst? type)
@@ -1602,7 +1596,7 @@
                 ;; Loc is #f
                 (let* ((slot (car first))
                        (type (list-ref (ctx-stack src-ctx) (slot-to-stack-idx src-ctx slot))))
-                  (assert (ctx-type-cst? type) "internal error")
+                  (assert (ctx-type-cst? type) "Internal error")
                   (let* ((dst
                            (cdr (assoc slot (ctx-slot-loc dst-ctx))))
                          (src
@@ -1653,7 +1647,7 @@
                   (not generic-entry?))
                (next-nothing))
             ;; Type is cst
-            ((ctx-type-cst? type)
+            ((not loc)
                (cond ((ctx-type-clo? type)
                         (next-other
                           (cons 'constfn (ctx-type-cst type))))
