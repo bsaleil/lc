@@ -2534,29 +2534,33 @@
               (loop (cdr entries) (car entries) dist)
               (loop (cdr entries) r mindist))))))
 
-(define (get-ccidx-stack cn-num call-stack nb-args)
+(define (get-ccidx-stack cn-num call-stack nb-args inlined-call?)
 
   (define idx #f)
   (define stack call-stack)
   (define force-generic? #f)
   (define need-merge? #f)
 
-  (if (and opt-entry-points
-           (or (not opt-call-max-len)
-               (<= nb-args opt-call-max-len)))
-      (set! idx (cctable-get-idx (cons (and opt-propagate-continuation cn-num) call-stack))) ;; TODO wip
-      (set! force-generic? #t))
+  (if inlined-call?
+      (list idx stack need-merge?)
 
-  (if (and opt-closest-cx-overflow
-           (not force-generic?)
-           (not idx))
-      (let ((r (get-alt-idx call-stack)))
-        (if r
-            (begin (set! need-merge? #t)
-                   (set! stack (car r))
-                   (set! idx   (cdr r))))))
+      (begin
+        (if (and opt-entry-points
+                 (or (not opt-call-max-len)
+                     (<= nb-args opt-call-max-len)))
+            (set! idx (cctable-get-idx (cons (and opt-propagate-continuation cn-num) call-stack))) ;; TODO wip
+            (set! force-generic? #t))
 
-  (list idx stack need-merge?))
+        (if (and opt-closest-cx-overflow
+                 (not force-generic?)
+                 (not idx))
+            (let ((r (get-alt-idx call-stack)))
+              (if r
+                  (begin (set! need-merge? #t)
+                         (set! stack (car r))
+                         (set! idx   (cdr r))))))
+
+        (list idx stack need-merge?))))
 
 (define (mlc-call ast succ)
 
@@ -2596,20 +2600,20 @@
                       (call-ctx (ctx-init-call ctx nb-args))
                       (call-stack (list-head (ctx-stack call-ctx) nb-args))
                       ;;
-                      (r (get-ccidx-stack cn-num call-stack nb-args))
+                      (inlined-call?
+                        (and opt-lazy-inlined-call
+                             (let* ((fn-num    (and fn-id-inf (cdr fn-id-inf)))
+                                    (obj       (and fn-num (asc-globalfn-entry-get fn-num)))
+                                    (lazy-code (and obj (cadr obj))))
+                               (and lazy-code (not (lazy-code-rest? lazy-code))))))
+                      (r (get-ccidx-stack cn-num call-stack nb-args inlined-call?))
                       (cctable-idx (car   r))
                       (call-stack  (cadr  r))
                       (need-merge? (caddr r))
                       ;;
                       (continuation-dropped? #f)
                       ;;
-                      (generic-entry? (and opt-entry-points (not cctable-idx)))
-                      (inlined-call?
-                        (and opt-lazy-inlined-call
-                             (let* ((fn-num    (and fn-id-inf (cdr fn-id-inf)))
-                                    (obj       (and fn-num (asc-globalfn-entry-get fn-num)))
-                                    (lazy-code (and obj (cadr obj))))
-                               (and lazy-code (not generic-entry?) (not (lazy-code-rest? lazy-code)))))))
+                      (generic-entry? (and opt-entry-points (not inlined-call?) (not cctable-idx))))
 
                  ;; If the continuation is a cst and we need to call the generic e.p
                  ;; then we need to drop the cst continuation
