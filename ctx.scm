@@ -394,7 +394,7 @@
 
   (define (get-best-loc slot-loc sslots mloc)
     (if (null? slot-loc)
-        (and (assert mloc "Internal error (ctx-identifier-loc)") mloc)
+        mloc
         (let ((sl (car slot-loc)))
           (if (member (car sl) sslots)
               (if (ctx-loc-is-register? (cdr sl))
@@ -406,7 +406,7 @@
     (if (null? sslots)
         ;; Free var
         (begin
-          (assert (eq? (identifier-kind identifier) 'free) "Internal error (ctx-identifier-loc)")
+          (assert (eq? (identifier-kind identifier) 'free) "Internal error (ctx-identifier-loc) 2")
           (identifier-cloc identifier))
         (get-best-loc (ctx-slot-loc ctx) sslots #f))))
 
@@ -580,7 +580,8 @@
                  (late? (member id late-fbinds))
                  (enc-identifier (and (not late?) (cdr (ctx-ident enclosing-ctx id))))
                  (enc-type       (and (not late?) (ctx-identifier-type enclosing-ctx enc-identifier)))
-                 (cst?           (and (not late?) (ctx-type-cst? enc-type))))
+                 (enc-loc        (and (not late?) (ctx-identifier-loc enclosing-ctx enc-identifier)))
+                 (cst?           (and (not late?) (ctx-type-cst? enc-type) (not enc-loc))))
             ;; If an enclosing identifer is cst, type *must* represent a cst
             (assert (or (not enc-identifier)
                         (not (identifier-cst enc-identifier))
@@ -881,7 +882,8 @@
         (let ((type (ctx-identifier-type ctx (cdr r))))
           (and (ctx-type-clo? type)
                (ctx-type-cst? type)
-               (cons #t (ctx-type-cst type))))
+               (let ((loc (ctx-identifier-loc ctx (cdr r))))
+                 (cons (not loc) (ctx-type-cst type)))))
         ;; This id
         (and r
              (identifier-thisid (cdr r))

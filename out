@@ -1,0 +1,3568 @@
+------------------------------------------------------------------------
+9aa008				bits 64
+9aa008 e9790f0000		jmp	rtlib_skip
+9aa00d			heap_limit_handler:
+9aa00d 4883ed58			sub	rbp,byte 88
+9aa011 48894d50			mov	[rbp+80],rcx
+9aa015 48895d48			mov	[rbp+72],rbx
+9aa019 4c897d40			mov	[rbp+64],r15
+9aa01d 48897538			mov	[rbp+56],rsi
+9aa021 48897d30			mov	[rbp+48],rdi
+9aa025 4c895528			mov	[rbp+40],r10
+9aa029 4c895d20			mov	[rbp+32],r11
+9aa02d 4c896518			mov	[rbp+24],r12
+9aa031 4c896d10			mov	[rbp+16],r13
+9aa035 4c897508			mov	[rbp+8],r14
+9aa039 48895500			mov	[rbp],rdx
+9aa03d 4c890c25b074fc00		mov	[+16544944],r9
+9aa045 4889ef			mov	rdi,rbp
+9aa048 55			push	rbp
+9aa049 51			push	rcx
+9aa04a 4150			push	r8
+9aa04c 4151			push	r9
+9aa04e 4881ec80000000		sub	rsp,128
+9aa055 f20f110424		movsd	[rsp],xmm0
+9aa05a f20f114c2408		movsd	[rsp+8],xmm1
+9aa060 f20f11542410		movsd	[rsp+16],xmm2
+9aa066 f20f115c2418		movsd	[rsp+24],xmm3
+9aa06c f20f11642420		movsd	[rsp+32],xmm4
+9aa072 f20f116c2428		movsd	[rsp+40],xmm5
+9aa078 f20f11742430		movsd	[rsp+48],xmm6
+9aa07e f20f117c2438		movsd	[rsp+56],xmm7
+9aa084 f2440f11442440		movsd	[rsp+64],xmm8
+9aa08b f2440f114c2448		movsd	[rsp+72],xmm9
+9aa092 f2440f11542450		movsd	[rsp+80],xmm10
+9aa099 f2440f115c2458		movsd	[rsp+88],xmm11
+9aa0a0 f2440f11642460		movsd	[rsp+96],xmm12
+9aa0a7 f2440f116c2468		movsd	[rsp+104],xmm13
+9aa0ae f2440f11742470		movsd	[rsp+112],xmm14
+9aa0b5 f2440f117c2478		movsd	[rsp+120],xmm15
+9aa0bc 4889e0			mov	rax,rsp
+9aa0bf 4883e4f0			and	rsp,byte -16
+9aa0c3 4883ec08			sub	rsp,byte 8
+9aa0c7 50			push	rax
+9aa0c8 48b84ed365a8287f
+9aa0d0 0000			mov	rax,139812600664910
+9aa0d2 ffd0			call	rax
+9aa0d4 5c			pop	rsp
+9aa0d5 f20f100424		movsd	xmm0,[rsp]
+9aa0da f20f104c2408		movsd	xmm1,[rsp+8]
+9aa0e0 f20f10542410		movsd	xmm2,[rsp+16]
+9aa0e6 f20f105c2418		movsd	xmm3,[rsp+24]
+9aa0ec f20f10642420		movsd	xmm4,[rsp+32]
+9aa0f2 f20f106c2428		movsd	xmm5,[rsp+40]
+9aa0f8 f20f10742430		movsd	xmm6,[rsp+48]
+9aa0fe f20f107c2438		movsd	xmm7,[rsp+56]
+9aa104 f2440f10442440		movsd	xmm8,[rsp+64]
+9aa10b f2440f104c2448		movsd	xmm9,[rsp+72]
+9aa112 f2440f10542450		movsd	xmm10,[rsp+80]
+9aa119 f2440f105c2458		movsd	xmm11,[rsp+88]
+9aa120 f2440f10642460		movsd	xmm12,[rsp+96]
+9aa127 f2440f106c2468		movsd	xmm13,[rsp+104]
+9aa12e f2440f10742470		movsd	xmm14,[rsp+112]
+9aa135 f2440f107c2478		movsd	xmm15,[rsp+120]
+9aa13c 4881c480000000		add	rsp,128
+9aa143 4159			pop	r9
+9aa145 4158			pop	r8
+9aa147 59			pop	rcx
+9aa148 488b0c25a874fc00		mov	rcx,[+16544936]
+9aa150 49b908505cce287f
+9aa158 0000			mov	r9,139813237575688
+9aa15a 49894928			mov	[r9+40],rcx
+9aa15e 4c8b0c25b074fc00		mov	r9,[+16544944]
+9aa166 5d			pop	rbp
+9aa167 488b5500			mov	rdx,[rbp]
+9aa16b 4c8b7508			mov	r14,[rbp+8]
+9aa16f 4c8b6d10			mov	r13,[rbp+16]
+9aa173 4c8b6518			mov	r12,[rbp+24]
+9aa177 4c8b5d20			mov	r11,[rbp+32]
+9aa17b 4c8b5528			mov	r10,[rbp+40]
+9aa17f 488b7d30			mov	rdi,[rbp+48]
+9aa183 488b7538			mov	rsi,[rbp+56]
+9aa187 4c8b7d40			mov	r15,[rbp+64]
+9aa18b 488b5d48			mov	rbx,[rbp+72]
+9aa18f 488b4d50			mov	rcx,[rbp+80]
+9aa193 4883c558			add	rbp,byte 88
+9aa197 c3			ret
+9aa198			alloc_still_handler:
+9aa198 4883ed58			sub	rbp,byte 88
+9aa19c 48894d50			mov	[rbp+80],rcx
+9aa1a0 48895d48			mov	[rbp+72],rbx
+9aa1a4 4c897d40			mov	[rbp+64],r15
+9aa1a8 48897538			mov	[rbp+56],rsi
+9aa1ac 48897d30			mov	[rbp+48],rdi
+9aa1b0 4c895528			mov	[rbp+40],r10
+9aa1b4 4c895d20			mov	[rbp+32],r11
+9aa1b8 4c896518			mov	[rbp+24],r12
+9aa1bc 4c896d10			mov	[rbp+16],r13
+9aa1c0 4c897508			mov	[rbp+8],r14
+9aa1c4 48895500			mov	[rbp],rdx
+9aa1c8 4c890c25b074fc00		mov	[+16544944],r9
+9aa1d0 4889ef			mov	rdi,rbp
+9aa1d3 55			push	rbp
+9aa1d4 51			push	rcx
+9aa1d5 4150			push	r8
+9aa1d7 4151			push	r9
+9aa1d9 4881ec80000000		sub	rsp,128
+9aa1e0 f20f110424		movsd	[rsp],xmm0
+9aa1e5 f20f114c2408		movsd	[rsp+8],xmm1
+9aa1eb f20f11542410		movsd	[rsp+16],xmm2
+9aa1f1 f20f115c2418		movsd	[rsp+24],xmm3
+9aa1f7 f20f11642420		movsd	[rsp+32],xmm4
+9aa1fd f20f116c2428		movsd	[rsp+40],xmm5
+9aa203 f20f11742430		movsd	[rsp+48],xmm6
+9aa209 f20f117c2438		movsd	[rsp+56],xmm7
+9aa20f f2440f11442440		movsd	[rsp+64],xmm8
+9aa216 f2440f114c2448		movsd	[rsp+72],xmm9
+9aa21d f2440f11542450		movsd	[rsp+80],xmm10
+9aa224 f2440f115c2458		movsd	[rsp+88],xmm11
+9aa22b f2440f11642460		movsd	[rsp+96],xmm12
+9aa232 f2440f116c2468		movsd	[rsp+104],xmm13
+9aa239 f2440f11742470		movsd	[rsp+112],xmm14
+9aa240 f2440f117c2478		movsd	[rsp+120],xmm15
+9aa247 488bbc24a8000000		mov	rdi,[rsp+168]
+9aa24f 488b7560			mov	rsi,[rbp+96]
+9aa253 4889e0			mov	rax,rsp
+9aa256 4883e4f0			and	rsp,byte -16
+9aa25a 4883ec08			sub	rsp,byte 8
+9aa25e 50			push	rax
+9aa25f 48b81ad365a8287f
+9aa267 0000			mov	rax,139812600664858
+9aa269 ffd0			call	rax
+9aa26b 5c			pop	rsp
+9aa26c f20f100424		movsd	xmm0,[rsp]
+9aa271 f20f104c2408		movsd	xmm1,[rsp+8]
+9aa277 f20f10542410		movsd	xmm2,[rsp+16]
+9aa27d f20f105c2418		movsd	xmm3,[rsp+24]
+9aa283 f20f10642420		movsd	xmm4,[rsp+32]
+9aa289 f20f106c2428		movsd	xmm5,[rsp+40]
+9aa28f f20f10742430		movsd	xmm6,[rsp+48]
+9aa295 f20f107c2438		movsd	xmm7,[rsp+56]
+9aa29b f2440f10442440		movsd	xmm8,[rsp+64]
+9aa2a2 f2440f104c2448		movsd	xmm9,[rsp+72]
+9aa2a9 f2440f10542450		movsd	xmm10,[rsp+80]
+9aa2b0 f2440f105c2458		movsd	xmm11,[rsp+88]
+9aa2b7 f2440f10642460		movsd	xmm12,[rsp+96]
+9aa2be f2440f106c2468		movsd	xmm13,[rsp+104]
+9aa2c5 f2440f10742470		movsd	xmm14,[rsp+112]
+9aa2cc f2440f107c2478		movsd	xmm15,[rsp+120]
+9aa2d3 4881c480000000		add	rsp,128
+9aa2da 4159			pop	r9
+9aa2dc 4158			pop	r8
+9aa2de 59			pop	rcx
+9aa2df 488b0c25a874fc00		mov	rcx,[+16544936]
+9aa2e7 49b908505cce287f
+9aa2ef 0000			mov	r9,139813237575688
+9aa2f1 49894928			mov	[r9+40],rcx
+9aa2f5 4c8b0c25b074fc00		mov	r9,[+16544944]
+9aa2fd 5d			pop	rbp
+9aa2fe 488b5500			mov	rdx,[rbp]
+9aa302 4c8b7508			mov	r14,[rbp+8]
+9aa306 4c8b6d10			mov	r13,[rbp+16]
+9aa30a 4c8b6518			mov	r12,[rbp+24]
+9aa30e 4c8b5d20			mov	r11,[rbp+32]
+9aa312 4c8b5528			mov	r10,[rbp+40]
+9aa316 488b7d30			mov	rdi,[rbp+48]
+9aa31a 488b7538			mov	rsi,[rbp+56]
+9aa31e 4c8b7d40			mov	r15,[rbp+64]
+9aa322 488b5d48			mov	rbx,[rbp+72]
+9aa326 488b4d50			mov	rcx,[rbp+80]
+9aa32a 4883c558			add	rbp,byte 88
+9aa32e c3			ret
+9aa32f			gambit_call_handler:
+9aa32f 4883ed58			sub	rbp,byte 88
+9aa333 48894d50			mov	[rbp+80],rcx
+9aa337 48895d48			mov	[rbp+72],rbx
+9aa33b 4c897d40			mov	[rbp+64],r15
+9aa33f 48897538			mov	[rbp+56],rsi
+9aa343 48897d30			mov	[rbp+48],rdi
+9aa347 4c895528			mov	[rbp+40],r10
+9aa34b 4c895d20			mov	[rbp+32],r11
+9aa34f 4c896518			mov	[rbp+24],r12
+9aa353 4c896d10			mov	[rbp+16],r13
+9aa357 4c897508			mov	[rbp+8],r14
+9aa35b 48895500			mov	[rbp],rdx
+9aa35f 4c890c25b074fc00		mov	[+16544944],r9
+9aa367 4889ef			mov	rdi,rbp
+9aa36a 4889e6			mov	rsi,rsp
+9aa36d 55			push	rbp
+9aa36e 51			push	rcx
+9aa36f 4150			push	r8
+9aa371 4151			push	r9
+9aa373 4881ec80000000		sub	rsp,128
+9aa37a f20f110424		movsd	[rsp],xmm0
+9aa37f f20f114c2408		movsd	[rsp+8],xmm1
+9aa385 f20f11542410		movsd	[rsp+16],xmm2
+9aa38b f20f115c2418		movsd	[rsp+24],xmm3
+9aa391 f20f11642420		movsd	[rsp+32],xmm4
+9aa397 f20f116c2428		movsd	[rsp+40],xmm5
+9aa39d f20f11742430		movsd	[rsp+48],xmm6
+9aa3a3 f20f117c2438		movsd	[rsp+56],xmm7
+9aa3a9 f2440f11442440		movsd	[rsp+64],xmm8
+9aa3b0 f2440f114c2448		movsd	[rsp+72],xmm9
+9aa3b7 f2440f11542450		movsd	[rsp+80],xmm10
+9aa3be f2440f115c2458		movsd	[rsp+88],xmm11
+9aa3c5 f2440f11642460		movsd	[rsp+96],xmm12
+9aa3cc f2440f116c2468		movsd	[rsp+104],xmm13
+9aa3d3 f2440f11742470		movsd	[rsp+112],xmm14
+9aa3da f2440f117c2478		movsd	[rsp+120],xmm15
+9aa3e1 4889e0			mov	rax,rsp
+9aa3e4 4883e4f0			and	rsp,byte -16
+9aa3e8 4883ec08			sub	rsp,byte 8
+9aa3ec 50			push	rax
+9aa3ed e850f81302		call	gambit_call
+9aa3f2 5c			pop	rsp
+9aa3f3 f20f100424		movsd	xmm0,[rsp]
+9aa3f8 f20f104c2408		movsd	xmm1,[rsp+8]
+9aa3fe f20f10542410		movsd	xmm2,[rsp+16]
+9aa404 f20f105c2418		movsd	xmm3,[rsp+24]
+9aa40a f20f10642420		movsd	xmm4,[rsp+32]
+9aa410 f20f106c2428		movsd	xmm5,[rsp+40]
+9aa416 f20f10742430		movsd	xmm6,[rsp+48]
+9aa41c f20f107c2438		movsd	xmm7,[rsp+56]
+9aa422 f2440f10442440		movsd	xmm8,[rsp+64]
+9aa429 f2440f104c2448		movsd	xmm9,[rsp+72]
+9aa430 f2440f10542450		movsd	xmm10,[rsp+80]
+9aa437 f2440f105c2458		movsd	xmm11,[rsp+88]
+9aa43e f2440f10642460		movsd	xmm12,[rsp+96]
+9aa445 f2440f106c2468		movsd	xmm13,[rsp+104]
+9aa44c f2440f10742470		movsd	xmm14,[rsp+112]
+9aa453 f2440f107c2478		movsd	xmm15,[rsp+120]
+9aa45a 4881c480000000		add	rsp,128
+9aa461 4159			pop	r9
+9aa463 4158			pop	r8
+9aa465 59			pop	rcx
+9aa466 488b0c25a874fc00		mov	rcx,[+16544936]
+9aa46e 49b908505cce287f
+9aa476 0000			mov	r9,139813237575688
+9aa478 49894928			mov	[r9+40],rcx
+9aa47c 4c8b0c25b074fc00		mov	r9,[+16544944]
+9aa484 5d			pop	rbp
+9aa485 488b5500			mov	rdx,[rbp]
+9aa489 4c8b7508			mov	r14,[rbp+8]
+9aa48d 4c8b6d10			mov	r13,[rbp+16]
+9aa491 4c8b6518			mov	r12,[rbp+24]
+9aa495 4c8b5d20			mov	r11,[rbp+32]
+9aa499 4c8b5528			mov	r10,[rbp+40]
+9aa49d 488b7d30			mov	rdi,[rbp+48]
+9aa4a1 488b7538			mov	rsi,[rbp+56]
+9aa4a5 4c8b7d40			mov	r15,[rbp+64]
+9aa4a9 488b5d48			mov	rbx,[rbp+72]
+9aa4ad 488b4d50			mov	rcx,[rbp+80]
+9aa4b1 4883c558			add	rbp,byte 88
+9aa4b5 c3			ret
+9aa4b6			do_callback_handler:
+9aa4b6 4883ed58			sub	rbp,byte 88
+9aa4ba 48894d50			mov	[rbp+80],rcx
+9aa4be 48895d48			mov	[rbp+72],rbx
+9aa4c2 4c897d40			mov	[rbp+64],r15
+9aa4c6 48897538			mov	[rbp+56],rsi
+9aa4ca 48897d30			mov	[rbp+48],rdi
+9aa4ce 4c895528			mov	[rbp+40],r10
+9aa4d2 4c895d20			mov	[rbp+32],r11
+9aa4d6 4c896518			mov	[rbp+24],r12
+9aa4da 4c896d10			mov	[rbp+16],r13
+9aa4de 4c897508			mov	[rbp+8],r14
+9aa4e2 48895500			mov	[rbp],rdx
+9aa4e6 4c890c25b074fc00		mov	[+16544944],r9
+9aa4ee 4889ef			mov	rdi,rbp
+9aa4f1 4889e6			mov	rsi,rsp
+9aa4f4 55			push	rbp
+9aa4f5 51			push	rcx
+9aa4f6 4150			push	r8
+9aa4f8 4151			push	r9
+9aa4fa 4881ec80000000		sub	rsp,128
+9aa501 f20f110424		movsd	[rsp],xmm0
+9aa506 f20f114c2408		movsd	[rsp+8],xmm1
+9aa50c f20f11542410		movsd	[rsp+16],xmm2
+9aa512 f20f115c2418		movsd	[rsp+24],xmm3
+9aa518 f20f11642420		movsd	[rsp+32],xmm4
+9aa51e f20f116c2428		movsd	[rsp+40],xmm5
+9aa524 f20f11742430		movsd	[rsp+48],xmm6
+9aa52a f20f117c2438		movsd	[rsp+56],xmm7
+9aa530 f2440f11442440		movsd	[rsp+64],xmm8
+9aa537 f2440f114c2448		movsd	[rsp+72],xmm9
+9aa53e f2440f11542450		movsd	[rsp+80],xmm10
+9aa545 f2440f115c2458		movsd	[rsp+88],xmm11
+9aa54c f2440f11642460		movsd	[rsp+96],xmm12
+9aa553 f2440f116c2468		movsd	[rsp+104],xmm13
+9aa55a f2440f11742470		movsd	[rsp+112],xmm14
+9aa561 f2440f117c2478		movsd	[rsp+120],xmm15
+9aa568 4889e0			mov	rax,rsp
+9aa56b 4883e4f0			and	rsp,byte -16
+9aa56f 4883ec08			sub	rsp,byte 8
+9aa573 50			push	rax
+9aa574 e84ef81302		call	do_callback
+9aa579 5c			pop	rsp
+9aa57a f20f100424		movsd	xmm0,[rsp]
+9aa57f f20f104c2408		movsd	xmm1,[rsp+8]
+9aa585 f20f10542410		movsd	xmm2,[rsp+16]
+9aa58b f20f105c2418		movsd	xmm3,[rsp+24]
+9aa591 f20f10642420		movsd	xmm4,[rsp+32]
+9aa597 f20f106c2428		movsd	xmm5,[rsp+40]
+9aa59d f20f10742430		movsd	xmm6,[rsp+48]
+9aa5a3 f20f107c2438		movsd	xmm7,[rsp+56]
+9aa5a9 f2440f10442440		movsd	xmm8,[rsp+64]
+9aa5b0 f2440f104c2448		movsd	xmm9,[rsp+72]
+9aa5b7 f2440f10542450		movsd	xmm10,[rsp+80]
+9aa5be f2440f105c2458		movsd	xmm11,[rsp+88]
+9aa5c5 f2440f10642460		movsd	xmm12,[rsp+96]
+9aa5cc f2440f106c2468		movsd	xmm13,[rsp+104]
+9aa5d3 f2440f10742470		movsd	xmm14,[rsp+112]
+9aa5da f2440f107c2478		movsd	xmm15,[rsp+120]
+9aa5e1 4881c480000000		add	rsp,128
+9aa5e8 4159			pop	r9
+9aa5ea 4158			pop	r8
+9aa5ec 59			pop	rcx
+9aa5ed 488b0c25a874fc00		mov	rcx,[+16544936]
+9aa5f5 49b908505cce287f
+9aa5fd 0000			mov	r9,139813237575688
+9aa5ff 49894928			mov	[r9+40],rcx
+9aa603 4c8b0c25b074fc00		mov	r9,[+16544944]
+9aa60b 5d			pop	rbp
+9aa60c 488b5500			mov	rdx,[rbp]
+9aa610 4c8b7508			mov	r14,[rbp+8]
+9aa614 4c8b6d10			mov	r13,[rbp+16]
+9aa618 4c8b6518			mov	r12,[rbp+24]
+9aa61c 4c8b5d20			mov	r11,[rbp+32]
+9aa620 4c8b5528			mov	r10,[rbp+40]
+9aa624 488b7d30			mov	rdi,[rbp+48]
+9aa628 488b7538			mov	rsi,[rbp+56]
+9aa62c 4c8b7d40			mov	r15,[rbp+64]
+9aa630 488b5d48			mov	rbx,[rbp+72]
+9aa634 488b4d50			mov	rcx,[rbp+80]
+9aa638 4883c558			add	rbp,byte 88
+9aa63c c3			ret
+9aa63d			do_callback_fn_handler:
+9aa63d 4883ed58			sub	rbp,byte 88
+9aa641 48894d50			mov	[rbp+80],rcx
+9aa645 48895d48			mov	[rbp+72],rbx
+9aa649 4c897d40			mov	[rbp+64],r15
+9aa64d 48897538			mov	[rbp+56],rsi
+9aa651 48897d30			mov	[rbp+48],rdi
+9aa655 4c895528			mov	[rbp+40],r10
+9aa659 4c895d20			mov	[rbp+32],r11
+9aa65d 4c896518			mov	[rbp+24],r12
+9aa661 4c896d10			mov	[rbp+16],r13
+9aa665 4c897508			mov	[rbp+8],r14
+9aa669 48895500			mov	[rbp],rdx
+9aa66d 4c890c25b074fc00		mov	[+16544944],r9
+9aa675 4889ef			mov	rdi,rbp
+9aa678 4889e6			mov	rsi,rsp
+9aa67b 55			push	rbp
+9aa67c 51			push	rcx
+9aa67d 4150			push	r8
+9aa67f 4151			push	r9
+9aa681 4881ec80000000		sub	rsp,128
+9aa688 f20f110424		movsd	[rsp],xmm0
+9aa68d f20f114c2408		movsd	[rsp+8],xmm1
+9aa693 f20f11542410		movsd	[rsp+16],xmm2
+9aa699 f20f115c2418		movsd	[rsp+24],xmm3
+9aa69f f20f11642420		movsd	[rsp+32],xmm4
+9aa6a5 f20f116c2428		movsd	[rsp+40],xmm5
+9aa6ab f20f11742430		movsd	[rsp+48],xmm6
+9aa6b1 f20f117c2438		movsd	[rsp+56],xmm7
+9aa6b7 f2440f11442440		movsd	[rsp+64],xmm8
+9aa6be f2440f114c2448		movsd	[rsp+72],xmm9
+9aa6c5 f2440f11542450		movsd	[rsp+80],xmm10
+9aa6cc f2440f115c2458		movsd	[rsp+88],xmm11
+9aa6d3 f2440f11642460		movsd	[rsp+96],xmm12
+9aa6da f2440f116c2468		movsd	[rsp+104],xmm13
+9aa6e1 f2440f11742470		movsd	[rsp+112],xmm14
+9aa6e8 f2440f117c2478		movsd	[rsp+120],xmm15
+9aa6ef 4889e0			mov	rax,rsp
+9aa6f2 4883e4f0			and	rsp,byte -16
+9aa6f6 4883ec08			sub	rsp,byte 8
+9aa6fa 50			push	rax
+9aa6fb e84cf81302		call	do_callback_fn
+9aa700 5c			pop	rsp
+9aa701 f20f100424		movsd	xmm0,[rsp]
+9aa706 f20f104c2408		movsd	xmm1,[rsp+8]
+9aa70c f20f10542410		movsd	xmm2,[rsp+16]
+9aa712 f20f105c2418		movsd	xmm3,[rsp+24]
+9aa718 f20f10642420		movsd	xmm4,[rsp+32]
+9aa71e f20f106c2428		movsd	xmm5,[rsp+40]
+9aa724 f20f10742430		movsd	xmm6,[rsp+48]
+9aa72a f20f107c2438		movsd	xmm7,[rsp+56]
+9aa730 f2440f10442440		movsd	xmm8,[rsp+64]
+9aa737 f2440f104c2448		movsd	xmm9,[rsp+72]
+9aa73e f2440f10542450		movsd	xmm10,[rsp+80]
+9aa745 f2440f105c2458		movsd	xmm11,[rsp+88]
+9aa74c f2440f10642460		movsd	xmm12,[rsp+96]
+9aa753 f2440f106c2468		movsd	xmm13,[rsp+104]
+9aa75a f2440f10742470		movsd	xmm14,[rsp+112]
+9aa761 f2440f107c2478		movsd	xmm15,[rsp+120]
+9aa768 4881c480000000		add	rsp,128
+9aa76f 4159			pop	r9
+9aa771 4158			pop	r8
+9aa773 59			pop	rcx
+9aa774 488b0c25a874fc00		mov	rcx,[+16544936]
+9aa77c 49b908505cce287f
+9aa784 0000			mov	r9,139813237575688
+9aa786 49894928			mov	[r9+40],rcx
+9aa78a 4c8b0c25b074fc00		mov	r9,[+16544944]
+9aa792 5d			pop	rbp
+9aa793 488b5500			mov	rdx,[rbp]
+9aa797 4c8b7508			mov	r14,[rbp+8]
+9aa79b 4c8b6d10			mov	r13,[rbp+16]
+9aa79f 4c8b6518			mov	r12,[rbp+24]
+9aa7a3 4c8b5d20			mov	r11,[rbp+32]
+9aa7a7 4c8b5528			mov	r10,[rbp+40]
+9aa7ab 488b7d30			mov	rdi,[rbp+48]
+9aa7af 488b7538			mov	rsi,[rbp+56]
+9aa7b3 4c8b7d40			mov	r15,[rbp+64]
+9aa7b7 488b5d48			mov	rbx,[rbp+72]
+9aa7bb 488b4d50			mov	rcx,[rbp+80]
+9aa7bf 4883c558			add	rbp,byte 88
+9aa7c3 c3			ret
+9aa7c4			do_callback_cont_handler:
+9aa7c4 4883ed58			sub	rbp,byte 88
+9aa7c8 48894d50			mov	[rbp+80],rcx
+9aa7cc 48895d48			mov	[rbp+72],rbx
+9aa7d0 4c897d40			mov	[rbp+64],r15
+9aa7d4 48897538			mov	[rbp+56],rsi
+9aa7d8 48897d30			mov	[rbp+48],rdi
+9aa7dc 4c895528			mov	[rbp+40],r10
+9aa7e0 4c895d20			mov	[rbp+32],r11
+9aa7e4 4c896518			mov	[rbp+24],r12
+9aa7e8 4c896d10			mov	[rbp+16],r13
+9aa7ec 4c897508			mov	[rbp+8],r14
+9aa7f0 48895500			mov	[rbp],rdx
+9aa7f4 4c890c25b074fc00		mov	[+16544944],r9
+9aa7fc 4889ef			mov	rdi,rbp
+9aa7ff 4889e6			mov	rsi,rsp
+9aa802 55			push	rbp
+9aa803 51			push	rcx
+9aa804 4150			push	r8
+9aa806 4151			push	r9
+9aa808 4881ec80000000		sub	rsp,128
+9aa80f f20f110424		movsd	[rsp],xmm0
+9aa814 f20f114c2408		movsd	[rsp+8],xmm1
+9aa81a f20f11542410		movsd	[rsp+16],xmm2
+9aa820 f20f115c2418		movsd	[rsp+24],xmm3
+9aa826 f20f11642420		movsd	[rsp+32],xmm4
+9aa82c f20f116c2428		movsd	[rsp+40],xmm5
+9aa832 f20f11742430		movsd	[rsp+48],xmm6
+9aa838 f20f117c2438		movsd	[rsp+56],xmm7
+9aa83e f2440f11442440		movsd	[rsp+64],xmm8
+9aa845 f2440f114c2448		movsd	[rsp+72],xmm9
+9aa84c f2440f11542450		movsd	[rsp+80],xmm10
+9aa853 f2440f115c2458		movsd	[rsp+88],xmm11
+9aa85a f2440f11642460		movsd	[rsp+96],xmm12
+9aa861 f2440f116c2468		movsd	[rsp+104],xmm13
+9aa868 f2440f11742470		movsd	[rsp+112],xmm14
+9aa86f f2440f117c2478		movsd	[rsp+120],xmm15
+9aa876 4889e0			mov	rax,rsp
+9aa879 4883e4f0			and	rsp,byte -16
+9aa87d 4883ec08			sub	rsp,byte 8
+9aa881 50			push	rax
+9aa882 e84af81302		call	do_callback_cont
+9aa887 5c			pop	rsp
+9aa888 f20f100424		movsd	xmm0,[rsp]
+9aa88d f20f104c2408		movsd	xmm1,[rsp+8]
+9aa893 f20f10542410		movsd	xmm2,[rsp+16]
+9aa899 f20f105c2418		movsd	xmm3,[rsp+24]
+9aa89f f20f10642420		movsd	xmm4,[rsp+32]
+9aa8a5 f20f106c2428		movsd	xmm5,[rsp+40]
+9aa8ab f20f10742430		movsd	xmm6,[rsp+48]
+9aa8b1 f20f107c2438		movsd	xmm7,[rsp+56]
+9aa8b7 f2440f10442440		movsd	xmm8,[rsp+64]
+9aa8be f2440f104c2448		movsd	xmm9,[rsp+72]
+9aa8c5 f2440f10542450		movsd	xmm10,[rsp+80]
+9aa8cc f2440f105c2458		movsd	xmm11,[rsp+88]
+9aa8d3 f2440f10642460		movsd	xmm12,[rsp+96]
+9aa8da f2440f106c2468		movsd	xmm13,[rsp+104]
+9aa8e1 f2440f10742470		movsd	xmm14,[rsp+112]
+9aa8e8 f2440f107c2478		movsd	xmm15,[rsp+120]
+9aa8ef 4881c480000000		add	rsp,128
+9aa8f6 4159			pop	r9
+9aa8f8 4158			pop	r8
+9aa8fa 59			pop	rcx
+9aa8fb 488b0c25a874fc00		mov	rcx,[+16544936]
+9aa903 49b908505cce287f
+9aa90b 0000			mov	r9,139813237575688
+9aa90d 49894928			mov	[r9+40],rcx
+9aa911 4c8b0c25b074fc00		mov	r9,[+16544944]
+9aa919 5d			pop	rbp
+9aa91a 488b5500			mov	rdx,[rbp]
+9aa91e 4c8b7508			mov	r14,[rbp+8]
+9aa922 4c8b6d10			mov	r13,[rbp+16]
+9aa926 4c8b6518			mov	r12,[rbp+24]
+9aa92a 4c8b5d20			mov	r11,[rbp+32]
+9aa92e 4c8b5528			mov	r10,[rbp+40]
+9aa932 488b7d30			mov	rdi,[rbp+48]
+9aa936 488b7538			mov	rsi,[rbp+56]
+9aa93a 4c8b7d40			mov	r15,[rbp+64]
+9aa93e 488b5d48			mov	rbx,[rbp+72]
+9aa942 488b4d50			mov	rcx,[rbp+80]
+9aa946 4883c558			add	rbp,byte 88
+9aa94a c3			ret
+9aa94b			rt_error_handler:
+9aa94b 4883ed58			sub	rbp,byte 88
+9aa94f 48894d50			mov	[rbp+80],rcx
+9aa953 48895d48			mov	[rbp+72],rbx
+9aa957 4c897d40			mov	[rbp+64],r15
+9aa95b 48897538			mov	[rbp+56],rsi
+9aa95f 48897d30			mov	[rbp+48],rdi
+9aa963 4c895528			mov	[rbp+40],r10
+9aa967 4c895d20			mov	[rbp+32],r11
+9aa96b 4c896518			mov	[rbp+24],r12
+9aa96f 4c896d10			mov	[rbp+16],r13
+9aa973 4c897508			mov	[rbp+8],r14
+9aa977 48895500			mov	[rbp],rdx
+9aa97b 4c890c25b074fc00		mov	[+16544944],r9
+9aa983 4889ef			mov	rdi,rbp
+9aa986 4889e6			mov	rsi,rsp
+9aa989 55			push	rbp
+9aa98a 51			push	rcx
+9aa98b 4150			push	r8
+9aa98d 4151			push	r9
+9aa98f 4881ec80000000		sub	rsp,128
+9aa996 f20f110424		movsd	[rsp],xmm0
+9aa99b f20f114c2408		movsd	[rsp+8],xmm1
+9aa9a1 f20f11542410		movsd	[rsp+16],xmm2
+9aa9a7 f20f115c2418		movsd	[rsp+24],xmm3
+9aa9ad f20f11642420		movsd	[rsp+32],xmm4
+9aa9b3 f20f116c2428		movsd	[rsp+40],xmm5
+9aa9b9 f20f11742430		movsd	[rsp+48],xmm6
+9aa9bf f20f117c2438		movsd	[rsp+56],xmm7
+9aa9c5 f2440f11442440		movsd	[rsp+64],xmm8
+9aa9cc f2440f114c2448		movsd	[rsp+72],xmm9
+9aa9d3 f2440f11542450		movsd	[rsp+80],xmm10
+9aa9da f2440f115c2458		movsd	[rsp+88],xmm11
+9aa9e1 f2440f11642460		movsd	[rsp+96],xmm12
+9aa9e8 f2440f116c2468		movsd	[rsp+104],xmm13
+9aa9ef f2440f11742470		movsd	[rsp+112],xmm14
+9aa9f6 f2440f117c2478		movsd	[rsp+120],xmm15
+9aa9fd 4889e0			mov	rax,rsp
+9aaa00 4883e4f0			and	rsp,byte -16
+9aaa04 4883ec08			sub	rsp,byte 8
+9aaa08 50			push	rax
+9aaa09 e8bcec1302		call	rt_error
+9aaa0e 5c			pop	rsp
+9aaa0f f20f100424		movsd	xmm0,[rsp]
+9aaa14 f20f104c2408		movsd	xmm1,[rsp+8]
+9aaa1a f20f10542410		movsd	xmm2,[rsp+16]
+9aaa20 f20f105c2418		movsd	xmm3,[rsp+24]
+9aaa26 f20f10642420		movsd	xmm4,[rsp+32]
+9aaa2c f20f106c2428		movsd	xmm5,[rsp+40]
+9aaa32 f20f10742430		movsd	xmm6,[rsp+48]
+9aaa38 f20f107c2438		movsd	xmm7,[rsp+56]
+9aaa3e f2440f10442440		movsd	xmm8,[rsp+64]
+9aaa45 f2440f104c2448		movsd	xmm9,[rsp+72]
+9aaa4c f2440f10542450		movsd	xmm10,[rsp+80]
+9aaa53 f2440f105c2458		movsd	xmm11,[rsp+88]
+9aaa5a f2440f10642460		movsd	xmm12,[rsp+96]
+9aaa61 f2440f106c2468		movsd	xmm13,[rsp+104]
+9aaa68 f2440f10742470		movsd	xmm14,[rsp+112]
+9aaa6f f2440f107c2478		movsd	xmm15,[rsp+120]
+9aaa76 4881c480000000		add	rsp,128
+9aaa7d 4159			pop	r9
+9aaa7f 4158			pop	r8
+9aaa81 59			pop	rcx
+9aaa82 488b0c25a874fc00		mov	rcx,[+16544936]
+9aaa8a 49b908505cce287f
+9aaa92 0000			mov	r9,139813237575688
+9aaa94 49894928			mov	[r9+40],rcx
+9aaa98 4c8b0c25b074fc00		mov	r9,[+16544944]
+9aaaa0 5d			pop	rbp
+9aaaa1 488b5500			mov	rdx,[rbp]
+9aaaa5 4c8b7508			mov	r14,[rbp+8]
+9aaaa9 4c8b6d10			mov	r13,[rbp+16]
+9aaaad 4c8b6518			mov	r12,[rbp+24]
+9aaab1 4c8b5d20			mov	r11,[rbp+32]
+9aaab5 4c8b5528			mov	r10,[rbp+40]
+9aaab9 488b7d30			mov	rdi,[rbp+48]
+9aaabd 488b7538			mov	rsi,[rbp+56]
+9aaac1 4c8b7d40			mov	r15,[rbp+64]
+9aaac5 488b5d48			mov	rbx,[rbp+72]
+9aaac9 488b4d50			mov	rcx,[rbp+80]
+9aaacd 4883c558			add	rbp,byte 88
+9aaad1 c3			ret
+9aaad2			print_msg_handler:
+9aaad2 4883ed58			sub	rbp,byte 88
+9aaad6 48894d50			mov	[rbp+80],rcx
+9aaada 48895d48			mov	[rbp+72],rbx
+9aaade 4c897d40			mov	[rbp+64],r15
+9aaae2 48897538			mov	[rbp+56],rsi
+9aaae6 48897d30			mov	[rbp+48],rdi
+9aaaea 4c895528			mov	[rbp+40],r10
+9aaaee 4c895d20			mov	[rbp+32],r11
+9aaaf2 4c896518			mov	[rbp+24],r12
+9aaaf6 4c896d10			mov	[rbp+16],r13
+9aaafa 4c897508			mov	[rbp+8],r14
+9aaafe 48895500			mov	[rbp],rdx
+9aab02 4c890c25b074fc00		mov	[+16544944],r9
+9aab0a 4889ef			mov	rdi,rbp
+9aab0d 4889e6			mov	rsi,rsp
+9aab10 55			push	rbp
+9aab11 51			push	rcx
+9aab12 4150			push	r8
+9aab14 4151			push	r9
+9aab16 4881ec80000000		sub	rsp,128
+9aab1d f20f110424		movsd	[rsp],xmm0
+9aab22 f20f114c2408		movsd	[rsp+8],xmm1
+9aab28 f20f11542410		movsd	[rsp+16],xmm2
+9aab2e f20f115c2418		movsd	[rsp+24],xmm3
+9aab34 f20f11642420		movsd	[rsp+32],xmm4
+9aab3a f20f116c2428		movsd	[rsp+40],xmm5
+9aab40 f20f11742430		movsd	[rsp+48],xmm6
+9aab46 f20f117c2438		movsd	[rsp+56],xmm7
+9aab4c f2440f11442440		movsd	[rsp+64],xmm8
+9aab53 f2440f114c2448		movsd	[rsp+72],xmm9
+9aab5a f2440f11542450		movsd	[rsp+80],xmm10
+9aab61 f2440f115c2458		movsd	[rsp+88],xmm11
+9aab68 f2440f11642460		movsd	[rsp+96],xmm12
+9aab6f f2440f116c2468		movsd	[rsp+104],xmm13
+9aab76 f2440f11742470		movsd	[rsp+112],xmm14
+9aab7d f2440f117c2478		movsd	[rsp+120],xmm15
+9aab84 4889e0			mov	rax,rsp
+9aab87 4883e4f0			and	rsp,byte -16
+9aab8b 4883ec08			sub	rsp,byte 8
+9aab8f 50			push	rax
+9aab90 e8f5ed1302		call	print-msg
+9aab95 5c			pop	rsp
+9aab96 f20f100424		movsd	xmm0,[rsp]
+9aab9b f20f104c2408		movsd	xmm1,[rsp+8]
+9aaba1 f20f10542410		movsd	xmm2,[rsp+16]
+9aaba7 f20f105c2418		movsd	xmm3,[rsp+24]
+9aabad f20f10642420		movsd	xmm4,[rsp+32]
+9aabb3 f20f106c2428		movsd	xmm5,[rsp+40]
+9aabb9 f20f10742430		movsd	xmm6,[rsp+48]
+9aabbf f20f107c2438		movsd	xmm7,[rsp+56]
+9aabc5 f2440f10442440		movsd	xmm8,[rsp+64]
+9aabcc f2440f104c2448		movsd	xmm9,[rsp+72]
+9aabd3 f2440f10542450		movsd	xmm10,[rsp+80]
+9aabda f2440f105c2458		movsd	xmm11,[rsp+88]
+9aabe1 f2440f10642460		movsd	xmm12,[rsp+96]
+9aabe8 f2440f106c2468		movsd	xmm13,[rsp+104]
+9aabef f2440f10742470		movsd	xmm14,[rsp+112]
+9aabf6 f2440f107c2478		movsd	xmm15,[rsp+120]
+9aabfd 4881c480000000		add	rsp,128
+9aac04 4159			pop	r9
+9aac06 4158			pop	r8
+9aac08 59			pop	rcx
+9aac09 488b0c25a874fc00		mov	rcx,[+16544936]
+9aac11 49b908505cce287f
+9aac19 0000			mov	r9,139813237575688
+9aac1b 49894928			mov	[r9+40],rcx
+9aac1f 4c8b0c25b074fc00		mov	r9,[+16544944]
+9aac27 5d			pop	rbp
+9aac28 488b5500			mov	rdx,[rbp]
+9aac2c 4c8b7508			mov	r14,[rbp+8]
+9aac30 4c8b6d10			mov	r13,[rbp+16]
+9aac34 4c8b6518			mov	r12,[rbp+24]
+9aac38 4c8b5d20			mov	r11,[rbp+32]
+9aac3c 4c8b5528			mov	r10,[rbp+40]
+9aac40 488b7d30			mov	rdi,[rbp+48]
+9aac44 488b7538			mov	rsi,[rbp+56]
+9aac48 4c8b7d40			mov	r15,[rbp+64]
+9aac4c 488b5d48			mov	rbx,[rbp+72]
+9aac50 488b4d50			mov	rcx,[rbp+80]
+9aac54 4883c558			add	rbp,byte 88
+9aac58 c3			ret
+9aac59			print_msg_val_handler:
+9aac59 4883ed58			sub	rbp,byte 88
+9aac5d 48894d50			mov	[rbp+80],rcx
+9aac61 48895d48			mov	[rbp+72],rbx
+9aac65 4c897d40			mov	[rbp+64],r15
+9aac69 48897538			mov	[rbp+56],rsi
+9aac6d 48897d30			mov	[rbp+48],rdi
+9aac71 4c895528			mov	[rbp+40],r10
+9aac75 4c895d20			mov	[rbp+32],r11
+9aac79 4c896518			mov	[rbp+24],r12
+9aac7d 4c896d10			mov	[rbp+16],r13
+9aac81 4c897508			mov	[rbp+8],r14
+9aac85 48895500			mov	[rbp],rdx
+9aac89 4c890c25b074fc00		mov	[+16544944],r9
+9aac91 4889ef			mov	rdi,rbp
+9aac94 4889e6			mov	rsi,rsp
+9aac97 55			push	rbp
+9aac98 51			push	rcx
+9aac99 4150			push	r8
+9aac9b 4151			push	r9
+9aac9d 4881ec80000000		sub	rsp,128
+9aaca4 f20f110424		movsd	[rsp],xmm0
+9aaca9 f20f114c2408		movsd	[rsp+8],xmm1
+9aacaf f20f11542410		movsd	[rsp+16],xmm2
+9aacb5 f20f115c2418		movsd	[rsp+24],xmm3
+9aacbb f20f11642420		movsd	[rsp+32],xmm4
+9aacc1 f20f116c2428		movsd	[rsp+40],xmm5
+9aacc7 f20f11742430		movsd	[rsp+48],xmm6
+9aaccd f20f117c2438		movsd	[rsp+56],xmm7
+9aacd3 f2440f11442440		movsd	[rsp+64],xmm8
+9aacda f2440f114c2448		movsd	[rsp+72],xmm9
+9aace1 f2440f11542450		movsd	[rsp+80],xmm10
+9aace8 f2440f115c2458		movsd	[rsp+88],xmm11
+9aacef f2440f11642460		movsd	[rsp+96],xmm12
+9aacf6 f2440f116c2468		movsd	[rsp+104],xmm13
+9aacfd f2440f11742470		movsd	[rsp+112],xmm14
+9aad04 f2440f117c2478		movsd	[rsp+120],xmm15
+9aad0b 4889e0			mov	rax,rsp
+9aad0e 4883e4f0			and	rsp,byte -16
+9aad12 4883ec08			sub	rsp,byte 8
+9aad16 50			push	rax
+9aad17 e833eb1302		call	print-msg-val
+9aad1c 5c			pop	rsp
+9aad1d f20f100424		movsd	xmm0,[rsp]
+9aad22 f20f104c2408		movsd	xmm1,[rsp+8]
+9aad28 f20f10542410		movsd	xmm2,[rsp+16]
+9aad2e f20f105c2418		movsd	xmm3,[rsp+24]
+9aad34 f20f10642420		movsd	xmm4,[rsp+32]
+9aad3a f20f106c2428		movsd	xmm5,[rsp+40]
+9aad40 f20f10742430		movsd	xmm6,[rsp+48]
+9aad46 f20f107c2438		movsd	xmm7,[rsp+56]
+9aad4c f2440f10442440		movsd	xmm8,[rsp+64]
+9aad53 f2440f104c2448		movsd	xmm9,[rsp+72]
+9aad5a f2440f10542450		movsd	xmm10,[rsp+80]
+9aad61 f2440f105c2458		movsd	xmm11,[rsp+88]
+9aad68 f2440f10642460		movsd	xmm12,[rsp+96]
+9aad6f f2440f106c2468		movsd	xmm13,[rsp+104]
+9aad76 f2440f10742470		movsd	xmm14,[rsp+112]
+9aad7d f2440f107c2478		movsd	xmm15,[rsp+120]
+9aad84 4881c480000000		add	rsp,128
+9aad8b 4159			pop	r9
+9aad8d 4158			pop	r8
+9aad8f 59			pop	rcx
+9aad90 488b0c25a874fc00		mov	rcx,[+16544936]
+9aad98 49b908505cce287f
+9aada0 0000			mov	r9,139813237575688
+9aada2 49894928			mov	[r9+40],rcx
+9aada6 4c8b0c25b074fc00		mov	r9,[+16544944]
+9aadae 5d			pop	rbp
+9aadaf 488b5500			mov	rdx,[rbp]
+9aadb3 4c8b7508			mov	r14,[rbp+8]
+9aadb7 4c8b6d10			mov	r13,[rbp+16]
+9aadbb 4c8b6518			mov	r12,[rbp+24]
+9aadbf 4c8b5d20			mov	r11,[rbp+32]
+9aadc3 4c8b5528			mov	r10,[rbp+40]
+9aadc7 488b7d30			mov	rdi,[rbp+48]
+9aadcb 488b7538			mov	rsi,[rbp+56]
+9aadcf 4c8b7d40			mov	r15,[rbp+64]
+9aadd3 488b5d48			mov	rbx,[rbp+72]
+9aadd7 488b4d50			mov	rcx,[rbp+80]
+9aaddb 4883c558			add	rbp,byte 88
+9aaddf c3			ret
+9aade0			repl:
+9aade0 4883ed58			sub	rbp,byte 88
+9aade4 48894d50			mov	[rbp+80],rcx
+9aade8 48895d48			mov	[rbp+72],rbx
+9aadec 4c897d40			mov	[rbp+64],r15
+9aadf0 48897538			mov	[rbp+56],rsi
+9aadf4 48897d30			mov	[rbp+48],rdi
+9aadf8 4c895528			mov	[rbp+40],r10
+9aadfc 4c895d20			mov	[rbp+32],r11
+9aae00 4c896518			mov	[rbp+24],r12
+9aae04 4c896d10			mov	[rbp+16],r13
+9aae08 4c897508			mov	[rbp+8],r14
+9aae0c 48895500			mov	[rbp],rdx
+9aae10 4c890c25b074fc00		mov	[+16544944],r9
+9aae18 4889ef			mov	rdi,rbp
+9aae1b 4889e6			mov	rsi,rsp
+9aae1e 55			push	rbp
+9aae1f 51			push	rcx
+9aae20 4150			push	r8
+9aae22 4151			push	r9
+9aae24 4881ec80000000		sub	rsp,128
+9aae2b f20f110424		movsd	[rsp],xmm0
+9aae30 f20f114c2408		movsd	[rsp+8],xmm1
+9aae36 f20f11542410		movsd	[rsp+16],xmm2
+9aae3c f20f115c2418		movsd	[rsp+24],xmm3
+9aae42 f20f11642420		movsd	[rsp+32],xmm4
+9aae48 f20f116c2428		movsd	[rsp+40],xmm5
+9aae4e f20f11742430		movsd	[rsp+48],xmm6
+9aae54 f20f117c2438		movsd	[rsp+56],xmm7
+9aae5a f2440f11442440		movsd	[rsp+64],xmm8
+9aae61 f2440f114c2448		movsd	[rsp+72],xmm9
+9aae68 f2440f11542450		movsd	[rsp+80],xmm10
+9aae6f f2440f115c2458		movsd	[rsp+88],xmm11
+9aae76 f2440f11642460		movsd	[rsp+96],xmm12
+9aae7d f2440f116c2468		movsd	[rsp+104],xmm13
+9aae84 f2440f11742470		movsd	[rsp+112],xmm14
+9aae8b f2440f117c2478		movsd	[rsp+120],xmm15
+9aae92 4889e0			mov	rax,rsp
+9aae95 4883e4f0			and	rsp,byte -16
+9aae99 4883ec08			sub	rsp,byte 8
+9aae9d 50			push	rax
+9aae9e e822ec1302		call	repl
+9aaea3 5c			pop	rsp
+9aaea4 f20f100424		movsd	xmm0,[rsp]
+9aaea9 f20f104c2408		movsd	xmm1,[rsp+8]
+9aaeaf f20f10542410		movsd	xmm2,[rsp+16]
+9aaeb5 f20f105c2418		movsd	xmm3,[rsp+24]
+9aaebb f20f10642420		movsd	xmm4,[rsp+32]
+9aaec1 f20f106c2428		movsd	xmm5,[rsp+40]
+9aaec7 f20f10742430		movsd	xmm6,[rsp+48]
+9aaecd f20f107c2438		movsd	xmm7,[rsp+56]
+9aaed3 f2440f10442440		movsd	xmm8,[rsp+64]
+9aaeda f2440f104c2448		movsd	xmm9,[rsp+72]
+9aaee1 f2440f10542450		movsd	xmm10,[rsp+80]
+9aaee8 f2440f105c2458		movsd	xmm11,[rsp+88]
+9aaeef f2440f10642460		movsd	xmm12,[rsp+96]
+9aaef6 f2440f106c2468		movsd	xmm13,[rsp+104]
+9aaefd f2440f10742470		movsd	xmm14,[rsp+112]
+9aaf04 f2440f107c2478		movsd	xmm15,[rsp+120]
+9aaf0b 4881c480000000		add	rsp,128
+9aaf12 4159			pop	r9
+9aaf14 4158			pop	r8
+9aaf16 59			pop	rcx
+9aaf17 488b0c25a874fc00		mov	rcx,[+16544936]
+9aaf1f 49b908505cce287f
+9aaf27 0000			mov	r9,139813237575688
+9aaf29 49894928			mov	[r9+40],rcx
+9aaf2d 4c8b0c25b074fc00		mov	r9,[+16544944]
+9aaf35 5d			pop	rbp
+9aaf36 488b5500			mov	rdx,[rbp]
+9aaf3a 4c8b7508			mov	r14,[rbp+8]
+9aaf3e 4c8b6d10			mov	r13,[rbp+16]
+9aaf42 4c8b6518			mov	r12,[rbp+24]
+9aaf46 4c8b5d20			mov	r11,[rbp+32]
+9aaf4a 4c8b5528			mov	r10,[rbp+40]
+9aaf4e 488b7d30			mov	rdi,[rbp+48]
+9aaf52 488b7538			mov	rsi,[rbp+56]
+9aaf56 4c8b7d40			mov	r15,[rbp+64]
+9aaf5a 488b5d48			mov	rbx,[rbp+72]
+9aaf5e 488b4d50			mov	rcx,[rbp+80]
+9aaf62 4883c558			add	rbp,byte 88
+9aaf66 c3			ret
+9aaf67			err_wrong_num_args:
+9aaf67 4883ed08			sub	rbp,byte 8
+9aaf6b 48895d00			mov	[rbp],rbx
+9aaf6f 48bbc1d5dda8287f
+9aaf77 0000			mov	rbx,139812608529857
+9aaf79 e8cdf9ffff		call	rt_error_handler
+9aaf7e 488b5d00			mov	rbx,[rbp]
+9aaf82 4883c508			add	rbp,byte 8
+9aaf86			rtlib_skip:
+9aaf86 4881ec80000000		sub	rsp,128
+9aaf8d f20f110424		movsd	[rsp],xmm0
+9aaf92 f20f114c2408		movsd	[rsp+8],xmm1
+9aaf98 f20f11542410		movsd	[rsp+16],xmm2
+9aaf9e f20f115c2418		movsd	[rsp+24],xmm3
+9aafa4 f20f11642420		movsd	[rsp+32],xmm4
+9aafaa f20f116c2428		movsd	[rsp+40],xmm5
+9aafb0 f20f11742430		movsd	[rsp+48],xmm6
+9aafb6 f20f117c2438		movsd	[rsp+56],xmm7
+9aafbc f2440f11442440		movsd	[rsp+64],xmm8
+9aafc3 f2440f114c2448		movsd	[rsp+72],xmm9
+9aafca f2440f11542450		movsd	[rsp+80],xmm10
+9aafd1 f2440f115c2458		movsd	[rsp+88],xmm11
+9aafd8 f2440f11642460		movsd	[rsp+96],xmm12
+9aafdf f2440f116c2468		movsd	[rsp+104],xmm13
+9aafe6 f2440f11742470		movsd	[rsp+112],xmm14
+9aafed f2440f117c2478		movsd	[rsp+120],xmm15
+9aaff4 50			push	rax
+9aaff5 53			push	rbx
+9aaff6 51			push	rcx
+9aaff7 52			push	rdx
+9aaff8 55			push	rbp
+9aaff9 56			push	rsi
+9aaffa 57			push	rdi
+9aaffb 4150			push	r8
+9aaffd 4151			push	r9
+9aafff 4152			push	r10
+9ab001 4153			push	r11
+9ab003 4154			push	r12
+9ab005 4155			push	r13
+9ab007 4156			push	r14
+9ab009 4157			push	r15
+9ab00b 48bd88929aa6287f
+9ab013 0000			mov	rbp,139812570567304
+9ab015 48b808505cce287f
+9ab01d 0000			mov	rax,139813237575688
+9ab01f 488b0c25a874fc00		mov	rcx,[+16544936]
+9ab027 48894828			mov	[rax+40],rcx
+9ab02b 48c7c100000000		mov	rcx,dword 0
+9ab032 4c8b0c25b074fc00		mov	r9,[+16544944]
+9ab03a 49c7c02881d002		mov	r8,dword 47218984
+9ab041 48c7c300000000		mov	rbx,dword 0
+9ab048 49c7c700000000		mov	r15,dword 0
+9ab04f 48c7c600000000		mov	rsi,dword 0
+9ab056 48c7c700000000		mov	rdi,dword 0
+9ab05d 49c7c200000000		mov	r10,dword 0
+9ab064 49c7c300000000		mov	r11,dword 0
+9ab06b 49c7c400000000		mov	r12,dword 0
+9ab072 49c7c500000000		mov	r13,dword 0
+9ab079 49c7c600000000		mov	r14,dword 0
+9ab080 48c7c200000000		mov	rdx,dword 0
+9ab087			prog_begin1:
+------------------------------------------------------------------------
+51baf0				bits 64
+51baf0			stub_7f28a751baf0_1:
+51baf0 83c104			add	ecx,byte 4
+51baf3 90			nop
+51baf4			stub_7f28a751baf0_0:
+51baf4 e844eb48ff		call	do_callback_fn_handler
+51baf9 21ced10200000000
+------------------------------------------------------------------------
+51bad8				bits 64
+51bad8			stub_7f28a751bad8_1:
+51bad8 83c104			add	ecx,byte 4
+51badb 90			nop
+51badc			stub_7f28a751bad8_0:
+51badc e85ceb48ff		call	do_callback_fn_handler
+51bae1 81ced10200000000
+------------------------------------------------------------------------
+51bac0				bits 64
+51bac0			stub_7f28a751bac0_1:
+51bac0 83c104			add	ecx,byte 4
+51bac3 90			nop
+51bac4			stub_7f28a751bac0_0:
+51bac4 e8fbec48ff		call	do_callback_cont_handler
+51bac9 51c7cf0200000000
+------------------------------------------------------------------------
+9ab087				bits 64
+9ab087 90		version_1:
+9ab088			version_2:
+9ab088			version_3:
+9ab088			version_4:
+9ab088			version_5:
+9ab088			version_6:
+9ab088			version_7:
+9ab088			version_8:
+9ab088 4883ed08			sub	rbp,byte 8
+9ab08c 48c7c0e810d002		mov	rax,dword 47190248
+9ab093 48894500			mov	[rbp],rax
+9ab097 49c7c43917d002		mov	r12,dword 47191865
+9ab09e 49c7c20c000000		mov	r10,dword 12
+9ab0a5 49c7c700000000		mov	r15,dword 0
+9ab0ac 48c7c304000000		mov	rbx,dword 4
+9ab0b3 49c7c300000000		mov	r11,dword 0
+9ab0ba 48c7c710000000		mov	rdi,dword 16
+9ab0c1			stub_load_1:
+9ab0c1 e92e0ab700		jmp	dest_7f28a751baf4_1
+GEN VERSION FN#<lazy-code #2
+                 ast: #f
+                 generator: #<procedure #3>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #4
+           stack: ((clo) (int) (int) (int) (clo) (ret))
+           slot-loc:
+            ((5 r . 6) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs: ((r . 3) (r . 5) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((x0 . #<identifier #5
+                          kind: local
+                          sslots: (2)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #6
+                          kind: local
+                          sslots: (3)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (z0 . #<identifier #7
+                          kind: local
+                          sslots: (4)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (k0 . #<identifier #8
+                          kind: local
+                          sslots: (5)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>))
+           nb-actual: 4
+           nb-args: 4
+           fs: 1
+           ffs: 0
+           fn-num: 0>
+------------------------------------------------------------------------
+51baa8				bits 64
+51baa8			stub_7f28a751baa8_1:
+51baa8 83c104			add	ecx,byte 4
+51baab 90			nop
+51baac			stub_7f28a751baa8_0:
+51baac e805ea48ff		call	do_callback_handler
+51bab1 d1d9d10200000000
+------------------------------------------------------------------------
+9ab0c6				bits 64
+9ab0c6 9090		fn_entry_1:
+9ab0c8			version_9:
+9ab0c8 4c89ff			mov	rdi,r15
+9ab0cb			version_10:
+9ab0cb 4989db			mov	r11,rbx
+9ab0ce			version_11:
+9ab0ce			version_12:
+9ab0ce			version_13:
+9ab0ce			version_14:
+9ab0ce 4c39df			cmp	rdi,r11
+9ab0d1			patchable_jump1:
+9ab0d1 0f8dd509b700		jge	stub_7f28a751baa8_0
+9ab0d7 e9cc09b700		jmp	stub_7f28a751baa8_1
+Patch direct stub jump at 7f28a69ab0c1
+  > now jump to 7f28a69ab0c8
+------------------------------------------------------------------------
+9ab0c1				bits 64
+9ab0c1 eb05			jmp	short fn_entry_1
+>>> selector= 1
+>>> prev-action= #f
+GEN VERSION >>> #<lazy-code #9
+                   ast: #f
+                   generator: #<procedure #10>
+                   flags: ()
+                   lco-true: #f
+                   lco-false: #f>
+#<ctx #11
+      stack: ((clo) (int) (int) (int) (clo) (ret))
+      slot-loc: ((5 r . 6) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0))
+      free-regs: ((r . 3) (r . 5) (r . 7) (r . 8) (r . 9))
+      free-mems: ()
+      free-fregs:
+       ((fr . 0)
+        (fr . 1)
+        (fr . 2)
+        (fr . 3)
+        (fr . 4)
+        (fr . 5)
+        (fr . 6)
+        (fr . 7)
+        (fr . 8)
+        (fr . 9)
+        (fr . 10)
+        (fr . 11)
+        (fr . 12)
+        (fr . 13))
+      free-fmems: ()
+      env: ((x0 . #<identifier #12
+                     kind: local
+                     sslots: (2)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (y0 . #<identifier #13
+                     kind: local
+                     sslots: (3)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (z0 . #<identifier #7
+                     kind: local
+                     sslots: (4)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (k0 . #<identifier #8
+                     kind: local
+                     sslots: (5)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>))
+      nb-actual: 4
+      nb-args: 4
+      fs: 1
+      ffs: 0
+      fn-num: 0>
+>>> fall-through-optimization
+------------------------------------------------------------------------
+51ba90				bits 64
+51ba90			stub_7f28a751ba90_1:
+51ba90 83c104			add	ecx,byte 4
+51ba93 90			nop
+51ba94			stub_7f28a751ba90_0:
+51ba94 e8a4eb48ff		call	do_callback_fn_handler
+51ba99 71dad10200000000
+------------------------------------------------------------------------
+51ba78				bits 64
+51ba78			stub_7f28a751ba78_0:
+51ba78 e839ea48ff		call	do_callback_handler
+51ba7d d1dad10200000000
+------------------------------------------------------------------------
+51ba60				bits 64
+51ba60			stub_7f28a751ba60_1:
+51ba60 83c104			add	ecx,byte 4
+51ba63 90			nop
+51ba64			stub_7f28a751ba60_0:
+51ba64 e84dea48ff		call	do_callback_handler
+51ba69 21dbd10200000000
+------------------------------------------------------------------------
+9ab0d7				bits 64
+9ab0d7 90		version_15:
+9ab0d8			version_16:
+9ab0d8			alloc_begin_1:
+9ab0d8 4983c130			add	r9,byte 48
+9ab0dc 48b830505cce287f
+9ab0e4 0000			mov	rax,139813237575728
+9ab0e6 4c3b08			cmp	r9,[rax]
+9ab0e9 7e09			jle	short alloc_end_1
+9ab0eb e81defffff		call	heap_limit_handler
+9ab0f0 4983c130			add	r9,byte 48
+9ab0f4			alloc_end_1:
+9ab0f4 49c741d070280000		mov	qword [r9-48],dword 10352
+9ab0fc 48c7c0c823d002		mov	rax,dword 47195080
+9ab103 498941d8			mov	[r9-40],rax
+9ab107 4d8961e0			mov	[r9-32],r12
+9ab10b 4d8979e8			mov	[r9-24],r15
+9ab10f 498959f0			mov	[r9-16],rbx
+9ab113 4d8951f8			mov	[r9-8],r10
+9ab117 498d79d1			lea	rdi,[r9-47]
+9ab11b			version_17:
+9ab11b 4989db			mov	r11,rbx
+9ab11e			version_18:
+9ab11e			version_19:
+9ab11e			version_20:
+9ab11e			version_21:
+9ab11e			version_22:
+9ab11e 4d89dd			mov	r13,r11
+9ab121 4983ed04			sub	r13,byte 4
+9ab125 0f804d09b700		jo	stub_7f28a751ba78_0
+9ab12b			version_23:
+9ab12b			version_24:
+9ab12b 4d89fb			mov	r11,r15
+9ab12e			version_25:
+9ab12e 4d89ee			mov	r14,r13
+9ab131			version_26:
+9ab131			version_27:
+9ab131			version_28:
+9ab131			version_29:
+9ab131 4d39f3			cmp	r11,r14
+9ab134			patchable_jump2:
+9ab134 0f8d2a09b700		jge	stub_7f28a751ba60_0
+9ab13a e92109b700		jmp	stub_7f28a751ba60_1
+>>> selector= 0
+>>> prev-action= #f
+>>> swapping-branches
+>>> patching jump at 7f28a69ab134 -> 7f28a751ba60
+GEN VERSION >>> #<lazy-code #14
+                   ast: (($$atom k1) ($$atom z0))
+                   generator: #<procedure #15>
+                   flags: ()
+                   lco-true: #f
+                   lco-false: #f>
+#<ctx #16
+      stack: ((int) (cloc 2) (clo) (int) (int) (int) (clo) (ret))
+      slot-loc:
+       ((7 r . 7)
+        (6 r . 3)
+        (5 r . 6)
+        (4 r . 4)
+        (3 r . 1)
+        (2 r . 0)
+        (1 r . 2)
+        (0 m . 0))
+      free-regs: ((r . 5) (r . 8) (r . 9))
+      free-mems: ()
+      free-fregs:
+       ((fr . 0)
+        (fr . 1)
+        (fr . 2)
+        (fr . 3)
+        (fr . 4)
+        (fr . 5)
+        (fr . 6)
+        (fr . 7)
+        (fr . 8)
+        (fr . 9)
+        (fr . 10)
+        (fr . 11)
+        (fr . 12)
+        (fr . 13))
+      free-fmems: ()
+      env: ((k1 . #<identifier #17
+                     kind: local
+                     sslots: (6)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (x1 . #<identifier #18
+                     kind: local
+                     sslots: (7)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (y0 . #<identifier #19
+                     kind: local
+                     sslots: (3)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (z0 . #<identifier #20
+                     kind: local
+                     sslots: (4)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>))
+      nb-actual: 4
+      nb-args: 4
+      fs: 1
+      ffs: 0
+      fn-num: 0>
+>>> fall-through-optimization
+------------------------------------------------------------------------
+9ab13a				bits 64
+9ab13a 9090		version_30:
+9ab13c			version_31:
+9ab13c 4989fb			mov	r11,rdi
+9ab13f			version_32:
+9ab13f			version_33:
+9ab13f 4d89d6			mov	r14,r10
+9ab142			version_34:
+9ab142 4c89f3			mov	rbx,r14
+9ab145 488b4500			mov	rax,[rbp]
+9ab149 48894500			mov	[rbp],rax
+9ab14d 4c89de			mov	rsi,r11
+9ab150 49c7c304000000		mov	r11,dword 4
+9ab157 48c7c704000000		mov	rdi,dword 4
+9ab15e			stub_load_2:
+9ab15e e93109b700		jmp	dest_7f28a751ba94_1
+GEN VERSION FN#<lazy-code #21
+                 ast: #f
+                 generator: #<procedure #22>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #23
+           stack: ((int) (clo) (ret))
+           slot-loc: ((2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs:
+            ((r . 1) (r . 3) (r . 4) (r . 5) (r . 6) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((k0 . #<identifier #24
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (clo)
+                          cloc: (f . 0)
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #25
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 1)
+                          cst: #f
+                          thisid: #f>)
+                 (x0 . #<identifier #26
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 2)
+                          cst: #f
+                          thisid: #f>)
+                 (z0 . #<identifier #27
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 3)
+                          cst: #f
+                          thisid: #f>)
+                 (v10 . #<identifier #28
+                           kind: local
+                           sslots: (2)
+                           flags: ()
+                           stype: #f
+                           cloc: #f
+                           cst: #f
+                           thisid: #f>))
+           nb-actual: 1
+           nb-args: 1
+           fs: 1
+           ffs: 0
+           fn-num: 2>
+------------------------------------------------------------------------
+51ba48				bits 64
+51ba48			stub_7f28a751ba48_0:
+51ba48 e869ea48ff		call	do_callback_handler
+51ba4d 11dcd10200000000
+------------------------------------------------------------------------
+51ba30				bits 64
+51ba30			stub_7f28a751ba30_1:
+51ba30 83c104			add	ecx,byte 4
+51ba33 90			nop
+51ba34			stub_7f28a751ba30_0:
+51ba34 e804ec48ff		call	do_callback_fn_handler
+51ba39 a1efd10200000000
+------------------------------------------------------------------------
+9ab163				bits 64
+9ab163 90		fn_entry_2:
+9ab164			version_35:
+9ab164			version_36:
+9ab164 4c8b7e17			mov	r15,[rsi+23]
+9ab168			version_37:
+9ab168			version_38:
+9ab168			version_39:
+9ab168			version_40:
+9ab168			version_41:
+9ab168 4c89ff			mov	rdi,r15
+9ab16b 4883ef04			sub	rdi,byte 4
+9ab16f 0f80d308b700		jo	stub_7f28a751ba48_0
+9ab175			version_42:
+9ab175 4c8b7e27			mov	r15,[rsi+39]
+9ab179			version_43:
+9ab179 4c8b561f			mov	r10,[rsi+31]
+9ab17d			version_44:
+9ab17d			alloc_begin_2:
+9ab17d 4983c138			add	r9,byte 56
+9ab181 48b830505cce287f
+9ab189 0000			mov	rax,139813237575728
+9ab18b 4c3b08			cmp	r9,[rax]
+9ab18e 7e09			jle	short alloc_end_2
+9ab190 e878eeffff		call	heap_limit_handler
+9ab195 4983c138			add	r9,byte 56
+9ab199			alloc_end_2:
+9ab199 49c741c870300000		mov	qword [r9-56],dword 12400
+9ab1a1 48c7c040dcd102		mov	rax,dword 47307840
+9ab1a8 498941d0			mov	[r9-48],rax
+9ab1ac 4d8979d8			mov	[r9-40],r15
+9ab1b0 4d8951e0			mov	[r9-32],r10
+9ab1b4 488b4617			mov	rax,[rsi+23]
+9ab1b8 498941e8			mov	[r9-24],rax
+9ab1bc 488b460f			mov	rax,[rsi+15]
+9ab1c0 498941f0			mov	[r9-16],rax
+9ab1c4 498959f8			mov	[r9-8],rbx
+9ab1c8 4d8d59c9			lea	r11,[r9-55]
+9ab1cc			version_45:
+9ab1cc 4d89dc			mov	r12,r11
+9ab1cf 488b4500			mov	rax,[rbp]
+9ab1d3 48894500			mov	[rbp],rax
+9ab1d7 4889fb			mov	rbx,rdi
+9ab1da 49c7c300000000		mov	r11,dword 0
+9ab1e1 48c7c710000000		mov	rdi,dword 16
+9ab1e8			stub_load_3:
+9ab1e8 e90709b700		jmp	dest_7f28a751baf4_2
+Patch direct stub jump at 7f28a69ab15e
+  > now jump to 7f28a69ab164
+------------------------------------------------------------------------
+9ab15e				bits 64
+9ab15e eb04			jmp	short fn_entry_2
+GEN VERSION FN#<lazy-code #2
+                 ast: #f
+                 generator: #<procedure #3>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #29
+           stack: ((clo) (int) (int) (int) (clo) (ret))
+           slot-loc:
+            ((5 r . 6) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs: ((r . 3) (r . 5) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((x0 . #<identifier #30
+                          kind: local
+                          sslots: (2)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #31
+                          kind: local
+                          sslots: (3)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (z0 . #<identifier #32
+                          kind: local
+                          sslots: (4)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (k0 . #<identifier #33
+                          kind: local
+                          sslots: (5)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>))
+           nb-actual: 4
+           nb-args: 4
+           fs: 1
+           ffs: 0
+           fn-num: 0>
+Patch direct stub jump at 7f28a69ab1e8
+  > now jump to 7f28a69ab0c8
+------------------------------------------------------------------------
+9ab1e8				bits 64
+9ab1e8 e9dbfeffff		jmp	fn_entry_1
+>>> selector= 0
+>>> prev-action= no-swap
+GEN VERSION >>> #<lazy-code #34
+                   ast: (($$atom k0) ($$atom z0))
+                   generator: #<procedure #35>
+                   flags: ()
+                   lco-true: #f
+                   lco-false: #f>
+#<ctx #11
+      stack: ((clo) (int) (int) (int) (clo) (ret))
+      slot-loc: ((5 r . 6) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0))
+      free-regs: ((r . 3) (r . 5) (r . 7) (r . 8) (r . 9))
+      free-mems: ()
+      free-fregs:
+       ((fr . 0)
+        (fr . 1)
+        (fr . 2)
+        (fr . 3)
+        (fr . 4)
+        (fr . 5)
+        (fr . 6)
+        (fr . 7)
+        (fr . 8)
+        (fr . 9)
+        (fr . 10)
+        (fr . 11)
+        (fr . 12)
+        (fr . 13))
+      free-fmems: ()
+      env: ((x0 . #<identifier #12
+                     kind: local
+                     sslots: (2)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (y0 . #<identifier #13
+                     kind: local
+                     sslots: (3)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (z0 . #<identifier #7
+                     kind: local
+                     sslots: (4)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (k0 . #<identifier #8
+                     kind: local
+                     sslots: (5)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>))
+      nb-actual: 4
+      nb-args: 4
+      fs: 1
+      ffs: 0
+      fn-num: 0>
+------------------------------------------------------------------------
+9ab1ed				bits 64
+9ab1ed 909090		version_46:
+9ab1f0			version_47:
+9ab1f0 4c89e7			mov	rdi,r12
+9ab1f3			version_48:
+9ab1f3			version_49:
+9ab1f3 4d89d3			mov	r11,r10
+9ab1f6			version_50:
+9ab1f6 4c89db			mov	rbx,r11
+9ab1f9 488b4500			mov	rax,[rbp]
+9ab1fd 48894500			mov	[rbp],rax
+9ab201 4889fe			mov	rsi,rdi
+9ab204 49c7c304000000		mov	r11,dword 4
+9ab20b 48c7c704000000		mov	rdi,dword 4
+9ab212 488b5607			mov	rdx,[rsi+7]
+9ab216 ff6218			jmp	[rdx+24]
+>>> patching jump at 7f28a69ab0d1 -> 7f28a69ab1f0
+GEN VERSION FN#<lazy-code #36
+                 ast: #f
+                 generator: #<procedure #37>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #38
+           stack: ((int) (clo) (ret))
+           slot-loc: ((2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs:
+            ((r . 1) (r . 3) (r . 4) (r . 5) (r . 6) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((z0 . #<identifier #39
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 0)
+                          cst: #f
+                          thisid: #f>)
+                 (x0 . #<identifier #40
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 1)
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #41
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 2)
+                          cst: #f
+                          thisid: #f>)
+                 (k0 . #<identifier #42
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (clo)
+                          cloc: (f . 3)
+                          cst: #f
+                          thisid: #f>)
+                 (v10 . #<identifier #43
+                           kind: free
+                           sslots: ()
+                           flags: ()
+                           stype: (int)
+                           cloc: (f . 4)
+                           cst: #f
+                           thisid: #f>)
+                 (v20 . #<identifier #44
+                           kind: local
+                           sslots: (2)
+                           flags: ()
+                           stype: #f
+                           cloc: #f
+                           cst: #f
+                           thisid: #f>))
+           nb-actual: 1
+           nb-args: 1
+           fs: 1
+           ffs: 0
+           fn-num: 3>
+------------------------------------------------------------------------
+51baa8				bits 64
+51baa8			stub_7f28a751baa8_0:
+51baa8 e809ea48ff		call	do_callback_handler
+51baad f1f0d10200000000
+------------------------------------------------------------------------
+51ba18				bits 64
+51ba18			stub_7f28a751ba18_1:
+51ba18 83c104			add	ecx,byte 4
+51ba1b 90			nop
+51ba1c			stub_7f28a751ba18_0:
+51ba1c e81cec48ff		call	do_callback_fn_handler
+51ba21 8104d20200000000
+------------------------------------------------------------------------
+9ab219				bits 64
+9ab219 909090		fn_entry_3:
+9ab21c			version_51:
+9ab21c			version_52:
+9ab21c 4c8b7e0f			mov	r15,[rsi+15]
+9ab220			version_53:
+9ab220			version_54:
+9ab220			version_55:
+9ab220			version_56:
+9ab220			version_57:
+9ab220 4c89ff			mov	rdi,r15
+9ab223 4883ef04			sub	rdi,byte 4
+9ab227 0f807b08b700		jo	stub_7f28a751baa8_0
+9ab22d			version_58:
+9ab22d 4c8b7e17			mov	r15,[rsi+23]
+9ab231			version_59:
+9ab231 4c8b561f			mov	r10,[rsi+31]
+9ab235			version_60:
+9ab235			alloc_begin_3:
+9ab235 4983c128			add	r9,byte 40
+9ab239 48b830505cce287f
+9ab241 0000			mov	rax,139813237575728
+9ab243 4c3b08			cmp	r9,[rax]
+9ab246 7e09			jle	short alloc_end_3
+9ab248 e8c0edffff		call	heap_limit_handler
+9ab24d 4983c128			add	r9,byte 40
+9ab251			alloc_end_3:
+9ab251 49c741d870200000		mov	qword [r9-40],dword 8304
+9ab259 48c7c020f1d102		mov	rax,dword 47313184
+9ab260 498941e0			mov	[r9-32],rax
+9ab264 488b462f			mov	rax,[rsi+47]
+9ab268 498941e8			mov	[r9-24],rax
+9ab26c 498959f0			mov	[r9-16],rbx
+9ab270 488b4627			mov	rax,[rsi+39]
+9ab274 498941f8			mov	[r9-8],rax
+9ab278 4d8d59d9			lea	r11,[r9-39]
+9ab27c			version_61:
+9ab27c 4d89dc			mov	r12,r11
+9ab27f 488b4500			mov	rax,[rbp]
+9ab283 48894500			mov	[rbp],rax
+9ab287 4889fb			mov	rbx,rdi
+9ab28a 49c7c300000000		mov	r11,dword 0
+9ab291 48c7c710000000		mov	rdi,dword 16
+9ab298			stub_load_4:
+9ab298 e95708b700		jmp	dest_7f28a751baf4_3
+GEN VERSION FN#<lazy-code #2
+                 ast: #f
+                 generator: #<procedure #3>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #45
+           stack: ((clo) (int) (int) (int) (clo) (ret))
+           slot-loc:
+            ((5 r . 6) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs: ((r . 3) (r . 5) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((x0 . #<identifier #46
+                          kind: local
+                          sslots: (2)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #47
+                          kind: local
+                          sslots: (3)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (z0 . #<identifier #48
+                          kind: local
+                          sslots: (4)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (k0 . #<identifier #49
+                          kind: local
+                          sslots: (5)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>))
+           nb-actual: 4
+           nb-args: 4
+           fs: 1
+           ffs: 0
+           fn-num: 0>
+Patch direct stub jump at 7f28a69ab298
+  > now jump to 7f28a69ab0c8
+------------------------------------------------------------------------
+9ab298				bits 64
+9ab298 e92bfeffff		jmp	fn_entry_1
+GEN VERSION FN#<lazy-code #50
+                 ast: #f
+                 generator: #<procedure #51>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #52
+           stack: ((int) (clo) (ret))
+           slot-loc: ((2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs:
+            ((r . 1) (r . 3) (r . 4) (r . 5) (r . 6) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((v10 . #<identifier #53
+                           kind: free
+                           sslots: ()
+                           flags: ()
+                           stype: (int)
+                           cloc: (f . 0)
+                           cst: #f
+                           thisid: #f>)
+                 (v20 . #<identifier #54
+                           kind: free
+                           sslots: ()
+                           flags: ()
+                           stype: (int)
+                           cloc: (f . 1)
+                           cst: #f
+                           thisid: #f>)
+                 (k0 . #<identifier #55
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (clo)
+                          cloc: (f . 2)
+                          cst: #f
+                          thisid: #f>)
+                 (v30 . #<identifier #56
+                           kind: local
+                           sslots: (2)
+                           flags: ()
+                           stype: #f
+                           cloc: #f
+                           cst: #f
+                           thisid: #f>))
+           nb-actual: 1
+           nb-args: 1
+           fs: 1
+           ffs: 0
+           fn-num: 4>
+------------------------------------------------------------------------
+9ab29d				bits 64
+9ab29d 909090		fn_entry_4:
+9ab2a0			version_62:
+9ab2a0			version_63:
+9ab2a0 4c8b7e0f			mov	r15,[rsi+15]
+9ab2a4			version_64:
+9ab2a4 488b7e17			mov	rdi,[rsi+23]
+9ab2a8			version_65:
+9ab2a8 4989da			mov	r10,rbx
+9ab2ab			version_66:
+9ab2ab 4c8b5e1f			mov	r11,[rsi+31]
+9ab2af			version_67:
+9ab2af 4d89dc			mov	r12,r11
+9ab2b2 488b4500			mov	rax,[rbp]
+9ab2b6 48894500			mov	[rbp],rax
+9ab2ba 4c89fb			mov	rbx,r15
+9ab2bd 4989ff			mov	r15,rdi
+9ab2c0 49c7c300000000		mov	r11,dword 0
+9ab2c7 48c7c710000000		mov	rdi,dword 16
+9ab2ce			stub_load_5:
+9ab2ce e92108b700		jmp	dest_7f28a751baf4_4
+GEN VERSION FN#<lazy-code #2
+                 ast: #f
+                 generator: #<procedure #3>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #57
+           stack: ((clo) (int) (int) (int) (clo) (ret))
+           slot-loc:
+            ((5 r . 6) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs: ((r . 3) (r . 5) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((x0 . #<identifier #58
+                          kind: local
+                          sslots: (2)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #59
+                          kind: local
+                          sslots: (3)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (z0 . #<identifier #60
+                          kind: local
+                          sslots: (4)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (k0 . #<identifier #61
+                          kind: local
+                          sslots: (5)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>))
+           nb-actual: 4
+           nb-args: 4
+           fs: 1
+           ffs: 0
+           fn-num: 0>
+Patch direct stub jump at 7f28a69ab2ce
+  > now jump to 7f28a69ab0c8
+------------------------------------------------------------------------
+9ab2ce				bits 64
+9ab2ce e9f5fdffff		jmp	fn_entry_1
+>>> selector= 1
+>>> prev-action= swap
+GEN VERSION >>> #<lazy-code #62
+                   ast: #f
+                   generator: #<procedure #63>
+                   flags: ()
+                   lco-true: #f
+                   lco-false: #f>
+#<ctx #16
+      stack: ((int) (cloc 2) (clo) (int) (int) (int) (clo) (ret))
+      slot-loc:
+       ((7 r . 7)
+        (6 r . 3)
+        (5 r . 6)
+        (4 r . 4)
+        (3 r . 1)
+        (2 r . 0)
+        (1 r . 2)
+        (0 m . 0))
+      free-regs: ((r . 5) (r . 8) (r . 9))
+      free-mems: ()
+      free-fregs:
+       ((fr . 0)
+        (fr . 1)
+        (fr . 2)
+        (fr . 3)
+        (fr . 4)
+        (fr . 5)
+        (fr . 6)
+        (fr . 7)
+        (fr . 8)
+        (fr . 9)
+        (fr . 10)
+        (fr . 11)
+        (fr . 12)
+        (fr . 13))
+      free-fmems: ()
+      env: ((k1 . #<identifier #17
+                     kind: local
+                     sslots: (6)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (x1 . #<identifier #18
+                     kind: local
+                     sslots: (7)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (y0 . #<identifier #19
+                     kind: local
+                     sslots: (3)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (z0 . #<identifier #20
+                     kind: local
+                     sslots: (4)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>))
+      nb-actual: 4
+      nb-args: 4
+      fs: 1
+      ffs: 0
+      fn-num: 0>
+------------------------------------------------------------------------
+51ba60				bits 64
+51ba60			stub_7f28a751ba60_0:
+51ba60 e851ea48ff		call	do_callback_handler
+51ba65 4186d20200000000
+------------------------------------------------------------------------
+51ba00				bits 64
+51ba00			stub_7f28a751ba00_1:
+51ba00 83c104			add	ecx,byte 4
+51ba03 90			nop
+51ba04			stub_7f28a751ba00_0:
+51ba04 e834ec48ff		call	do_callback_fn_handler
+51ba09 9186d20200000000
+------------------------------------------------------------------------
+51b9e8				bits 64
+51b9e8			stub_7f28a751b9e8_1:
+51b9e8 83c104			add	ecx,byte 4
+51b9eb 90			nop
+51b9ec			stub_7f28a751b9e8_0:
+51b9ec e8c5ea48ff		call	do_callback_handler
+51b9f1 f186d20200000000
+------------------------------------------------------------------------
+9ab2d3				bits 64
+9ab2d3 90		version_68:
+9ab2d4			version_69:
+9ab2d4 4d89eb			mov	r11,r13
+9ab2d7			version_70:
+9ab2d7			version_71:
+9ab2d7			version_72:
+9ab2d7			version_73:
+9ab2d7			version_74:
+9ab2d7 4d89de			mov	r14,r11
+9ab2da 4983ee04			sub	r14,byte 4
+9ab2de 0f807c07b700		jo	stub_7f28a751ba60_0
+9ab2e4			version_75:
+9ab2e4			alloc_begin_4:
+9ab2e4 4983c128			add	r9,byte 40
+9ab2e8 48b830505cce287f
+9ab2f0 0000			mov	rax,139813237575728
+9ab2f2 4c3b08			cmp	r9,[rax]
+9ab2f5 7e09			jle	short alloc_end_4
+9ab2f7 e811edffff		call	heap_limit_handler
+9ab2fc 4983c128			add	r9,byte 40
+9ab300			alloc_end_4:
+9ab300 49c741d870200000		mov	qword [r9-40],dword 8304
+9ab308 48c7c0e808d202		mov	rax,dword 47319272
+9ab30f 498941e0			mov	[r9-32],rax
+9ab313 4d8979e8			mov	[r9-24],r15
+9ab317 4d8969f0			mov	[r9-16],r13
+9ab31b 4d8951f8			mov	[r9-8],r10
+9ab31f 4d8d59d9			lea	r11,[r9-39]
+9ab323			version_76:
+9ab323			version_77:
+9ab323 4c89fa			mov	rdx,r15
+9ab326			version_78:
+9ab326 4883ed08			sub	rbp,byte 8
+9ab32a 48897500			mov	[rbp],rsi
+9ab32e 4c89f6			mov	rsi,r14
+9ab331			version_79:
+9ab331			version_80:
+9ab331			version_81:
+9ab331			version_82:
+9ab331 4839f2			cmp	rdx,rsi
+9ab334			patchable_jump3:
+9ab334 0f8db206b700		jge	stub_7f28a751b9e8_0
+9ab33a e9a906b700		jmp	stub_7f28a751b9e8_1
+>>> patching jump at 7f28a69ab134 -> 7f28a69ab2d4
+>>> selector= 0
+>>> prev-action= #f
+>>> swapping-branches
+>>> patching jump at 7f28a69ab334 -> 7f28a751b9e8
+GEN VERSION >>> #<lazy-code #64
+                   ast: (($$atom k2) ($$atom z0))
+                   generator: #<procedure #65>
+                   flags: ()
+                   lco-true: #f
+                   lco-false: #f>
+#<ctx #66
+      stack: ((cloc 5)
+              (int)
+              (int)
+              (cloc 2)
+              (clo)
+              (int)
+              (int)
+              (int)
+              (clo)
+              (ret))
+      slot-loc:
+       ((9 r . 5)
+        (8 r . 8)
+        (7 r . 7)
+        (6 r . 3)
+        (5 r . 6)
+        (4 r . 4)
+        (3 r . 1)
+        (2 r . 0)
+        (1 m . 1)
+        (0 m . 0))
+      free-regs: ((r . 9) (r . 2))
+      free-mems: ()
+      free-fregs:
+       ((fr . 0)
+        (fr . 1)
+        (fr . 2)
+        (fr . 3)
+        (fr . 4)
+        (fr . 5)
+        (fr . 6)
+        (fr . 7)
+        (fr . 8)
+        (fr . 9)
+        (fr . 10)
+        (fr . 11)
+        (fr . 12)
+        (fr . 13))
+      free-fmems: ()
+      env: ((x2 . #<identifier #67
+                     kind: local
+                     sslots: (8)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (k2 . #<identifier #68
+                     kind: local
+                     sslots: (9)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (k1 . #<identifier #69
+                     kind: local
+                     sslots: (6)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (x1 . #<identifier #70
+                     kind: local
+                     sslots: (7)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (y0 . #<identifier #71
+                     kind: local
+                     sslots: (3)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (z0 . #<identifier #72
+                     kind: local
+                     sslots: (4)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>))
+      nb-actual: 4
+      nb-args: 4
+      fs: 2
+      ffs: 0
+      fn-num: 0>
+>>> fall-through-optimization
+------------------------------------------------------------------------
+9ab33a				bits 64
+9ab33a 9090		version_83:
+9ab33c			version_84:
+9ab33c 4c89da			mov	rdx,r11
+9ab33f			version_85:
+9ab33f			version_86:
+9ab33f 4c89d6			mov	rsi,r10
+9ab342			version_87:
+9ab342 4889f3			mov	rbx,rsi
+9ab345 488b4508			mov	rax,[rbp+8]
+9ab349 48894508			mov	[rbp+8],rax
+9ab34d 4889d6			mov	rsi,rdx
+9ab350 4883c508			add	rbp,byte 8
+9ab354 49c7c304000000		mov	r11,dword 4
+9ab35b 48c7c704000000		mov	rdi,dword 4
+9ab362			stub_load_6:
+9ab362 e99d06b700		jmp	dest_7f28a751ba04_1
+GEN VERSION FN#<lazy-code #73
+                 ast: #f
+                 generator: #<procedure #74>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #75
+           stack: ((int) (clo) (ret))
+           slot-loc: ((2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs:
+            ((r . 1) (r . 3) (r . 4) (r . 5) (r . 6) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((k1 . #<identifier #76
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (cloc 2)
+                          cloc: (f . 0)
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #77
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 1)
+                          cst: #f
+                          thisid: #f>)
+                 (x1 . #<identifier #78
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 2)
+                          cst: #f
+                          thisid: #f>)
+                 (z0 . #<identifier #79
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 3)
+                          cst: #f
+                          thisid: #f>)
+                 (v10 . #<identifier #80
+                           kind: local
+                           sslots: (2)
+                           flags: ()
+                           stype: #f
+                           cloc: #f
+                           cst: #f
+                           thisid: #f>))
+           nb-actual: 1
+           nb-args: 1
+           fs: 1
+           ffs: 0
+           fn-num: 5>
+------------------------------------------------------------------------
+51b9d0				bits 64
+51b9d0			stub_7f28a751b9d0_0:
+51b9d0 e8e1ea48ff		call	do_callback_handler
+51b9d5 2192d20200000000
+------------------------------------------------------------------------
+51b9b8				bits 64
+51b9b8			stub_7f28a751b9b8_1:
+51b9b8 83c104			add	ecx,byte 4
+51b9bb 90			nop
+51b9bc			stub_7f28a751b9b8_0:
+51b9bc e87cec48ff		call	do_callback_fn_handler
+51b9c1 7192d20200000000
+------------------------------------------------------------------------
+9ab367				bits 64
+9ab367 90		fn_entry_5:
+9ab368			version_88:
+9ab368			version_89:
+9ab368 4c8b7e17			mov	r15,[rsi+23]
+9ab36c			version_90:
+9ab36c			version_91:
+9ab36c			version_92:
+9ab36c			version_93:
+9ab36c			version_94:
+9ab36c 4c89ff			mov	rdi,r15
+9ab36f 4883ef04			sub	rdi,byte 4
+9ab373 0f805706b700		jo	stub_7f28a751b9d0_0
+9ab379			version_95:
+9ab379 4c8b7e27			mov	r15,[rsi+39]
+9ab37d			version_96:
+9ab37d 4c8b561f			mov	r10,[rsi+31]
+9ab381			version_97:
+9ab381			alloc_begin_5:
+9ab381 4983c130			add	r9,byte 48
+9ab385 48b830505cce287f
+9ab38d 0000			mov	rax,139813237575728
+9ab38f 4c3b08			cmp	r9,[rax]
+9ab392 7e09			jle	short alloc_end_5
+9ab394 e874ecffff		call	heap_limit_handler
+9ab399 4983c130			add	r9,byte 48
+9ab39d			alloc_end_5:
+9ab39d 49c741d070280000		mov	qword [r9-48],dword 10352
+9ab3a5 48c7c0d829d202		mov	rax,dword 47327704
+9ab3ac 498941d8			mov	[r9-40],rax
+9ab3b0 4d8979e0			mov	[r9-32],r15
+9ab3b4 4d8951e8			mov	[r9-24],r10
+9ab3b8 488b4617			mov	rax,[rsi+23]
+9ab3bc 498941f0			mov	[r9-16],rax
+9ab3c0 498959f8			mov	[r9-8],rbx
+9ab3c4 4d8d59d1			lea	r11,[r9-47]
+9ab3c8			version_98:
+9ab3c8 4d89dc			mov	r12,r11
+9ab3cb 488b4500			mov	rax,[rbp]
+9ab3cf 48894500			mov	[rbp],rax
+9ab3d3 4889fb			mov	rbx,rdi
+9ab3d6 49c7c300000000		mov	r11,dword 0
+9ab3dd 48c7c710000000		mov	rdi,dword 16
+9ab3e4			stub_load_7:
+9ab3e4 e90b07b700		jmp	dest_7f28a751baf4_5
+Patch direct stub jump at 7f28a69ab362
+  > now jump to 7f28a69ab368
+------------------------------------------------------------------------
+9ab362				bits 64
+9ab362 eb04			jmp	short fn_entry_5
+GEN VERSION FN#<lazy-code #2
+                 ast: #f
+                 generator: #<procedure #3>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #81
+           stack: ((clo) (int) (int) (int) (clo) (ret))
+           slot-loc:
+            ((5 r . 6) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs: ((r . 3) (r . 5) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((x0 . #<identifier #82
+                          kind: local
+                          sslots: (2)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #83
+                          kind: local
+                          sslots: (3)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (z0 . #<identifier #84
+                          kind: local
+                          sslots: (4)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (k0 . #<identifier #85
+                          kind: local
+                          sslots: (5)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>))
+           nb-actual: 4
+           nb-args: 4
+           fs: 1
+           ffs: 0
+           fn-num: 0>
+Patch direct stub jump at 7f28a69ab3e4
+  > now jump to 7f28a69ab0c8
+------------------------------------------------------------------------
+9ab3e4				bits 64
+9ab3e4 e9dffcffff		jmp	fn_entry_1
+GEN VERSION FN#<lazy-code #86
+                 ast: #f
+                 generator: #<procedure #87>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #88
+           stack: ((int) (clo) (ret))
+           slot-loc: ((2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs:
+            ((r . 1) (r . 3) (r . 4) (r . 5) (r . 6) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((z0 . #<identifier #89
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 0)
+                          cst: #f
+                          thisid: #f>)
+                 (x1 . #<identifier #90
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 1)
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #91
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 2)
+                          cst: #f
+                          thisid: #f>)
+                 (k1 . #<identifier #92
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (cloc 2)
+                          cloc: (f . 3)
+                          cst: #f
+                          thisid: #f>)
+                 (v10 . #<identifier #93
+                           kind: free
+                           sslots: ()
+                           flags: ()
+                           stype: (int)
+                           cloc: (f . 4)
+                           cst: #f
+                           thisid: #f>)
+                 (v20 . #<identifier #94
+                           kind: local
+                           sslots: (2)
+                           flags: ()
+                           stype: #f
+                           cloc: #f
+                           cst: #f
+                           thisid: #f>))
+           nb-actual: 1
+           nb-args: 1
+           fs: 1
+           ffs: 0
+           fn-num: 6>
+------------------------------------------------------------------------
+51b9a0				bits 64
+51b9a0			stub_7f28a751b9a0_0:
+51b9a0 e811eb48ff		call	do_callback_handler
+51b9a5 7193d20200000000
+------------------------------------------------------------------------
+51b988				bits 64
+51b988			stub_7f28a751b988_1:
+51b988 83c104			add	ecx,byte 4
+51b98b 90			nop
+51b98c			stub_7f28a751b988_0:
+51b98c e8acec48ff		call	do_callback_fn_handler
+51b991 c193d20200000000
+------------------------------------------------------------------------
+9ab3e9				bits 64
+9ab3e9 909090		fn_entry_6:
+9ab3ec			version_99:
+9ab3ec			version_100:
+9ab3ec 4c8b7e0f			mov	r15,[rsi+15]
+9ab3f0			version_101:
+9ab3f0			version_102:
+9ab3f0			version_103:
+9ab3f0			version_104:
+9ab3f0			version_105:
+9ab3f0 4c89ff			mov	rdi,r15
+9ab3f3 4883ef04			sub	rdi,byte 4
+9ab3f7 0f80a305b700		jo	stub_7f28a751b9a0_0
+9ab3fd			version_106:
+9ab3fd 4c8b7e17			mov	r15,[rsi+23]
+9ab401			version_107:
+9ab401 4c8b561f			mov	r10,[rsi+31]
+9ab405			version_108:
+9ab405			alloc_begin_6:
+9ab405 4983c120			add	r9,byte 32
+9ab409 48b830505cce287f
+9ab411 0000			mov	rax,139813237575728
+9ab413 4c3b08			cmp	r9,[rax]
+9ab416 7e09			jle	short alloc_end_6
+9ab418 e8f0ebffff		call	heap_limit_handler
+9ab41d 4983c120			add	r9,byte 32
+9ab421			alloc_end_6:
+9ab421 49c741e070180000		mov	qword [r9-32],dword 6256
+9ab429 48c7c04046d202		mov	rax,dword 47334976
+9ab430 498941e8			mov	[r9-24],rax
+9ab434 488b462f			mov	rax,[rsi+47]
+9ab438 498941f0			mov	[r9-16],rax
+9ab43c 498959f8			mov	[r9-8],rbx
+9ab440 4d8d59e1			lea	r11,[r9-31]
+9ab444			version_109:
+9ab444 4d89dc			mov	r12,r11
+9ab447 488b4500			mov	rax,[rbp]
+9ab44b 48894500			mov	[rbp],rax
+9ab44f 4889fb			mov	rbx,rdi
+9ab452 49c7c300000000		mov	r11,dword 0
+9ab459 48c7c710000000		mov	rdi,dword 16
+9ab460			stub_load_8:
+9ab460 e98f06b700		jmp	dest_7f28a751baf4_6
+GEN VERSION FN#<lazy-code #2
+                 ast: #f
+                 generator: #<procedure #3>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #95
+           stack: ((clo) (int) (int) (int) (clo) (ret))
+           slot-loc:
+            ((5 r . 6) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs: ((r . 3) (r . 5) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((x0 . #<identifier #96
+                          kind: local
+                          sslots: (2)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #97
+                          kind: local
+                          sslots: (3)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (z0 . #<identifier #98
+                          kind: local
+                          sslots: (4)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (k0 . #<identifier #99
+                          kind: local
+                          sslots: (5)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>))
+           nb-actual: 4
+           nb-args: 4
+           fs: 1
+           ffs: 0
+           fn-num: 0>
+Patch direct stub jump at 7f28a69ab460
+  > now jump to 7f28a69ab0c8
+------------------------------------------------------------------------
+9ab460				bits 64
+9ab460 e963fcffff		jmp	fn_entry_1
+>>> selector= 1
+>>> prev-action= swap
+GEN VERSION >>> #<lazy-code #100
+                   ast: (($$atom tak)
+                         (($$atom -) ($$atom x2) ($$atom 1))
+                         ($$atom y0)
+                         ($$atom z0)
+                         (lambda (v10)
+                           (($$atom tak)
+                            (($$atom -) ($$atom y0) ($$atom 1))
+                            ($$atom z0)
+                            ($$atom x2)
+                            (lambda (v20)
+                              (($$atom tak)
+                               (($$atom -) ($$atom z0) ($$atom 1))
+                               ($$atom x2)
+                               ($$atom y0)
+                               (lambda (v30)
+                                 (($$atom tak)
+                                  ($$atom v10)
+                                  ($$atom v20)
+                                  ($$atom v30)
+                                  ($$atom k2))))))))
+                   generator: #<procedure #101>
+                   flags: ()
+                   lco-true: #f
+                   lco-false: #f>
+#<ctx #66
+      stack: ((cloc 5)
+              (int)
+              (int)
+              (cloc 2)
+              (clo)
+              (int)
+              (int)
+              (int)
+              (clo)
+              (ret))
+      slot-loc:
+       ((9 r . 5)
+        (8 r . 8)
+        (7 r . 7)
+        (6 r . 3)
+        (5 r . 6)
+        (4 r . 4)
+        (3 r . 1)
+        (2 r . 0)
+        (1 m . 1)
+        (0 m . 0))
+      free-regs: ((r . 9) (r . 2))
+      free-mems: ()
+      free-fregs:
+       ((fr . 0)
+        (fr . 1)
+        (fr . 2)
+        (fr . 3)
+        (fr . 4)
+        (fr . 5)
+        (fr . 6)
+        (fr . 7)
+        (fr . 8)
+        (fr . 9)
+        (fr . 10)
+        (fr . 11)
+        (fr . 12)
+        (fr . 13))
+      free-fmems: ()
+      env: ((x2 . #<identifier #67
+                     kind: local
+                     sslots: (8)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (k2 . #<identifier #68
+                     kind: local
+                     sslots: (9)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (k1 . #<identifier #69
+                     kind: local
+                     sslots: (6)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (x1 . #<identifier #70
+                     kind: local
+                     sslots: (7)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (y0 . #<identifier #71
+                     kind: local
+                     sslots: (3)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>)
+            (z0 . #<identifier #72
+                     kind: local
+                     sslots: (4)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>))
+      nb-actual: 4
+      nb-args: 4
+      fs: 2
+      ffs: 0
+      fn-num: 0>
+------------------------------------------------------------------------
+51b9e8				bits 64
+51b9e8			stub_7f28a751b9e8_0:
+51b9e8 e8c9ea48ff		call	do_callback_handler
+51b9ed 41a9d20200000000
+------------------------------------------------------------------------
+51b970				bits 64
+51b970			stub_7f28a751b970_1:
+51b970 83c104			add	ecx,byte 4
+51b973 90			nop
+51b974			stub_7f28a751b970_0:
+51b974 e8c4ec48ff		call	do_callback_fn_handler
+51b979 91a9d20200000000
+------------------------------------------------------------------------
+9ab465				bits 64
+9ab465 909090		version_110:
+9ab468			version_111:
+9ab468 4c89f2			mov	rdx,r14
+9ab46b			version_112:
+9ab46b			version_113:
+9ab46b			version_114:
+9ab46b			version_115:
+9ab46b			version_116:
+9ab46b 4889d6			mov	rsi,rdx
+9ab46e 4883ee04			sub	rsi,byte 4
+9ab472 0f807005b700		jo	stub_7f28a751b9e8_0
+9ab478			version_117:
+9ab478 4c89fa			mov	rdx,r15
+9ab47b			version_118:
+9ab47b 4883ed08			sub	rbp,byte 8
+9ab47f 48895d00			mov	[rbp],rbx
+9ab483 4c89d3			mov	rbx,r10
+9ab486			version_119:
+9ab486 4883ed08			sub	rbp,byte 8
+9ab48a 4c897d00			mov	[rbp],r15
+9ab48e			alloc_begin_7:
+9ab48e 4983c128			add	r9,byte 40
+9ab492 48b830505cce287f
+9ab49a 0000			mov	rax,139813237575728
+9ab49c 4c3b08			cmp	r9,[rax]
+9ab49f 7e09			jle	short alloc_end_7
+9ab4a1 e867ebffff		call	heap_limit_handler
+9ab4a6 4983c128			add	r9,byte 40
+9ab4aa			alloc_end_7:
+9ab4aa 49c741d870200000		mov	qword [r9-40],dword 8304
+9ab4b2 48c7c00861d202		mov	rax,dword 47341832
+9ab4b9 498941e0			mov	[r9-32],rax
+9ab4bd 498951e8			mov	[r9-24],rdx
+9ab4c1 4d8971f0			mov	[r9-16],r14
+9ab4c5 498959f8			mov	[r9-8],rbx
+9ab4c9 4d8d79d9			lea	r15,[r9-39]
+9ab4cd			version_120:
+9ab4cd 4d89fc			mov	r12,r15
+9ab4d0 488b4518			mov	rax,[rbp+24]
+9ab4d4 48894518			mov	[rbp+24],rax
+9ab4d8 4989da			mov	r10,rbx
+9ab4db 4989d7			mov	r15,rdx
+9ab4de 4889f3			mov	rbx,rsi
+9ab4e1 4883c518			add	rbp,byte 24
+9ab4e5 49c7c300000000		mov	r11,dword 0
+9ab4ec 48c7c710000000		mov	rdi,dword 16
+9ab4f3			stub_load_9:
+9ab4f3 e9fc05b700		jmp	dest_7f28a751baf4_7
+>>> patching jump at 7f28a69ab334 -> 7f28a69ab468
+GEN VERSION FN#<lazy-code #2
+                 ast: #f
+                 generator: #<procedure #3>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #102
+           stack: ((clo) (int) (int) (int) (clo) (ret))
+           slot-loc:
+            ((5 r . 6) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs: ((r . 3) (r . 5) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((x0 . #<identifier #103
+                          kind: local
+                          sslots: (2)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #104
+                          kind: local
+                          sslots: (3)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (z0 . #<identifier #105
+                          kind: local
+                          sslots: (4)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (k0 . #<identifier #106
+                          kind: local
+                          sslots: (5)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>))
+           nb-actual: 4
+           nb-args: 4
+           fs: 1
+           ffs: 0
+           fn-num: 0>
+Patch direct stub jump at 7f28a69ab4f3
+  > now jump to 7f28a69ab0c8
+------------------------------------------------------------------------
+9ab4f3				bits 64
+9ab4f3 e9d0fbffff		jmp	fn_entry_1
+GEN VERSION FN#<lazy-code #107
+                 ast: #f
+                 generator: #<procedure #108>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #109
+           stack: ((int) (clo) (ret))
+           slot-loc: ((2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs:
+            ((r . 1) (r . 3) (r . 4) (r . 5) (r . 6) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((k2 . #<identifier #110
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (cloc 5)
+                          cloc: (f . 0)
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #111
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 1)
+                          cst: #f
+                          thisid: #f>)
+                 (x2 . #<identifier #112
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 2)
+                          cst: #f
+                          thisid: #f>)
+                 (z0 . #<identifier #113
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 3)
+                          cst: #f
+                          thisid: #f>)
+                 (v10 . #<identifier #114
+                           kind: local
+                           sslots: (2)
+                           flags: ()
+                           stype: #f
+                           cloc: #f
+                           cst: #f
+                           thisid: #f>))
+           nb-actual: 1
+           nb-args: 1
+           fs: 1
+           ffs: 0
+           fn-num: 8>
+------------------------------------------------------------------------
+51b958				bits 64
+51b958			stub_7f28a751b958_0:
+51b958 e859eb48ff		call	do_callback_handler
+51b95d 91aad20200000000
+------------------------------------------------------------------------
+51b940				bits 64
+51b940			stub_7f28a751b940_1:
+51b940 83c104			add	ecx,byte 4
+51b943 90			nop
+51b944			stub_7f28a751b940_0:
+51b944 e8f4ec48ff		call	do_callback_fn_handler
+51b949 21bed20200000000
+------------------------------------------------------------------------
+9ab4f8				bits 64
+9ab4f8			fn_entry_7:
+9ab4f8			version_121:
+9ab4f8			version_122:
+9ab4f8 4c8b7e17			mov	r15,[rsi+23]
+9ab4fc			version_123:
+9ab4fc			version_124:
+9ab4fc			version_125:
+9ab4fc			version_126:
+9ab4fc			version_127:
+9ab4fc 4c89ff			mov	rdi,r15
+9ab4ff 4883ef04			sub	rdi,byte 4
+9ab503 0f804f04b700		jo	stub_7f28a751b958_0
+9ab509			version_128:
+9ab509 4c8b7e27			mov	r15,[rsi+39]
+9ab50d			version_129:
+9ab50d 4c8b561f			mov	r10,[rsi+31]
+9ab511			version_130:
+9ab511			alloc_begin_8:
+9ab511 4983c130			add	r9,byte 48
+9ab515 48b830505cce287f
+9ab51d 0000			mov	rax,139813237575728
+9ab51f 4c3b08			cmp	r9,[rax]
+9ab522 7e09			jle	short alloc_end_8
+9ab524 e8e4eaffff		call	heap_limit_handler
+9ab529 4983c130			add	r9,byte 48
+9ab52d			alloc_end_8:
+9ab52d 49c741d070280000		mov	qword [r9-48],dword 10352
+9ab535 48c7c0c0aad202		mov	rax,dword 47360704
+9ab53c 498941d8			mov	[r9-40],rax
+9ab540 4d8979e0			mov	[r9-32],r15
+9ab544 4d8951e8			mov	[r9-24],r10
+9ab548 488b4617			mov	rax,[rsi+23]
+9ab54c 498941f0			mov	[r9-16],rax
+9ab550 498959f8			mov	[r9-8],rbx
+9ab554 4d8d59d1			lea	r11,[r9-47]
+9ab558			version_131:
+9ab558 4d89dc			mov	r12,r11
+9ab55b 488b4500			mov	rax,[rbp]
+9ab55f 48894500			mov	[rbp],rax
+9ab563 4889fb			mov	rbx,rdi
+9ab566 49c7c300000000		mov	r11,dword 0
+9ab56d 48c7c710000000		mov	rdi,dword 16
+9ab574			stub_load_10:
+9ab574 e97b05b700		jmp	dest_7f28a751baf4_8
+GEN VERSION FN#<lazy-code #2
+                 ast: #f
+                 generator: #<procedure #3>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #115
+           stack: ((clo) (int) (int) (int) (clo) (ret))
+           slot-loc:
+            ((5 r . 6) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs: ((r . 3) (r . 5) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((x0 . #<identifier #116
+                          kind: local
+                          sslots: (2)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #117
+                          kind: local
+                          sslots: (3)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (z0 . #<identifier #118
+                          kind: local
+                          sslots: (4)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (k0 . #<identifier #119
+                          kind: local
+                          sslots: (5)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>))
+           nb-actual: 4
+           nb-args: 4
+           fs: 1
+           ffs: 0
+           fn-num: 0>
+Patch direct stub jump at 7f28a69ab574
+  > now jump to 7f28a69ab0c8
+------------------------------------------------------------------------
+9ab574				bits 64
+9ab574 e94ffbffff		jmp	fn_entry_1
+GEN VERSION FN#<lazy-code #120
+                 ast: #f
+                 generator: #<procedure #121>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #122
+           stack: ((int) (clo) (ret))
+           slot-loc: ((2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs:
+            ((r . 1) (r . 3) (r . 4) (r . 5) (r . 6) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((z0 . #<identifier #123
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 0)
+                          cst: #f
+                          thisid: #f>)
+                 (x2 . #<identifier #124
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 1)
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #125
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (int)
+                          cloc: (f . 2)
+                          cst: #f
+                          thisid: #f>)
+                 (k2 . #<identifier #126
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (cloc 5)
+                          cloc: (f . 3)
+                          cst: #f
+                          thisid: #f>)
+                 (v10 . #<identifier #127
+                           kind: free
+                           sslots: ()
+                           flags: ()
+                           stype: (int)
+                           cloc: (f . 4)
+                           cst: #f
+                           thisid: #f>)
+                 (v20 . #<identifier #128
+                           kind: local
+                           sslots: (2)
+                           flags: ()
+                           stype: #f
+                           cloc: #f
+                           cst: #f
+                           thisid: #f>))
+           nb-actual: 1
+           nb-args: 1
+           fs: 1
+           ffs: 0
+           fn-num: 9>
+------------------------------------------------------------------------
+51b928				bits 64
+51b928			stub_7f28a751b928_0:
+51b928 e889eb48ff		call	do_callback_handler
+51b92d c1cdd20200000000
+------------------------------------------------------------------------
+51b910				bits 64
+51b910			stub_7f28a751b910_1:
+51b910 83c104			add	ecx,byte 4
+51b913 90			nop
+51b914			stub_7f28a751b910_0:
+51b914 e824ed48ff		call	do_callback_fn_handler
+51b919 314ed30200000000
+------------------------------------------------------------------------
+9ab579				bits 64
+9ab579 909090		fn_entry_8:
+9ab57c			version_132:
+9ab57c			version_133:
+9ab57c 4c8b7e0f			mov	r15,[rsi+15]
+9ab580			version_134:
+9ab580			version_135:
+9ab580			version_136:
+9ab580			version_137:
+9ab580			version_138:
+9ab580 4c89ff			mov	rdi,r15
+9ab583 4883ef04			sub	rdi,byte 4
+9ab587 0f809b03b700		jo	stub_7f28a751b928_0
+9ab58d			version_139:
+9ab58d 4c8b7e17			mov	r15,[rsi+23]
+9ab591			version_140:
+9ab591 4c8b561f			mov	r10,[rsi+31]
+9ab595			version_141:
+9ab595			alloc_begin_9:
+9ab595 4983c120			add	r9,byte 32
+9ab599 48b830505cce287f
+9ab5a1 0000			mov	rax,139813237575728
+9ab5a3 4c3b08			cmp	r9,[rax]
+9ab5a6 7e09			jle	short alloc_end_9
+9ab5a8 e860eaffff		call	heap_limit_handler
+9ab5ad 4983c120			add	r9,byte 32
+9ab5b1			alloc_end_9:
+9ab5b1 49c741e070180000		mov	qword [r9-32],dword 6256
+9ab5b9 48c7c038cfd202		mov	rax,dword 47370040
+9ab5c0 498941e8			mov	[r9-24],rax
+9ab5c4 488b462f			mov	rax,[rsi+47]
+9ab5c8 498941f0			mov	[r9-16],rax
+9ab5cc 498959f8			mov	[r9-8],rbx
+9ab5d0 4d8d59e1			lea	r11,[r9-31]
+9ab5d4			version_142:
+9ab5d4 4d89dc			mov	r12,r11
+9ab5d7 488b4500			mov	rax,[rbp]
+9ab5db 48894500			mov	[rbp],rax
+9ab5df 4889fb			mov	rbx,rdi
+9ab5e2 49c7c300000000		mov	r11,dword 0
+9ab5e9 48c7c710000000		mov	rdi,dword 16
+9ab5f0			stub_load_11:
+9ab5f0 e9ff04b700		jmp	dest_7f28a751baf4_9
+GEN VERSION FN#<lazy-code #2
+                 ast: #f
+                 generator: #<procedure #3>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #129
+           stack: ((clo) (int) (int) (int) (clo) (ret))
+           slot-loc:
+            ((5 r . 6) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs: ((r . 3) (r . 5) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((x0 . #<identifier #130
+                          kind: local
+                          sslots: (2)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #131
+                          kind: local
+                          sslots: (3)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (z0 . #<identifier #132
+                          kind: local
+                          sslots: (4)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (k0 . #<identifier #133
+                          kind: local
+                          sslots: (5)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>))
+           nb-actual: 4
+           nb-args: 4
+           fs: 1
+           ffs: 0
+           fn-num: 0>
+Patch direct stub jump at 7f28a69ab5f0
+  > now jump to 7f28a69ab0c8
+------------------------------------------------------------------------
+9ab5f0				bits 64
+9ab5f0 e9d3faffff		jmp	fn_entry_1
+GEN VERSION FN#<lazy-code #134
+                 ast: #f
+                 generator: #<procedure #135>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #136
+           stack: ((int) (clo) (ret))
+           slot-loc: ((2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs:
+            ((r . 1) (r . 3) (r . 4) (r . 5) (r . 6) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((v10 . #<identifier #137
+                           kind: free
+                           sslots: ()
+                           flags: ()
+                           stype: (int)
+                           cloc: (f . 0)
+                           cst: #f
+                           thisid: #f>)
+                 (v20 . #<identifier #138
+                           kind: free
+                           sslots: ()
+                           flags: ()
+                           stype: (int)
+                           cloc: (f . 1)
+                           cst: #f
+                           thisid: #f>)
+                 (k1 . #<identifier #139
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (cloc 2)
+                          cloc: (f . 2)
+                          cst: #f
+                          thisid: #f>)
+                 (v30 . #<identifier #140
+                           kind: local
+                           sslots: (2)
+                           flags: ()
+                           stype: #f
+                           cloc: #f
+                           cst: #f
+                           thisid: #f>))
+           nb-actual: 1
+           nb-args: 1
+           fs: 1
+           ffs: 0
+           fn-num: 7>
+------------------------------------------------------------------------
+9ab5f5				bits 64
+9ab5f5 909090		fn_entry_9:
+9ab5f8			version_143:
+9ab5f8			version_144:
+9ab5f8 4c8b7e0f			mov	r15,[rsi+15]
+9ab5fc			version_145:
+9ab5fc 488b7e17			mov	rdi,[rsi+23]
+9ab600			version_146:
+9ab600 4989da			mov	r10,rbx
+9ab603			version_147:
+9ab603 4c8b5e1f			mov	r11,[rsi+31]
+9ab607			version_148:
+9ab607 4d89dc			mov	r12,r11
+9ab60a 488b4500			mov	rax,[rbp]
+9ab60e 48894500			mov	[rbp],rax
+9ab612 4c89fb			mov	rbx,r15
+9ab615 4989ff			mov	r15,rdi
+9ab618 49c7c300000000		mov	r11,dword 0
+9ab61f 48c7c710000000		mov	rdi,dword 16
+9ab626			stub_load_12:
+9ab626 e9c904b700		jmp	dest_7f28a751baf4_10
+GEN VERSION FN#<lazy-code #2
+                 ast: #f
+                 generator: #<procedure #3>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #141
+           stack: ((clo) (int) (int) (int) (clo) (ret))
+           slot-loc:
+            ((5 r . 6) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs: ((r . 3) (r . 5) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((x0 . #<identifier #142
+                          kind: local
+                          sslots: (2)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #143
+                          kind: local
+                          sslots: (3)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (z0 . #<identifier #144
+                          kind: local
+                          sslots: (4)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (k0 . #<identifier #145
+                          kind: local
+                          sslots: (5)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>))
+           nb-actual: 4
+           nb-args: 4
+           fs: 1
+           ffs: 0
+           fn-num: 0>
+Patch direct stub jump at 7f28a69ab626
+  > now jump to 7f28a69ab0c8
+------------------------------------------------------------------------
+9ab626				bits 64
+9ab626 e99dfaffff		jmp	fn_entry_1
+GEN VERSION FN#<lazy-code #146
+                 ast: #f
+                 generator: #<procedure #147>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #148
+           stack: ((int) (clo) (ret))
+           slot-loc: ((2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs:
+            ((r . 1) (r . 3) (r . 4) (r . 5) (r . 6) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((v10 . #<identifier #149
+                           kind: free
+                           sslots: ()
+                           flags: ()
+                           stype: (int)
+                           cloc: (f . 0)
+                           cst: #f
+                           thisid: #f>)
+                 (v20 . #<identifier #150
+                           kind: free
+                           sslots: ()
+                           flags: ()
+                           stype: (int)
+                           cloc: (f . 1)
+                           cst: #f
+                           thisid: #f>)
+                 (k2 . #<identifier #151
+                          kind: free
+                          sslots: ()
+                          flags: ()
+                          stype: (cloc 5)
+                          cloc: (f . 2)
+                          cst: #f
+                          thisid: #f>)
+                 (v30 . #<identifier #152
+                           kind: local
+                           sslots: (2)
+                           flags: ()
+                           stype: #f
+                           cloc: #f
+                           cst: #f
+                           thisid: #f>))
+           nb-actual: 1
+           nb-args: 1
+           fs: 1
+           ffs: 0
+           fn-num: 10>
+------------------------------------------------------------------------
+9ab62b				bits 64
+9ab62b 90		fn_entry_10:
+9ab62c			version_149:
+9ab62c			version_150:
+9ab62c 4c8b7e0f			mov	r15,[rsi+15]
+9ab630			version_151:
+9ab630 488b7e17			mov	rdi,[rsi+23]
+9ab634			version_152:
+9ab634 4989da			mov	r10,rbx
+9ab637			version_153:
+9ab637 4c8b5e1f			mov	r11,[rsi+31]
+9ab63b			version_154:
+9ab63b 4d89dc			mov	r12,r11
+9ab63e 488b4500			mov	rax,[rbp]
+9ab642 48894500			mov	[rbp],rax
+9ab646 4c89fb			mov	rbx,r15
+9ab649 4989ff			mov	r15,rdi
+9ab64c 49c7c300000000		mov	r11,dword 0
+9ab653 48c7c710000000		mov	rdi,dword 16
+9ab65a			stub_load_13:
+9ab65a e99504b700		jmp	dest_7f28a751baf4_11
+GEN VERSION FN#<lazy-code #2
+                 ast: #f
+                 generator: #<procedure #3>
+                 flags: (entry)
+                 lco-true: #f
+                 lco-false: #f>
+ >>> #<ctx #153
+           stack: ((clo) (int) (int) (int) (clo) (ret))
+           slot-loc:
+            ((5 r . 6) (4 r . 4) (3 r . 1) (2 r . 0) (1 r . 2) (0 m . 0))
+           free-regs: ((r . 3) (r . 5) (r . 7) (r . 8) (r . 9))
+           free-mems: ()
+           free-fregs:
+            ((fr . 0)
+             (fr . 1)
+             (fr . 2)
+             (fr . 3)
+             (fr . 4)
+             (fr . 5)
+             (fr . 6)
+             (fr . 7)
+             (fr . 8)
+             (fr . 9)
+             (fr . 10)
+             (fr . 11)
+             (fr . 12)
+             (fr . 13))
+           free-fmems: ()
+           env: ((x0 . #<identifier #154
+                          kind: local
+                          sslots: (2)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (y0 . #<identifier #155
+                          kind: local
+                          sslots: (3)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (z0 . #<identifier #156
+                          kind: local
+                          sslots: (4)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>)
+                 (k0 . #<identifier #157
+                          kind: local
+                          sslots: (5)
+                          flags: ()
+                          stype: #f
+                          cloc: #f
+                          cst: #f
+                          thisid: #f>))
+           nb-actual: 4
+           nb-args: 4
+           fs: 1
+           ffs: 0
+           fn-num: 0>
+Patch direct stub jump at 7f28a69ab65a
+  > now jump to 7f28a69ab0c8
+------------------------------------------------------------------------
+9ab65a				bits 64
+9ab65a e969faffff		jmp	fn_entry_1

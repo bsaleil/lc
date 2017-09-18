@@ -484,10 +484,10 @@
                  (jump-to-version cgc lco ctx)))
               ;; Identifier local and cst literal
               ((and local
-                    (ctx-type-cst? (ctx-identifier-type ctx (cdr local))))
+                    (ctx-type-cst? (ctx-identifier-type ctx (cdr local)))
+                    (not (ctx-identifier-loc ctx (cdr local))))
                  ;; TODO use =>
-                 (let* ((cst (ctx-type-cst (ctx-identifier-type ctx (cdr local))))
-                        (ctx (ctx-push ctx (ctx-identifier-type ctx (cdr local)) #f sym)))
+                 (let* ((ctx (ctx-push ctx (ctx-identifier-type ctx (cdr local)) #f sym)))
                    (jump-to-version cgc succ ctx)))
               ;; Identifier is a local variable
               (local
@@ -519,9 +519,6 @@
         ;; The variable is in a register or in non closure memory
         (apply-moves cgc ctx (list (cons loc reg))))
 
-    (if (and (ctx-type-cst? type)
-             reg)
-        (error "NYI d")) ;; TODO: Free a register only if type is not a cst
     (jump-to-version cgc succ (ctx-push ctx type reg (car local)))))
 
 (define (gen-get-globalvar cgc ast ctx global succ)
@@ -558,6 +555,7 @@
            (make-lazy-code
              #f
              (lambda (cgc ctx)
+               (x86-label cgc (asm-make-label #f (new-sym 'LABEL_SET_)))
                (let ((ctx (drop-cst-value cgc ast ctx 0)))
                  (jump-to-version cgc lazy-set! ctx))))))
 
@@ -567,10 +565,12 @@
   (mlet ((pos (global-pos global))
          (moves/reg/ctx (ctx-get-free-reg ast ctx succ 1))
          (tval (ctx-get-type ctx 0))
-         (cst? (ctx-type-cst? tval))
+         (cst? (and (ctx-type-cst? tval)
+                    (not (ctx-get-loc ctx 0))))
          (lval (if cst?
                    (ctx-type-cst tval)
                    (ctx-get-loc ctx 0))))
+
     (apply-moves cgc ctx moves)
     (codegen-set-global cgc (ctx-fs ctx) (ctx-ffs ctx) reg pos lval cst?)
     (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tvoi) reg))))
@@ -1182,7 +1182,7 @@
             (let ((b (car bindings)))
               (if (atom-node? (cadr b))
                   (begin
-                    (error "Needs to be tested.") ;; see TODO above
+                    ;(error "Needs to be tested.") ;; see TODO above
                     (let ((r (cst-from-atom (cadr b))))
                       (if (car r)
                           (loop (cdr bindings) (cons (list (car b) (cdr r) #f) cnprocs) others)
@@ -2576,13 +2576,15 @@
              #f
              (lambda (cgc ctx)
 
+
                (define nb-args (length args))
                (define cn-num #f)
 
                ;; Handle const fn
                (let ((type (ctx-get-type ctx (length args))))
                  (if (ctx-type-cst? type)
-                     (set! fn-id-inf (cons #t (ctx-type-cst type)))))
+                     (let ((loc (ctx-get-loc ctx (length args))))
+                       (set! fn-id-inf (cons (not loc) (ctx-type-cst type))))))
 
                ;; Save used registers, generate and push continuation stub
                (let ((r (call-save/cont cgc ctx ast succ tail? (+ nb-args 1) #f)))
@@ -3275,7 +3277,7 @@
           ;; Alloc cst
           (cond ((ctx-type-flo? type) (alloc-cst-flo reg cst))
                 ((ctx-type-clo? type) (alloc-cst-clo reg cst))
-                (else             (alloc-cst reg cst)))
+                (else                 (alloc-cst reg cst)))
           ;; Update & return ctx
           (let* ((ntype ((ctx-type-ctor type)))
                  (ctx (ctx-set-type ctx ctx-idx ntype #f))

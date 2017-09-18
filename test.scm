@@ -1,5 +1,38 @@
 
 
+  (define (tak x y z k)
+    (if (not (< y x))
+        (k z)
+        (tak (- x 1)
+             y
+             z
+             (lambda (v1)
+               (tak (- y 1)
+                    z
+                    x
+                    (lambda (v2)
+                      (tak (- z 1)
+                           x
+                           y
+                           (lambda (v3)
+                             (tak v1 v2 v3 k)))))))))
+
+(tak 1 0 3 (lambda (r) r))
+
+
+;(define (tak x y k)
+;  (if (>= y x)
+;      (k 11)
+;      (tak (- x 1)
+;           y
+;           (lambda (v1)
+;             (tak (- y 1)
+;                  11
+;                  k)))))
+;
+;(tak 1 0 (lambda (a) a))
+
+
 ;* Ajouter test unitaire
 ;* Fixer mov inutile au prep-args du test unitaire
 ;* vérifier que la constante des fonctions !purecst est propagée interprocéduralement si demandé
@@ -12,7 +45,7 @@
 ;      (tak 0 (lambda ()
 ;                   (k)))))
 ;(tak 1 (lambda () 100))
-
+; * Propager l'identité quand la fonction est !cst
 
 
 
