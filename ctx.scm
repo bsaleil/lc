@@ -1529,8 +1529,8 @@
 (define (ctx-ids-keep-non-cst ctx ids)
   (keep (lambda (el)
           (let* ((identifier (cdr (assoc el (ctx-env ctx))))
-                 (type (ctx-identifier-type ctx identifier)))
-            (not (ctx-type-cst? type))))
+                 (loc (ctx-identifier-loc ctx identifier)))
+            loc))
         ids))
 
 ;;-----------------------------------------------------------------------------
