@@ -63,6 +63,7 @@
 ;                   (k)))))
 ;(tak 1 (lambda () 100))
 ; * Propager l'identité quand la fonction est !cst
+; * étudier le cst et cst-id de letrec (utile?)
 
 
 

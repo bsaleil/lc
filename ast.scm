@@ -920,6 +920,7 @@
                    (type (ctx-identifier-type ctx identifier))
                    (loc  (ctx-identifier-loc ctx identifier)))
               (cond ((and (ctx-type-cst? type)
+                          (identifier-cst identifier)
                           (not loc))
                        (loop (cdr ids) imm cst (cons id cstid)))
                     ((and (ctx-type-cst? type)
