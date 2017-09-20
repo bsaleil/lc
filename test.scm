@@ -1,31 +1,39 @@
-(define fold-over-perm-tree
-   (lambda (universe0 b-folder0 b-state0 t-folder0 t-state0)
-     (let ((accross0 (lambda (final-t-state0) ($$atom final-t-state0))))
-       (if (($$atom null?) ($$atom universe0))
-           (($$atom t-folder0) ($$atom b-state0) ($$atom t-state0) ($$atom accross0))
-           ($$atom 100)))))
 
- (define make-minimal?
-       (lambda (folder0 state0 max-size0)
-         (($$atom fold-over-perm-tree)
-          (($$atom vector-ref) ($$atom '#(())) ($$atom 0))
-          (lambda (perm-x0 x0 state1 deeper0 accross0)
-            ($$atom 1))
-          ($$atom 0)
-          (lambda (leaf-depth0 state1 accross0)
-            (begin (($$atom folder0) ($$atom 11) ($$atom state1) ($$atom accross0)) (($$atom error) ($$atom "JH"))))
-          ($$atom state0))))
+(define (bar f)
+  (gambit$$pp f))
 
-(let ((edge?0 (($$atom vector) (($$atom vector) ($$atom #f)))))
-   (begin
-       (let ((root-minimal?0
-              (let ((cont0 (lambda (perm0 state1 accross0)
-                               (let ((case-temp.30 ($$atom edge?0)))
-                                 (($$atom error) ($$atom 11))))))
-                (lambda () (($$atom make-minimal?) ($$atom cont0) ($$atom #t) ($$atom 0))))))
+(define (foo n)
+  (let ((f (lambda (m) (+ n m))))
+    (bar f)))
 
-         (begin (($$atom gambit$$pp) (($$atom root-minimal?0))) (($$atom error) ($$atom "K"))))))
+(define rr (cons 10 20))
 
+(foo (car rr))
+;;;; CPSTAK -- A continuation-passing version of the TAK benchmark.
+;;;; A good test of first class procedures and tail recursion.
+;
+;(define (cpstak x y z)
+;
+;  (define (tak x y z k)
+;    (if (not (< y x))
+;        (k z)
+;        (tak (- x 1)
+;             y
+;             z
+;             (lambda (v1)
+;               (tak (- y 1)
+;                    z
+;                    x
+;                    (lambda (v2)
+;                      (tak (- z 1)
+;                           x
+;                           y
+;                           (lambda (v3)
+;                             (tak v1 v2 v3 k)))))))))
+;
+;  (tak x y z (lambda (a) a)))
+;
+;(cpstak 1 0 3)
 
 
 

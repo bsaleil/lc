@@ -304,11 +304,6 @@
 (meta-add-type cloc (clo cst) (cst))
 (meta-add-type retc (ret cst) (cst))
 
-;;;; TODO: WIP
-;;;; TODO: WIP
-;;;; TODO: WIP
-;;;; TODO: WIP
-
 (define (ctx-type-mem-allocated? type)
   (or (ctx-type-box? type)
       (ctx-type-pai? type)
@@ -455,7 +450,6 @@
 
 ;;
 ;; GENERIC
-;; TODO wip
 (define (ctx-generic ctx)
 
   (define slot-loc  (ctx-slot-loc ctx))
@@ -533,7 +527,6 @@
                                 (identifier-copy (cdr first) #f (list (list-ref sslots (- (length sslots) 1)))))
                           (compute-env (cdr env)))))))))
 
-  ;; TODO wip
   (define (compute-slot-loc slot-loc)
     (if (null? slot-loc)
         '()
@@ -1375,14 +1368,14 @@
 ;;       and rdx already is used in return code sequence. But we SHOULD use r9 instead of rdx directly in lazy-ret
 ;; Return reg is one of the last registers to increase the chances it is chosen
 ;; if it is preferred register in ctx-get-free-reg (which is the case each time succ lco is a 'ret lco)
-(define return-reg '(r . 8)) ;; TODO move
+(define return-reg '(r . 8))
 (define return-freg '(fr . 0))
 
 ;;
 ;;
 ;;
 ;;
-;; TODO PRIVATE module
+;; PRIVATE module
 
 ;;
 ;; Return all slots associated to loc
@@ -1547,7 +1540,6 @@
   thisid ;;
 )
 
-;; TODO USE IT ! remove all make-ctx which are only copies and use ctx-copy
 (define (identifier-copy identifier #!optional kind sslots flags stype cloc cst thisid)
   (make-identifier
     (or kind   (identifier-kind identifier))
@@ -1689,7 +1681,6 @@
               (steps (append (cdr pushed/moves) (list clomove)))
               (steps (cdr pushed/moves))))))
 
-;; TODO rename
 (define (steps required-moves)
 
   (let loop ((real-moves '())
@@ -1706,7 +1697,6 @@
 ;; visited-locs: list of visited nodes (source node of a move) during the step
 ;; moves: list of moves required to merge ctx
 ;; pending-moves: list of currently computed real moves
-;; TODO rename
 (define (step visited req-moves pending-moves #!optional src-sym)
 
   ;; A loc is available if it is not a source of a move in required moves
