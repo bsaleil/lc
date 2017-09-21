@@ -50,7 +50,10 @@
   (table-length (lazy-code-versions lazy-code)))
 
 (define (lazy-code-nb-real-versions lazy-code)
-  (count (table->list (lazy-code-versions lazy-code)) cddr))
+  (count (table->list (lazy-code-versions lazy-code)) caddr))
+
+(define (lazy-code-nb-real-cont-versions lazy-code)
+  (count (table->list (lazy-code-versions lazy-code)) (lambda (e) (and (caddr e) (cadddr e)))))
 
 (define (strat-get-options)
   strat-options)
@@ -59,12 +62,18 @@
 ;; PRIVATE
 
 (define opt-max-versions #f) ;; Limit of number of versions (#f=no limit, 0=only generic, ...)
+(define opt-max-cont-versions #f) ;; TODO
 
 ;; Options specific to this strat
 (define strat-options `(
   (--max-versions
     "Set a limit on the number of versions of lazy code objects"
     ,(lambda (args) (set! opt-max-versions (string->number (cadr args)))
+                    (set! args (cdr args))
+                    args))
+  (--max-cont-versions
+    "Set a limit on the nujmber of versions with cst continuation"
+    ,(lambda (args) (set! opt-max-cont-versions (string->number (cadr args)))
                     (set! args (cdr args))
                     args))))
 
@@ -82,12 +91,12 @@
          (version  (table-ref versions key #f)))
     (and version (car version))))
 
-(define (put-version lazy-code ctx version real-version?)
+(define (put-version lazy-code ctx version real-version? cont-cst-version?)
   (let ((key (if (lazy-code-entry? lazy-code)
-                 ctx;(ctx-stack ctx)
+                 ctx
                  ctx))
         (versions (lazy-code-versions lazy-code))
-        (k (cons version real-version?)))
+        (k (list version real-version? cont-cst-version?)))
     (table-set! versions key k)
     k))
 
@@ -95,6 +104,11 @@
   (and opt-max-versions
        (let ((nb-versions (lazy-code-nb-real-versions lco)))
          (>= nb-versions opt-max-versions))))
+
+(define (limit-cont-reached? lco)
+  (and opt-max-cont-versions
+       (let ((nb-versions (lazy-code-nb-real-cont-versions lco)))
+         (>= nb-versions opt-max-cont-versions))))
 
 (define (strat-get-version lco ctx)
 
@@ -104,14 +118,27 @@
 
   ;; CASE 2: no version for this ctx, and limit is not reached
   ;; then generate a new version
-  (define (case-gen-version)
-    (let ((k (put-version lco ctx #f #t)))
+  (define (case-gen-version-cont-cst)
+    (let ((k (put-version lco ctx #f #t #t)))
       (list #f ctx (lambda (label) (set-car! k label)))))
+
+  ;; TODO split in two cases
+  (define (case-gen-version-cont-ncst)
+    (if (ctx-const-continuation? ctx)
+        (begin (set! ctx (ctx-no-const-continuation ctx))
+               (let ((k (put-version lco ctx #f #t #f)))
+                 (list #f ctx (lambda (label-merge label-version)
+                                        (put-version lco ctx label-merge #f #f)
+                                        (set-car! k label-version)))))
+
+        (let ((k (put-version lco ctx #f #t #f)))
+          (list #f ctx (lambda (label) (set-car! k label))))))
+
 
   ;; CASE 3: no version for this ctx, limit reached, generic exists
   ;; then use the generic version
   (define (case-use-generic generic)
-    (let ((callback (lambda (label-merge) (put-version lco ctx label-merge #f))))
+    (let ((callback (lambda (label-merge) (put-version lco ctx label-merge #f #f))))
       (list (cdr generic) (car generic) callback)))
 
   ;; CASE 4: no version for this ctx, limit reached, generic does not exist
@@ -119,17 +146,23 @@
   (define (case-gen-generic)
     (let* ((gctx (ctx-generic ctx))
            (callback (lambda (label-merge label-version)
-                       (put-version lco ctx label-merge #f)
+                       (put-version lco ctx label-merge #f #f)
                        (lazy-code-generic-set! lco gctx label-version))))
       (list #f gctx callback)))
 
+  (if (< opt-max-versions opt-max-cont-versions) (error "Internal error strat1cp"))
+
   (let ((version (get-version lco ctx)))
 
-    (if version
-        (case-use-version version) ;; CASE 1
-        (if (not (limit-reached? lco))
-            (case-gen-version)     ;; CASE 2
-            (let ((generic (lazy-code-generic lco)))
-              (if generic
-                  (case-use-generic generic) ;; CASE 3
-                  (case-gen-generic)))))))   ;; CASE 4
+    (cond (version
+            (case-use-version version))
+          ((and (ctx-const-continuation? ctx)
+                (not (limit-cont-reached? lco)))
+            (case-gen-version-cont-cst))
+          ((not (limit-reached? lco))
+            (case-gen-version-cont-ncst))
+          ((lazy-code-generic lco) =>
+            (lambda (generic)
+              (case-use-generic generic)))
+          (else
+              (case-gen-generic)))))

@@ -1,12 +1,174 @@
 
-(define (fibfp n)
-  (if (FLOAT< n 2.)
-    n
-    (FLOAT+ (fibfp (FLOAT- n 1.))
-            (fibfp (FLOAT- n 2.)))))
+(define matrix-read
+  (lambda (mat i j)
+    1))
 
-(let ((result (fibfp 35.)))
-  (gambit$$pp (= result 9227465.)))
+(define (zmap fn els)
+  (fn (car els)))
+
+(define bbb (cons #t 0))
+
+ (let ((cave (cdr bbb))
+       (ncs (cons '((2 0)) #f)))
+    (let ((fn (lambda (nc) (matrix-read cave (car nc) (cdr nc)) (error "B"))))
+      (zmap fn ncs)))
+
+
+
+
+
+
+
+
+
+
+;(define (bar f)
+;  (gambit$$pp f))
+;
+;(define (foo n)
+;  (let ((f (lambda (m) (+ n m))))
+;    (bar f)))
+;
+;(define rr (cons 10 20))
+;
+;(foo (car rr))
+;;;; CPSTAK -- A continuation-passing version of the TAK benchmark.
+;;;; A good test of first class procedures and tail recursion.
+;
+;(define (cpstak x y z)
+;
+;  (define (tak x y z k)
+;    (if (not (< y x))
+;        (k z)
+;        (tak (- x 1)
+;             y
+;             z
+;             (lambda (v1)
+;               (tak (- y 1)
+;                    z
+;                    x
+;                    (lambda (v2)
+;                      (tak (- z 1)
+;                           x
+;                           y
+;                           (lambda (v3)
+;                             (tak v1 v2 v3 k)))))))))
+;
+;  (tak x y z (lambda (a) a)))
+;
+;(cpstak 1 0 3)
+
+
+
+;(define (tak x y k)
+;  (if (>= y x)
+;      (k 11)
+;      (tak (- x 1)
+;           y
+;           (lambda (v1)
+;             (tak (- y 1)
+;                  11
+;                  k)))))
+;
+;(tak 1 0 (lambda (a) a))
+
+
+;* Ajouter test unitaire
+;* Fixer mov inutile au prep-args du test unitaire
+;* vérifier que la constante des fonctions !purecst est propagée interprocéduralement si demandé
+;* vérifier que la constante !purecst n'est PAS propagée au call/ret si pas demandé
+;* optimiser l'appel avec l'information d'id !cst
+;; ADD THIS EXAMPLE TO UT
+;(define (tak x k)
+;  (if (= x 0)
+;      (k)
+;      (tak 0 (lambda ()
+;                   (k)))))
+;(tak 1 (lambda () 100))
+; * Propager l'identité quand la fonction est !cst
+; * étudier le cst et cst-id de letrec (utile?)
+
+
+
+;; WIP:
+;; 1. Propagate continuation when call is inlined
+;; 2. optimization when --disable-return-points ?
+;;
+;; a. continuation jmp optimization with return site patching (generic + specialized)
+;; b. continuation inlining
+
+;; c. do *not* allocate slot in cc/cr-table is call/return is inlined
+
+
+;
+;(define (map2 f l1 l2)
+;  (if (null? l1)
+;      l1
+;      (list (cons 'a 5))))
+;
+;(define (peval proc args)
+;    (let ((parms (cadr proc))  ; get the parameter list
+;          (body  (caddr proc))) ; get the body of the procedure
+;
+;      (list 'lambda
+;            (beta-subst ; in the body, replace variable refs to the constant
+;              body      ; parameters by the corresponding constant
+;              (map2 (lambda (x y) (cons x y))
+;                    parms
+;                    args)))))
+;
+;(define (assq el lst)
+;  (cond ((null? lst) #f)
+;        ((eq? el (car (car lst))) (car lst))
+;        (else (assq el (cdr lst)))))
+;
+;(define (beta-subst exp env) ; return a modified 'exp' where each var named in
+;  (define (bs exp)           ; 'env' is replaced by the corresponding expr (it
+;    (cond
+;          ((symbol? exp)
+;             (gambit$$pp env)
+;             (gambit$$pp exp)
+;             (gambit$$pp (assq exp env))
+;             (error "K"))
+;
+;
+;          (else
+;           (map bs exp))))
+;  (if (fixnum? exp)
+;      exp
+;      (bs (caddr exp))))
+;
+;
+;(define example5
+;    '(lambda (a) 11))
+;
+;(define example6
+;  '(lambda ()
+;     (let 11
+;       fib)))
+;
+;(peval example5 (list 5))
+;(peval example6 '())
+
+;-----
+
+;;------------------------------------------------------------------------------
+
+;(define (foo xp yp x y)
+;  (let loop ((c #f) (i 0) (j 0))
+;
+;    (if (< i 0)
+;      0
+;      (if (or (> (vector-ref yp 0) y)
+;              (>= x (vector-ref xp i)))
+;        (loop c (- i 1) i)
+;        (loop c (- i 1) i)))))
+;
+;(let ((xp (vector  1.0))
+;      (yp (vector  2.0)))
+;  (gambit$$pp (foo xp yp .5 .5)))
+
+
 
 
 ;loop sans const:
@@ -23,8 +185,6 @@
 ;    mov r2, i
 ;    add r2, sum
 ;    call main
-
-
 
 ;(define (create-n n)
 ;  (do ((n n (- n 1))

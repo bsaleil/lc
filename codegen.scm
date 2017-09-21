@@ -573,23 +573,28 @@
     (x86-lea cgc dest (x86-mem offset alloc-ptr))))
 
 ;;
-(define (codegen-return-common cgc fs ffs clean-nb lretobj)
+(define (codegen-return-retobj cgc fs ffs lretobj)
   (let ((opretobj (codegen-loc-to-x86opnd fs ffs lretobj)))
-    ;; Move return address (or cctable address) in rdx
     (if (not (eq? opretobj (x86-rdx)))
-        (x86-mov cgc (x86-rdx) opretobj))
-    ;; Clean stacks
-    (if (> clean-nb 0)
-        (x86-add cgc (x86-usp) (x86-imm-int (* 8 clean-nb 1))))
-    (if (> ffs 0)
-        (x86-add cgc (x86-rsp) (x86-imm-int (* 8 ffs))))))
+        (x86-mov cgc (x86-rdx) opretobj))))
+
+;;
+(define (codegen-return-clean cgc fs ffs)
+  (if (> fs 0)
+      (x86-add cgc (x86-usp) (x86-imm-int (* 8 fs))))
+  (if (> ffs 0)
+      (x86-add cgc (x86-rsp) (x86-imm-int (* 8 ffs)))))
 
 ;; Generate function return using a return address
 ;; Retaddr (or cctable) is in rdx
-(define (codegen-return-rp cgc fs ffs clean-nb lretobj lretval float?)
+(define (codegen-return-rp cgc fs ffs lretobj lretval float?)
 
     (let ((opret    (codegen-reg-to-x86reg return-reg))
           (opretval (codegen-loc-to-x86opnd fs ffs lretval)))
+
+      (if (and (eq? lretobj return-reg)
+               (not float?))
+          (error "NYI, see codegen-return-cr"))
 
       ;; Move return value to return register
       (if float?
@@ -604,33 +609,48 @@
           (if (not (eq? opret opretval))
               (x86-mov cgc opret opretval))))
 
-    (codegen-return-common cgc fs ffs clean-nb lretobj)
+    (codegen-return-retobj cgc fs ffs lretobj)
+    (codegen-return-clean cgc fs ffs)
     (x86-jmp cgc (x86-rdx)))
 
 ;; Generate function return using a crtable
 ;; Retaddr (or cctable) is in rdx
-(define (codegen-return-cr cgc fs ffs clean-nb lretobj lretval cridx float? cst?)
+(define (codegen-return-cr cgc fs ffs lretobj lretval cridx float? cst?)
 
-    (let ((opret (if float?
-                     (codegen-freg-to-x86reg return-freg)
-                     (codegen-reg-to-x86reg return-reg)))
-          (opretval (and (not cst?) (codegen-loc-to-x86opnd fs ffs lretval))))
+      (define cont-saved? #f)
+
+      (define (move-retval)
+        (let ((opret (if float?
+                         (codegen-freg-to-x86reg return-freg)
+                         (codegen-reg-to-x86reg return-reg)))
+              (opretval (and (not cst?) (codegen-loc-to-x86opnd fs ffs lretval))))
+          (if (and opretval
+                   (not (eq? opret opretval)))
+              (if float?
+                  (x86-movsd cgc opret opretval)
+                  (x86-mov cgc opret opretval)))))
 
       (assert (not (and cst? (not opt-const-vers)))
               "Internal error")
 
-      (if (and opretval
-               (not (eq? opret opretval)))
-          (if float?
-              (x86-movsd cgc opret opretval)
-              (x86-mov cgc opret opretval))))
+    ;; If the continuation is in the return register,
+    ;; save it to rax
+    (if (and (eq? lretobj return-reg)
+             (not float?))
+        (begin
+          (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg return-reg))
+          (set! cont-saved? #t)))
 
-    (codegen-return-common cgc fs ffs clean-nb lretobj)
-    (if cridx
-        (x86-mov cgc (x86-rax) (x86-mem (+ 16 (* 8 cridx)) (x86-rdx)))
-        (x86-mov cgc (x86-rax) (x86-mem 8 (x86-rdx))))
-    (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding cridx)))
-    (x86-jmp cgc (x86-rax)))
+    (move-retval)
+    (if (not cont-saved?)
+        (codegen-return-retobj cgc fs ffs lretobj))
+    (codegen-return-clean cgc fs ffs)
+    (let ((table-reg (if cont-saved? (x86-rax) (x86-rdx))))
+      (if cridx
+          (x86-mov cgc (x86-rax) (x86-mem (+ 16 (* 8 cridx)) table-reg))
+          (x86-mov cgc (x86-rax) (x86-mem 8 table-reg)))
+      (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding cridx)))
+      (x86-jmp cgc (x86-rax))))
 
 ;; Generate function call using a single entry point
 ;; eploc is the cctable or entry points if it's known
@@ -713,7 +733,7 @@
 ;; Gen code for arithmetic operation on int/int
 (define (codegen-num-ii cgc fs ffs op reg lleft lright lcst? rcst? overflow? overflow-label)
 
-  (assert (not (and lcst? rcst?)) "Internal codegen error")
+  (assert (not (and lcst? rcst?)) "Internal error")
 
   (let ((dest    (codegen-reg-to-x86reg reg))
         (opleft  (and (not lcst?) (codegen-loc-to-x86opnd fs ffs lleft)))
@@ -839,7 +859,7 @@
   (define-macro (if-inline expr)
     `(if inline-if-cond? #f ,expr))
 
-  (assert (not (and lcst? rcst?)) "Internal codegen error")
+  (assert (not (and lcst? rcst?)) "Internal error")
 
   (let* ((x86-op  (cdr (assoc op `((< . ,x86-jl) (> . ,x86-jg) (<= . ,x86-jle) (>= . ,x86-jge) (= . ,x86-je)))))
          (x86-iop (cdr (assoc op `((< . ,x86-jg) (> . ,x86-jl) (<= . ,x86-jge) (>= . ,x86-jle) (= . ,x86-je)))))
@@ -895,7 +915,7 @@
   (define-macro (if-inline expr)
     `(if inline-if-cond? #f ,expr))
 
-  (assert (not (and lcst? rcst?)) "Internal codegen error")
+  (assert (not (and lcst? rcst?)) "Internal error")
 
   (let ((dest (if-inline (codegen-reg-to-x86reg reg)))
         (label-end (if-inline (asm-make-label #f (new-sym 'label-end))))
