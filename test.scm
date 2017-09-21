@@ -1,14 +1,37 @@
 
-(define (bar f)
-  (gambit$$pp f))
+(define matrix-read
+  (lambda (mat i j)
+    1))
 
-(define (foo n)
-  (let ((f (lambda (m) (+ n m))))
-    (bar f)))
+(define (zmap fn els)
+  (fn (car els)))
 
-(define rr (cons 10 20))
+(define bbb (cons #t 0))
 
-(foo (car rr))
+ (let ((cave (cdr bbb))
+       (ncs (cons '((2 0)) #f)))
+    (let ((fn (lambda (nc) (matrix-read cave (car nc) (cdr nc)) (error "B"))))
+      (zmap fn ncs)))
+
+
+
+
+
+
+
+
+
+
+;(define (bar f)
+;  (gambit$$pp f))
+;
+;(define (foo n)
+;  (let ((f (lambda (m) (+ n m))))
+;    (bar f)))
+;
+;(define rr (cons 10 20))
+;
+;(foo (car rr))
 ;;;; CPSTAK -- A continuation-passing version of the TAK benchmark.
 ;;;; A good test of first class procedures and tail recursion.
 ;

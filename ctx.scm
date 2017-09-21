@@ -273,7 +273,7 @@
     ;; Type tags
     unk cha voi nul ret int boo box pai vec str sym ipo flo opo clo
     ;; Other tags
-    cst)
+    cst id)
 
 (meta-add-type unk (unk) ())
 (meta-add-type cha (cha) ())
@@ -303,6 +303,8 @@
 (meta-add-type floc (flo cst) (cst))
 (meta-add-type cloc (clo cst) (cst))
 (meta-add-type retc (ret cst) (cst))
+
+(meta-add-type cloi (clo cst id) (cst))
 
 (define (ctx-type-mem-allocated? type)
   (or (ctx-type-box? type)
@@ -496,13 +498,16 @@
         '()
         (let* ((first (car stack))
                (ntype
-                 (if (ctx-type-cst? first)
+                 (if (and (ctx-type-cst? first)
+                          (not (ctx-type-id? first)))
                      (let ((ident (ctx-ident-at ctx (slot-to-stack-idx ctx slot))))
                        (if (and ident (identifier-cst (cdr ident)))
                            ;; It's a cst associated to a cst identifier
                            first
                            ;; If stack type is cst, and not associated to a cst identifier, then change loc
-                           (begin (set-new-loc! slot) (make-ctx-tunk))))
+                           (begin
+                               (set-new-loc! slot)
+                               (make-ctx-tunk))))
                      (make-ctx-tunk))))
           (cons ntype (compute-stack (cdr stack) (- slot 1))))))
 
@@ -612,7 +617,8 @@
       (if (or (null? stack) (null? regs))
           '()
           (if (or (ctx-type-flo? (car stack))
-                  (const-versioned? (car stack)))
+                  (and (const-versioned? (car stack))
+                       (not (ctx-type-id? (car stack)))))
               (init (cdr stack) regs)
               (cons (car regs)
                     (init (cdr stack) (cdr regs))))))
@@ -729,7 +735,8 @@
                          (make-ctx-tunk)))
               (types (and argtypes (cdr argtypes))))
 
-          (cond ((const-versioned? type)
+          (cond ((and (const-versioned? type)
+                      (not (ctx-type-id? type)))
                    (let ((r (init-slot-loc-local (+ slot 1) types regs fregs mem)))
                      (return slot #f r)))
                 ((ctx-type-flo? type)
@@ -1638,6 +1645,7 @@
             ;; Type is cst, cst is versioned, and we do not use generic ep
             ((and opt-entry-points
                   (const-versioned? type)
+                  (not (ctx-type-id? type))
                   (not generic-entry?))
                (next-nothing))
             ;; Type is cst

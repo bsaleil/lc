@@ -959,7 +959,7 @@
               (apply-moves cgc ctx moves)
               (gen-closure cgc reg ctx entry-obj fvars-ncst)
               ;;
-              (jump-to-version cgc succ (ctx-push ctx (make-ctx-tclo) reg))))))))
+              (jump-to-version cgc succ (ctx-push ctx (make-ctx-tcloi fn-num) reg))))))))
 
 ;;
 (define (gen-closure cgc reg ctx entry-obj fvars-ncst)
@@ -1846,7 +1846,7 @@
                          (jump-to-version cgc succ ctx))
                        (let* ((val-loc  (ctx-get-loc ctx idx))
                               (type (ctx-get-type ctx idx))
-                              (cst? (ctx-type-cst? type))
+                              (cst? (and (ctx-type-cst? type) (not (ctx-type-id? type))))
                               (val-opnd (if cst?
                                             (x86-imm-int (obj-encoding (ctx-type-cst type)))
                                             (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) val-loc)))
@@ -2009,7 +2009,8 @@
       (if (< idx 0)
           (reverse r)
           (let ((type (ctx-get-type ctx idx)))
-            (if (ctx-type-cst? type)
+            (if (and (ctx-type-cst? type)
+                     (not (ctx-type-id? type)))
                 (let ((cst (ctx-type-cst type)))
                   (assert (or (not (ctx-type-clo? type))
                               (not (##mem-allocated? cst))
@@ -2667,7 +2668,8 @@
                                 (if (= idx nb-args)
                                     (list nf ncst)
                                     (let ((type (ctx-get-type ctx idx)))
-                                      (cond ((const-versioned? type)
+                                      (cond ((and (const-versioned? type)
+                                                  (not (ctx-type-id? type)))
                                                (loop (+ idx 1) nf (+ ncst 1)))
                                             ((ctx-type-flo? type)
                                                (loop (+ idx 1) (+ nf 1) ncst))
@@ -2771,7 +2773,9 @@
                                 (ctx-pop-n ctx 2) ;; Pop operator and args
                                 (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
                           (reg
-                            (cond ((ctx-type-cst? type) #f)
+                            (cond ((and (ctx-type-cst? type)
+                                        (not (ctx-type-id? type)))
+                                      #f)
                                   ((ctx-type-flo? type) return-freg)
                                   (else                 return-reg))))
 
