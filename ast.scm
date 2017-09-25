@@ -2221,116 +2221,112 @@
                lazy-code0
                (lambda (cgc ctx #!optional x86-op)
 
-                 (let* ((ctx0 (if x86-op ctx (ctx-pop ctx)))   ;; Pop condition result
+                 (let* ((type (ctx-get-type ctx 0))
+                        (cst? (ctx-type-cst? type)))
+                   (cond ((and (not x86-op) cst? (ctx-type-cst type))
+                            (jump-to-version cgc lazy-code1 (ctx-pop ctx)))
+                         ((and (not x86-op) cst?)
+                            (jump-to-version cgc lazy-code0 (ctx-pop ctx)))
+                         (else
+                            (let* ((ctx0 (if x86-op ctx (ctx-pop ctx)))   ;; Pop condition result
+                                   (ctx1 ctx0)
+                                   (label-jump
+                                     (asm-make-label
+                                       cgc
+                                       (new-sym 'patchable_jump)))
 
-                        (ctx1
-                          ctx0)
+                                   (stub-first-label-addr #f)
 
-                        (label-jump
-                          (asm-make-label
-                            cgc
-                            (new-sym 'patchable_jump)))
+                                   (stub-labels
+                                     (add-callback
+                                       cgc
+                                       1
+                                       (let ((prev-action #f))
+                                         (lambda (ret-addr selector)
+                                           (let ((stub-addr
+                                                   stub-first-label-addr)
+                                                 (jump-addr
+                                                   (asm-label-pos label-jump)))
 
-                        (stub-first-label-addr #f)
+                                             (if opt-verbose-jit
+                                                 (begin
+                                                   (println ">>> selector= " selector)
+                                                   (println ">>> prev-action= " prev-action)))
 
-                        (stub-labels
-                          (add-callback
-                            cgc
-                            1
-                            (let ((prev-action #f))
-                              (lambda (ret-addr selector)
-                                (let ((stub-addr
-                                        stub-first-label-addr)
-                                      (jump-addr
-                                        (asm-label-pos label-jump)))
+                                             (if (not prev-action)
 
-                                  (if opt-verbose-jit
-                                      (begin
-                                        (println ">>> selector= " selector)
-                                        (println ">>> prev-action= " prev-action)))
+                                                 (begin
 
-                                  (if (not prev-action)
+                                                   (set! prev-action 'no-swap)
 
-                                      (begin
+                                                   (if (= selector 1)
+                                                       ;; overwrite unconditional jump
+                                                       (gen-version
+                                                         (+ jump-addr 6)
+                                                         lazy-code1
+                                                         ctx1)
 
-                                        (set! prev-action 'no-swap)
+                                                       (if (= (+ jump-addr 6 5) code-alloc)
 
-                                        (if (= selector 1)
-                                            ;; overwrite unconditional jump
-                                            (gen-version
-                                              (+ jump-addr 6)
-                                              lazy-code1
-                                              ctx1)
+                                                           (begin
 
-                                            (if (= (+ jump-addr 6 5) code-alloc)
+                                                             (if opt-verbose-jit (println ">>> swapping-branches"))
 
-                                                (begin
+                                                             (set! prev-action 'swap)
 
-                                                  (if opt-verbose-jit (println ">>> swapping-branches"))
+                                                             ;; invert jump direction
+                                                             (put-u8 (+ jump-addr 1)
+                                                                     (fxxor 1 (get-u8 (+ jump-addr 1))))
 
-                                                  (set! prev-action 'swap)
+                                                             ;; make conditional jump to stub
+                                                             (patch-jump jump-addr stub-addr)
 
-                                                  ;; invert jump direction
-                                                  (put-u8 (+ jump-addr 1)
-                                                          (fxxor 1 (get-u8 (+ jump-addr 1))))
+                                                             ;; overwrite unconditional jump
+                                                             (gen-version
+                                                               (+ jump-addr 6)
+                                                               lazy-code0
+                                                               ctx0))
 
-                                                  ;; make conditional jump to stub
-                                                  (patch-jump jump-addr stub-addr)
+                                                           ;; make conditional jump to new version
+                                                           (gen-version
+                                                             jump-addr
+                                                             lazy-code0
+                                                             ctx0))))
 
-                                                  ;; overwrite unconditional jump
-                                                  (gen-version
-                                                    (+ jump-addr 6)
-                                                    lazy-code0
-                                                    ctx0))
+                                                 (begin
 
-                                                ;; make conditional jump to new version
-                                                (gen-version
-                                                  jump-addr
-                                                  lazy-code0
-                                                  ctx0))))
+                                                   ;; one branch has already been patched
 
-                                      (begin
+                                                   ;; reclaim the stub
+                                                   (release-still-vector
+                                                     (get-scmobj ret-addr))
+                                                   (stub-reclaim stub-addr)
 
-                                        ;; one branch has already been patched
+                                                   (if (= selector 0)
 
-                                        ;; reclaim the stub
-                                        (release-still-vector
-                                          (get-scmobj ret-addr))
-                                        (stub-reclaim stub-addr)
+                                                       (gen-version
+                                                         (if (eq? prev-action 'swap)
+                                                             (+ jump-addr 6)
+                                                             jump-addr)
+                                                         lazy-code0
+                                                         ctx0)
 
-                                        (if (= selector 0)
+                                                       (gen-version
+                                                         (if (eq? prev-action 'swap)
+                                                             jump-addr
+                                                             (+ jump-addr 6))
+                                                         lazy-code1
+                                                         ctx1))))))))))
 
-                                            (gen-version
-                                              (if (eq? prev-action 'swap)
-                                                  (+ jump-addr 6)
-                                                  jump-addr)
-                                              lazy-code0
-                                              ctx0)
+                              (let ((label-false (list-ref stub-labels 0))
+                                    (label-true  (list-ref stub-labels 1)))
 
-                                            (gen-version
-                                              (if (eq? prev-action 'swap)
-                                                  jump-addr
-                                                  (+ jump-addr 6))
-                                              lazy-code1
-                                              ctx1))))))))))
+                                (set! stub-first-label-addr
+                                      (min (asm-label-pos label-false)
+                                           (asm-label-pos label-true)))
 
-                   (let ((label-false (list-ref stub-labels 0))
-                         (label-true  (list-ref stub-labels 1)))
-
-                     (set! stub-first-label-addr
-                           (min (asm-label-pos label-false)
-                                (asm-label-pos label-true)))
-
-                     (if x86-op
-                         (codegen-inlined-if cgc label-jump label-false label-true x86-op)
-                         (let* ((type (ctx-get-type ctx 0))
-                                (cst? (ctx-type-cst? type)))
-                           ;; TODO WIP: do *not* create stub in the first two cases
-                           (cond ((and cst? (ctx-type-cst type))
-                                    (jump-to-version cgc lazy-code1 (ctx-pop ctx)))
-                                 (cst?
-                                    (jump-to-version cgc lazy-code0 (ctx-pop ctx)))
-                                 (else
+                                (if x86-op
+                                    (codegen-inlined-if cgc label-jump label-false label-true x86-op)
                                     (let ((lcond (ctx-get-loc ctx 0)))
                                       (codegen-if cgc (ctx-fs ctx) (ctx-ffs ctx) label-jump label-false label-true lcond))))))))))))
 
