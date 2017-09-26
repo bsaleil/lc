@@ -1369,6 +1369,8 @@
           (define offset-free-h (* -1 (- closures-size clo-offset 2)))
           (define offset-late   (+ offset-free (* 8 (length free-imm))))
 
+          (define fn-num #f)
+
           ;; TODO: use a gen-closure function (merge with existing gen-closure function)
 
           ;; Write header
@@ -1381,8 +1383,9 @@
           ;; if max-versions is reached, cst are dropped and we lost cst information.
           ;; This context is used by init-entry and gen-free-vars because they need this information
           (mlet ((ctx (cst-binder ctx))
-                 (fn-num/entry-obj (init-entry ast ctx (append free-cst free-imm) free-late id))
+                 (fn-n/entry-obj (init-entry ast ctx (append free-cst free-imm) free-late id))
                  (entry-obj-loc (- (obj-encoding entry-obj) 1)))
+            (set! fn-num fn-n) ;; update current function fn-num
             (if opt-entry-points
                 (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
                 (x86-mov cgc (x86-rax) (x86-mem (+ 8 entry-obj-loc))))
@@ -1418,7 +1421,7 @@
             (apply-moves cgc ctx moves)
             (let ((dest (codegen-reg-to-x86reg reg)))
               (x86-lea cgc dest (x86-mem (+ offset-start TAG_MEMOBJ) clo-reg)))
-            (let* ((ctx (ctx-push ctx (make-ctx-tclo) reg))
+            (let* ((ctx (ctx-push ctx (make-ctx-tcloi fn-num) reg))
                    (ctx (ctx-id-add-idx ctx id 0)))
               (jump-to-version cgc succ ctx))))))
 
