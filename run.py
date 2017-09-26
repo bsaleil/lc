@@ -123,7 +123,7 @@ import glob
 import subprocess
 import sys
 
-files = sorted(glob.glob("/home/bapt/Bureau/these/lazy-comp/tools/benchtimes/result/inter/" + '/*.scm'))
+files = sorted(glob.glob("/home/bapt/Bureau/these/lc/tools/benchtimes/result/inter/" + '/*.scm'))
 
 print('name',end='')
 for exe in ex:
@@ -142,7 +142,7 @@ for file in files:
         rc = p.returncode
         # exec
         if rc == 0:
-            ecmd = ["./lazy-comp",file,"--time"] + exec[2].split()
+            ecmd = ["./lc",file,"--time"] + exec[2].split()
             p = subprocess.Popen(ecmd, universal_newlines=True, stdin=pipe, stdout=pipe, stderr=pipe)
             sout, serr = p.communicate()
             rc = p.returncode

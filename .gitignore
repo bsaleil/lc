@@ -2,7 +2,7 @@
 config.scm
 /tools/benchtimes/result
 /tools/locatview/locat.js
-lazy-comp
+lc
 *~
 tmp
 lib.scm

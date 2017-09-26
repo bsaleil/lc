@@ -81,7 +81,7 @@
     (cons status output)))
 
 (define (run-lc file . args)
-  (let* ((run-args (append (list "./lazy-comp" file) args))
+  (let* ((run-args (append (list "./lc" file) args))
          (x (apply run run-args)))
     (if (= (car x) 0)
         (let ((y (apply run run-args)))
@@ -174,7 +174,7 @@
 (define (main . args)
 
   (set! PATH "unit-tests")
-  (set! EXEC "lazy-comp")
+  (set! EXEC "lc")
   (set! ARGS args)
 
   (run-tests (list-of-scm-files (list PATH))))
