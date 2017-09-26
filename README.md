@@ -39,7 +39,7 @@ To compute the 40th Fibonacci number:
 ```
 
 ```bash
-$ time ./lc test.scm
+$ time ./lc fib.scm
 165580141
 
 real	0m0,550s
