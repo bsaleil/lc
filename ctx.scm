@@ -691,7 +691,7 @@
   ;; SLOT-LOC
   (define (init-slot-loc nb-free-const)
     (let* ((mem (if cn-num 0 1))
-           (types (and stack (reverse (list-head stack (length stack)))))
+           (types (and stack (reverse stack)))
            (r
              (if (not stack)
                  (init-slot-loc-local-gen (+ nb-free-const 2) args-regs mem args)
