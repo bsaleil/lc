@@ -98,10 +98,20 @@
     "Print compilation time after execution"
     ,(lambda (args) (set! opt-ctime #t) args))
 
+  ;; TODO: switch to default when fully implemented ?
+  (--enable-continuation-propagation
+    "Disable continuation (cn-num) propagation"
+    ,(lambda (args) (set! opt-propagate-continuation #t) args))
+
   (--disable-entry-points
     "Disable the use of multiple entry points use only one generic entry point"
     ,(lambda (args) (if opt-call-max-len (error "--call-max-len requires interprocedural extensions"))
                     (set! opt-entry-points #f) args))
+
+  (--disable-inlined-call
+    "Disable lazy call inlining when callee identity is known. Lazy call inlining causes function duplication which is
+     not necessarily expected if --disable-entry-points is provided"
+     ,(lambda (args) (set! opt-lazy-inlined-call #f) args))
 
   ;(--disable-regalloc-vers
   ;  "Do not use register allocation information to specialize generated code"
@@ -118,6 +128,10 @@
   (--enable-cxoverflow-fallback
     "Enable automatic fallback to generic entry/return point when cxtable overflows, default throws an error"
     ,(lambda (args) (set! opt-overflow-fallback #t) args))
+
+  (--disable-cxoverflow-closest
+    "Use the closest ctx associated to an existing slot of the cx table when the table oferflows (if possible) instead of using generic ctx"
+    ,(lambda (args) (set! opt-closest-cx-overflow #f) args))
 
   (--help
     "Print help"
@@ -224,6 +238,7 @@
               ;; Restore registers values from pstack
               (ppop-regs-reverse cgc all-regs)
               (ppop-xmm cgc)
+
               (x86-ret cgc)))))
 
 
@@ -352,12 +367,11 @@
         ;; Can only exec 1 file
         ((= (length files) 1)
           (copy-with-declare (car files) "./tmp")
-        (let ((content (c#expand-program "./tmp" #f locat-table)));(read-all (open-input-file (car files)))))
+        (let ((content (c#expand-program "./tmp" #f locat-table))) ;(read-all (open-input-file (car files)))))
               (let ((exp-content (expand-tl content)))
                 (analyses-find-global-types! exp-content)
                 (analyses-a-conversion! exp-content)
                 (compute-liveness exp-content)
-                ;(pp exp-content)
                 ;(exec content))))
                 (exec exp-content))))
         (else (error "NYI")))
@@ -488,8 +502,9 @@
     (println "Stub size (bytes): " stub-bytes)
     ;; Code + Stub size
     (println "Total size (bytes): " (+ code-bytes stub-bytes))
-    ;; Global cc-table size
-    (println "Global table size: " (table-length global-cc-table))
+    ;; Global cx-table size
+    (println "Global cc table size: " (table-length global-cc-table))
+    (println "Global cr table size: " (table-length global-cr-table))
     ;; Number of cc tables
     (println "Number of cctables: " (cctables-total))
     ;; Number of cr tables

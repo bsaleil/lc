@@ -55,6 +55,9 @@
 (define opt-cr-max               #f) ;; Global crtable max size
 (define opt-const-vers           #f) ;; Use cst information in code versioning
 (define opt-call-max-len         #f) ;; Max number of args allowed when using a specialized entry point (use a generic ep if nb-args > opt-call-max-len)
+(define opt-closest-cx-overflow  #t) ;; Use the closest ctx associated to an existing slot of the cx table when the table oferflows (if possible) instead of using generic ctx
+(define opt-lazy-inlined-call    #t) ;; The function body is inlined at a call if (1) the identity of the callee is known, (2) there is no version of the function for this ctx
+(define opt-propagate-continuation #f) ;; TODO
 
 ;; This is the list of cst types used for versioning (if opt-const-vers is #t)
 ;; All csts types are enabled by default
@@ -135,6 +138,7 @@
 
 (define codegen-prologue-rest> #f)
 (define gen-drop-float #f)
+(define asc-cnnum-table-get #f)
 
 
 ;;-----------------------------------------------------------------------------
@@ -425,15 +429,18 @@
          (selector
           (encoding-obj (get-i64 (- psp 16))))
 
-         (ctx-idx
+         (cc-idx
           (if opt-entry-points
               (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-r11)))))
               #f))
 
-         (stack
+         (cc-idx-data
            (if (or (not opt-entry-points) (= selector 1))
                #f
-               (cctable-get-data ctx-idx)))
+               (cctable-get-data cc-idx)))
+
+         (stack  (and cc-idx-data (cdr cc-idx-data)))
+         (cn-num (and cc-idx-data (car cc-idx-data)))
 
          ;; Closure is used as a Gambit procedure to keep an updated reference
          (closure
@@ -445,7 +452,7 @@
          (new-ret-addr
            (run-add-to-ctime
              (lambda ()
-               (callback-fn stack ret-addr selector closure)))))
+               (callback-fn stack cc-idx cn-num ret-addr selector closure)))))
 
     ;; replace return address
     (put-i64 psp new-ret-addr)
@@ -469,12 +476,6 @@
          (type-idx
           (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-r11))))))
 
-         (table
-           (let ((i64 (get-i64 (+ usp (reg-sp-offset-r (x86-rdx))))))
-             (if opt-return-points
-                 (encoding-obj (+ i64 TAG_MEMOBJ))
-                 i64)))
-
          (type
            (if (or (not opt-return-points) (= selector 1))
                #f
@@ -483,7 +484,7 @@
          (new-ret-addr
            (run-add-to-ctime
              (lambda ()
-               (callback-fn ret-addr selector type table)))))
+               (callback-fn ret-addr selector type)))))
 
     ;; replace return address
     (put-i64 psp
@@ -1018,11 +1019,15 @@
     (string->symbol (string-append (symbol->string sym) (number->string n)))))
 
 (define fn-count 0)
+(define cn-count 0)
 
-(define (new-fn-num)
-  (let ((n fn-count))
-    (set! fn-count (+ fn-count 1))
-    n))
+(define-macro (new-cx-num cpt)
+  `(let ((n ,cpt))
+     (set! ,cpt (+ ,cpt 1))
+     n))
+
+(define (new-fn-num) (new-cx-num fn-count))
+(define (new-cn-num) (new-cx-num cn-count))
 
 ;;-----------------------------------------------------------------------------
 
@@ -1160,7 +1165,8 @@
                                 (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
                                 (x86-rax))))
                        ((and (pair? (car move))
-                             (eq? (caar move) 'constfn))
+                             (or (eq? (caar move) 'constfn)
+                                 (eq? (caar move) 'constcont)))
                           ;; If src is a constfn, create closure in move
                           (car move))
                        ((and (pair? (car move))
@@ -1191,6 +1197,12 @@
                            (assert (eq? r (x86-rax)) "Internal error, nyi")
                            (gen-closure cgc 'tmp #f entry-obj '())
                            (x86-mov cgc dst r)))))
+                ;; TODO optimize move if dst is a register
+                ((and (pair? src) (eq? (car src) 'constcont))
+                  (x86-label cgc (asm-make-label #f (new-sym 'SYM_OPT_)))
+                  (let ((table (asc-cnnum-table-get (cdr src))))
+                    (x86-mov cgc (x86-rax) (x86-imm-int (- (obj-encoding table) TAG_MEMOBJ)))
+                    (x86-mov cgc dst (x86-rax))))
                 ;; Both in memory, use rax
                 ((and (or (x86-mem? src)
                           (x86-imm? src))
@@ -1438,14 +1450,13 @@
 
 ;; #### FUNCTION ENTRY
 ;; Generate an entry point
-(define (gen-version-fn ast closure entry-obj lazy-code gen-ctx call-stack generic)
+(define (gen-version-fn ast closure entry-obj lazy-code gen-ctx cc-idx generic)
 
   (define (fn-verbose)
     (print "GEN VERSION FN")
     (pp lazy-code)
     (print " >>> ")
-    (pp gen-ctx)
-    (pp call-stack))
+    (pp gen-ctx))
 
   (define patch-label #f)
 
@@ -1458,13 +1469,9 @@
     (cond ((not opt-entry-points)
            (patch-closure-ep ast closure entry-obj label-dest))
           (generic
-             ;; If call-stack is not #f, a generic version is generated because number of versions limit is reached
-             ;; Then we also need to patch cctable slot
-             (if call-stack
-                 (patch-closure entry-obj call-stack label-dest))
-             (patch-generic ast entry-obj #f label-dest))
+           (patch-generic ast entry-obj #f label-dest))
           (else
-             (patch-closure entry-obj call-stack label-dest))))
+           (patch-closure entry-obj cc-idx label-dest))))
 
   (define (fn-codepos)
     code-alloc)
@@ -1633,11 +1640,11 @@
 
 ;; Patch all call sites previously generated by the compiler
 ;; using a direct jump to this stub
-(define (patch-direct-jmp-labels entry-obj stack eplabel)
-  (let ((patched-labels (asc-entry-load-get entry-obj stack))
+(define (patch-direct-jmp-labels entry-obj cc-idx eplabel)
+  (let ((patched-labels (asc-entry-load-get entry-obj cc-idx))
         (tmp code-alloc))
     ;; Clear table entry
-    (asc-entry-load-clear entry-obj stack)
+    (asc-entry-load-clear entry-obj cc-idx)
     ;; Patch all labels
     (let loop ((labels patched-labels))
       (if (not (null? labels))
@@ -1653,17 +1660,18 @@
     (set! code-alloc tmp)))
 
 ;; Patch closure
-(define (patch-closure cctable stack label)
+(define (patch-closure cctable cc-idx label)
+
+  (assert (integer? cc-idx) "Internal error")
 
   (let* ((label-addr (asm-label-pos  label))
-         (label-name (asm-label-name label))
-         (index (or (cctable-get-idx stack) -1))) ;; -1 to patch generic
+         (label-name (asm-label-name label)))
 
     ;; Patch cctable entry (+ 1 for generic ep)
-    (##u64vector-set! cctable (+ index 1) label-addr)
+    (##u64vector-set! cctable (+ cc-idx 1) label-addr)
 
     ;;
-    (patch-direct-jmp-labels cctable stack label)
+    (patch-direct-jmp-labels cctable cc-idx label)
 
     label-addr))
 
@@ -1681,7 +1689,7 @@
       (put-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8) label-addr))
 
   ;;
-  (patch-direct-jmp-labels entryvec '() label)
+  (patch-direct-jmp-labels entryvec -1 label)
 
   label-addr)
 
@@ -1875,7 +1883,7 @@
 (define global-cc-table-maxsize  #f)
 (define global-cr-table-maxsize  #f)
 ;; Holds the current shape of the global cc table
-(define global-cc-table (make-table))
+(define global-cc-table (make-table test: equal?))
 (define global-cr-table (make-table))
 
 ;; Get cc/cr table index associated to ctx. If ctx is not in the
