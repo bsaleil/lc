@@ -549,11 +549,6 @@
               (cons first
                     (compute-slot-loc (cdr slot-loc)))))))
 
-  (let* ((r (assoc 1 (ctx-slot-loc ctx)))
-         (type (and r (ctx-get-type ctx (- (length (ctx-stack ctx)) 2)))))
-    (if (and r (not (cdr r)) (not (ctx-type-cst? type)))
-        (error "nyi?")))
-
   (set! stack (compute-stack (ctx-stack ctx) (- (length (ctx-stack ctx)) 1)))
 
   (let ((env   (compute-env   (ctx-env ctx)))
@@ -1575,17 +1570,22 @@
                 ;; Loc is #f
                 (let* ((slot (car first))
                        (type (list-ref (ctx-stack src-ctx) (slot-to-stack-idx src-ctx slot))))
-                  (assert (ctx-type-cst? type) "Internal error")
+
                   (let* ((dst
                            (cdr (assoc slot (ctx-slot-loc dst-ctx))))
                          (src
-                           (cond ((ctx-type-clo? type)
+                           (cond ((not (ctx-type-cst? type))
+                                    #f)
+                                 ((ctx-type-clo? type)
                                     (cons 'constfn (ctx-type-cst type)))
                                  ((ctx-type-ret? type)
                                     (cons 'constcont (ctx-type-cst type)))
                                  (else
                                     (cons 'const (ctx-type-cst type))))))
-                    (cons (cons src dst) (loop (cdr sl))))))))))
+                    (assert (not (and (not src) dst)) "Internal error")
+                    (if src
+                        (cons (cons src dst) (loop (cdr sl)))
+                        (loop (cdr sl))))))))))
 
   (let* ((req-moves (get-req-moves))
          (moves (add-boxes (steps req-moves)))
