@@ -611,39 +611,16 @@
 
   ;;
   ;; FREE REGS
-  (define (init-free-regs)
-    ;; init free regs if the context is *not* generic (stack != #f)
-    (define (init stack regs)
-      (if (or (null? stack) (null? regs))
-          '()
-          (if (or (ctx-type-flo? (car stack))
-                  (and (const-versioned? (car stack))
-                       (not (ctx-type-id? (car stack)))))
-              (init (cdr stack) regs)
-              (cons (car regs)
-                    (init (cdr stack) (cdr regs))))))
-    (let ((used
-            (if stack
-                (cons '(r . 2) (init stack args-regs))
-                (cons '(r . 2) (if (<= (length args) (length args-regs))
-                                   (list-head args-regs (length args))
-                                   args-regs)))))
-      (set-sub (ctx-init-free-regs) used '())))
+  (define (init-free-regs slot-loc)
+    (set-sub (ctx-init-free-regs)
+             (map cdr slot-loc)
+             '()))
 
   ;; FREE FREGS
-  (define (init-free-fregs)
-    (define (init stack fregs)
-      (if (or (null? stack)
-              (null? fregs))
-          fregs
-          (if (or (not (ctx-type-flo? (car stack)))
-                  (const-versioned? (car stack)))
-              (init (cdr stack) fregs)
-              (init (cdr stack) (cdr fregs)))))
-
-    (if stack
-        (init stack (ctx-init-free-fregs))
-        (ctx-init-free-fregs)))
+  (define (init-free-fregs slot-loc)
+    (set-sub (ctx-init-free-fregs)
+             (map cdr slot-loc)
+             '()))
 
   ;;
   ;; ENV
@@ -681,7 +658,6 @@
                  (enc-type   (if opt-entry-points ;; We can't use free variable type to specialize ctx if opt-entry-points is #f
                                  (or (cdar ids) (make-ctx-tclo)) ;; enclosing type, or #f if late
                                  (make-ctx-tunk)))
-                 (late?      (member id late-fbinds))
                  (identifier (make-identifier 'free '() '() enc-type (cons 'f nvar) #f (eq? id bound-id))))
             (cons (cons id identifier)
                   (init-env-free-h (cdr ids) (+ nvar 1))))))
@@ -752,10 +728,10 @@
                         (return slot (car regs) r))))))))
 
   (define (init-slot-loc-base nb-free-const)
+    (define clo  (if (null? free-vars) '(1 . #f) '(1 r . 2)))
+    (define cont (if cn-num '(0 . #f) '(0 m . 0)))
     (append (reverse (build-list nb-free-const (lambda (n) (cons (+ n 2) #f))))
-            (if cn-num
-                '((1 r . 2) (0 . #f))
-                '((1 r . 2) (0 m . 0)))))
+            (list clo cont)))
 
   (let* ((r (find-const-free free-vars))
          (free-const (car r))
@@ -771,9 +747,9 @@
     (make-ctx
       new-stack
       (car slot-loc/fs)
-      (init-free-regs)
+      (init-free-regs (car slot-loc/fs))
       '()
-      (init-free-fregs)
+      (init-free-fregs (car slot-loc/fs))
       '()
       (init-env free-const free-nconst)
       (and stack (length stack))
@@ -1131,6 +1107,8 @@
 
   ;; Free dead locations
   (set! octx (ctx-free-dead-locs octx ast))
+
+
 
   (save-all idx-start '() octx))
 

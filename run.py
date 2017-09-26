@@ -13,8 +13,15 @@ ex=[];
 # ex.append(["AA","strat4","--enable-const-vers --cc-max 1000 --enable-cxoverflow-fallback --cr-max 1000 --max-versions 5 --const-vers-types sym cha boo pai str vec nul voi"])
 
 
-ex.append(["1","strat1","--max-versions 5 --cc-max 1000 --cr-max 1000 --enable-cxoverflow-fallback"])
-ex.append(["2","strat1","--max-versions 5 --cc-max 1000 --cr-max 1000 --enable-cxoverflow-fallback --disable-inlined-call"])
+ex.append(["0","strat1","--max-versions 5 --disable-inlined-call"]);
+ex.append(["1","strat1","--max-versions 5 --more-versions 0"]);
+ex.append(["2","strat1","--max-versions 5 --more-versions 1"]);
+ex.append(["3","strat1","--max-versions 5 --more-versions 2"]);
+ex.append(["4","strat1","--max-versions 5 --more-versions 3"]);
+ex.append(["5","strat1","--max-versions 5 --more-versions 4"]);
+ex.append(["6","strat1","--max-versions 5 --more-versions 5"]);
+ex.append(["7","strat1","--max-versions 3 --more-versions 3"]);
+ex.append(["8","strat1","--max-versions 5 --more-versions 10"]);
 
 #
 # #----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -123,7 +130,7 @@ import glob
 import subprocess
 import sys
 
-files = sorted(glob.glob("/home/bapt/Bureau/these/lc/tools/benchtimes/result/inter/" + '/*.scm'))
+files = sorted(glob.glob("/home/bapt/Bureau/these/lc/tools/benchtimes/resultbak/m5inter/" + '/*.scm'))
 
 print('name',end='')
 for exe in ex:

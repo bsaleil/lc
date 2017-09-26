@@ -1,14 +1,9 @@
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
+(define (ack m n)
+  (cond ((= m 0) (+ n 1))
+        ((= n 0) (ack (- m 1) 1))
+        (else (ack (- m 1) (ack m (- n 1))))))
 
-(println (fib 40))
-
-
-
-
+(gambit$$pp (ack 3 9))
 
 
 
