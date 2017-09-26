@@ -11,6 +11,8 @@ JIT compiler for Scheme targeting x86-64 platforms.
 
 ### Building
 
+A recent version of [Gambit](http://gambitscheme.org/) (probably >= 4.8.6) must be installed.
+
 ```bash
 git clone https://github.com/bsaleil/lc.git
 cd lc
