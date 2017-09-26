@@ -1,17 +1,10 @@
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-(define matrix-read
-  (lambda (mat i j)
-    1))
-
-(define (zmap fn els)
-  (fn (car els)))
-
-(define bbb (cons #t 0))
-
- (let ((cave (cdr bbb))
-       (ncs (cons '((2 0)) #f)))
-    (let ((fn (lambda (nc) (matrix-read cave (car nc) (cdr nc)) (error "B"))))
-      (zmap fn ncs)))
+(println (fib 40))
 
 
 
