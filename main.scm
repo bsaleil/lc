@@ -124,10 +124,10 @@
     ,(lambda (args)
       (newline)
       (println (string-bold "NAME"))
-      (println "       lazy-comp - Scheme JIT compiler")
+      (println "       lc - Scheme JIT compiler")
       (newline)
       (println (string-bold "SYNOPSIS"))
-      (println "       ./lazy-comp [files] [options]")
+      (println "       ./lc [file] [options]")
       (newline)
       (println (string-bold "OPTIONS"))
       (for-each (lambda (option) (println "       " (car option))
@@ -245,32 +245,32 @@
 ;; Interactive mode (REPL)
 
 (define (repl prog)
-
-  (init-backend)
-
-  (println "  _     ____       ")
-  (println " | |   / ___|      ")
-  (println " | |  | |          ")
-  (println " | |__| |___       ")
-  (println " |_____\\____| REPL")
-  (println "")
-
-  (let ((lco (lazy-exprs prog lazy-repl-call)))
-    (gen-version-first lco (ctx-init)))
-
-  (##machine-code-block-exec mcb))
-
-(define lazy-repl-call
-  (make-lazy-code
-    #f
-    (lambda (cgc ctx)
-      ;; Generate call to repl handler defined in core.scm
-      ;; This handler read from stdin, build lco chain,
-      ;; and generate a version of the first lco of the chain.
-      ;; The address of this version is returned in rax
-      ;; then, jump to the version
-      (x86-pcall cgc label-repl-handler)
-      (x86-jmp cgc (x86-rax)))))
+  (apply (caddr (assoc '--help compiler-options)) '(#f)))
+;  (init-backend)
+;
+;  (println "  _     ____       ")
+;  (println " | |   / ___|      ")
+;  (println " | |  | |          ")
+;  (println " | |__| |___       ")
+;  (println " |_____\\____| REPL")
+;  (println "")
+;
+;  (let ((lco (lazy-exprs prog lazy-repl-call)))
+;    (gen-version-first lco (ctx-init)))
+;
+;  (##machine-code-block-exec mcb))
+;
+;(define lazy-repl-call
+;  (make-lazy-code
+;    #f
+;    (lambda (cgc ctx)
+;      ;; Generate call to repl handler defined in core.scm
+;      ;; This handler read from stdin, build lco chain,
+;      ;; and generate a version of the first lco of the chain.
+;      ;; The address of this version is returned in rax
+;      ;; then, jump to the version
+;      (x86-pcall cgc label-repl-handler)
+;      (x86-jmp cgc (x86-rax)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Bash mode

@@ -1,0 +1,1305 @@
+------------------------------------------------------------------------
+361008				bits 64
+361008 e9790f0000		jmp	rtlib_skip
+36100d			heap_limit_handler:
+36100d 4883ed58			sub	rbp,byte 88
+361011 48894d50			mov	[rbp+80],rcx
+361015 48895d48			mov	[rbp+72],rbx
+361019 4c897d40			mov	[rbp+64],r15
+36101d 48897538			mov	[rbp+56],rsi
+361021 48897d30			mov	[rbp+48],rdi
+361025 4c895528			mov	[rbp+40],r10
+361029 4c895d20			mov	[rbp+32],r11
+36102d 4c896518			mov	[rbp+24],r12
+361031 4c896d10			mov	[rbp+16],r13
+361035 4c897508			mov	[rbp+8],r14
+361039 48895500			mov	[rbp],rdx
+36103d 4c890c25b074fc00		mov	[+16544944],r9
+361045 4889ef			mov	rdi,rbp
+361048 55			push	rbp
+361049 51			push	rcx
+36104a 4150			push	r8
+36104c 4151			push	r9
+36104e 4881ec80000000		sub	rsp,128
+361055 f20f110424		movsd	[rsp],xmm0
+36105a f20f114c2408		movsd	[rsp+8],xmm1
+361060 f20f11542410		movsd	[rsp+16],xmm2
+361066 f20f115c2418		movsd	[rsp+24],xmm3
+36106c f20f11642420		movsd	[rsp+32],xmm4
+361072 f20f116c2428		movsd	[rsp+40],xmm5
+361078 f20f11742430		movsd	[rsp+48],xmm6
+36107e f20f117c2438		movsd	[rsp+56],xmm7
+361084 f2440f11442440		movsd	[rsp+64],xmm8
+36108b f2440f114c2448		movsd	[rsp+72],xmm9
+361092 f2440f11542450		movsd	[rsp+80],xmm10
+361099 f2440f115c2458		movsd	[rsp+88],xmm11
+3610a0 f2440f11642460		movsd	[rsp+96],xmm12
+3610a7 f2440f116c2468		movsd	[rsp+104],xmm13
+3610ae f2440f11742470		movsd	[rsp+112],xmm14
+3610b5 f2440f117c2478		movsd	[rsp+120],xmm15
+3610bc 4889e0			mov	rax,rsp
+3610bf 4883e4f0			and	rsp,byte -16
+3610c3 4883ec08			sub	rsp,byte 8
+3610c7 50			push	rax
+3610c8 48b80eb7a52e967f
+3610d0 0000			mov	rax,140283004434190
+3610d2 ffd0			call	rax
+3610d4 5c			pop	rsp
+3610d5 f20f100424		movsd	xmm0,[rsp]
+3610da f20f104c2408		movsd	xmm1,[rsp+8]
+3610e0 f20f10542410		movsd	xmm2,[rsp+16]
+3610e6 f20f105c2418		movsd	xmm3,[rsp+24]
+3610ec f20f10642420		movsd	xmm4,[rsp+32]
+3610f2 f20f106c2428		movsd	xmm5,[rsp+40]
+3610f8 f20f10742430		movsd	xmm6,[rsp+48]
+3610fe f20f107c2438		movsd	xmm7,[rsp+56]
+361104 f2440f10442440		movsd	xmm8,[rsp+64]
+36110b f2440f104c2448		movsd	xmm9,[rsp+72]
+361112 f2440f10542450		movsd	xmm10,[rsp+80]
+361119 f2440f105c2458		movsd	xmm11,[rsp+88]
+361120 f2440f10642460		movsd	xmm12,[rsp+96]
+361127 f2440f106c2468		movsd	xmm13,[rsp+104]
+36112e f2440f10742470		movsd	xmm14,[rsp+112]
+361135 f2440f107c2478		movsd	xmm15,[rsp+120]
+36113c 4881c480000000		add	rsp,128
+361143 4159			pop	r9
+361145 4158			pop	r8
+361147 59			pop	rcx
+361148 488b0c25a874fc00		mov	rcx,[+16544936]
+361150 49b908a05954967f
+361158 0000			mov	r9,140283636981768
+36115a 49894928			mov	[r9+40],rcx
+36115e 4c8b0c25b074fc00		mov	r9,[+16544944]
+361166 5d			pop	rbp
+361167 488b5500			mov	rdx,[rbp]
+36116b 4c8b7508			mov	r14,[rbp+8]
+36116f 4c8b6d10			mov	r13,[rbp+16]
+361173 4c8b6518			mov	r12,[rbp+24]
+361177 4c8b5d20			mov	r11,[rbp+32]
+36117b 4c8b5528			mov	r10,[rbp+40]
+36117f 488b7d30			mov	rdi,[rbp+48]
+361183 488b7538			mov	rsi,[rbp+56]
+361187 4c8b7d40			mov	r15,[rbp+64]
+36118b 488b5d48			mov	rbx,[rbp+72]
+36118f 488b4d50			mov	rcx,[rbp+80]
+361193 4883c558			add	rbp,byte 88
+361197 c3			ret
+361198			alloc_still_handler:
+361198 4883ed58			sub	rbp,byte 88
+36119c 48894d50			mov	[rbp+80],rcx
+3611a0 48895d48			mov	[rbp+72],rbx
+3611a4 4c897d40			mov	[rbp+64],r15
+3611a8 48897538			mov	[rbp+56],rsi
+3611ac 48897d30			mov	[rbp+48],rdi
+3611b0 4c895528			mov	[rbp+40],r10
+3611b4 4c895d20			mov	[rbp+32],r11
+3611b8 4c896518			mov	[rbp+24],r12
+3611bc 4c896d10			mov	[rbp+16],r13
+3611c0 4c897508			mov	[rbp+8],r14
+3611c4 48895500			mov	[rbp],rdx
+3611c8 4c890c25b074fc00		mov	[+16544944],r9
+3611d0 4889ef			mov	rdi,rbp
+3611d3 55			push	rbp
+3611d4 51			push	rcx
+3611d5 4150			push	r8
+3611d7 4151			push	r9
+3611d9 4881ec80000000		sub	rsp,128
+3611e0 f20f110424		movsd	[rsp],xmm0
+3611e5 f20f114c2408		movsd	[rsp+8],xmm1
+3611eb f20f11542410		movsd	[rsp+16],xmm2
+3611f1 f20f115c2418		movsd	[rsp+24],xmm3
+3611f7 f20f11642420		movsd	[rsp+32],xmm4
+3611fd f20f116c2428		movsd	[rsp+40],xmm5
+361203 f20f11742430		movsd	[rsp+48],xmm6
+361209 f20f117c2438		movsd	[rsp+56],xmm7
+36120f f2440f11442440		movsd	[rsp+64],xmm8
+361216 f2440f114c2448		movsd	[rsp+72],xmm9
+36121d f2440f11542450		movsd	[rsp+80],xmm10
+361224 f2440f115c2458		movsd	[rsp+88],xmm11
+36122b f2440f11642460		movsd	[rsp+96],xmm12
+361232 f2440f116c2468		movsd	[rsp+104],xmm13
+361239 f2440f11742470		movsd	[rsp+112],xmm14
+361240 f2440f117c2478		movsd	[rsp+120],xmm15
+361247 488bbc24a8000000		mov	rdi,[rsp+168]
+36124f 488b7560			mov	rsi,[rbp+96]
+361253 4889e0			mov	rax,rsp
+361256 4883e4f0			and	rsp,byte -16
+36125a 4883ec08			sub	rsp,byte 8
+36125e 50			push	rax
+36125f 48b8dab6a52e967f
+361267 0000			mov	rax,140283004434138
+361269 ffd0			call	rax
+36126b 5c			pop	rsp
+36126c f20f100424		movsd	xmm0,[rsp]
+361271 f20f104c2408		movsd	xmm1,[rsp+8]
+361277 f20f10542410		movsd	xmm2,[rsp+16]
+36127d f20f105c2418		movsd	xmm3,[rsp+24]
+361283 f20f10642420		movsd	xmm4,[rsp+32]
+361289 f20f106c2428		movsd	xmm5,[rsp+40]
+36128f f20f10742430		movsd	xmm6,[rsp+48]
+361295 f20f107c2438		movsd	xmm7,[rsp+56]
+36129b f2440f10442440		movsd	xmm8,[rsp+64]
+3612a2 f2440f104c2448		movsd	xmm9,[rsp+72]
+3612a9 f2440f10542450		movsd	xmm10,[rsp+80]
+3612b0 f2440f105c2458		movsd	xmm11,[rsp+88]
+3612b7 f2440f10642460		movsd	xmm12,[rsp+96]
+3612be f2440f106c2468		movsd	xmm13,[rsp+104]
+3612c5 f2440f10742470		movsd	xmm14,[rsp+112]
+3612cc f2440f107c2478		movsd	xmm15,[rsp+120]
+3612d3 4881c480000000		add	rsp,128
+3612da 4159			pop	r9
+3612dc 4158			pop	r8
+3612de 59			pop	rcx
+3612df 488b0c25a874fc00		mov	rcx,[+16544936]
+3612e7 49b908a05954967f
+3612ef 0000			mov	r9,140283636981768
+3612f1 49894928			mov	[r9+40],rcx
+3612f5 4c8b0c25b074fc00		mov	r9,[+16544944]
+3612fd 5d			pop	rbp
+3612fe 488b5500			mov	rdx,[rbp]
+361302 4c8b7508			mov	r14,[rbp+8]
+361306 4c8b6d10			mov	r13,[rbp+16]
+36130a 4c8b6518			mov	r12,[rbp+24]
+36130e 4c8b5d20			mov	r11,[rbp+32]
+361312 4c8b5528			mov	r10,[rbp+40]
+361316 488b7d30			mov	rdi,[rbp+48]
+36131a 488b7538			mov	rsi,[rbp+56]
+36131e 4c8b7d40			mov	r15,[rbp+64]
+361322 488b5d48			mov	rbx,[rbp+72]
+361326 488b4d50			mov	rcx,[rbp+80]
+36132a 4883c558			add	rbp,byte 88
+36132e c3			ret
+36132f			gambit_call_handler:
+36132f 4883ed58			sub	rbp,byte 88
+361333 48894d50			mov	[rbp+80],rcx
+361337 48895d48			mov	[rbp+72],rbx
+36133b 4c897d40			mov	[rbp+64],r15
+36133f 48897538			mov	[rbp+56],rsi
+361343 48897d30			mov	[rbp+48],rdi
+361347 4c895528			mov	[rbp+40],r10
+36134b 4c895d20			mov	[rbp+32],r11
+36134f 4c896518			mov	[rbp+24],r12
+361353 4c896d10			mov	[rbp+16],r13
+361357 4c897508			mov	[rbp+8],r14
+36135b 48895500			mov	[rbp],rdx
+36135f 4c890c25b074fc00		mov	[+16544944],r9
+361367 4889ef			mov	rdi,rbp
+36136a 4889e6			mov	rsi,rsp
+36136d 55			push	rbp
+36136e 51			push	rcx
+36136f 4150			push	r8
+361371 4151			push	r9
+361373 4881ec80000000		sub	rsp,128
+36137a f20f110424		movsd	[rsp],xmm0
+36137f f20f114c2408		movsd	[rsp+8],xmm1
+361385 f20f11542410		movsd	[rsp+16],xmm2
+36138b f20f115c2418		movsd	[rsp+24],xmm3
+361391 f20f11642420		movsd	[rsp+32],xmm4
+361397 f20f116c2428		movsd	[rsp+40],xmm5
+36139d f20f11742430		movsd	[rsp+48],xmm6
+3613a3 f20f117c2438		movsd	[rsp+56],xmm7
+3613a9 f2440f11442440		movsd	[rsp+64],xmm8
+3613b0 f2440f114c2448		movsd	[rsp+72],xmm9
+3613b7 f2440f11542450		movsd	[rsp+80],xmm10
+3613be f2440f115c2458		movsd	[rsp+88],xmm11
+3613c5 f2440f11642460		movsd	[rsp+96],xmm12
+3613cc f2440f116c2468		movsd	[rsp+104],xmm13
+3613d3 f2440f11742470		movsd	[rsp+112],xmm14
+3613da f2440f117c2478		movsd	[rsp+120],xmm15
+3613e1 4889e0			mov	rax,rsp
+3613e4 4883e4f0			and	rsp,byte -16
+3613e8 4883ec08			sub	rsp,byte 8
+3613ec 50			push	rax
+3613ed e8103cb201		call	gambit_call
+3613f2 5c			pop	rsp
+3613f3 f20f100424		movsd	xmm0,[rsp]
+3613f8 f20f104c2408		movsd	xmm1,[rsp+8]
+3613fe f20f10542410		movsd	xmm2,[rsp+16]
+361404 f20f105c2418		movsd	xmm3,[rsp+24]
+36140a f20f10642420		movsd	xmm4,[rsp+32]
+361410 f20f106c2428		movsd	xmm5,[rsp+40]
+361416 f20f10742430		movsd	xmm6,[rsp+48]
+36141c f20f107c2438		movsd	xmm7,[rsp+56]
+361422 f2440f10442440		movsd	xmm8,[rsp+64]
+361429 f2440f104c2448		movsd	xmm9,[rsp+72]
+361430 f2440f10542450		movsd	xmm10,[rsp+80]
+361437 f2440f105c2458		movsd	xmm11,[rsp+88]
+36143e f2440f10642460		movsd	xmm12,[rsp+96]
+361445 f2440f106c2468		movsd	xmm13,[rsp+104]
+36144c f2440f10742470		movsd	xmm14,[rsp+112]
+361453 f2440f107c2478		movsd	xmm15,[rsp+120]
+36145a 4881c480000000		add	rsp,128
+361461 4159			pop	r9
+361463 4158			pop	r8
+361465 59			pop	rcx
+361466 488b0c25a874fc00		mov	rcx,[+16544936]
+36146e 49b908a05954967f
+361476 0000			mov	r9,140283636981768
+361478 49894928			mov	[r9+40],rcx
+36147c 4c8b0c25b074fc00		mov	r9,[+16544944]
+361484 5d			pop	rbp
+361485 488b5500			mov	rdx,[rbp]
+361489 4c8b7508			mov	r14,[rbp+8]
+36148d 4c8b6d10			mov	r13,[rbp+16]
+361491 4c8b6518			mov	r12,[rbp+24]
+361495 4c8b5d20			mov	r11,[rbp+32]
+361499 4c8b5528			mov	r10,[rbp+40]
+36149d 488b7d30			mov	rdi,[rbp+48]
+3614a1 488b7538			mov	rsi,[rbp+56]
+3614a5 4c8b7d40			mov	r15,[rbp+64]
+3614a9 488b5d48			mov	rbx,[rbp+72]
+3614ad 488b4d50			mov	rcx,[rbp+80]
+3614b1 4883c558			add	rbp,byte 88
+3614b5 c3			ret
+3614b6			do_callback_handler:
+3614b6 4883ed58			sub	rbp,byte 88
+3614ba 48894d50			mov	[rbp+80],rcx
+3614be 48895d48			mov	[rbp+72],rbx
+3614c2 4c897d40			mov	[rbp+64],r15
+3614c6 48897538			mov	[rbp+56],rsi
+3614ca 48897d30			mov	[rbp+48],rdi
+3614ce 4c895528			mov	[rbp+40],r10
+3614d2 4c895d20			mov	[rbp+32],r11
+3614d6 4c896518			mov	[rbp+24],r12
+3614da 4c896d10			mov	[rbp+16],r13
+3614de 4c897508			mov	[rbp+8],r14
+3614e2 48895500			mov	[rbp],rdx
+3614e6 4c890c25b074fc00		mov	[+16544944],r9
+3614ee 4889ef			mov	rdi,rbp
+3614f1 4889e6			mov	rsi,rsp
+3614f4 55			push	rbp
+3614f5 51			push	rcx
+3614f6 4150			push	r8
+3614f8 4151			push	r9
+3614fa 4881ec80000000		sub	rsp,128
+361501 f20f110424		movsd	[rsp],xmm0
+361506 f20f114c2408		movsd	[rsp+8],xmm1
+36150c f20f11542410		movsd	[rsp+16],xmm2
+361512 f20f115c2418		movsd	[rsp+24],xmm3
+361518 f20f11642420		movsd	[rsp+32],xmm4
+36151e f20f116c2428		movsd	[rsp+40],xmm5
+361524 f20f11742430		movsd	[rsp+48],xmm6
+36152a f20f117c2438		movsd	[rsp+56],xmm7
+361530 f2440f11442440		movsd	[rsp+64],xmm8
+361537 f2440f114c2448		movsd	[rsp+72],xmm9
+36153e f2440f11542450		movsd	[rsp+80],xmm10
+361545 f2440f115c2458		movsd	[rsp+88],xmm11
+36154c f2440f11642460		movsd	[rsp+96],xmm12
+361553 f2440f116c2468		movsd	[rsp+104],xmm13
+36155a f2440f11742470		movsd	[rsp+112],xmm14
+361561 f2440f117c2478		movsd	[rsp+120],xmm15
+361568 4889e0			mov	rax,rsp
+36156b 4883e4f0			and	rsp,byte -16
+36156f 4883ec08			sub	rsp,byte 8
+361573 50			push	rax
+361574 e80e3cb201		call	do_callback
+361579 5c			pop	rsp
+36157a f20f100424		movsd	xmm0,[rsp]
+36157f f20f104c2408		movsd	xmm1,[rsp+8]
+361585 f20f10542410		movsd	xmm2,[rsp+16]
+36158b f20f105c2418		movsd	xmm3,[rsp+24]
+361591 f20f10642420		movsd	xmm4,[rsp+32]
+361597 f20f106c2428		movsd	xmm5,[rsp+40]
+36159d f20f10742430		movsd	xmm6,[rsp+48]
+3615a3 f20f107c2438		movsd	xmm7,[rsp+56]
+3615a9 f2440f10442440		movsd	xmm8,[rsp+64]
+3615b0 f2440f104c2448		movsd	xmm9,[rsp+72]
+3615b7 f2440f10542450		movsd	xmm10,[rsp+80]
+3615be f2440f105c2458		movsd	xmm11,[rsp+88]
+3615c5 f2440f10642460		movsd	xmm12,[rsp+96]
+3615cc f2440f106c2468		movsd	xmm13,[rsp+104]
+3615d3 f2440f10742470		movsd	xmm14,[rsp+112]
+3615da f2440f107c2478		movsd	xmm15,[rsp+120]
+3615e1 4881c480000000		add	rsp,128
+3615e8 4159			pop	r9
+3615ea 4158			pop	r8
+3615ec 59			pop	rcx
+3615ed 488b0c25a874fc00		mov	rcx,[+16544936]
+3615f5 49b908a05954967f
+3615fd 0000			mov	r9,140283636981768
+3615ff 49894928			mov	[r9+40],rcx
+361603 4c8b0c25b074fc00		mov	r9,[+16544944]
+36160b 5d			pop	rbp
+36160c 488b5500			mov	rdx,[rbp]
+361610 4c8b7508			mov	r14,[rbp+8]
+361614 4c8b6d10			mov	r13,[rbp+16]
+361618 4c8b6518			mov	r12,[rbp+24]
+36161c 4c8b5d20			mov	r11,[rbp+32]
+361620 4c8b5528			mov	r10,[rbp+40]
+361624 488b7d30			mov	rdi,[rbp+48]
+361628 488b7538			mov	rsi,[rbp+56]
+36162c 4c8b7d40			mov	r15,[rbp+64]
+361630 488b5d48			mov	rbx,[rbp+72]
+361634 488b4d50			mov	rcx,[rbp+80]
+361638 4883c558			add	rbp,byte 88
+36163c c3			ret
+36163d			do_callback_fn_handler:
+36163d 4883ed58			sub	rbp,byte 88
+361641 48894d50			mov	[rbp+80],rcx
+361645 48895d48			mov	[rbp+72],rbx
+361649 4c897d40			mov	[rbp+64],r15
+36164d 48897538			mov	[rbp+56],rsi
+361651 48897d30			mov	[rbp+48],rdi
+361655 4c895528			mov	[rbp+40],r10
+361659 4c895d20			mov	[rbp+32],r11
+36165d 4c896518			mov	[rbp+24],r12
+361661 4c896d10			mov	[rbp+16],r13
+361665 4c897508			mov	[rbp+8],r14
+361669 48895500			mov	[rbp],rdx
+36166d 4c890c25b074fc00		mov	[+16544944],r9
+361675 4889ef			mov	rdi,rbp
+361678 4889e6			mov	rsi,rsp
+36167b 55			push	rbp
+36167c 51			push	rcx
+36167d 4150			push	r8
+36167f 4151			push	r9
+361681 4881ec80000000		sub	rsp,128
+361688 f20f110424		movsd	[rsp],xmm0
+36168d f20f114c2408		movsd	[rsp+8],xmm1
+361693 f20f11542410		movsd	[rsp+16],xmm2
+361699 f20f115c2418		movsd	[rsp+24],xmm3
+36169f f20f11642420		movsd	[rsp+32],xmm4
+3616a5 f20f116c2428		movsd	[rsp+40],xmm5
+3616ab f20f11742430		movsd	[rsp+48],xmm6
+3616b1 f20f117c2438		movsd	[rsp+56],xmm7
+3616b7 f2440f11442440		movsd	[rsp+64],xmm8
+3616be f2440f114c2448		movsd	[rsp+72],xmm9
+3616c5 f2440f11542450		movsd	[rsp+80],xmm10
+3616cc f2440f115c2458		movsd	[rsp+88],xmm11
+3616d3 f2440f11642460		movsd	[rsp+96],xmm12
+3616da f2440f116c2468		movsd	[rsp+104],xmm13
+3616e1 f2440f11742470		movsd	[rsp+112],xmm14
+3616e8 f2440f117c2478		movsd	[rsp+120],xmm15
+3616ef 4889e0			mov	rax,rsp
+3616f2 4883e4f0			and	rsp,byte -16
+3616f6 4883ec08			sub	rsp,byte 8
+3616fa 50			push	rax
+3616fb e80c3cb201		call	do_callback_fn
+361700 5c			pop	rsp
+361701 f20f100424		movsd	xmm0,[rsp]
+361706 f20f104c2408		movsd	xmm1,[rsp+8]
+36170c f20f10542410		movsd	xmm2,[rsp+16]
+361712 f20f105c2418		movsd	xmm3,[rsp+24]
+361718 f20f10642420		movsd	xmm4,[rsp+32]
+36171e f20f106c2428		movsd	xmm5,[rsp+40]
+361724 f20f10742430		movsd	xmm6,[rsp+48]
+36172a f20f107c2438		movsd	xmm7,[rsp+56]
+361730 f2440f10442440		movsd	xmm8,[rsp+64]
+361737 f2440f104c2448		movsd	xmm9,[rsp+72]
+36173e f2440f10542450		movsd	xmm10,[rsp+80]
+361745 f2440f105c2458		movsd	xmm11,[rsp+88]
+36174c f2440f10642460		movsd	xmm12,[rsp+96]
+361753 f2440f106c2468		movsd	xmm13,[rsp+104]
+36175a f2440f10742470		movsd	xmm14,[rsp+112]
+361761 f2440f107c2478		movsd	xmm15,[rsp+120]
+361768 4881c480000000		add	rsp,128
+36176f 4159			pop	r9
+361771 4158			pop	r8
+361773 59			pop	rcx
+361774 488b0c25a874fc00		mov	rcx,[+16544936]
+36177c 49b908a05954967f
+361784 0000			mov	r9,140283636981768
+361786 49894928			mov	[r9+40],rcx
+36178a 4c8b0c25b074fc00		mov	r9,[+16544944]
+361792 5d			pop	rbp
+361793 488b5500			mov	rdx,[rbp]
+361797 4c8b7508			mov	r14,[rbp+8]
+36179b 4c8b6d10			mov	r13,[rbp+16]
+36179f 4c8b6518			mov	r12,[rbp+24]
+3617a3 4c8b5d20			mov	r11,[rbp+32]
+3617a7 4c8b5528			mov	r10,[rbp+40]
+3617ab 488b7d30			mov	rdi,[rbp+48]
+3617af 488b7538			mov	rsi,[rbp+56]
+3617b3 4c8b7d40			mov	r15,[rbp+64]
+3617b7 488b5d48			mov	rbx,[rbp+72]
+3617bb 488b4d50			mov	rcx,[rbp+80]
+3617bf 4883c558			add	rbp,byte 88
+3617c3 c3			ret
+3617c4			do_callback_cont_handler:
+3617c4 4883ed58			sub	rbp,byte 88
+3617c8 48894d50			mov	[rbp+80],rcx
+3617cc 48895d48			mov	[rbp+72],rbx
+3617d0 4c897d40			mov	[rbp+64],r15
+3617d4 48897538			mov	[rbp+56],rsi
+3617d8 48897d30			mov	[rbp+48],rdi
+3617dc 4c895528			mov	[rbp+40],r10
+3617e0 4c895d20			mov	[rbp+32],r11
+3617e4 4c896518			mov	[rbp+24],r12
+3617e8 4c896d10			mov	[rbp+16],r13
+3617ec 4c897508			mov	[rbp+8],r14
+3617f0 48895500			mov	[rbp],rdx
+3617f4 4c890c25b074fc00		mov	[+16544944],r9
+3617fc 4889ef			mov	rdi,rbp
+3617ff 4889e6			mov	rsi,rsp
+361802 55			push	rbp
+361803 51			push	rcx
+361804 4150			push	r8
+361806 4151			push	r9
+361808 4881ec80000000		sub	rsp,128
+36180f f20f110424		movsd	[rsp],xmm0
+361814 f20f114c2408		movsd	[rsp+8],xmm1
+36181a f20f11542410		movsd	[rsp+16],xmm2
+361820 f20f115c2418		movsd	[rsp+24],xmm3
+361826 f20f11642420		movsd	[rsp+32],xmm4
+36182c f20f116c2428		movsd	[rsp+40],xmm5
+361832 f20f11742430		movsd	[rsp+48],xmm6
+361838 f20f117c2438		movsd	[rsp+56],xmm7
+36183e f2440f11442440		movsd	[rsp+64],xmm8
+361845 f2440f114c2448		movsd	[rsp+72],xmm9
+36184c f2440f11542450		movsd	[rsp+80],xmm10
+361853 f2440f115c2458		movsd	[rsp+88],xmm11
+36185a f2440f11642460		movsd	[rsp+96],xmm12
+361861 f2440f116c2468		movsd	[rsp+104],xmm13
+361868 f2440f11742470		movsd	[rsp+112],xmm14
+36186f f2440f117c2478		movsd	[rsp+120],xmm15
+361876 4889e0			mov	rax,rsp
+361879 4883e4f0			and	rsp,byte -16
+36187d 4883ec08			sub	rsp,byte 8
+361881 50			push	rax
+361882 e80a3cb201		call	do_callback_cont
+361887 5c			pop	rsp
+361888 f20f100424		movsd	xmm0,[rsp]
+36188d f20f104c2408		movsd	xmm1,[rsp+8]
+361893 f20f10542410		movsd	xmm2,[rsp+16]
+361899 f20f105c2418		movsd	xmm3,[rsp+24]
+36189f f20f10642420		movsd	xmm4,[rsp+32]
+3618a5 f20f106c2428		movsd	xmm5,[rsp+40]
+3618ab f20f10742430		movsd	xmm6,[rsp+48]
+3618b1 f20f107c2438		movsd	xmm7,[rsp+56]
+3618b7 f2440f10442440		movsd	xmm8,[rsp+64]
+3618be f2440f104c2448		movsd	xmm9,[rsp+72]
+3618c5 f2440f10542450		movsd	xmm10,[rsp+80]
+3618cc f2440f105c2458		movsd	xmm11,[rsp+88]
+3618d3 f2440f10642460		movsd	xmm12,[rsp+96]
+3618da f2440f106c2468		movsd	xmm13,[rsp+104]
+3618e1 f2440f10742470		movsd	xmm14,[rsp+112]
+3618e8 f2440f107c2478		movsd	xmm15,[rsp+120]
+3618ef 4881c480000000		add	rsp,128
+3618f6 4159			pop	r9
+3618f8 4158			pop	r8
+3618fa 59			pop	rcx
+3618fb 488b0c25a874fc00		mov	rcx,[+16544936]
+361903 49b908a05954967f
+36190b 0000			mov	r9,140283636981768
+36190d 49894928			mov	[r9+40],rcx
+361911 4c8b0c25b074fc00		mov	r9,[+16544944]
+361919 5d			pop	rbp
+36191a 488b5500			mov	rdx,[rbp]
+36191e 4c8b7508			mov	r14,[rbp+8]
+361922 4c8b6d10			mov	r13,[rbp+16]
+361926 4c8b6518			mov	r12,[rbp+24]
+36192a 4c8b5d20			mov	r11,[rbp+32]
+36192e 4c8b5528			mov	r10,[rbp+40]
+361932 488b7d30			mov	rdi,[rbp+48]
+361936 488b7538			mov	rsi,[rbp+56]
+36193a 4c8b7d40			mov	r15,[rbp+64]
+36193e 488b5d48			mov	rbx,[rbp+72]
+361942 488b4d50			mov	rcx,[rbp+80]
+361946 4883c558			add	rbp,byte 88
+36194a c3			ret
+36194b			rt_error_handler:
+36194b 4883ed58			sub	rbp,byte 88
+36194f 48894d50			mov	[rbp+80],rcx
+361953 48895d48			mov	[rbp+72],rbx
+361957 4c897d40			mov	[rbp+64],r15
+36195b 48897538			mov	[rbp+56],rsi
+36195f 48897d30			mov	[rbp+48],rdi
+361963 4c895528			mov	[rbp+40],r10
+361967 4c895d20			mov	[rbp+32],r11
+36196b 4c896518			mov	[rbp+24],r12
+36196f 4c896d10			mov	[rbp+16],r13
+361973 4c897508			mov	[rbp+8],r14
+361977 48895500			mov	[rbp],rdx
+36197b 4c890c25b074fc00		mov	[+16544944],r9
+361983 4889ef			mov	rdi,rbp
+361986 4889e6			mov	rsi,rsp
+361989 55			push	rbp
+36198a 51			push	rcx
+36198b 4150			push	r8
+36198d 4151			push	r9
+36198f 4881ec80000000		sub	rsp,128
+361996 f20f110424		movsd	[rsp],xmm0
+36199b f20f114c2408		movsd	[rsp+8],xmm1
+3619a1 f20f11542410		movsd	[rsp+16],xmm2
+3619a7 f20f115c2418		movsd	[rsp+24],xmm3
+3619ad f20f11642420		movsd	[rsp+32],xmm4
+3619b3 f20f116c2428		movsd	[rsp+40],xmm5
+3619b9 f20f11742430		movsd	[rsp+48],xmm6
+3619bf f20f117c2438		movsd	[rsp+56],xmm7
+3619c5 f2440f11442440		movsd	[rsp+64],xmm8
+3619cc f2440f114c2448		movsd	[rsp+72],xmm9
+3619d3 f2440f11542450		movsd	[rsp+80],xmm10
+3619da f2440f115c2458		movsd	[rsp+88],xmm11
+3619e1 f2440f11642460		movsd	[rsp+96],xmm12
+3619e8 f2440f116c2468		movsd	[rsp+104],xmm13
+3619ef f2440f11742470		movsd	[rsp+112],xmm14
+3619f6 f2440f117c2478		movsd	[rsp+120],xmm15
+3619fd 4889e0			mov	rax,rsp
+361a00 4883e4f0			and	rsp,byte -16
+361a04 4883ec08			sub	rsp,byte 8
+361a08 50			push	rax
+361a09 e87c30b201		call	rt_error
+361a0e 5c			pop	rsp
+361a0f f20f100424		movsd	xmm0,[rsp]
+361a14 f20f104c2408		movsd	xmm1,[rsp+8]
+361a1a f20f10542410		movsd	xmm2,[rsp+16]
+361a20 f20f105c2418		movsd	xmm3,[rsp+24]
+361a26 f20f10642420		movsd	xmm4,[rsp+32]
+361a2c f20f106c2428		movsd	xmm5,[rsp+40]
+361a32 f20f10742430		movsd	xmm6,[rsp+48]
+361a38 f20f107c2438		movsd	xmm7,[rsp+56]
+361a3e f2440f10442440		movsd	xmm8,[rsp+64]
+361a45 f2440f104c2448		movsd	xmm9,[rsp+72]
+361a4c f2440f10542450		movsd	xmm10,[rsp+80]
+361a53 f2440f105c2458		movsd	xmm11,[rsp+88]
+361a5a f2440f10642460		movsd	xmm12,[rsp+96]
+361a61 f2440f106c2468		movsd	xmm13,[rsp+104]
+361a68 f2440f10742470		movsd	xmm14,[rsp+112]
+361a6f f2440f107c2478		movsd	xmm15,[rsp+120]
+361a76 4881c480000000		add	rsp,128
+361a7d 4159			pop	r9
+361a7f 4158			pop	r8
+361a81 59			pop	rcx
+361a82 488b0c25a874fc00		mov	rcx,[+16544936]
+361a8a 49b908a05954967f
+361a92 0000			mov	r9,140283636981768
+361a94 49894928			mov	[r9+40],rcx
+361a98 4c8b0c25b074fc00		mov	r9,[+16544944]
+361aa0 5d			pop	rbp
+361aa1 488b5500			mov	rdx,[rbp]
+361aa5 4c8b7508			mov	r14,[rbp+8]
+361aa9 4c8b6d10			mov	r13,[rbp+16]
+361aad 4c8b6518			mov	r12,[rbp+24]
+361ab1 4c8b5d20			mov	r11,[rbp+32]
+361ab5 4c8b5528			mov	r10,[rbp+40]
+361ab9 488b7d30			mov	rdi,[rbp+48]
+361abd 488b7538			mov	rsi,[rbp+56]
+361ac1 4c8b7d40			mov	r15,[rbp+64]
+361ac5 488b5d48			mov	rbx,[rbp+72]
+361ac9 488b4d50			mov	rcx,[rbp+80]
+361acd 4883c558			add	rbp,byte 88
+361ad1 c3			ret
+361ad2			print_msg_handler:
+361ad2 4883ed58			sub	rbp,byte 88
+361ad6 48894d50			mov	[rbp+80],rcx
+361ada 48895d48			mov	[rbp+72],rbx
+361ade 4c897d40			mov	[rbp+64],r15
+361ae2 48897538			mov	[rbp+56],rsi
+361ae6 48897d30			mov	[rbp+48],rdi
+361aea 4c895528			mov	[rbp+40],r10
+361aee 4c895d20			mov	[rbp+32],r11
+361af2 4c896518			mov	[rbp+24],r12
+361af6 4c896d10			mov	[rbp+16],r13
+361afa 4c897508			mov	[rbp+8],r14
+361afe 48895500			mov	[rbp],rdx
+361b02 4c890c25b074fc00		mov	[+16544944],r9
+361b0a 4889ef			mov	rdi,rbp
+361b0d 4889e6			mov	rsi,rsp
+361b10 55			push	rbp
+361b11 51			push	rcx
+361b12 4150			push	r8
+361b14 4151			push	r9
+361b16 4881ec80000000		sub	rsp,128
+361b1d f20f110424		movsd	[rsp],xmm0
+361b22 f20f114c2408		movsd	[rsp+8],xmm1
+361b28 f20f11542410		movsd	[rsp+16],xmm2
+361b2e f20f115c2418		movsd	[rsp+24],xmm3
+361b34 f20f11642420		movsd	[rsp+32],xmm4
+361b3a f20f116c2428		movsd	[rsp+40],xmm5
+361b40 f20f11742430		movsd	[rsp+48],xmm6
+361b46 f20f117c2438		movsd	[rsp+56],xmm7
+361b4c f2440f11442440		movsd	[rsp+64],xmm8
+361b53 f2440f114c2448		movsd	[rsp+72],xmm9
+361b5a f2440f11542450		movsd	[rsp+80],xmm10
+361b61 f2440f115c2458		movsd	[rsp+88],xmm11
+361b68 f2440f11642460		movsd	[rsp+96],xmm12
+361b6f f2440f116c2468		movsd	[rsp+104],xmm13
+361b76 f2440f11742470		movsd	[rsp+112],xmm14
+361b7d f2440f117c2478		movsd	[rsp+120],xmm15
+361b84 4889e0			mov	rax,rsp
+361b87 4883e4f0			and	rsp,byte -16
+361b8b 4883ec08			sub	rsp,byte 8
+361b8f 50			push	rax
+361b90 e8b531b201		call	print-msg
+361b95 5c			pop	rsp
+361b96 f20f100424		movsd	xmm0,[rsp]
+361b9b f20f104c2408		movsd	xmm1,[rsp+8]
+361ba1 f20f10542410		movsd	xmm2,[rsp+16]
+361ba7 f20f105c2418		movsd	xmm3,[rsp+24]
+361bad f20f10642420		movsd	xmm4,[rsp+32]
+361bb3 f20f106c2428		movsd	xmm5,[rsp+40]
+361bb9 f20f10742430		movsd	xmm6,[rsp+48]
+361bbf f20f107c2438		movsd	xmm7,[rsp+56]
+361bc5 f2440f10442440		movsd	xmm8,[rsp+64]
+361bcc f2440f104c2448		movsd	xmm9,[rsp+72]
+361bd3 f2440f10542450		movsd	xmm10,[rsp+80]
+361bda f2440f105c2458		movsd	xmm11,[rsp+88]
+361be1 f2440f10642460		movsd	xmm12,[rsp+96]
+361be8 f2440f106c2468		movsd	xmm13,[rsp+104]
+361bef f2440f10742470		movsd	xmm14,[rsp+112]
+361bf6 f2440f107c2478		movsd	xmm15,[rsp+120]
+361bfd 4881c480000000		add	rsp,128
+361c04 4159			pop	r9
+361c06 4158			pop	r8
+361c08 59			pop	rcx
+361c09 488b0c25a874fc00		mov	rcx,[+16544936]
+361c11 49b908a05954967f
+361c19 0000			mov	r9,140283636981768
+361c1b 49894928			mov	[r9+40],rcx
+361c1f 4c8b0c25b074fc00		mov	r9,[+16544944]
+361c27 5d			pop	rbp
+361c28 488b5500			mov	rdx,[rbp]
+361c2c 4c8b7508			mov	r14,[rbp+8]
+361c30 4c8b6d10			mov	r13,[rbp+16]
+361c34 4c8b6518			mov	r12,[rbp+24]
+361c38 4c8b5d20			mov	r11,[rbp+32]
+361c3c 4c8b5528			mov	r10,[rbp+40]
+361c40 488b7d30			mov	rdi,[rbp+48]
+361c44 488b7538			mov	rsi,[rbp+56]
+361c48 4c8b7d40			mov	r15,[rbp+64]
+361c4c 488b5d48			mov	rbx,[rbp+72]
+361c50 488b4d50			mov	rcx,[rbp+80]
+361c54 4883c558			add	rbp,byte 88
+361c58 c3			ret
+361c59			print_msg_val_handler:
+361c59 4883ed58			sub	rbp,byte 88
+361c5d 48894d50			mov	[rbp+80],rcx
+361c61 48895d48			mov	[rbp+72],rbx
+361c65 4c897d40			mov	[rbp+64],r15
+361c69 48897538			mov	[rbp+56],rsi
+361c6d 48897d30			mov	[rbp+48],rdi
+361c71 4c895528			mov	[rbp+40],r10
+361c75 4c895d20			mov	[rbp+32],r11
+361c79 4c896518			mov	[rbp+24],r12
+361c7d 4c896d10			mov	[rbp+16],r13
+361c81 4c897508			mov	[rbp+8],r14
+361c85 48895500			mov	[rbp],rdx
+361c89 4c890c25b074fc00		mov	[+16544944],r9
+361c91 4889ef			mov	rdi,rbp
+361c94 4889e6			mov	rsi,rsp
+361c97 55			push	rbp
+361c98 51			push	rcx
+361c99 4150			push	r8
+361c9b 4151			push	r9
+361c9d 4881ec80000000		sub	rsp,128
+361ca4 f20f110424		movsd	[rsp],xmm0
+361ca9 f20f114c2408		movsd	[rsp+8],xmm1
+361caf f20f11542410		movsd	[rsp+16],xmm2
+361cb5 f20f115c2418		movsd	[rsp+24],xmm3
+361cbb f20f11642420		movsd	[rsp+32],xmm4
+361cc1 f20f116c2428		movsd	[rsp+40],xmm5
+361cc7 f20f11742430		movsd	[rsp+48],xmm6
+361ccd f20f117c2438		movsd	[rsp+56],xmm7
+361cd3 f2440f11442440		movsd	[rsp+64],xmm8
+361cda f2440f114c2448		movsd	[rsp+72],xmm9
+361ce1 f2440f11542450		movsd	[rsp+80],xmm10
+361ce8 f2440f115c2458		movsd	[rsp+88],xmm11
+361cef f2440f11642460		movsd	[rsp+96],xmm12
+361cf6 f2440f116c2468		movsd	[rsp+104],xmm13
+361cfd f2440f11742470		movsd	[rsp+112],xmm14
+361d04 f2440f117c2478		movsd	[rsp+120],xmm15
+361d0b 4889e0			mov	rax,rsp
+361d0e 4883e4f0			and	rsp,byte -16
+361d12 4883ec08			sub	rsp,byte 8
+361d16 50			push	rax
+361d17 e8f32eb201		call	print-msg-val
+361d1c 5c			pop	rsp
+361d1d f20f100424		movsd	xmm0,[rsp]
+361d22 f20f104c2408		movsd	xmm1,[rsp+8]
+361d28 f20f10542410		movsd	xmm2,[rsp+16]
+361d2e f20f105c2418		movsd	xmm3,[rsp+24]
+361d34 f20f10642420		movsd	xmm4,[rsp+32]
+361d3a f20f106c2428		movsd	xmm5,[rsp+40]
+361d40 f20f10742430		movsd	xmm6,[rsp+48]
+361d46 f20f107c2438		movsd	xmm7,[rsp+56]
+361d4c f2440f10442440		movsd	xmm8,[rsp+64]
+361d53 f2440f104c2448		movsd	xmm9,[rsp+72]
+361d5a f2440f10542450		movsd	xmm10,[rsp+80]
+361d61 f2440f105c2458		movsd	xmm11,[rsp+88]
+361d68 f2440f10642460		movsd	xmm12,[rsp+96]
+361d6f f2440f106c2468		movsd	xmm13,[rsp+104]
+361d76 f2440f10742470		movsd	xmm14,[rsp+112]
+361d7d f2440f107c2478		movsd	xmm15,[rsp+120]
+361d84 4881c480000000		add	rsp,128
+361d8b 4159			pop	r9
+361d8d 4158			pop	r8
+361d8f 59			pop	rcx
+361d90 488b0c25a874fc00		mov	rcx,[+16544936]
+361d98 49b908a05954967f
+361da0 0000			mov	r9,140283636981768
+361da2 49894928			mov	[r9+40],rcx
+361da6 4c8b0c25b074fc00		mov	r9,[+16544944]
+361dae 5d			pop	rbp
+361daf 488b5500			mov	rdx,[rbp]
+361db3 4c8b7508			mov	r14,[rbp+8]
+361db7 4c8b6d10			mov	r13,[rbp+16]
+361dbb 4c8b6518			mov	r12,[rbp+24]
+361dbf 4c8b5d20			mov	r11,[rbp+32]
+361dc3 4c8b5528			mov	r10,[rbp+40]
+361dc7 488b7d30			mov	rdi,[rbp+48]
+361dcb 488b7538			mov	rsi,[rbp+56]
+361dcf 4c8b7d40			mov	r15,[rbp+64]
+361dd3 488b5d48			mov	rbx,[rbp+72]
+361dd7 488b4d50			mov	rcx,[rbp+80]
+361ddb 4883c558			add	rbp,byte 88
+361ddf c3			ret
+361de0			repl:
+361de0 4883ed58			sub	rbp,byte 88
+361de4 48894d50			mov	[rbp+80],rcx
+361de8 48895d48			mov	[rbp+72],rbx
+361dec 4c897d40			mov	[rbp+64],r15
+361df0 48897538			mov	[rbp+56],rsi
+361df4 48897d30			mov	[rbp+48],rdi
+361df8 4c895528			mov	[rbp+40],r10
+361dfc 4c895d20			mov	[rbp+32],r11
+361e00 4c896518			mov	[rbp+24],r12
+361e04 4c896d10			mov	[rbp+16],r13
+361e08 4c897508			mov	[rbp+8],r14
+361e0c 48895500			mov	[rbp],rdx
+361e10 4c890c25b074fc00		mov	[+16544944],r9
+361e18 4889ef			mov	rdi,rbp
+361e1b 4889e6			mov	rsi,rsp
+361e1e 55			push	rbp
+361e1f 51			push	rcx
+361e20 4150			push	r8
+361e22 4151			push	r9
+361e24 4881ec80000000		sub	rsp,128
+361e2b f20f110424		movsd	[rsp],xmm0
+361e30 f20f114c2408		movsd	[rsp+8],xmm1
+361e36 f20f11542410		movsd	[rsp+16],xmm2
+361e3c f20f115c2418		movsd	[rsp+24],xmm3
+361e42 f20f11642420		movsd	[rsp+32],xmm4
+361e48 f20f116c2428		movsd	[rsp+40],xmm5
+361e4e f20f11742430		movsd	[rsp+48],xmm6
+361e54 f20f117c2438		movsd	[rsp+56],xmm7
+361e5a f2440f11442440		movsd	[rsp+64],xmm8
+361e61 f2440f114c2448		movsd	[rsp+72],xmm9
+361e68 f2440f11542450		movsd	[rsp+80],xmm10
+361e6f f2440f115c2458		movsd	[rsp+88],xmm11
+361e76 f2440f11642460		movsd	[rsp+96],xmm12
+361e7d f2440f116c2468		movsd	[rsp+104],xmm13
+361e84 f2440f11742470		movsd	[rsp+112],xmm14
+361e8b f2440f117c2478		movsd	[rsp+120],xmm15
+361e92 4889e0			mov	rax,rsp
+361e95 4883e4f0			and	rsp,byte -16
+361e99 4883ec08			sub	rsp,byte 8
+361e9d 50			push	rax
+361e9e e8e22fb201		call	repl
+361ea3 5c			pop	rsp
+361ea4 f20f100424		movsd	xmm0,[rsp]
+361ea9 f20f104c2408		movsd	xmm1,[rsp+8]
+361eaf f20f10542410		movsd	xmm2,[rsp+16]
+361eb5 f20f105c2418		movsd	xmm3,[rsp+24]
+361ebb f20f10642420		movsd	xmm4,[rsp+32]
+361ec1 f20f106c2428		movsd	xmm5,[rsp+40]
+361ec7 f20f10742430		movsd	xmm6,[rsp+48]
+361ecd f20f107c2438		movsd	xmm7,[rsp+56]
+361ed3 f2440f10442440		movsd	xmm8,[rsp+64]
+361eda f2440f104c2448		movsd	xmm9,[rsp+72]
+361ee1 f2440f10542450		movsd	xmm10,[rsp+80]
+361ee8 f2440f105c2458		movsd	xmm11,[rsp+88]
+361eef f2440f10642460		movsd	xmm12,[rsp+96]
+361ef6 f2440f106c2468		movsd	xmm13,[rsp+104]
+361efd f2440f10742470		movsd	xmm14,[rsp+112]
+361f04 f2440f107c2478		movsd	xmm15,[rsp+120]
+361f0b 4881c480000000		add	rsp,128
+361f12 4159			pop	r9
+361f14 4158			pop	r8
+361f16 59			pop	rcx
+361f17 488b0c25a874fc00		mov	rcx,[+16544936]
+361f1f 49b908a05954967f
+361f27 0000			mov	r9,140283636981768
+361f29 49894928			mov	[r9+40],rcx
+361f2d 4c8b0c25b074fc00		mov	r9,[+16544944]
+361f35 5d			pop	rbp
+361f36 488b5500			mov	rdx,[rbp]
+361f3a 4c8b7508			mov	r14,[rbp+8]
+361f3e 4c8b6d10			mov	r13,[rbp+16]
+361f42 4c8b6518			mov	r12,[rbp+24]
+361f46 4c8b5d20			mov	r11,[rbp+32]
+361f4a 4c8b5528			mov	r10,[rbp+40]
+361f4e 488b7d30			mov	rdi,[rbp+48]
+361f52 488b7538			mov	rsi,[rbp+56]
+361f56 4c8b7d40			mov	r15,[rbp+64]
+361f5a 488b5d48			mov	rbx,[rbp+72]
+361f5e 488b4d50			mov	rcx,[rbp+80]
+361f62 4883c558			add	rbp,byte 88
+361f66 c3			ret
+361f67			err_wrong_num_args:
+361f67 4883ed08			sub	rbp,byte 8
+361f6b 48895d00			mov	[rbp],rbx
+361f6f 48bba13b0b2f967f
+361f77 0000			mov	rbx,140283011087265
+361f79 e8cdf9ffff		call	rt_error_handler
+361f7e 488b5d00			mov	rbx,[rbp]
+361f82 4883c508			add	rbp,byte 8
+361f86			rtlib_skip:
+361f86 4881ec80000000		sub	rsp,128
+361f8d f20f110424		movsd	[rsp],xmm0
+361f92 f20f114c2408		movsd	[rsp+8],xmm1
+361f98 f20f11542410		movsd	[rsp+16],xmm2
+361f9e f20f115c2418		movsd	[rsp+24],xmm3
+361fa4 f20f11642420		movsd	[rsp+32],xmm4
+361faa f20f116c2428		movsd	[rsp+40],xmm5
+361fb0 f20f11742430		movsd	[rsp+48],xmm6
+361fb6 f20f117c2438		movsd	[rsp+56],xmm7
+361fbc f2440f11442440		movsd	[rsp+64],xmm8
+361fc3 f2440f114c2448		movsd	[rsp+72],xmm9
+361fca f2440f11542450		movsd	[rsp+80],xmm10
+361fd1 f2440f115c2458		movsd	[rsp+88],xmm11
+361fd8 f2440f11642460		movsd	[rsp+96],xmm12
+361fdf f2440f116c2468		movsd	[rsp+104],xmm13
+361fe6 f2440f11742470		movsd	[rsp+112],xmm14
+361fed f2440f117c2478		movsd	[rsp+120],xmm15
+361ff4 50			push	rax
+361ff5 53			push	rbx
+361ff6 51			push	rcx
+361ff7 52			push	rdx
+361ff8 55			push	rbp
+361ff9 56			push	rsi
+361ffa 57			push	rdi
+361ffb 4150			push	r8
+361ffd 4151			push	r9
+361fff 4152			push	r10
+362001 4153			push	r11
+362003 4154			push	r12
+362005 4155			push	r13
+362007 4156			push	r14
+362009 4157			push	r15
+36200b 48bd8802362d967f
+362013 0000			mov	rbp,140282980336264
+362015 48b808a05954967f
+36201d 0000			mov	rax,140283636981768
+36201f 488b0c25a874fc00		mov	rcx,[+16544936]
+362027 48894828			mov	[rax+40],rcx
+36202b 48c7c100000000		mov	rcx,dword 0
+362032 4c8b0c25b074fc00		mov	r9,[+16544944]
+36203a 49c7c058ffe902		mov	r8,dword 48889688
+362041 48c7c300000000		mov	rbx,dword 0
+362048 49c7c700000000		mov	r15,dword 0
+36204f 48c7c600000000		mov	rsi,dword 0
+362056 48c7c700000000		mov	rdi,dword 0
+36205d 49c7c200000000		mov	r10,dword 0
+362064 49c7c300000000		mov	r11,dword 0
+36206b 49c7c400000000		mov	r12,dword 0
+362072 49c7c500000000		mov	r13,dword 0
+362079 49c7c600000000		mov	r14,dword 0
+362080 48c7c200000000		mov	rdx,dword 0
+362087			prog_begin1:
+------------------------------------------------------------------------
+ed2af0				bits 64
+ed2af0			stub_7f962ded2af0_1:
+ed2af0 83c104			add	ecx,byte 4
+ed2af3 90			nop
+ed2af4			stub_7f962ded2af0_0:
+ed2af4 e844eb48ff		call	do_callback_fn_handler
+ed2af9 514ceb0200000000
+------------------------------------------------------------------------
+ed2ad8				bits 64
+ed2ad8			stub_7f962ded2ad8_1:
+ed2ad8 83c104			add	ecx,byte 4
+ed2adb 90			nop
+ed2adc			stub_7f962ded2ad8_0:
+ed2adc e8e3ec48ff		call	do_callback_cont_handler
+ed2ae1 81d1e50200000000
+"CC"
+------------------------------------------------------------------------
+ed2ac0				bits 64
+ed2ac0			stub_7f962ded2ac0_1:
+ed2ac0 83c104			add	ecx,byte 4
+ed2ac3 90			nop
+ed2ac4			stub_7f962ded2ac0_0:
+ed2ac4 e8ede948ff		call	do_callback_handler
+ed2ac9 b14ceb0200000000
+------------------------------------------------------------------------
+362087				bits 64
+362087 90		version_1:
+362088			version_2:
+362088			version_3:
+362088			version_4:
+362088			version_5:
+362088 4883ed08			sub	rbp,byte 8
+36208c 48c7c04894e902		mov	rax,dword 48862280
+362093 48894500			mov	[rbp],rax
+362097 48c7c3a0000000		mov	rbx,dword 160
+36209e			inlined_call_1:
+36209e			version_6:
+36209e			version_7:
+36209e 4989df			mov	r15,rbx
+3620a1			version_8:
+3620a1			version_9:
+3620a1			version_10:
+3620a1			version_11:
+3620a1			version_12:
+3620a1 4983ff08			cmp	r15,byte 8
+3620a5			patchable_jump1:
+3620a5 0f8d190ab700		jge	stub_7f962ded2ac0_0
+3620ab e9100ab700		jmp	stub_7f962ded2ac0_1
+>>> selector= 0
+>>> prev-action= #f
+>>> swapping-branches
+>>> patching jump at 7f962d3620a5 -> 7f962ded2ac0
+GEN VERSION >>> #<lazy-code #2
+                   ast: (($$atom fib) (($$atom -) ($$atom n0) ($$atom 1)))
+                   generator: #<procedure #3>
+                   flags: ()
+                   lco-true: #f
+                   lco-false: #f>
+#<ctx #4
+      stack: ((int) (clo) (ret))
+      slot-loc: ((2 r . 0) (1 r . 2) (0 m . 0))
+      free-regs:
+       ((r . 1) (r . 3) (r . 4) (r . 5) (r . 6) (r . 7) (r . 8) (r . 9))
+      free-mems: ()
+      free-fregs:
+       ((fr . 0)
+        (fr . 1)
+        (fr . 2)
+        (fr . 3)
+        (fr . 4)
+        (fr . 5)
+        (fr . 6)
+        (fr . 7)
+        (fr . 8)
+        (fr . 9)
+        (fr . 10)
+        (fr . 11)
+        (fr . 12)
+        (fr . 13))
+      free-fmems: ()
+      env: ((n0 . #<identifier #5
+                     kind: local
+                     sslots: (2)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>))
+      nb-actual: 1
+      nb-args: 1
+      fs: 1
+      ffs: 0
+      fn-num: 0>
+>>> fall-through-optimization
+------------------------------------------------------------------------
+ed2aa8				bits 64
+ed2aa8			stub_7f962ded2aa8_0:
+ed2aa8 e809ea48ff		call	do_callback_handler
+ed2aad 514deb0200000000
+------------------------------------------------------------------------
+ed2a90				bits 64
+ed2a90			stub_7f962ded2a90_1:
+ed2a90 83c104			add	ecx,byte 4
+ed2a93 90			nop
+ed2a94			stub_7f962ded2a90_0:
+ed2a94 e82bed48ff		call	do_callback_cont_handler
+ed2a99 a14deb0200000000
+"CC"
+------------------------------------------------------------------------
+3620ab				bits 64
+3620ab 90		version_13:
+3620ac			version_14:
+3620ac 4989df			mov	r15,rbx
+3620af			version_15:
+3620af			version_16:
+3620af			version_17:
+3620af			version_18:
+3620af			version_19:
+3620af 4c89ff			mov	rdi,r15
+3620b2 4883ef04			sub	rdi,byte 4
+3620b6 0f80ec09b700		jo	stub_7f962ded2aa8_0
+3620bc			version_20:
+3620bc 4883ed18			sub	rbp,byte 24
+3620c0 48895d10			mov	[rbp+16],rbx
+3620c4 48897508			mov	[rbp+8],rsi
+3620c8 48c7c0e0a8e902		mov	rax,dword 48867552
+3620cf 48894500			mov	[rbp],rax
+3620d3 4889fb			mov	rbx,rdi
+3620d6			inlined_call_2:
+3620d6			version_21:
+3620d6 ebc6			jmp	short version_7
+>>> selector= 1
+>>> prev-action= swap
+GEN VERSION >>> #<lazy-code #6
+                   ast: #f
+                   generator: #<procedure #7>
+                   flags: ()
+                   lco-true: #f
+                   lco-false: #f>
+#<ctx #4
+      stack: ((int) (clo) (ret))
+      slot-loc: ((2 r . 0) (1 r . 2) (0 m . 0))
+      free-regs:
+       ((r . 1) (r . 3) (r . 4) (r . 5) (r . 6) (r . 7) (r . 8) (r . 9))
+      free-mems: ()
+      free-fregs:
+       ((fr . 0)
+        (fr . 1)
+        (fr . 2)
+        (fr . 3)
+        (fr . 4)
+        (fr . 5)
+        (fr . 6)
+        (fr . 7)
+        (fr . 8)
+        (fr . 9)
+        (fr . 10)
+        (fr . 11)
+        (fr . 12)
+        (fr . 13))
+      free-fmems: ()
+      env: ((n0 . #<identifier #5
+                     kind: local
+                     sslots: (2)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>))
+      nb-actual: 1
+      nb-args: 1
+      fs: 1
+      ffs: 0
+      fn-num: 0>
+------------------------------------------------------------------------
+3620d8				bits 64
+3620d8			version_22:
+3620d8			version_23:
+3620d8 49c7c704000000		mov	r15,dword 4
+3620df 4d89fe			mov	r14,r15
+3620e2 488b5500			mov	rdx,[rbp]
+3620e6 4883c508			add	rbp,byte 8
+3620ea 488b4210			mov	rax,[rdx+16]
+3620ee 49c7c300000000		mov	r11,dword 0
+3620f5 ffe0			jmp	rax
+>>> patching jump at 7f962d3620a5 -> 7f962d3620d8
+GEN VERSION CONTINUATION (CR) >>> Patch table with type int and ctx:
+#<ctx #8
+      stack: ((int) (int) (clo) (ret))
+      slot-loc: ((3 r . 8) (2 m . 1) (1 m . 2) (0 m . 0))
+      free-regs:
+       ((r . 3)
+        (r . 2)
+        (r . 0)
+        (r . 1)
+        (r . 4)
+        (r . 5)
+        (r . 6)
+        (r . 7)
+        (r . 9))
+      free-mems: ()
+      free-fregs:
+       ((fr . 0)
+        (fr . 1)
+        (fr . 2)
+        (fr . 3)
+        (fr . 4)
+        (fr . 5)
+        (fr . 6)
+        (fr . 7)
+        (fr . 8)
+        (fr . 9)
+        (fr . 10)
+        (fr . 11)
+        (fr . 12)
+        (fr . 13))
+      free-fmems: ()
+      env: ((n0 . #<identifier #9
+                     kind: local
+                     sslots: (2)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>))
+      nb-actual: 1
+      nb-args: 1
+      fs: 3
+      ffs: 0
+      fn-num: 0>
+------------------------------------------------------------------------
+ed2ac0				bits 64
+ed2ac0			stub_7f962ded2ac0_0:
+ed2ac0 e8f1e948ff		call	do_callback_handler
+ed2ac5 914eeb0200000000
+------------------------------------------------------------------------
+ed2a78				bits 64
+ed2a78			stub_7f962ded2a78_1:
+ed2a78 83c104			add	ecx,byte 4
+ed2a7b 90			nop
+ed2a7c			stub_7f962ded2a78_0:
+ed2a7c e843ed48ff		call	do_callback_cont_handler
+ed2a81 e14eeb0200000000
+"CC"
+------------------------------------------------------------------------
+3620f7				bits 64
+3620f7 90		continuation_1:
+3620f8			version_24:
+3620f8			version_25:
+3620f8 488b7d08			mov	rdi,[rbp+8]
+3620fc			version_26:
+3620fc			version_27:
+3620fc			version_28:
+3620fc			version_29:
+3620fc			version_30:
+3620fc 4889fe			mov	rsi,rdi
+3620ff 4883ee08			sub	rsi,byte 8
+362103 0f80b709b700		jo	stub_7f962ded2ac0_0
+362109			version_31:
+362109 4883ed10			sub	rbp,byte 16
+36210d 4c897508			mov	[rbp+8],r14
+362111 48c7c0c8b4e902		mov	rax,dword 48870600
+362118 48894500			mov	[rbp],rax
+36211c 4889f3			mov	rbx,rsi
+36211f			inlined_call_3:
+36211f			version_32:
+36211f e97affffff		jmp	version_7
+GEN VERSION CONTINUATION (CR) >>> Patch table with type int and ctx:
+#<ctx #10
+      stack: ((int) (int) (int) (clo) (ret))
+      slot-loc: ((4 r . 8) (3 m . 3) (2 m . 1) (1 m . 2) (0 m . 0))
+      free-regs:
+       ((r . 2)
+        (r . 3)
+        (r . 0)
+        (r . 1)
+        (r . 4)
+        (r . 5)
+        (r . 6)
+        (r . 7)
+        (r . 9))
+      free-mems: ()
+      free-fregs:
+       ((fr . 0)
+        (fr . 1)
+        (fr . 2)
+        (fr . 3)
+        (fr . 4)
+        (fr . 5)
+        (fr . 6)
+        (fr . 7)
+        (fr . 8)
+        (fr . 9)
+        (fr . 10)
+        (fr . 11)
+        (fr . 12)
+        (fr . 13))
+      free-fmems: ()
+      env: ((n0 . #<identifier #11
+                     kind: local
+                     sslots: (2)
+                     flags: ()
+                     stype: #f
+                     cloc: #f
+                     cst: #f
+                     thisid: #f>))
+      nb-actual: 1
+      nb-args: 1
+      fs: 4
+      ffs: 0
+      fn-num: 0>
+------------------------------------------------------------------------
+ed2a60				bits 64
+ed2a60			stub_7f962ded2a60_0:
+ed2a60 e851ea48ff		call	do_callback_handler
+ed2a65 814feb0200000000
+------------------------------------------------------------------------
+362124				bits 64
+362124			continuation_2:
+362124			version_33:
+362124			version_34:
+362124			version_35:
+362124			version_36:
+362124 488b7500			mov	rsi,[rbp]
+362128 4c01f6			add	rsi,r14
+36212b 0f802f09b700		jo	stub_7f962ded2a60_0
+362131			version_37:
+362131 4989f6			mov	r14,rsi
+362134 488b5518			mov	rdx,[rbp+24]
+362138 4883c520			add	rbp,byte 32
+36213c 488b4210			mov	rax,[rdx+16]
+362140 49c7c300000000		mov	r11,dword 0
+362147 ffe0			jmp	rax
+GEN VERSION CONTINUATION (CR) >>> Patch table with type int and ctx:
+#<ctx #12
+      stack: ((int))
+      slot-loc: ((0 r . 8))
+      free-regs:
+       ((r . 0)
+        (r . 1)
+        (r . 2)
+        (r . 3)
+        (r . 4)
+        (r . 5)
+        (r . 6)
+        (r . 7)
+        (r . 9))
+      free-mems: ()
+      free-fregs:
+       ((fr . 0)
+        (fr . 1)
+        (fr . 2)
+        (fr . 3)
+        (fr . 4)
+        (fr . 5)
+        (fr . 6)
+        (fr . 7)
+        (fr . 8)
+        (fr . 9)
+        (fr . 10)
+        (fr . 11)
+        (fr . 12)
+        (fr . 13))
+      free-fmems: ()
+      env: ()
+      nb-actual: #f
+      nb-args: -1
+      fs: 0
+      ffs: 0
+      fn-num: #f>
+------------------------------------------------------------------------
+362149				bits 64
+362149 909090		continuation_3:
+36214c			version_38:
+36214c 4c890c25b074fc00		mov	[+16544944],r9
+362154 4c89f0			mov	rax,r14
+362157 415f			pop	r15
+362159 415e			pop	r14
+36215b 415d			pop	r13
+36215d 415c			pop	r12
+36215f 415b			pop	r11
+362161 415a			pop	r10
+362163 4159			pop	r9
+362165 4158			pop	r8
+362167 5f			pop	rdi
+362168 5e			pop	rsi
+362169 5d			pop	rbp
+36216a 5a			pop	rdx
+36216b 59			pop	rcx
+36216c 5b			pop	rbx
+36216d 58			pop	rax
+36216e f20f100424		movsd	xmm0,[rsp]
+362173 f20f104c2408		movsd	xmm1,[rsp+8]
+362179 f20f10542410		movsd	xmm2,[rsp+16]
+36217f f20f105c2418		movsd	xmm3,[rsp+24]
+362185 f20f10642420		movsd	xmm4,[rsp+32]
+36218b f20f106c2428		movsd	xmm5,[rsp+40]
+362191 f20f10742430		movsd	xmm6,[rsp+48]
+362197 f20f107c2438		movsd	xmm7,[rsp+56]
+36219d f2440f10442440		movsd	xmm8,[rsp+64]
+3621a4 f2440f104c2448		movsd	xmm9,[rsp+72]
+3621ab f2440f10542450		movsd	xmm10,[rsp+80]
+3621b2 f2440f105c2458		movsd	xmm11,[rsp+88]
+3621b9 f2440f10642460		movsd	xmm12,[rsp+96]
+3621c0 f2440f106c2468		movsd	xmm13,[rsp+104]
+3621c7 f2440f10742470		movsd	xmm14,[rsp+112]
+3621ce f2440f107c2478		movsd	xmm15,[rsp+120]
+3621d5 4881c480000000		add	rsp,128
+3621dc c3			ret
+(time (##machine-code-block-exec mcb))
+    827 ms real time
+    827 ms cpu time (827 user, 0 system)
+    no collections
+    no bytes allocated
+    no minor faults
+    no major faults
