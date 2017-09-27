@@ -22,7 +22,7 @@ make -j8
 ### Running
 
 ```bash
-lc file.scm
+./lc file.scm
 ```
 
 ### Example
