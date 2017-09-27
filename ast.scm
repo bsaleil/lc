@@ -1957,7 +1957,7 @@
     (lambda (cgc ctx)
       (define cn-num #f)
       ;; Save used registers, generate and push continuation stub
-      (set! ctx (cdr (call-save/cont cgc ctx ast succ #f 2 #t)))
+      (set! ctx (cdr (call-save/cont cgc ctx ast succ #f 2 #t #f)))
       ;; Push closure
       (call-get-closure cgc ctx 1)
 
@@ -2373,7 +2373,7 @@
 ;;
 
 ;; Save used registers and return updated ctx
-(define (call-save/cont cgc ctx ast succ tail? idx-offset apply?)
+(define (call-save/cont cgc ctx ast succ tail? idx-offset apply? prop-cont?)
   (if tail?
       ;; Tail call, no register to save and no continuation to generate
       (if (ctx-const-continuation? ctx)
@@ -2382,8 +2382,7 @@
           (cons #f ctx))
       (mlet ((moves/nctx (ctx-save-call ast ctx idx-offset)))
         (define fctx nctx)
-        (if (or (not opt-propagate-continuation)
-                apply?)
+        (if (not prop-cont?)
             (begin
               (set! fctx (ctx-fs-inc fctx))
               (set! moves (cons (cons 'fs 1) moves))))
@@ -2394,11 +2393,13 @@
         (let* ((cn-num (new-cn-num))
                (lazy-cont
                  (if opt-return-points
-                     (gen-continuation-cr cgc ast succ nctx cn-num apply?)
-                     (gen-continuation-rp cgc ast succ nctx apply?))))
+                     (gen-continuation-cr cgc ast succ nctx cn-num apply? prop-cont?)
+                     (gen-continuation-rp cgc ast succ nctx apply? prop-cont?))))
 
           (asc-cnnum-lco-add cn-num lazy-cont)
-          (cons cn-num fctx)))))
+          (if prop-cont?
+              (cons cn-num fctx)
+              (cons #f fctx))))))
 
 ;; Push closure, put it in rax, and return updated ctx
 (define (call-get-closure cgc ctx closure-idx)
@@ -2556,7 +2557,7 @@
         (if (and opt-entry-points
                  (or (not opt-call-max-len)
                      (<= nb-args opt-call-max-len)))
-            (set! idx (cctable-get-idx (cons (and opt-propagate-continuation cn-num) call-stack))) ;; TODO wip
+            (set! idx (cctable-get-idx (cons cn-num call-stack)))
             (set! force-generic? #t))
 
         (if (and opt-closest-cx-overflow
@@ -2591,16 +2592,19 @@
                (define nb-args (length args))
                (define cn-num #f)
 
+               (define prop-cont? #f)
+
                ;; Handle const fn
                (let ((type (ctx-get-type ctx (length args))))
                  (if (ctx-type-cst? type)
                      (let ((loc (ctx-get-loc ctx (length args))))
                        (set! fn-id-inf (cons (not loc) (ctx-type-cst type))))))
 
+               (set! prop-cont? opt-propagate-continuation)
+
                ;; Save used registers, generate and push continuation stub
-               (let ((r (call-save/cont cgc ctx ast succ tail? (+ nb-args 1) #f)))
-                 (if opt-propagate-continuation
-                     (set! cn-num (car r)))
+               (let ((r (call-save/cont cgc ctx ast succ tail? (+ nb-args 1) #f prop-cont?)))
+                 (set! cn-num (car r))
                  (set! ctx (cdr r)))
 
                (let* ((nb-args (length args))
@@ -2624,7 +2628,7 @@
 
                  ;; If the continuation is a cst and we need to call the generic e.p
                  ;; then we need to drop the cst continuation
-                 (if (and generic-entry?
+                 (if (and (or generic-entry? (not prop-cont?))
                           cn-num)
                      (let ((table (asc-cnnum-table-get cn-num)))
                        (x86-mov cgc (x86-rax) (x86-imm-int (- (obj-encoding table) TAG_MEMOBJ)))
@@ -2658,7 +2662,6 @@
                         ;; on appelle drop cst
                     ;; sinon si stack[i] est un float et que la dest n'est pas un float
                         ;; on appelle drop float
-
                  ;; Move args to regs or stack following calling convention
                  (set! ctx (call-prep-args cgc ctx ast nb-args (and fn-id-inf (car fn-id-inf)) generic-entry? inlined-call? tail?))
 
@@ -2718,13 +2721,12 @@
               (check-types (list ATX_CLO) (list (car ast)) (gen-ast-l (cdr ast) lazy-call) ast)
               ctx))))))
 
-(define (gen-continuation-rp cgc ast succ ctx apply?)
+(define (gen-continuation-rp cgc ast succ ctx apply? prop-cont?)
 
   ;; Add continuation flag to the lco
   (lazy-code-f-cont! succ)
 
-  (if (or (not opt-propagate-continuation)
-          apply?)
+  (if (not prop-cont?)
       (let* (;; Label for return address loading
              (load-ret-label (asm-make-label #f (new-sym 'load-ret-addr)))
              ;; Flag in stub : is the continuation already generated ?
@@ -2751,7 +2753,7 @@
       (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0))))
   succ)
 
-(define (gen-continuation-cr cgc ast succ ctx cn-num apply?)
+(define (gen-continuation-cr cgc ast succ ctx cn-num apply? prop-cont?)
 
   (define crtable #f)
 
@@ -2798,8 +2800,7 @@
 
   (asc-cnnum-ctx-add cn-num (ctx-pop-n ctx (+ (length (cdr ast)) 1)))
 
-  (if (or (not opt-propagate-continuation)
-          apply?)
+  (if (not prop-cont?)
       (begin
         (gen-crtable)
         (asc-cnnum-table-add cn-num crtable)

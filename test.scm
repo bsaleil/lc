@@ -1,10 +1,9 @@
-(println "Boolean")
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1)) (fib (- n 2)))))
 
-(println (boolean? (lambda (a b c) (+ a c))))
-(println (boolean? (make-vector 10 #t)))
-
-
-
+(fib 40)
 
 
 ;(define (bar f)

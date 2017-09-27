@@ -12,16 +12,23 @@ ex=[];
 # ex.append(["AA","strat4","--enable-const-vers --cc-max 1000 --enable-cxoverflow-fallback --cr-max 1000 --max-versions 5"])
 # ex.append(["AA","strat4","--enable-const-vers --cc-max 1000 --enable-cxoverflow-fallback --cr-max 1000 --max-versions 5 --const-vers-types sym cha boo pai str vec nul voi"])
 
+ex.append(["0","strat1","--cc-max 1000 --enable-cxoverflow-fallback --max-versions 5 --disable-inlined-call"])
+ex.append(["0","strat1","--cc-max 1000 --enable-cxoverflow-fallback --max-versions 5"])
+ex.append(["0","strat1","--cc-max 1000 --enable-cxoverflow-fallback --max-versions 5 --enable-continuation-propagation"])
+# ex.append(["0","strat1","--cc-max 1000 --enable-cxoverflow-fallback --max-versions 5 --disable-inlined-call"]);
+# ex.append(["1","strat1","--cc-max 1000 --enable-cxoverflow-fallback --max-versions 5"]);
+# ex.append(["2","strat1","--cc-max 1000 --enable-cxoverflow-fallback --max-versions 5 --enable-continuation-propagation"]);
+# ex.append(["3","strat1","--cc-max 1000 --enable-cxoverflow-fallback --max-versions 7 --enable-continuation-propagation"]);
 
-ex.append(["0","strat1","--max-versions 5 --disable-inlined-call"]);
-ex.append(["1","strat1","--max-versions 5 --more-versions 0"]);
-ex.append(["2","strat1","--max-versions 5 --more-versions 1"]);
-ex.append(["3","strat1","--max-versions 5 --more-versions 2"]);
-ex.append(["4","strat1","--max-versions 5 --more-versions 3"]);
-ex.append(["5","strat1","--max-versions 5 --more-versions 4"]);
-ex.append(["6","strat1","--max-versions 5 --more-versions 5"]);
-ex.append(["7","strat1","--max-versions 3 --more-versions 3"]);
-ex.append(["8","strat1","--max-versions 5 --more-versions 10"]);
+# ex.append(["0","strat1","--max-versions 5 --disable-inlined-call"]);
+# ex.append(["1","strat1","--max-versions 5 --more-versions 0"]);
+# ex.append(["2","strat1","--max-versions 5 --more-versions 1"]);
+# ex.append(["3","strat1","--max-versions 5 --more-versions 2"]);
+# ex.append(["4","strat1","--max-versions 5 --more-versions 3"]);
+# ex.append(["5","strat1","--max-versions 5 --more-versions 4"]);
+# ex.append(["6","strat1","--max-versions 5 --more-versions 5"]);
+# ex.append(["7","strat1","--max-versions 3 --more-versions 3"]);
+# ex.append(["8","strat1","--max-versions 5 --more-versions 10"]);
 
 #
 # #----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -155,9 +162,10 @@ for file in files:
             rc = p.returncode
             if rc == 0:
                 lines = sout.split("\n")
-                time_exe = lines[8].split(":")[1]
-                time_tot = lines[1].split(":")[1]
-                print(":" + time_exe + ":" + time_tot, end='')
+                time_exe = float(lines[9].split(":")[1]) - float(lines[12].split(":")[1])
+                time_tot = float(lines[1].split(":")[1]) - float(lines[4].split(":")[1])
+                i = 0;
+                print(":" + str(time_exe) + ":" + str(time_tot), end='')
             else:
                 print(":NUL:NUL",end='')
         else:
