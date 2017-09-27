@@ -221,7 +221,12 @@
 (define (asc-cnnum-table-add cn-num crtable)
   (table-set! asc-cnnum-table cn-num crtable))
 (define (asc-cnnum-table-get cn-num)
-  (table-ref asc-cnnum-table cn-num))
+  (let ((r (table-ref asc-cnnum-table cn-num)))
+    (if (procedure? r)
+        (let ((table (r)))
+          (table-set! asc-cnnum-table cn-num table)
+          table)
+        r)))
 
 (define asc-cnnum-ctx (make-table))
 (define (asc-cnnum-ctx-add cn-num ctx)
@@ -2715,90 +2720,100 @@
 
 (define (gen-continuation-rp cgc ast succ ctx apply?)
 
-  (let* ((lazy-continuation
-           (make-lazy-code-cont
+  (define lazy-continuation
+          (make-lazy-code-cont
              #f
              (lambda (cgc ctx)
                (jump-to-version cgc succ ctx))))
-         ;; Label for return address loading
-         (load-ret-label (asm-make-label #f (new-sym 'load-ret-addr)))
-         ;; Flag in stub : is the continuation already generated ?
-         (gen-flag #f)
-         ;; Continuation stub
-         (stub-labels
-           (add-callback cgc
-                              0
-                              (lambda (ret-addr selector)
-                                (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag to continuation addr
-                                    (mlet ((args (cdr ast))
-                                           (ctx
-                                             (if apply?
-                                                 (ctx-pop-n ctx 2) ;; Pop operator and args
-                                                 (ctx-pop-n ctx (+ (length args) 1)))))
 
-                                      (set! gen-flag
-                                            (gen-version-continuation
-                                              load-ret-label
-                                              lazy-continuation
-                                              (ctx-push ctx (make-ctx-tunk) return-reg)))))
-                                gen-flag))))
-   ;; Generate code
-   (if (or (not opt-propagate-continuation)
-           apply?)
-       (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0)))
-   lazy-continuation))
+  (if (or (not opt-propagate-continuation)
+          apply?)
+      (let* (;; Label for return address loading
+             (load-ret-label (asm-make-label #f (new-sym 'load-ret-addr)))
+             ;; Flag in stub : is the continuation already generated ?
+             (gen-flag #f)
+             ;; Continuation stub
+             (stub-labels
+               (add-callback cgc
+                                  0
+                                  (lambda (ret-addr selector)
+                                    (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag to continuation addr
+                                        (mlet ((args (cdr ast))
+                                               (ctx
+                                                 (if apply?
+                                                     (ctx-pop-n ctx 2) ;; Pop operator and args
+                                                     (ctx-pop-n ctx (+ (length args) 1)))))
+
+                                          (set! gen-flag
+                                                (gen-version-continuation
+                                                  load-ret-label
+                                                  lazy-continuation
+                                                  (ctx-push ctx (make-ctx-tunk) return-reg)))))
+                                    gen-flag))))
+      ;; Generate code
+      (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0))))
+  lazy-continuation)
 
 (define (gen-continuation-cr cgc ast succ ctx cn-num apply?)
 
   (define crtable #f)
 
-  (let* ((lazy-continuation
-           (make-lazy-code-cont
+  (define lazy-continuation
+          (make-lazy-code-cont
              #f
              (lambda (cgc ctx)
-               (jump-to-version cgc succ ctx))))
-         (stub-labels
-           (add-cont-callback
-             cgc
-             1
-             (lambda (ret-addr selector type)
+                (jump-to-version cgc succ ctx))))
 
-                   ;;
-                   (let* ((generic? (not type))
-                          (type (or type (make-ctx-tunk)))
-                          (args (cdr ast))
-                          (ctx
-                            (if apply?
-                                (ctx-pop-n ctx 2) ;; Pop operator and args
-                                (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
-                          (reg
-                            (cond ((and (ctx-type-cst? type)
-                                        (not (ctx-type-id? type)))
-                                      #f)
-                                  ((ctx-type-flo? type) return-freg)
-                                  (else                 return-reg))))
+  (define (gen-stub)
+    (let* ((stub-labels
+             (add-cont-callback
+               cgc
+               1
+               (lambda (ret-addr selector type)
 
-                     (gen-version-continuation-cr
-                       lazy-continuation
-                       (ctx-push ctx type reg)
-                       type
-                       crtable
-                       generic?)))))
-         ;; CRtable
-         (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
-         (generic-addr (asm-label-pos (list-ref stub-labels 1))))
+                     ;;
+                     (let* ((generic? (not type))
+                            (type (or type (make-ctx-tunk)))
+                            (args (cdr ast))
+                            (ctx
+                              (if apply?
+                                  (ctx-pop-n ctx 2) ;; Pop operator and args
+                                  (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
+                            (reg
+                              (cond ((and (ctx-type-cst? type)
+                                          (not (ctx-type-id? type)))
+                                        #f)
+                                    ((ctx-type-flo? type) return-freg)
+                                    (else                 return-reg))))
 
-    (set! crtable (get-crtable ast ctx stub-addr generic-addr))
+                       (gen-version-continuation-cr
+                         lazy-continuation
+                         (ctx-push ctx type reg)
+                         type
+                         crtable
+                         generic?)))))
+           ;; CRtable
+           (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
+           (generic-addr (asm-label-pos (list-ref stub-labels 1))))
+      (cons stub-addr generic-addr)))
 
-    (let ((crtable-loc (- (obj-encoding crtable) 1)))
+  (define (gen-crtable)
+    (let ((addrs (gen-stub)))
+      (set! crtable (get-crtable ast ctx (car addrs) (cdr addrs)))
+      crtable))
 
-      (asc-cnnum-table-add cn-num crtable)
-      (asc-cnnum-ctx-add cn-num (ctx-pop-n ctx (+ (length (cdr ast)) 1)))
-      ;; Generate code
-      (if (or (not opt-propagate-continuation)
-              apply?)
-          (codegen-load-cont-cr cgc crtable-loc))
-      lazy-continuation)))
+  (asc-cnnum-ctx-add cn-num (ctx-pop-n ctx (+ (length (cdr ast)) 1)))
+
+  (if (or (not opt-propagate-continuation)
+          apply?)
+      (begin
+        (gen-crtable)
+        (asc-cnnum-table-add cn-num crtable)
+        (let ((crtable-loc (- (obj-encoding crtable) 1)))
+          (codegen-load-cont-cr cgc crtable-loc)))
+      (asc-cnnum-table-add cn-num (lambda () (gen-crtable))))
+
+  lazy-continuation)
 
 ;; Gen call sequence (call instructions)
 ;; fn-num is fn identifier or #f
