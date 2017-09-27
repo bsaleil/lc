@@ -39,6 +39,7 @@
 ;;--------------------------------------------------------------------------------
 ;; Compiler options
 
+(define opt-inlining-limit       #f) ;; Control gambit inlining-limit declaration
 (define opt-ctime                #f) ;; Print compilation time
 (define opt-stats                #f) ;; Print stats report
 (define opt-export-locat-info    #f) ;; Pretty print number of versions for each locat object

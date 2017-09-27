@@ -171,6 +171,11 @@
      ,(lambda (args) (set! opt-use-lib #f)
                      args))
 
+  (--inlining-limit
+     "Control gambit frontend 'inlining-limit' delcaration"
+     ,(lambda (args) (set! opt-inlining-limit (string->number (cadr args)))
+                     (cdr args)))
+
   (--stats
     "Print stats about execution"
     ,(lambda (args) (if opt-time (error "--stats option can't be used with --time"))
@@ -343,7 +348,14 @@
     (cons status output)))
 
 (define (copy-with-declare src dst)
-  (run "./copy-with-declare.sh" src dst (if opt-use-lib "lib" "nolib")))
+  (let* ((declare-pre "(declare (standard-bindings) (extended-bindings) ")
+         (declare-inlining
+           (if opt-inlining-limit
+               (string-append "(inlining-limit " (number->string opt-inlining-limit) ")")
+               ""))
+         (declare-suf " (not inline-primitives) (block) (not safe))")
+         (declare-all (string-append declare-pre declare-inlining declare-suf)))
+    (run "./copy-with-declare.sh" src dst (if opt-use-lib "lib" "nolib") declare-all)))
 
 (define (main . args)
 
@@ -372,7 +384,6 @@
                 (analyses-find-global-types! exp-content)
                 (analyses-a-conversion! exp-content)
                 (compute-liveness exp-content)
-                ;(exec content))))
                 (exec exp-content))))
         (else (error "NYI")))
 

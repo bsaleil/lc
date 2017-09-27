@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Declarations
-echo "(declare (standard-bindings) (extended-bindings) (not inline-primitives) (block) (not safe))" > "$2"
+echo "$4" > "$2"
 
 # Library
 if [[ "$3" == "lib" ]]

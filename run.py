@@ -12,14 +12,9 @@ ex=[];
 # ex.append(["AA","strat4","--enable-const-vers --cc-max 1000 --enable-cxoverflow-fallback --cr-max 1000 --max-versions 5"])
 # ex.append(["AA","strat4","--enable-const-vers --cc-max 1000 --enable-cxoverflow-fallback --cr-max 1000 --max-versions 5 --const-vers-types sym cha boo pai str vec nul voi"])
 
-ex.append(["0","strat1","--cc-max 1000 --enable-cxoverflow-fallback --max-versions 5 --disable-inlined-call"])
-ex.append(["0","strat1","--cc-max 1000 --enable-cxoverflow-fallback --max-versions 5"])
-ex.append(["0","strat1","--cc-max 1000 --enable-cxoverflow-fallback --max-versions 5 --enable-continuation-propagation"])
-# ex.append(["0","strat1","--cc-max 1000 --enable-cxoverflow-fallback --max-versions 5 --disable-inlined-call"]);
-# ex.append(["1","strat1","--cc-max 1000 --enable-cxoverflow-fallback --max-versions 5"]);
-# ex.append(["2","strat1","--cc-max 1000 --enable-cxoverflow-fallback --max-versions 5 --enable-continuation-propagation"]);
-# ex.append(["3","strat1","--cc-max 1000 --enable-cxoverflow-fallback --max-versions 7 --enable-continuation-propagation"]);
-
+ex.append(["0","strat1","--max-versions 5"])
+ex.append(["1","strat1","--max-versions 5 --enable-const-vers --const-vers-types sym boo cha nul clo"])
+ex.append(["2","strat1","--max-versions 10 --enable-const-vers --const-vers-types sym boo cha nul clo"])
 # ex.append(["0","strat1","--max-versions 5 --disable-inlined-call"]);
 # ex.append(["1","strat1","--max-versions 5 --more-versions 0"]);
 # ex.append(["2","strat1","--max-versions 5 --more-versions 1"]);

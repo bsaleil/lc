@@ -19,4 +19,4 @@ done
 
 # Chdir to script path
 cd "$(dirname "$0")"
-$GSC -i $LC_FILES ${ARGS[@]}
+$GSC -i $LC_FILES ${ARGS[@]} 
