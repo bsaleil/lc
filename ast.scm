@@ -694,11 +694,11 @@
 ;;
 ;; Create and return a prologue lco
 (define (get-lazy-prologue ast succ rest-param)
-  (make-lazy-code-entry
-    #f
-    rest-param
-    (lambda (cgc ctx)
-      (jump-to-version cgc succ ctx))))
+  (lazy-code-f-entry! succ)
+  (if rest-param
+      (lazy-code-f-rest! succ))
+  succ)
+
 ;;
 ;; Create and return a function return lco
 (define (get-lazy-return)
@@ -2720,11 +2720,8 @@
 
 (define (gen-continuation-rp cgc ast succ ctx apply?)
 
-  (define lazy-continuation
-          (make-lazy-code-cont
-             #f
-             (lambda (cgc ctx)
-               (jump-to-version cgc succ ctx))))
+  ;; Add continuation flag to the lco
+  (lazy-code-f-cont! succ)
 
   (if (or (not opt-propagate-continuation)
           apply?)
@@ -2747,22 +2744,16 @@
                                           (set! gen-flag
                                                 (gen-version-continuation
                                                   load-ret-label
-                                                  lazy-continuation
+                                                  succ
                                                   (ctx-push ctx (make-ctx-tunk) return-reg)))))
                                     gen-flag))))
       ;; Generate code
       (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0))))
-  lazy-continuation)
+  succ)
 
 (define (gen-continuation-cr cgc ast succ ctx cn-num apply?)
 
   (define crtable #f)
-
-  (define lazy-continuation
-          (make-lazy-code-cont
-             #f
-             (lambda (cgc ctx)
-                (jump-to-version cgc succ ctx))))
 
   (define (gen-stub)
     (let* ((stub-labels
@@ -2787,7 +2778,7 @@
                                     (else                 return-reg))))
 
                        (gen-version-continuation-cr
-                         lazy-continuation
+                         succ
                          (ctx-push ctx type reg)
                          type
                          crtable
@@ -2802,6 +2793,9 @@
       (set! crtable (get-crtable ast ctx (car addrs) (cdr addrs)))
       crtable))
 
+  ;; Add continuation flag to the lco
+  (lazy-code-f-cont! succ)
+
   (asc-cnnum-ctx-add cn-num (ctx-pop-n ctx (+ (length (cdr ast)) 1)))
 
   (if (or (not opt-propagate-continuation)
@@ -2813,7 +2807,7 @@
           (codegen-load-cont-cr cgc crtable-loc)))
       (asc-cnnum-table-add cn-num (lambda () (gen-crtable))))
 
-  lazy-continuation)
+  succ)
 
 ;; Gen call sequence (call instructions)
 ;; fn-num is fn identifier or #f

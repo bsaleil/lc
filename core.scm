@@ -1050,6 +1050,15 @@
   lco-false ;; lco of false branch if it's a cond lco)
   )
 
+(define (lazy-code-f-*! flag)
+  (lambda (lazy-code)
+    (let ((flags (lazy-code-flags lazy-code)))
+      (lazy-code-flags-set! lazy-code (cons flag flags)))))
+
+(define lazy-code-f-cont!  (lazy-code-f-*! 'cont))
+(define lazy-code-f-entry! (lazy-code-f-*! 'entry))
+(define lazy-code-f-rest!  (lazy-code-f-*! 'rest))
+
 (define (lazy-code-entry? lazy-code)
   (member 'entry (lazy-code-flags lazy-code)))
 
@@ -1059,11 +1068,6 @@
 
 (define (make-lazy-code ast generator)
   (let ((lc (make-lazy-code* ast generator '() #f #f)))
-    (set! all-lazy-code (cons lc all-lazy-code))
-    lc))
-
-(define (make-lazy-code-cont ast generator)
-  (let ((lc (make-lazy-code* ast generator '(cont) #f #f)))
     (set! all-lazy-code (cons lc all-lazy-code))
     lc))
 
