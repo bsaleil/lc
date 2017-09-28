@@ -1,10 +1,108 @@
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
+;; ok
+;; * delegate
+;; * map avec petites listes
+;;   * de manière générale, boucles et récursions sur petites listes
+;;   * ou premières itérations (ex. x premières)
+;;      -> inliner les appels récursifs des fonctions boubles, et pas l'appel initial
+;;      -> inliner x fois jusqu'à obtenir atteindre un sueuil, puis stopper l'inlining
+;; 
 
-(fib 40)
+(define (fact n k)
+  (if (= n 0)
+      (k 1)
+      (fact (- n 1)
+            (lambda (r) (k (* n r))))))
+
+(gambit$$pp (fact 10 (lambda (r) r)))
+
+
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1))
+;         (fib (- n 2)))))
+;
+;(define foo (cons 30 30))
+;
+;(fib (car foo))
+
+
+;(define (map fn lst)
+;  (if (null? lst) '() (cons (fn (car lst)) (map fn (cdr lst)))))
+;
+;(define (foo n)
+;  (map (lambda (p) (+ 10 n p)) '(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20)))
+;
+;(foo 10)
+
+;; Comportement de l'inlining pour fib ? Pourquoi pas un seul des appel inliné ?
+;; Comportement si plusieurs candidats (2 sites d'appel différents) dans la même fonction
+
+;;
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (let ((n (- n 1)))
+;           (if (< n 2)
+;               1
+;               (+ (fib (- n 1))
+;                  (fib (- n 2)))))
+;         (let ((n (- n 2)))
+;           (if (< n 2)
+;               1
+;               (+ (fib (- n 1))
+;                  (fib (- n 2))))))))
+;
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1))
+;         (fib (- n 2)))))
+;;;; trace
+;(fib n) -> size x coef 100
+;(< n 2) -> size x coef 100
+;
+;(fib (- n 1)) -> size 2x coef 200
+;(< n 2) -> size 2x coef 200
+;
+;(fib (- n 1)) -> size ! coef !
+;...
+;
+;...
+;
+;(fib (- n 2)) -> size 2x coef 200
+;...
+;
+;
+;;;;
+;
+;(define (fib2 n)
+;  (if (< n 2)
+;      1
+;      (+ (let ((n (- n 1)))
+;           (if (< n 2)
+;               1
+;               (+ (let ((n (- n 1)))
+;                    (if (< n 2)
+;                        1
+;                        (+ (fib (- n 1))
+;                           (fib (- n 2)))))
+;                  (fib (- n 2)))))
+;         (fib2 (- n 2)))))
+;
+;(gambit$$pp (fib2 40))
+
+
+
+;(define (ack m n)
+;  (if (= m 0)
+;      (+ n 1)
+;      (if (= n 0)
+;          (ack (- m 1) 1)
+;          (ack (- m 1)
+;               (ack m (- n 1))))))
+;
+;(gambit$$pp (ack 3 9))
 
 ;(define (bar f)
 ;  (gambit$$pp f))
