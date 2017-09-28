@@ -695,7 +695,6 @@
 ;; Create and return a prologue lco
 (define (get-lazy-prologue ast succ rest-param)
   (lazy-code-f-entry! succ)
-  (lazy-code-ast-set! succ ast)
   (if rest-param
       (lazy-code-f-rest! succ))
   succ)
