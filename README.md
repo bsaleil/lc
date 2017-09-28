@@ -30,7 +30,7 @@ make -j8
 To compute the 40th Fibonacci number:
 
 #### fib.scm:
-```
+```scheme
 (define (fib n)
   (if (< n 2)
       1
