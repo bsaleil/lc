@@ -66,6 +66,11 @@
     "Set a limit on the number of versions of lazy code objects"
     ,(lambda (args) (set! opt-max-versions (string->number (cadr args)))
                     (set! args (cdr args))
+                    args))
+  (--disable-regalloc-vers
+    "Do not use register allocation information to specialize generated code"
+    ,(lambda (args) (set! get-version nregalloc-get-version)
+                    (set! put-version nregalloc-put-version)
                     args))))
 
 (define (lazy-code-generic lco)
@@ -75,21 +80,45 @@
   (table-set! lco_generic lco (cons ctx version)))
 
 (define (get-version lazy-code ctx)
-  (let* ((key (if (lazy-code-entry? lazy-code)
-                  ctx;(ctx-stack ctx)
-                  ctx))
+  (let* ((key ctx)
          (versions (lazy-code-versions lazy-code))
          (version  (table-ref versions key #f)))
-    (and version (car version))))
+    (and version (cons #f (car version)))))
 
 (define (put-version lazy-code ctx version real-version?)
-  (let ((key (if (lazy-code-entry? lazy-code)
-                 ctx;(ctx-stack ctx)
-                 ctx))
+  (let ((key ctx)
         (versions (lazy-code-versions lazy-code))
         (k (cons version real-version?)))
     (table-set! versions key k)
     k))
+
+;;------------------------------------------------------------------------------
+;; !regalloc versioning
+
+(define (version-key ctx)
+  (list (ctx-stack ctx)
+        (ctx-fs ctx)
+        (ctx-ffs ctx)
+        (map (lambda (ident) (cons (car ident) (identifier-sslots (cdr ident))))
+             (ctx-env ctx))))
+
+(define (nregalloc-get-version lazy-code ctx)
+  (let* ((key (version-key ctx))
+         (versions (lazy-code-versions lazy-code))
+         (version  (table-ref versions key #f)))
+    (if version
+        (cons (car version) (cadr version))
+        #f)))
+
+(define (nregalloc-put-version lazy-code ctx version real-version?)
+  (let* ((key (version-key ctx))
+         (versions (lazy-code-versions lazy-code))
+         (k (cons ctx (cons version real-version?))))
+    (table-set! versions key k)
+    (cdr k)))
+
+;; !regalloc versioning
+;;------------------------------------------------------------------------------
 
 (define (limit-reached? lco)
   (and opt-max-versions
@@ -99,8 +128,11 @@
 (define (strat-get-version lco ctx)
 
   ;; CASE 1: a version exists for this ctx, use it
-  (define (case-use-version version)
-    (list version ctx (lambda (r) r)))
+  (define (case-use-version dst-ctx version)
+    (if dst-ctx
+        (let ((k (put-version lco ctx #f #f)))
+          (list version dst-ctx (lambda (label) (set-car! k label))))
+        (list version ctx (lambda (r) r))))
 
   ;; CASE 2: no version for this ctx, and limit is not reached
   ;; then generate a new version
@@ -123,10 +155,12 @@
                        (lazy-code-generic-set! lco gctx label-version))))
       (list #f gctx callback)))
 
-  (let ((version (get-version lco ctx)))
+  (let* ((r (get-version lco ctx))
+         (dst-ctx (and r (car r)))
+         (version (and r (cdr r))))
 
     (if version
-        (case-use-version version) ;; CASE 1
+        (case-use-version dst-ctx version) ;; CASE 1
         (if (not (limit-reached? lco))
             (case-gen-version)     ;; CASE 2
             (let ((generic (lazy-code-generic lco)))
