@@ -63,9 +63,19 @@ test:
 	rm ./unit-tests/mutable-out -rf
 	./run-ut.scm
 
+all-test:
+	rm ./unit-tests/mutable-out -rf
+	./run-ut.scm
+	./run-ut.scm --disable-inlined-call
+	./run-ut.scm --disable-entry-points --disable-return-points
+	./run-ut.scm --max-versions 5
+	./run-ut.scm --max-versions 5 --enable-const-vers --enable-cxoverflow-fallback
+	./run-ut.scm --max-versions 5 --disable-regalloc-vers
+
 # Run full unit tests with and without entry and return points
 full-test:
 	rm ./unit-tests/mutable-out -rf
+
 	./run-ut.scm
 	./run-ut.scm --disable-inlined-call
 	./run-ut.scm --disable-entry-points --disable-inlined-call
@@ -75,6 +85,17 @@ full-test:
 	./run-ut.scm --max-versions 5
 	./run-ut.scm --max-versions 5 --enable-const-vers --enable-cxoverflow-fallback
 	./run-ut.scm --max-versions 1
+
+	./run-ut.scm --disable-regalloc-vers
+	./run-ut.scm --disable-inlined-call --disable-regalloc-vers
+	./run-ut.scm --disable-entry-points --disable-inlined-call --disable-regalloc-vers
+	./run-ut.scm --disable-entry-points --disable-regalloc-vers
+	./run-ut.scm --disable-return-points --disable-regalloc-vers
+	./run-ut.scm --disable-entry-points --disable-return-points --disable-regalloc-vers
+	./run-ut.scm --max-versions 5 --disable-regalloc-vers
+	./run-ut.scm --max-versions 5 --enable-const-vers --enable-cxoverflow-fallback --disable-regalloc-vers
+	./run-ut.scm --max-versions 1 --disable-regalloc-vers
+
 
 # Clean
 clean:
