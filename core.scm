@@ -1218,13 +1218,20 @@
                 ;; Dest is xmm
                 ((and (x86-reg? dst)
                       (x86-xmm? dst))
-                   (cond ((x86-imm? src)
+                   (cond ;; imm -> xmm
+                         ((x86-imm? src)
                             (x86-mov cgc (x86-rax) src)
                             (x86-movd/movq cgc dst (x86-rax)))
+                         ;; mem -> xmm
                          ((x86-mem? src)
                             (x86-movsd cgc dst src))
+                         ;; xmm -> xmm
                          ((x86-xmm? src)
                             (x86-movsd cgc dst src))
+                         ;; reg -> xmm
+                         ((x86-reg? src)
+                            (x86-movd/movq cgc dst src))
+                         ;;
                          (else (error "NYI apply-moves"))))
                 ((and (x86-reg? src)
                       (x86-xmm? src))
