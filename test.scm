@@ -5,16 +5,12 @@
 ;;   * ou premières itérations (ex. x premières)
 ;;      -> inliner les appels récursifs des fonctions boubles, et pas l'appel initial
 ;;      -> inliner x fois jusqu'à obtenir atteindre un sueuil, puis stopper l'inlining
-;; 
+;;
 
-(define (fact n k)
-  (if (= n 0)
-      (k 1)
-      (fact (- n 1)
-            (lambda (r) (k (* n r))))))
+(define (foo n w)
+  (gambit$$pp (+ 10 n w)))
 
-(gambit$$pp (fact 10 (lambda (r) r)))
-
+(foo 33 3.14)
 
 ;(define (fib n)
 ;  (if (< n 2)

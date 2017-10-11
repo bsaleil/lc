@@ -2589,34 +2589,43 @@
              #f
              (lambda (cgc ctx)
 
-               (define nb-args (length args))
-               (define cn-num #f)
-
-               (define prop-cont? #f)
-
-               ;; Handle const fn
-               (let ((type (ctx-get-type ctx (length args))))
-                 (if (ctx-type-cst? type)
-                     (let ((loc (ctx-get-loc ctx (length args))))
-                       (set! fn-id-inf (cons (not loc) (ctx-type-cst type))))))
-
-               (set! prop-cont? opt-propagate-continuation)
+               (let* ((nb-args (length args))
+                      (cn-num #f)
+                      (prop-cont? opt-propagate-continuation)
+                      (fn-loc/fn-num
+                        (or fn-id-inf
+                            (let ((type (ctx-get-type ctx (length args))))
+                              (if (ctx-type-cst? type)
+                                  (let ((loc (ctx-get-loc ctx (length args))))
+                                    (cons (not loc) (ctx-type-cst type)))
+                                  #f))))
+                      (inlined-call?
+                        (and opt-lazy-inlined-call
+                             (let* ((fn-num    (and fn-loc/fn-num (cdr fn-loc/fn-num)))
+                                    (obj       (and fn-num (asc-globalfn-entry-get fn-num)))
+                                    (lazy-code (and obj (cadr obj))))
+                               (and lazy-code (not (lazy-code-rest? lazy-code)))))))
 
                ;; Save used registers, generate and push continuation stub
                (let ((r (call-save/cont cgc ctx ast succ tail? (+ nb-args 1) #f prop-cont?)))
                  (set! cn-num (car r))
                  (set! ctx (cdr r)))
 
+               (if #f;inlined-call?
+                   (let* ((fn-num    (and fn-loc/fn-num (cdr fn-loc/fn-num)))
+                          (obj       (and fn-num (asc-globalfn-entry-get fn-num)))
+                          (lazy-code (and obj (cadr obj))))
+                     ;;
+                     (let* ((r (asc-fnnum-ctx-get fn-num))
+                            (ctx (apply ctx-init-fn-inlined (cons cn-num (cons ctx (cons nb-args r))))))
+                       ;; TODO patch table (?)
+                       (x86-label cgc (asm-make-label #f (new-sym 'inlined_call_)))
+                       (jump-to-version cgc lazy-code ctx)))
+
                (let* ((nb-args (length args))
                       (call-ctx (ctx-init-call ctx nb-args))
                       (call-stack (list-head (ctx-stack call-ctx) nb-args))
                       ;;
-                      (inlined-call?
-                        (and opt-lazy-inlined-call
-                             (let* ((fn-num    (and fn-id-inf (cdr fn-id-inf)))
-                                    (obj       (and fn-num (asc-globalfn-entry-get fn-num)))
-                                    (lazy-code (and obj (cadr obj))))
-                               (and lazy-code (not (lazy-code-rest? lazy-code))))))
                       (r (get-ccidx-stack cn-num call-stack nb-args inlined-call?))
                       (cctable-idx (car   r))
                       (call-stack  (cadr  r))
@@ -2663,7 +2672,7 @@
                     ;; sinon si stack[i] est un float et que la dest n'est pas un float
                         ;; on appelle drop float
                  ;; Move args to regs or stack following calling convention
-                 (set! ctx (call-prep-args cgc ctx ast nb-args (and fn-id-inf (car fn-id-inf)) generic-entry? inlined-call? tail?))
+                 (set! ctx (call-prep-args cgc ctx ast nb-args (and fn-loc/fn-num (car fn-loc/fn-num)) generic-entry? inlined-call? tail?))
 
                  ;; Shift args and closure for tail call
                  (mlet ((nfargs/ncstargs
@@ -2689,7 +2698,7 @@
                    (call-tail-shift cgc ctx ast tail? (- nb-args nfargs ncstargs) cn-num continuation-dropped?))
 
                  ;; Generate call sequence
-                 (gen-call-sequence ast cgc call-stack cctable-idx nb-args (and fn-id-inf (cdr fn-id-inf)) inlined-call? cn-num))))))
+                 (gen-call-sequence ast cgc call-stack cctable-idx nb-args (and fn-loc/fn-num (cdr fn-loc/fn-num)) inlined-call? cn-num))))))))
 
     ;; Gen and check types of args
     (make-lazy-code
