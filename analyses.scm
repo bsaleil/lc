@@ -119,7 +119,7 @@
 (define (compute-live-in expr used #!optional (killed '()))
   (let* ((out (table-ref live-out expr #f))
          (in (if out
-                 (set-union used (set-sub out killed '()))
+                 (set-union used (set-sub out killed))
                  used)))
     (table-set! live-in expr in)))
 
@@ -404,7 +404,7 @@
            (in
              (set-union
                (ast-use ast locals)
-               (set-sub out (ast-def ast) '()))))
+               (set-sub out (ast-def ast)))))
       (liveness-in-set! ast in)
       (liveness-out-set! ast out)))
 

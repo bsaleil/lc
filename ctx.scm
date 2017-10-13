@@ -609,13 +609,11 @@
 
 (define (ctx-init-*-free-regs slot-loc)
   (set-sub (ctx-init-free-regs)
-           (map cdr slot-loc)
-          '()))
+           (map cdr slot-loc)))
 
 (define (ctx-init-*-free-fregs slot-loc)
   (set-sub (ctx-init-free-fregs)
-           (map cdr slot-loc)
-          '()))
+           (map cdr slot-loc)))
 
 ;;
 ;; ENV
@@ -719,6 +717,7 @@
 ;;
 ;; CTX INIT FN
 (define (ctx-init-fn cn-num stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
+
   ;; Separate constant and non constant free vars
   ;; Return a pair with const and nconst sets
   ;; const contains id and type of all constant free vars
@@ -850,10 +849,10 @@
           (pp ctx)
           (error "NYI wip error"))
         (let* ((reg (car free-fregs))
-               (free free-fregs));(set-sub free-fregs (list reg) '())))
+               (free free-fregs))
           (list '()
                 reg
-                (ctx-copy ctx #f #f #f #f free))))))
+                ctx)))))
 
 ;;
 ;; GET FREE REG
@@ -912,7 +911,7 @@
                 (list moves spill-reg ctx)))
             (let* ((r (and preferred (member preferred free-regs)))
                    (reg (if r (car r) (car free-regs)))
-                   (free (set-sub free-regs (list reg) '())))
+                   (free (set-sub free-regs (list reg))))
 
               (list '()
                     reg
@@ -1026,7 +1025,7 @@
         (let* ((ident (car env))
                (idslots (identifier-sslots (cdr ident))))
           (cons (cons (car ident)
-                      (identifier-copy (cdr ident) #f (set-sub idslots bound-slots '())))
+                      (identifier-copy (cdr ident) #f (set-sub idslots bound-slots)))
                 (clean-env (cdr env) bound-slots)))))
 
   (define (gen-env env id-idx)
@@ -1093,7 +1092,7 @@
         '()
         (let ((ident (car env)))
           (if (member (car ident) ids)
-              (gen-env (cdr env) (set-sub ids (list (car ident)) '()))
+              (gen-env (cdr env) (set-sub ids (list (car ident))))
               (cons ident
                     (gen-env (cdr env) ids))))))
 
@@ -1154,9 +1153,8 @@
                        (ctx (caddr r))
                        (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx curr-idx) mem)))
                   ;; Remove all 'fs moves
-                  (cons (append (set-sub (set-sub moves (list (assoc 'ffs moves)) '())
-                                         (list (assoc 'fs moves))
-                                         '())
+                  (cons (append (set-sub (set-sub moves (list (assoc 'ffs moves)))
+                                         (list (assoc 'fs moves)))
                                 (list (cons loc mem)))
                         ctx)))))))
 
@@ -1224,10 +1222,10 @@
      (cons type (ctx-stack ctx))
      (cons (cons slot loc)
            (ctx-slot-loc ctx))
-     (set-sub (ctx-free-regs ctx) (list loc) '())
-     (set-sub (ctx-free-mems ctx) (list loc) '())
-     (set-sub (ctx-free-fregs ctx) (list loc) '())
-     (set-sub (ctx-free-fmems ctx) (list loc) '())
+     (set-sub (ctx-free-regs ctx) (list loc))
+     (set-sub (ctx-free-mems ctx) (list loc))
+     (set-sub (ctx-free-fregs ctx) (list loc))
+     (set-sub (ctx-free-fmems ctx) (list loc))
      (if id
          (get-env (ctx-env ctx) id slot)
          #f)
@@ -1267,7 +1265,7 @@
                           (identifier-copy
                             (cdr ident)
                             #f
-                            (set-sub (identifier-sslots (cdr ident)) (list slot) '())))
+                            (set-sub (identifier-sslots (cdr ident)) (list slot))))
                     (env-remove-slot (cdr env) slot))
               (cons ident (env-remove-slot (cdr env) slot))))))
 
@@ -1322,7 +1320,7 @@
         (let ((sslots (identifier-sslots (cdar env))))
           (if (member slot sslots)
               (cons (cons (caar env)
-                          (identifier-copy (cdar env) #f (set-sub sslots (list slot) '())))
+                          (identifier-copy (cdar env) #f (set-sub sslots (list slot))))
                     (cdr env))
               (cons (car env) (get-env (cdr env) slot))))))
   (let ((env (get-env (ctx-env ctx) (stack-idx-to-slot ctx stack-idx))))
@@ -1477,7 +1475,7 @@
                      r)
                  curr-free
                  (cons old-loc curr-free))))
-    (set-sub free-set (list loc) '())))
+    (set-sub free-set (list loc))))
 
   (define (get-free-regs slot-loc curr-free old-loc loc)
     (get-free-* slot-loc curr-free old-loc loc ctx-loc-is-register?))
@@ -1803,25 +1801,25 @@
                      (append (cons (cons src 'rtmp)
                                    pending-moves)
                              (list (cons 'rtmp dst))))
-                   (req-moves (set-sub req-moves (list move) '())))
+                   (req-moves (set-sub req-moves (list move))))
                (cons real-moves
                      (update-req-moves req-moves real-moves))))
           ;; Case 1: Destination is free, validate pending moves
           ((loc-available dst)
              (let ((real-moves (cons move
                                      pending-moves))
-                   (req-moves  (set-sub req-moves (list move) '())))
+                   (req-moves  (set-sub req-moves (list move))))
                (cons real-moves
                      (update-req-moves req-moves real-moves))))
           ;; Case 2: src is dst
           ((equal? src dst)
              (step (cons src visited)
-                   (set-sub req-moves (list move) '())
+                   (set-sub req-moves (list move))
                    (cons move pending-moves)))
           ;; Case 3: dst is an src of an other move,
           ;;         add current move to pending moves and continue with next move
           (else
              (step (cons src visited)
-                   (set-sub req-moves (list move) '())
+                   (set-sub req-moves (list move))
                    (cons move pending-moves)
                    dst)))))

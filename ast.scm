@@ -914,7 +914,7 @@
 
     (define late (set-inter bound-ids free-ids))
 
-    (let loop ((ids (set-sub free-ids late '()))
+    (let loop ((ids (set-sub free-ids late))
                (imm '())    ;; imm free
                (cst '())    ;; cst free
                (cstid '())) ;; id-cst free (cst associated to cst identifier)
@@ -1219,7 +1219,7 @@
                                   (set-inter const-proc-vars-ids
                                              (cadddr old-free-info)))
                           (caddr old-free-info)
-                          (set-sub (cadddr old-free-info) const-proc-vars-ids '()))))
+                          (set-sub (cadddr old-free-info) const-proc-vars-ids))))
              (loop (cdr l)
                    (cons (list id pos ast free-info)
                          res))))))
@@ -1296,7 +1296,7 @@
                (length new-const-set))
             (list (append new-const-set
                           const-proc-vars)
-                  (set-sub proc-vars new-const-set '()))
+                  (set-sub proc-vars new-const-set))
             (loop new-const-set)))))
 
   ;; ---------------------------------------------------------------------------
@@ -2444,7 +2444,7 @@
                       (append regs r))
                     '()
                     moves))
-             (unused-regs (set-sub (ctx-init-free-regs) used-regs '())))
+             (unused-regs (set-sub (ctx-init-free-regs) used-regs)))
 
       (if (null? unused-regs)
           (begin (apply-moves cgc ctx moves 'selector)

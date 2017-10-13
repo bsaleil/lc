@@ -36,13 +36,8 @@
 
 ;; Set subtraction with lists
 ;; return lsta - lstb
-;; res is accu
-(define (set-sub lsta lstb res)
-  (if (null? lsta)
-    (reverse res) ;; to keep same order
-    (if (member (car lsta) lstb)
-      (set-sub (cdr lsta) lstb res)
-      (set-sub (cdr lsta) lstb (cons (car lsta) res)))))
+(define (set-sub lsta lstb)
+  (keep (lambda (el) (not (member el lstb))) lsta))
 
 ;; Set union with lists
 ;; return lsta U lstb

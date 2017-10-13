@@ -708,7 +708,7 @@
         ;; Save c caller save registers
         (ppush-pop-regs
           cgc
-          (set-sub c-caller-save-regs regalloc-regs '())
+          (set-sub c-caller-save-regs regalloc-regs)
           (lambda (cgc)
             (ppush-pop-xmm
               cgc
@@ -758,7 +758,7 @@
         ;; Save c caller save registers
         (ppush-pop-regs
           cgc
-          (set-sub c-caller-save-regs regalloc-regs '())
+          (set-sub c-caller-save-regs regalloc-regs)
           (lambda (cgc)
             (ppush-pop-xmm
               cgc
@@ -802,7 +802,7 @@
               ;;(x86-mov cgc (x86-rdi) (x86-imm-int 0))
 
               (let* (;; NOTE: Must match the registers saved using ppush-pop-regs in gen-addr-handler
-                     (saved-offset (+ (length xmm-regs) (length (set-sub c-caller-save-regs regalloc-regs '()))))
+                     (saved-offset (+ (length xmm-regs) (length (set-sub c-caller-save-regs regalloc-regs))))
                      (stag-offset  (* 8 (+ saved-offset 2))))
 
                 ;; stag is not encoded, then it is in pstack
