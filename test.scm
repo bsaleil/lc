@@ -13,9 +13,9 @@
       (+ (fib (- n 1))
          (fib (- n 2)))))
 
-(define pai (cons 40 40))
-
-(gambit$$pp (fib (car pai)))
+;(define pai (cons 40 40))
+;(gambit$$pp (fib (car pai)))
+(gambit$$pp (fib 40))
 
 ;(define (fib n)
 ;  (if (< n 2)

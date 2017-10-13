@@ -2611,10 +2611,17 @@
                  (set! cn-num (car r))
                  (set! ctx (cdr r)))
 
-               (if #f;inlined-call?
+               (if #finlined-call?
                    (let* ((fn-num    (and fn-loc/fn-num (cdr fn-loc/fn-num)))
                           (obj       (and fn-num (asc-globalfn-entry-get fn-num)))
                           (lazy-code (and obj (cadr obj))))
+
+                     ;; TODO: use opt switch to drop csts
+                     (let loop ((idx 0) (nctx ctx))
+                       (if (= idx nb-args)
+                           (set! ctx nctx)
+                           (loop (+ idx 1)
+                                 (drop-cst-value cgc ast nctx idx))))
                      ;;
                      (let* ((r (asc-fnnum-ctx-get fn-num))
                             (ctx (apply ctx-init-fn-inlined (cons cn-num (cons ctx (cons nb-args r))))))
