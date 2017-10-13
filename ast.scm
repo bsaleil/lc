@@ -2619,6 +2619,7 @@
                      (let* ((r (asc-fnnum-ctx-get fn-num))
                             (ctx (apply ctx-init-fn-inlined (cons cn-num (cons ctx (cons nb-args r))))))
                        ;; TODO patch table (?)
+                       (pp ctx)
                        (x86-label cgc (asm-make-label #f (new-sym 'inlined_call_)))
                        (jump-to-version cgc lazy-code ctx)))
 
