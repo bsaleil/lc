@@ -618,8 +618,48 @@
           '()))
 
 ;;
+;; ENV
+(define (ctx-init-*-env args free-const free-nconst bound-id)
+  ;; Create env for !const free vars
+  (define (init-env-free ids nvar)
+    (if (null? ids)
+        '()
+        (let* ((id         (caar ids))
+               (enc-type   (if opt-entry-points ;; We can't use free variable type to specialize ctx if opt-entry-points is #f
+                               (or (cdar ids) (make-ctx-tclo)) ;; enclosing type, or #f if late
+                               (make-ctx-tunk)))
+               (identifier (make-identifier 'free '() '() enc-type (cons 'f nvar) #f (eq? id bound-id))))
+          (cons (cons id identifier)
+                (init-env-free (cdr ids) (+ nvar 1))))))
+  ;; Create env for const free vars
+  (define (init-env-free-const free-const slot)
+    (if (null? free-const)
+        '()
+        (let ((first (car free-const)))
+          (cons (cons (car first)
+                      (make-identifier 'local (list slot) '() #f #f #t (eq? (car first) bound-id)))
+                (init-env-free-const (cdr free-const) (+ slot 1))))))
+  ;; Create env for !free vars
+  (define (init-env-local ids slot)
+    (if (null? ids)
+        '()
+        (let* ((id (car ids))
+               (identifier
+                 (make-identifier
+                   'local (list slot) '() #f #f #f #f)))
+          (cons (cons id identifier)
+                (init-env-local (cdr ids) (+ slot 1))))))
+  ;;
+  (let ((nb-free-const (length free-const)))
+    (append (init-env-free free-nconst 0)
+            (init-env-free-const free-const 2)
+            (init-env-local args (+ nb-free-const 2)))))
+
+;;
 ;; CTX INIT FN INLINING
 (define (ctx-init-fn-inlined cn-num call-ctx call-nb-args enclosing-ctx args free-vars late-fbinds fn-num bound-id)
+
+  ;; TODO: do not use find-const-free in ctx-init-fn-* because cst/ncst are known before the calls
 
   ;; TODO WIP MAKE IT GLOBAL FOR BOTH CTX_INIT_FN_FUNCTIONS
   ;; Separate constant and non constant free vars
@@ -656,27 +696,6 @@
           (cons (cons slot (cdar sl))
                 (loop (- n 1) (cdr sl) (- slot 1))))))
 
-  ;; TODO wip
-  (define (get-env)
-    (let loop ((args args)
-               (env '())
-               (slot 2))
-      (if (null? args)
-          env
-          (loop (cdr args)
-                (cons (cons (car args)
-                            (make-identifier 'local (list slot) '() #f #f #f #f))
-                      env)
-                (+ slot 1)))))
-
-  (define (get-fs)
-    (if cn-num 0 1))
-
-  (if (not (null? free-vars))
-      (error "NYI wip 1"))
-  (if (not (null? late-fbinds))
-      (error "NYI wip 2"))
-
   (let* ((r (find-const-free free-vars))
          (free-const (car r))
          (free-nconst (cdr r))
@@ -688,7 +707,7 @@
          (free-mems  '())
          (free-fregs (ctx-init-*-free-fregs slot-loc))
          (free-fmems '())
-         (env        (get-env))
+         (env        (ctx-init-*-env args free-const free-nconst bound-id))
          (nb-actual  call-nb-args)
          (nb-args    (length args))
          (fs         (count slot-loc (lambda (el) (ctx-loc-is-memory? (cdr el)))))
@@ -724,48 +743,6 @@
             (if cst?
                 (loop (cdr ids) (cons (cons id enc-type) const) nconst)
                 (loop (cdr ids) const (cons (cons id enc-type) nconst)))))))
-
-
-  ;;
-  ;; ENV
-  (define (init-env free-const free-nconst)
-    (let ((nb-free-const (length free-const)))
-      (append (init-env-free free-nconst)
-              (init-env-free-const free-const 2)
-              (init-env-local (+ nb-free-const 2)))))
-
-  (define (init-env-local slot)
-    (define (init-env-local-h ids slot)
-      (if (null? ids)
-          '()
-          (let* ((id (car ids))
-                 (identifier
-                   (make-identifier
-                     'local (list slot) '() #f #f #f #f)))
-            (cons (cons id identifier)
-                  (init-env-local-h (cdr ids) (+ slot 1))))))
-    (init-env-local-h args slot))
-
-  (define (init-env-free-const free-const slot)
-    (if (null? free-const)
-        '()
-        (let ((first (car free-const)))
-          (cons (cons (car first)
-                      (make-identifier 'local (list slot) '() #f #f #t (eq? (car first) bound-id)))
-                (init-env-free-const (cdr free-const) (+ slot 1))))))
-
-  (define (init-env-free free-vars)
-    (define (init-env-free-h ids nvar)
-      (if (null? ids)
-          '()
-          (let* ((id         (caar ids))
-                 (enc-type   (if opt-entry-points ;; We can't use free variable type to specialize ctx if opt-entry-points is #f
-                                 (or (cdar ids) (make-ctx-tclo)) ;; enclosing type, or #f if late
-                                 (make-ctx-tunk)))
-                 (identifier (make-identifier 'free '() '() enc-type (cons 'f nvar) #f (eq? id bound-id))))
-            (cons (cons id identifier)
-                  (init-env-free-h (cdr ids) (+ nvar 1))))))
-    (init-env-free-h free-vars 0))
 
   ;; pick the next available loc:
   ;; pick the first reg if regs != () or the next mem if regs == ()
@@ -844,7 +821,7 @@
       '()
       (ctx-init-*-free-fregs slot-loc)
       '()
-      (init-env free-const free-nconst)
+      (ctx-init-*-env args free-const free-nconst bound-id)
       (and stack (length stack))
       (length args)
       fs

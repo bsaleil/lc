@@ -7,10 +7,15 @@
 ;;      -> inliner x fois jusqu'à obtenir atteindre un sueuil, puis stopper l'inlining
 ;;
 
-(define (foo n w)
-  (gambit$$pp (+ 10 n w)))
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-(foo 33 3.14)
+(define pai (cons 40 40))
+
+(gambit$$pp (fib (car pai)))
 
 ;(define (fib n)
 ;  (if (< n 2)
