@@ -2611,7 +2611,7 @@
                  (set! cn-num (car r))
                  (set! ctx (cdr r)))
 
-               (if #finlined-call?
+               (if #f ;inlined-call?
                    (let* ((fn-num    (and fn-loc/fn-num (cdr fn-loc/fn-num)))
                           (obj       (and fn-num (asc-globalfn-entry-get fn-num)))
                           (lazy-code (and obj (cadr obj))))

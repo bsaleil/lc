@@ -72,6 +72,8 @@
 
 (define (make-ctx stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num)
 
+  ;; Check alpha conversion
+  ;; All operations on ctx must create a ctx with distinct variable names
   (assert
     (let* ((local-ids (map car env))
            (r         (contains-dbl local-ids)))
@@ -100,7 +102,6 @@
     "Internal error")
 
   (make-ctx* stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num))
-;; TODO: end wip alpha conversion
 
 
 (define (ctx-copy ctx #!optional stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num)
@@ -595,7 +596,7 @@
 ;; SLOT-LOC
 (define (ctx-init-*-slot-loc cn-num nb-free nb-free-const get-slot-loc-local)
 
-  (define (init-slot-loc-base) ;; TODO: si nb-free - nb-free-const == 0
+  (define (init-slot-loc-base)
     (define clo  (if (= (- nb-free nb-free-const) 0) '(1 . #f) '(1 r . 2)))
     (define cont (if cn-num '(0 . #f) '(0 m . 0)))
     (append (reverse (build-list nb-free-const (lambda (n) (cons (+ n 2) #f))))
@@ -657,8 +658,6 @@
 ;; CTX INIT FN INLINING
 (define (ctx-init-fn-inlined cn-num call-ctx call-nb-args enclosing-ctx args free-vars late-fbinds fn-num bound-id)
 
-  ;; TODO: do not use find-const-free in ctx-init-fn-* because cst/ncst are known before the calls
-
   ;; TODO WIP MAKE IT GLOBAL FOR BOTH CTX_INIT_FN_FUNCTIONS
   ;; Separate constant and non constant free vars
   ;; Return a pair with const and nconst sets
@@ -699,7 +698,7 @@
          (free-nconst (cdr r))
          (types (list-head (ctx-stack call-ctx) call-nb-args))
          ;;
-         (stack      (ctx-init-*-stack #f cn-num free-const types #t)) ;; TODO WIP '() -> free-const
+         (stack      (ctx-init-*-stack #f cn-num free-const types #t))
          (slot-loc   (ctx-init-*-slot-loc cn-num (length free-vars) (length free-const) init-slot-loc-local))
          (free-regs  (ctx-init-*-free-regs slot-loc))
          (free-mems  '())
@@ -1409,16 +1408,8 @@
 
 ;;
 ;; GET CALL ARGS MOVES
-;; TODO nettoyer
-;;; TODO: uniformiser et placer
-;; TODO: not 3 & 5 because rdi and R11 are used for ctx, nb-args
-;; cloloc is the location of the closure.
-;; If cloloc is #f, no need to move the closure to the closure reg.
-;; If cloloc is not #f, we add an extra move to required moves set which is closure -> closure reg
+;; r3 & r5 are not used because rdi and R11 are used for ctx, nb-args
 (define args-regs '((r . 0) (r . 1) (r . 4) (r . 6) (r . 7) (r . 8))) ;; TODO move
-;; TODO: move
-;; TODO: we need to use only loc notation to use regs. Here we do not use r9 because r9 is rdx
-;;       and rdx already is used in return code sequence. But we SHOULD use r9 instead of rdx directly in lazy-ret
 ;; Return reg is one of the last registers to increase the chances it is chosen
 ;; if it is preferred register in ctx-get-free-reg (which is the case each time succ lco is a 'ret lco)
 (define return-reg '(r . 8))
