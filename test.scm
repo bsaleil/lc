@@ -7,15 +7,38 @@
 ;;      -> inliner x fois jusqu'à obtenir atteindre un sueuil, puis stopper l'inlining
 ;;
 
-(define (fib n)
-  (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
+(define (length)
+  0)
 
-;(define pai (cons 40 40))
-;(gambit$$pp (fib (car pai)))
-(gambit$$pp (fib 40))
+(define (foo l)
+  (bar l (length)))
+
+(define (bar lst len)
+  (gambit$$pp lst))
+
+
+(foo '())
+
+;(define mequal?
+;   (lambda (x0)
+;     (if (($$atom null?) ($$atom x0))
+;         (if (($$atom mequal?) ($$atom 11))
+;             (($$atom mequal?) ($$atom 22))
+;             ($$atom #f))
+;         ($$atom #t))))
+;
+;(($$atom mequal?) ($$atom '()))
+
+
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1))
+;         (fib (- n 2)))))
+;
+;;(define pai (cons 40 40))
+;;(gambit$$pp (fib (car pai)))
+;(gambit$$pp (fib 40))
 
 ;(define (fib n)
 ;  (if (< n 2)

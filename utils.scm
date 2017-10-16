@@ -99,6 +99,12 @@
         ((null? lst) (error "Error in list-head"))
         (else (cons (car lst) (list-head (cdr lst) (- n 1))))))
 
+;; Return last element of lst
+(define (list-last lst)
+  (cond ((null? lst) (error "Internal error"))
+        ((null? (cdr lst)) (car lst))
+        (else (list-last (cdr lst)))))
+
 ;; Does l recursively contains el?
 (define (contains l el)
   (if (pair? l)

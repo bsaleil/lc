@@ -2459,40 +2459,52 @@
       ctx)))
 
 ;; Shift args and closure for tail call
-;; nb-nfl-args is the number of non flonum arguments
-;; nb-fl-args  is the number of flonum arguments
-(define (call-tail-shift cgc ctx ast tail? nb-actual-args cn-num continuation-dropped?)
+;; f/cst-dropped? is #t if cst and float args are dropped (ex. if generic e.p. is called)
+(define (call-tail-shift cgc ctx ast nb-args cn-num continuation-dropped? f/cst-dropped?)
+
+  (define (get-nb-non-dropped)
+    (if f/cst-dropped?
+        nb-args
+        (let loop ((idx 0) (nf 0) (ncst 0))
+          (if (= idx nb-args)
+              (begin
+                (assert (not (> nf (length regalloc-fregs)))
+                        "Internal error, NYI case")
+                (- nb-args nf ncst))
+              (let ((type (ctx-get-type ctx idx)))
+                (cond ((and (const-versioned? type)
+                            (not (ctx-type-id? type)))
+                         (loop (+ idx 1) nf (+ ncst 1)))
+                      ((ctx-type-flo? type)
+                         (loop (+ idx 1) (+ nf 1) ncst))
+                      (else
+                         (loop (+ idx 1) nf ncst))))))))
 
   ;; r11 is available because it's the ctx register
-  (if tail?
-      (let ((fs  (ctx-fs ctx))
-            (ffs (ctx-ffs ctx))
-            (nshift
-              (if (> (- nb-actual-args (length args-regs)) 0)
-                  (- nb-actual-args (length args-regs))
-                  0)))
+  (let* ((nb-non-dropped (get-nb-non-dropped))
+         (fs     (ctx-fs ctx))
+         (ffs    (ctx-ffs ctx))
+         (nshift (max (- nb-non-dropped (length args-regs)) 0)))
+    ;; If the continuation is dropped, we need to shift one more element
+    ;; and shift the elements one slot further
+    (if continuation-dropped?
+        (set! nshift (+ nshift 1)))
+    ;; Shift values
+    (let ((sup (if (or cn-num continuation-dropped?) 0 1)))
+      (if (not (= nshift
+                  (- fs sup)))
+          (let loop ((curr (- nshift 1)))
+            (if (>= curr 0)
+                (begin
+                  (x86-mov cgc (x86-r11) (x86-mem (* 8 curr) (x86-usp)))
+                  (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift sup) curr)) (x86-usp)) (x86-r11))
+                  (loop (- curr 1))))))
+      ;; Clean stacks
+      (if (> ffs 0)
+          (x86-add cgc (x86-rsp) (x86-imm-int (* 8 ffs)))) ;; TODO: NYI case if nfargs > number of fargs regs
+      (if (not (= (- fs nshift sup) 0))
+          (x86-add cgc (x86-usp) (x86-imm-int (* 8 (- fs nshift sup))))))))
 
-        ;; If the continuation is dropped, we need to shift one more element
-        ;; and shift the elements one slot further
-        (if continuation-dropped?
-            (set! nshift (+ nshift 1)))
-
-        (let ((sup (if (or cn-num continuation-dropped?) 0 1)))
-          (if (not (= nshift
-                      (- fs sup)))
-              (let loop ((curr (- nshift 1)))
-                (if (>= curr 0)
-                    (begin
-                      (x86-mov cgc (x86-r11) (x86-mem (* 8 curr) (x86-usp)))
-                      (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift sup) curr)) (x86-usp)) (x86-r11))
-                      (loop (- curr 1))))))
-
-          ;; Clean stacks
-          (if (> ffs 0)
-              (x86-add cgc (x86-rsp) (x86-imm-int (* 8 ffs)))) ;; TODO: NYI case if nfargs > number of fargs regs
-          ;; TODO: merge two cases
-          (if (not (= (- fs nshift sup) 0))
-              (x86-add cgc (x86-usp) (x86-imm-int (* 8 (- fs nshift sup)))))))))
 
 ;;
 ;; Make lazy code from CALL EXPR
@@ -2611,7 +2623,7 @@
                  (set! cn-num (car r))
                  (set! ctx (cdr r)))
 
-               (if #f ;inlined-call?
+               (if #f;inlined-call?
                    (let* ((fn-num    (and fn-loc/fn-num (cdr fn-loc/fn-num)))
                           (obj       (and fn-num (asc-globalfn-entry-get fn-num)))
                           (lazy-code (and obj (cadr obj))))
@@ -2622,10 +2634,30 @@
                            (set! ctx nctx)
                            (loop (+ idx 1)
                                  (drop-cst-value cgc ast nctx idx))))
+
+                     (if prop-cont?
+                         (error "NYI"))
+
+                     (if tail?
+                         (call-tail-shift cgc ctx ast nb-args cn-num #f #t))
+
+                     ;; TODO WIP: push mem locs
+                     (let loop ((stack-idx (- nb-args 1)))
+                       (if (> stack-idx 0)
+                           (let ((loc (ctx-get-loc ctx stack-idx)))
+                             (if (ctx-loc-is-memory? loc)
+                                 (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc)))
+                                   (x86-mov cgc (x86-rax) opnd)
+                                   (x86-upush cgc (x86-rax))
+                                   (loop (- stack-idx 1)))
+                                 (loop (- stack-idx 1))))))
+
                      ;;
                      (let* ((r (asc-fnnum-ctx-get fn-num))
                             (ctx (apply ctx-init-fn-inlined (cons cn-num (cons ctx (cons nb-args r))))))
                        ;; TODO patch table (?)
+
+
                        (x86-label cgc (asm-make-label #f (new-sym 'inlined_call_)))
                        (jump-to-version cgc lazy-code ctx)))
 
@@ -2681,28 +2713,11 @@
                  ;; Move args to regs or stack following calling convention
                  (set! ctx (call-prep-args cgc ctx ast nb-args (and fn-loc/fn-num (car fn-loc/fn-num)) generic-entry? inlined-call? tail?))
 
-                 ;; Shift args and closure for tail call
-                 (mlet ((nfargs/ncstargs
-                          (if (or (and (not opt-entry-points)
-                                       (not inlined-call?))
-                                  generic-entry?)
-                              (list 0 0)
-                              (let loop ((idx 0) (nf 0) (ncst 0))
-                                (if (= idx nb-args)
-                                    (list nf ncst)
-                                    (let ((type (ctx-get-type ctx idx)))
-                                      (cond ((and (const-versioned? type)
-                                                  (not (ctx-type-id? type)))
-                                               (loop (+ idx 1) nf (+ ncst 1)))
-                                            ((ctx-type-flo? type)
-                                               (loop (+ idx 1) (+ nf 1) ncst))
-                                            (else
-                                               (loop (+ idx 1) nf ncst)))))))))
-
-                   (if (> nfargs (length regalloc-fregs))
-                       (error "NYI c")) ;; Fl args that are on the pstack need to be shifted
-
-                   (call-tail-shift cgc ctx ast tail? (- nb-args nfargs ncstargs) cn-num continuation-dropped?))
+                 (if tail?
+                     (let ((dropped? (or (and (not opt-entry-points)
+                                              (not inlined-call?))
+                                         generic-entry?)))
+                       (call-tail-shift cgc ctx ast nb-args cn-num continuation-dropped? dropped?)))
 
                  ;; Generate call sequence
                  (gen-call-sequence ast cgc call-stack cctable-idx nb-args (and fn-loc/fn-num (cdr fn-loc/fn-num)) inlined-call? cn-num))))))))
