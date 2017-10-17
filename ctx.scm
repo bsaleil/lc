@@ -594,13 +594,14 @@
 
 ;;
 ;; SLOT-LOC
-(define (ctx-init-*-slot-loc cn-num nb-free nb-free-const get-slot-loc-local)
+(define (ctx-init-*-slot-loc cn-num nb-free nb-free-const get-slot-loc-local #!optional clo-loc)
 
   (define (init-slot-loc-base)
-    (define clo  (if (= (- nb-free nb-free-const) 0) '(1 . #f) '(1 r . 2)))
-    (define cont (if cn-num '(0 . #f) '(0 m . 0)))
-    (append (reverse (build-list nb-free-const (lambda (n) (cons (+ n 2) #f))))
-            (list clo cont)))
+    (let ((clo-loc (if clo-loc (car clo-loc) '(r . 2))))
+     (define clo  (if (= (- nb-free nb-free-const) 0) '(1 . #f) (cons 1 clo-loc)))
+     (define cont (if cn-num '(0 . #f) '(0 m . 0)))
+     (append (reverse (build-list nb-free-const (lambda (n) (cons (+ n 2) #f))))
+             (list clo cont))))
 
 (let* ((mem (if cn-num 0 1))
        (fargs-regs (ctx-init-free-fregs))
@@ -656,7 +657,7 @@
 
 ;;
 ;; CTX INIT FN INLINING
-(define (ctx-init-fn-inlined cn-num call-ctx call-nb-args enclosing-ctx args free-vars late-fbinds fn-num bound-id)
+(define (ctx-init-fn-inlined tail? cn-num call-ctx call-nb-args enclosing-ctx args free-vars late-fbinds fn-num bound-id)
 
   ;; TODO WIP MAKE IT GLOBAL FOR BOTH CTX_INIT_FN_FUNCTIONS
   ;; Separate constant and non constant free vars
@@ -699,13 +700,26 @@
             (cons (cons slot loc)
                   (loop (- n 1) (cdr sl) (- slot 1) mem))))))
 
+  (define (init-slot-loc-local-tail slot regs fregs mem)
+    (let ((csl (list-head (ctx-slot-loc call-ctx) call-nb-args)))
+      (let loop ((csl csl) (slot (+ slot call-nb-args -1)))
+        (if (null? csl)
+            '()
+            (let ((sl (car csl)))
+              (cons (cons slot (cdr sl))
+                    (loop (cdr csl) (- slot 1))))))))
+
+
   (let* ((r (find-const-free free-vars))
          (free-const (car r))
          (free-nconst (cdr r))
          (types (list-head (ctx-stack call-ctx) call-nb-args))
          ;;
          (stack      (ctx-init-*-stack #f cn-num free-const types #t))
-         (slot-loc   (ctx-init-*-slot-loc cn-num (length free-vars) (length free-const) init-slot-loc-local))
+         (clo-loc    (list (cdr (list-ref (ctx-slot-loc call-ctx) call-nb-args))))
+         (slot-loc   (if tail?
+                         (ctx-init-*-slot-loc cn-num (length free-vars) (length free-const) init-slot-loc-local-tail clo-loc)
+                         (ctx-init-*-slot-loc cn-num (length free-vars) (length free-const) init-slot-loc-local clo-loc)))
          (free-regs  (ctx-init-*-free-regs slot-loc))
          (free-mems  '())
          (free-fregs (ctx-init-*-free-fregs slot-loc))
@@ -713,7 +727,12 @@
          (env        (ctx-init-*-env args free-const free-nconst bound-id))
          (nb-actual  call-nb-args)
          (nb-args    (length args))
-         (fs         (count slot-loc (lambda (el) (ctx-loc-is-memory? (cdr el)))))
+         (fs         (foldr (lambda (sl fs)
+                              (if (ctx-loc-is-memory? (cdr sl))
+                                  (max fs (+ (cddr sl) 1))
+                                  fs))
+                            0
+                            slot-loc))
          (ffs        0)
          (fn-num     fn-num))
 

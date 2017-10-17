@@ -2630,36 +2630,37 @@
 
                      ;; TODO: use opt switch to drop csts
                      (let loop ((idx 0) (nctx ctx))
-                       (if (= idx nb-args)
+                       (if (> idx nb-args)
                            (set! ctx nctx)
                            (loop (+ idx 1)
                                  (drop-cst-value cgc ast nctx idx))))
 
+                     ;; TODO WIP: push mem locs
+                     (if (not tail?)
+                         (let loop ((stack-idx 0) (mctx ctx))
+                           (if (= stack-idx nb-args)
+                               (set! ctx mctx)
+                               (let ((loc (ctx-get-loc ctx stack-idx)))
+                                 (if (ctx-loc-is-memory? loc)
+                                     (let ((opnd (codegen-loc-to-x86opnd (ctx-fs mctx) (ctx-ffs mctx) loc)))
+                                       (x86-mov cgc (x86-rax) opnd)
+                                       (x86-upush cgc (x86-rax))
+                                       (loop (+ stack-idx 1) (ctx-fs-inc mctx)))
+                                     (loop (+ stack-idx 1) mctx))))))
+
                      (if prop-cont?
                          (error "NYI"))
 
-                     (if tail?
-                         (call-tail-shift cgc ctx ast nb-args cn-num #f #t))
-
-                     ;; TODO WIP: push mem locs
-                     (let loop ((stack-idx (- nb-args 1)))
-                       (if (> stack-idx 0)
-                           (let ((loc (ctx-get-loc ctx stack-idx)))
-                             (if (ctx-loc-is-memory? loc)
-                                 (let ((opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc)))
-                                   (x86-mov cgc (x86-rax) opnd)
-                                   (x86-upush cgc (x86-rax))
-                                   (loop (- stack-idx 1)))
-                                 (loop (- stack-idx 1))))))
-
                      ;;
                      (let* ((r (asc-fnnum-ctx-get fn-num))
-                            (ctx (apply ctx-init-fn-inlined (cons cn-num (cons ctx (cons nb-args r))))))
+                            (cctx (apply ctx-init-fn-inlined (cons tail? (cons cn-num (cons ctx (cons nb-args r)))))))
                        ;; TODO patch table (?)
-
+                       (if tail?
+                           (if (not (= (- (ctx-fs ctx) (ctx-fs cctx)) 0))
+                               (x86-add cgc (x86-usp) (x86-imm-int (* 8 (- (ctx-fs ctx) (ctx-fs cctx)))))))
 
                        (x86-label cgc (asm-make-label #f (new-sym 'inlined_call_)))
-                       (jump-to-version cgc lazy-code ctx)))
+                       (jump-to-version cgc lazy-code cctx)))
 
                (let* ((nb-args (length args))
                       (call-ctx (ctx-init-call ctx nb-args))
@@ -3316,24 +3317,27 @@
   (let* ((type (ctx-get-type ctx ctx-idx))
          (loc  (ctx-get-loc  ctx ctx-idx))
          (cst? (ctx-type-cst? type)))
-    (if (and cst?
-             (not loc))
-        (mlet ((cst (ctx-type-cst type))
-               (moves/reg/ctx
-                 (if (ctx-type-flo? type)
-                     (ctx-get-free-freg ast ctx #f 0)
-                     (ctx-get-free-reg ast ctx #f 0))))
-          (apply-moves cgc ctx moves)
-          ;; Alloc cst
-          (cond ((ctx-type-flo? type) (alloc-cst-flo reg cst))
-                ((ctx-type-clo? type) (alloc-cst-clo reg cst))
-                (else                 (alloc-cst reg cst)))
-          ;; Update & return ctx
-          (let* ((ntype ((ctx-type-ctor type)))
-                 (ctx (ctx-set-type ctx ctx-idx ntype #f))
-                 (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx ctx-idx) reg)))
-            ctx))
-        ctx)))
+    (cond ((and cst? (not loc))
+             (mlet ((cst (ctx-type-cst type))
+                    (moves/reg/ctx
+                      (if (ctx-type-flo? type)
+                          (ctx-get-free-freg ast ctx #f 0)
+                          (ctx-get-free-reg ast ctx #f 0))))
+               (apply-moves cgc ctx moves)
+               ;; Alloc cst
+               (cond ((ctx-type-flo? type) (alloc-cst-flo reg cst))
+                     ((ctx-type-clo? type) (alloc-cst-clo reg cst))
+                     (else                 (alloc-cst reg cst)))
+               ;; Update & return ctx
+               (let* ((ntype ((ctx-type-ctor type)))
+                      (ctx (ctx-set-type ctx ctx-idx ntype #f))
+                      (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx ctx-idx) reg)))
+                 ctx)))
+          (cst?
+            (assert (ctx-type-id? type) "Internal error")
+            (let ((ntype (ctx-type-nocst type)))
+              (ctx-set-type ctx ctx-idx ntype #f)))
+          (else ctx))))
 
 ;; Get formal params from list of params
 ;; Ex: (formal-params '(a b c)  ) -> '(a b c)

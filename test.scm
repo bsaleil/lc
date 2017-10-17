@@ -1,3 +1,36 @@
+
+(define (permutations x)
+  (let ((x x)
+        (perms (list x)))
+    (define (P n)
+      (if (> n 1)
+          (do ((j (- n 1) (- j 1)))
+              ((zero? j)
+               (P (- n 1)))
+              (P (- n 1))
+              (F n))))
+    (define (F n)
+      (set! x (revloop x n (list-tail x n)))
+      (set! perms (cons x perms)))
+    (define (revloop x n y)
+      (if (zero? n)
+          y
+          (revloop (cdr x)
+                   (- n 1)
+                   (cons (car x) y))))
+    (define (list-tail x n)
+      (if (zero? n)
+          x
+          (list-tail (cdr x) (- n 1))))
+    (P 5)))
+
+
+
+(permutations '(1 2 3 4 5))
+
+;; TODO WIP: étudier le nb de versions de ce test pour trouver le pb
+
+
 ;; ok
 ;; * delegate
 ;; * map avec petites listes
@@ -7,17 +40,7 @@
 ;;      -> inliner x fois jusqu'à obtenir atteindre un sueuil, puis stopper l'inlining
 ;;
 
-(define (length)
-  0)
 
-(define (foo l)
-  (bar l (length)))
-
-(define (bar lst len)
-  (gambit$$pp lst))
-
-
-(foo '())
 
 ;(define mequal?
 ;   (lambda (x0)
