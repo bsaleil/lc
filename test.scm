@@ -1,32 +1,78 @@
+(define FOO
+   (lambda (s0)
+     (if (($$atom =) ($$atom s0) ($$atom 50))
+         ($$atom #t)
+         ($$atom 0))))
 
-(define (permutations x)
-  (let ((x x)
-        (perms (list x)))
-    (define (P n)
-      (if (> n 1)
-          (do ((j (- n 1) (- j 1)))
-              ((zero? j)
-               (P (- n 1)))
-              (P (- n 1))
-              (F n))))
-    (define (F n)
-      (set! x (revloop x n (list-tail x n)))
-      (set! perms (cons x perms)))
-    (define (revloop x n y)
-      (if (zero? n)
-          y
-          (revloop (cdr x)
-                   (- n 1)
-                   (cons (car x) y))))
-    (define (list-tail x n)
-      (if (zero? n)
-          x
-          (list-tail (cdr x) (- n 1))))
-    (P 5)))
+ (define BAR
+   (lambda (z)
+     ($$atom '())))
+
+ (define BAZ
+   (lambda (strings0)
+     (begin
+       (let ((n (($$atom car) ($$atom strings0))))
+          (($$atom BOO)
+           (($$atom BAR)
+            (($$atom FOO)
+             ($$atom n)))))
+       ($$atom #t))))
+
+ (define BOO
+   (lambda (l0)
+     ($$atom 0)))
+
+ (define FAZ (lambda ss (($$atom BAZ) ($$atom ss))))
+
+ (($$atom FAZ) ($$atom 10))
+ (($$atom FAZ) ($$atom 50))
 
 
 
-(permutations '(1 2 3 4 5))
+
+
+
+
+;(define (string->list s)
+;  (let ((len (string-length s)))
+;    (let loop ((i (- len 1)) (lst '()))
+;      (if (< i 0) lst (loop -1 (cons #\A lst))))))
+;
+;(define (##append-two lst1 lst2)
+;  (if (null? lst1)
+;      lst2
+;      (letrec ((loop (lambda (n) (if (= n 0) 0 (loop n)))))
+;        (loop 0))))
+;
+;(define (string-append-two str str2)
+;  (list->string-h (##append-two '() (string->list str2)) 0))
+;
+;(define (string-append-h strings)
+;  (cond ((null? strings) 0)
+;        ((null? (cdr strings)) 0)
+;        (else
+;         (cons (string-append-two "A" (cadr strings))
+;               #t))))
+;
+;(define (string-append . strings) (string-append-h strings))
+;
+;(define (list->string-h l n)
+;  (if (null? l)
+;      0
+;      (list->string-h (cdr l) (+ n 1))))
+;
+;;; string-append
+;(define s7 (string-append 0 "V"))
+;(define s8 (string-append 0 ""))
+
+
+
+
+
+
+
+
+
 
 ;; TODO WIP: étudier le nb de versions de ce test pour trouver le pb
 

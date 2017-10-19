@@ -594,20 +594,36 @@
 
 ;;
 ;; SLOT-LOC
-(define (ctx-init-*-slot-loc cn-num nb-free nb-free-const get-slot-loc-local #!optional clo-loc)
+(define (ctx-init-*-slot-loc cn-num nb-free nb-free-const get-slot-loc-local #!optional cloloc)
+
+  (define cont (if cn-num '(0 . #f) '(0 m . 0)))
+  (define clo
+          (begin
+            (assert (not (and (= (- nb-free nb-free-const) 0)
+                              cloloc
+                              (ctx-loc-is-memory? (car cloloc))))
+                    "Internal error") ;; closure pushed but not set to a mem loc in ctx
+            (cond ((= (- nb-free nb-free-const) 0) '(1 . #f))
+                  (cloloc
+                    (if (ctx-loc-is-memory? (car cloloc))
+                        (if (ctx-loc-is-memory? (cdr cont))
+                            '(1 m . 1)
+                            '(1 m . 0))
+                        (cons 1 (car cloloc))))
+                  (else '(1 r . 2)))))
 
   (define (init-slot-loc-base)
-    (let ((clo-loc (if clo-loc (car clo-loc) '(r . 2))))
-     (define clo  (if (= (- nb-free nb-free-const) 0) '(1 . #f) (cons 1 clo-loc)))
-     (define cont (if cn-num '(0 . #f) '(0 m . 0)))
-     (append (reverse (build-list nb-free-const (lambda (n) (cons (+ n 2) #f))))
-             (list clo cont))))
+    (append (reverse (build-list nb-free-const (lambda (n) (cons (+ n 2) #f))))
+            (list clo cont)))
 
-(let* ((mem (if cn-num 0 1))
-       (fargs-regs (ctx-init-free-fregs))
-       (sl-base  (init-slot-loc-base))
-       (sl-local (get-slot-loc-local (+ nb-free-const 2) args-regs fargs-regs mem)))
-  (append sl-local sl-base)))
+  (let ((mem 0))
+    (if (not cn-num)                   (set! mem (+ mem 1)))
+    (if (ctx-loc-is-memory? (cdr clo)) (set! mem (+ mem 1)))
+
+    (let* ((fargs-regs (ctx-init-free-fregs))
+           (sl-base  (init-slot-loc-base))
+           (sl-local (get-slot-loc-local (+ nb-free-const 2) args-regs fargs-regs mem)))
+      (append sl-local sl-base))))
 
 (define (ctx-init-*-free-regs slot-loc)
   (set-sub (ctx-init-free-regs)
@@ -654,6 +670,143 @@
     (append (init-env-free free-nconst 0)
             (init-env-free-const free-const 2)
             (init-env-local args (+ nb-free-const 2)))))
+
+(define (ctx-init-fn-inlined-tco cn-num call-ctx call-nb-args enclosing-ctx args free-vars late-fbinds fn-num bound-id)
+  ;; TODO WIP MAKE IT GLOBAL FOR BOTH CTX_INIT_FN_FUNCTIONS
+  ;; Separate constant and non constant free vars
+  ;; Return a pair with const and nconst sets
+  ;; const contains id and type of all constant free vars
+  ;; nconst contains id and type of all non constant free vars
+  (define (find-const-free ids)
+    (let loop ((ids ids)
+               (const '())
+               (nconst '()))
+      (if (null? ids)
+          (cons const (reverse nconst)) ;; Order is important for non cst free variables!
+          (let* ((id (car ids))
+                 (late? (member id late-fbinds))
+                 (enc-identifier (and (not late?) (cdr (ctx-ident enclosing-ctx id))))
+                 (enc-type       (and (not late?) (ctx-identifier-type enclosing-ctx enc-identifier)))
+                 (enc-loc        (and (not late?) (ctx-identifier-loc enclosing-ctx enc-identifier)))
+                 (cst?           (and (not late?) (ctx-type-cst? enc-type) (not enc-loc))))
+            ;; If an enclosing identifer is cst, type *must* represent a cst
+            (assert (or (not enc-identifier)
+                        (not (identifier-cst enc-identifier))
+                        (and (identifier-cst enc-identifier) cst?))
+                    "Internal error")
+            (if cst?
+                (loop (cdr ids) (cons (cons id enc-type) const) nconst)
+                (loop (cdr ids) const (cons (cons id enc-type) nconst)))))))
+
+  (define (get-stack free-const free-nconst)
+    (let* ((arg-types (list-head (ctx-stack call-ctx) call-nb-args))
+           (arg-clo (list-ref (ctx-stack call-ctx) call-nb-args)))
+      (ctx-init-*-stack call-nb-args cn-num free-const arg-types #t)))
+
+  (define (get-slot-loc free-const free-nconst)
+    (define (init-slot-loc-local slot regs fregs mem)
+      (let loop ((sidx 0) (slot (+ slot call-nb-args -1)))
+        (if (= sidx call-nb-args)
+            '()
+            (let ((loc (ctx-get-loc call-ctx sidx)))
+              (cons (cons slot loc)
+                    (loop (+ sidx 1) (- slot 1)))))))
+    (let ((lcloloc (list (ctx-get-loc call-ctx call-nb-args))))
+      (ctx-init-*-slot-loc cn-num (length free-vars) (length free-const) init-slot-loc-local lcloloc)))
+
+
+  (let* ((r (find-const-free free-vars))
+         (free-const (car r))
+         (free-nconst (cdr r))
+         ;;
+         (stack (get-stack free-const free-nconst))
+         (slot-loc (get-slot-loc free-const free-nconst))
+         (fs  (ctx-fs call-ctx))
+         (ffs (ctx-ffs call-ctx))
+         (free-regs (ctx-init-*-free-regs slot-loc))
+         (free-mems (set-sub (build-list fs (lambda (m) (cons 'm m)))
+                             (map cdr slot-loc)))
+         (free-fregs (ctx-init-*-free-fregs slot-loc))
+         (free-fmems (set-sub (build-list ffs (lambda (m) (cons 'fm m)))
+                              (map cdr slot-loc)))
+         (env (ctx-init-*-env args free-const free-nconst bound-id))
+         (nb-actual  call-nb-args)
+         (nb-args    (length args)))
+
+  (make-ctx stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num)))
+
+
+(define (ctx-init-fn-inlined-ntco cn-num call-ctx call-nb-args enclosing-ctx args free-vars late-fbinds fn-num bound-id)
+
+  ;; TODO WIP MAKE IT GLOBAL FOR BOTH CTX_INIT_FN_FUNCTIONS
+  ;; Separate constant and non constant free vars
+  ;; Return a pair with const and nconst sets
+  ;; const contains id and type of all constant free vars
+  ;; nconst contains id and type of all non constant free vars
+  (define (find-const-free ids)
+    (let loop ((ids ids)
+               (const '())
+               (nconst '()))
+      (if (null? ids)
+          (cons const (reverse nconst)) ;; Order is important for non cst free variables!
+          (let* ((id (car ids))
+                 (late? (member id late-fbinds))
+                 (enc-identifier (and (not late?) (cdr (ctx-ident enclosing-ctx id))))
+                 (enc-type       (and (not late?) (ctx-identifier-type enclosing-ctx enc-identifier)))
+                 (enc-loc        (and (not late?) (ctx-identifier-loc enclosing-ctx enc-identifier)))
+                 (cst?           (and (not late?) (ctx-type-cst? enc-type) (not enc-loc))))
+            ;; If an enclosing identifer is cst, type *must* represent a cst
+            (assert (or (not enc-identifier)
+                        (not (identifier-cst enc-identifier))
+                        (and (identifier-cst enc-identifier) cst?))
+                    "Internal error")
+            (if cst?
+                (loop (cdr ids) (cons (cons id enc-type) const) nconst)
+                (loop (cdr ids) const (cons (cons id enc-type) nconst)))))))
+
+  (define (get-stack free-const free-nconst)
+    (let* ((arg-types (list-head (ctx-stack call-ctx) call-nb-args))
+           (arg-clo (list-ref (ctx-stack call-ctx) call-nb-args)))
+      (ctx-init-*-stack call-nb-args cn-num free-const arg-types #t)))
+
+  (define (get-slot-loc free-const free-nconst)
+    (define (init-slot-loc-local slot regs fregs mem)
+      (let loop ((sidx 0) (slot (+ slot call-nb-args -1)) (mem mem))
+        (if (= sidx call-nb-args)
+            '()
+            (let ((loc (ctx-get-loc call-ctx sidx)))
+              (cond ((ctx-loc-is-memory? loc)
+                       (cons (cons slot (cons 'm mem))
+                             (loop (+ sidx 1) (- slot 1) (+ mem 1))))
+                    ((ctx-loc-is-fmemory? loc) (error "e2"))
+                    (else (cons (cons slot loc)
+                                (loop (+ sidx 1) (- slot 1) mem))))))))
+    (let ((lcloloc (list (ctx-get-loc call-ctx call-nb-args))))
+      (ctx-init-*-slot-loc cn-num (length free-vars) (length free-const) init-slot-loc-local lcloloc)))
+
+  (let* ((r (find-const-free free-vars))
+         (free-const (car r))
+         (free-nconst (cdr r))
+         ;;
+         (stack (get-stack free-const free-nconst))
+         (slot-loc (get-slot-loc free-const free-nconst))
+         (free-regs (ctx-init-*-free-regs slot-loc))
+         (fs (foldr (lambda (sl fs)
+                      (if (ctx-loc-is-memory? (cdr sl))
+                          (max (+ (cddr sl) 1) fs)
+                          fs))
+                    0
+                    slot-loc))
+         (free-mems '()) ;; TODO: implementer quand mem
+         (free-fregs (ctx-init-*-free-fregs slot-loc))
+         (free-fmems '()) ;; TODO: implementer quand fmem
+         (env (ctx-init-*-env args free-const free-nconst bound-id))
+         (nb-actual  call-nb-args)
+         (nb-args    (length args))
+         (ffs 0)) ;; TODO: implementer quand fmem
+
+  (make-ctx stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num)))
+
 
 ;;
 ;; CTX INIT FN INLINING
@@ -721,20 +874,27 @@
                          (ctx-init-*-slot-loc cn-num (length free-vars) (length free-const) init-slot-loc-local-tail clo-loc)
                          (ctx-init-*-slot-loc cn-num (length free-vars) (length free-const) init-slot-loc-local clo-loc)))
          (free-regs  (ctx-init-*-free-regs slot-loc))
-         (free-mems  '())
          (free-fregs (ctx-init-*-free-fregs slot-loc))
-         (free-fmems '())
          (env        (ctx-init-*-env args free-const free-nconst bound-id))
          (nb-actual  call-nb-args)
          (nb-args    (length args))
-         (fs         (foldr (lambda (sl fs)
-                              (if (ctx-loc-is-memory? (cdr sl))
-                                  (max fs (+ (cddr sl) 1))
-                                  fs))
-                            0
-                            slot-loc))
-         (ffs        0)
-         (fn-num     fn-num))
+         (fs         (if tail?
+                         (ctx-fs call-ctx)
+                         (foldr (lambda (sl fs)
+                                  (if (ctx-loc-is-memory? (cdr sl))
+                                      (max fs (+ (cddr sl) 1))
+                                      fs))
+                                0
+                                slot-loc)))
+         (fn-num     fn-num)
+         ;;
+         (ffs        (if tail?
+                         (ctx-ffs call-ctx)
+                         0))
+         (free-mems  (set-sub (build-list  fs (lambda (n) (cons  'm n)))
+                              (map cdr slot-loc)))
+         (free-fmems (set-sub (build-list ffs (lambda (n) (cons 'fm n)))
+                              (map cdr slot-loc))))
 
     (make-ctx stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num)))
 

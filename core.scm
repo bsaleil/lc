@@ -1283,6 +1283,7 @@
   (define (generate-moves ctx moves label-dest)
     (assert (not (null? moves)) "Internal error")
     (let ((label (asm-make-label #f (new-sym 'prologue_merge_))))
+
       (set! code-alloc (fn-codepos))
       (if cgc
           ;;
@@ -1576,7 +1577,8 @@
                  (set! code-alloc (asm-label-pos to-version-label))
                  (code-add
                    (lambda (cgc)
-                     (x86-jmp cgc (asm-make-label #f (new-sym 'version_) version-addr))))
+                     (let ((sym (string->symbol (string-append (number->string version-addr 16) "_"))))
+                       (x86-jmp cgc (asm-make-label #f (new-sym sym) version-addr)))))
                  (set! code-alloc tmp))
                (fn-patch block-label #t)
                (asm-label-pos block-label)))
