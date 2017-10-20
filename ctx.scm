@@ -594,7 +594,7 @@
 
 ;;
 ;; SLOT-LOC
-(define (ctx-init-*-slot-loc cn-num nb-free nb-free-const get-slot-loc-local #!optional cloloc)
+(define (ctx-init-*-slot-loc cn-num nb-free nb-free-const get-slot-loc-local #!optional cloloc inlined-tail?)
 
   (define cont (if cn-num '(0 . #f) '(0 m . 0)))
   (define clo
@@ -605,7 +605,8 @@
                     "Internal error") ;; closure pushed but not set to a mem loc in ctx
             (cond ((= (- nb-free nb-free-const) 0) '(1 . #f))
                   (cloloc
-                    (if (ctx-loc-is-memory? (car cloloc))
+                    (if (and (ctx-loc-is-memory? (car cloloc))
+                             (not inlined-tail?))
                         (if (ctx-loc-is-memory? (cdr cont))
                             '(1 m . 1)
                             '(1 m . 0))
@@ -712,7 +713,7 @@
               (cons (cons slot loc)
                     (loop (+ sidx 1) (- slot 1)))))))
     (let ((lcloloc (list (ctx-get-loc call-ctx call-nb-args))))
-      (ctx-init-*-slot-loc cn-num (length free-vars) (length free-const) init-slot-loc-local lcloloc)))
+      (ctx-init-*-slot-loc cn-num (length free-vars) (length free-const) init-slot-loc-local lcloloc #t)))
 
 
   (let* ((r (find-const-free free-vars))
