@@ -1,35 +1,3 @@
-(define FOO
-   (lambda (s0)
-     (if (($$atom =) ($$atom s0) ($$atom 50))
-         ($$atom #t)
-         ($$atom 0))))
-
- (define BAR
-   (lambda (z)
-     ($$atom '())))
-
- (define BAZ
-   (lambda (strings0)
-     (begin
-       (let ((n (($$atom car) ($$atom strings0))))
-          (($$atom BOO)
-           (($$atom BAR)
-            (($$atom FOO)
-             ($$atom n)))))
-       ($$atom #t))))
-
- (define BOO
-   (lambda (l0)
-     ($$atom 0)))
-
- (define FAZ (lambda ss (($$atom BAZ) ($$atom ss))))
-
- (($$atom FAZ) ($$atom 10))
- (($$atom FAZ) ($$atom 50))
-
-
-
-
 
 
 
