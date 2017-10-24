@@ -57,6 +57,7 @@ ___U64 alloc_still(___U64 stag, ___U64 bytes)
     puts(\"Error: Heap overflow\\n\");
     exit(0);
   }
+  ___still_obj_refcount_dec(r);
   return r;
 }
 
