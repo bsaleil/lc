@@ -1788,12 +1788,13 @@
 ;; Compute and returns moves needed to merge reg alloc from src-ctx to dst-ctx
 (define (ctx-regalloc-merge-moves src-ctx dst-ctx)
 
-  (define (add-boxes moves)
+  (define (add-boxes moves all-moves)
     (if (null? moves)
         '()
         (let ((move (car moves)))
           (if (and (not (ctx-loc-is-fregister? (cdr move)))
                    (not (ctx-loc-is-fmemory?   (cdr move)))
+                   (not (eq? 'rtmp (cdr move)))
                    (or (ctx-loc-is-fregister?  (car move))
                        (ctx-loc-is-fmemory?    (car move))
                        (and (pair? (car move))
@@ -1801,8 +1802,19 @@
                             (flonum? (cdar move)))))
               (let ((move (cons (cons 'flbox (car move)) (cdr move))))
                 (cons move
-                      (add-boxes (cdr moves))))
-              (cons move (add-boxes (cdr moves)))))))
+                      (add-boxes (cdr moves) all-moves)))
+              (begin
+                ;; Assert that if the move is fr -> rtmp or fm -> rtmp,
+                ;; then there is a rtmp -> fr or rtmp -> fm move
+                (assert (if (and (or (ctx-loc-is-fregister? (cdr move))
+                                     (ctx-loc-is-fmemory?   (cdr move)))
+                                 (eq? 'rtmp (car move)))
+                            (let ((m (assoc 'rtmp all-moves)))
+                              (or (ctx-loc-is-fregister? (cdr m))
+                                  (ctx-loc-is-fmemory?   (cdr m))))
+                            #t)
+                        "Internal error")
+                (cons move (add-boxes (cdr moves) all-moves)))))))
 
   (define (get-req-moves)
     (define sl-dst (ctx-slot-loc dst-ctx))
@@ -1838,7 +1850,8 @@
                         (loop (cdr sl))))))))))
 
   (let* ((req-moves (get-req-moves))
-         (moves (add-boxes (steps req-moves)))
+         (moves (steps req-moves))
+         (moves (add-boxes moves moves))
          (fs-move (cons 'fs (- (ctx-fs dst-ctx)
                                (ctx-fs src-ctx))))
          (ffs-move (cons 'ffs (- (ctx-ffs dst-ctx)

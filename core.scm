@@ -1144,7 +1144,17 @@
                ;; Compute x86 dst operand
                (dst
                  (cond ((not (cdr move)) #f)
-                       ((eq? (cdr move) 'rtmp) (get-tmp))
+                       ((eq? (cdr move) 'rtmp)
+                          ;; Check that if move is fr -> rtmp or fm -> rtmp,
+                          ;; then rtmp must be rax or selector to avoid memory corruption
+                          (assert (if (or (ctx-loc-is-fregister? (car move))
+                                          (ctx-loc-is-fmemory?   (car move)))
+                                      (let ((tmp (get-tmp)))
+                                        (or (eq? tmp (x86-rax))
+                                            (eq? tmp selector-reg)))
+                                      #t)
+                                  "Internal error")
+                          (get-tmp))
                        (else (codegen-loc-to-x86opnd (- (ctx-fs ctx) fs-offset) (- (ctx-ffs ctx) ffs-offset) (cdr move)))))
                ;; Compute x86 src operand
                (src
