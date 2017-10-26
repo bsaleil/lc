@@ -13,34 +13,34 @@ import subprocess
 def get_exec(result):
 
     def get_exec_cpu():
-        m = re.findall('CPU time: ([0-9]*.[0-9]*\n)',result)
+        m = re.findall('CPU time: ' + NUMBER_REGEX + '\n', result)
         assert len(m) == 2, 'Invalid regexp'
-        return float(m[1])
+        return float(m[1][0])
 
     def get_gc_cpu():
-        muser = re.findall('GC user time: ([0-9]*.[0-9]*\n)',result)
-        msys = re.findall('GC sys time: ([0-9]*.[0-9]*\n)',result)
+        muser = re.findall('GC user time: '+ NUMBER_REGEX + '\n',result)
+        msys = re.findall('GC sys time: '+ NUMBER_REGEX + '\n',result)
         assert len(muser) == 2 and len(msys) == 2, 'Invalid regexp'
-        ruser = float(muser[1])
-        rsys = float(msys[1])
+        ruser = float(muser[1][0])
+        rsys = float(msys[1][0])
         return ruser + rsys
 
     return get_exec_cpu() - get_gc_cpu()
 
 # COMP TIME
-# compilation time (with gc time for compilation)
+# compilation time only (no exec, no gc and no gc used for compilation) using 1st execution
 def get_comp(result):
-    m = re.findall('Compilation time \(user time\):(.+)\n',result)
+    m = re.findall('Compilation time \(user time\):' + NUMBER_REGEX + '\n',result)
     assert len(m) == 1, 'Invalid regexp'
-    result = float(m[0])
+    result = float(m[0][0])
     return result
 
 # TOTAL TIME
 # total time including compilation time, gc time for compilation & execution, and execution time
 def get_total(result):
-    m = re.findall('CPU time: ([0-9]*.[0-9]*\n)',result)
+    m = re.findall('CPU time: '+ NUMBER_REGEX + '\n',result)
     assert len(m) == 1, 'Invalid regexp'
-    result = float(m[0])
+    result = float(m[0][0])
     return result
 
 # Check cmd line args
@@ -52,6 +52,9 @@ if len(sys.argv) < 6:
     print('exec_name;arg1;arg2;...;argn')
     print('time is "compil", "exec" or "total"')
     sys.exit(0)
+
+# From: https://docs.python.org/3/library/re.html#simulating-scanf
+NUMBER_REGEX = "([-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?)"
 
 TIME       = sys.argv[1]
 NITERS     = int(sys.argv[2])

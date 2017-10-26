@@ -212,11 +212,8 @@ systems = []
 # systems.append(lc_with_options("m5intra",  ["--max-versions 5","--disable-entry-points","--disable-return-points"]))
 # systems.append(lc_with_options("m5eponly", ["--max-versions 5","--disable-return-points"]))
 # systems.append(lc_with_options("m5rponly", ["--max-versions 5","--disable-entry-points"]))
-systems.append(lc_with_options("interH1", ["--max-versions 5 --heur 1"]))
-systems.append(lc_with_options("inter",  ["--max-versions 5"]))
-systems.append(lc_with_options("interH5", ["--max-versions 5 --heur 5"]))
-systems.append(lc_with_options("interH8", ["--max-versions 5 --heur 8"]))
-systems.append(lc_with_options("interH10", ["--max-versions 5 --heur 10"]))
+systems.append(lc_with_options("LC", [""]))
+
 #
 # # Gambit
 # systems.append(gambit_no_options("GambitS",    8000))
