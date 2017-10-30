@@ -100,7 +100,7 @@ def run_and_get(cmd):
     else:
         with subprocess.Popen(cmd, stdout=subprocess.PIPE, preexec_fn=os.setsid) as process:
             try:
-                out, errs = process.communicate(timeout=1)
+                out, errs = process.communicate(timeout=TIMEOUT)
                 strresult = out.decode('utf-8')
                 return GET_FUNC(strresult)
             except subprocess.TimeoutExpired:
@@ -133,14 +133,21 @@ for benchmark in benchmarks:
         for i in range(0,NITERS):
             print('.',end='')
             sys.stdout.flush()
-            ex_res += [run_and_get(ex_cmd)]
+            r = run_and_get(ex_cmd)
+            if r < 0:
+                ex_res = False
+                break
+            else:
+                ex_res += [r]
         print('')
 
-        ex_res.remove(max(ex_res))
-        ex_res.remove(min(ex_res))
-        mean = sum(ex_res) / float(len(ex_res))
-
-        bench_res += [mean]
+        if not ex_res:
+            bench_res += ["TIMEOUT"]
+        else:
+            ex_res.remove(max(ex_res))
+            ex_res.remove(min(ex_res))
+            mean = sum(ex_res) / float(len(ex_res))
+            bench_res += [mean]
 
     print('')
     bench_i += 1
