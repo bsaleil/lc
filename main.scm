@@ -113,9 +113,9 @@
      not necessarily expected if --disable-entry-points is provided"
      ,(lambda (args) (set! opt-lazy-inlined-call #f) args))
 
-  ;(--disable-regalloc-vers
-  ;  "Do not use register allocation information to specialize generated code"
-  ;  ,(lambda (args) (set! opt-vers-regalloc #f) args))
+  (--enable-regalloc-inlined-call
+    "TODO"
+    ,(lambda (args) (set! opt-regalloc-inlined-call #t) args))
 
   (--disable-return-points
       "Disable the use of multiple return points use only one generic return point"

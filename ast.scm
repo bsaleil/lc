@@ -2702,7 +2702,8 @@
                                (and lazy-code (not (lazy-code-rest? lazy-code)))))))
 
 
-               (if #f;inlined-call?
+               (if (and inlined-call?
+                        opt-regalloc-inlined-call)
 
                      (if tail?
 
