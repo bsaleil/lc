@@ -1,11 +1,12 @@
 
 # example:
-# python get_time.py exec 4 /path/to/benchs /path/to/lc "test;--max-versions 5;..." "other;--max-versions 10;..."
+# python get_time.py exec 4 -1 /path/to/benchs /path/to/lc "test;--max-versions 5;..." "other;--max-versions 10;..."
 
 import re
 import os
 import sys
 import glob
+import signal
 import subprocess
 
 # EXEC TIME
@@ -44,9 +45,9 @@ def get_total(result):
     return result
 
 # Check cmd line args
-if len(sys.argv) < 6:
-    print("Invalid arguments")
-    print("Usage:")
+if len(sys.argv) < 7:
+    print('Invalid arguments')
+    print('Usage:')
     print('   python thisscript.py time nb_iters bench_path lc_path [execs]')
     print('Each exec has the form:')
     print('exec_name;arg1;arg2;...;argn')
@@ -54,12 +55,13 @@ if len(sys.argv) < 6:
     sys.exit(0)
 
 # From: https://docs.python.org/3/library/re.html#simulating-scanf
-NUMBER_REGEX = "([-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?)"
+NUMBER_REGEX = '([-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?)'
 
 TIME       = sys.argv[1]
 NITERS     = int(sys.argv[2])
-BENCH_PATH = os.path.abspath(sys.argv[3]) + '/' # Benchmarks path (contains .scm files)
-LC_PATH    = os.path.abspath(sys.argv[4])       # LC path executable path
+TIMEOUT    = int(sys.argv[3]) # timeout in seconds. 0 for no timeout
+BENCH_PATH = os.path.abspath(sys.argv[4]) + '/' # Benchmarks path (contains .scm files)
+LC_PATH    = os.path.abspath(sys.argv[5])       # LC path executable path
 EXECS      = []
 BASE_CMD   = []
 GET_FUNC   = False
@@ -77,7 +79,7 @@ else:
     print('ERROR: invalid time value')
     sys.exit(0)
 
-for i in range(5,len(sys.argv)):
+for i in range(6,len(sys.argv)):
     els = sys.argv[i].split(';')
     name = els[0]
     args = els[1:] + BASE_CMD
@@ -90,9 +92,21 @@ if NITERS < 3:
 benchmarks = sorted(glob.glob(BENCH_PATH + '*.scm'))
 
 def run_and_get(cmd):
-    result = subprocess.run(cmd,stdout=subprocess.PIPE)
-    strresult = result.stdout.decode("utf-8")
-    return GET_FUNC(strresult)
+    if TIMEOUT <= 0:
+        with subprocess.Popen(cmd, stdout=subprocess.PIPE, preexec_fn=os.setsid) as process:
+            out, errs = process.communicate()
+            strresult = out.decode('utf-8')
+            return GET_FUNC(strresult)
+    else:
+        with subprocess.Popen(cmd, stdout=subprocess.PIPE, preexec_fn=os.setsid) as process:
+            try:
+                out, errs = process.communicate(timeout=1)
+                strresult = out.decode('utf-8')
+                return GET_FUNC(strresult)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGINT) # kill the group
+                out, errs = process.communicate()
+                return -1
 
 RESULT = []
 
