@@ -1861,7 +1861,7 @@
 (define (ctx-get-call-args-moves ast ctx nb-args cloloc contloc tail? generic-entry? inlined-call?)
 
   (define clomove  (and cloloc (cons cloloc  '(r . 2))))
-  (define contmove (and tail? contloc (cons contloc '(m . 0))))
+  (define contmove (and tail? contloc (not (equal? contloc '(m . 0))) (cons contloc '(m . 0))))
 
   (define (get-req-moves curr-idx rem-regs rem-fregs moves pushed)
 
