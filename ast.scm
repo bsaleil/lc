@@ -599,6 +599,11 @@
                 #f
                 (lambda (cgc ctx)
                   (jump-to-version cgc succ (ctx-push ctx (global-stype global) #f))))))
+          ((and global (ctx-type-cst? (global-stype global)))
+             (make-lazy-code
+               #f
+               (lambda (cgc ctx)
+                 (jump-to-version cgc succ (ctx-push ctx (make-ctx-tnulc '()) #f)))))
           (else
             (let* ((val (and (atom-node? (caddr ast)) (atom-node-val (caddr ast))))
                    (primitive (and val (assoc val primitives))))
