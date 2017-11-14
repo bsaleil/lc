@@ -768,6 +768,7 @@
                                  (ctx-push ctx type-ret return-freg))
                                (else
                                  (ctx-push ctx type-ret return-reg)))))
+                  (x86-label cgc (asm-make-label #f (new-sym 'inlined_cont_)))
                   (jump-to-version cgc lco ctx)))
               (codegen-return-cr cgc fs ffs laddr lret cridx (ctx-type-flo? type-ret) cst?)))))
 
@@ -2596,16 +2597,12 @@
          (lazy-code (and obj (cadr obj)))
          (clo-pushed #f))
 
-    (define label (asm-make-label #f (new-sym 'll_)))
-
     ;; cst drop
     (let loop ((idx 0) (nctx ctx))
       (if (> idx nb-args)
           (set! ctx nctx)
           (loop (+ idx 1)
                 (drop-cst-value cgc ast nctx idx))))
-
-    (x86-label cgc label)
 
     (if prop-cont?     (error "nyi"))
     (if opt-const-vers (error "nyi"))
@@ -2614,8 +2611,6 @@
     (let ((r (call-save/cont cgc ctx ast succ #f (+ nb-args 1) #f prop-cont?)))
       (set! cn-num (car r))
       (set! ctx (cdr r)))
-
-    (x86-label cgc (asm-make-label #f (new-sym '0_0_)))
 
     (let* ((r (asc-fnnum-ctx-get fn-num))
            (cctx (apply ctx-init-fn-inlined-ntco (cons cn-num (cons ctx (cons nb-args r))))))
