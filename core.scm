@@ -1613,9 +1613,6 @@
 
   (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
 
-(define (gen-generic cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos)
-  (error "NYI"))
-
 ;;-----------------------------------------------------------------------------
 
 ;; Patch load at a call site to load continuation addr instead of continuation stub addr
