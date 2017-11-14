@@ -67,7 +67,6 @@
                (esc "\33[K")))))
 
 (define (run path . args)
-
   (let* ((port
           (open-process (list path: path
                               arguments: args

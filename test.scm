@@ -1,3 +1,57 @@
+
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
+
+(fib 40)
+
+
+;(define (string->list s)
+;  (let ((len (string-length s)))
+;    (let loop ((i (- len 1)) (lst '()))
+;      (if (< i 0) lst (loop -1 (cons #\A lst))))))
+;
+;(define (##append-two lst1 lst2)
+;  (if (null? lst1)
+;      lst2
+;      (letrec ((loop (lambda (n) (if (= n 0) 0 (loop n)))))
+;        (loop 0))))
+;
+;(define (string-append-two str str2)
+;  (list->string-h (##append-two '() (string->list str2)) 0))
+;
+;(define (string-append-h strings)
+;  (cond ((null? strings) 0)
+;        ((null? (cdr strings)) 0)
+;        (else
+;         (cons (string-append-two "A" (cadr strings))
+;               #t))))
+;
+;(define (string-append . strings) (string-append-h strings))
+;
+;(define (list->string-h l n)
+;  (if (null? l)
+;      0
+;      (list->string-h (cdr l) (+ n 1))))
+;
+;;; string-append
+;(define s7 (string-append 0 "V"))
+;(define s8 (string-append 0 ""))
+
+
+
+
+
+
+
+
+
+
+;; TODO WIP: étudier le nb de versions de ce test pour trouver le pb
+
+
 ;; ok
 ;; * delegate
 ;; * map avec petites listes
@@ -5,16 +59,30 @@
 ;;   * ou premières itérations (ex. x premières)
 ;;      -> inliner les appels récursifs des fonctions boubles, et pas l'appel initial
 ;;      -> inliner x fois jusqu'à obtenir atteindre un sueuil, puis stopper l'inlining
-;; 
+;;
 
-(define (fact n k)
-  (if (= n 0)
-      (k 1)
-      (fact (- n 1)
-            (lambda (r) (k (* n r))))))
 
-(gambit$$pp (fact 10 (lambda (r) r)))
 
+;(define mequal?
+;   (lambda (x0)
+;     (if (($$atom null?) ($$atom x0))
+;         (if (($$atom mequal?) ($$atom 11))
+;             (($$atom mequal?) ($$atom 22))
+;             ($$atom #f))
+;         ($$atom #t))))
+;
+;(($$atom mequal?) ($$atom '()))
+
+
+;(define (fib n)
+;  (if (< n 2)
+;      1
+;      (+ (fib (- n 1))
+;         (fib (- n 2)))))
+;
+;;(define pai (cons 40 40))
+;;(gambit$$pp (fib (car pai)))
+;(gambit$$pp (fib 40))
 
 ;(define (fib n)
 ;  (if (< n 2)

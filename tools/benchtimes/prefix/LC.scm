@@ -83,9 +83,6 @@
 
 ;;------------------------------------------------------------------------------
 
-(define ###TIME_BEFORE### 0)
-(define ###TIME_AFTER###  0)
-
 (define (run-bench name count ok? run)
   (let loop ((i count) (result '(undefined)))
     (if (< 0 i)

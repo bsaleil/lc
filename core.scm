@@ -59,6 +59,7 @@
 (define opt-closest-cx-overflow  #t) ;; Use the closest ctx associated to an existing slot of the cx table when the table oferflows (if possible) instead of using generic ctx
 (define opt-lazy-inlined-call    #t) ;; The function body is inlined at a call if (1) the identity of the callee is known, (2) there is no version of the function for this ctx
 (define opt-propagate-continuation #f) ;; TODO
+(define opt-regalloc-inlined-call #f)  ;; TODO
 
 ;; This is the list of cst types used for versioning (if opt-const-vers is #t)
 ;; All csts types are enabled by default
@@ -708,7 +709,7 @@
         ;; Save c caller save registers
         (ppush-pop-regs
           cgc
-          (set-sub c-caller-save-regs regalloc-regs '())
+          (set-sub c-caller-save-regs regalloc-regs)
           (lambda (cgc)
             (ppush-pop-xmm
               cgc
@@ -758,7 +759,7 @@
         ;; Save c caller save registers
         (ppush-pop-regs
           cgc
-          (set-sub c-caller-save-regs regalloc-regs '())
+          (set-sub c-caller-save-regs regalloc-regs)
           (lambda (cgc)
             (ppush-pop-xmm
               cgc
@@ -802,7 +803,7 @@
               ;;(x86-mov cgc (x86-rdi) (x86-imm-int 0))
 
               (let* (;; NOTE: Must match the registers saved using ppush-pop-regs in gen-addr-handler
-                     (saved-offset (+ (length xmm-regs) (length (set-sub c-caller-save-regs regalloc-regs '()))))
+                     (saved-offset (+ (length xmm-regs) (length (set-sub c-caller-save-regs regalloc-regs))))
                      (stag-offset  (* 8 (+ saved-offset 2))))
 
                 ;; stag is not encoded, then it is in pstack
@@ -1144,7 +1145,17 @@
                ;; Compute x86 dst operand
                (dst
                  (cond ((not (cdr move)) #f)
-                       ((eq? (cdr move) 'rtmp) (get-tmp))
+                       ((eq? (cdr move) 'rtmp)
+                          ;; Check that if move is fr -> rtmp or fm -> rtmp,
+                          ;; then rtmp must be rax or selector to avoid memory corruption
+                          (assert (if (or (ctx-loc-is-fregister? (car move))
+                                          (ctx-loc-is-fmemory?   (car move)))
+                                      (let ((tmp (get-tmp)))
+                                        (or (eq? tmp (x86-rax))
+                                            (eq? tmp selector-reg)))
+                                      #t)
+                                  "Internal error")
+                          (get-tmp))
                        (else (codegen-loc-to-x86opnd (- (ctx-fs ctx) fs-offset) (- (ctx-ffs ctx) ffs-offset) (cdr move)))))
                ;; Compute x86 src operand
                (src
@@ -1283,6 +1294,7 @@
   (define (generate-moves ctx moves label-dest)
     (assert (not (null? moves)) "Internal error")
     (let ((label (asm-make-label #f (new-sym 'prologue_merge_))))
+
       (set! code-alloc (fn-codepos))
       (if cgc
           ;;
@@ -1576,7 +1588,8 @@
                  (set! code-alloc (asm-label-pos to-version-label))
                  (code-add
                    (lambda (cgc)
-                     (x86-jmp cgc (asm-make-label #f (new-sym 'version_) version-addr))))
+                     (let ((sym (string->symbol (string-append (number->string version-addr 16) "_"))))
+                       (x86-jmp cgc (asm-make-label #f (new-sym sym) version-addr)))))
                  (set! code-alloc tmp))
                (fn-patch block-label #t)
                (asm-label-pos block-label)))
@@ -1599,9 +1612,6 @@
     code-alloc)
 
   (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
-
-(define (gen-generic cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos)
-  (error "NYI"))
 
 ;;-----------------------------------------------------------------------------
 

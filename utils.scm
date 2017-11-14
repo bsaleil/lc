@@ -36,13 +36,8 @@
 
 ;; Set subtraction with lists
 ;; return lsta - lstb
-;; res is accu
-(define (set-sub lsta lstb res)
-  (if (null? lsta)
-    (reverse res) ;; to keep same order
-    (if (member (car lsta) lstb)
-      (set-sub (cdr lsta) lstb res)
-      (set-sub (cdr lsta) lstb (cons (car lsta) res)))))
+(define (set-sub lsta lstb)
+  (keep (lambda (el) (not (member el lstb))) lsta))
 
 ;; Set union with lists
 ;; return lsta U lstb
@@ -103,6 +98,12 @@
   (cond ((= n 0) '())
         ((null? lst) (error "Error in list-head"))
         (else (cons (car lst) (list-head (cdr lst) (- n 1))))))
+
+;; Return last element of lst
+(define (list-last lst)
+  (cond ((null? lst) (error "Internal error"))
+        ((null? (cdr lst)) (car lst))
+        (else (list-last (cdr lst)))))
 
 ;; Does l recursively contains el?
 (define (contains l el)
