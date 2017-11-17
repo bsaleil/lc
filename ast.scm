@@ -2914,9 +2914,11 @@
   (define (get-cc-direct)
     (and lazy-code
          (let* ((stack call-stack)
-                (version (table-ref (lazy-code-versions lazy-code)
-                                    (append stack (list (make-ctx-tclo) (make-ctx-tret)))
-                                    #f)))
+                (label (strat-label-from-stack lazy-code (append stack (list (make-ctx-tclo) (make-ctx-tret)))))
+                (version #f))
+                ;(version (table-ref (lazy-code-versions lazy-code)
+                ;                    (append stack (list (make-ctx-tclo) (make-ctx-tret)))
+                ;                    #f)))
            (if (and version
                     (not (lazy-code-rest? lazy-code)))
                (list 'ep (asm-label-pos (car version)))

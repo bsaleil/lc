@@ -51,7 +51,6 @@
 (define opt-use-lib              #t) ;; Use scheme std lib (see lib/ folder)
 (define opt-vers-regalloc        #t) ;; Use register allocation for code specialization
 (define opt-dump-bin             #f) ;; Print generated binary bytes to stdout
-(define opt-dump-versions        #f) ;; Print ctx versions for each lco
 (define opt-cc-max               #f) ;; Global cctable max size
 (define opt-cr-max               #f) ;; Global crtable max size
 (define opt-const-vers           #f) ;; Use cst information in code versioning
