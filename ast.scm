@@ -2914,14 +2914,10 @@
   (define (get-cc-direct)
     (and lazy-code
          (let* ((stack call-stack)
-                (label (strat-label-from-stack lazy-code (append stack (list (make-ctx-tclo) (make-ctx-tret)))))
-                (version #f))
-                ;(version (table-ref (lazy-code-versions lazy-code)
-                ;                    (append stack (list (make-ctx-tclo) (make-ctx-tret)))
-                ;                    #f)))
-           (if (and version
+                (label (strat-label-from-stack lazy-code (append stack (list (make-ctx-tclo) (make-ctx-tret))))))
+           (if (and label
                     (not (lazy-code-rest? lazy-code)))
-               (list 'ep (asm-label-pos (car version)))
+               (list 'ep (asm-label-pos label))
                (let ((label (asm-make-label #f (new-sym 'stub_load_))))
                  (asc-entry-load-add entry-obj cc-idx label)
                  (list 'stub stub-addr label))))))

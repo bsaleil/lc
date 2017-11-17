@@ -120,6 +120,18 @@
 ;; !regalloc versioning
 ;;------------------------------------------------------------------------------
 
+(define (strat-label-from-stack lco stack)
+  (let ((versions (lazy-code-versions lco)))
+    (if versions
+        (let loop ((versions (table->list versions)))
+          (if (null? versions)
+              #f
+              (let ((cstack (ctx-stack (caar versions))))
+                (if (equal? cstack stack)
+                    (cadar versions)
+                    (loop (cdr versions))))))
+        #f)))
+
 (define (limit-reached? lco)
   (and opt-max-versions
        (let ((nb-versions (lazy-code-nb-real-versions lco)))
