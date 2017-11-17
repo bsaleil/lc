@@ -56,11 +56,11 @@
         (map (lambda (ident) (cons (car ident) (identifier-sslots (cdr ident))))
              (ctx-env ctx))))
 
-(define (get-version lco ctx)
-  (let* ((versions (table-ref lco-versions lco #f))
-         (key (version-key ctx)))
-    (and versions
-         (table-ref versions key #f))))
+;(define (get-version lco ctx)
+;  (let* ((versions (table-ref lco-versions lco #f))
+;         (key (version-key ctx)))
+;    (and versions
+;         (table-ref versions key #f))))
 
 (define (get-nb-versions lco)
   (let ((versions (table-ref lco-versions lco #f)))
@@ -68,16 +68,16 @@
         (table-length versions)
         0)))
 
-(define (put-version lco ctx version)
-  (let ((versions (table-ref lco-versions lco #f))
-        (key (version-key ctx))
-        (k (cons version ctx)))
-    (if (not versions)
-        (let ((vers (make-table test: equal?)))
-          (table-set! lco-versions lco vers)
-          (set! versions vers)))
-    (table-set! versions key k)
-    k))
+;(define (put-version lco ctx version)
+;  (let ((versions (table-ref lco-versions lco #f))
+;        (key (version-key ctx))
+;        (k (cons version ctx)))
+;    (if (not versions)
+;        (let ((vers (make-table test: equal?)))
+;          (table-set! lco-versions lco vers)
+;          (set! versions vers)))
+;    (table-set! versions key k)
+;    k))
 
 (define lco-generic (make-table test: eq?))
 
@@ -222,19 +222,76 @@
         (error "U")
         #f)))
 
+(define (get-version-table lco ctx)
+  (let* ((versions (table-ref lco-versions lco #f))
+         (key (version-key ctx)))
+    (and versions
+         (table-ref versions key #f))))
+
+(define (get-version-from-verstable verstable ctx)
+  (and verstable
+       (table-ref verstable ctx #f)))
+
+(define (put-version lco ctx version)
+
+  (define (get-verstable)
+    (let ((verstable (table-ref lco-versions lco #f)))
+      (if (not verstable)
+          (let ((verstable (make-table test: equal?)))
+            (table-set! lco-versions lco verstable)
+            verstable)
+          verstable)))
+
+  (define (get-versions-table verstable)
+    (let* ((key (version-key ctx))
+           (versions-table (table-ref verstable key #f)))
+      (if (not versions-table)
+          (let ((versions-table (make-table test: equal?)))
+            (table-set! verstable key versions-table)
+            versions-table)
+          versions-table)))
+
+  (let* ((verstable (get-verstable))
+         (versions-table (get-versions-table verstable))
+         (k (cons version #f)))
+
+    (table-set! versions-table ctx k)
+    k))
+
 (define (strat-get-version lco ctx)
 
-  (let* ((version (get-version lco ctx)))
+  (let* ((verstable (get-version-table lco ctx))
+         (version   (get-version-from-verstable verstable ctx)))
 
-    (cond (version
-            ;(pp "c1")
-            (case-use-version lco (cdr version) (car version)))
-          ((< (get-nb-versions lco) MAX_NB_VERSIONS)
-            ;(pp "c2")
+    (cond ;; Case 1 - we have a verstable AND the version exists
+          (version
+            (case-use-version lco ctx (car version)))
+          ;; Case 2 - we have a verstable but the version does not exist
+          (verstable
             (case-gen-version lco ctx))
+          ;; Case 3 - no verstable, limit not reached
+          ((< (get-nb-versions lco) MAX_NB_VERSIONS)
+            (case-gen-version lco ctx))
+          ;; Case 4 - no verstable, limit reached and no current generic
           ((not (get-curr-generic lco))
-            ;(pp "c3")
             (case-generic-all lco ctx))
+          ;; Case 5 - no verstable, limit reached and we have a current generic
           (else
-            ;(pp "c4")
             (case-generic-next lco ctx)))))
+
+;(define (strat-get-version lco ctx)
+;
+;  (let* ((version (get-version lco ctx)))
+;
+;    (cond (version
+;            ;(pp "c1")
+;            (case-use-version lco (cdr version) (car version)))
+;          ((< (get-nb-versions lco) MAX_NB_VERSIONS)
+;            ;(pp "c2")
+;            (case-gen-version lco ctx))
+;          ((not (get-curr-generic lco))
+;            ;(pp "c3")
+;            (case-generic-all lco ctx))
+;          (else
+;            ;(pp "c4")
+;            (case-generic-next lco ctx)))))
