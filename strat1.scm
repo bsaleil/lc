@@ -59,6 +59,7 @@
 ;; PRIVATE
 
 (define opt-max-versions #f) ;; Limit of number of versions (#f=no limit, 0=only generic, ...)
+(define opt-regalloc-vers #t)
 
 ;; Options specific to this strat
 (define strat-options `(
@@ -69,7 +70,8 @@
                     args))
   (--disable-regalloc-vers
     "Do not use register allocation information to specialize generated code"
-    ,(lambda (args) (set! get-version nregalloc-get-version)
+    ,(lambda (args) (set! opt-regalloc-vers #f)
+                    (set! get-version nregalloc-get-version)
                     (set! put-version nregalloc-put-version)
                     args))))
 
@@ -126,9 +128,14 @@
         (let loop ((versions (table->list versions)))
           (if (null? versions)
               #f
-              (let ((cstack (ctx-stack (caar versions))))
+              (let ((cstack (if opt-regalloc-vers
+                                (ctx-stack (caar versions))
+                                (caaar versions)))
+                    (label  (if opt-regalloc-vers
+                                (cadar versions)
+                                (caddar versions))))
                 (if (equal? cstack stack)
-                    (cadar versions)
+                    label
                     (loop (cdr versions))))))
         #f)))
 

@@ -1770,7 +1770,7 @@
              (lright (if rcst? (ctx-type-cst tright) (ctx-get-loc ctx 0))))
         (apply-moves cgc ctx moves)
         (if (and lcst? rcst?)
-            (error "NN"))
+            (error "nyi"))
         (codegen-p-binop cgc (ctx-fs ctx) (ctx-ffs ctx) op label-div0 reg lleft lright lcst? rcst?)
         (jump-to-version cgc
                          succ
@@ -2234,7 +2234,6 @@
                lazy-code1
                lazy-code0
                (lambda (cgc ctx #!optional x86-op)
-
                  (let* ((type (ctx-get-type ctx 0))
                         (cst? (ctx-type-cst? type)))
                    (cond ((and (not x86-op) cst? (ctx-type-cst type))
@@ -2935,6 +2934,10 @@
            (let* ((r (asc-fnnum-ctx-get fn-num))
                   (ctx (apply ctx-init-fn (cons cn-num (cons call-stack r)))))
              ;; TODO patch table (?)
+             (if opt-verbose-jit
+                 (begin (print "GEN FN INLINED VERSION >>> ")
+                        (pp lazy-code)
+                        (pp ctx)))
              (x86-label cgc (asm-make-label #f (new-sym 'inlined_call_)))
              (jump-to-version cgc lazy-code ctx)))
         ((not opt-entry-points)
@@ -3002,7 +3005,7 @@
   ;; TODO: Merge with get-op-ff
   (define (get-op-ii)
     (make-lazy-code
-      #f
+      ast
       (lambda (cgc ctx)
         (let* ((type  (if num-op? (make-ctx-tint) (make-ctx-tboo)))
                ;; If op is a num-op, we can't use an opnd register as dest in case of overflow
@@ -3048,7 +3051,7 @@
   ;;
   (define (get-op-ff leftint? rightint?)
     (make-lazy-code
-      #f
+      ast
       (lambda (cgc ctx)
         (let* ((type  (if num-op? (make-ctx-tflo) (make-ctx-tboo)))
                ;; right info
@@ -3089,10 +3092,11 @@
   (assert (not (and inlined-if-cond? (member op '(+ - * /))))
           "Internal compiler error")
 
-  (make-lazy-code
-    ast
-    (lambda (cgc ctx)
-      (jump-to-version cgc (type-check-two) ctx))))
+  (let ((first (type-check-two)))
+    (make-lazy-code
+      #f
+      (lambda (cgc ctx)
+        (jump-to-version cgc first ctx)))))
 
 ;;
 ;; Make lazy code from TYPE TEST

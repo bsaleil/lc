@@ -1,16 +1,11 @@
 
-(define (run n)
+(define (fib n)
+  (if (< n 2)
+      1
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-  (letrec ((loop (lambda (i sum)
-                   (if (< i 0)
-                       sum
-                       (loop (- i 1)
-                             (+ i sum))))))
-    (loop n 0)))
-
-
-(run 200000000)
-
+(println (fib 40))
 
 
 ;(define (string->list s)

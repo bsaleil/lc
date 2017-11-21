@@ -33,6 +33,7 @@
 (include "./extern/Sort.scm")
 
 (define pp pretty-print)
+(define lazy-code-versions-ctx #f)
 
 (define-macro (string-bold str)
     `(string-append "\033[1m" ,str "\033[0m"))
