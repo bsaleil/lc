@@ -41,7 +41,12 @@
 ;; PRIVATE
 
 ;; Options specific to this strat
-(define strat-options `())
+(define strat-options `(
+  (--max-full
+    ""
+    ,(lambda (args) (set! MAX_NB_VERSIONS (string->number (cadr args)))
+                    (set! args (cdr args))
+                    args))))
 
 ;;------------------------------------------------------------------------------
 
@@ -91,9 +96,8 @@
 
   (define (compute t1 t2)
     (cond ;; one is unk -> unk
-          ((or (ctx-type-unk? t1)
-               (ctx-type-unk? t2))
-             t1)
+          ((ctx-type-unk? t1) t1)
+          ((ctx-type-unk? t2) t2)
           ;;
           ((and (ctx-type-cst? t1)
                 (ctx-type-cst? t2))
@@ -146,7 +150,8 @@
                      (nctx (ctx-set-type nctx idx new-type #f))
                      (nctx (ctx-set-loc nctx (stack-idx-to-slot ctx idx) (cadr moves/reg/ctx))))
                 (loop (+ idx 1) (cdr new-stack) (cdr old-stack) nctx))
-              (loop (+ idx 1) (cdr new-stack) (cdr old-stack) ctx))))))
+              (let ((nctx (ctx-set-type ctx idx new-type #f)))
+                (loop (+ idx 1) (cdr new-stack) (cdr old-stack) nctx)))))))
 
 ;; CAS_1
 (define (case-use-version lco ctx version)
@@ -176,7 +181,6 @@
            (if (equal? gen-stack (ctx-stack ctx))
                ctx
                (change-ctx ctx gen-stack))))
-
 
     ;; 1- on set le ctx generique, pour lesp rochaines generic
     ;; 2- on génère et ajoute la version
@@ -278,20 +282,3 @@
           ;; Case 5 - no verstable, limit reached and we have a current generic
           (else
             (case-generic-next lco ctx)))))
-
-;(define (strat-get-version lco ctx)
-;
-;  (let* ((version (get-version lco ctx)))
-;
-;    (cond (version
-;            ;(pp "c1")
-;            (case-use-version lco (cdr version) (car version)))
-;          ((< (get-nb-versions lco) MAX_NB_VERSIONS)
-;            ;(pp "c2")
-;            (case-gen-version lco ctx))
-;          ((not (get-curr-generic lco))
-;            ;(pp "c3")
-;            (case-generic-all lco ctx))
-;          (else
-;            ;(pp "c4")
-;            (case-generic-next lco ctx)))))

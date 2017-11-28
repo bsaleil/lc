@@ -41,7 +41,12 @@
 ;; PRIVATE
 
 ;; Options specific to this strat
-(define strat-options `())
+(define strat-options `(
+  (--max-full
+    ""
+    ,(lambda (args) (set! MAX_NB_VERSIONS (string->number (cadr args)))
+                    (set! args (cdr args))
+                    args))))
 
 ;;------------------------------------------------------------------------------
 
@@ -91,9 +96,8 @@
 
   (define (compute t1 t2)
     (cond ;; one is unk -> unk
-          ((or (ctx-type-unk? t1)
-               (ctx-type-unk? t2))
-             t1)
+          ((ctx-type-unk? t1) t1)
+          ((ctx-type-unk? t2) t2)
           ;;
           ((and (ctx-type-cst? t1)
                 (ctx-type-cst? t2))
@@ -146,7 +150,8 @@
                      (nctx (ctx-set-type nctx idx new-type #f))
                      (nctx (ctx-set-loc nctx (stack-idx-to-slot ctx idx) (cadr moves/reg/ctx))))
                 (loop (+ idx 1) (cdr new-stack) (cdr old-stack) nctx))
-              (loop (+ idx 1) (cdr new-stack) (cdr old-stack) ctx))))))
+              (let ((nctx (ctx-set-type ctx idx new-type #f)))
+                (loop (+ idx 1) (cdr new-stack) (cdr old-stack) nctx)))))))
 
 ;; CAS_1
 (define (case-use-version lco ctx version)
