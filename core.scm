@@ -1293,7 +1293,6 @@
   (define (generate-moves ctx moves label-dest)
     (assert (not (null? moves)) "Internal error")
     (let ((label (asm-make-label #f (new-sym 'prologue_merge_))))
-
       (set! code-alloc (fn-codepos))
       (if cgc
           ;;
@@ -1314,6 +1313,7 @@
 
   (define (generate-merge-code src-ctx dst-ctx label-dest)
     (let ((moves (ctx-regalloc-merge-moves src-ctx dst-ctx)))
+
       (if (and label-dest
                (null? moves))
           ;; No merge code is generated, return label-dest

@@ -144,7 +144,13 @@
        (let ((nb-versions (lazy-code-nb-real-versions lco)))
          (>= nb-versions opt-max-versions))))
 
+(define TOT 0)
 (define (strat-get-version lco ctx)
+  (let ((r (##exec-stats (lambda () (strat-get-version-h lco ctx)))))
+    (set! TOT (+ TOT (cdr (assoc 'user-time r))))
+    (cdr (assoc 'result r))))
+
+(define (strat-get-version-h lco ctx)
 
   ;; CASE 1: a version exists for this ctx, use it
   (define (case-use-version dst-ctx version)

@@ -357,7 +357,7 @@
             (case-gen-version-force lco ctx))
           ;; Case 3 - no verstable, limit not reached
           ((< (get-nb-versions lco) MAX_NB_VERSIONS)
-            (case-gen-version lco ctx))
+            (case-gen-version-force lco ctx))
           ;; Case 4 - no verstable, limit reached and no current generic
           ((not (get-curr-generic lco))
             (case-generic-all lco ctx))

@@ -139,19 +139,30 @@
         ctx
         (let ((new-type (car new-stack))
               (old-type (car old-stack)))
-          (if (and (ctx-type-cst? old-type)
-                   (not (ctx-type-cst? new-type)))
-              (let* ((get-fun
-                       (if (ctx-type-flo? new-type)
-                           ctx-get-free-freg
-                           ctx-get-free-reg))
-                     (moves/reg/ctx (get-fun #f ctx #f 0))
-                     (nctx (caddr moves/reg/ctx))
-                     (nctx (ctx-set-type nctx idx new-type #f))
-                     (nctx (ctx-set-loc nctx (stack-idx-to-slot ctx idx) (cadr moves/reg/ctx))))
-                (loop (+ idx 1) (cdr new-stack) (cdr old-stack) nctx))
-              (let ((nctx (ctx-set-type ctx idx new-type #f)))
-                (loop (+ idx 1) (cdr new-stack) (cdr old-stack) nctx)))))))
+          (cond ;; cst -> !cst
+                ((and (ctx-type-cst? old-type)
+                      (not (ctx-type-cst? new-type)))
+                   (let* ((get-fun
+                            (if (ctx-type-flo? new-type)
+                                ctx-get-free-freg
+                                ctx-get-free-reg))
+                          (moves/reg/ctx (get-fun #f ctx #f 0))
+                          (nctx (caddr moves/reg/ctx))
+                          (nctx (ctx-set-type nctx idx new-type #f))
+                          (nctx (ctx-set-loc nctx (stack-idx-to-slot ctx idx) (cadr moves/reg/ctx))))
+                     (loop (+ idx 1) (cdr new-stack) (cdr old-stack) nctx)))
+                ;; flo -> !flo
+                ((and (ctx-type-flo? old-type)
+                      (not (ctx-type-flo? new-type)))
+                  (let* ((moves/reg/ctx (ctx-get-free-reg #f ctx #f 0))
+                         (nctx (caddr moves/reg/ctx))
+                         (nctx (ctx-set-type nctx idx new-type #f))
+                         (nctx (ctx-set-loc nctx (stack-idx-to-slot ctx idx) (cadr moves/reg/ctx))))
+                    (loop (+ idx 1) (cdr new-stack) (cdr old-stack) nctx)))
+                ;;
+                (else
+                  (let ((nctx (ctx-set-type ctx idx new-type #f)))
+                    (loop (+ idx 1) (cdr new-stack) (cdr old-stack) nctx))))))))
 
 ;; CAS_1
 (define (case-use-version lco ctx version)

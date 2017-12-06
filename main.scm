@@ -33,7 +33,6 @@
 (include "./extern/Sort.scm")
 
 (define pp pretty-print)
-(define lazy-code-versions-ctx #f)
 
 (define-macro (string-bold str)
     `(string-append "\033[1m" ,str "\033[0m"))
@@ -324,7 +323,8 @@
              (##gc)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
-       (##machine-code-block-exec mcb)))
+       (##machine-code-block-exec mcb))
+       (pp TOT))
 
 ;;-----------------------------------------------------------------------------
 ;; Main
@@ -566,17 +566,18 @@
                       (print (ctx-type-symbol stype) " ")))
                 (ctx-stack ctx))))))
       ;; Slot loc
-      (print-array-item
-        (string-append
-          "Reg-alloc -> "
-          (with-output-to-string '()
-            (lambda () (display (ctx-slot-loc ctx))))))
+    ;  (print-array-item
+    ;    (string-append
+    ;      "Reg-alloc -> "
+    ;      (with-output-to-string '()
+    ;        (lambda () (display (ctx-slot-loc ctx))))))
 
-      (print-array-item
-        (string-append
-          "env -> "
-          (with-output-to-string '()
-            (lambda () (display (ctx-env ctx)))))))
+    ;  (print-array-item
+    ;    (string-append
+    ;      "env -> "
+    ;      (with-output-to-string '()
+    ;        (lambda () (display (ctx-env ctx)))))))
+    )
 
     (let loop ((versions versions)
                (n 1))
