@@ -218,12 +218,11 @@
                      (loop (cdr stack) (map cdr stacks)))))))
 
   (let* ((versions (table-ref lco-versions lco #f))
-         (stacks (if versions
-                     (map caar (table->list versions))
-                     '())))
+         (last-stack (table-ref last-stack-table lco #f))
+         (stacks (if last-stack (list last-stack) '())))
 
-    (let ((stack  (ctx-stack ctx))
-          (nstack (heur1 (ctx-stack ctx) stacks)))
+    (let* ((stack  (ctx-stack ctx))
+           (nstack (heur1 (ctx-stack ctx) stacks)))
       (if (equal? stack nstack)
           (return-gen)
           (let ((nctx (change-ctx ctx nstack)))
@@ -239,6 +238,7 @@
 
   (define (return-changed nctx)
     (let ((callback (lambda (label-merge label-version)
+                      (put-version lco ctx label-merge)
                       (put-version lco nctx label-version))))
       (list #f nctx callback)))
 
@@ -311,6 +311,8 @@
   (and verstable
        (table-ref verstable ctx #f)))
 
+(define last-stack-table (make-table test: eq?))
+
 (define (put-version lco ctx version)
 
   (define (get-verstable)
@@ -334,17 +336,11 @@
          (versions-table (get-versions-table verstable))
          (k (cons version #f)))
 
+    (table-set! last-stack-table lco (ctx-stack ctx))
     (table-set! versions-table ctx k)
     k))
 
-
-(define TOT 0)
 (define (strat-get-version lco ctx)
-  (let ((r (##exec-stats (lambda () (strat-get-version-h lco ctx)))))
-    (set! TOT (+ TOT (cdr (assoc 'user-time r))))
-    (cdr (assoc 'result r))))
-
-(define (strat-get-version-h lco ctx)
 
   (let* ((verstable (get-version-table lco ctx))
          (version   (get-version-from-verstable verstable ctx)))

@@ -1,11 +1,13 @@
 
 (define (fib n)
   (if (< n 2)
-      1
-      (+ (fib (- n 1))
-         (fib (- n 2)))))
+    n
+    (+ (fib (- n 1))
+       (fib (- n 2)))))
 
-(println (fib 40))
+(define foo (cons 35 35))
+
+(fib (car foo))
 
 
 ;(define (string->list s)

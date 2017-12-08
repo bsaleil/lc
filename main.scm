@@ -323,8 +323,7 @@
              (##gc)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
-       (##machine-code-block-exec mcb))
-       (pp TOT))
+       (##machine-code-block-exec mcb)))
 
 ;;-----------------------------------------------------------------------------
 ;; Main
