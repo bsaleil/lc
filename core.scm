@@ -1313,7 +1313,6 @@
 
   (define (generate-merge-code src-ctx dst-ctx label-dest)
     (let ((moves (ctx-regalloc-merge-moves src-ctx dst-ctx)))
-
       (if (and label-dest
                (null? moves))
           ;; No merge code is generated, return label-dest

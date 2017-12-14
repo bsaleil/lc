@@ -779,6 +779,18 @@
               (gen-return-cr cgc ctx)
               (gen-return-rp cgc ctx)))))
 
+(define fn-prologues (make-table test: eq?))
+(define (get-fn-prologues ast rest-param? nb-params)
+  (let ((r (table-ref fn-prologues ast #f)))
+    (or r
+        (let* ((lazy-ret (get-lazy-return))
+               (lazy-body (gen-ast (caddr ast) lazy-ret))
+               (lazy-prologue (get-lazy-prologue ast lazy-body rest-param?))
+               (lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param? nb-params))
+               (prologues (list lazy-prologue lazy-prologue-gen)))
+          (table-set! fn-prologues ast prologues)
+          prologues))))
+
 ;;
 ;; Create fn entry stub
 (define (create-fn-stub ast fn-num fn-generator)
@@ -791,32 +803,27 @@
     (if rest-param
         (formal-params (cadr ast))
         (cadr ast)))
-  ;; Lazy lambda return
-  (define lazy-ret (get-lazy-return))
-  ;; Lazy lambda body
-  (define lazy-body (gen-ast (caddr ast) lazy-ret))
 
-  ;; Lazy function prologue
-  (define lazy-prologue (get-lazy-prologue ast lazy-body rest-param))
+  (let* ((prologues (get-fn-prologues ast rest-param (length params)))
+         (lazy-prologue (car prologues))
+         (lazy-prologue-gen (cadr prologues)))
 
-  (list
-    lazy-prologue
-    (add-fn-callback
-      1
-      fn-num
-      (lambda (stack cc-idx cn-num ret-addr selector closure)
+    (list
+      lazy-prologue
+      (add-fn-callback
+        1
+        fn-num
+        (lambda (stack cc-idx cn-num ret-addr selector closure)
 
-        (cond ;; CASE 1 - Use entry point (no cctable)
-              ((eq? opt-entry-points #f)
-                 (let ((lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params))))
-                   (fn-generator closure lazy-prologue-gen #f cc-idx cn-num #f)))
-              ;; CASE 2 - Function is called using generic entry point
-              ((= selector 1)
-                 (let ((lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param (length params))))
-                   (fn-generator #f lazy-prologue-gen #f cc-idx cn-num #t)))
-              ;; CASE 3 - Use multiple entry points
-              (else
-                 (fn-generator #f lazy-prologue stack cc-idx cn-num #f)))))))
+          (cond ;; CASE 1 - Use entry point (no cctable)
+                ((eq? opt-entry-points #f)
+                   (fn-generator closure lazy-prologue-gen #f cc-idx cn-num #f))
+                ;; CASE 2 - Function is called using generic entry point
+                ((= selector 1)
+                   (fn-generator #f lazy-prologue-gen #f cc-idx cn-num #t))
+                ;; CASE 3 - Use multiple entry points
+                (else
+                   (fn-generator #f lazy-prologue stack cc-idx cn-num #f))))))))
 
 (define (get-entry-obj ast ctx fvars-imm fvars-late all-params bound-id)
 
@@ -2700,7 +2707,6 @@
                                     (lazy-code (and obj (cadr obj))))
                                (and lazy-code (not (lazy-code-rest? lazy-code)))))))
 
-
                (if (and inlined-call?
                         opt-regalloc-inlined-call)
 
@@ -2913,7 +2919,7 @@
   (define (get-cc-direct)
     (and lazy-code
          (let* ((stack call-stack)
-                (label (strat-label-from-stack lazy-code (append stack (list (make-ctx-tclo) (make-ctx-tret))))))
+                (label #f)) ;(strat-label-from-stack lazy-code (append stack (list (make-ctx-tclo) (make-ctx-tret))))))
            (if (and label
                     (not (lazy-code-rest? lazy-code)))
                (list 'ep (asm-label-pos label))

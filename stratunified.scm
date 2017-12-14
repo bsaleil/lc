@@ -265,7 +265,6 @@
 
 (define PORT (current-output-port))
 
-;;; TODO: placeholder for --stats
 (define (lazy-code-versions-ctx lco)
   (let ((versions (table-ref lco-generated-versions lco #f)))
     (if versions
