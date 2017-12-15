@@ -779,34 +779,41 @@
               (gen-return-cr cgc ctx)
               (gen-return-rp cgc ctx)))))
 
-(define fn-prologues (make-table test: eq?))
-(define (get-fn-prologues ast rest-param? nb-params)
-  (let ((r (table-ref fn-prologues ast #f)))
+;; eq? on ast and = on nb-ncst-free
+(define fn-prologues (make-table test: (lambda (k1 k2) (and (eq? (car k1) (car k2))
+                                                            (= (cdr k1) (cdr k2))))))
+
+(define (get-fn-prologues ast nb-ncst-free)
+
+  ;; Function use rest param ?
+  (define rest-param? (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
+                         (and (pair? (cadr ast)) (not (list? (cadr ast)))))) ;; (foo a..z . rest)
+  ;; List of formal params
+  (define params
+    (if rest-param?
+        (formal-params (cadr ast))
+        (cadr ast)))
+
+  (define nb-params (length params))
+
+  (let* ((k (cons ast nb-ncst-free))
+         (r (table-ref fn-prologues k #f)))
     (or r
         (let* ((lazy-ret (get-lazy-return))
                (lazy-body (gen-ast (caddr ast) lazy-ret))
                (lazy-prologue (get-lazy-prologue ast lazy-body rest-param?))
                (lazy-prologue-gen (get-lazy-generic-prologue ast lazy-body rest-param? nb-params))
-               (prologues (list lazy-prologue lazy-prologue-gen)))
-          (table-set! fn-prologues ast prologues)
+               (prologues (cons lazy-prologue lazy-prologue-gen)))
+          (table-set! fn-prologues k prologues)
           prologues))))
 
 ;;
 ;; Create fn entry stub
-(define (create-fn-stub ast fn-num fn-generator)
+(define (create-fn-stub ast fn-num fn-generator nb-ncst-free)
 
-  ;; Function use rest param ?
-  (define rest-param (or (and (not (list? (cadr ast))) (not (pair? (cadr ast)))) ;; (foo . rest)
-                         (and (pair? (cadr ast)) (not (list? (cadr ast)))))) ;; (foo a..z . rest)
-  ;; List of formal params
-  (define params
-    (if rest-param
-        (formal-params (cadr ast))
-        (cadr ast)))
-
-  (let* ((prologues (get-fn-prologues ast rest-param (length params)))
+  (let* ((prologues (get-fn-prologues ast nb-ncst-free))
          (lazy-prologue (car prologues))
-         (lazy-prologue-gen (cadr prologues)))
+         (lazy-prologue-gen (cdr prologues)))
 
     (list
       lazy-prologue
@@ -829,6 +836,8 @@
 
   (define fn-num #f)
 
+  (define free-cst/ncst (find-const-free (append fvars-imm fvars-late) fvars-late ctx))
+
   ;; Generator used to generate function code waiting for runtime data
   ;; First create function entry ctx
   ;; Then generate function prologue code
@@ -836,7 +845,9 @@
     ;; In case the limit in the number of version is reached, we give #f to ctx-init-fn to get a generic ctx
     ;; but we still want to patch cctable at index corresponding to stack
     (let* ((ctxstack (if generic? #f stack))
-           (ctx (ctx-init-fn cn-num ctxstack ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id)))
+           (free-const (car free-cst/ncst))
+           (free-nconst (cdr free-cst/ncst))
+           (ctx (ctx-init-fn cn-num ctxstack all-params (append fvars-imm fvars-late) free-const free-nconst fn-num bound-id)))
       (gen-version-fn ast closure entry-obj prologue ctx cc-idx generic?)))
 
   ;; ---------------------------------------------------------------------------
@@ -850,7 +861,7 @@
       (set! fn-num (cddr r))
       (if new?
           (mlet (;; Create stub only if cctable is new
-                 (lco/stub-labels  (create-fn-stub ast fn-num fn-generator))
+                 (lco/stub-labels  (create-fn-stub ast fn-num fn-generator (length (cdr free-cst/ncst))))
                  (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
                  (generic-addr (asm-label-pos (list-ref stub-labels 1))))
             (asc-globalfn-entry-add fn-num (cons cctable (cons lco stub-addr)))
@@ -868,7 +879,7 @@
           ;;       use a max-selector of 0 in create-fn-stub, and use only one -addr
           (mlet (;; Create stub
                  (fn-num       (new-fn-num))
-                 (lco/stub-labels  (create-fn-stub ast fn-num fn-generator))
+                 (lco/stub-labels  (create-fn-stub ast fn-num fn-generator (length (cdr free-cst/ncst))))
                  (stub-addr    (asm-label-pos (list-ref stub-labels 0)))
                  (generic-addr (asm-label-pos (list-ref stub-labels 1)))
                  (entryvec     (get-entry-points-loc ast stub-addr)))
@@ -885,8 +896,10 @@
         get-entry-obj-ep)
     (lambda (fn-num obj)
       (set! entry-obj obj)
-      (asc-fnnum-ctx-set fn-num (list ctx all-params (append fvars-imm fvars-late) fvars-late fn-num bound-id))
-      (values fn-num entry-obj))))
+      (let ((free-const (car free-cst/ncst))
+            (free-nconst (cdr free-cst/ncst)))
+        (asc-fnnum-ctx-set fn-num (list all-params (append fvars-imm fvars-late) free-const free-nconst fn-num bound-id))
+        (values fn-num entry-obj)))))
 
 
 ;;

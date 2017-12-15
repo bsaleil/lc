@@ -502,7 +502,7 @@
                  (if (and (ctx-type-cst? first)
                           (not (ctx-type-id? first)))
                      (let ((ident (ctx-ident-at ctx (slot-to-stack-idx ctx slot))))
-                       (if (and ident (identifier-cst (cdr ident)))
+                       (if (and #f ident (identifier-cst (cdr ident)))
                            ;; It's a cst associated to a cst identifier
                            first
                            ;; If stack type is cst, and not associated to a cst identifier, then change loc
@@ -899,34 +899,35 @@
 
     (make-ctx stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num)))
 
+
+;; Separate constant and non constant free vars
+;; Return a pair with const and nconst sets
+;; const contains id and type of all constant free vars
+;; nconst contains id and type of all non constant free vars
+(define (find-const-free ids late-fbinds enclosing-ctx)
+  (let loop ((ids ids)
+             (const '())
+             (nconst '()))
+    (if (null? ids)
+        (cons const (reverse nconst)) ;; Order is important for non cst free variables!
+        (let* ((id (car ids))
+               (late? (member id late-fbinds))
+               (enc-identifier (and (not late?) (cdr (ctx-ident enclosing-ctx id))))
+               (enc-type       (and (not late?) (ctx-identifier-type enclosing-ctx enc-identifier)))
+               (enc-loc        (and (not late?) (ctx-identifier-loc enclosing-ctx enc-identifier)))
+               (cst?           (and (not late?) (ctx-type-cst? enc-type) (not enc-loc))))
+          ;; If an enclosing identifer is cst, type *must* represent a cst
+          (assert (or (not enc-identifier)
+                      (not (identifier-cst enc-identifier))
+                      (and (identifier-cst enc-identifier) cst?))
+                  "Internal error")
+          (if cst?
+              (loop (cdr ids) (cons (cons id enc-type) const) nconst)
+              (loop (cdr ids) const (cons (cons id enc-type) nconst)))))))
+
 ;;
 ;; CTX INIT FN
-(define (ctx-init-fn cn-num stack enclosing-ctx args free-vars late-fbinds fn-num bound-id)
-
-  ;; Separate constant and non constant free vars
-  ;; Return a pair with const and nconst sets
-  ;; const contains id and type of all constant free vars
-  ;; nconst contains id and type of all non constant free vars
-  (define (find-const-free ids)
-    (let loop ((ids ids)
-               (const '())
-               (nconst '()))
-      (if (null? ids)
-          (cons const (reverse nconst)) ;; Order is important for non cst free variables!
-          (let* ((id (car ids))
-                 (late? (member id late-fbinds))
-                 (enc-identifier (and (not late?) (cdr (ctx-ident enclosing-ctx id))))
-                 (enc-type       (and (not late?) (ctx-identifier-type enclosing-ctx enc-identifier)))
-                 (enc-loc        (and (not late?) (ctx-identifier-loc enclosing-ctx enc-identifier)))
-                 (cst?           (and (not late?) (ctx-type-cst? enc-type) (not enc-loc))))
-            ;; If an enclosing identifer is cst, type *must* represent a cst
-            (assert (or (not enc-identifier)
-                        (not (identifier-cst enc-identifier))
-                        (and (identifier-cst enc-identifier) cst?))
-                    "Internal error")
-            (if cst?
-                (loop (cdr ids) (cons (cons id enc-type) const) nconst)
-                (loop (cdr ids) const (cons (cons id enc-type) nconst)))))))
+(define (ctx-init-fn cn-num stack args free-vars free-const free-nconst fn-num bound-id)
 
   ;; pick the next available loc:
   ;; pick the first reg if regs != () or the next mem if regs == ()
@@ -985,10 +986,7 @@
     (let ((types (reverse stack)))
       (reverse (init slot types regs fregs mem))))
 
-  (let* ((r (find-const-free free-vars))
-         (free-const (car r))
-         (free-nconst (cdr r))
-         (slot-loc (ctx-init-*-slot-loc
+  (let* ((slot-loc (ctx-init-*-slot-loc
                      cn-num
                      (length free-vars)
                      (length free-const)
@@ -1817,7 +1815,9 @@
                 (cons move (add-boxes (cdr moves) all-moves)))))))
 
   (define (get-req-moves)
+
     (define sl-dst (ctx-slot-loc dst-ctx))
+
     (let loop ((sl (ctx-slot-loc src-ctx)))
       (if (null? sl)
           '()
