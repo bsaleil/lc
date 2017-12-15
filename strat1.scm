@@ -105,7 +105,7 @@
   (list (ctx-stack ctx)
         (ctx-fs ctx)
         (ctx-ffs ctx)
-        (map (lambda (ident) (cons (car ident) (identifier-sslots (cdr ident))))
+        (map (lambda (ident) (list (car ident) (identifier-sslots (cdr ident)) (identifier-stype (cdr ident))))
              (ctx-env ctx))))
 
 (define (nregalloc-get-version lazy-code ctx)
