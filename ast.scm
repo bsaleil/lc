@@ -560,7 +560,6 @@
            (make-lazy-code
              #f
              (lambda (cgc ctx)
-               (x86-label cgc (asm-make-label #f (new-sym 'LABEL_SET_)))
                (let ((ctx (drop-cst-value cgc ast ctx 0)))
                  (jump-to-version cgc lazy-set! ctx))))))
 
@@ -1627,22 +1626,14 @@
                              (type (ctx-get-type ctx idx)))
                          (if (ctx-type-flo? type)
                              ;; Float, push a boxed float
-                             (begin (gen-allocation-imm cgc STAG_FLONUM 8)
-                                    (x86-movsd cgc (x86-mem -8 alloc-ptr) (codegen-freg-to-x86reg loc))
-                                    (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
+                             (begin (codegen-box-float cgc loc 'tmp)
                                     (x86-upush cgc (x86-rax))
                                     (loop (- idx 1)))
                              ;; !Float, push value
                              (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
                                     (x86-upush cgc (x86-rax))
                                     (loop (- idx 1)))))))
-                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding nargs)))
-                 (x86-upush cgc (x86-rax))
-                 (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding gsym)))
-                 (x86-upush cgc (x86-rax))
-                 (x86-pcall cgc label-gambit-call-handler)
-                 (x86-upop cgc (codegen-reg-to-x86reg reg))
-                 (x86-add cgc (x86-usp) (x86-imm-int (* 8 (+ nargs 1))))
+                 (codegen-gambit-call cgc gsym nargs reg)
                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) (make-ctx-tunk) reg)))))))
     (if generated-arg?
         lazy-call
@@ -1987,8 +1978,7 @@
       ;; Push closure
       (call-get-closure cgc ctx 1)
 
-      (let* ((label-end (asm-make-label #f (new-sym 'apply-end-args)))
-             (lsttype (ctx-get-type ctx 0)))
+      (let ((lsttype (ctx-get-type ctx 0)))
         (cond
           ((and (ctx-type-cst? lsttype)
                 (null? (ctx-type-cst lsttype)))
@@ -1997,34 +1987,8 @@
           ((ctx-type-cst? lsttype)
              (error "NYI - apply (other cst)"))
           (else
-             (let* ((llst  (ctx-get-loc ctx 0))
-                    (oplst (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) llst)))
-               ;; r11, selector & r15 are used as tmp registers
-               ;; It is safe because they are not used for parameters.
-               ;; And if they are used after, they already are saved on the stack
-               (x86-mov cgc (x86-rdx) oplst)
-               (x86-mov cgc (x86-r11) (x86-imm-int 0))
-               (let loop ((args-regs args-regs))
-                 (if (null? args-regs)
-                     (let ((label-loop (asm-make-label #f (new-sym 'apply-loop-args))))
-                       (x86-label cgc label-loop)
-                       (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
-                       (x86-je cgc label-end)
-                         (x86-add cgc (x86-r11) (x86-imm-int 4))
-                         (x86-mov cgc selector-reg (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
-                         (x86-upush cgc selector-reg)
-                         (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
-                         (x86-jmp cgc label-loop))
-                     (begin
-                       (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
-                       (x86-je cgc label-end)
-                         (x86-add cgc (x86-r11) (x86-imm-int 4))
-                         (x86-mov cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) (car args-regs)) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
-                         (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
-                       (loop (cdr args-regs)))))
-               (x86-label cgc label-end)
-               ;; Reset selector used as tmp reg
-               (x86-mov cgc selector-reg (x86-imm-int 0)))))
+             (let ((lst-loc  (ctx-get-loc ctx 0)))
+               (codegen-apply-xxx cgc (ctx-fs ctx) (ctx-ffs ctx) lst-loc))))
 
         (let ((fn-id-inf (call-get-eploc ctx (cadr ast))))
           (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi

@@ -1533,8 +1533,9 @@
 
 ;; Is register?
 (define (ctx-loc-is-register? loc)
-  (and (pair? loc)
-       (eq? (car loc) 'r)))
+  (or (eq? loc 'tmp)
+      (and (pair? loc)
+           (eq? (car loc) 'r))))
 
 ;; Is memory ?
 (define (ctx-loc-is-memory? loc)

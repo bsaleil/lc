@@ -723,6 +723,55 @@
   (assert (= (modulo (vector-ref label-cont-stub 1) 4) 0) "Internal error")
   (x86-mov cgc (x86-mem 0 (x86-usp)) (x86-rax)))
 
+(define (codegen-apply-xxx cgc fs ffs lst-loc)
+  ;; r11, selector & r15 are used as tmp registers
+  ;; It is safe because they are not used for parameters.
+  ;; And if they are used after, they already are saved on the stack
+  (define label-end (asm-make-label #f (new-sym 'apply-end-args)))
+  (define lst-op (codegen-loc-to-x86opnd fs ffs lst-loc))
+  (x86-mov cgc (x86-rdx) lst-op)
+  (x86-mov cgc (x86-r11) (x86-imm-int 0))
+  (let loop ((args-regs args-regs))
+    (if (null? args-regs)
+        (let ((label-loop (asm-make-label #f (new-sym 'apply-loop-args))))
+          (x86-label cgc label-loop)
+          (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
+          (x86-je cgc label-end)
+            (x86-add cgc (x86-r11) (x86-imm-int 4))
+            (x86-mov cgc selector-reg (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
+            (x86-upush cgc selector-reg)
+            (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
+            (x86-jmp cgc label-loop))
+        (begin
+          (x86-cmp cgc (x86-rdx) (x86-imm-int (obj-encoding '())))
+          (x86-je cgc label-end)
+            (x86-add cgc (x86-r11) (x86-imm-int 4))
+            (x86-mov cgc (codegen-loc-to-x86opnd fs ffs (car args-regs)) (x86-mem (- OFFSET_PAIR_CAR TAG_PAIR) (x86-rdx)))
+            (x86-mov cgc (x86-rdx) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rdx)))
+          (loop (cdr args-regs)))))
+  (x86-label cgc label-end)
+  ;; Reset selector used as tmp reg
+  (x86-mov cgc selector-reg (x86-imm-int 0)))
+
+(define (codegen-gambit-call cgc op-symbol nb-args dest-loc)
+  (assert (ctx-loc-is-register? dest-loc) "Internal error")
+
+  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding nb-args)))
+  (x86-upush cgc (x86-rax))
+  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding op-symbol)))
+  (x86-upush cgc (x86-rax))
+  (x86-pcall cgc label-gambit-call-handler)
+  (x86-upop cgc (codegen-reg-to-x86reg dest-loc))
+  (x86-add cgc (x86-usp) (x86-imm-int (* 8 (+ nb-args 1)))))
+
+;; WIP
+(define (codegen-box-float cgc float-loc dest-loc)
+  (assert (ctx-loc-is-fregister? float-loc) "Internal codegen error")
+  (assert (ctx-loc-is-register?   dest-loc) "Internal codegen error")
+  (gen-allocation-imm cgc STAG_FLONUM 8)
+  (x86-movsd cgc (x86-mem -8 alloc-ptr) (codegen-freg-to-x86reg float-loc))
+  (x86-lea cgc (codegen-reg-to-x86reg dest-loc) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))
+
 ;;-----------------------------------------------------------------------------
 ;; Operators
 ;;-----------------------------------------------------------------------------
