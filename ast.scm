@@ -677,13 +677,7 @@
                    (opnd  (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
                    (ropnd (codegen-reg-to-x86reg reg)))
               (apply-moves cgc ctx moves)
-              (gen-allocation-imm cgc STAG_FLONUM 8)
-              (if (ctx-loc-is-fregister? loc)
-                  (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opnd)
-                  (begin
-                    (x86-mov cgc (x86-rax) opnd)
-                    (x86-mov cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-rax))))
-              (x86-lea cgc ropnd (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
+              (codegen-box-float cgc (ctx-fs ctx) (ctx-ffs ctx) loc reg)
               (let* ((ident (ctx-ident-at ctx idx-from))
                      (ctx
                        ;; Remove slot-info if the slot belongs to an identifier with > 1 slots
@@ -1626,7 +1620,7 @@
                              (type (ctx-get-type ctx idx)))
                          (if (ctx-type-flo? type)
                              ;; Float, push a boxed float
-                             (begin (codegen-box-float cgc loc 'tmp)
+                             (begin (codegen-box-float cgc #f #f loc 'tmp)
                                     (x86-upush cgc (x86-rax))
                                     (loop (- idx 1)))
                              ;; !Float, push value

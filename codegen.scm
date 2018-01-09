@@ -765,11 +765,15 @@
   (x86-add cgc (x86-usp) (x86-imm-int (* 8 (+ nb-args 1)))))
 
 ;; WIP
-(define (codegen-box-float cgc float-loc dest-loc)
-  (assert (ctx-loc-is-fregister? float-loc) "Internal codegen error")
-  (assert (ctx-loc-is-register?   dest-loc) "Internal codegen error")
+(define (codegen-box-float cgc fs ffs float-loc dest-loc)
+  (define opnd (codegen-loc-to-x86opnd fs ffs float-loc))
+  (assert (ctx-loc-is-register? dest-loc) "Internal codegen error")
   (gen-allocation-imm cgc STAG_FLONUM 8)
-  (x86-movsd cgc (x86-mem -8 alloc-ptr) (codegen-freg-to-x86reg float-loc))
+  (if (ctx-loc-is-fregister? float-loc)
+      (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opnd)
+      (begin
+        (x86-mov cgc (x86-rax) opnd)
+        (x86-mov cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-rax))))
   (x86-lea cgc (codegen-reg-to-x86reg dest-loc) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))
 
 ;;-----------------------------------------------------------------------------
