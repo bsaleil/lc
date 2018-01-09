@@ -304,6 +304,16 @@
   `(for-each (lambda (el) (x86-upop cgc el)) ##registers-saved##))
 
 ;;-----------------------------------------------------------------------------
+;; Stacks
+;;-----------------------------------------------------------------------------
+
+(define (codegen-clean-stacks cgc ustack pstack)
+  (if (not (= ustack 0))
+      (x86-add cgc (x86-usp) (x86-imm-int (* 8 ustack))))
+  (if (not (= pstack 0))
+      (x86-add cgc (x86-rsp) (x86-imm-int (* 8 pstack)))))
+
+;;-----------------------------------------------------------------------------
 ;; Define
 ;;-----------------------------------------------------------------------------
 
@@ -360,6 +370,31 @@
       (begin
         (x86-mov cgc (x86-rax) copnd) ;; Get closure
         (x86-op cgc dest (x86-mem coffset (x86-rax)))))))
+
+(define (codegen-write-free-variable cgc fs ffs src-loc dst-pos closure-loc base-reg)
+  (cond ;;
+        ((ctx-loc-is-freemem? src-loc)
+           (let* ((closure-opnd (codegen-loc-to-x86opnd fs ffs closure-loc))
+                  (fvar-pos (cdr src-loc))
+                  (fvar-offset (+ 16 (* 8 fvar-pos))))
+             (if (ctx-loc-is-memory? closure-loc)
+                 (begin (x86-mov cgc (x86-rax) closure-opnd)
+                        (set! closure-opnd (x86-rax))))
+             (x86-mov cgc (x86-rax) (x86-mem (- fvar-offset TAG_MEMOBJ) closure-opnd))
+             (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) (x86-rax))))
+        ;;
+        ((or (ctx-loc-is-memory? src-loc)
+             (ctx-loc-is-fmemory? src-loc))
+          (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs ffs src-loc))
+          (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) (x86-rax)))
+        ;;
+        ((ctx-loc-is-fregister? src-loc)
+          (x86-movd/movq cgc (x86-rax) (codegen-freg-to-x86reg src-loc))
+          (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) (x86-rax)))
+        ;;
+        (else
+          (let ((opn (codegen-reg-to-x86reg src-loc)))
+            (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) opn)))))
 
 ;;-----------------------------------------------------------------------------
 ;; set
@@ -427,6 +462,21 @@
       (let* ((int (char->integer (string-ref str idx))))
         (x86-mov cgc (x86-mem offset (x86-rax)) (x86-imm-int int) 32)
         (write-chars cgc str (+ idx 1) (+ offset 4)))))
+
+;;-----------------------------------------------------------------------------
+;; Boxing
+;;-----------------------------------------------------------------------------
+
+(define (codegen-box-float cgc fs ffs float-loc dest-loc)
+  (define opnd (codegen-loc-to-x86opnd fs ffs float-loc))
+  (assert (ctx-loc-is-register? dest-loc) "Internal codegen error")
+  (gen-allocation-imm cgc STAG_FLONUM 8)
+  (if (ctx-loc-is-fregister? float-loc)
+      (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opnd)
+      (begin
+        (x86-mov cgc (x86-rax) opnd)
+        (x86-mov cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-rax))))
+  (x86-lea cgc (codegen-reg-to-x86reg dest-loc) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))
 
 ;;-----------------------------------------------------------------------------
 ;; Functions
@@ -764,17 +814,14 @@
   (x86-upop cgc (codegen-reg-to-x86reg dest-loc))
   (x86-add cgc (x86-usp) (x86-imm-int (* 8 (+ nb-args 1)))))
 
-;; WIP
-(define (codegen-box-float cgc fs ffs float-loc dest-loc)
-  (define opnd (codegen-loc-to-x86opnd fs ffs float-loc))
-  (assert (ctx-loc-is-register? dest-loc) "Internal codegen error")
-  (gen-allocation-imm cgc STAG_FLONUM 8)
-  (if (ctx-loc-is-fregister? float-loc)
-      (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opnd)
+;; Shift arguments on stack for tail calls
+;; starts with [usp+offset-from] -> [usp+offset-to]
+(define (codegen-tail-shift cgc nb-shift offset-from offset-to)
+  (if (>= nb-shift 0)
       (begin
-        (x86-mov cgc (x86-rax) opnd)
-        (x86-mov cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-rax))))
-  (x86-lea cgc (codegen-reg-to-x86reg dest-loc) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))
+        (x86-mov cgc (x86-r11) (x86-mem offset-from (x86-usp)))
+        (x86-mov cgc (x86-mem offset-to (x86-usp)) (x86-r11))
+        (codegen-tail-shift cgc (- nb-shift 1) (- offset-from 8) (- offset-to 8)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Operators
@@ -1756,6 +1803,28 @@
     (x86-shl cgc (x86-rax) (x86-imm-int 2))
     (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
     (x86-mov cgc dest (x86-rax))))
+
+;;
+;; vector-set!
+;; An empty vector (of right size) already is created and is in 'vec-loc'
+(define (codegen-p-vector cgc fs ffs csts?/locs vec-loc)
+  (define vec-opnd (codegen-loc-to-x86opnd fs ffs vec-loc))
+  (define vec-len  (length csts?/locs))
+  (let loop ((csts?/locs csts?/locs)
+             (i vec-len))
+    (if (not (null? csts?/locs))
+        (let* ((cst? (caar csts?/locs))
+               (loc  (cdar csts?/locs))
+               (offset (- (* 8 (+ (- vec-len i) 1)) TAG_MEMOBJ))
+               (opnd (if cst?
+                         (x86-imm-int (obj-encoding loc))
+                         (codegen-loc-to-x86opnd fs ffs loc))))
+          (if (or (x86-imm? opnd)
+                  (x86-mem? opnd))
+              (begin (x86-mov cgc (x86-rax) opnd)
+                     (set! opnd (x86-rax))))
+          (x86-mov cgc (x86-mem offset vec-opnd) opnd)
+          (loop (cdr csts?/locs) (- i 1))))))
 
 ;;
 ;; vector-set!

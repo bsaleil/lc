@@ -1851,39 +1851,34 @@
 
   (define nbargs (length (cdr ast)))
 
+  (define (get-csts?/locs ctx n)
+    (if (= n 0)
+        '()
+        (let* ((type (ctx-get-type ctx n))
+               (cst? (ctx-type-cst? type))
+               (loc  (if cst?
+                         (ctx-type-cst type)
+                         (ctx-get-loc ctx n))))
+          (cons (cons cst? loc)
+                (get-csts?/locs ctx (- n 1))))))
+
   (let* ((lazy-set
            (make-lazy-code
              ast
              (lambda (cgc ctx)
-               (let* ((vec-loc  (ctx-get-loc ctx 0))
-                      (vec-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) vec-loc)))
-
-                 (let loop ((idx nbargs))
-                   (if (= idx 0)
-                       (let* ((ctx (ctx-pop-n ctx (+ nbargs 1)))
-                              (ctx (ctx-push ctx (make-ctx-tvec) vec-loc)))
-                         (jump-to-version cgc succ ctx))
-                       (let* ((val-loc  (ctx-get-loc ctx idx))
-                              (type (ctx-get-type ctx idx))
-                              (cst? (and (ctx-type-cst? type) (not (ctx-type-id? type))))
-                              (val-opnd (if cst?
-                                            (x86-imm-int (obj-encoding (ctx-type-cst type)))
-                                            (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) val-loc)))
-                              (offset (- (* 8 (+ (- nbargs idx) 1)) TAG_MEMOBJ)))
-                         (if (or (x86-imm? val-opnd)
-                                 (x86-mem? val-opnd))
-                             (begin (x86-mov cgc (x86-rax) val-opnd)
-                                    (set! val-opnd (x86-rax))))
-                         (x86-mov cgc (x86-mem offset vec-opnd) val-opnd)
-                         (loop (- idx 1)))))))))
-
+               (let* ((vec-loc    (ctx-get-loc ctx 0))
+                      (csts?/locs (get-csts?/locs ctx nbargs))
+                      (fs  (ctx-fs ctx))
+                      (ffs (ctx-ffs ctx))
+                      (ctx (ctx-pop-n ctx (+ nbargs 1)))
+                      (ctx (ctx-push ctx (make-ctx-tvec) vec-loc)))
+                 (codegen-p-vector cgc fs ffs csts?/locs vec-loc)
+                 (jump-to-version cgc succ ctx)))))
          (lazy-vector
            (gen-ast (list (atom-node-make 'make-vector)
                           (atom-node-make nbargs))
                     lazy-set)))
-
     lazy-vector))
-
 
 ;;
 ;; Special primitive 'list'
@@ -2431,18 +2426,14 @@
     (let ((sup (if (or cn-num continuation-dropped?) 0 1)))
       (if (not (= nshift
                   (- fs sup)))
-          (let loop ((curr (- nshift 1)))
-            (if (>= curr 0)
-                (begin
-                  (x86-mov cgc (x86-r11) (x86-mem (* 8 curr) (x86-usp)))
-                  (x86-mov cgc (x86-mem (* 8 (+ (- fs nshift sup) curr)) (x86-usp)) (x86-r11))
-                  (loop (- curr 1))))))
+          (let ((n (- nshift 1))
+                (offset-from (* 8 (- nshift 1)))
+                (offset-to (* 8 (+ (- fs nshift sup) (- nshift 1)))))
+            (codegen-tail-shift cgc n offset-from offset-to)))
       ;; Clean stacks
-      (if (> ffs 0)
-          (x86-add cgc (x86-rsp) (x86-imm-int (* 8 ffs)))) ;; TODO: NYI case if nfargs > number of fargs regs
-      (if (not (= (- fs nshift sup) 0))
-          (x86-add cgc (x86-usp) (x86-imm-int (* 8 (- fs nshift sup))))))))
-
+      ;; TODO: NYI case if nfargs > number of fargs regs
+      (let ((cfs (- fs nshift sup)))
+        (codegen-clean-stacks cgc cfs ffs)))))
 
 ;;
 ;; Make lazy code from CALL EXPR
@@ -3246,34 +3237,11 @@
       #f
       (let* ((id (car ids))
              (identifier (cdr (assoc id (ctx-env ctx))))
-             (loc (ctx-identifier-loc ctx identifier))
-             (opn
-               (cond ;; No loc, free variable which is only in closure
-                     ((ctx-loc-is-freemem? loc)
-                       (let* (;; Get closure loc
-                              (closure-loc  (ctx-get-closure-loc ctx))
-                              (closure-opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) closure-loc))
-                              ;; Get free var offset
-                              (fvar-pos (cdr loc))
-                              (fvar-offset (+ 16 (* 8 fvar-pos)))) ;; 16:header,entrypoint -1: pos starts from 1 and not 0
-                         (if (ctx-loc-is-memory? closure-loc)
-                             (begin (x86-mov cgc (x86-rax) closure-opnd)
-                                    (set! closure-opnd (x86-rax))))
-                         (x86-mov cgc (x86-rax) (x86-mem (- fvar-offset TAG_MEMOBJ) closure-opnd))
-                         (x86-rax)))
-                     ;;
-                     ((or (ctx-loc-is-memory? loc)
-                          (ctx-loc-is-fmemory? loc))
-                       (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
-                       (x86-rax))
-                     ;;
-                     ((ctx-loc-is-fregister? loc)
-                       (x86-movd/movq cgc (x86-rax) (codegen-freg-to-x86reg loc))
-                       (x86-rax))
-                     ;;
-                     (else
-                       (codegen-reg-to-x86reg loc)))))
-        (x86-mov cgc (x86-mem (* 8 free-offset) base-reg) opn)
+             (src-loc (ctx-identifier-loc ctx identifier))
+             (fs (ctx-fs ctx))
+             (ffs (ctx-ffs ctx))
+             (closure-loc (and (ctx-loc-is-freemem? src-loc) (ctx-get-closure-loc ctx))))
+        (codegen-write-free-variable cgc fs ffs src-loc free-offset closure-loc base-reg)
         (gen-free-vars cgc (cdr ids) ctx (+ free-offset 1) base-reg))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
