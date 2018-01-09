@@ -1895,75 +1895,30 @@
 ;; Special primitive 'list'
 (define (lco-p-list ast op succ)
 
-  (define len (length (cdr ast)))
-
-  (define (build-chain n)
-    (if (= n 0)
-        (make-lazy-code
-          #f
-          (lambda (cgc ctx)
-            (let* ((type (ctx-get-type ctx n))
-                   (cst? (ctx-type-cst? type))
-                   (loc (if cst?
-                            (ctx-type-cst type)
-                            (ctx-get-loc ctx n))))
-              (let ((pair-offset (* -3 8 n)))
-                ;; Write header
-                (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
-                ;; Write null in cdr
-                (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-imm-int (obj-encoding '())) 64)
-                ;; Write value in car
-                (let ((opnd
-                        (if cst?
-                            (x86-imm-int (obj-encoding loc))
-                            (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))))
-                  (if (or (x86-mem? opnd)
-                          (x86-imm? opnd))
-                      (begin
-                        (x86-mov cgc (x86-rax) opnd)
-                        (set! opnd (x86-rax))))
-                  (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) opnd))
-                (mlet ((moves/reg/ctx (ctx-get-free-reg ast (ctx-pop-n ctx len) succ 0)))
-                   (apply-moves cgc ctx moves)
-                   ;; Load first pair in dest register
-                   (let ((dest (codegen-reg-to-x86reg reg)))
-                     (let ((offset (+ (* len 3 -8) TAG_PAIR)))
-                       (x86-lea cgc dest (x86-mem offset alloc-ptr))
-                       (jump-to-version cgc succ (ctx-push ctx (make-ctx-tpai) reg)))))))))
-        (make-lazy-code
-          #f
-          (lambda (cgc ctx)
-            (let* ((type (ctx-get-type ctx n))
-                   (cst? (ctx-type-cst? type))
-                   (loc (if cst?
-                            (ctx-type-cst type)
-                            (ctx-get-loc ctx n))))
-              (let ((pair-offset (* -3 8 n)))
-                ;; Write header
-                (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
-                ;; Write encoded next pair in cdr
-                (x86-lea cgc (x86-rax) (x86-mem (+ pair-offset TAG_PAIR) alloc-ptr))
-                (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-rax))
-                ;; Write value in car
-                (let ((opnd
-                        (if cst?
-                            (x86-imm-int (obj-encoding loc))
-                            (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))))
-                  (if (or (x86-imm? opnd)
-                          (x86-mem? opnd))
-                      (begin (x86-mov cgc (x86-rax) opnd)
-                             (set! opnd (x86-rax))))
-                  (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) opnd))
-                ;; Continue
-                (jump-to-version cgc (build-chain (- n 1)) ctx)))))))
+  (define (get-csts?/locs ctx n)
+    (if (< n 0)
+        '()
+        (let* ((type (ctx-get-type ctx n))
+               (cst? (ctx-type-cst? type))
+               (loc (if cst?
+                        (ctx-type-cst type)
+                        (ctx-get-loc ctx n))))
+          (cons (cons cst? loc)
+                (get-csts?/locs ctx (- n 1))))))
 
   (make-lazy-code
     ast
     (lambda (cgc ctx)
-      (let ((size (- (* len 3 8) 8)))
-        ;; One alloc for all pairs
-        (gen-allocation-imm cgc STAG_PAIR size)
-        (jump-to-version cgc (build-chain (- len 1)) ctx)))))
+      (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 0))
+             (fs (ctx-fs ctx))
+             (ffs (ctx-ffs ctx)))
+        (apply-moves cgc ctx moves)
+        (let* ((len (length (cdr ast)))
+               (csts?/locs (get-csts?/locs ctx (- len 1)))
+               (nctx (ctx-pop-n ctx len))
+               (nctx (ctx-push nctx (make-ctx-tpai) reg)))
+         (codegen-p-list cgc fs ffs reg csts?/locs)
+         (jump-to-version cgc succ nctx))))))
 
 ;;
 ;; Special primitive 'apply'

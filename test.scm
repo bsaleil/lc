@@ -1,2 +1,5 @@
 
-(gambit$$println 20.3)
+(define (foo a b c)
+  (list a b c))
+
+(gambit$$pp (foo 1 2 3 ))

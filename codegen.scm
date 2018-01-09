@@ -1139,6 +1139,68 @@
     (x86-lea cgc dest (x86-mem (+ -24 TAG_PAIR) alloc-ptr))))
 
 ;;
+;; list
+;; csts?/locs is a list of pair (cst? . loc) for each 'list' argument
+(define (codegen-p-list cgc fs ffs rloc csts?/locs)
+
+  (define nb-els (length csts?/locs))
+  (assert (ctx-loc-is-register? rloc) "Internal error")
+  (assert (not (null? csts?/locs))    "Internal error")
+
+  (gen-allocation-imm cgc STAG_PAIR (- (* nb-els 3 8) 8))
+
+  (let loop ((n (- (length csts?/locs) 1))
+             (csts?/locs csts?/locs))
+    (if (null? (cdr csts?/locs))
+        ;; Last element
+        (let* ((cst? (caar csts?/locs))
+               (loc  (cdar csts?/locs))
+               (pair-offset (* -3 8 n)))
+          ;; Write header
+          (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
+          ;; Write null in cdr
+          (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-imm-int (obj-encoding '())) 64)
+          ;; Write value in car
+          (let ((opnd
+                  (if cst?
+                      (x86-imm-int (obj-encoding loc))
+                      (codegen-loc-to-x86opnd fs ffs loc))))
+            (if (or (x86-mem? opnd)
+                    (x86-imm? opnd))
+                (begin
+                  (x86-mov cgc (x86-rax) opnd)
+                  (set! opnd (x86-rax))))
+            (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) opnd))
+
+          ;; Load first pair in dest
+          (let ((dest (codegen-reg-to-x86reg rloc))
+                (offset (+ (* nb-els 3 -8) TAG_PAIR)))
+            (x86-lea cgc dest (x86-mem offset alloc-ptr))))
+
+        ;; Not last element
+        (let* ((cst? (caar csts?/locs))
+               (loc  (cdar csts?/locs))
+               (pair-offset (* -3 8 n)))
+          ;; Write header
+          (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
+          ;; Write encoded next pair in cdr
+          (x86-lea cgc (x86-rax) (x86-mem (+ pair-offset TAG_PAIR) alloc-ptr))
+          (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-rax))
+          ;; Write value in car
+          (let ((opnd
+                  (if cst?
+                      (x86-imm-int (obj-encoding loc))
+                      (codegen-loc-to-x86opnd fs ffs loc))))
+            (if (or (x86-imm? opnd)
+                    (x86-mem? opnd))
+                (begin (x86-mov cgc (x86-rax) opnd)
+                       (set! opnd (x86-rax))))
+            (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) opnd))
+          ;; Continue
+          (loop (- n 1) (cdr csts?/locs))))))
+
+
+;;
 ;; quotient/modulo/remainder
 (define (codegen-p-binop cgc fs ffs op label-div0 reg lleft lright lcst? rcst?)
 
