@@ -1338,8 +1338,9 @@
               ((lazy-code-generator lazy-code) cgc ctx))))
       version-label))
 
-  (define (generate-new-version ctx)
+  (define (generate-new-version ctx strat-callback)
     (let ((version-label (asm-make-label #f (new-sym label-sym))))
+      (strat-callback version-label)
       (set! code-alloc (fn-codepos))
       (if cgc
           ;; we already have cgc, generate code
@@ -1378,8 +1379,7 @@
          (fn-patch label-merge #t))) ;; TODO: check if real new version
     ;; No version, but we can generate one for this exact context
     ((eq? vctx ctx)
-       (let ((label (generate-new-version ctx)))
-         (callback label)
+       (let ((label (generate-new-version ctx callback)))
          (fn-patch label #t)))
     ;; No version, and we need to generate one for another context
     (else
