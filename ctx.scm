@@ -508,8 +508,11 @@
                            ;; If stack type is cst, and not associated to a cst identifier, then change loc
                            (begin
                                (set-new-loc! slot)
+                               (trigger-type-lost first)
                                (make-ctx-tunk))))
-                     (make-ctx-tunk))))
+                     (begin
+                       (trigger-type-lost first)
+                       (make-ctx-tunk)))))
           (cons ntype (compute-stack (cdr stack) (- slot 1))))))
 
   (define (compute-env env)
@@ -519,6 +522,7 @@
           (if (identifier-stype (cdr first))
               ;; there is a stype in identifier, it's a free variable
               (let ((new-stype (make-ctx-tunk)))
+                (trigger-type-lost first)
                 (assert (eq? (identifier-kind (cdr first)) 'free) "Internal error")
                 (cons (cons (car first)
                             (identifier-copy (cdr first) #f '() #f new-stype))
@@ -736,6 +740,13 @@
 
   (make-ctx stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num)))
 
+(define TOT 0)
+(define (trigger-type-lost type)
+  (if (ctx-type-cst? type)
+      (cond ;;
+            ((ctx-type-ret? type) (set! TOT (+ TOT 1)) (print "## (") (print TOT) (print ") drop ret ") (println (ctx-type-cst type)))
+            ;;
+            ((ctx-type-clo? type) (set! TOT (+ TOT 1)) (print "## (") (print TOT) (print ") drop clo ") (println (ctx-type-cst type))))))
 
 (define (ctx-init-fn-inlined-ntco cn-num call-ctx call-nb-args enclosing-ctx args free-vars late-fbinds fn-num bound-id)
 
@@ -1485,14 +1496,6 @@
   (assert (ctx-const-continuation? ctx) "Internal error")
   (let ((type (ctx-get-type ctx (- (length (ctx-stack ctx)) 1))))
     (ctx-type-cst type)))
-
-(define (ctx-no-const-continuation ctx)
-  (assert (ctx-const-continuation? ctx) "Internal error")
-  (let* ((idx (- (length (ctx-stack ctx)) 1))
-         (slot (slot-to-stack-idx ctx idx))
-         (r (ctx-get-free-reg #f ctx #f 0)) ;; moves/reg/ctx
-         (ctx (ctx-set-type (caddr r) idx (make-ctx-tret) #f)))
-    (ctx-set-loc ctx slot (cadr r))))
 
 ;; Check if given stack idx belongs to an id
 ;; If so, remove this link

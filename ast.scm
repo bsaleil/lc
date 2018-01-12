@@ -2769,6 +2769,10 @@
 
   (define crtable #f)
 
+  (define cont-ctx (if apply?
+                       (ctx-pop-n ctx 2) ;; Pop operator and args
+                       (ctx-pop-n ctx (+ (length (cdr ast)) 1)))) ;; Remove closure and args from virtual stack
+
   (define (gen-stub)
     (let* ((stub-labels
              (add-cont-callback
@@ -2779,11 +2783,6 @@
                      ;;
                      (let* ((generic? (not type))
                             (type (or type (make-ctx-tunk)))
-                            (args (cdr ast))
-                            (ctx
-                              (if apply?
-                                  (ctx-pop-n ctx 2) ;; Pop operator and args
-                                  (ctx-pop-n ctx (+ (length args) 1)))) ;; Remove closure and args from virtual stack
                             (reg
                               (cond ((and (ctx-type-cst? type)
                                           (not (ctx-type-id? type)))
@@ -2793,7 +2792,7 @@
 
                        (gen-version-continuation-cr
                          succ
-                         (ctx-push ctx type reg)
+                         (ctx-push cont-ctx type reg)
                          type
                          crtable
                          generic?)))))
@@ -3292,10 +3291,12 @@
                (let* ((ntype ((ctx-type-ctor type)))
                       (ctx (ctx-set-type ctx ctx-idx ntype #f))
                       (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx ctx-idx) reg)))
+                 (trigger-type-lost type)
                  ctx)))
           (cst?
             (assert (ctx-type-id? type) "Internal error")
             (let ((ntype (ctx-type-nocst type)))
+              (trigger-type-lost type)
               (ctx-set-type ctx ctx-idx ntype #f)))
           (else ctx))))
 

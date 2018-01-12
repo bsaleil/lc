@@ -1,8 +1,10 @@
 
-(define (foo n)
-  (pp (vector n 1 2 3)))
+(define (fact n)
+  (if (= n 0)
+      1
+      (* n (fact (- n 1)))))
 
-(foo 1000)
+(fact 10)
 
 ;(define add (lambda (a b c) (+ a b c)))
 ;(define sub (lambda (a b c) (- a b c)))
