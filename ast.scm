@@ -2168,6 +2168,8 @@
                             (jump-to-version cgc lazy-code1 (ctx-pop ctx)))
                          ((and (not x86-op) cst?)
                             (jump-to-version cgc lazy-code0 (ctx-pop ctx)))
+                         ((and (not x86-op) (not (ctx-type-unk? type)) (not (ctx-type-boo? type)))
+                            (jump-to-version cgc lazy-code1 (ctx-pop ctx)))
                          (else
                             (let* ((ctx0 (if x86-op ctx (ctx-pop ctx)))   ;; Pop condition result
                                    (ctx1 ctx0)
