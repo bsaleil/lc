@@ -1321,8 +1321,9 @@
           (generate-moves dst-ctx moves label-dest))))
 
   ;; Todo: merge with generate-new-version
-  (define (generate-generic ctx)
+  (define (generate-generic ctx label-merge strat-callback)
     (let ((version-label (asm-make-label #f (new-sym label-sym))))
+      (strat-callback (or label-merge version-label) version-label)
       ;; NOTE: generate-generic is NEVER called without a previous call to generate-merge-code
       ;;       generate-merge-code calls fn-codepos
       ;(set! code-alloc (fn-codepos))
@@ -1384,9 +1385,8 @@
     ;; No version, and we need to generate one for another context
     (else
        (let* ((label-merge   (generate-merge-code ctx vctx #f))
-              (label-version (generate-generic vctx))
+              (label-version (generate-generic vctx label-merge callback))
               (label-first   (or label-merge label-version)))
-       (callback label-first label-version)
        (fn-patch label-first #t))))))
 
 ;; #### FIRST LAZY CODE OBJECT
