@@ -740,13 +740,28 @@
 
   (make-ctx stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num)))
 
-(define TOT 0)
+;; Called when a clo or ret constant information is lost
 (define (trigger-type-lost type)
+
+  (define (clo-lost fn-num)
+    (let* ((r (asc-fnnum-ctx-get fn-num))
+           (nb-ncst-free (length (list-ref r 3)))
+           (lco (asc-fnnum-lco-get fn-num nb-ncst-free))
+           (nbargs (asc-fnnum-nbargs-get fn-num))
+           (stack (build-list nbargs (lambda (e) (make-ctx-tunk))))
+           (ctx (apply ctx-init-fn (cons #f (cons stack r)))))
+      (gen-version-first lco ctx)))
+
+  (define (ret-lost cn-num)
+    (let ((lco (asc-cnnum-lco-get cn-num))
+          (ctx (asc-cnnum-ctx-get cn-num)))
+      (gen-version-first lco (ctx-push ctx (make-ctx-tunk) return-reg))))
+
   (if (ctx-type-cst? type)
       (cond ;;
-            ((ctx-type-ret? type) (set! TOT (+ TOT 1)) (print "## (") (print TOT) (print ") drop ret ") (println (ctx-type-cst type)))
+            ((ctx-type-ret? type) (ret-lost (ctx-type-cst type)))
             ;;
-            ((ctx-type-clo? type) (set! TOT (+ TOT 1)) (print "## (") (print TOT) (print ") drop clo ") (println (ctx-type-cst type))))))
+            ((ctx-type-clo? type) (clo-lost (ctx-type-cst type))))))
 
 (define (ctx-init-fn-inlined-ntco cn-num call-ctx call-nb-args enclosing-ctx args free-vars late-fbinds fn-num bound-id)
 

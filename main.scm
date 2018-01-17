@@ -323,7 +323,7 @@
              (##gc)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
-       (##machine-code-block-exec mcb)))
+       (println "STATIC MODE, CODE NOT EXECUTED!")))
 
 ;;-----------------------------------------------------------------------------
 ;; Main

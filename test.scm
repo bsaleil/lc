@@ -6,6 +6,9 @@
 
 (fact 10)
 
+(fact 20.0)
+
+
 ;(define add (lambda (a b c) (+ a b c)))
 ;(define sub (lambda (a b c) (- a b c)))
 ;(define mul (lambda (a b c) (* a b c)))
