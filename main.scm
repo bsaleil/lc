@@ -302,6 +302,7 @@
   (let ((lco (lazy-exprs prog #f)))
     (run-add-to-ctime
       (lambda ()
+        (set! opt-static-mode #t)
         (gen-version-first lco (ctx-init)))))
 
   (if opt-time

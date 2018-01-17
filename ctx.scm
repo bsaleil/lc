@@ -41,6 +41,13 @@
 (define const-versioned? #f)
 (define opt-propagate-continuation #f)
 
+(define asc-cnnum-ctx-get #f)
+(define asc-cnnum-lco-get #f)
+(define asc-fnnum-ctx-get #f)
+(define asc-fnnum-lco-get #f)
+(define asc-fnnum-nbargs-get #f)
+(define gen-version-first #f)
+
 ;;-----------------------------------------------------------------------------
 ;; Ctx
 

@@ -39,6 +39,8 @@
 ;;--------------------------------------------------------------------------------
 ;; Compiler options
 
+(define opt-static-mode #f)
+
 (define opt-inlining-limit       #f) ;; Control gambit inlining-limit declaration
 (define opt-ctime                #f) ;; Print compilation time
 (define opt-stats                #f) ;; Print stats report
@@ -575,6 +577,16 @@
 
 (define (code-gen arch addr gen #!optional ctx)
 
+  (define (gen-code cgc)
+    (let ((code (asm-assemble-to-u8vector cgc)))
+      (if opt-verbose-jit
+          (begin
+            (println "------------------------------------------------------------------------")
+            (asm-display-listing cgc (current-output-port) #t)
+            (force-output)))
+      (write-mcb code (- addr code-addr))
+      (u8vector-length code)))
+
   (let* ((cgc (make-codegen-context))
          (endianness 'le))
 
@@ -587,14 +599,9 @@
       (gen cgc ctx)
       (gen cgc))
 
-    (let ((code (asm-assemble-to-u8vector cgc)))
-      (if opt-verbose-jit
-          (begin
-            (println "------------------------------------------------------------------------")
-            (asm-display-listing cgc (current-output-port) #t)
-            (force-output)))
-      (write-mcb code (- addr code-addr))
-      (u8vector-length code))))
+    (if opt-static-mode
+        0
+        (gen-code cgc))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -1724,8 +1731,10 @@
           (make-lazy-code
              #f
              (lambda (cgc ctx)
-               (pp "FAIL TEST")
-               (pp ast)
+               (if (not opt-static-mode)
+                   (begin
+                     (pp "FAIL TEST")
+                     (pp ast)))
                (if (or (ctx-type-flo? ctx-type) (ctx-type-int? ctx-type))
                    (gen-error cgc ERR_NUMBER_EXPECTED)
                    (gen-error cgc (ERR_TYPE_EXPECTED ctx-type)))))))
