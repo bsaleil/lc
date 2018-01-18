@@ -302,8 +302,22 @@
   (let ((lco (lazy-exprs prog #f)))
     (run-add-to-ctime
       (lambda ()
-        (set! opt-static-mode #t)
+        ; (set! opt-static-mode #t)
+        ; (gen-version-first lco (ctx-init))
+
+        (set! global-cc-table (make-table test: equal?))
+        (set! global-cr-table (make-table))
+
+        (set! opt-static-mode #f)
+        (set! opt-propagate-continuation #f)
+        (set! opt-const-vers #f)
         (gen-version-first lco (ctx-init)))))
+        ; (set! opt-static-mode #t)
+        ; (gen-version-first lco (ctx-init))
+        ; (set! opt-static-mode #f)
+        ; (set! opt-const-vers #f)
+        ; (set! opt-propagate-continuation #f)
+        ; (gen-version-first lco (ctx-init)))))
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)
@@ -324,7 +338,8 @@
              (##gc)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
-       (println "STATIC MODE, CODE NOT EXECUTED!")))
+       (begin (println "STATIC MODE, CODE NOT EXECUTED!")
+              (##machine-code-block-exec mcb))))
 
 ;;-----------------------------------------------------------------------------
 ;; Main

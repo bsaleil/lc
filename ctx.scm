@@ -764,7 +764,7 @@
           (ctx (asc-cnnum-ctx-get cn-num)))
       (gen-version-first lco (ctx-push ctx (make-ctx-tunk) return-reg))))
 
-  (if (ctx-type-cst? type)
+  (if (and opt-static-mode (ctx-type-cst? type))
       (cond ;;
             ((ctx-type-ret? type) (ret-lost (ctx-type-cst type)))
             ;;

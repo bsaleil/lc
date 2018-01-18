@@ -1780,6 +1780,9 @@
                ((not (ctx-type-unk? known-type))
                 (jump-to-version cgc lazy-fail ctx-fail))
                ;; known == unknown
+               (opt-static-mode
+                (jump-to-version cgc lazy-fail ctx-fail)
+                (jump-to-version cgc lazy-success ctx-success))
                (else
                  (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
                         (stub-first-label-addr #f)
@@ -1900,9 +1903,6 @@
 
                           ;; Other
                           (else (error "Unknown type " ctx-type)))
-
-                    (jump-to-version cgc lazy-fail ctx-fail)
-                    (jump-to-version cgc lazy-success ctx-success)
 
                     (x86-label cgc label-jump)
                     (x86-je cgc  (list-ref stub-labels 0))

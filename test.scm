@@ -4,9 +4,9 @@
       1
       (* n (fact (- n 1)))))
 
-(fact 10)
-(fact 800)
-(fact 20.0)
+(gambit$$pp (fact 10))
+; (fact 6.0)
+; (gambit$$pp (fact 4.0))
 
 
 ;(define add (lambda (a b c) (+ a b c)))
