@@ -302,25 +302,28 @@
   (let ((lco (lazy-exprs prog #f)))
     (run-add-to-ctime
       (lambda ()
+        (define tmp-max-versions opt-max-versions)
         ;; STATIC
-        (println "Running static bbv...")
+        ;(println "Running static BBV...")
+        ;; Set static config
         (set! opt-static-mode #t)
-        (set! opt-max-versions 5)
         (set! opt-propagate-continuation #t)
         (set! opt-const-vers #t)
-        (set! opt-vc-preds (list ctx-type-clo?))
+        (set! opt-max-versions 5)
         (gen-version-first lco (ctx-init))
-        (println "done!")
+        ;(println "done!")
         ;; DYNAMIC
-        (println "Run program...")
+        ;(println "Run program...")
+        ;; Reset cc/cr tables
         (set! global-cc-table (make-table test: equal?))
         (set! global-cr-table (make-table))
         (set! all-crtables (make-table test: eq?))
         (set! all-cctables (make-table test: eq?))
+        ;; Reset dynamic config
         (set! opt-static-mode #f)
-        (set! opt-max-versions #f)
         (set! opt-propagate-continuation #f)
         (set! opt-const-vers #f)
+        (set! opt-max-versions tmp-max-versions)
         (gen-version-first lco (ctx-init)))))
 
   (if opt-time
