@@ -201,11 +201,15 @@
          (dst-ctx (and r (car r)))
          (version (and r (cdr r))))
 
-    (if version
-        (case-use-version dst-ctx version) ;; CASE 1
-        (if (not (limit-reached? lco))
-            (case-gen-version)     ;; CASE 2
-            (let ((generic (lazy-code-generic lco)))
-              (if generic
-                  (case-use-generic generic) ;; CASE 3
-                  (case-gen-generic)))))))   ;; CASE 4
+    (cond ;;
+          (version
+             (case-use-version dst-ctx version))
+          ;;
+          ((not (limit-reached? lco))
+             (case-gen-version))
+          ;;
+          ((lazy-code-generic lco) => (lambda (generic)
+             (case-use-generic generic)))
+          ;;
+          (else
+             (case-gen-generic)))))

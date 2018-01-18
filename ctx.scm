@@ -40,6 +40,7 @@
 (define opt-const-vers #f)
 (define const-versioned? #f)
 (define opt-propagate-continuation #f)
+(define opt-static-mode #f)
 
 (define asc-cnnum-ctx-get #f)
 (define asc-cnnum-lco-get #f)

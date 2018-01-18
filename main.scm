@@ -302,22 +302,26 @@
   (let ((lco (lazy-exprs prog #f)))
     (run-add-to-ctime
       (lambda ()
-        ; (set! opt-static-mode #t)
-        ; (gen-version-first lco (ctx-init))
-
+        ;; STATIC
+        (println "Running static bbv...")
+        (set! opt-static-mode #t)
+        (set! opt-max-versions 5)
+        (set! opt-propagate-continuation #t)
+        (set! opt-const-vers #t)
+        (set! opt-vc-preds (list ctx-type-clo?))
+        (gen-version-first lco (ctx-init))
+        (println "done!")
+        ;; DYNAMIC
+        (println "Run program...")
         (set! global-cc-table (make-table test: equal?))
         (set! global-cr-table (make-table))
-
+        (set! all-crtables (make-table test: eq?))
+        (set! all-cctables (make-table test: eq?))
         (set! opt-static-mode #f)
+        (set! opt-max-versions #f)
         (set! opt-propagate-continuation #f)
         (set! opt-const-vers #f)
         (gen-version-first lco (ctx-init)))))
-        ; (set! opt-static-mode #t)
-        ; (gen-version-first lco (ctx-init))
-        ; (set! opt-static-mode #f)
-        ; (set! opt-const-vers #f)
-        ; (set! opt-propagate-continuation #f)
-        ; (gen-version-first lco (ctx-init)))))
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)
@@ -338,8 +342,7 @@
              (##gc)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
-       (begin (println "STATIC MODE, CODE NOT EXECUTED!")
-              (##machine-code-block-exec mcb))))
+       (begin (##machine-code-block-exec mcb))))
 
 ;;-----------------------------------------------------------------------------
 ;; Main

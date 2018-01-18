@@ -1,12 +1,19 @@
 
-(define (fact n)
-  (if (= n 0)
+(define (fib n)
+  (if (< n 2)
       1
-      (* n (fact (- n 1)))))
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-(gambit$$pp (fact 10))
-; (fact 6.0)
-; (gambit$$pp (fact 4.0))
+(println (fib 40))
+
+; (define (fact n)
+;   (if (= n 0)
+;       1
+;       (* n (fact (- n 1)))))
+;
+; (gambit$$pp (fact 10))
+
 
 
 ;(define add (lambda (a b c) (+ a b c)))

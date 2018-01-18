@@ -3190,7 +3190,7 @@
           (cons #f cctable)
           (let ((cctable (make-cc))
                 (fn-num (new-fn-num)))
-            (asc-fnnum-nbargs-add fn-num (length (cadr ast)))
+            (asc-fnnum-nbargs-add fn-num (and (list? (cadr ast)) (length (cadr ast))))
             (table-set! cctables key (cons cctable fn-num))
             (cons #t (cons cctable fn-num)))))))
 
