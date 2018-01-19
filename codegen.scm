@@ -32,6 +32,10 @@
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
+(define-macro (on-dynamic-mode expr)
+  `(if (not opt-static-mode)
+       ,expr))
+
 ;;-----------------------------------------------------------------------------
 ;; x86-push/pop redef
 
@@ -1023,56 +1027,59 @@
         (opright (and (not rcst?) (codegen-loc-to-x86opnd fs ffs lright)))
         (x86-op (cdr (assoc op `((< . ,x86-jae) (> . ,x86-jbe) (<= . ,x86-ja) (>= . ,x86-jb) (= . ,x86-jne))))))
 
-    ;; Left operand
-    (cond ((and leftint? lcst?)
-             (error "NYI1"))
-          (leftint?
-             (x86-mov cgc (x86-rax) opleft)
-             (x86-shr cgc (x86-rax) (x86-imm-int 2))
-             (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))
-             (set! opleft (x86-xmm0)))
-          (lcst?
-             (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lleft)))
-             (x86-movd/movq cgc (x86-xmm0) (x86-rax))
-             (set! opleft (x86-xmm0)))
-          ((x86-mem? opleft)
-             (error "N1"))
-          ((x86-xmm? opleft)
-             #f)
-          ;; Nothing to do, left operand is in a xmm register
-          (else ;; x86-reg
-             (x86-movsd cgc (x86-xmm0) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opleft))
-             (set! opleft (x86-xmm0))))
+    (on-dynamic-mode
+      ;; Left operand
+      (cond ((and leftint? lcst?)
+               (error "NYI1"))
+            (leftint?
+               (x86-mov cgc (x86-rax) opleft)
+               (x86-shr cgc (x86-rax) (x86-imm-int 2))
+               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))
+               (set! opleft (x86-xmm0)))
+            (lcst?
+               (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lleft)))
+               (x86-movd/movq cgc (x86-xmm0) (x86-rax))
+               (set! opleft (x86-xmm0)))
+            ((x86-mem? opleft)
+               (error "N1"))
+            ((x86-xmm? opleft)
+               #f)
+            ;; Nothing to do, left operand is in a xmm register
+            (else ;; x86-reg
+               (x86-movsd cgc (x86-xmm0) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opleft))
+               (set! opleft (x86-xmm0)))))
 
-    ;; Right operand
-    (cond ((and rightint? rcst?)
-             (assert (not leftint?) "Internal error")
-             (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 (fixnum->flonum lright))))
-             (x86-movd/movq cgc (x86-xmm1) (x86-rax))
-             (x86-comisd cgc opleft (x86-xmm1)))
-          (rightint?
-             (x86-mov cgc (x86-rax) opright)
-             (x86-shr cgc (x86-rax) (x86-imm-int 2))
-             (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
-             (x86-comisd cgc opleft (x86-xmm1)))
-          (rcst?
-             (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lright)))
-             (x86-movd/movq cgc (x86-xmm1) (x86-rax))
-             (x86-comisd cgc opleft (x86-xmm1)))
-          ((x86-mem? opright)
-             (error "NYI a"))
-          ((x86-xmm? opright)
-             (x86-comisd cgc opleft opright))
-          (else ;; x86-reg
-             (x86-comisd cgc opleft (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opright))))
+    (on-dynamic-mode
+      ;; Right operand
+      (cond ((and rightint? rcst?)
+               (assert (not leftint?) "Internal error")
+               (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 (fixnum->flonum lright))))
+               (x86-movd/movq cgc (x86-xmm1) (x86-rax))
+               (x86-comisd cgc opleft (x86-xmm1)))
+            (rightint?
+               (x86-mov cgc (x86-rax) opright)
+               (x86-shr cgc (x86-rax) (x86-imm-int 2))
+               (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
+               (x86-comisd cgc opleft (x86-xmm1)))
+            (rcst?
+               (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lright)))
+               (x86-movd/movq cgc (x86-xmm1) (x86-rax))
+               (x86-comisd cgc opleft (x86-xmm1)))
+            ((x86-mem? opright)
+               (error "NYI a"))
+            ((x86-xmm? opright)
+               (x86-comisd cgc opleft opright))
+            (else ;; x86-reg
+               (x86-comisd cgc opleft (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opright)))))
 
     ;; NOTE: check that mlc-if patch is able to patch ieee jcc instructions (ja, jb, etc...)
     (if inline-if-cond?
         x86-op ;; return x86 op
-        (begin (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
-               (x86-op cgc label-end)
-               (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
-               (x86-label cgc label-end)))))
+        (on-dynamic-mode
+          (begin (x86-mov cgc dest (x86-imm-int (obj-encoding #f)))
+                 (x86-op cgc label-end)
+                 (x86-mov cgc dest (x86-imm-int (obj-encoding #t)))
+                 (x86-label cgc label-end))))))
 
 ;;-----------------------------------------------------------------------------
 ;; PRIMITIVES
