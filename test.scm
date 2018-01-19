@@ -1,18 +1,18 @@
+;;; ARRAY1 -- One of the Kernighan and Van Wyk benchmarks.
 
-(define (fact n)
-  (if (= n 0)
-      1
-      (* n (fact (- n 1)))))
+    (letrec ((loop (lambda (i)
+                     (if (>= i 10)
+                         0
+                         (loop (+ i 1))))))
+      (loop 0))
 
-(gambit$$pp (fact 10))
+; (define (create-x n)
+;   (define result (make-vector n))
+;   (do ((i 0 (+ i 1)))
+;       ((>= i n) result)
+;     (vector-set! result i i)))
 
-; (define (fact n)
-;   (if (= n 0)
-;       1
-;       (* n (fact (- n 1)))))
-;
-; (gambit$$pp (fact 10))
-
+;5
 
 
 ;(define add (lambda (a b c) (+ a b c)))

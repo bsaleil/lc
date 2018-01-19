@@ -804,7 +804,9 @@
 
   (let* ((k (cons ast nb-ncst-free))
          (r (table-ref fn-prologues k #f)))
-    (or r
+    (if r
+        (begin (asc-fnnum-lco-add fn-num nb-ncst-free (car r))
+               r)
         (let* ((lazy-ret (get-lazy-return))
                (lazy-body (gen-ast (caddr ast) lazy-ret))
                (lazy-prologue (get-lazy-prologue ast lazy-body rest-param?))
@@ -3317,11 +3319,13 @@
                       (ctx (ctx-set-type ctx ctx-idx ntype #f))
                       (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx ctx-idx) reg)))
                  (trigger-type-lost type)
+                 (apply-types-lost)
                  ctx)))
           (cst?
             (assert (ctx-type-id? type) "Internal error")
             (let ((ntype (ctx-type-nocst type)))
               (trigger-type-lost type)
+              (apply-types-lost)
               (ctx-set-type ctx ctx-idx ntype #f)))
           (else ctx))))
 

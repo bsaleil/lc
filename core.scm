@@ -1331,6 +1331,7 @@
   (define (generate-generic ctx label-merge callback)
     (let ((version-label (asm-make-label #f (new-sym label-sym))))
       (callback (or label-merge version-label) version-label)
+      (apply-types-lost)
       ;; NOTE: generate-generic is NEVER called without a previous call to generate-merge-code
       ;;       generate-merge-code calls fn-codepos
       ;(set! code-alloc (fn-codepos))

@@ -530,7 +530,7 @@
           (if (identifier-stype (cdr first))
               ;; there is a stype in identifier, it's a free variable
               (let ((new-stype (make-ctx-tunk)))
-                (trigger-type-lost first)
+                (trigger-type-lost (identifier-stype (cdr first)))
                 (assert (eq? (identifier-kind (cdr first)) 'free) "Internal error")
                 (cons (cons (car first)
                             (identifier-copy (cdr first) #f '() #f new-stype))
@@ -749,16 +749,32 @@
   (make-ctx stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num)))
 
 ;; Called when a clo or ret constant information is lost
+(define type-lost-list '())
 (define (trigger-type-lost type)
+  (if (and opt-static-mode
+           (ctx-type-cst? type)
+           (or (ctx-type-ret? type)
+               (ctx-type-clo? type)))
+      (set! type-lost-list (cons type type-lost-list))))
+
+(define (apply-types-lost)
+  (for-each apply-type-lost type-lost-list)
+  (set! type-lost-list '()))
+
+(define (apply-type-lost type)
 
   (define (clo-lost fn-num)
     (let* ((r (asc-fnnum-ctx-get fn-num))
            (nb-ncst-free (length (list-ref r 3)))
            (lco (asc-fnnum-lco-get fn-num nb-ncst-free))
-           (nbargs (asc-fnnum-nbargs-get fn-num))
-           (stack (build-list nbargs (lambda (e) (make-ctx-tunk))))
-           (ctx (apply ctx-init-fn (cons #f (cons stack r)))))
-      (gen-version-first lco ctx)))
+           (nbargs (asc-fnnum-nbargs-get fn-num)))
+      ;; If nb-args is #f, the function has rest param.
+      ;; Functions with rest param are not optimized using static mode info
+      ;; then, no need to compute info for the function here.
+      (if nbargs
+          (let* ((stack (build-list nbargs (lambda (e) (make-ctx-tunk))))
+                 (ctx (apply ctx-init-fn (cons #f (cons stack r)))))
+            (gen-version-first lco ctx)))))
 
   (define (ret-lost cn-num)
     (let ((lco (asc-cnnum-lco-get cn-num))
