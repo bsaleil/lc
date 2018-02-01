@@ -1087,6 +1087,9 @@
                 reg
                 ctx)))))
 
+(define (ctx-add-to-free ctx reg)
+  (ctx-copy ctx #f #f (cons reg (ctx-free-regs ctx))))
+
 ;;
 ;; GET FREE REG
 (define (ctx-get-free-reg ast ctx succ nb-opnds)

@@ -1,10 +1,26 @@
 ;;; ARRAY1 -- One of the Kernighan and Van Wyk benchmarks.
 
-    (letrec ((loop (lambda (i)
-                     (if (>= i 10)
-                         0
-                         (loop (+ i 1))))))
-      (loop 0))
+
+
+(define (foo n)
+  (if (= n 0)
+      1
+      (* n (foo (- n 1)))))
+
+(pp (foo 20))
+
+;(pp (compute 1000))
+
+; (define (fib n)
+;   (if (< n 2)
+;       1
+;       (+ (fib (- n 1))
+;          (fib (- n 2)))))
+;
+; (gambit$$pp (fib 40))
+
+
+
 
 ; (define (create-x n)
 ;   (define result (make-vector n))

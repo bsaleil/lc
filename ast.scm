@@ -444,6 +444,7 @@
 ;;
 (define (mlc-literal lit ast succ)
 
+
   (if (and (integer? lit)
            (not (fixnum? lit)))
       ;; Bignum, fall back to flonum
@@ -2358,7 +2359,9 @@
           (asc-cnnum-lco-add cn-num lazy-cont)
           (if prop-cont?
               (cons cn-num fctx)
-              (cons #f fctx))))))
+              (begin (trigger-type-lost (make-ctx-tretc cn-num))
+                     (apply-types-lost)
+                     (cons #f fctx)))))))
 
 ;; Push closure, put it in rax, and return updated ctx
 (define (call-get-closure cgc ctx closure-idx)
@@ -2924,7 +2927,7 @@
                                           #f
                                           (lambda (cgc ctx)
                                             (let ((type (make-ctx-tflo)))
-                                              (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lleft #t lright #t lcst? rcst? #t)
+                                              (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lleft #t lright #t lcst? rcst?)
                                               (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))
                                    (gen-version-first lco ctx))))))
       (list-ref labels 0)))
@@ -2989,9 +2992,20 @@
                     (apply-moves cgc ctx moves)
                     (cond
                       (num-op?
-                        (let ((overflow-label (get-stub-overflow-label cgc ctx reg lloc lcst? rloc rcst?)))
-                          (codegen-num-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc rloc lcst? rcst? #t overflow-label))
-                        (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))
+                          (let* ((lazy-overflow   (make-lazy-code #f (lambda (cgc ctx)
+                                     (mlet ((ctx (ctx-pop-n ctx 2))
+                                            (moves/freg/ctx (ctx-get-free-freg ast ctx succ #f))
+                                            (type (make-ctx-tflo))
+                                            (nctx (ctx-add-to-free (ctx-push ctx type freg) reg)))
+                                       (apply-moves cgc ctx moves)
+                                       (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op freg lloc #t rloc #t lcst? rcst?)
+                                       (jump-to-version cgc succ (ctx-push ctx type freg))))))
+                                 (lazy-noverflow  (make-lazy-code #f (lambda (cgc ctx)
+                                   (let ((ctx (ctx-push (ctx-pop-n ctx 2) type reg)))
+                                     (jump-to-version cgc succ ctx)))))
+                                 (lco-overflow    (gen-overflow-test lazy-overflow lazy-noverflow)))
+                          (codegen-num-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc rloc lcst? rcst?)
+                          (jump-to-version cgc lco-overflow ctx)))
                       (else
                           (codegen-cmp-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc rloc lcst? rcst? #f)
                           (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))))
@@ -3029,7 +3043,7 @@
                 (num-op?
                   (mlet ((moves/reg/ctx (ctx-get-free-freg ast ctx succ 2)))
                     (apply-moves cgc ctx moves)
-                    (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #t)
+                    (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc leftint? rloc rightint? lcst? rcst?)
                     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg))))
                 (else
                   (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 2)))

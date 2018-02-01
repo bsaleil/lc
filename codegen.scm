@@ -835,7 +835,7 @@
 ;; N-ary arithmetic operators
 
 ;; Gen code for arithmetic operation on int/int
-(define (codegen-num-ii cgc fs ffs op reg lleft lright lcst? rcst? overflow? overflow-label)
+(define (codegen-num-ii cgc fs ffs op reg lleft lright lcst? rcst?)
 
   (assert (not (and lcst? rcst?)) "Internal error")
 
@@ -897,13 +897,10 @@
                       (else
                          (x86-mov cgc dest opleft)
                          (x86-sar cgc dest (x86-imm-int 2))
-                         (x86-imul cgc dest opright)))))))
-
-   (if overflow?
-       (x86-jo cgc overflow-label))))
+                         (x86-imul cgc dest opright)))))))))
 
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
-(define (codegen-num-ff cgc fs ffs op reg lleft leftint? lright rightint? lcst? rcst? overflow?)
+(define (codegen-num-ff cgc fs ffs op reg lleft leftint? lright rightint? lcst? rcst?)
 
   (assert (not (and lcst? rcst?)) "Internal error")
 
