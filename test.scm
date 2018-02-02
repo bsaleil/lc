@@ -1,13 +1,13 @@
 ;;; ARRAY1 -- One of the Kernighan and Van Wyk benchmarks.
 
 
-
-(define (foo n)
-  (if (= n 0)
+(define (fib n)
+  (if (< n 2)
       1
-      (* n (foo (- n 1)))))
+      (+ (fib (- n 1))
+         (fib (- n 2)))))
 
-(pp (foo 20))
+(gambit$$pp (fib 40))
 
 ;(pp (compute 1000))
 

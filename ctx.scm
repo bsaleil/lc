@@ -48,6 +48,7 @@
 (define asc-fnnum-lco-get #f)
 (define asc-fnnum-nbargs-get #f)
 (define gen-version-first #f)
+(define sort #f)
 
 ;;-----------------------------------------------------------------------------
 ;; Ctx
