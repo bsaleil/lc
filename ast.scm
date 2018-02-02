@@ -2999,7 +2999,7 @@
                                             (nctx (ctx-add-to-free (ctx-push ctx type freg) reg)))
                                        (apply-moves cgc ctx moves)
                                        (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op freg lloc #t rloc #t lcst? rcst?)
-                                       (jump-to-version cgc succ (ctx-push ctx type freg))))))
+                                       (jump-to-version cgc succ nctx)))))
                                  (lazy-noverflow  (make-lazy-code #f (lambda (cgc ctx)
                                    (let ((ctx (ctx-push (ctx-pop-n ctx 2) type reg)))
                                      (jump-to-version cgc succ ctx)))))
