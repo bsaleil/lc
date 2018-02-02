@@ -109,7 +109,12 @@
           #t))
     "Internal error")
 
-  (make-ctx* stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num))
+  (let ((free-regs  (sort free-regs (lambda (a b) (< (cdr a) (cdr b)))))
+        (free-mems  (sort free-mems (lambda (a b) (< (cdr a) (cdr b)))))
+        (free-fregs (sort free-fregs (lambda (a b) (< (cdr a) (cdr b)))))
+        (free-fmems (sort free-fmems (lambda (a b) (< (cdr a) (cdr b))))))
+
+    (make-ctx* stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num)))
 
 
 (define (ctx-copy ctx #!optional stack slot-loc free-regs free-mems free-fregs free-fmems env nb-actual nb-args fs ffs fn-num)
