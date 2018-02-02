@@ -1916,51 +1916,56 @@
      #f
      (lambda (cgc ctx)
 
-       (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
-              (stub-first-label-addr #f)
-              (stub-labels
-                    (add-callback cgc 1
-                      (let ((prev-action #f))
-                        (lambda (ret-addr selector)
-                          (let ((stub-addr stub-first-label-addr)
-                                (jump-addr (asm-label-pos label-jump)))
-                            (if opt-verbose-jit
-                                (begin
-                                  (println ">>> selector= " selector)
-                                  (println ">>> prev-action= " prev-action)))
-                            (if (not prev-action)
-                                (begin (set! prev-action 'no-swap)
-                                       (if (= selector 1)
-                                          ;; overwrite unconditional jump
-                                          (gen-version (+ jump-addr 6) lazy1 ctx)
-                                          (if (= (+ jump-addr 6 5) code-alloc)
-                                            (begin (if opt-verbose-jit (println ">>> swapping-branches"))
-                                                   (set! prev-action 'swap)
-                                                   ;; invert jump direction
-                                                   (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
-                                                   ;; make conditional jump to stub
-                                                   (patch-jump jump-addr stub-addr)
-                                                   ;; overwrite unconditional jump
-                                                   (gen-version
-                                                    (+ jump-addr 6)
-                                                    lazy2
-                                                    ctx))
-                                            ;; make conditional jump to new version
-                                            (gen-version jump-addr lazy2 ctx))))
-                                (begin ;; one branch has already been patched
-                                       ;; reclaim the stub
-                                       (release-still-vector (get-scmobj ret-addr))
-                                       (stub-reclaim stub-addr)
-                                       (if (= selector 0)
-                                          (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy2 ctx)
-                                          (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy1 ctx))))))))))
-        (set! stub-first-label-addr
-              (min (asm-label-pos (list-ref stub-labels 0))
-                   (asm-label-pos (list-ref stub-labels 1))))
+       (if opt-static-mode
+           ;; static mode
+           (begin (jump-to-version cgc lazy1 ctx)
+                  (jump-to-version cgc lazy2 ctx))
+           ;; dynamic mode
+           (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
+                  (stub-first-label-addr #f)
+                  (stub-labels
+                        (add-callback cgc 1
+                          (let ((prev-action #f))
+                            (lambda (ret-addr selector)
+                              (let ((stub-addr stub-first-label-addr)
+                                    (jump-addr (asm-label-pos label-jump)))
+                                (if opt-verbose-jit
+                                    (begin
+                                      (println ">>> selector= " selector)
+                                      (println ">>> prev-action= " prev-action)))
+                                (if (not prev-action)
+                                    (begin (set! prev-action 'no-swap)
+                                           (if (= selector 1)
+                                              ;; overwrite unconditional jump
+                                              (gen-version (+ jump-addr 6) lazy1 ctx)
+                                              (if (= (+ jump-addr 6 5) code-alloc)
+                                                (begin (if opt-verbose-jit (println ">>> swapping-branches"))
+                                                       (set! prev-action 'swap)
+                                                       ;; invert jump direction
+                                                       (put-u8 (+ jump-addr 1) (fxxor 1 (get-u8 (+ jump-addr 1))))
+                                                       ;; make conditional jump to stub
+                                                       (patch-jump jump-addr stub-addr)
+                                                       ;; overwrite unconditional jump
+                                                       (gen-version
+                                                        (+ jump-addr 6)
+                                                        lazy2
+                                                        ctx))
+                                                ;; make conditional jump to new version
+                                                (gen-version jump-addr lazy2 ctx))))
+                                    (begin ;; one branch has already been patched
+                                           ;; reclaim the stub
+                                           (release-still-vector (get-scmobj ret-addr))
+                                           (stub-reclaim stub-addr)
+                                           (if (= selector 0)
+                                              (gen-version (if (eq? prev-action 'swap) (+ jump-addr 6) jump-addr) lazy2 ctx)
+                                              (gen-version (if (eq? prev-action 'swap) jump-addr (+ jump-addr 6)) lazy1 ctx))))))))))
+            (set! stub-first-label-addr
+                  (min (asm-label-pos (list-ref stub-labels 0))
+                       (asm-label-pos (list-ref stub-labels 1))))
 
-        (x86-label cgc label-jump)
-        (x86-jo cgc  (list-ref stub-labels 0))
-        (x86-jmp cgc (list-ref stub-labels 1))))))
+            (x86-label cgc label-jump)
+            (x86-jo cgc  (list-ref stub-labels 0))
+            (x86-jmp cgc (list-ref stub-labels 1)))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Interprocedural BBV (cr/cc-tables)
