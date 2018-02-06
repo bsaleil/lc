@@ -361,6 +361,7 @@
     ((ctx-type-flo? type) make-ctx-tflo)
     ((ctx-type-pai? type) make-ctx-tpai)
     ((ctx-type-clo? type) make-ctx-tclo)
+    ((ctx-type-ret? type) make-ctx-tret)
     (else (error "Internal error"))))
 
 ;; Check if two ctx-type objects represent the same type

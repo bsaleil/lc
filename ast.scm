@@ -2918,19 +2918,7 @@
 
   (define num-op? (member op '(+ - * /)))
 
-  ;; TODO wip
-  (define (get-stub-overflow-label cgc ctx reg lleft lcst? lright rcst?)
-    (let ((labels
-            (add-callback #f 0 (lambda (ret-addr selector)
-                                 (let ((lco
-                                        (make-lazy-code
-                                          #f
-                                          (lambda (cgc ctx)
-                                            (let ((type (make-ctx-tflo)))
-                                              (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lleft #t lright #t lcst? rcst?)
-                                              (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))
-                                   (gen-version-first lco ctx))))))
-      (list-ref labels 0)))
+
 
   ;; Build chain to check type of two values (no cst)
   (define (type-check-two)

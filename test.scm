@@ -1,5 +1,14 @@
-;;; ARRAY1 -- One of the Kernighan and Van Wyk benchmarks.
 
+; (define (foo a b)
+;   (gambit$$pp 1))
+;
+; (foo 1 1)
+; (foo #f 5)
+; (foo #\A 5)
+; (foo #\A 4)
+; (foo #\A 3)
+
+;(pp (compute 1000))
 
 (define (fib n)
   (if (< n 2)
@@ -8,16 +17,6 @@
          (fib (- n 2)))))
 
 (gambit$$pp (fib 40))
-
-;(pp (compute 1000))
-
-; (define (fib n)
-;   (if (< n 2)
-;       1
-;       (+ (fib (- n 1))
-;          (fib (- n 2)))))
-;
-; (gambit$$pp (fib 40))
 
 
 

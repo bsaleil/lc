@@ -33,8 +33,9 @@
 
 (define lazy-code-entry? #f)
 (define opt-static-mode #f)
+(define new-sym #f)
 
-;;------------------------------------------------------------------------------
+;;-----------------------------------------------------------------------------
 ;; VERSIONS AND GENERIC TABLES
 
 ;; Exec mode
@@ -55,7 +56,7 @@
       lco_static_generic
       lco_generic))
 
-;;------------------------------------------------------------------------------
+;;-----------------------------------------------------------------------------
 ;; PUBLIC
 
 (define (lazy-code-versions lco)
@@ -78,7 +79,7 @@
 (define (strat-get-options)
   strat-options)
 
-;;------------------------------------------------------------------------------
+;;-----------------------------------------------------------------------------
 ;; PRIVATE
 
 (define opt-max-versions #f) ;; Limit of number of versions (#f=no limit, 0=only generic, ...)
@@ -117,7 +118,7 @@
     (table-set! versions key k)
     k))
 
-;;------------------------------------------------------------------------------
+;;-----------------------------------------------------------------------------
 ;; !regalloc versioning
 
 (define (version-key ctx)
@@ -143,7 +144,7 @@
     (cdr k)))
 
 ;; !regalloc versioning
-;;------------------------------------------------------------------------------
+;;-----------------------------------------------------------------------------
 
 (define (strat-label-from-stack lco stack)
   (let ((versions (lazy-code-versions lco)))
@@ -168,6 +169,11 @@
          (>= nb-versions opt-max-versions))))
 
 (define (strat-get-version lco ctx)
+  (if opt-static-mode
+      (strat-get-static-version  lco ctx)
+      (strat-get-dynamic-version lco ctx)))
+
+(define (strat-get-dynamic-version lco ctx)
 
   ;; CASE 1: a version exists for this ctx, use it
   (define (case-use-version dst-ctx version)
@@ -213,3 +219,56 @@
           ;;
           (else
              (case-gen-generic)))))
+
+;;-----------------------------------------------------------------------------
+
+(define (strat-get-static-version lco ctx)
+
+  ;; CASE 1: a version exists for this ctx, use it
+  (define (case-use-version dst-ctx version)
+    (if dst-ctx
+        (let ((k (put-version lco ctx #f #f)))
+          (list version dst-ctx (lambda (label) (set-car! k label))))
+        (list version ctx (lambda (r) r))))
+
+  (define (case-gen-version)
+    (define (get-ctx ctx ctxs)
+      (define stack-idx-max (length (ctx-stack ctx)))
+      (let loop ((stack (ctx-stack ctx))
+                 (stacks (map ctx-stack ctxs))
+                 (stack-idx 0)
+                 (ctx ctx))
+        (if (= stack-idx stack-idx-max)
+            ctx
+            (let ((type (ctx-get-type ctx stack-idx)))
+              (if (ctx-type-cst? type)
+                  (let* ((types (map (lambda (ctx) (ctx-get-type ctx stack-idx)) ctxs))
+                         (r (keep (lambda (t) (not (equal? t type))) types)))
+                    (if (null? r)
+                        (loop (cdr stack) (map cdr stacks) (+ stack-idx 1) ctx)
+                        (let* ((type (ctx-get-type ctx stack-idx))
+                               (moves/loc/ctx (ctx-get-free-reg #f ctx #f 0))
+                               (moves (car moves/loc/ctx))
+                               (loc   (cadr moves/loc/ctx))
+                               (ctx   (caddr moves/loc/ctx))
+                               (ctx   (ctx-set-loc ctx (stack-idx-to-slot ctx stack-idx) loc))
+                               (ctx   (ctx-set-type ctx stack-idx (ctx-type-nocst type) #f)))
+                          (loop (cdr stack) (map cdr stacks) (+ stack-idx 1) ctx))))
+                  (loop (cdr stack) (map cdr stacks) (+ stack-idx 1) ctx))))))
+
+
+    (let* ((ctx (get-ctx ctx (map car (table->list (lazy-code-versions lco)))))
+           (k (put-version lco ctx #f #t)))
+      (list #f ctx (lambda (label . a) (set-car! k label)))))
+
+
+  (let* ((r (get-version lco ctx))
+         (dst-ctx (and r (car r)))
+         (version (and r (cdr r))))
+
+    (cond ;;
+          (version
+             (case-use-version dst-ctx version))
+          ;;
+          (else
+             (case-gen-version)))))

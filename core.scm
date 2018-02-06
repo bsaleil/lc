@@ -40,6 +40,7 @@
 ;; Compiler options
 
 (define opt-static-mode #f)
+(define opt-static-pass #f)
 
 (define opt-inlining-limit       #f) ;; Control gambit inlining-limit declaration
 (define opt-ctime                #f) ;; Print compilation time
@@ -1368,14 +1369,12 @@
 
   (if opt-verbose-jit
       (fn-verbose))
-
   (set! ctx (ctx-free-dead-locs ctx (lazy-code-ast lazy-code)))
 
   (let* ((r (strat-get-version lazy-code ctx))
          (version  (car r))
          (vctx     (cadr r))
          (callback (caddr r)))
-
   (cond
     ;; A version exists for this exact context
     ((and version (eq? vctx ctx))
@@ -1405,8 +1404,7 @@
 
   (define (fn-codepos) code-alloc)
 
-  (define (fn-patch label-dest new-version?)
-    (asm-label-pos label-dest))
+  (define (fn-patch label-dest new-version?) #f)
 
   (gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
 

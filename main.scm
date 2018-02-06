@@ -171,6 +171,11 @@
      ,(lambda (args) (set! opt-inlining-limit (string->number (cadr args)))
                      (cdr args)))
 
+  (--static-pass
+     "Enable static pass"
+     ,(lambda (args) (set! opt-static-pass #t)
+                     args))
+
   (--stats
     "Print stats about execution"
     ,(lambda (args) (if opt-time (error "--stats option can't be used with --time"))
@@ -292,39 +297,46 @@
 
 (define (exec prog)
 
-    (define (one-exec)
-      (set! from-space init-from-space)
-      (set! to-space   init-to-space)
-      (##machine-code-block-exec mcb))
+  (define (one-exec)
+    (set! from-space init-from-space)
+    (set! to-space   init-to-space)
+    (##machine-code-block-exec mcb))
+
+  (define (run-dynamic-pass lco)
+    (gen-version-first lco (ctx-init)))
+
+  (define (run-static-pass lco)
+    ;; save options
+    (define tmp-propagate-continuation opt-propagate-continuation)
+    (define tmp-opt-const-vers         opt-const-vers)
+    (define tmp-max-versions           opt-max-versions)
+    (println "Running static BBV...")
+    ;; Set static config
+    (set! opt-static-mode #t)
+    (set! opt-propagate-continuation #t)
+    (set! opt-const-vers #t)
+    (set! opt-max-versions #f)
+    (gen-version-first lco (ctx-init))
+    (println "done!")
+    ; Reset cc/cr tables
+    (set! global-cc-table (make-table test: equal?))
+    (set! global-cr-table (make-table))
+    (set! all-crtables (make-table test: eq?))
+    (set! all-cctables (make-table test: eq?))
+    ;; restore options
+    (set! opt-static-mode #f)
+    (set! opt-propagate-continuation tmp-propagate-continuation)
+    (set! opt-const-vers tmp-opt-const-vers)
+    (set! opt-max-versions tmp-max-versions))
 
   (init-backend)
 
   (let ((lco (lazy-exprs prog #f)))
     (run-add-to-ctime
       (lambda ()
-        ;(define tmp-max-versions opt-max-versions)
-        ;; STATIC
-        ;(println "Running static BBV...")
-        ;; Set static config
-        ; (set! opt-static-mode #t)
-        ; (set! opt-propagate-continuation #t)
-        ; (set! opt-const-vers #t)
-        ; (set! opt-max-versions 5)
-        ; (gen-version-first lco (ctx-init))
-        ;(println "done!")
-        ;; DYNAMIC
-        ;(println "Run program...")
-        ;; Reset cc/cr tables
-        ; (set! global-cc-table (make-table test: equal?))
-        ; (set! global-cr-table (make-table))
-        ; (set! all-crtables (make-table test: eq?))
-        ; (set! all-cctables (make-table test: eq?))
-        ; ;; Reset dynamic config
-        ; (set! opt-static-mode #f)
-        ; (set! opt-propagate-continuation #f)
-        ; (set! opt-const-vers #f)
-        ; (set! opt-max-versions tmp-max-versions)
-        (gen-version-first lco (ctx-init)))))
+        (if opt-static-pass
+            (run-static-pass lco))
+        (run-dynamic-pass lco))))
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)
