@@ -214,7 +214,7 @@
 
   (let ((lazy-final
           (make-lazy-code
-            #f
+            (make-lco-id 1001)
             (lambda (cgc ctx)
 
               ;; Update gambit heap ptr from LC heap ptr
@@ -255,7 +255,7 @@
             (let ((next (lazy-exprs (cdr exprs) succ)))
               (gen-ast (car exprs)
                        (make-lazy-code
-                         #f
+                         (make-lco-id 1002)
                          (lambda (cgc ctx)
                            (jump-to-version cgc
                                             next
@@ -410,6 +410,8 @@
           (copy-with-declare (car files) "./tmp")
         (let ((content (c#expand-program "./tmp" #f locat-table))) ;(read-all (open-input-file (car files)))))
               (let ((exp-content (expand-tl content)))
+                ;(pp exp-content)
+                ;(error "N")
                 (analyses-find-global-types! exp-content)
                 (analyses-a-conversion! exp-content)
                 (compute-liveness exp-content)

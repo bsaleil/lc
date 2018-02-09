@@ -143,6 +143,8 @@
 (define codegen-prologue-rest> #f)
 (define gen-drop-float #f)
 (define asc-cnnum-table-get #f)
+(define make-lco-id #f)
+(define is-lco-id? #f)
 
 
 ;;-----------------------------------------------------------------------------
@@ -248,7 +250,7 @@
 ;; Return lazy code object which generates an error with 'msg'
 (define (get-lazy-error msg)
   (make-lazy-code
-    #f
+    (make-lco-id 104)
     (lambda (cgc ctx)
       (gen-error cgc msg))))
 
@@ -337,7 +339,7 @@
            ;; LOOP
            (lazy-clean
              (make-lazy-code
-               #f
+               (make-lco-id 105)
                (lambda (cgc ctx)
                  ;; We need to clean the stack before executing lazy-repl-call again
                  (jump-to-version cgc lazy-repl-call (ctx-pop ctx)))))
@@ -1048,7 +1050,7 @@
 ;; or a 'not real' version, which is a version containing only merge code and a jump to the generic version
 (define-type lazy-code
   constructor: make-lazy-code*
-  ast
+  (ast lc-get-ast lc-set-ast)
   generator
   ;; 'versions' is a table which associates a version (a label) to a context
   ;; if the lco has the flag 'entry (i.e. it's a prologue lco), the table
@@ -1059,10 +1061,20 @@
   lco-false ;; lco of false branch if it's a cond lco)
   )
 
+(define (lazy-code-ast lco #!optional (with-id #f))
+  (let ((ast (lc-get-ast lco)))
+    (if (and (not with-id) (is-lco-id? ast))
+        #f
+        ast)))
+
+(define (lazy-code-ast-set! lco)
+  (error "Internal error"))
+
 (define (lazy-code-f-*! flag)
   (lambda (lazy-code)
     (let ((flags (lazy-code-flags lazy-code)))
-      (lazy-code-flags-set! lazy-code (cons flag flags)))))
+      (if (not (member flag flags))
+          (lazy-code-flags-set! lazy-code (cons flag flags))))))
 
 (define lazy-code-f-cont!  (lazy-code-f-*! 'cont))
 (define lazy-code-f-entry! (lazy-code-f-*! 'entry))
@@ -1728,7 +1740,7 @@
 (define (gen-fatal-type-test ctx-type stack-idx succ #!optional ast)
  (let ((lazy-error
           (make-lazy-code
-             #f
+             (make-lco-id 101)
              (lambda (cgc ctx)
                (if (not opt-static-mode)
                    (begin
@@ -1745,7 +1757,7 @@
 (define (gen-dyn-type-test ctx-type stack-idx lazy-success lazy-fail #!optional ast)
 
   (make-lazy-code
-     #f
+     (make-lco-id 102)
      (lambda (cgc ctx)
 
        (define type-ctor (ctx-type-ctor ctx-type))
@@ -1911,7 +1923,7 @@
 (define (gen-overflow-test lazy2 lazy1)
 
   (make-lazy-code
-     #f
+     (make-lco-id 103)
      (lambda (cgc ctx)
 
        (if opt-static-mode

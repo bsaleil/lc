@@ -173,6 +173,65 @@
       (strat-get-static-version  lco ctx)
       (strat-get-dynamic-version lco ctx)))
 
+(define (most-generic-static lco ctx)
+  (let ((r (table-ref lco_static_versions lco #f)))
+    (if r
+        (most-generic-static-h lco ctx)
+        (ctx-generic ctx))))
+
+(define (most-generic-static-h lco octx)
+
+  (define (most-generic-type-two t1 t2)
+    (cond ((ctx-type-unk? t1) t1)
+          ((ctx-type-unk? t2) t2)
+          ((and (not (ctx-type-cst? t1))
+                (not (ctx-type-cst? t2)))
+             (if (ctx-type-teq? t1 t2)
+                 t1
+                 (make-ctx-tunk)))
+          ((and (ctx-type-cst? t1)
+                (ctx-type-cst? t2))
+             (if (ctx-type-teq? t1 t2)
+                 (if (equal? (ctx-type-cst t1) (ctx-type-cst t2))
+                     t1
+                     (ctx-type-nocst t1))
+                 (make-ctx-tunk)))
+          ;; 1 type, 1 cst, types == -> !cst
+          ((ctx-type-teq? t1 t2)
+             (error "K"))
+          ;; 1 type, 1 cst, types != -> unk
+          (else
+             (make-ctx-tunk))))
+
+  (define (most-generic-type types)
+    (foldr (lambda (t r)
+             (most-generic-type-two t r))
+           (car types)
+           (cdr types)))
+
+  (let ((ctxs (map car (table->list (table-ref lco_static_versions lco #f)))))
+    (let loop ((stacks (map ctx-stack ctxs)) (ctx octx) (stack-idx 0))
+      (if (null? (car stacks))
+          ctx
+          (let ((type  (list-ref (ctx-stack ctx) stack-idx))
+                (gtype (most-generic-type (map car stacks))))
+            (cond ((equal? type gtype)
+                     (loop (map cdr stacks) ctx (+ stack-idx 1)))
+                  ((and (ctx-type-cst? type) (not (ctx-type-cst? gtype)))
+                     (let* ((get-free-fn (if (ctx-type-flo? gtype) ctx-get-free-freg ctx-get-free-reg))
+                            (moves/loc/ctx (get-free-fn #f ctx #f 0))
+                            (moves (car moves/loc/ctx))
+                            (loc   (cadr moves/loc/ctx))
+                            (ctx   (caddr moves/loc/ctx))
+                            (ctx   (ctx-set-loc ctx (stack-idx-to-slot ctx stack-idx) loc))
+                            (ctx   (ctx-set-type ctx stack-idx gtype #f)))
+                       (loop (map cdr stacks) ctx (+ stack-idx 1))))
+                  ((and (ctx-type-flo? type) (not (ctx-type-flo? gtype)))
+                     (error "N2"))
+                  (else
+                     (let ((ctx (ctx-set-type ctx stack-idx gtype #f)))
+                       (loop (map cdr stacks) ctx (+ stack-idx 1))))))))))
+
 (define (strat-get-dynamic-version lco ctx)
 
   ;; CASE 1: a version exists for this ctx, use it
@@ -197,10 +256,14 @@
   ;; CASE 4: no version for this ctx, limit reached, generic does not exist
   ;; then generate the generic version
   (define (case-gen-generic)
-    (let* ((gctx (ctx-generic ctx))
-           (callback (lambda (label-merge label-version)
-                       (put-version lco ctx label-merge #f)
-                       (lazy-code-generic-set! lco gctx label-version))))
+    (let* ((gctx (most-generic-static lco ctx))
+           ;(gctx (ctx-generic ctx))
+           (callback (lambda (label . labs) ;; version-label || merge-label (version-label)
+                       (if (null? labs)
+                           (lazy-code-generic-set! lco gctx label)
+                           (begin
+                             (put-version lco ctx label #f)
+                             (lazy-code-generic-set! lco gctx (car labs)))))))
       (list #f gctx callback)))
 
   (let* ((r (get-version lco ctx))
@@ -218,6 +281,21 @@
              (case-use-generic generic)))
           ;;
           (else
+             ; (println "------------------------------------------------------------------------")
+             ; (pp (lazy-code-ast lco))
+             ; (let ((t (table-ref lco_versions lco #f)))
+             ;   (if t
+             ;       (println (table-length t) " dynamic versions")
+             ;       (println "0 dynamic versions"))
+             ;   (for-each (lambda (v) (pp (ctx-stack (car v))))
+             ;             (if t (table->list t) '())))
+             ; (println "static:")
+             ; (let ((t (table-ref lco_static_versions lco #f)))
+             ;   (if t
+             ;       (println (table-length t) " static versions")
+             ;       (println "0 static versions"))
+             ;   (for-each (lambda (v) (pp (ctx-stack (car v))))
+             ;             (if t (table->list t) '())))
              (case-gen-generic)))))
 
 ;;-----------------------------------------------------------------------------
@@ -253,14 +331,18 @@
                                (ctx   (caddr moves/loc/ctx))
                                (ctx   (ctx-set-loc ctx (stack-idx-to-slot ctx stack-idx) loc))
                                (ctx   (ctx-set-type ctx stack-idx (ctx-type-nocst type) #f)))
+                          (trigger-type-lost type)
                           (loop (cdr stack) (map cdr stacks) (+ stack-idx 1) ctx))))
                   (loop (cdr stack) (map cdr stacks) (+ stack-idx 1) ctx))))))
 
-
-    (let* ((ctx (get-ctx ctx (map car (table->list (lazy-code-versions lco)))))
-           (k (put-version lco ctx #f #t)))
-      (list #f ctx (lambda (label . a) (set-car! k label)))))
-
+    (let* ((nctx (get-ctx ctx (map car (table->list (lazy-code-versions lco)))))
+           (k   (put-version lco ctx #f #t)))
+      (list #f nctx (lambda (label . labs)
+                      (if (null? labs)
+                          (set-car! k label)
+                          (begin
+                            (put-version lco ctx label #f)
+                            (set-car! k (car labs))))))))
 
   (let* ((r (get-version lco ctx))
          (dst-ctx (and r (car r)))
