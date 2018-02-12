@@ -182,9 +182,17 @@
                     (set! opt-stats #t)
                     args))
 
+  (--stats-full
+    "Print full stats about execution"
+    ,(lambda (args) (if opt-time (error "--stats-ful option can't be used with --time"))
+                    (set! opt-stats #t)
+                    (set! opt-stats-full #t)
+                    args))
+
   (--time
     "Print exec time information"
     ,(lambda (args) (if opt-stats (error "--time option can't be used with --stats"))
+                    (if opt-stats-full (error "--time option can't be used with --stats-full"))
                     (set! opt-time #t)
                     args))
 
@@ -476,6 +484,8 @@
       (print-ctime))
   (if opt-stats
       (print-stats))
+  (if opt-stats-full
+      (print-stats-full))
   (if opt-export-locat-info
       (export-locat-info))
   (if opt-dump-bin
@@ -526,7 +536,10 @@
       (println "Min versions number: " (car versions-info))
       (println "Max versions number: " (cdr versions-info)))
     ;; Number of stubs, number of return stubs, and number of entry stubs for each number of versions
-    (println "-------------------------")
+    (println "-------------------------")))
+
+(define (print-stats-full)
+    ;; Lco num stats
     (println "Number of stubs for each number of version")
     (println "#versions;#stubs;#ret;#entry;#cont;#cond")
     (let ((versions-info-full (get-versions-info-full all-lazy-code)))
@@ -538,7 +551,32 @@
                            (count (cddr n) (lambda (n) (member 'cont n))) ";"
                            (count (cddr n) (lambda (n) (member 'cond n)))))
                 (sort versions-info-full (lambda (n m) (< (car n) (car m)))))
-      (println "-------------------------"))))
+      (println "-------------------------"))
+    ;; Lco ids stats
+    (println "Number of lco for each lco-id")
+    (println "#lco-id;#lco")
+    (let (;; find max lco-id
+          (max-id (foldr (lambda (l r)
+                           (define ast (lazy-code-ast l #t))
+                           (if (and (pair? ast) (eq? (car ast) '##lco-id))
+                               (max (cdr ast) r)
+                               r))
+                         0
+                         all-lazy-code)))
+      ;; for each lco-id, count # of lco and add it to lst if # != 0
+      (let loop ((i 0) (lst '()))
+        (if (> i max-id)
+            ;; Sort by lco-id and print
+            (for-each (lambda (p)
+                        (if (< (car p) 10)   (print " "))
+                        (if (< (car p) 100)  (print " "))
+                        (if (< (car p) 1000) (print " "))
+                        (println (car p) ":" (cdr p)))
+                      (reverse (sort lst (lambda (n m) (< (cdr n) (cdr m))))))
+            (let ((n (count all-lazy-code (lambda (lco) (equal? (lazy-code-ast lco #t) `(##lco-id . ,i))))))
+              (if (> n 0)
+                  (loop (+ i 1) (cons (cons i n) lst))
+                  (loop (+ i 1) lst)))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Locat infos

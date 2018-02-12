@@ -281,21 +281,6 @@
              (case-use-generic generic)))
           ;;
           (else
-             ; (println "------------------------------------------------------------------------")
-             ; (pp (lazy-code-ast lco))
-             ; (let ((t (table-ref lco_versions lco #f)))
-             ;   (if t
-             ;       (println (table-length t) " dynamic versions")
-             ;       (println "0 dynamic versions"))
-             ;   (for-each (lambda (v) (pp (ctx-stack (car v))))
-             ;             (if t (table->list t) '())))
-             ; (println "static:")
-             ; (let ((t (table-ref lco_static_versions lco #f)))
-             ;   (if t
-             ;       (println (table-length t) " static versions")
-             ;       (println "0 static versions"))
-             ;   (for-each (lambda (v) (pp (ctx-stack (car v))))
-             ;             (if t (table->list t) '())))
              (case-gen-generic)))))
 
 ;;-----------------------------------------------------------------------------

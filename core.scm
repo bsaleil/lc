@@ -45,6 +45,7 @@
 (define opt-inlining-limit       #f) ;; Control gambit inlining-limit declaration
 (define opt-ctime                #f) ;; Print compilation time
 (define opt-stats                #f) ;; Print stats report
+(define opt-stats-full           #f) ;; Print full stats report
 (define opt-export-locat-info    #f) ;; Pretty print number of versions for each locat object
 (define opt-time                 #f) ;; Print exec time in processor cycles
 (define opt-verbose-jit          #f) ;; JIT Verbose debugging

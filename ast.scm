@@ -1541,32 +1541,33 @@
              (length (cadr prev-finfo))
              (length (caddr prev-finfo))))))
 
-  ;; Main lco
-  (make-lazy-code
-    (make-lco-id 20)
-    (lambda (cgc ctx)
+  (let* ((lazy-let-out (get-lazy-lets-out ast ids 0 succ))
+         (lazy-body    (gen-ast body lazy-let-out)))
 
-      (let* (;; Compute binding groups
-             (r (group-bindings ctx))
-             (proc-vars (car r))
-             (const-proc-vars (cadr r))
-             (const-nproc-vars (caddr r))
-             (other-vars (cadddr r))
-             ;; Build LCO chain
-             (lazy-let-out (get-lazy-lets-out ast ids 0 succ))
-             (lazy-body    (gen-ast body lazy-let-out))
-             (lazy-fun     (get-lazy-make-closures lazy-body proc-vars other-vars const-proc-vars))
-             (lazy-eval    (get-lazy-eval other-vars lazy-fun)))
+    ;; Main lco
+    (make-lazy-code
+      (make-lco-id 20)
+      (lambda (cgc ctx)
 
-        (let* (;; Bind const nproc
-               (ctx (ctx-bind-consts ctx const-nproc-vars #t))
-               ;; Bind others
-               (id-idx (map (lambda (el) (cons (car el) #f))
-                            (append proc-vars other-vars)))
-               (ctx (ctx-bind-locals ctx id-idx #t)))
+        (let* (;; Compute binding groups
+               (r (group-bindings ctx))
+               (proc-vars (car r))
+               (const-proc-vars (cadr r))
+               (const-nproc-vars (caddr r))
+               (other-vars (cadddr r))
+               ;; Build LCO chain
+               (lazy-fun     (get-lazy-make-closures lazy-body proc-vars other-vars const-proc-vars))
+               (lazy-eval    (get-lazy-eval other-vars lazy-fun)))
 
-          ;;
-          (jump-to-version cgc lazy-eval ctx))))))
+          (let* (;; Bind const nproc
+                 (ctx (ctx-bind-consts ctx const-nproc-vars #t))
+                 ;; Bind others
+                 (id-idx (map (lambda (el) (cons (car el) #f))
+                              (append proc-vars other-vars)))
+                 (ctx (ctx-bind-locals ctx id-idx #t)))
+
+            ;;
+            (jump-to-version cgc lazy-eval ctx)))))))
 
 ;; Create and return out lazy code object of let/letrec
 ;; Unbind locals, unbox result, and update ctx
@@ -1987,11 +1988,11 @@
   ;; If so, use cst primitive function associated to current primitive
   ;; else, jump to next
   (define (get-lazy-cst-check primitive lco-prim)
+    (define lco-alloc-cstfn (get-lazy-drop-cstfn lco-prim (length (cdr ast))))
     (make-lazy-code
       (make-lco-id 22)
       (lambda (cgc ctx)
-        (let* ((lco-alloc-cstfn (get-lazy-drop-cstfn lco-prim (length (cdr ast))))
-               (lco-cst (primitive-lco-cst primitive))
+        (let* ((lco-cst (primitive-lco-cst primitive))
                (opnds (and lco-cst (get-all-cst-opnds ctx (length (cdr ast))))))
           (if opnds
               (lco-cst cgc succ prim ctx opnds)
