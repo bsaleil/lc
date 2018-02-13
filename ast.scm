@@ -1664,7 +1664,6 @@
           (apply-moves cgc ctx moves)
           (codegen-set-bool cgc r reg)
           (jump-to-version cgc succ (ctx-push (ctx-pop ctx) (make-ctx-tboo) reg))))))
-
   (let* ((lazy-flo (gen-dyn-type-test ATX_FLO 0 (get-lazy-res #t) (get-lazy-res #f) #f))
          (lazy-fix (gen-dyn-type-test ATX_INT 0 (get-lazy-res #t) lazy-flo #f)))
     lazy-fix))
@@ -2876,8 +2875,6 @@
 
   (define num-op? (member op '(+ - * /)))
 
-
-
   ;; Build chain to check type of two values (no cst)
   (define (type-check-two)
     (let* (;; Operations lco
@@ -2899,7 +2896,39 @@
            (lazy-xint    (gen-dyn-type-test ATX_INT 1 lazy-yint lazy-xfloat ast)))
     lazy-xint))
 
+  (define (get-lazy-overflow-check)
+    (let* ((lazy-overflow   (make-lazy-code (make-lco-id 27) (lambda (cgc ctx)
+               (mlet ((moves/freg/ctx (ctx-get-free-freg ast ctx succ #f))
+                      (type (make-ctx-tflo))
+                      ;; remove top stack value
+                      (ctx (ctx-pop ctx))
+                      ;; right info
+                      (rtype (ctx-get-type ctx 0))
+                      (rcst? (ctx-type-cst? rtype))
+                      (rloc  (if rcst? (ctx-type-cst rtype) (ctx-get-loc ctx 0)))
+                      ;; left info
+                      (ltype (ctx-get-type ctx 1))
+                      (lcst? (ctx-type-cst? ltype))
+                      (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
+
+                 (apply-moves cgc ctx moves)
+                 (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op freg lloc #t rloc #t lcst? rcst?)
+                 (let* ((ctx (ctx-pop-n ctx 2))
+                        (ctx (ctx-push ctx (make-ctx-tflo) freg)))
+                   (jump-to-version cgc succ ctx))))))
+           (lazy-noverflow
+             (make-lazy-code (make-lco-id 120) ;; TODO
+               (lambda (cgc ctx)
+                 (let* ((rtype (ctx-get-type ctx 0))
+                        (rloc  (ctx-get-loc  ctx 0))
+                        (ctx   (ctx-pop-n ctx 3))
+                        (ctx   (ctx-push ctx rtype rloc)))
+                   (jump-to-version cgc succ ctx)))))
+           (lco-overflow (gen-overflow-test lazy-overflow lazy-noverflow)))
+      lco-overflow))
+
   ;; TODO: Merge with get-op-ff
+  (define lco-overflow (get-lazy-overflow-check))
   (define (get-op-ii)
     (make-lazy-code
       ast
@@ -2938,17 +2967,8 @@
                     (apply-moves cgc ctx moves)
                     (cond
                       (num-op?
-                          (let* ((lazy-overflow   (make-lazy-code (make-lco-id 27) (lambda (cgc ctx)
-                                     (mlet ((ctx (ctx-pop ctx))
-                                            (moves/freg/ctx (ctx-get-free-freg ast ctx succ #f))
-                                            (type (make-ctx-tflo))
-                                            (nctx (ctx-push ctx type freg)))
-                                       (apply-moves cgc ctx moves)
-                                       (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op freg lloc #t rloc #t lcst? rcst?)
-                                       (jump-to-version cgc succ nctx)))))
-                                 (lco-overflow (gen-overflow-test lazy-overflow succ)))
                           (codegen-num-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc rloc lcst? rcst?)
-                          (jump-to-version cgc lco-overflow (ctx-push (ctx-pop-n ctx 2) type reg))))
+                          (jump-to-version cgc lco-overflow (ctx-push ctx type reg)))
                       (else
                           (codegen-cmp-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc rloc lcst? rcst? #f)
                           (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))))
