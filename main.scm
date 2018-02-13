@@ -418,8 +418,6 @@
           (copy-with-declare (car files) "./tmp")
         (let ((content (c#expand-program "./tmp" #f locat-table))) ;(read-all (open-input-file (car files)))))
               (let ((exp-content (expand-tl content)))
-                ;(pp exp-content)
-                ;(error "N")
                 (analyses-find-global-types! exp-content)
                 (analyses-a-conversion! exp-content)
                 (compute-liveness exp-content)

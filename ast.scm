@@ -1114,82 +1114,20 @@
         (cons #t cst))))
 
 (define (mlc-let ast succ)
-  (define (cst-obj expr ctx) ;; TODO: detect fun cst
-    (cond ;; Atom node, but not identifier
-          ((atom-node? expr)
-             (cst-from-atom expr))
-          ;; lambda expr
-          ((and (pair? expr)
-                (eq? (car expr) 'lambda))
-             (let ((r (get-free-infos expr '() ctx)))
-               (if (and (null? (car r))
-                        (null? (caddr r))
-                        (null? (cadddr r)))
-                   ;; if no free, or only cst-id free, it's a cst obj
-                   (cons #t (init-entry-cst expr (flatten r) ctx))
-                   ;; else, it's not a cst obj
-                   (cons #f #f))))
-          ;; Others
-          (else
-            (cons #f #f))))
-
-  (define bindings (cadr ast))
-  (define ids (map car bindings))
-  (define values (map cadr bindings))
-  (define body (caddr ast))
-
-  (define (get-bindings-info ctx)
-    (let loop ((cst '())
-               (ncst '())
-               (bindings bindings))
-      (if (null? bindings)
-          (list cst (reverse ncst))
-          (let* ((binding (car bindings))
-                 (id (car binding))
-                 (v  (cadr binding))
-                 (r  (cst-obj v ctx)))
-            (cond ((and (car r) (pair? v) (eq? (car v) 'lambda))
-                    ;; Binding is a fn cst, add (id cst #t) (#t -> function)
-                    (loop (cons (list id (cdr r) #t) cst) ncst (cdr bindings)))
-                  ((car r)
-                    ;; Binding is a cst, add (id cst #f) (#f -> not a function)
-                    (loop (cons (list id (cdr r) #f) cst) ncst (cdr bindings)))
-                  (else
-                    ;; Binding is not a cst, add (id . expr)
-                    (loop cst (cons (cons id v) ncst) (cdr bindings))))))))
-
-  (let* ((lazy-let-out (get-lazy-lets-out ast ids 0 succ))
-         (lazy-body (gen-ast body lazy-let-out)))
-
-    ;; Bind all variables and jump to body
-    (define (lazy-bind cst ncst)
-      (make-lazy-code
-        (make-lco-id 13)
-        (lambda (cgc ctx)
-          (let* (;; ncst id-idx set
-                 (id-idx
-                   (let loop ((idx (- (length ncst) 1)) (ids (map car ncst)))
-                     (if (null? ids)
-                         '()
-                         (cons (cons (car ids) idx)
-                               (loop (- idx 1) (cdr ids))))))
-                 ;; Bind locals then consts
-                 (ctx (ctx-bind-locals ctx id-idx))
-                 (ctx (ctx-bind-consts ctx cst #t)))
-            (jump-to-version cgc lazy-body ctx)))))
-
-    (make-lazy-code
-      (make-lco-id 14)
-      (lambda (cgc ctx)
-        ;; Get cst/ncst info
-        (mlet ((cst/ncst (get-bindings-info ctx)))
-          (let ((lco-first
-                  ;; Gen all ncst and jump to bind
-                  (foldr (lambda (el r)
-                           (gen-ast (cdr el) r))
-                         (lazy-bind cst ncst)
-                         ncst)))
-            (jump-to-version cgc lco-first ctx)))))))
+  (define ids (map car (cadr ast)))
+  (define lazy-let-out (get-lazy-lets-out ast ids 0 succ))
+  (define lazy-body (gen-ast (caddr ast) lazy-let-out))
+  (define lazy-bind
+          (make-lazy-code
+            (make-lco-id 14)
+            (lambda (cgc ctx)
+              (let loop ((ids ids) (cidx (- (length ids) 1)) (r '()))
+                (if (null? ids)
+                    (set! ctx (ctx-bind-locals ctx r))
+                    (loop (cdr ids) (- cidx 1) (cons (cons (car ids) cidx) r))))
+              (jump-to-version cgc lazy-body ctx))))
+  (gen-ast-l (map cadr (cadr ast))
+             lazy-bind))
 
 ;;-----------------------------------------------------------------------------
 ;; LETREC Binding
@@ -2070,7 +2008,6 @@
       (else #f)))
 
   (define (check-types-h types args curr-pos)
-
     (if (null? types)
         succ
         (let* ((lazy-next (check-types-h (cdr types) (cdr args) (+ curr-pos 1))))
@@ -2738,7 +2675,9 @@
                    (gen-call-sequence ast cgc call-stack cctable-idx nb-args (and fn-loc/fn-num (cdr fn-loc/fn-num)) inlined-call? cn-num)))))))))
 
 
-    (define lazy-args (gen-ast-l (cdr ast) lazy-call))
+    (define lazy-args    (gen-ast-l (cdr ast) lazy-call))
+    (define (type-check-maker)
+      (check-types (list ATX_CLO) (list (car ast)) lazy-args ast))
 
     ;; Gen and check types of args
     (make-lazy-code
@@ -2767,8 +2706,19 @@
               (ctx-push ctx (make-ctx-tcloc (cdr fn-id-inf)) #f (atom-node-val (car ast))))
             (jump-to-version
               cgc
-              (check-types (list ATX_CLO) (list (car ast)) lazy-args ast)
+              (get-cached lazy-args type-check-maker)
               ctx))))))
+
+;; key -> lco.
+;; return lco if it exists for this key
+;; else, use lco-maker to create it and add it to the table
+(define lco_cache (make-table test: eq?))
+(define (get-cached key lco-maker)
+  (let ((lco (table-ref lco_cache key #f)))
+    (or lco
+        (let ((lco (lco-maker)))
+          (table-set! lco_cache key lco)
+          lco))))
 
 (define (gen-continuation-rp cgc ast succ ctx apply? prop-cont?)
 
@@ -2915,7 +2865,6 @@
 ;;
 ;; Make lazy code from N-ARY OPERATOR
 ;;
-
 (define (mlc-op-n ast succ op) ;; '(+ - * < > <= >= = /)
   (assert (= (length ast) 3) "Internal error")
   (gen-ast-l (cdr ast)
