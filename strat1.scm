@@ -59,10 +59,17 @@
 ;;-----------------------------------------------------------------------------
 ;; PUBLIC
 
+(define (make-lco-table)
+  (if opt-static-mode
+      (make-static-table)
+      (make-dynamic-table)))
+(define (make-dynamic-table) (make-table))
+(define (make-static-table) (make-table test: (lambda (c1 c2) (equal? (version-key c1) (version-key c2)))))
+
 (define (lazy-code-versions lco)
   (let ((versions (table-ref (lco-versions-table) lco #f)))
     (or versions
-        (let ((versions (make-table)))
+        (let ((versions (make-lco-table)))
           (table-set! (lco-versions-table) lco versions)
           versions))))
 
@@ -227,7 +234,13 @@
                             (ctx   (ctx-set-type ctx stack-idx gtype #f)))
                        (loop (map cdr stacks) ctx (+ stack-idx 1))))
                   ((and (ctx-type-flo? type) (not (ctx-type-flo? gtype)))
-                     (error "N2"))
+                     (let* ((moves/loc/ctx (ctx-get-free-reg #f ctx #f 0))
+                            (moves (car moves/loc/ctx))
+                            (loc   (cadr moves/loc/ctx))
+                            (ctx   (caddr moves/loc/ctx))
+                            (ctx   (ctx-set-loc ctx (stack-idx-to-slot ctx stack-idx) loc))
+                            (ctx   (ctx-set-type ctx stack-idx gtype #f)))
+                       (loop (map cdr stacks) ctx (+ stack-idx 1))))
                   (else
                      (let ((ctx (ctx-set-type ctx stack-idx gtype #f)))
                        (loop (map cdr stacks) ctx (+ stack-idx 1))))))))))

@@ -37,10 +37,8 @@
     (if (pt-in-poly2 xp yp .5 .5) (set! count (+ count 1)))
     (if (pt-in-poly2 xp yp .5 1.5) (set! count (+ count 1)))
     (if (pt-in-poly2 xp yp -.5 1.5) (set! count (+ count 1)))
-    (if (pt-in-poly2 xp yp .75 2.25) (set! count (+ count 1)))
-    (if (pt-in-poly2 xp yp 0. 2.01) (set! count (+ count 1)))
     count))
 
-(gambit$$println (run))
+(gambit$$pp (run))
 
 ;6
