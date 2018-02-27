@@ -61,8 +61,10 @@
 (define opt-call-max-len         #f) ;; Max number of args allowed when using a specialized entry point (use a generic ep if nb-args > opt-call-max-len)
 (define opt-closest-cx-overflow  #t) ;; Use the closest ctx associated to an existing slot of the cx table when the table oferflows (if possible) instead of using generic ctx
 (define opt-lazy-inlined-call    #t) ;; The function body is inlined at a call if (1) the identity of the callee is known, (2) there is no version of the function for this ctx
+(define opt-nan-boxing           #f) ;; Use nan boxing istead of tagging to encode values
 (define opt-propagate-continuation #f) ;; TODO
 (define opt-regalloc-inlined-call #f)  ;; TODO
+
 
 ;; This is the list of cst types used for versioning (if opt-const-vers is #t)
 ;; All csts types are enabled by default
@@ -127,6 +129,7 @@
 (define global-ptr #f)
 (define entry-points-locs #f)
 (define codegen-loc-to-x86opnd #f)
+(define codegen-test-fixnum #f)
 (define atom-node-make #f)
 (define mlc-gambit-call #f)
 (define lazy-repl-call #f)
@@ -259,7 +262,7 @@
   ;; Put error msg in RAX
   (let ((r1 (car regalloc-regs)))
     (x86-upush cgc r1)
-    (x86-mov cgc r1 (x86-imm-int (obj-encoding err)))
+    (x86-mov cgc r1 (x86-imm-int (tagging-obj-encoding err)))
     (x86-pcall cgc label-rt-error-handler)
     (x86-upop cgc r1)))
 
@@ -370,7 +373,6 @@
                    (let ((word (get-u64 (+ usp (* (+ (length regalloc-regs) offset) 8)))))
                      (cons (encoding-obj word)
                            (loop (- n 1) (+ offset 1))))))))
-
          (op-fn (eval op-sym)))
 
     (let ((retval (apply op-fn args)))
@@ -403,7 +405,7 @@
 
     ;; reset selector
     (put-i64 (+ usp (selector-sp-offset))
-             0)))
+             (obj-encoding 0))))
 
 ;; Same behavior as 'do-callback' but calls callback with call site addr
 ;; The call code call the stub, then the stub call 'do-callback-fn'
@@ -466,7 +468,7 @@
 
     ;; reset selector
     (put-i64 (+ usp (selector-sp-offset))
-             0)))
+             (obj-encoding 0))))
 
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
@@ -499,7 +501,7 @@
 
     ;; reset selector
     (put-i64 (+ usp (selector-sp-offset))
-             0)))
+             (obj-encoding 0))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -545,7 +547,7 @@
   (set! mcb (make-mcb code-len))
   (set! code-addr (##foreign-address mcb))
   (set! ustack (make-vector (/ ustack-len 8)))
-  (set! ustack-init (+ (- (obj-encoding ustack) 1) 8 ustack-len)))
+  (set! ustack-init (+ (object-address ustack) 8 ustack-len)))
 
 ;; BLOCK :
 ;; 0          8                       (nb-globals * 8 + 8)
@@ -565,7 +567,7 @@
 
 (define (init-block)
   (set! globals-space (alloc-still-vector-i64 globals-len 0))
-  (set! globals-addr (+ (- (obj-encoding globals-space) 1) 8))
+  (set! globals-addr (+ (object-address globals-space) 8))
 
   (set! block (make-mcb block-len))
   (set! block-addr (##foreign-address block)))
@@ -654,7 +656,9 @@
            (x86-label cgc label)
            (if (> i 0)
                (begin
-                 (x86-add cgc (x86-ecx) (x86-imm-int (obj-encoding 1))) ;; increment selector
+                 (if opt-nan-boxing
+                     (x86-inc cgc (x86-rcx))
+                     (x86-add cgc (x86-ecx) (x86-imm-int (obj-encoding 1)))) ;; increment selector
                  (x86-nop cgc)
                  (loop (- i 1))))))
        (gen cgc)))
@@ -677,7 +681,7 @@
 
 (define (call-handler cgc label-handler obj)
   (x86-pcall cgc label-handler)
-  (asm-64   cgc (obj-encoding obj)))
+  (asm-64   cgc (tagging-obj-encoding obj)))
 
 (define (stub-reclaim stub-addr)
   (put-i64 stub-addr stub-freelist)
@@ -711,7 +715,8 @@
       (cons selector-reg regalloc-regs)
       (lambda (cgc)
         ;; Update gambit heap ptr from LC heap ptr
-        (x86-mov cgc (x86-mem (get-hp-addr)) alloc-ptr)
+        (x86-mov cgc (x86-rax) (x86-imm-int (get-hp-addr)))
+        (x86-mov cgc (x86-mem 0 (x86-rax)) alloc-ptr)
         ;; Set usp as the first c-arg
         (x86-mov cgc (x86-rdi) (x86-usp))
         ;; Save ustack ptr to pstack
@@ -737,11 +742,13 @@
         (let ((r1 selector-reg)
               (r2 alloc-ptr))
           ;; heap limit
-          (x86-mov cgc r1 (x86-mem (get-heap_limit-addr)))
+          (x86-mov cgc r1 (x86-imm-int (get-heap_limit-addr)))
+          (x86-mov cgc r1 (x86-mem 0 r1))
           (x86-mov cgc r2 (x86-imm-int block-addr))
           (x86-mov cgc (x86-mem (* 8 5) r2) r1)
           ;; hp
-          (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr))))
+          (x86-mov cgc alloc-ptr (x86-imm-int (get-hp-addr)))
+          (x86-mov cgc alloc-ptr (x86-mem 0 alloc-ptr)))
         ;; Set rsp to saved ustack sp
         (x86-ppop cgc (x86-usp))))
 
@@ -760,7 +767,8 @@
       (cons selector-reg regalloc-regs)
       (lambda (cgc)
         ;; Update gambit heap ptr from LC heap ptr
-        (x86-mov cgc (x86-mem (get-hp-addr)) alloc-ptr)
+        (x86-mov cgc (x86-rax) (x86-imm-int (get-hp-addr)))
+        (x86-mov cgc (x86-mem 0 (x86-rax)) alloc-ptr)
         ;; Set usp & psp as the first & second c-args
         (x86-mov cgc (x86-rdi) (x86-usp))       ;; NOTE: will not be correctly restored if rdi is not a reg-alloc reg
         (x86-mov cgc (x86-rsi) (x86-rsp)) ;; NOTE: will not be correctly restored if rsi is not a reg-alloc reg
@@ -785,11 +793,13 @@
         (let ((r1 selector-reg)
               (r2 alloc-ptr))
           ;; heap limit
-          (x86-mov cgc r1 (x86-mem (get-heap_limit-addr)))
+          (x86-mov cgc r1 (x86-imm-int (get-heap_limit-addr)))
+          (x86-mov cgc r1 (x86-mem 0 r1))
           (x86-mov cgc r2 (x86-imm-int block-addr))
           (x86-mov cgc (x86-mem (* 8 5) r2) r1)
           ;; hp
-          (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr))))
+          (x86-mov cgc alloc-ptr (x86-imm-int (get-hp-addr)))
+          (x86-mov cgc alloc-ptr (x86-mem 0 alloc-ptr)))
         ;; Set rsp to saved ustack sp
         (x86-ppop cgc (x86-usp))))
 
@@ -879,11 +889,14 @@
     ;; Put heaplimit in heaplimit slot
     ;; TODO: remove cst slots
     (x86-mov cgc (x86-rax) (x86-imm-int block-addr))
-    (x86-mov cgc (x86-rcx) (x86-mem (get-heap_limit-addr)))
+    (x86-mov cgc (x86-rcx) (x86-imm-int (get-heap_limit-addr)))
+    (x86-mov cgc (x86-rcx) (x86-mem 0 (x86-rcx)))
     (x86-mov cgc (x86-mem (* 8 5) (x86-rax)) (x86-rcx))
 
-    (x86-mov cgc (x86-rcx) (x86-imm-int 0))
-    (x86-mov cgc alloc-ptr (x86-mem (get-hp-addr)))     ;; Heap addr in alloc-ptr
+    (x86-mov cgc (x86-rcx) (x86-imm-int (obj-encoding 0)))
+    ;; Heap addr in alloc-ptr
+    (x86-mov cgc alloc-ptr (x86-imm-int (get-hp-addr)))
+    (x86-mov cgc alloc-ptr (x86-mem 0 alloc-ptr))
     (x86-mov cgc global-ptr (x86-imm-int globals-addr)) ;; Globals addr in r10
 
     ;; Set all registers used for regalloc to 0
@@ -899,6 +912,7 @@
   (init-c)
   (init-code-allocator)
   (init-interprocedural)
+  (init-values)
 
   (code-add
    (lambda (cgc)
@@ -1207,9 +1221,10 @@
                           (car move))
                        ((and (pair? (car move))
                              (eq? (caar move) 'const))
-                          (if (flonum? (cdar move))
-                              (x86-imm-int (get-i64 (+ (- OFFSET_FLONUM TAG_MEMOBJ) (obj-encoding (cdar move)))))
-                              (x86-imm-int (obj-encoding (cdar move)))))
+                          (cond ((and (flonum? (cdar move)) (not opt-nan-boxing))
+                                   (x86-imm-int (get-i64 (+ (- OFFSET_FLONUM TAG_MEMOBJ) (obj-encoding (cdar move))))))
+                                (else
+                                   (x86-imm-int (obj-encoding (cdar move))))))
                        ((eq? (car move) 'rtmp)
                           (get-tmp))
                        (else
@@ -1750,8 +1765,8 @@
                (if (or (ctx-type-flo? ctx-type) (ctx-type-int? ctx-type))
                    (gen-error cgc ERR_NUMBER_EXPECTED)
                    (gen-error cgc (ERR_TYPE_EXPECTED ctx-type)))))))
-   (gen-dyn-type-test ctx-type stack-idx succ lazy-error ast)))
 
+                   (gen-dyn-type-test ctx-type stack-idx succ lazy-error ast)))
 ;; Create lazy code for type test of stack slot (stack-idx)
 ;; jump to lazy-success if test succeeds
 ;; jump to lazy-fail if test fails
@@ -1865,14 +1880,12 @@
 
                     (cond ;; Number type check
                           ((ctx-type-int? ctx-type)
-                           (x86-mov cgc (x86-rax) (x86-imm-int 3))
-                           (x86-and cgc (x86-rax) opval))
+                           (codegen-test-fixnum cgc opval))
                           ;; Null type test
                           ((ctx-type-nul? ctx-type)
-                           (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding '())))
-                           (x86-cmp cgc (x86-rax) opval))
+                           (codegen-test-value cgc opval '()))
                           ;; Pair type test
-                          ((ctx-type-pai? ctx-type)
+                          ((and (ctx-type-pai? ctx-type) (not opt-nan-boxing))
                            (x86-mov cgc (x86-rax) (x86-imm-int 3))
                            (x86-and cgc (x86-rax) opval)
                            (x86-cmp cgc (x86-rax) (x86-imm-int TAG_PAIR)))
@@ -1886,33 +1899,7 @@
                            (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
                           ;; Procedure type test
                           ((ctx-type-mem-allocated? ctx-type)
-                           ;; Vérifier le tag memobj
-                           ;; extraire le tag du header
-                           ;; Vérifier le tag stag
-
-                           ;; Check tag
-                           (x86-mov cgc (x86-rax) opval)
-                           (x86-and cgc (x86-rax) (x86-imm-int 3))
-                           (x86-cmp cgc (x86-rax) (x86-imm-int TAG_MEMOBJ))
-                           (x86-jne cgc label-jump)
-                           ;; Check stag
-                           (if (ctx-loc-is-memory? lval)
-                               (begin
-                                 (x86-mov cgc (x86-rax) opval)
-                                 (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) (x86-rax))))
-                               (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) opval)))
-                           (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
-                           ;; stag xxx << 3
-                           (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (ctx-type->stag ctx-type))))
-
-                           (if (ctx-type-flo? ctx-type)
-                               (let ((opnd (codegen-freg-to-x86reg freg)))
-                                 (x86-jne cgc label-jump)
-                                 (if (x86-mem? opval)
-                                     (begin (x86-mov cgc (x86-rax) opval)
-                                            (set! opval (x86-rax))))
-                                 (x86-movsd cgc opnd (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opval)))))
-
+                            (codegen-test-mem-obj cgc opval lval ctx-type label-jump freg))
                           ;; Other
                           (else (error "Unknown type " ctx-type)))
 

@@ -161,6 +161,11 @@
     ,(lambda (args) (set! opt-export-locat-info #t)
                     args))
 
+  (--nan-boxing
+     "Enable nan boxing"
+     ,(lambda (args) (set! opt-nan-boxing #t)
+                     args))
+
   (--nolib
      "Do not include the standard library"
      ,(lambda (args) (set! opt-use-lib #f)
@@ -226,7 +231,8 @@
             (lambda (cgc ctx)
 
               ;; Update gambit heap ptr from LC heap ptr
-              (x86-mov cgc (x86-mem (get-hp-addr)) alloc-ptr)
+              (x86-mov cgc (x86-rax) (x86-imm-int (get-hp-addr)))
+              (x86-mov cgc (x86-mem 0 (x86-rax)) alloc-ptr)
 
               ;; TODO regalloc: opt-time
 
@@ -311,6 +317,7 @@
     (##machine-code-block-exec mcb))
 
   (define (run-dynamic-pass lco)
+    (strat-switch-mode 'dynamic)
     (gen-version-first lco (ctx-init)))
 
   (define (run-static-pass lco)
@@ -324,6 +331,7 @@
     (set! opt-propagate-continuation #t)
     (set! opt-const-vers #t)
     (set! opt-max-versions #f)
+    (strat-switch-mode 'static)
     (gen-version-first lco (ctx-init))
     (println "done!")
     ; Reset cc/cr tables

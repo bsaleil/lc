@@ -180,3 +180,11 @@
           ((= k STILL)    'STILL)
           ((= k PERM)     'PERM)
           (else '???))))
+
+(define (still-object? obj)
+  (let ((k (mem-allocated-kind obj)))
+    (eq? k 'STILL)))
+
+(define (perm-object? obj)
+  (let ((k (mem-allocated-kind obj)))
+    (eq? k 'PERM)))

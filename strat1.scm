@@ -32,7 +32,6 @@
 ;; Then fallback to a generic version
 
 (define lazy-code-entry? #f)
-(define opt-static-mode #f)
 (define new-sym #f)
 
 ;;-----------------------------------------------------------------------------
@@ -46,31 +45,37 @@
 (define lco_static_versions (make-table test: eq?))
 (define lco_static_generic (make-table test: eq?))
 
-(define (lco-versions-table)
-  (if opt-static-mode
-      lco_static_versions
-      lco_versions))
-
-(define (lco-generic-table)
-  (if opt-static-mode
-      lco_static_generic
-      lco_generic))
+;; Pass mode dependant functions
+(define lco-versions-table #f)
+(define lco-generic-table #f)
+(define make-lco-table #f)
+(define strat-get-version #f)
 
 ;;-----------------------------------------------------------------------------
 ;; PUBLIC
 
-(define (make-lco-table)
-  (if opt-static-mode
-      (make-static-table)
-      (make-dynamic-table)))
+;; Mode is either 'static or 'dynamic
+(define (strat-switch-mode mode)
+  (if (eq? mode 'static)
+      ;;
+      (begin (set! lco-versions-table lco_static_versions)
+             (set! lco-generic-table lco_static_generic)
+             (set! make-lco-table make-static-table)
+             (set! strat-get-version strat-get-static-version))
+      ;;
+      (begin (set! lco-versions-table lco_versions)
+             (set! lco-generic-table lco_static_generic)
+             (set! make-lco-table make-dynamic-table)
+             (set! strat-get-version strat-get-dynamic-version))))
+
 (define (make-dynamic-table) (make-table))
 (define (make-static-table) (make-table test: (lambda (c1 c2) (equal? (version-key c1) (version-key c2)))))
 
 (define (lazy-code-versions lco)
-  (let ((versions (table-ref (lco-versions-table) lco #f)))
+  (let ((versions (table-ref lco-versions-table lco #f)))
     (or versions
         (let ((versions (make-lco-table)))
-          (table-set! (lco-versions-table) lco versions)
+          (table-set! lco-versions-table lco versions)
           versions))))
 
 (define (lazy-code-versions-ctx lco)
@@ -107,10 +112,10 @@
                     args))))
 
 (define (lazy-code-generic lco)
-  (table-ref (lco-generic-table) lco #f))
+  (table-ref lco-generic-table lco #f))
 
 (define (lazy-code-generic-set! lco ctx version)
-  (table-set! (lco-generic-table) lco (cons ctx version)))
+  (table-set! lco-generic-table lco (cons ctx version)))
 
 (define (get-version lazy-code ctx)
   (let* ((key ctx)
@@ -174,11 +179,6 @@
   (and opt-max-versions
        (let ((nb-versions (lazy-code-nb-real-versions lco)))
          (>= nb-versions opt-max-versions))))
-
-(define (strat-get-version lco ctx)
-  (if opt-static-mode
-      (strat-get-static-version  lco ctx)
-      (strat-get-dynamic-version lco ctx)))
 
 (define (most-generic-static lco ctx)
   (let ((r (table-ref lco_static_versions lco #f)))

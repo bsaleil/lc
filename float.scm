@@ -76,7 +76,7 @@
 
 ;; Return the integer corresponding to the 'IEEE 754' representation of float f
 ;; ex. (float-int 0.085) -> 1034818683 (0 01111011 01011100001010001111011 in binary, with sign, exponent and fraction)
-(define (ieee754 f  #!optional (precision 'simple))
+(define (flonum->ieee754 f #!optional (precision 'simple))
 
   (define bias #f)
   (define nbits-fraction #f)
@@ -102,13 +102,47 @@
         (* nexpo (expt 2 nbits-fraction))
         nfrac))))
 
+(define (ieee754->flonum i #!optional (precision 'simple))
+
+  (define bias #f)
+  (define nbits-fraction #f)
+  (define nbits-exp-frac #f)
+
+  (cond ((eq? precision 'simple)
+            (set! bias 127)
+            (set! nbits-fraction 23)
+            (set! nbits-exp-frac 31))
+        ((eq? precision 'double)
+            (set! bias 1023)
+            (set! nbits-fraction 52)
+            (set! nbits-exp-frac 63))
+        (else (error "NYI precision:" precision)))
+
+  (let* ((sign (bitwise-and i (expt 2 nbits-exp-frac)))
+         (neg? (= sign (expt 2 nbits-exp-frac)))
+         (exponent (arithmetic-shift (bitwise-and i (- (expt 2 nbits-exp-frac) 1)) (* -1 nbits-fraction)))
+         (fraction
+           (let* ((fraction (bitwise-and i (- (expt 2 nbits-fraction) 1)))
+                  (binstr (number->string fraction 2))
+                  (len (string-length binstr)))
+             (let loop ((idx 0) (pow (- nbits-fraction len -1)) (r 0))
+               (if (= pow len)
+                   (exact->inexact r)
+                   (let* ((bit (string-ref binstr idx))
+                          (set? (char=? bit #\1)))
+                    (if set?
+                        (loop (+ idx 1) (+ pow 1) (+ r (expt 2 (* -1 pow))))
+                        (loop (+ idx 1) (+ pow 1) r))))))))
+
+    (* (+ 1 fraction) (expt 2 (- exponent bias)) (if neg? -1 1))))
+
 (define (get-ieee754-imm64 f)
   (if (< f 0)
-      (let* ((ieee-rep (ieee754 (abs f) 'double))
+      (let* ((ieee-rep (flonum->ieee754 (abs f) 'double))
              (64-mod   (bitwise-not (- ieee-rep 1)))
              (64-modl  (bitwise-and (- (expt 2 63) 1) 64-mod)))
         (* -1 64-modl))
-      (ieee754 f 'double)))
+      (flonum->ieee754 f 'double)))
 
 ;;-----------------------------------------------------------------------------
 ;; Intel SSE2 instructions

@@ -2314,13 +2314,11 @@
 
 ;; Move args in regs or mem following calling convention
 (define (call-prep-args cgc ctx ast nbargs const-fn generic-entry? inlined-call? tail?)
-
   (let* ((cloloc  (if const-fn #f (ctx-get-loc ctx nbargs)))
          (contloc (ctx-get-loc ctx (- (length (ctx-stack ctx)) 1)))
          (stackp/moves (ctx-get-call-args-moves ast ctx nbargs cloloc contloc tail? generic-entry? inlined-call?))
          (stackp (car stackp/moves))
          (moves (cdr stackp/moves)))
-
     (let loop ((fs (ctx-fs ctx))
                (locs stackp))
       (if (null? locs)
@@ -2331,7 +2329,11 @@
                        (gen-closure cgc 'tmp #f entry-obj '())
                        (x86-upush cgc (codegen-reg-to-x86reg 'tmp))))
                   ((eq? (caar locs) 'const)
-                     (x86-upush cgc (x86-imm-int (obj-encoding (cdar locs)))))
+                     (let ((encoding (obj-encoding (cdar locs))))
+                       (if (codegen-is-imm-64? encoding)
+                           (begin (x86-mov cgc (x86-rax) (x86-imm-int encoding))
+                                  (x86-upush cgc (x86-rax)))
+                           (x86-upush cgc (x86-imm-int encoding)))))
                   ((eq? (caar locs) 'flbox)
                      (let ((move (cons (car locs) 'rtmp)))
                        (apply-moves cgc ctx (list move))
@@ -2349,12 +2351,10 @@
                     '()
                     moves))
              (unused-regs (set-sub (ctx-init-free-regs) used-regs)))
-
       (if (null? unused-regs)
           (begin (apply-moves cgc ctx moves 'selector)
                  (x86-mov cgc selector-reg (x86-imm-int 0)))
           (apply-moves cgc ctx moves (car unused-regs)))
-
       ;; Force closure reg to contain #f for do_callback_fn if we call a const closure
       (if (and (not opt-entry-points)
                const-fn)
@@ -2577,6 +2577,7 @@
            (make-lazy-code
              (make-lco-id 26)
              (lambda (cgc ctx)
+
                (let* ((nb-args (length args))
                       (cn-num #f)
                       (prop-cont? opt-propagate-continuation)
@@ -2655,7 +2656,6 @@
                                         (loop nctx (cdr stack-dest) (+ idx 1) (- NB 1))))
                                    (else
                                   (loop nctx (cdr stack-dest) (+ idx 1) (- NB 1))))))))
-
                    ;; pour chaque type de la pile du ctx qui fait partie du ctx (0 -> nb-args):
                       ;; si stack[i] est une cst et que la dest n'est pas cst
                           ;; on appelle drop cst
@@ -2663,7 +2663,6 @@
                           ;; on appelle drop float
                    ;; Move args to regs or stack following calling convention
                    (set! ctx (call-prep-args cgc ctx ast nb-args (and fn-loc/fn-num (car fn-loc/fn-num)) generic-entry? inlined-call? tail?))
-
                    (if tail?
                        (let ((dropped? (or (and (not opt-entry-points)
                                                 (not inlined-call?))
@@ -2801,7 +2800,7 @@
       (begin
         (gen-crtable)
         (asc-cnnum-table-add cn-num crtable)
-        (let ((crtable-loc (- (obj-encoding crtable) 1)))
+        (let ((crtable-loc (object-address crtable)))
           (codegen-load-cont-cr cgc crtable-loc)))
       (asc-cnnum-table-add cn-num (lambda () (gen-crtable))))
 
@@ -2816,7 +2815,7 @@
   (define lazy-code (and obj (cadr obj)))
   (define stub-addr (and obj (cddr obj)))
   ;; TODO: eploc -> entry-obj-loc
-  (define eploc (and entry-obj (- (obj-encoding entry-obj) 1)))
+  (define eploc (and entry-obj (object-address entry-obj)))
 
   (define (get-cc-direct)
     (and lazy-code
@@ -2910,7 +2909,6 @@
                       (ltype (ctx-get-type ctx 1))
                       (lcst? (ctx-type-cst? ltype))
                       (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
-
                  (apply-moves cgc ctx moves)
                  (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op freg lloc #t rloc #t lcst? rcst?)
                  (let* ((ctx (ctx-pop-n ctx 2))
