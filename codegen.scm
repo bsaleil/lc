@@ -65,8 +65,8 @@
       (push/pop-error
         (lambda n
           (error "Internal error, do *NOT* directly use x86-push/pop functions."))))
-  (set! x86-ppush gpush)
   (set! x86-ppop  gpop)
+  (set! x86-ppush gpush)
   (set! x86-upush
         (lambda (cgc op)
           (cond ((x86-imm? op)
@@ -1851,7 +1851,11 @@
         (x86-jmp cgc label-loop))
 
     (x86-label cgc label-end)
-    (x86-lea cgc dest (x86-mem (+ (* (+ llen 1) -8) TAG_MEMOBJ) alloc-ptr))
+    (if opt-nan-boxing
+        (begin (x86-lea cgc dest (x86-mem (* (+ llen 1) -8) alloc-ptr))
+               (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
+               (x86-or cgc dest (x86-rax)))
+        (x86-lea cgc dest (x86-mem (+ (* (+ llen 1) -8) TAG_MEMOBJ) alloc-ptr)))
     (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0)))))
 
 ;; make-vector with cst len (still)
@@ -1864,6 +1868,11 @@
                     (codegen-loc-to-x86opnd fs ffs lval)))
          (label-loop (asm-make-label #f (new-sym 'make-vector-loop)))
          (label-end  (asm-make-label #f (new-sym 'make-vector-end))))
+
+  ;; Can't test this function for nan boxing because gambit should return a nan-boxing encoded object
+  ;; when gen-allocation-imm-sti is called.
+  (if opt-nan-boxing
+      (error "NYI case for nan boxing (codegen-p-make-vector-imm-sti)"))
 
   ;; Alloc vector
   (gen-allocation-imm-sti cgc STAG_VECTOR (* 8 llen))
@@ -1890,6 +1899,11 @@
 ;; make-vector with !cst len
 (define (codegen-p-make-vector-opn cgc fs ffs reg llen lval cst-val?)
 
+  (define-macro (l32 loc)
+    `(if (x86-reg? ,loc)
+         (x86-r64->r32 ,loc)
+         ,loc))
+
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (oplen (codegen-loc-to-x86opnd fs ffs llen))
          (opval (if cst-val?
@@ -1898,36 +1912,78 @@
          (label-loop (asm-make-label #f (new-sym 'make-vector-loop)))
          (label-end  (asm-make-label #f (new-sym 'make-vector-end))))
 
-    (x86-mov cgc (x86-rax) oplen)
-    (x86-shl cgc (x86-rax) (x86-imm-int 1))
-    (gen-allocation-rt cgc STAG_VECTOR (x86-rax))
+    (define save #f)
+    (define (get-saved-reg)
+      alloc-ptr)
 
-    ;; Loop
-    (x86-mov cgc selector-reg oplen)
-    (x86-shl cgc selector-reg (x86-imm-int 1))
-    (if cst-val?
-        (x86-mov cgc dest (x86-imm-int (obj-encoding lval))))
-    (x86-label cgc label-loop)
-    (x86-cmp cgc selector-reg (x86-imm-int 0))
-    (x86-je cgc label-end)
+    (if opt-nan-boxing
+        (begin
 
-      (let ((memop (x86-mem (- TAG_MEMOBJ) (x86-rax) selector-reg)))
+            (x86-mov cgc (x86-eax) (l32 oplen))
+            (x86-shl cgc (x86-rax) (x86-imm-int 3))
+            (gen-allocation-rt cgc STAG_VECTOR (x86-rax))
 
-        (cond (cst-val?
-                (x86-mov cgc memop dest))
-              ((x86-mem? opval)
-                (x86-mov cgc dest opval)
-                (x86-mov cgc memop dest))
-              (else
-                (x86-mov cgc memop opval)))
+            ;; if val is cst, mem, or eq dest
+            ;; we need another free register
+            (if (or cst-val?
+                    (x86-mem? opval)
+                    (eq? dest opval))
+                (begin
+                  (set! save (get-saved-reg))
+                  (x86-ppush cgc save)
+                  (x86-mov cgc save opval)
+                  (set! opval save)))
 
-        (x86-sub cgc selector-reg (x86-imm-int 8))
-        (x86-jmp cgc label-loop))
+            ;;
+            (x86-mov cgc selector-reg (x86-imm-int NB_MASK_VALUE_48))
+            (x86-and cgc selector-reg (x86-rax)) ;; vector addr in selector
 
-    ;;
-    (x86-label cgc label-end)
-    (x86-mov cgc dest (x86-rax))
-    (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0)))))
+            (x86-mov cgc (l32 dest) (l32 oplen)) ;; vector len in dest reg
+            (x86-label cgc label-loop)
+            (x86-cmp cgc dest (x86-imm-int 0))
+            (x86-je cgc label-end)
+
+              (x86-mov cgc (x86-mem 0 selector-reg dest 3) opval)
+              (x86-sub cgc dest (x86-imm-int 1))
+              (x86-jmp cgc label-loop)
+
+            (x86-label cgc label-end)
+            (if save
+                (x86-ppop cgc save))
+            (x86-mov cgc dest (x86-rax))
+            (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0))))
+
+        (begin
+            (x86-mov cgc (x86-rax) oplen)
+            (x86-shl cgc (x86-rax) (x86-imm-int 1))
+            (gen-allocation-rt cgc STAG_VECTOR (x86-rax))
+
+            ;; Loop
+            (x86-mov cgc selector-reg oplen)
+            (x86-shl cgc selector-reg (x86-imm-int 1))
+            (if cst-val?
+                (x86-mov cgc dest (x86-imm-int (obj-encoding lval))))
+            (x86-label cgc label-loop)
+            (x86-cmp cgc selector-reg (x86-imm-int 0))
+            (x86-je cgc label-end)
+
+              (let ((memop (x86-mem (- TAG_MEMOBJ) (x86-rax) selector-reg)))
+
+                (cond (cst-val?
+                        (x86-mov cgc memop dest))
+                      ((x86-mem? opval)
+                        (x86-mov cgc dest opval)
+                        (x86-mov cgc memop dest))
+                      (else
+                        (x86-mov cgc memop opval)))
+
+                (x86-sub cgc selector-reg (x86-imm-int 8))
+                (x86-jmp cgc label-loop))
+
+            ;;
+            (x86-label cgc label-end)
+            (x86-mov cgc dest (x86-rax))
+            (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0)))))))
 
 ;;
 ;; vector-length
@@ -1987,8 +2043,42 @@
 
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (opvec (and (not vec-cst?) (codegen-loc-to-x86opnd fs ffs lvec)))
-         (opidx (and (not val-cst?) (codegen-loc-to-x86opnd fs ffs lidx)))
-         (use-selector #f))
+         (opidx (and (not val-cst?) (codegen-loc-to-x86opnd fs ffs lidx))))
+
+    (if opt-nan-boxing
+        (codegen-p-vector-ref-nan cgc dest opvec lvec vec-cst? opidx lidx val-cst?)
+        (codegen-p-vector-ref-tag cgc dest opvec lvec vec-cst? opidx lidx val-cst?))))
+
+(define (codegen-p-vector-ref-nan cgc dest opvec lvec vec-cst? opidx lidx val-cst?)
+
+  (let ((use-selector #f))
+
+    (cond (vec-cst?
+            (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding lvec)))
+            (set! opvec (x86-rax)))
+          ((x86-mem? opvec)
+            (x86-mov cgc (x86-rax) opvec)
+            (set! opvec  (x86-rax))))
+
+    (if (and opidx
+             (x86-mem? opidx))
+        (if (eq? opvec (x86-rax))
+            (begin (x86-mov cgc selector-reg opidx)
+                   (set! opidx selector-reg)
+                   (set! use-selector #t))
+            (begin (x86-mov cgc (x86-rax) opidx)
+                   (set! opidx (x86-rax)))))
+
+    (if val-cst?
+        (x86-lea cgc dest (x86-mem (+ 8 (* 8 lidx)) opvec))
+        (x86-lea cgc dest (x86-mem 8 opvec opidx 3)))
+    (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
+    (x86-and cgc dest (x86-rax))
+    (x86-mov cgc dest (x86-mem 0 dest))))
+
+(define (codegen-p-vector-ref-tag cgc dest opvec lvec vec-cst? opidx lidx val-cst?)
+
+  (let ((use-selector #f))
 
     (cond (vec-cst?
             (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding lvec)))
@@ -2011,7 +2101,7 @@
         (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) opvec opidx 1)))
 
     (if use-selector
-        (x86-xor cgc selector-reg selector-reg))))
+        (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0))))))
 
 ;;
 ;; string-ref

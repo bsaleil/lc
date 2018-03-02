@@ -182,14 +182,22 @@ void initc()
 
   (x86-label cgc label-alloc-end)
   ;; rax = encoded ptr to obj
-  (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 8) alloc-ptr))
-  (x86-sub cgc (x86-rax) (x86-mem 0 (x86-usp)))
+  (if opt-nan-boxing
+      (begin (x86-lea cgc (x86-rax) (x86-mem -8 alloc-ptr))
+             (x86-sub cgc (x86-rax) (x86-mem 0 (x86-usp))))
+      (begin (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 8) alloc-ptr))
+             (x86-sub cgc (x86-rax) (x86-mem 0 (x86-usp)))))
 
   (x86-label cgc label-alloc-ret)
   (x86-mov cgc selector-reg (x86-mem 8 (x86-usp))) ;; get saved nbytes (no aligned)
   (x86-shl cgc selector-reg (x86-imm-int 8))
   (x86-or  cgc selector-reg (x86-imm-int (mem-header 0 stag)))
-  (x86-mov cgc (x86-mem (- TAG_MEMOBJ) (x86-rax)) selector-reg) ;; write header
+
+  (if opt-nan-boxing
+      (begin (x86-mov cgc (x86-mem 0 (x86-rax)) selector-reg)
+             (x86-mov cgc selector-reg (x86-imm-int (to-64-value NB_MASK_MEM)))
+             (x86-or cgc (x86-rax) selector-reg))
+      (x86-mov cgc (x86-mem (- TAG_MEMOBJ) (x86-rax)) selector-reg)) ;; write header
 
   (x86-label cgc label-alloc-still-end)
   ;; Restore selector

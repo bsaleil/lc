@@ -1,10 +1,2 @@
-(letrec ((f (lambda (n)
-              (if (= 0 n)
-                (write-char #\P)
-                (g (- n 1)))))
-         (g (lambda (n)
-              (if (= 0 n)
-                (write-char #\I)
-                (f (- n 1))))))
-   (f 200)
-   (newline))
+
+(pp '(1 2 3 4))

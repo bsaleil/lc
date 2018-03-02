@@ -23,6 +23,7 @@
 (define STAG_VECTOR #f)
 (define get-ieee754-imm64 #f)
 (define ieee754->flonum #f)
+(define put-i64 #f)
 
 ;;-------------------------------------------------------------------------
 ;; TAGGING
@@ -74,7 +75,7 @@
                 ((and (##fixnum? obj) (<= obj NB_MAX_FIX))
                    (+ NB_MASK_FIX obj))
                 ;; Symbol
-                ((or (symbol? obj) (string? obj) (vector? obj) (pair? obj) (port? obj))
+                ((or (symbol? obj) (string? obj) (port? obj))
                    (let* ((tagged (tagging-obj-encoding obj))
                           (addr (- tagged TAG_MEMOBJ)))
                      (+ NB_MASK_MEM addr)))
@@ -97,10 +98,38 @@
                 ((char? obj)
                    (let ((int (char->integer obj)))
                      (+ NB_MASK_CHA int)))
+                ;; pair
+                ((pair? obj)
+                   (taggedpair->nanpair obj))
+                ;; vector
+                ((vector? obj)
+                   (taggedvector->nanvector obj))
                 (else
                    (pp obj)
                    (error "NYI1")))))
     (if (>= v (expt 2 63)) (- v (expt 2 64)) v)))
+
+(define (taggedpair->nanpair pair)
+  (let* ((ecar (nanboxing-obj-encoding (car pair)))
+         (ecdr (nanboxing-obj-encoding (cdr pair)))
+         (npair (cons 0 0))
+         (tagged (tagging-obj-encoding npair))
+         (addr (- tagged TAG_PAIR)))
+    (put-i64 (+ addr  8) ecdr)
+    (put-i64 (+ addr 16) ecar)
+    (+ NB_MASK_MEM addr)))
+
+(define (taggedvector->nanvector vec)
+  (let* ((len (vector-length vec))
+         (v (make-vector len))
+         (tagged (tagging-obj-encoding v))
+         (addr (- tagged TAG_MEMOBJ)))
+    (let loop ((i 0))
+      (if (not (= i len))
+          (let ((obj (vector-ref vec i)))
+            (put-i64 (+ addr 8 (* 8 i)) (nanboxing-obj-encoding obj))
+            (loop (+ i 1)))))
+    (+ NB_MASK_MEM addr)))
 
 (define (nanboxing-encoding-obj encoding #!optional (i #f))
   (let* ((encoding
@@ -179,7 +208,7 @@
     (let loop ((i 0))
       (if (= i len)
           vector
-          (let ((v (tagging-encoding-obj (get-u64 (+ addr 8 (* 8 i))))))
+          (let ((v (nanboxing-encoding-obj (get-u64 (+ addr 8 (* 8 i))))))
             (vector-set! vector i v)
             (loop (+ i 1)))))))
 
