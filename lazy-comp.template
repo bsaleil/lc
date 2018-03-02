@@ -1,7 +1,7 @@
 #!/bin/bash
 
-#GSC="gsc -:m512000"
-GSC="gsc -:d2,m1512000"
+GSC="gsc -:m512000"
+#GSC="gsc -:d2,m1512000"
 LC_FILES="values.o1 float.o1 utils.o1 ctx.o1 types.o1 core.o1 native.o1 mem.o1 codegen.o1 ast.o1 expand.o1 analyses.o1 main.o1"
 ARGS=()
 

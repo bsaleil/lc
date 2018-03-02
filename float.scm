@@ -484,6 +484,9 @@
 ;;; X86 operand encoding.
 
 (define (x86-opnd-prefix-reg-opnd cgc reg opnd)
+  (if (and (equal? reg (x86-rax))
+           (equal? opnd (x86-mem 0 (x86-r13) (x86-rax))))
+      (error "UU"))
   (let* ((width
           (x86-reg-width reg))
          (field
@@ -518,9 +521,15 @@
                          ext-lo8-reg?))))
 
 (define (x86-opnd-modrm/sib-reg-opnd cgc reg opnd)
+(if (and (equal? reg (x86-rax))
+         (equal? opnd (x86-mem 0 (x86-r13) (x86-rax))))
+    (error "UU"))
   (x86-opnd-modrm/sib cgc (x86-reg-field reg) opnd))
 
 (define (x86-opnd-prefix cgc width field opnd force-rex?)
+(if (and (equal? field (x86-rax))
+         (equal? opnd (x86-mem 0 (x86-r13) (x86-rax))))
+    (error "UU"))
   (let ((rex*
          (fx+ ;; if needed emit REX.W (64 bit operand size)
               (if (and (not (fx= width 0)) ;; implicit width?
@@ -599,6 +608,9 @@
       (asm-8 cgc #x67))) ;; address size override prefix
 
 (define (x86-opnd-modrm/sib cgc field opnd)
+(if (and (equal? field (x86-rax))
+         (equal? opnd (x86-mem 0 (x86-r13) (x86-rax))))
+    (error "UU"))
   (let ((modrm-rf
          (fxarithmetic-shift-left (fxand 7 field) 3)))
 

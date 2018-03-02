@@ -150,6 +150,11 @@
 (define make-lco-id #f)
 (define is-lco-id? #f)
 
+(define codegen-test-value #f)
+(define codegen-test-mem-obj #f)
+(define codegen-test-value #f)
+
+
 
 ;;-----------------------------------------------------------------------------
 
@@ -262,7 +267,7 @@
   ;; Put error msg in RAX
   (let ((r1 (car regalloc-regs)))
     (x86-upush cgc r1)
-    (x86-mov cgc r1 (x86-imm-int (tagging-obj-encoding err)))
+    (x86-mov cgc r1 (x86-imm-int (obj-encoding err)))
     (x86-pcall cgc label-rt-error-handler)
     (x86-upop cgc r1)))
 

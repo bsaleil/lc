@@ -1372,7 +1372,10 @@
             (set! fn-num fn-n) ;; update current function fn-num
             (if opt-entry-points
                 (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
-                (x86-mov cgc (x86-rax) (x86-mem (+ 8 entry-obj-loc))))
+                (if (int32? (+ 8 entry-obj-loc))
+                    (x86-mov cgc (x86-rax) (x86-mem (+ 8 entry-obj-loc)))
+                    (begin (x86-mov cgc (x86-rax) (x86-imm-int (+ 8 entry-obj-loc)))
+                           (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax))))))
             (x86-mov cgc (x86-mem offset-entry clo-reg) (x86-rax))
 
             ;; Write free vars

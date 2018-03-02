@@ -15,6 +15,15 @@
 (define STAG_SYMBOL #f)
 (define get-u64 #f)
 
+(define STAG_STRING #f)
+(define STAG_VECTOR #f)
+(define get-ieee754-imm64 #f)
+(define ieee754->flonum #f)
+(define STAG_STRING #f)
+(define STAG_VECTOR #f)
+(define get-ieee754-imm64 #f)
+(define ieee754->flonum #f)
+
 ;;-------------------------------------------------------------------------
 ;; TAGGING
 
@@ -65,7 +74,7 @@
                 ((and (##fixnum? obj) (<= obj NB_MAX_FIX))
                    (+ NB_MASK_FIX obj))
                 ;; Symbol
-                ((symbol? obj)
+                ((or (symbol? obj) (string? obj) (vector? obj) (pair? obj) (port? obj))
                    (let* ((tagged (tagging-obj-encoding obj))
                           (addr (- tagged TAG_MEMOBJ)))
                      (+ NB_MASK_MEM addr)))
@@ -89,6 +98,7 @@
                    (let ((int (char->integer obj)))
                      (+ NB_MASK_CHA int)))
                 (else
+                   (pp obj)
                    (error "NYI1")))))
     (if (>= v (expt 2 63)) (- v (expt 2 64)) v)))
 
@@ -104,14 +114,21 @@
           ((= encoding 0) 0) ;; TODO: i == 11 when closure is not given
           ;; 32 bits fixnum
           ((= type-mask NB_MASK_FIX)
-             (bitwise-and encoding NB_MASK_VALUE_32))
+             (let* ((32val (bitwise-and (- (expt 2 32) 1) encoding))
+                    (sign (bitwise-and (expt 2 31) encoding))
+                    (nencoding
+                      (if (> sign 0) ;; neg
+                          (bitwise-ior (arithmetic-shift (- (expt 2 32) 1) 32)
+                                       (arithmetic-shift 32val 2))
+                          (arithmetic-shift 32val 2))))
+             (tagging-encoding-obj nencoding)))
           ;; Special
           ((= type-mask NB_MASK_SPE)
              (cond ;; null
                    ((= encoding NB_ENCODED_NULL) '())
                    ;; booleans
                    ((= encoding NB_ENCODED_TRUE) #t)
-                   ((= encoding NB_ENCODED_FALSE #f))
+                   ((= encoding NB_ENCODED_FALSE) #f)
                    (else (error "NYI4"))))
           ;; Mem obj
           ((= tag-mask NB_MASK_MEM)
@@ -119,11 +136,16 @@
                     (header (get-u64 address))
                     (stag (arithmetic-shift (bitwise-and header 248) -3)))
                (cond ;; Symbol
-                     ((= stag STAG_SYMBOL)
+                     ((or (= stag STAG_SYMBOL)
+                          (= stag STAG_STRING)
+                          (= stag 4)) ;; box
                         (tagging-encoding-obj (+ address TAG_MEMOBJ)))
                      ;; Pair
                      ((= stag STAG_PAIR)
                         (nanpair->taggedpair address))
+                     ;; Vector
+                     ((= stag STAG_VECTOR)
+                       (nanvector->taggedvector address))
                      (else
                         (pp header)
                         (pp stag)
@@ -149,6 +171,17 @@
    (cons (nanboxing-encoding-obj ecar)
          (nanboxing-encoding-obj ecdr))))
 
+;;
+(define (nanvector->taggedvector addr)
+  (let* ((header (get-u64 addr))
+         (len (arithmetic-shift header -11))
+         (vector (make-vector len)))
+    (let loop ((i 0))
+      (if (= i len)
+          vector
+          (let ((v (tagging-encoding-obj (get-u64 (+ addr 8 (* 8 i))))))
+            (vector-set! vector i v)
+            (loop (+ i 1)))))))
 
 ;;-------------------------------------------------------------------------
 

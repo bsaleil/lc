@@ -618,7 +618,10 @@
 ;; Write entry point in closure (do not use cctable)
 (define (codegen-closure-ep cgc entryvec-loc nb-free)
   (let ((offset (+ OFFSET_PROC_EP (* -8 (+ nb-free 2)))))
-    (x86-mov cgc (x86-rax) (x86-mem (+ 8 entryvec-loc)))
+    (if (int32? (+ 8 entryvec-loc))
+        (x86-mov cgc (x86-rax) (x86-mem (+ 8 entryvec-loc)))
+        (begin (x86-mov cgc (x86-rax) (x86-imm-int (+ 8 entryvec-loc)))
+               (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax)))))
     (x86-mov cgc (x86-mem offset alloc-ptr) (x86-rax))))
 
 ;; Write cctable ptr in closure (use multiple entry points)
@@ -896,7 +899,9 @@
                     (x86-mov cgc dest opleft))
                 (x86-sub cgc dest32 (x86-imm-int lright))
                 (box dest))
-             ((eq? op '*) (error "nb ii 5"))))
+             ((eq? op '*)
+                (x86-imul cgc dest32 (l32 opleft) (x86-imm-int lright))
+                (box dest))))
      (else
        (cond ((eq? op '+)
                 (cond ((eq? dest opleft)
@@ -906,8 +911,18 @@
                       (else
                          (x86-mov cgc dest opleft)
                          (x86-add cgc dest32 (l32 opright))
+                         (x86-int cgc 3)
                          (box dest))))
-             ((eq? op '-) (error "nb ii 7"))
+             ((eq? op '-)
+                (cond ((eq? dest opleft)
+                         (error "nb ii 7.1"))
+                      ((eq? dest opright)
+                         (error "nb ii 7.2"))
+                      (else
+                         (x86-mov cgc dest opleft)
+                         (x86-sub cgc dest32 (l32 opright))
+                         (x86-int cgc 3)
+                         (box dest))))
              ((eq? op '*)
                 (cond ((eq? dest opleft)
                          (error "nb ii 8.1"))
@@ -1073,9 +1088,11 @@
          (x86-r64->r32 ,loc)
          ,loc))
 
-  (x86-nop cgc)
   (cond (lcst?
-          (error "NYI cmp-ii 1"))
+          (let ((opl (l32 opr))
+                (opr (x86-imm-int lleft)))
+            (x86-cmp cgc opl opr)
+            #t))
         ;; cmp loc, imm
         (rcst?
           (cond ((x86-reg? opl)
@@ -1433,6 +1450,50 @@
                    (set! restore-fn (lambda (cgc) (x86-mov cgc (x86-rdx) selector-reg)))
                    (set! selector-used #t))))
 
+    ;;
+    (if opt-nan-boxing
+        (codegen-p-binop-nan cgc op dest lcst? lleft lopnd ropnd label-div0)
+        (codegen-p-binop-tag cgc op dest lcst? lleft lopnd ropnd label-div0))
+
+    ;; Restore rdx
+    (if restore-fn
+        (restore-fn cgc))
+
+    ;; Restore selector
+    (if selector-used
+        (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0))))))
+
+
+(define (codegen-p-binop-nan cgc op dest lcst? lleft lopnd ropnd label-div0)
+
+    (x86-cmp cgc (x86-r64->r32 ropnd) (x86-imm-int 0))
+    (x86-je cgc label-div0)
+
+    (if lcst?
+        (x86-mov cgc (x86-eax) (x86-imm-int lleft))
+        (x86-mov cgc (x86-eax) (x86-r64->r32 lopnd)))
+
+    (x86-cdq cgc) ;; eax -> edx:eax
+
+    (x86-idiv cgc (x86-r64->r32 ropnd))
+
+    (cond ((eq? op 'quotient)
+            (x86-mov cgc dest (x86-imm-int (to-64-value NB_MASK_FIX)))
+            (x86-or  cgc dest (x86-rax)))
+          ((eq? op 'remainder)
+            (x86-mov  cgc dest (x86-imm-int (to-64-value NB_MASK_FIX)))
+            (x86-or   cgc dest (x86-rdx)))
+          ((eq? op 'modulo)
+            (x86-mov  cgc (x86-rax) (x86-rdx))
+            (x86-add  cgc (x86-eax) (x86-r64->r32 ropnd))
+            (x86-cdqe cgc)
+            (x86-cqo  cgc)
+            (x86-idiv cgc (x86-r64->r32 ropnd))
+            (x86-mov  cgc dest (x86-imm-int (to-64-value NB_MASK_FIX)))
+            (x86-or   cgc dest (x86-rdx)))))
+
+(define (codegen-p-binop-tag cgc op dest lcst? lleft lopnd ropnd label-div0)
+
     (x86-cmp cgc ropnd (x86-imm-int 0))
     (x86-je cgc label-div0)
 
@@ -1460,14 +1521,7 @@
     ;; Restore ropnd
     (if (and (not (= dest ropnd))
              (not (= selector-reg ropnd)))
-        (x86-shl cgc ropnd (x86-imm-int 2)))
-
-    ;; Restore rdx
-    (if restore-fn
-        (restore-fn cgc))
-    ;; Restore selector
-    (if selector-used
-        (x86-xor cgc selector-reg selector-reg))))
+        (x86-shl cgc ropnd (x86-imm-int 2))))
 
 ;;
 ;; not
@@ -1888,8 +1942,15 @@
         (begin (x86-mov cgc (x86-rax) opvec)
                (set! opvec (x86-rax))))
 
-    (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opvec))
-    (x86-shr cgc dest (x86-imm-int 9))))
+    (if opt-nan-boxing
+        (begin (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
+               (x86-and cgc (x86-rax) opvec)
+               (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax)))
+               (x86-shr cgc (x86-rax) (x86-imm-int 11)) ;; 8 header + 2 (to get length from nbytes)
+               (x86-mov cgc dest (x86-imm-int (to-64-value NB_MASK_FIX)))
+               (x86-or cgc dest (x86-rax)))
+        (begin (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opvec))
+               (x86-shr cgc dest (x86-imm-int 9))))))
 
 ;;
 ;; string-length
@@ -1900,12 +1961,18 @@
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opstr (codegen-loc-to-x86opnd fs ffs lstr)))
 
-    (if (ctx-loc-is-memory? lstr)
-        (begin (x86-mov cgc (x86-rax) opstr)
-               (set! opstr (x86-rax))))
-
-    (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opstr))
-    (x86-shr cgc dest (x86-imm-int 8))))
+    (if opt-nan-boxing
+        (begin (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
+               (x86-and cgc (x86-rax) opstr)
+               (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax)))
+               (x86-shr cgc (x86-rax) (x86-imm-int 10)) ;; 8 header + 2 (to get length from nbytes)
+               (x86-mov cgc dest (x86-imm-int (to-64-value NB_MASK_FIX)))
+               (x86-or cgc dest (x86-rax)))
+        (begin (if (ctx-loc-is-memory? lstr)
+                   (begin (x86-mov cgc (x86-rax) opstr)
+                          (set! opstr (x86-rax))))
+               (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opstr))
+               (x86-shr cgc dest (x86-imm-int 8))))))
 
 ;;
 ;; vector-ref
@@ -1957,33 +2024,65 @@
 
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opstr (and (not str-cst?) (codegen-loc-to-x86opnd fs ffs lstr)))
-        (opidx (and (not idx-cst?) (codegen-loc-to-x86opnd fs ffs lidx)))
-        (str-mem? (ctx-loc-is-memory? lstr))
-        (idx-mem? (ctx-loc-is-memory? lidx))
-        (use-selector #f))
+        (opidx (and (not idx-cst?) (codegen-loc-to-x86opnd fs ffs lidx))))
 
-    (cond ((not opstr)
-             (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding lstr)))
-             (set! opstr (x86-rax)))
-          ((x86-mem? opstr)
-             (x86-mov cgc (x86-rax) opstr)
-             (set! opstr (x86-rax))))
-    (if (and opidx
-             (x86-mem? opidx))
-        (if (eq? opstr (x86-rax))
-            (begin (x86-mov cgc selector-reg opidx)
-                   (set! opidx selector-reg)
-                   (set! use-selector #t))
-            (begin (x86-mov cgc (x86-rax) opidx)
-                   (set! opstr (x86-rax)))))
+    (if opt-nan-boxing
+        (codegen-p-string-ref-nan cgc dest opstr opidx lstr lidx idx-cst?)
+        (codegen-p-string-ref-tag cgc dest opstr opidx lstr lidx idx-cst?))))
 
-    (if idx-cst?
-        (x86-mov cgc (x86-eax) (x86-mem (+ (- 8 TAG_MEMOBJ) (* 4 lidx)) opstr))
-        (x86-mov cgc (x86-eax) (x86-mem (- 8 TAG_MEMOBJ) opidx opstr)))
+(define (codegen-p-string-ref-nan cgc dest opstr opidx lstr lidx idx-cst?)
 
-    (x86-shl cgc (x86-rax) (x86-imm-int 2))
-    (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
-    (x86-mov cgc dest (x86-rax))))
+  (if idx-cst?
+      (begin (if opstr
+                 (begin (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
+                        (x86-and cgc (x86-rax) opstr))
+                 (x86-mov cgc (x86-rax) (x86-imm-int (object-address lstr))))
+             (x86-mov cgc (x86-r64->r32 dest) (x86-mem (+ 8 (* 4 lidx)) (x86-rax)))
+             (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_CHA)))
+             (x86-or cgc dest (x86-rax)))
+      (begin (if (not opstr)
+                 (begin (x86-mov cgc (x86-rax) (x86-imm-int (object-address lstr)))
+                        (set! opstr (x86-rax))))
+             (if (x86-mem? opstr)
+                 (begin (x86-mov cgc (x86-rax) opstr)
+                        (set! opstr (x86-rax))))
+             (cond ((and (x86-mem? opidx) (eq? opstr dest))
+                      (x86-mov cgc (x86-rax) opidx)
+                      (set! opidx (x86-rax)))
+                   ((x86-mem? opidx)
+                      (x86-mov cgc dest opidx)
+                      (set! opidx dest)))
+             (x86-lea cgc dest (x86-mem 8 opstr opidx 2))
+             (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
+             (x86-and cgc dest (x86-rax))
+             (x86-mov cgc (x86-r64->r32 dest) (x86-mem 0 dest))
+             (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_CHA)))
+             (x86-or cgc dest (x86-rax)))))
+
+(define (codegen-p-string-ref-tag cgc dest opstr opidx lstr lidx idx-cst?)
+
+  (cond ((not opstr)
+           (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding lstr)))
+           (set! opstr (x86-rax)))
+        ((x86-mem? opstr)
+           (x86-mov cgc (x86-rax) opstr)
+           (set! opstr (x86-rax))))
+  (if (and opidx
+           (x86-mem? opidx))
+      (if (eq? opstr (x86-rax))
+          (begin (x86-mov cgc selector-reg opidx)
+                 (set! opidx selector-reg)
+                 (set! use-selector #t))
+          (begin (x86-mov cgc (x86-rax) opidx)
+                 (set! opstr (x86-rax)))))
+
+  (if idx-cst?
+      (x86-mov cgc (x86-eax) (x86-mem (+ (- 8 TAG_MEMOBJ) (* 4 lidx)) opstr))
+      (x86-mov cgc (x86-eax) (x86-mem (- 8 TAG_MEMOBJ) opidx opstr)))
+
+  (x86-shl cgc (x86-rax) (x86-imm-int 2))
+  (x86-add cgc (x86-rax) (x86-imm-int TAG_SPECIAL))
+  (x86-mov cgc dest (x86-rax)))
 
 ;;
 ;; vector-set!
