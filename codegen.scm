@@ -1003,8 +1003,13 @@
                (x86-mov cgc (x86-rax) (x86-imm-int lleft))
                (x86-cvtsi2sd cgc dest (x86-rax)))
             (leftint?
-               (x86-mov cgc (x86-rax) opleft)
-               (x86-sar cgc (x86-rax) (x86-imm-int 2))
+               (if opt-nan-boxing
+                   (begin
+                     (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_32))
+                     (x86-and cgc (x86-rax) opleft))
+                   (begin
+                     (x86-mov cgc (x86-rax) opleft)
+                     (x86-sar cgc (x86-rax) (x86-imm-int 2))))
                (x86-cvtsi2sd cgc dest (x86-rax)))
             (lcst?
                (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lleft)))
@@ -1023,8 +1028,13 @@
                (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))
                (x86-op cgc dest (x86-xmm0)))
             (rightint?
-              (x86-mov cgc (x86-rax) opright)
-              (x86-sar cgc (x86-rax) (x86-imm-int 2))
+              (if opt-nan-boxing
+                  (begin
+                    (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_32))
+                    (x86-and cgc (x86-rax) opright))
+                  (begin
+                    (x86-mov cgc (x86-rax) opright)
+                    (x86-sar cgc (x86-rax) (x86-imm-int 2))))
               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))
               (x86-op cgc dest (x86-xmm0)))
             (rcst?
@@ -2206,6 +2216,68 @@
               (and (##mem-allocated? lval)
                    (eq? (mem-allocated-kind lval) 'PERM)))
           "Internal error")
+
+  (if opt-nan-boxing
+      (codegen-p-vector-set!-nan cgc fs ffs op reg inlined-cond? lvec lidx lval vec-cst? idx-cst? val-cst?)
+      (codegen-p-vector-set!-tag cgc fs ffs op reg inlined-cond? lvec lidx lval vec-cst? idx-cst? val-cst?)))
+
+(define (codegen-p-vector-set!-nan cgc fs ffs op reg inlined-cond? lvec lidx lval vec-cst? idx-cst? val-cst?)
+
+  (let* ((dest (codegen-reg-to-x86reg reg))
+         (opvec (codegen-loc-to-x86opnd fs ffs lvec))
+         (opidx (and (not idx-cst?) (codegen-loc-to-x86opnd fs ffs lidx)))
+         (opval (and (not val-cst?) (codegen-loc-to-x86opnd fs ffs lval))))
+
+    ;; vector
+    (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_VALUE_48)))
+    (x86-and cgc (x86-rax) opvec)
+
+    (cond
+      ;; cst/cst
+      ((and idx-cst? val-cst?)
+         (x86-mov cgc dest (x86-imm-int (obj-encoding lval)))
+         (x86-mov cgc (x86-mem (+ (* 8 lidx) 8) (x86-rax)) dest))
+      ;;
+      (idx-cst?
+         (if (x86-mem? opval)
+             (begin (x86-mov cgc dest opval)
+                    (set! opval dest)))
+         (x86-mov cgc (x86-mem (+ (* 8 lidx) 8) (x86-rax)) opval))
+      ;;
+      (val-cst?
+         ;; index
+         (x86-mov cgc selector-reg (x86-imm-int NB_MASK_VALUE_32))
+         (x86-and cgc selector-reg opidx)
+         ;; value
+         (x86-mov cgc dest (x86-imm-int (obj-encoding lval)))
+         ;; op
+         (x86-mov cgc (x86-mem 8 (x86-rax) selector-reg 3) dest)
+         (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0))))
+      ;; ncst/ncst
+      (else
+         (cond ;; opval is mem
+               ((x86-mem? opval)
+                  (x86-mov cgc selector-reg (x86-imm-int NB_MASK_VALUE_32))
+                  (x86-and cgc selector-reg opidx)
+                  (x86-mov cgc dest opval)
+                  (x86-mov cgc (x86-mem 8 (x86-rax) selector-reg 3) dest)
+                  (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0))))
+               ;; opval is dest
+               ((eq? opval dest)
+                  (x86-mov cgc selector-reg (x86-imm-int NB_MASK_VALUE_32))
+                  (x86-and cgc selector-reg opidx)
+                  (x86-mov cgc (x86-mem 8 (x86-rax) selector-reg 3) opval)
+                  (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0))))
+               ;; opval is reg !dest
+               (else
+                  (x86-mov cgc dest (x86-imm-int NB_MASK_VALUE_32))
+                  (x86-and cgc dest opidx)
+                  (x86-mov cgc (x86-mem 8 (x86-rax) dest 3) opval)))))
+
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
+
+
+(define (codegen-p-vector-set!-tag cgc fs ffs op reg inlined-cond? lvec lidx lval vec-cst? idx-cst? val-cst?)
 
   (let* ((dest (codegen-reg-to-x86reg reg))
          (opvec (codegen-loc-to-x86opnd fs ffs lvec))

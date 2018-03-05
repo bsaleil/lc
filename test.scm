@@ -1,2 +1,7 @@
 
-(pp '(1 2 3 4))
+;; fibfp
+;; sumfp
+;; mbrot
+
+;; pnpoly
+;; simplex

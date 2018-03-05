@@ -158,7 +158,10 @@
                    ;; booleans
                    ((= encoding NB_ENCODED_TRUE) #t)
                    ((= encoding NB_ENCODED_FALSE) #f)
-                   (else (error "NYI4"))))
+                   ;; void
+                   ((= encoding NB_ENCODED_VOID) #!void)
+                   (else
+                     (error "NYI4"))))
           ;; Mem obj
           ((= tag-mask NB_MASK_MEM)
              (let* ((address (bitwise-and encoding NB_MASK_VALUE_48))
