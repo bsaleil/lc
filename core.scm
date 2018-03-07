@@ -1816,7 +1816,8 @@
                 (jump-to-version cgc lazy-fail ctx-fail)
                 (jump-to-version cgc lazy-success ctx-success))
                (else
-                 (let* ((label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
+                 (let* ((x86-op x86-je)
+                        (label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
                         (stub-first-label-addr #f)
                         (stub-labels
                               (add-callback cgc 1
@@ -1902,6 +1903,14 @@
                            (x86-and cgc (x86-rax) selector-reg)
                            (x86-mov cgc selector-reg (x86-imm-int 0))
                            (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
+                          ;; TODO WIP
+                          ((and (ctx-type-flo? ctx-type) opt-nan-boxing)
+                           (x86-mov cgc (x86-rax) opval)
+                           (x86-shr cgc (x86-rax) (x86-imm-int 48))
+                           (x86-cmp cgc (x86-rax) (x86-imm-int NB_MASK_FLO_MAX_UNSHIFTED))
+                           (set! x86-op x86-jle)
+                           (let ((fopnd (codegen-freg-to-x86reg freg)))
+                             (x86-movd/movq cgc fopnd opval)))
                           ;; Procedure type test
                           ((ctx-type-mem-allocated? ctx-type)
                             (codegen-test-mem-obj cgc opval lval ctx-type label-jump freg))
@@ -1909,7 +1918,7 @@
                           (else (error "Unknown type " ctx-type)))
 
                     (x86-label cgc label-jump)
-                    (x86-je cgc  (list-ref stub-labels 0))
+                    (x86-op cgc  (list-ref stub-labels 0))
                     (x86-jmp cgc (list-ref stub-labels 1))))))))))
 
 ;; TODO WIP

@@ -338,9 +338,13 @@
 ;;-----------------------------------------------------------------------------
 
 (define (codegen-if cgc fs ffs label-jump label-false label-true lcond)
-  (let ((opcond (codegen-loc-to-x86opnd fs ffs lcond)))
+  (let ((opcond (codegen-loc-to-x86opnd fs ffs lcond))
+        (immf (obj-encoding #f)))
 
-    (x86-cmp cgc opcond (x86-imm-int (obj-encoding #f)))
+    (if (codegen-is-imm-64? immf)
+        (begin (x86-mov cgc (x86-rax) (x86-imm-int immf))
+               (x86-cmp cgc opcond (x86-rax)))
+        (x86-cmp cgc opcond (x86-imm-int immf)))
     (x86-label cgc label-jump)
     (x86-je  cgc label-false)
     (x86-jmp cgc label-true)))
@@ -911,7 +915,6 @@
                       (else
                          (x86-mov cgc dest opleft)
                          (x86-add cgc dest32 (l32 opright))
-                         (x86-int cgc 3)
                          (box dest))))
              ((eq? op '-)
                 (cond ((eq? dest opleft)
@@ -921,7 +924,6 @@
                       (else
                          (x86-mov cgc dest opleft)
                          (x86-sub cgc dest32 (l32 opright))
-                         (x86-int cgc 3)
                          (box dest))))
              ((eq? op '*)
                 (cond ((eq? dest opleft)
@@ -1289,7 +1291,35 @@
 
 ;;
 ;; box-set!
+
 (define (codegen-p-set-box cgc fs ffs op reg inlined-cond? lbox lval cst-box? cst-val?)
+  (if opt-nan-boxing
+      (codegen-p-set-box-nan cgc fs ffs op reg inlined-cond? lbox lval cst-box? cst-val?)
+      (codegen-p-set-box-tag cgc fs ffs op reg inlined-cond? lbox lval cst-box? cst-val?)))
+
+(define (codegen-p-set-box-nan cgc fs ffs op reg inlined-cond? lbox lval cst-box? cst-val?)
+
+  (assert (not cst-box?) "Internal error, unexpected cst operand")
+
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opbox (codegen-loc-to-x86opnd fs ffs lbox))
+        (opval (and (not cst-val?) (codegen-loc-to-x86opnd fs ffs lval))))
+
+    (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
+    (x86-and cgc (x86-rax) opbox)
+
+    (cond (cst-val?
+            (x86-mov cgc dest (x86-imm-int (obj-encoding lval)))
+            (set! opval dest))
+          ((x86-mem? opval)
+            (x86-mov cgc dest opval)
+            (set! opval dest)))
+
+    (x86-mov cgc (x86-mem 8 (x86-rax)) opval)
+    (x86-mov cgc dest (x86-imm-int ENCODING_VOID))))
+
+(define (codegen-p-set-box-tag cgc fs ffs op reg inlined-cond? lbox lval cst-box? cst-val?)
+
   (assert (not cst-box?) "Internal error, unexpected cst operand")
 
   (let ((dest  (codegen-reg-to-x86reg reg))
@@ -1312,14 +1342,7 @@
             (begin (x86-mov cgc (x86-rax) opval)
                    (set! opval (x86-rax)))))
 
-    ;; NAN:
-    (if opt-nan-boxing
-        (if (or (eq? dest (x86-rax)) (eq? opval (x86-rax)))
-            (error "NYI codegen")
-            (begin (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
-                   (x86-and cgc (x86-rax) opbox)
-                   (x86-mov cgc (x86-mem OFFSET_BOX (x86-rax)) opval)))
-        (x86-mov cgc (x86-mem (- OFFSET_BOX TAG_MEMOBJ) opbox) opval))
+    (x86-mov cgc (x86-mem (- OFFSET_BOX TAG_MEMOBJ) opbox) opval)
     (x86-mov cgc dest (x86-imm-int ENCODING_VOID))
 
     (if use-selector?
@@ -1381,9 +1404,17 @@
                (loc  (cdar csts?/locs))
                (pair-offset (* -3 8 n)))
           ;; Write header
-          (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
+          (let ((imm (mem-header 16 STAG_PAIR)))
+            (if (codegen-is-imm-64? imm)
+                (begin (x86-mov cgc (x86-rax) (x86-imm-int imm))
+                       (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-rax)))
+                (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int imm) 64)))
           ;; Write null in cdr
-          (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-imm-int (obj-encoding '())) 64)
+          (let ((imm (obj-encoding '())))
+            (if (codegen-is-imm-64? imm)
+                (begin (x86-mov cgc (x86-rax) (x86-imm-int imm))
+                       (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-rax)))
+                (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-imm-int imm) 64)))
           ;; Write value in car
           (let ((opnd
                   (if cst?
@@ -1397,9 +1428,14 @@
             (x86-mov cgc (x86-mem (- pair-offset  8) alloc-ptr) opnd))
 
           ;; Load first pair in dest
-          (let ((dest (codegen-reg-to-x86reg rloc))
-                (offset (+ (* nb-els 3 -8) TAG_PAIR)))
-            (x86-lea cgc dest (x86-mem offset alloc-ptr))))
+          (if opt-nan-boxing
+              (let ((dest (codegen-reg-to-x86reg rloc))
+                    (offset (* nb-els 3 -8)))
+                (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
+                (x86-lea cgc dest (x86-mem offset alloc-ptr (x86-rax))))
+              (let ((dest (codegen-reg-to-x86reg rloc))
+                    (offset (+ (* nb-els 3 -8) TAG_PAIR)))
+                (x86-lea cgc dest (x86-mem offset alloc-ptr)))))
 
         ;; Not last element
         (let* ((cst? (caar csts?/locs))
@@ -1408,7 +1444,10 @@
           ;; Write header
           (x86-mov cgc (x86-mem (- pair-offset 24) alloc-ptr) (x86-imm-int (mem-header 16 STAG_PAIR)) 64)
           ;; Write encoded next pair in cdr
-          (x86-lea cgc (x86-rax) (x86-mem (+ pair-offset TAG_PAIR) alloc-ptr))
+          (if opt-nan-boxing
+              (begin (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
+                     (x86-lea cgc (x86-rax) (x86-mem pair-offset alloc-ptr (x86-rax))))
+              (x86-lea cgc (x86-rax) (x86-mem (+ pair-offset TAG_PAIR) alloc-ptr)))
           (x86-mov cgc (x86-mem (- pair-offset 16) alloc-ptr) (x86-rax))
           ;; Write value in car
           (let ((opnd
@@ -2188,6 +2227,40 @@
 ;; vector-set!
 ;; An empty vector (of right size) already is created and is in 'vec-loc'
 (define (codegen-p-vector cgc fs ffs csts?/locs vec-loc)
+  (if opt-nan-boxing
+      (codegen-p-vector-nan cgc fs ffs csts?/locs vec-loc)
+      (codegen-p-vector-tag cgc fs ffs csts?/locs vec-loc)))
+
+(define (codegen-p-vector-nan cgc fs ffs csts?/locs vec-loc)
+  (define vec-opnd (codegen-loc-to-x86opnd fs ffs vec-loc))
+  (define vec-len  (length csts?/locs))
+
+  (if (x86-mem? vec-opnd) (error "Unimplemented case in codgeen."))
+
+  (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_VALUE_48)))
+  (x86-and cgc vec-opnd (x86-rax))
+  (let loop ((csts?/locs csts?/locs)
+             (i vec-len))
+    (if (not (null? csts?/locs))
+        (let* ((cst? (caar csts?/locs))
+               (loc  (cdar csts?/locs))
+               (offset (* 8 (+ (- vec-len i) 1)))
+               (opnd (and (not cst?) (codegen-loc-to-x86opnd fs ffs loc))))
+          (cond ;; cst
+                (cst?
+                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding loc)))
+                  (x86-mov cgc (x86-mem offset vec-opnd) (x86-rax)))
+                ;;
+                ((x86-mem? opnd)
+                  (x86-mov cgc (x86-rax) opnd)
+                  (x86-mov cgc (x86-mem offset vec-opnd) opnd))
+                (else
+                  (x86-mov cgc (x86-mem offset vec-opnd) opnd)))
+          (loop (cdr csts?/locs) (- i 1)))))
+  (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
+  (x86-or cgc vec-opnd (x86-rax)))
+
+(define (codegen-p-vector-tag cgc fs ffs csts?/locs vec-loc)
   (define vec-opnd (codegen-loc-to-x86opnd fs ffs vec-loc))
   (define vec-len  (length csts?/locs))
   (let loop ((csts?/locs csts?/locs)

@@ -1591,6 +1591,7 @@
                              (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
                                     (x86-upush cgc (x86-rax))
                                     (loop (- idx 1)))))))
+                                    
                  (codegen-gambit-call cgc gsym nargs reg)
                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) (make-ctx-tunk) reg)))))))
     (if generated-arg?
@@ -2356,7 +2357,7 @@
              (unused-regs (set-sub (ctx-init-free-regs) used-regs)))
       (if (null? unused-regs)
           (begin (apply-moves cgc ctx moves 'selector)
-                 (x86-mov cgc selector-reg (x86-imm-int 0)))
+                 (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0))))
           (apply-moves cgc ctx moves (car unused-regs)))
       ;; Force closure reg to contain #f for do_callback_fn if we call a const closure
       (if (and (not opt-entry-points)

@@ -57,6 +57,7 @@
 (define NB_MASK_MEM  (arithmetic-shift #x3FFFC NB_MASK_SHIFT))
 (define NB_MASK_TYPE (arithmetic-shift #x3FFFF NB_MASK_SHIFT))
 (define NB_MASK_TAG  (arithmetic-shift #xFFFF 48))
+(define NB_MASK_FLO_MAX_UNSHIFTED #xFFF8)
 (define NB_MASK_FLO_MAX (arithmetic-shift #xFFF8 48))
 
 (define NB_BIT_CHA (expt 2 46))

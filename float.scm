@@ -126,7 +126,7 @@
                   (binstr (number->string fraction 2))
                   (len (string-length binstr)))
              (let loop ((idx 0) (pow (- nbits-fraction len -1)) (r 0))
-               (if (= pow len)
+               (if (= idx len)
                    (exact->inexact r)
                    (let* ((bit (string-ref binstr idx))
                           (set? (char=? bit #\1)))
