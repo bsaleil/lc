@@ -17,6 +17,7 @@
 
 (define STAG_STRING #f)
 (define STAG_VECTOR #f)
+(define STAG_PROCEDURE #f)
 (define get-ieee754-imm64 #f)
 (define ieee754->flonum #f)
 (define STAG_STRING #f)
@@ -28,7 +29,7 @@
 ;;-------------------------------------------------------------------------
 ;; TAGGING
 
-(define (tagging-obj-encoding obj)
+(define (tagging-obj-encoding obj  #!optional i)
   (let ((n (##object->encoding obj)))
     (if (>= n (expt 2 63)) (- n (expt 2 64)) n)))
 
@@ -42,6 +43,9 @@
 (define (to-64-value v)
   (if (>= v (expt 2 63)) (- v (expt 2 64)) v))
 
+(define (to-32-value v)
+  (if (>= v (expt 2 31)) (- v (expt 2 32)) v))
+
 ;;-------------------------------------------------------------------------
 ;; NAN BOXING
 
@@ -50,6 +54,7 @@
 (define NB_MASK_VALUE_48  #xFFFFFFFFFFFF)
 
 (define NB_MASK_FIX_UNSHIFTED #x3FFF8)
+(define NB_MASK_CHA_UNSHIFTED #x3FFF9)
 
 (define NB_MASK_FIX  (arithmetic-shift #x3FFF8 NB_MASK_SHIFT))
 (define NB_MASK_CHA  (arithmetic-shift #x3FFF9 NB_MASK_SHIFT))
@@ -70,13 +75,13 @@
 
 (define NB_MAX_FIX (- (expt 2 32) 1))
 
-(define (nanboxing-obj-encoding obj)
+(define (nanboxing-obj-encoding obj #!optional i)
   (let ((v
           (cond ;; 32 bits fixnum
                 ((and (##fixnum? obj) (<= obj NB_MAX_FIX))
                    (+ NB_MASK_FIX obj))
                 ;; Symbol
-                ((or (symbol? obj) (string? obj) (port? obj))
+                ((or (symbol? obj) (string? obj) (port? obj) (procedure? obj) (f64vector? obj))
                    (let* ((tagged (tagging-obj-encoding obj))
                           (addr (- tagged TAG_MEMOBJ)))
                      (+ NB_MASK_MEM addr)))
@@ -88,8 +93,7 @@
                    NB_ENCODED_NULL)
                 ;; flonum
                 ((##flonum? obj)
-                   (let ((w (get-ieee754-imm64 obj)))
-                     w))
+                   (get-ieee754-imm64 obj))
                 ;; boolean
                 ((boolean? obj)
                    (if obj
@@ -107,12 +111,13 @@
                    (taggedvector->nanvector obj))
                 (else
                    (pp obj)
+                   (pp i)
                    (error "NYI1")))))
     (if (>= v (expt 2 63)) (- v (expt 2 64)) v)))
 
 (define (taggedpair->nanpair pair)
-  (let* ((ecar (nanboxing-obj-encoding (car pair)))
-         (ecdr (nanboxing-obj-encoding (cdr pair)))
+  (let* ((ecar (nanboxing-obj-encoding (car pair) -1))
+         (ecdr (nanboxing-obj-encoding (cdr pair) -2))
          (npair (cons 0 0))
          (tagged (tagging-obj-encoding npair))
          (addr (- tagged TAG_PAIR)))
@@ -128,7 +133,7 @@
     (let loop ((i 0))
       (if (not (= i len))
           (let ((obj (vector-ref vec i)))
-            (put-i64 (+ addr 8 (* 8 i)) (nanboxing-obj-encoding obj))
+            (put-i64 (+ addr 8 (* 8 i)) (nanboxing-obj-encoding obj -3))
             (loop (+ i 1)))))
     (+ NB_MASK_MEM addr)))
 
@@ -171,11 +176,15 @@
                (cond ;; Symbol
                      ((or (= stag STAG_SYMBOL)
                           (= stag STAG_STRING)
-                          (= stag 4)) ;; box
+                          (= stag 4) ;; box
+                          (= stag 29)) ;; f64vector
                         (tagging-encoding-obj (+ address TAG_MEMOBJ)))
                      ;; Pair
                      ((= stag STAG_PAIR)
                         (nanpair->taggedpair address))
+                     ;; Procedure
+                     ((= stag STAG_PROCEDURE)
+                       (lambda () #f)) ;; TODO
                      ;; Vector
                      ((= stag STAG_VECTOR)
                        (nanvector->taggedvector address))

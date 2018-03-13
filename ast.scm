@@ -129,11 +129,11 @@
 (define (cst-get cst)
   (let ((r (table-ref cst-table cst #f)))
     (if r
-        (+ (obj-encoding r) (- 8 TAG_MEMOBJ))
+        (+ (obj-encoding r 1) (- 8 TAG_MEMOBJ))
         (let* ((box  (alloc-still-vector 1)))
           (vector-set! box 0 cst)
           (table-set! cst-table cst box)
-          (+ (obj-encoding box) (- 8 TAG_MEMOBJ))))))
+          (+ (obj-encoding box 2) (- 8 TAG_MEMOBJ))))))
 
 ;;
 ;; entry-object -> stubs
@@ -1010,7 +1010,7 @@
 ;;
 (define (gen-closure cgc reg ctx entry-obj fvars-ncst)
 
-  (define entry-obj-loc (- (obj-encoding entry-obj) 1))
+  (define entry-obj-loc (- (tagging-obj-encoding entry-obj 3) 1))
 
   ;; If 'stats' option, then inc closures slot
   (if opt-stats
@@ -1029,12 +1029,13 @@
     (let ((r (asc-entryobj-globalclo-get entry-obj-loc)))
       (or r
           (let* ((obj (alloc-perm-procedure))
-                 (enc (obj-encoding obj)))
+                 (enc (tagging-obj-encoding obj 4))
+                 (renc (obj-encoding obj)))
             (if opt-entry-points
                 (put-i64 (+ (- enc TAG_MEMOBJ) OFFSET_BODY) entry-obj-loc)
                 (put-i64 (+ (- enc TAG_MEMOBJ) OFFSET_BODY) (get-i64 (+ entry-obj-loc 8))))
-            (asc-entryobj-globalclo-add entry-obj-loc enc)
-            enc))))
+            (asc-entryobj-globalclo-add entry-obj-loc renc)
+            renc))))
 
   ;; The closure is constant so we only need to load closure ptr in dest register
   (let ((ptr (get-closure-ptr))
@@ -1368,7 +1369,7 @@
           ;; This context is used by init-entry and gen-free-vars because they need this information
           (mlet ((ctx (cst-binder ctx))
                  (fn-n/entry-obj (init-entry ast ctx (append free-cst free-imm) free-late id))
-                 (entry-obj-loc (- (obj-encoding entry-obj) 1)))
+                 (entry-obj-loc (- (tagging-obj-encoding entry-obj 5) 1)))
             (set! fn-num fn-n) ;; update current function fn-num
             (if opt-entry-points
                 (x86-mov cgc (x86-rax) (x86-imm-int entry-obj-loc))
@@ -1393,7 +1394,7 @@
                              (x86-mem late-off clo-reg)
                              (begin
                                (assert (assoc (car lates) other-vars) "Internal error")
-                               (x86-imm-int (obj-encoding #f))))))
+                               (x86-imm-int (obj-encoding #f 6))))))
                   (if (x86-mem? opnd)
                       (x86-lea cgc (x86-rax) opnd)
                       (x86-mov cgc (x86-rax) opnd))
@@ -1591,7 +1592,7 @@
                              (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
                                     (x86-upush cgc (x86-rax))
                                     (loop (- idx 1)))))))
-                                    
+
                  (codegen-gambit-call cgc gsym nargs reg)
                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) (make-ctx-tunk) reg)))))))
     (if generated-arg?
@@ -1885,7 +1886,6 @@
       (set! ctx (cdr (call-save/cont cgc ctx ast succ #f 2 #t #f)))
       ;; Push closure
       (call-get-closure cgc ctx 1)
-
       (let ((lsttype (ctx-get-type ctx 0)))
         (cond
           ((and (ctx-type-cst? lsttype)
@@ -1897,11 +1897,10 @@
           (else
              (let ((lst-loc  (ctx-get-loc ctx 0)))
                (codegen-apply-xxx cgc (ctx-fs ctx) (ctx-ffs ctx) lst-loc))))
-
         (let ((fn-id-inf (call-get-eploc ctx (cadr ast))))
           (x86-mov cgc (x86-rdi) (x86-r11)) ;; Copy nb args in rdi
           (if (and (not opt-entry-points) fn-id-inf (car fn-id-inf))
-              (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f)))
+              (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f 7)))
               (x86-mov cgc (x86-rsi) (x86-rax))) ;; Move closure in closure reg
           (gen-call-sequence ast cgc #f #f #f (and fn-id-inf (cdr fn-id-inf)) #f #f))))))
 
@@ -2333,7 +2332,7 @@
                        (gen-closure cgc 'tmp #f entry-obj '())
                        (x86-upush cgc (codegen-reg-to-x86reg 'tmp))))
                   ((eq? (caar locs) 'const)
-                     (let ((encoding (obj-encoding (cdar locs))))
+                     (let ((encoding (obj-encoding (cdar locs) 8)))
                        (if (codegen-is-imm-64? encoding)
                            (begin (x86-mov cgc (x86-rax) (x86-imm-int encoding))
                                   (x86-upush cgc (x86-rax)))
@@ -2357,12 +2356,12 @@
              (unused-regs (set-sub (ctx-init-free-regs) used-regs)))
       (if (null? unused-regs)
           (begin (apply-moves cgc ctx moves 'selector)
-                 (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0))))
+                 (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 9))))
           (apply-moves cgc ctx moves (car unused-regs)))
       ;; Force closure reg to contain #f for do_callback_fn if we call a const closure
       (if (and (not opt-entry-points)
                const-fn)
-          (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f))))
+          (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f 10))))
 
       ctx)))
 
@@ -2635,7 +2634,7 @@
                    (if (and (or generic-entry? (not prop-cont?))
                             cn-num)
                        (let ((table (asc-cnnum-table-get cn-num)))
-                         (x86-mov cgc (x86-rax) (x86-imm-int (- (obj-encoding table) TAG_MEMOBJ)))
+                         (x86-mov cgc (x86-rax) (x86-imm-int (- (obj-encoding table 11) TAG_MEMOBJ)))
                          (x86-upush cgc (x86-rax))
                          (set! ctx (ctx-fs-inc ctx))
                          (set! continuation-dropped? #t)
@@ -3238,16 +3237,20 @@
 ;; free-offset is the current free variable offset position from alloc-ptr
 ;; clo-offset is the closure offset position from alloc-ptr
 (define (gen-free-vars cgc ids ctx free-offset base-reg)
-  (if (null? ids)
-      #f
-      (let* ((id (car ids))
-             (identifier (cdr (assoc id (ctx-env ctx))))
-             (src-loc (ctx-identifier-loc ctx identifier))
-             (fs (ctx-fs ctx))
-             (ffs (ctx-ffs ctx))
-             (closure-loc (and (ctx-loc-is-freemem? src-loc) (ctx-get-closure-loc ctx))))
-        (codegen-write-free-variable cgc fs ffs src-loc free-offset closure-loc base-reg)
-        (gen-free-vars cgc (cdr ids) ctx (+ free-offset 1) base-reg))))
+  (let loop ((ids ids)
+             (free-offset free-offset)
+             (selector-used? #f))
+    (if (null? ids)
+        (if selector-used?
+            (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0))))
+        (let* ((id (car ids))
+               (identifier (cdr (assoc id (ctx-env ctx))))
+               (src-loc (ctx-identifier-loc ctx identifier))
+               (fs (ctx-fs ctx))
+               (ffs (ctx-ffs ctx))
+               (closure-loc (and (ctx-loc-is-freemem? src-loc) (ctx-get-closure-loc ctx))))
+          (let ((r (codegen-write-free-variable cgc fs ffs src-loc free-offset closure-loc base-reg)))
+            (loop (cdr ids) (+ free-offset 1) (or r selector-used?)))))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst params enc-ids)
@@ -3277,11 +3280,12 @@
 
   (define (alloc-cst reg cst)
     (let ((opnd (codegen-reg-to-x86reg reg)))
-      (x86-mov cgc opnd (x86-imm-int (obj-encoding cst)))))
+      (x86-mov cgc opnd (x86-imm-int (obj-encoding cst 12)))))
 
   (let* ((type (ctx-get-type ctx ctx-idx))
          (loc  (ctx-get-loc  ctx ctx-idx))
          (cst? (ctx-type-cst? type)))
+
     (cond ((and cst? (not loc))
              (mlet ((cst (ctx-type-cst type))
                     (moves/reg/ctx

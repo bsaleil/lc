@@ -153,7 +153,7 @@
 (define codegen-test-value #f)
 (define codegen-test-mem-obj #f)
 (define codegen-test-value #f)
-
+(define codegen-test-char #f)
 
 
 ;;-----------------------------------------------------------------------------
@@ -267,7 +267,7 @@
   ;; Put error msg in RAX
   (let ((r1 (car regalloc-regs)))
     (x86-upush cgc r1)
-    (x86-mov cgc r1 (x86-imm-int (obj-encoding err)))
+    (x86-mov cgc r1 (x86-imm-int (obj-encoding err 1)))
     (x86-pcall cgc label-rt-error-handler)
     (x86-upop cgc r1)))
 
@@ -303,13 +303,13 @@
     cgc
     label-print-msg-handler
     reg
-    (x86-imm-int (obj-encoding newline?))))
+    (x86-imm-int (obj-encoding newline? 2))))
 
 (define (gen-print-reg cgc msg reg)
   (gen-print-*
     cgc
     label-print-msg-val-handler
-    (x86-imm-int (obj-encoding msg))
+    (x86-imm-int (obj-encoding msg 3))
     reg))
 
 ;; Print msg which is encoded in rax
@@ -383,7 +383,7 @@
     (let ((retval (apply op-fn args)))
 
       (put-i64 (+ usp (* 8 (+ (length regalloc-regs) 1)))
-               (obj-encoding retval)))))
+               (obj-encoding retval 4)))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -410,7 +410,7 @@
 
     ;; reset selector
     (put-i64 (+ usp (selector-sp-offset))
-             (obj-encoding 0))))
+             (obj-encoding 0 5))))
 
 ;; Same behavior as 'do-callback' but calls callback with call site addr
 ;; The call code call the stub, then the stub call 'do-callback-fn'
@@ -473,7 +473,7 @@
 
     ;; reset selector
     (put-i64 (+ usp (selector-sp-offset))
-             (obj-encoding 0))))
+             (obj-encoding 0 6))))
 
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
@@ -506,7 +506,7 @@
 
     ;; reset selector
     (put-i64 (+ usp (selector-sp-offset))
-             (obj-encoding 0))))
+             (obj-encoding 0 7))))
 
 ;;-----------------------------------------------------------------------------
 
@@ -663,7 +663,7 @@
                (begin
                  (if opt-nan-boxing
                      (x86-inc cgc (x86-rcx))
-                     (x86-add cgc (x86-ecx) (x86-imm-int (obj-encoding 1)))) ;; increment selector
+                     (x86-add cgc (x86-ecx) (x86-imm-int (obj-encoding 1 8)))) ;; increment selector
                  (x86-nop cgc)
                  (loop (- i 1))))))
        (gen cgc)))
@@ -686,7 +686,7 @@
 
 (define (call-handler cgc label-handler obj)
   (x86-pcall cgc label-handler)
-  (asm-64   cgc (tagging-obj-encoding obj)))
+  (asm-64   cgc (tagging-obj-encoding obj 9)))
 
 (define (stub-reclaim stub-addr)
   (put-i64 stub-addr stub-freelist)
@@ -898,7 +898,7 @@
     (x86-mov cgc (x86-rcx) (x86-mem 0 (x86-rcx)))
     (x86-mov cgc (x86-mem (* 8 5) (x86-rax)) (x86-rcx))
 
-    (x86-mov cgc (x86-rcx) (x86-imm-int (obj-encoding 0)))
+    (x86-mov cgc (x86-rcx) (x86-imm-int (obj-encoding 0 10)))
     ;; Heap addr in alloc-ptr
     (x86-mov cgc alloc-ptr (x86-imm-int (get-hp-addr)))
     (x86-mov cgc alloc-ptr (x86-mem 0 alloc-ptr))
@@ -1208,7 +1208,7 @@
                           (if (eq? (cadar move) 'const)
                               (begin
                                 (assert (eq? (mem-allocated-kind (cddar move)) 'PERM) "Internal error")
-                                (x86-imm-int (obj-encoding (cddar move))))
+                                (x86-imm-int (obj-encoding (cddar move) 11)))
                               (let* ((loc (cdar move))
                                      (opnd (codegen-loc-to-x86opnd (- (ctx-fs ctx) fs-offset) (- (ctx-ffs ctx) ffs-offset) loc)))
                                 (gen-allocation-imm cgc STAG_FLONUM 8)
@@ -1227,9 +1227,9 @@
                        ((and (pair? (car move))
                              (eq? (caar move) 'const))
                           (cond ((and (flonum? (cdar move)) (not opt-nan-boxing))
-                                   (x86-imm-int (get-i64 (+ (- OFFSET_FLONUM TAG_MEMOBJ) (obj-encoding (cdar move))))))
+                                   (x86-imm-int (get-i64 (+ (- OFFSET_FLONUM TAG_MEMOBJ) (obj-encoding (cdar move) 12)))))
                                 (else
-                                   (x86-imm-int (obj-encoding (cdar move))))))
+                                   (x86-imm-int (obj-encoding (cdar move) 13)))))
                        ((eq? (car move) 'rtmp)
                           (get-tmp))
                        (else
@@ -1257,7 +1257,7 @@
                 ((and (pair? src) (eq? (car src) 'constcont))
                   (x86-label cgc (asm-make-label #f (new-sym 'SYM_OPT_)))
                   (let ((table (asc-cnnum-table-get (cdr src))))
-                    (x86-mov cgc (x86-rax) (x86-imm-int (- (obj-encoding table) TAG_MEMOBJ)))
+                    (x86-mov cgc (x86-rax) (x86-imm-int (- (obj-encoding table 14) TAG_MEMOBJ)))
                     (x86-mov cgc dst (x86-rax))))
                 ;; Both in memory, use rax
                 ((and (or (x86-mem? src)
@@ -1745,7 +1745,7 @@
   ;; Patch current closure
   (if closure
       ;; if known closure, patch it
-      (put-i64 (+ (- (obj-encoding closure) TAG_MEMOBJ) 8) label-addr))
+      (put-i64 (+ (- (obj-encoding closure 15) TAG_MEMOBJ) 8) label-addr))
 
   ;;
   (patch-direct-jmp-labels entryvec -1 label)
@@ -1897,12 +1897,7 @@
                            (x86-cmp cgc (x86-rax) (x86-imm-int TAG_PAIR)))
                           ;; Char type check
                           ((ctx-type-cha? ctx-type)
-                           ;; char if val is tagged with TAG_SPECIAL and val > 0
-                           (x86-mov cgc (x86-rax) opval)
-                           (x86-mov cgc selector-reg (x86-imm-int SPECIAL_MASK))
-                           (x86-and cgc (x86-rax) selector-reg)
-                           (x86-mov cgc selector-reg (x86-imm-int 0))
-                           (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))
+                           (codegen-test-char cgc opval))
                           ;; TODO WIP
                           ((and (ctx-type-flo? ctx-type) opt-nan-boxing)
                            (x86-mov cgc (x86-rax) opval)
@@ -1910,7 +1905,9 @@
                            (x86-cmp cgc (x86-rax) (x86-imm-int NB_MASK_FLO_MAX_UNSHIFTED))
                            (set! x86-op x86-jle)
                            (let ((fopnd (codegen-freg-to-x86reg freg)))
-                             (x86-movd/movq cgc fopnd opval)))
+                             (if (x86-mem? opval)
+                                 (x86-movsd cgc fopnd opval)
+                                 (x86-movd/movq cgc fopnd opval))))
                           ;; Procedure type test
                           ((ctx-type-mem-allocated? ctx-type)
                             (codegen-test-mem-obj cgc opval lval ctx-type label-jump freg))

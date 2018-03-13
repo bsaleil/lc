@@ -227,7 +227,7 @@
 
 (define (permanent-object? obj)
   (and (##mem-allocated? obj)
-       (let* ((obj-addr (- (obj-encoding obj) TAG_MEMOBJ))
+       (let* ((obj-addr (- (obj-encoding obj 2000) TAG_MEMOBJ))
               (life (bitwise-and (get-i64 obj-addr) 7)))
          (= life LIFE_PERM))))
 

@@ -244,7 +244,7 @@
                       ((not loc)
                         (let* ((type (ctx-get-type ctx 0))
                                (cst  (ctx-type-cst type)))
-                          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding cst)))))
+                          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding cst 1000)))))
                       ((ctx-loc-is-register? loc)
                         (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc)))
                       ((ctx-loc-is-fregister? loc)
