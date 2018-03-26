@@ -127,13 +127,17 @@
 ;; to load the constant
 (define cst-table (make-table test: equal?))
 (define (cst-get cst)
+  (define (get-obj-addr box)
+    (let ((box-addr (- (tagging-obj-encoding box) TAG_MEMOBJ)))
+      (+ box-addr 8)))
   (let ((r (table-ref cst-table cst #f)))
     (if r
-        (+ (obj-encoding r 1) (- 8 TAG_MEMOBJ))
+        (get-obj-addr box))
         (let* ((box  (alloc-still-vector 1)))
           (vector-set! box 0 cst)
           (table-set! cst-table cst box)
-          (+ (obj-encoding box 2) (- 8 TAG_MEMOBJ))))))
+          ;;
+          (get-obj-addr box))))
 
 ;;
 ;; entry-object -> stubs
@@ -450,6 +454,11 @@
 ;;
 (define (mlc-literal lit ast succ)
 
+  ;; nan boxing and int !32
+  (if (and opt-nan-boxing
+          (integer? lit)
+          (not (int32? lit)))
+      (set! lit (exact->inexact lit)))
 
   (if (and (integer? lit)
            (not (fixnum? lit)))
@@ -992,7 +1001,6 @@
       (define fvars-ncst (ctx-ids-keep-non-cst ctx fvars-imm))
 
       (mlet ((fn-num/entry-obj (init-entry ast ctx fvars-imm '() #f)))
-
         (if (null? fvars-ncst)
 
             ;; Cst function, add information to ctx
@@ -1388,7 +1396,9 @@
                      (offset offset-late))
             (if (not (null? lates))
                 (let* ((late-inf (assoc (car lates) proc-vars))
-                       (late-off (and late-inf (+ (* -8 (- closures-size (cadr late-inf))) TAG_MEMOBJ)))
+                       (late-off (if opt-nan-boxing
+                                     (and late-inf (* -8 (- closures-size (cadr late-inf))))
+                                     (and late-inf (+ (* -8 (- closures-size (cadr late-inf))) TAG_MEMOBJ))))
                        (opnd
                          (if late-off
                              (x86-mem late-off clo-reg)
@@ -1408,7 +1418,10 @@
           (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 0)))
             (apply-moves cgc ctx moves)
             (let ((dest (codegen-reg-to-x86reg reg)))
-              (x86-lea cgc dest (x86-mem (+ offset-start TAG_MEMOBJ) clo-reg)))
+              (if opt-nan-boxing
+                  (begin (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value (+ offset-start NB_MASK_MEM))))
+                         (x86-lea cgc dest (x86-mem 0 clo-reg (x86-rax))))
+                  (x86-lea cgc dest (x86-mem (+ offset-start TAG_MEMOBJ) clo-reg))))
             (let* ((ctx (ctx-push ctx (make-ctx-tcloi fn-num) reg))
                    (ctx (ctx-id-add-idx ctx id 0)))
               (jump-to-version cgc succ ctx))))))
@@ -1891,7 +1904,7 @@
           ((and (ctx-type-cst? lsttype)
                 (null? (ctx-type-cst lsttype)))
              ;; Only write the number of arguments (0)
-             (x86-mov cgc (x86-r11) (x86-imm-int 0)))
+             (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding 0))))
           ((ctx-type-cst? lsttype)
              (error "NYI - apply (other cst)"))
           (else
@@ -2155,6 +2168,7 @@
                                        1
                                        (let ((prev-action #f))
                                          (lambda (ret-addr selector)
+
                                            (let ((stub-addr
                                                    stub-first-label-addr)
                                                  (jump-addr
@@ -2634,6 +2648,7 @@
                    (if (and (or generic-entry? (not prop-cont?))
                             cn-num)
                        (let ((table (asc-cnnum-table-get cn-num)))
+                         (if opt-nan-boxing (error "NYI NAN"))
                          (x86-mov cgc (x86-rax) (x86-imm-int (- (obj-encoding table 11) TAG_MEMOBJ)))
                          (x86-upush cgc (x86-rax))
                          (set! ctx (ctx-fs-inc ctx))

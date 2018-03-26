@@ -370,6 +370,7 @@
            (encoding-obj (get-i64 (+ usp (* (+ (length regalloc-regs) 2) 8)))))
          (op-sym
            (encoding-obj (get-i64 (+ usp (* (+ (length regalloc-regs) 1) 8)))))
+
          (args
            (reverse
              (let loop ((n nargs) (offset 3))
@@ -378,6 +379,7 @@
                    (let ((word (get-u64 (+ usp (* (+ (length regalloc-regs) offset) 8)))))
                      (cons (encoding-obj word)
                            (loop (- n 1) (+ offset 1))))))))
+
          (op-fn (eval op-sym)))
 
     (let ((retval (apply op-fn args)))
@@ -390,7 +392,6 @@
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
 (c-define (do-callback usp psp) (long long) void "do_callback" ""
-
   (let* ((ret-addr (get-i64 psp))
 
          (callback-fn
@@ -437,7 +438,6 @@
 ;; | Call arg 1    |
 ;; +---------------+
 (c-define (do-callback-fn usp psp) (long long) void "do_callback_fn" ""
-
   (let* ((ret-addr (get-i64 psp))
 
          (selector
@@ -478,7 +478,6 @@
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
 (c-define (do-callback-cont usp psp) (long long) void "do_callback_cont" ""
-
   (let* ((ret-addr (get-i64 psp))
 
          (callback-fn
@@ -551,7 +550,7 @@
 (define (init-mcb)
   (set! mcb (make-mcb code-len))
   (set! code-addr (##foreign-address mcb))
-  (set! ustack (make-vector (/ ustack-len 8)))
+  (set! ustack (make-vector ustack-len))
   (set! ustack-init (+ (object-address ustack) 8 ustack-len)))
 
 ;; BLOCK :
@@ -906,7 +905,7 @@
 
     ;; Set all registers used for regalloc to 0
     (for-each (lambda (el)
-                (x86-mov cgc el (x86-imm-int 0)))
+                (x86-mov cgc el (x86-imm-int (obj-encoding 0))))
               regalloc-regs)
 
     (let ((label (asm-make-label #f (new-sym 'prog_begin))))

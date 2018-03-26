@@ -429,6 +429,7 @@
     (x86-mov cgc dest (x86-imm-int (obj-encoding #!void)))))
 
 (define (codegen-set-non-global cgc reg lval fs)
+  (if opt-nan-boxing (error "NYI codegen nan"))
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
@@ -452,6 +453,7 @@
 ;;-----------------------------------------------------------------------------
 ;; Symbol
 (define (codegen-symbol cgc sym reg)
+  (if opt-nan-boxing (error "NYI codegen nan"))
   (let ((qword (obj-encoding sym 6))
         (dest  (codegen-reg-to-x86reg reg)))
     ;; Check symbol is a PERM gambit object
@@ -461,6 +463,7 @@
 ;;-----------------------------------------------------------------------------
 ;; String
 (define (codegen-string cgc str reg)
+  (if opt-nan-boxing (error "NYI codegen nan"))
 
   (let ((dest (codegen-reg-to-x86reg reg)))
 
@@ -654,7 +657,6 @@
 
 ;; Generate specialized function prologue with rest param and actual > formal
 (define (codegen-prologue-rest> cgc fs ffs locs rloc)
-
   ;; TODO: one allocation for list
   ;; TODO: use x86 loop for mem locs
 
@@ -887,7 +889,7 @@
               (x86-jmp cgc (x86-mem cct-offset (x86-rdx))))
             (else
               (if opt-nan-boxing
-                  (begin (x86-mov cgc (x86-rdx) (x86-imm-int (to-64-value NB_MASK_VALUE_48)))
+                  (begin (x86-mov cgc (x86-rdx) (x86-imm-int NB_MASK_VALUE_48))
                          (x86-and cgc (x86-rdx) (x86-rsi))
                          (x86-mov cgc (x86-rdx) (x86-mem 8 (x86-rdx))))
                   (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi))))
@@ -1038,8 +1040,14 @@
                               (x86-mov cgc dest opright))
                           (x86-add cgc dest32 (x86-imm-int lleft))
                           (box dest))
-             ((eq? op '-) (error "nb ii 1"))
-             ((eq? op '*) (error "nb ii 2"))))
+             ((eq? op '-) (if (eq? dest opright)
+                              (begin (x86-mov cgc (x86-rax) dest)
+                                     (set! opright (x86-rax))))
+                          (x86-mov cgc dest (x86-imm-int lleft))
+                          (x86-sub cgc dest32 (l32 opright))
+                          (box dest))
+             ((eq? op '*) (x86-imul cgc dest32 (l32 opright) (x86-imm-int lleft))
+                          (box dest))))
      (rcst?
        (cond ((eq? op '+)
                 (if (not (eq? dest opleft))
@@ -1315,10 +1323,15 @@
     (on-dynamic-mode
       ;; Left operand
       (cond ((and leftint? lcst?)
-               (error "NYI1"))
+               (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 (fixnum->flonum lleft))))
+               (x86-movd/movq cgc (x86-xmm0) (x86-rax))
+               (set! opleft (x86-xmm0)))
             (leftint?
-               (x86-mov cgc (x86-rax) opleft)
-               (x86-shr cgc (x86-rax) (x86-imm-int 2))
+               (if opt-nan-boxing
+                   (begin (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_32))
+                          (x86-and cgc (x86-rax) opleft))
+                   (begin (x86-mov cgc (x86-rax) opleft)
+                          (x86-shr cgc (x86-rax) (x86-imm-int 2))))
                (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))
                (set! opleft (x86-xmm0)))
             (lcst?
@@ -1342,8 +1355,11 @@
                (x86-movd/movq cgc (x86-xmm1) (x86-rax))
                (x86-comisd cgc opleft (x86-xmm1)))
             (rightint?
-               (x86-mov cgc (x86-rax) opright)
-               (x86-shr cgc (x86-rax) (x86-imm-int 2))
+               (if opt-nan-boxing
+                   (begin (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_32))
+                          (x86-and cgc (x86-rax) opright))
+                   (begin (x86-mov cgc (x86-rax) opright)
+                          (x86-shr cgc (x86-rax) (x86-imm-int 2))))
                (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
                (x86-comisd cgc opleft (x86-xmm1)))
             (rcst?
@@ -1808,7 +1824,26 @@
 
 ;;
 ;; symbol->string
-(define (codegen-p-symbol->string cgc fs ffs op reg inlined-cond? lsym sym-cst?)
+(define (codegen-p-symbol->string cgc fs ffs op reg inlined-con? lsym sym-cst?)
+  (if opt-nan-boxing
+      (codegen-p-symbol->string-nan cgc fs ffs op reg inlined-con? lsym sym-cst?)
+      (codegen-p-symbol->string-tag cgc fs ffs op reg inlined-con? lsym sym-cst?)))
+
+(define (codegen-p-symbol->string-nan cgc fs ffs op reg inlined-cond? lsym sym-cst?)
+
+  (assert (not sym-cst?) "Internal error. Unexpected cst operand")
+
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opsym (codegen-loc-to-x86opnd fs ffs lsym)))
+
+    ;; Get string scheme object from symbol representation
+    (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
+    (x86-and cgc (x86-rax) opsym)
+    (x86-mov cgc dest (x86-mem 8 (x86-rax)))
+    (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
+    (x86-lea cgc dest (x86-mem -1 dest (x86-rax)))))
+
+(define (codegen-p-symbol->string-tag cgc fs ffs op reg inlined-cond? lsym sym-cst?)
 
   (assert (not sym-cst?) "Internal error. Unexpected cst operand")
 
@@ -1838,6 +1873,12 @@
 
 (define (codegen-p-set-cxr!-nan cgc op dest oppair opval lval val-cst?)
   (define offset (if (eq? op 'set-car!) OFFSET_PAIR_CAR OFFSET_PAIR_CDR))
+  (define saved-dest #f)
+
+  (if (and (eq? dest opval)
+           (not val-cst?))
+      (begin (set! saved-dest dest)
+             (set! dest selector-reg)))
 
   (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
   (x86-mov cgc dest oppair)
@@ -1851,7 +1892,12 @@
      (x86-mov cgc (x86-rax) opval)
      (x86-mov cgc (x86-mem offset dest) (x86-rax)))
     (else
-     (x86-mov cgc (x86-mem offset dest) opval))))
+     (x86-mov cgc (x86-mem offset dest) opval)))
+
+  (if saved-dest
+      (begin (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0)))
+             (set! dest saved-dest)))
+  (x86-mov cgc dest (x86-imm-int (obj-encoding #!void))))
 
 
 
@@ -1882,24 +1928,18 @@
 
   (define dest (codegen-reg-to-x86reg reg))
 
-  (cond
-    ((and cst? (eof-object? lval))
-       (x86-mov cgc dest (x86-imm-int (obj-encoding #t 76))))
-    (cst?
-       (x86-mov cgc dest (x86-imm-int (obj-encoding #f 77))))
-    (else
-       (let ((label-end (asm-make-label #f (new-sym 'label-end)))
-             (opval (codegen-loc-to-x86opnd fs ffs lval)))
+  (assert (not cst?) "Internal error")
 
-         ;; ENCODING_EOF is a a imm64 and cmp r/m64, imm32 is not possible
-         ;; then use a r64
-         (x86-mov cgc (x86-rax) (x86-imm-int (if opt-nan-boxing NB_ENCODED_EOF ENCODING_EOF)))
-
-         (x86-cmp cgc opval (x86-rax))
-         (x86-mov cgc dest (x86-imm-int (obj-encoding #f 78)))
-         (x86-jne cgc label-end)
-         (x86-mov cgc dest (x86-imm-int (obj-encoding #t 79)))
-         (x86-label cgc label-end)))))
+  (let ((label-end (asm-make-label #f (new-sym 'label-end)))
+        (opval (codegen-loc-to-x86opnd fs ffs lval)))
+    ;; ENCODING_EOF is a a imm64 and cmp r/m64, imm32 is not possible
+    ;; then use a r64
+    (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value (if opt-nan-boxing NB_ENCODED_EOF ENCODING_EOF))))
+    (x86-cmp cgc opval (x86-rax))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #f 78)))
+    (x86-jne cgc label-end)
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #t 79)))
+    (x86-label cgc label-end)))
 
 ;;
 ;; char->integer/integer->char
@@ -2141,8 +2181,8 @@
 
   ;; Can't test this function for nan boxing because gambit should return a nan-boxing encoded object
   ;; when gen-allocation-imm-sti is called.
-  (if opt-nan-boxing
-      (error "NYI case for nan boxing (codegen-p-make-vector-imm-sti)"))
+  ; (if opt-nan-boxing
+  ;     (error "NYI case for nan boxing (codegen-p-make-vector-imm-sti)"))
 
   ;; Alloc vector
   (gen-allocation-imm-sti cgc STAG_VECTOR (* 8 llen))
@@ -2163,7 +2203,10 @@
       (x86-jmp cgc label-loop))
 
   (x86-label cgc label-end)
-  (x86-mov cgc dest (x86-rax))
+  (if opt-nan-boxing
+      (begin (x86-mov cgc dest (x86-imm-int (to-64-value (- NB_MASK_MEM TAG_MEMOBJ))))
+             (x86-lea cgc dest (x86-mem 0 (x86-rax) dest)))
+      (x86-mov cgc dest (x86-rax)))
   (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 93)))))
 
 ;; make-vector with !cst len
@@ -2339,7 +2382,10 @@
         (x86-lea cgc dest (x86-mem 8 opvec opidx 3)))
     (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
     (x86-and cgc dest (x86-rax))
-    (x86-mov cgc dest (x86-mem 0 dest))))
+    (x86-mov cgc dest (x86-mem 0 dest))
+
+    (if use-selector
+        (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 100))))))
 
 (define (codegen-p-vector-ref-tag cgc dest opvec lvec vec-cst? opidx lidx val-cst?)
 
@@ -2469,7 +2515,7 @@
                 ;;
                 ((x86-mem? opnd)
                   (x86-mov cgc (x86-rax) opnd)
-                  (x86-mov cgc (x86-mem offset vec-opnd) opnd))
+                  (x86-mov cgc (x86-mem offset vec-opnd) (x86-rax)))
                 (else
                   (x86-mov cgc (x86-mem offset vec-opnd) opnd)))
           (loop (cdr csts?/locs) (- i 1)))))
@@ -2714,6 +2760,7 @@
 ;;-----------------------------------------------------------------------------
 
 (define (codegen-subtype cgc fs reg lval)
+  (if opt-nan-boxing (error "NYI codegen nan"))
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs lval)))
 
@@ -2728,6 +2775,7 @@
     (x86-shr cgc dest (x86-imm-int 1))))
 
 (define (codegen-fixnum->flonum cgc fs reg lval)
+  (if opt-nan-boxing (error "NYI codegen nan"))
   (let ((dest  (codegen-reg-to-x86reg reg))
         (lval  (codegen-loc-to-x86opnd fs lval)))
 
@@ -2739,6 +2787,8 @@
 
 
 (define (codegen-make-vector-cst cgc fs reg len lval)
+
+  (if opt-nan-boxing (error "NYI codegen nan"))
 
   (let ((loop     (asm-make-label #f (new-sym 'make-vector-loop)))
         (loop-end (asm-make-label #f (new-sym 'make-vector-end)))

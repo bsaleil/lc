@@ -93,9 +93,6 @@ void initc()
   signal(SIGINT, lcIntHandler);
 }
 
-
-
-
 ")
 
 ;; TODO: remove signal stack when gambit accepts new flag
