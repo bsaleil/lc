@@ -108,6 +108,10 @@
     ,(lambda (args) (if opt-call-max-len (error "--call-max-len requires interprocedural extensions"))
                     (set! opt-entry-points #f) args))
 
+  (--disable-float-unboxing
+    "Disable automatic float unboxing based on type specialization"
+    ,(lambda (args) (set! opt-float-unboxing #f) args))
+
   (--disable-inlined-call
     "Disable lazy call inlining when callee identity is known. Lazy call inlining causes function duplication which is
      not necessarily expected if --disable-entry-points is provided"

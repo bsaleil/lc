@@ -62,8 +62,11 @@
 (define opt-closest-cx-overflow  #t) ;; Use the closest ctx associated to an existing slot of the cx table when the table oferflows (if possible) instead of using generic ctx
 (define opt-lazy-inlined-call    #t) ;; The function body is inlined at a call if (1) the identity of the callee is known, (2) there is no version of the function for this ctx
 (define opt-nan-boxing           #f) ;; Use nan boxing istead of tagging to encode values
+(define opt-float-unboxing       #t) ;; Use automatic float unboxing based on type specialization
+
 (define opt-propagate-continuation #f) ;; TODO
 (define opt-regalloc-inlined-call #f)  ;; TODO
+
 
 
 ;; This is the list of cst types used for versioning (if opt-const-vers is #t)
@@ -1785,13 +1788,15 @@
        ;; TODO: clean & comments
        (let* (;;
               (r (and (ctx-type-flo? ctx-type)
+                      opt-float-unboxing
                       (ctx-get-free-freg ast ctx lazy-success 0)))
               (moves (and r (car r)))
               (freg  (and r (cadr r)))
               (ctx   (if  r (caddr r) ctx))
               ;;
               (ctx-success
-                  (if (ctx-type-flo? ctx-type)
+                  (if (and (ctx-type-flo? ctx-type)
+                           opt-float-unboxing)
                       (let* ((ident (ctx-ident-at ctx stack-idx))
                              (tctx (ctx-set-type ctx stack-idx (type-ctor) #t)))
                         (if ident
@@ -1903,10 +1908,11 @@
                            (x86-shr cgc (x86-rax) (x86-imm-int 48))
                            (x86-cmp cgc (x86-rax) (x86-imm-int NB_MASK_FLO_MAX_UNSHIFTED))
                            (set! x86-op x86-jle)
-                           (let ((fopnd (codegen-freg-to-x86reg freg)))
-                             (if (x86-mem? opval)
-                                 (x86-movsd cgc fopnd opval)
-                                 (x86-movd/movq cgc fopnd opval))))
+                           (if opt-float-unboxing
+                               (let ((fopnd (codegen-freg-to-x86reg freg)))
+                                 (if (x86-mem? opval)
+                                     (x86-movsd cgc fopnd opval)
+                                     (x86-movd/movq cgc fopnd opval)))))
                           ;; Procedure type test
                           ((ctx-type-mem-allocated? ctx-type)
                             (codegen-test-mem-obj cgc opval lval ctx-type label-jump freg))

@@ -539,7 +539,8 @@
 (define (gen-get-localvar cgc ast ctx local succ)
   (mlet ((type (ctx-identifier-type ctx (cdr local)))
          (moves/reg/ctx
-           (if (ctx-type-flo? type)
+           (if (and opt-float-unboxing
+                    (ctx-type-flo? type))
                (ctx-get-free-freg ast ctx succ 0)
                (ctx-get-free-reg ast ctx succ 0)))
          (loc (ctx-identifier-loc ctx (cdr local))))
@@ -740,7 +741,8 @@
            (lret     (ctx-get-loc ctx 0))
            ;; Return address object loc
            (laddr (ctx-get-retobj-loc ctx)))
-      (codegen-return-rp cgc fs ffs laddr lret (ctx-type-flo? type-ret))))
+      (let ((float-val? (and opt-float-unboxing (ctx-type-flo? type-ret))))
+        (codegen-return-rp cgc fs ffs laddr lret float-val?))))
 
   (define (gen-return-cr cgc ctx)
 
@@ -770,14 +772,16 @@
 
           (if (ctx-type-cst? taddr)
               (let ((lco (asc-cnnum-lco-get (ctx-type-cst taddr)))
-                    (opret (if (ctx-type-flo? type-ret)
+                    (opret (if (and opt-float-unboxing
+                                    (ctx-type-flo? type-ret))
                                (codegen-freg-to-x86reg return-freg)
                                (codegen-reg-to-x86reg return-reg)))
                     (opretval (and lret (codegen-loc-to-x86opnd fs ffs lret))))
 
                 (if (and opretval
                          (not (eq? opret opretval)))
-                    (if (ctx-type-flo? type-ret)
+                    (if (and opt-float-unboxing
+                             (ctx-type-flo? type-ret))
                         (x86-movsd cgc opret opretval)
                         (x86-mov cgc opret opretval)))
 
@@ -786,13 +790,14 @@
                        (ctx
                          (cond ((not lret)
                                  (ctx-push ctx type-ret #f))
-                               ((ctx-type-flo? type-ret)
+                               ((and opt-float-unboxing (ctx-type-flo? type-ret))
                                  (ctx-push ctx type-ret return-freg))
                                (else
                                  (ctx-push ctx type-ret return-reg)))))
                   (x86-label cgc (asm-make-label #f (new-sym 'inlined_cont_)))
                   (jump-to-version cgc lco ctx)))
-              (codegen-return-cr cgc fs ffs laddr lret cridx (ctx-type-flo? type-ret) cst?)))))
+              (let ((float-val? (and opt-float-unboxing (ctx-type-flo? type-ret))))
+                (codegen-return-cr cgc fs ffs laddr lret cridx float-val? cst?))))))
 
       (make-lazy-code-ret ;; Lazy-code with 'ret flag
         (make-lco-id 32)
@@ -1596,7 +1601,8 @@
                    (if (>= idx 0)
                        (let ((loc  (ctx-get-loc ctx idx))
                              (type (ctx-get-type ctx idx)))
-                         (if (ctx-type-flo? type)
+                         (if (and opt-float-unboxing
+                                  (ctx-type-flo? type))
                              ;; Float, push a boxed float
                              (begin (codegen-box-float cgc #f #f loc 'tmp)
                                     (x86-upush cgc (x86-rax))
@@ -1605,7 +1611,6 @@
                              (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
                                     (x86-upush cgc (x86-rax))
                                     (loop (- idx 1)))))))
-
                  (codegen-gambit-call cgc gsym nargs reg)
                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) (make-ctx-tunk) reg)))))))
     (if generated-arg?
@@ -1980,7 +1985,8 @@
                 (gen-primitive cgc ctx succ reg prim)))))))
 
   (define (get-box-fl-args-lco primitive next)
-    (if (primitive-box-fl-args? primitive)
+    (if (and opt-float-unboxing
+             (primitive-box-fl-args? primitive))
         (make-lazy-code (make-lco-id 24)
           (lambda (cgc ctx)
             (let* ((idx-to (or (primitive-nbargs primitive)
@@ -2396,7 +2402,8 @@
                 (cond ((and (const-versioned? type)
                             (not (ctx-type-id? type)))
                          (loop (+ idx 1) nf (+ ncst 1)))
-                      ((ctx-type-flo? type)
+                      ((and (ctx-type-flo? type)
+                            opt-float-unboxing)
                          (loop (+ idx 1) (+ nf 1) ncst))
                       (else
                          (loop (+ idx 1) nf ncst))))))))
@@ -2686,7 +2693,6 @@
                                                 (not inlined-call?))
                                            generic-entry?)))
                          (call-tail-shift cgc ctx ast nb-args cn-num continuation-dropped? dropped?)))
-
                    ;; Generate call sequence
                    (gen-call-sequence ast cgc call-stack cctable-idx nb-args (and fn-loc/fn-num (cdr fn-loc/fn-num)) inlined-call? cn-num)))))))))
 
@@ -2790,7 +2796,7 @@
                               (cond ((and (ctx-type-cst? type)
                                           (not (ctx-type-id? type)))
                                         #f)
-                                    ((ctx-type-flo? type) return-freg)
+                                    ((and opt-float-unboxing (ctx-type-flo? type)) return-freg)
                                     (else                 return-reg))))
 
                        (gen-version-continuation-cr
@@ -2915,7 +2921,10 @@
 
   (define (get-lazy-overflow-check)
     (let* ((lazy-overflow   (make-lazy-code (make-lco-id 27) (lambda (cgc ctx)
-               (mlet ((moves/freg/ctx (ctx-get-free-freg ast ctx succ #f))
+               (mlet ((moves/freg/ctx
+                        (if opt-float-unboxing
+                            (ctx-get-free-freg ast ctx succ #f)
+                            (ctx-get-free-reg ast ctx succ #f)))
                       (type (make-ctx-tflo))
                       ;; remove top stack value
                       (ctx (ctx-pop ctx))
@@ -3020,7 +3029,10 @@
                 ;; In these cases, we need a free register
                 ;; Then, get a free register, apply moves, and use it.
                 (num-op?
-                  (mlet ((moves/reg/ctx (ctx-get-free-freg ast ctx succ 2)))
+                  (mlet ((moves/reg/ctx
+                           (if opt-float-unboxing
+                               (ctx-get-free-freg ast ctx succ 2)
+                               (ctx-get-free-reg ast ctx succ 2))))
                     (apply-moves cgc ctx moves)
                     (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc leftint? rloc rightint? lcst? rcst?)
                     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg))))
@@ -3295,6 +3307,8 @@
 
   (define (alloc-cst reg cst)
     (let ((opnd (codegen-reg-to-x86reg reg)))
+      ;; wip: if mem allocated, we need to assert that it is a perm object
+      (assert (if (##mem-allocated? cst) (perm-object? cst) #t) "Internal error")
       (x86-mov cgc opnd (x86-imm-int (obj-encoding cst 12)))))
 
   (let* ((type (ctx-get-type ctx ctx-idx))
@@ -3304,12 +3318,14 @@
     (cond ((and cst? (not loc))
              (mlet ((cst (ctx-type-cst type))
                     (moves/reg/ctx
-                      (if (ctx-type-flo? type)
+                      (if (and opt-float-unboxing (ctx-type-flo? type))
                           (ctx-get-free-freg ast ctx #f 0)
                           (ctx-get-free-reg ast ctx #f 0))))
                (apply-moves cgc ctx moves)
                ;; Alloc cst
-               (cond ((ctx-type-flo? type) (alloc-cst-flo reg cst))
+               (cond ((and opt-float-unboxing
+                           (ctx-type-flo? type))
+                        (alloc-cst-flo reg cst))
                      ((ctx-type-clo? type) (alloc-cst-clo reg cst))
                      (else                 (alloc-cst reg cst)))
                ;; Update & return ctx

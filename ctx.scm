@@ -41,6 +41,7 @@
 (define const-versioned? #f)
 (define opt-propagate-continuation #f)
 (define opt-static-mode #f)
+(define opt-float-unboxing #f)
 
 (define asc-cnnum-ctx-get #f)
 (define asc-cnnum-lco-get #f)
@@ -1035,7 +1036,8 @@
             (cond ((and (const-versioned? type)
                         (not (ctx-type-id? type)))
                      (case-no-loc))
-                  ((ctx-type-flo? type)
+                  ((and opt-float-unboxing
+                        (ctx-type-flo? type))
                      (case-freg))
                   (else
                      (case-loc))))))
@@ -1388,7 +1390,8 @@
                       (ctx-set-loc ctx (stack-idx-to-slot ctx curr-idx) mloc))
                 ;; Else, we need a new memory slot
                 (let* ((type (ctx-get-type ctx curr-idx))
-                       (r (if (ctx-type-flo? type)
+                       (r (if (and opt-float-unboxing
+                                   (ctx-type-flo? type))
                               (ctx-get-free-fmem ctx)
                               (ctx-get-free-mem ctx)))
                        (moves (car r))
@@ -1950,7 +1953,8 @@
                      ((ctx-type-flo? type)
                         (if (or (and (not opt-entry-points)
                                      (not inlined-call?))
-                                generic-entry?)
+                                generic-entry?
+                                (not opt-float-unboxing))
                             (next-other
                               (cons 'flbox (cons 'const (ctx-type-cst type))))
                             (next-float
@@ -1967,7 +1971,8 @@
                  (cons 'flbox loc)))
             ;; Others
             (else
-               (if (ctx-type-flo? type)
+               (if (and (ctx-type-flo? type)
+                        opt-float-unboxing)
                    (next-float loc)
                    (next-other loc)))))))
 
