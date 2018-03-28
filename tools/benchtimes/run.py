@@ -141,26 +141,30 @@ class System:
                 rc = p.returncode
 
                 if (rc != 0) or (serr != '') or ("***" in sout):
-                    self.execError(file)
+                    timems = self.time_to_ms(-1)
+                    rawTimes.append(timems)
+                    continue
+                    #self.execError(file)
 
                 res = re.findall(self.regexms, sout)
 
                 if (len(res) != 1):
                     timems = self.time_to_ms(-1)
                     rawTimes.append(timems)
-                else:
-                    timems = res[0]
-                    # Remove gc time
-                    res = re.findall(self.regexgc, sout)
-                    assert (len(res) == 0 or len(res) == 1)
-                    if (len(res) == 1):
-                        timems = (float(timems) - float(res[0]))
-                    else:
-                        assert "no collections" in sout, "Invalid regexp"
-                        timems = float(timems)
+                    continue
 
-                    timems = self.time_to_ms(timems)
-                    rawTimes.append(timems)
+                timems = res[0]
+                # Remove gc time
+                res = re.findall(self.regexgc, sout)
+                assert (len(res) == 0 or len(res) == 1)
+                if (len(res) == 1):
+                    timems = (float(timems) - float(res[0]))
+                else:
+                    assert "no collections" in sout, "Invalid regexp"
+                    timems = float(timems)
+
+                timems = self.time_to_ms(timems)
+                rawTimes.append(timems)
 
             print('')
             # Remove min, max and compute mean
@@ -216,14 +220,15 @@ systems = []
 # systems.append(lc_with_options("m5eponly", ["--max-versions 5","--disable-return-points"]))
 # systems.append(lc_with_options("m5rponly", ["--max-versions 5","--disable-entry-points"]))
 
-# tagging !opt
-systems.append(lc_with_options("LC1", ["--disable-float-unboxing"]))
-# tagging opt
-systems.append(lc_with_options("LC2", [""]))
-# nan-boxing !opt
-systems.append(lc_with_options("LC3", ["--nan-boxing","--disable-float-unboxing"]))
+
 # nan-boxing opt
 systems.append(lc_with_options("LC4", ["--nan-boxing"]))
+# # tagging !opt
+# systems.append(lc_with_options("LC1", ["--disable-float-unboxing"]))
+# # nan-boxing !opt
+# systems.append(lc_with_options("LC3", ["--nan-boxing","--disable-float-unboxing"]))
+# # tagging opt
+# systems.append(lc_with_options("LC2", [""]))
 
 #
 # # Gambit
