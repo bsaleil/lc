@@ -695,29 +695,34 @@
         ;;
         (jump-to-version cgc succ ctx)))))
 
-;; TODO WIP MOVE
 (define (gen-drop-float cgc ctx ast idx-from idx-to)
-  (if (= idx-from idx-to)
+
+  (define (drop ctx idx-from)
+    (if (= idx-from idx-to)
+        ctx
+        (let* ((type (ctx-get-type ctx idx-from)))
+          (if (and (ctx-type-flo? type)
+                   (not (ctx-type-cst? type)))
+              (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx #f 0))
+                     (loc   (ctx-get-loc ctx idx-from))
+                     (opnd  (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
+                     (ropnd (codegen-reg-to-x86reg reg)))
+                (apply-moves cgc ctx moves)
+                (codegen-box-float cgc (ctx-fs ctx) (ctx-ffs ctx) loc reg)
+                (let* ((ident (ctx-ident-at ctx idx-from))
+                       (ctx
+                         ;; Remove slot-info if the slot belongs to an identifier with > 1 slots
+                         (if (and ident (= (length (identifier-sslots (cdr ident))) 1))
+                             ctx
+                             (ctx-remove-slot-info ctx idx-from)))
+                       (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx idx-from) reg))
+                       (ctx (ctx-set-type ctx idx-from (make-ctx-tunk) #f)))
+                  (drop ctx (+ idx-from 1))))
+              (drop ctx (+ idx-from 1))))))
+
+  (if (not opt-float-unboxing)
       ctx
-      (let* ((type (ctx-get-type ctx idx-from)))
-        (if (and (ctx-type-flo? type)
-                 (not (ctx-type-cst? type)))
-            (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx #f 0))
-                   (loc   (ctx-get-loc ctx idx-from))
-                   (opnd  (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
-                   (ropnd (codegen-reg-to-x86reg reg)))
-              (apply-moves cgc ctx moves)
-              (codegen-box-float cgc (ctx-fs ctx) (ctx-ffs ctx) loc reg)
-              (let* ((ident (ctx-ident-at ctx idx-from))
-                     (ctx
-                       ;; Remove slot-info if the slot belongs to an identifier with > 1 slots
-                       (if (and ident (= (length (identifier-sslots (cdr ident))) 1))
-                           ctx
-                           (ctx-remove-slot-info ctx idx-from)))
-                     (ctx (ctx-set-loc ctx (stack-idx-to-slot ctx idx-from) reg))
-                     (ctx (ctx-set-type ctx idx-from (make-ctx-tunk) #f)))
-                (gen-drop-float cgc ctx ast (+ idx-from 1) idx-to)))
-            (gen-drop-float cgc ctx ast (+ idx-from 1) idx-to)))))
+      (drop ctx idx-from)))
 
 ;;
 ;; Create and return a prologue lco

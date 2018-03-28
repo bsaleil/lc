@@ -144,20 +144,23 @@ class System:
                     self.execError(file)
 
                 res = re.findall(self.regexms, sout)
-                assert (len(res) == 1)
-                timems = res[0]
 
-                # Remove gc time
-                res = re.findall(self.regexgc, sout)
-                assert (len(res) == 0 or len(res) == 1)
-                if (len(res) == 1):
-                    timems = (float(timems) - float(res[0]))
+                if (len(res) != 1):
+                    timems = self.time_to_ms(-1)
+                    rawTimes.append(timems)
                 else:
-                    assert "no collections" in sout, "Invalid regexp"
-                    timems = float(timems)
+                    timems = res[0]
+                    # Remove gc time
+                    res = re.findall(self.regexgc, sout)
+                    assert (len(res) == 0 or len(res) == 1)
+                    if (len(res) == 1):
+                        timems = (float(timems) - float(res[0]))
+                    else:
+                        assert "no collections" in sout, "Invalid regexp"
+                        timems = float(timems)
 
-                timems = self.time_to_ms(timems)
-                rawTimes.append(timems)
+                    timems = self.time_to_ms(timems)
+                    rawTimes.append(timems)
 
             print('')
             # Remove min, max and compute mean
@@ -195,9 +198,9 @@ def userWants(str):
     return r == 'y'
 
 def lc_with_options(name,options):
-    opts = ["/home/bapt/Bureau/these/lazy-comp/lazy-comp","{0}","--time"]
+    opts = ["/home/bapt/Bureau/these/lc/lc","{0}","--time"]
     opts = opts + options
-    return System(name,"LC","",".scm",opts,"(?:.*\n){11}Real time: (\d*.\d*)\n","(?:.*\n){14}GC real time: (\d*.\d*)\n",lambda x: x*1000.0)
+    return System(name,"LC","",".scm",opts,"(?:.*\n){9}CPU time: ([^\n]*)\n","(?:.*\n){10}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0)
 
 def gambit_no_options(name,gcsize):
     opts = []
@@ -212,7 +215,15 @@ systems = []
 # systems.append(lc_with_options("m5intra",  ["--max-versions 5","--disable-entry-points","--disable-return-points"]))
 # systems.append(lc_with_options("m5eponly", ["--max-versions 5","--disable-return-points"]))
 # systems.append(lc_with_options("m5rponly", ["--max-versions 5","--disable-entry-points"]))
-systems.append(lc_with_options("LC", [""]))
+
+# tagging !opt
+systems.append(lc_with_options("LC1", ["--disable-float-unboxing"]))
+# tagging opt
+systems.append(lc_with_options("LC2", [""]))
+# nan-boxing !opt
+systems.append(lc_with_options("LC3", ["--nan-boxing","--disable-float-unboxing"]))
+# nan-boxing opt
+systems.append(lc_with_options("LC4", ["--nan-boxing"]))
 
 #
 # # Gambit
@@ -223,7 +234,7 @@ systems.append(lc_with_options("LC", [""]))
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))
 
-distPath = "/home/bapt/Bureau/lc-ECOOP/tools/benchtimes"
+distPath = "/home/bapt/Bureau/these/lc/tools/benchtimes"
 
 config.benchPath = distPath + '/bench/'
 config.resPath = scriptPath + '/result/'
