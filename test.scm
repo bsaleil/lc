@@ -1,10 +1,10 @@
 
 (define (fact n)
-  (if (= n 0)
+  (if (<= n 0)
       1
       (fact (- n 1))))
 
-(pp (fact 10.0))
+(gambit$$pp (fact 10.0))
 
 
 ;; Pourquoi on a besoin de encoding->obj d'une procédure ? (voir values.scm)

@@ -1115,7 +1115,7 @@
         #f))
 
   (define deep-opnd-reg
-    (let loop ((idx (- nb-opnds 1)))
+    (let loop ((idx (- (or nb-opnds 0) 1)))
       (if (< idx 0)
           #f
           (let ((r (ctx-get-loc ctx idx)))
