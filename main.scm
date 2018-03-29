@@ -57,6 +57,18 @@
 ;; An option contains (option-text help-text option-lambda)
 (define compiler-options `(
 
+  ;; OPTIONS PARSED BY THE LAUNCHER (still declared here for doc)
+
+  (--gdb
+     "Run the compiler with gdb"
+     ,(lambda (args) (cdr args)))
+
+  (--min-heap
+     "Set the minimum heap size (mb). Ex. '--min-heap 1000000' to ask for a 1 gigabyte heap"
+     ,(lambda (args) (cdr args)))
+
+  ;; LC RUNTIME OPTIONS
+
   (--call-max-len
     "Set the max number of args allowed when using a specialized entry point"
     ,(lambda (args) (if (not opt-entry-points) (error "--call-max-len requires interprocedural extensions"))
@@ -148,10 +160,13 @@
       (println "       ./lc [file] [options]")
       (newline)
       (println (string-bold "OPTIONS"))
-      (for-each (lambda (option) (println "       " (car option))
-                                 (println "       " "       " (cadr option))
-                                 (newline))
-                compiler-options)
+      (let ((options (sort compiler-options (lambda (a b)
+                                              (string<? (symbol->string (car a))
+                                                        (symbol->string (car b)))))))
+        (for-each (lambda (option) (println "       " (car option))
+                                   (println "       " "       " (cadr option))
+                                   (newline))
+                  options))
       (newline)
       (exit 0)))
 
