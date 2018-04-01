@@ -214,7 +214,7 @@ void writeLcGlobal(___U64 global)
       (begin (x86-mov cgc selector-reg (x86-imm-int (to-64-value (+ NB_MASK_MEM TAG_MEMOBJ))))
              (x86-xor cgc (x86-rax) selector-reg)))
   ;; Restore selector
-  (x86-mov cgc selector-reg (x86-imm-int 0))
+  (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0)))
   ;; Remove saved values
   (x86-add cgc (x86-usp) (x86-imm-int 16)))
 
