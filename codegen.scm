@@ -908,7 +908,6 @@
   (x86-mov cgc (x86-mem 0 (x86-usp)) (x86-rax)))
 
 (define (codegen-apply-xxx cgc fs ffs lst-loc)
-  (x86-nop cgc)
   (if opt-nan-boxing
       (codegen-apply-xxx-nan cgc fs ffs lst-loc)
       (codegen-apply-xxx-tag cgc fs ffs lst-loc)))
@@ -2433,10 +2432,10 @@
 (define (codegen-p-vector-ref cgc fs ffs op reg inlined-cond? lvec lidx vec-cst? val-cst?)
 
   (assert (not (and vec-cst? val-cst?)) "Internal error")
-  (assert (if vec-cst?
-              (permanent-object? lvec)
-              #t)
-          "Internal error")
+  ; (assert (if vec-cst?
+  ;             (permanent-object? lvec)
+  ;             #t)
+  ;         "Internal error")
 
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (opvec (and (not vec-cst?) (codegen-loc-to-x86opnd fs ffs lvec)))
@@ -2921,25 +2920,48 @@
         (begin
           (x86-cmp cgc op (x86-imm-int imm))))))
 
-(define (codegen-test-mem-obj cgc op loc type label-jump freg)
+(define (codegen-test-mem-obj cgc ast op loc type label-jump freg)
   (if opt-nan-boxing
-      (codegen-test-mem-obj-nan cgc op loc type label-jump freg)
-      (codegen-test-mem-obj-tag cgc op loc type label-jump freg)))
+      (codegen-test-mem-obj-nan cgc ast op loc type label-jump freg)
+      (codegen-test-mem-obj-tag cgc ast op loc type label-jump freg)))
 
-(define (codegen-test-mem-obj-nan cgc op loc type label-jump freg)
+(define (codegen-test-mem-obj-nan cgc ast op loc type label-jump freg)
+
   ;; Check mask
+  (let ((label-debug (asm-make-label #f (new-sym 'DEBUG_)))
+        (label-ddebug (asm-make-label #f (new-sym 'DDEBUG_)))
+        (label-start (asm-make-label #f (new-sym 'START_))))
+    (x86-jmp cgc label-start)
+    (x86-label cgc label-debug)
+      ;(x86-int3 cgc)
+      (x86-jmp cgc label-jump)
+    (x86-label cgc label-ddebug)
+      ;(x86-int3 cgc)
+      (x86-jmp cgc label-jump)
+    (x86-label cgc label-start)
+
   (x86-mov cgc (x86-rax) op)
   (x86-shr cgc (x86-rax) (x86-imm-int 48))
   (x86-cmp cgc (x86-rax) (x86-imm-int #xFFFF))
-  (x86-jne cgc label-jump)
+  (if (or (equal? ast '(($$atom car) (($$atom car) ($$atom lst0))))
+          (equal? ast '(($$atom car) ($$atom lst0))))
+      (x86-jne cgc label-debug)
+      (x86-jne cgc label-jump))
   ;; Check stag
   (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
   (x86-and cgc (x86-rax) op)
   (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax)))
+  (x86-mov cgc (x86-rcx) op)
   (x86-and cgc (x86-rax) (x86-imm-int 248))
-  (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (ctx-type->stag type)))))
+  (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (ctx-type->stag type))))
 
-(define (codegen-test-mem-obj-tag cgc op loc type label-jump freg)
+  ;; TODO
+  (if (or (equal? ast '(($$atom car) (($$atom car) ($$atom lst0))))
+          (equal? ast '(($$atom car) ($$atom lst0))))
+      (x86-jne cgc label-ddebug))
+  (x86-mov cgc (x86-rcx) (x86-imm-int (obj-encoding 0)))))
+
+(define (codegen-test-mem-obj-tag cgc ast op loc type label-jump freg)
   ;; Check tag
   (x86-mov cgc (x86-rax) op)
   (x86-and cgc (x86-rax) (x86-imm-int 3))

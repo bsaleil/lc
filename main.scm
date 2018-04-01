@@ -383,11 +383,15 @@
              (set! stub-freelist #f)
              (let loop ((i 0))
                (if (< i (/ ustack-len 8))
-                   (begin (vector-set! ustack i 0)
+                   (begin (if opt-nan-boxing
+                              (u64vector-set! ustack i 0)
+                              (vector-set! ustack i 0))
                           (loop (+ i 1)))))
              (let loop ((i 0))
                (if (< i globals-len)
-                   (begin (vector-set! globals-space i 0)
+                   (begin (if opt-nan-boxing
+                              (u64vector-set! ustack i 0)
+                              (vector-set! globals-space i 0))
                           (loop (+ i 1)))))
              (##gc)
              (time (##machine-code-block-exec mcb)

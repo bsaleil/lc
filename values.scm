@@ -25,6 +25,7 @@
 (define get-ieee754-imm64 #f)
 (define ieee754->flonum #f)
 (define put-i64 #f)
+(define perm-domain #f)
 
 ;;-------------------------------------------------------------------------
 ;; TAGGING
@@ -86,7 +87,15 @@
                          (+ NB_MASK_FIX two-compl))
                        (+ NB_MASK_FIX obj)))
                 ;; Symbol
-                ((or (symbol? obj) (string? obj) (port? obj) (procedure? obj) (f64vector? obj))
+                ((procedure? obj)
+                   (let* ((addr (- (tagging-obj-encoding obj) 1))
+                          (head (get-i64 addr)))
+                     (if (not (= head 2166))
+                         (error "K"))
+                     (let* ((tagged (tagging-obj-encoding obj))
+                            (addr (- tagged TAG_MEMOBJ)))
+                       (+ NB_MASK_MEM addr))))
+                ((or (symbol? obj) (string? obj) (port? obj) (f64vector? obj))
                    (let* ((tagged (tagging-obj-encoding obj))
                           (addr (- tagged TAG_MEMOBJ)))
                      (+ NB_MASK_MEM addr)))
@@ -121,12 +130,20 @@
                    (pp obj)
                    (pp i)
                    (error "NYI1")))))
-    (if (>= v (expt 2 63)) (- v (expt 2 64)) v)))
+   (let ((encoding
+           (if (>= v (expt 2 63)) (- v (expt 2 64)) v)))
+     ; (if (equal? obj '(()))
+     ;     (begin
+     ;     (println "CONVERT CST TO: " (number->string v 16))
+     ;     (print "  for obj ") (pp obj)
+     ;     (println "  for values.scm call " i)))
+     encoding)))
 
 (define (taggedpair->nanpair pair)
   (let* ((ecar (nanboxing-obj-encoding (car pair) -1))
          (ecdr (nanboxing-obj-encoding (cdr pair) -2))
-         (npair (cons 0 0))
+         (npair-m (cons 0 0))
+         (npair (copy-permanent npair-m #f perm-domain))
          (tagged (tagging-obj-encoding npair))
          (addr (- tagged TAG_PAIR)))
     (put-i64 (+ addr  8) ecdr)
@@ -135,7 +152,8 @@
 
 (define (taggedvector->nanvector vec)
   (let* ((len (vector-length vec))
-         (v (make-vector len))
+         (v-m (make-vector len))
+         (v (copy-permanent v-m #f perm-domain))
          (tagged (tagging-obj-encoding v))
          (addr (- tagged TAG_MEMOBJ)))
     (let loop ((i 0))
@@ -191,13 +209,19 @@
                           (= stag STAG_STRING)
                           (= stag 4) ;;
                           (= stag 5) ;; box
-                          (= stag 29)) ;; f64vector
+                          (= stag 29) ;; f64vector
+                          (= stag 21) ;; u8vector
+                          (= stag 30)) ;; float
                         (tagging-encoding-obj (+ address TAG_MEMOBJ)))
                      ;; Pair
                      ((= stag STAG_PAIR)
                         (nanpair->taggedpair address))
                      ;; Procedure
                      ((= stag STAG_PROCEDURE)
+                       (if (not (= header 2166))
+                           (begin (pp i)
+                                  (pp header)
+                                  (error "E")))
                        (lambda () #f)) ;; TODO
                      ;; Vector
                      ((= stag STAG_VECTOR)

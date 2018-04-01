@@ -7,7 +7,9 @@ ARGS=()
 # GDB call, default is empty (do not use gdb)
 GDB=""
 # Minimum heap size, default is 512mb
-HEAP="-:m512000"
+TRACE_HEAP="-:"
+#TRACE_HEAP="-:d2,"
+HEAP="m1512000"
 
 for (( i=1; i<="$#"; i++ ))
 do
@@ -19,7 +21,7 @@ do
     elif [[ $arg == "--min-heap" ]] ; then
         pos=$i
         next=$((i+1))
-        HEAP="-:m${!next}"
+        HEAP="m${!next}"
         i=$((next))
     # scm file, use realpath
     elif [[ ${!i} == *.scm ]] ; then
@@ -33,4 +35,4 @@ done
 # Chdir to script path
 cd "$(dirname "$0")"
 # Run
-$GDB $GSC $HEAP -i $LC_FILES ${ARGS[@]}
+$GDB $GSC "$TRACE_HEAP$HEAP" -i $LC_FILES ${ARGS[@]}

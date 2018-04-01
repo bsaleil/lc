@@ -93,6 +93,18 @@ void initc()
   signal(SIGINT, lcIntHandler);
 }
 
+void writeLcStack(___U64 stack)
+{
+    //printf(\"Write stack %llu to pstate\\n\", stack);
+    ___PSTATE->lc_stack = stack;
+}
+
+void writeLcGlobal(___U64 global)
+{
+    //printf(\"Write global %llu to pstate\\n\", global);
+    ___PSTATE->lc_global = global;
+}
+
 ")
 
 ;; TODO: remove signal stack when gambit accepts new flag
@@ -113,6 +125,12 @@ void initc()
              scheme-object
              "___result = ___EXT(___make_vector) (___PSTATE, ___arg1, ___FAL);")
    len))
+
+(define (write_lc_stack addr)
+  ((c-lambda (long) void "writeLcStack") addr))
+
+(define (write_lc_global addr)
+  ((c-lambda (long) void "writeLcGlobal") addr))
 
 (define (get-pstate-addr)
   ((c-lambda () long "get_pstate_addr")))
@@ -148,6 +166,7 @@ void initc()
   (x86-add cgc sizeloc (x86-imm-int 7))
   (x86-mov cgc selector-reg (x86-imm-int -8))
   (x86-and cgc sizeloc selector-reg)
+  (x86-xor cgc selector-reg selector-reg) ;; we need to reset selector in case gc is triggered
   ;; Save aligned size
   (x86-upush cgc sizeloc)
 

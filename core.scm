@@ -158,6 +158,8 @@
 (define codegen-test-value #f)
 (define codegen-test-char #f)
 
+(define write_lc_global #f)
+(define write_lc_stack #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -254,7 +256,6 @@
 
 (define ENCODING_VOID -18) ;; encoded VOID
 (define ENCODING_EOF  -14) ;; encoded EOF
-(define NENCODING_EOF  -4) ;; non encoded EOF
 
 ;;--------------------------------------------------------------------------------
 ;; Runtime error
@@ -369,6 +370,7 @@
 ;;-----------------------------------------------------------------------------
 
 (c-define (gambit-call usp psp) (long long) void "gambit_call" ""
+
   (let* ((nargs
            (encoding-obj (get-i64 (+ usp (* (+ (length regalloc-regs) 2) 8)))))
          (op-sym
@@ -461,7 +463,8 @@
 
          ;; Closure is used as a Gambit procedure to keep an updated reference
          (closure
-          (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-rsi))))))
+          #f)
+          ;(encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-rsi))))))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
@@ -548,13 +551,22 @@
 ;; Process stack (pstack) is still used for each call to c code (stubs and others)
 (define ustack #f)
 (define ustack-init #f) ;; initial sp value (right of the stack)
-(define ustack-len 1000000) ;; 1M
-
+;(define ustack-len 1000000) ;; 1M
+ (define ustack-len 1000000)
 (define (init-mcb)
   (set! mcb (make-mcb code-len))
   (set! code-addr (##foreign-address mcb))
-  (set! ustack (make-vector ustack-len))
-  (set! ustack-init (+ (object-address ustack) 8 ustack-len)))
+  (if opt-nan-boxing
+      (begin (set! ustack (make-u64vector ustack-len))
+             ;(println "Stack is at " (number->string (object-address ustack) 16))
+             (let ((addr (object-address ustack)))
+               (let loop ((i 0))
+                 (if (< i ustack-len)
+                     (begin (put-i64 (+ addr 8 (* 8 i)) (to-64-value #xFFFE000000000000))
+                            (loop (+ i 1)))))
+               (write_lc_stack addr)))
+      (set! ustack (make-vector ustack-len)))
+  (set! ustack-init (+ (object-address ustack) 8 (* 8 ustack-len))))
 
 ;; BLOCK :
 ;; 0          8                       (nb-globals * 8 + 8)
@@ -573,7 +585,16 @@
 (define debug-slots '((calls . 6) (tests . 7) (extests . 8) (closures . 9) (time . 10) (other . 11)))
 
 (define (init-block)
-  (set! globals-space (alloc-still-vector-i64 globals-len 0))
+  (if opt-nan-boxing
+      (begin (set! globals-space (make-u64vector globals-len))
+             ;(println "Global is at " (number->string (object-address globals-space) 16))
+             (let ((addr (object-address globals-space)))
+               (let loop ((i 0))
+                 (if (< i globals-len)
+                     (begin (put-i64 (+ addr 8 (* 8 i)) (to-64-value #xFFFE000000000000))
+                            (loop (+ i 1)))))
+               (write_lc_global addr)))
+      (set! globals-space (alloc-still-vector-i64 globals-len 0)))
   (set! globals-addr (+ (object-address globals-space) 8))
 
   (set! block (make-mcb block-len))
@@ -1219,6 +1240,7 @@
                                       (x86-mov cgc (x86-rax) opnd)
                                       (x86-mov cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-rax)))
                                     (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opnd))
+                                (error "N")
                                 (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
                                 (x86-rax))))
                        ((and (pair? (car move))
@@ -1915,7 +1937,7 @@
                                      (x86-movd/movq cgc fopnd opval)))))
                           ;; Procedure type test
                           ((ctx-type-mem-allocated? ctx-type)
-                            (codegen-test-mem-obj cgc opval lval ctx-type label-jump freg))
+                            (codegen-test-mem-obj cgc ast opval lval ctx-type label-jump freg))
                           ;; Other
                           (else (error "Unknown type " ctx-type)))
 

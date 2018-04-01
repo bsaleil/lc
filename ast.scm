@@ -672,7 +672,8 @@
                                      (jump-to-version cgc lazy-bind ctx))))))
                          (lazy-val (gen-ast (caddr ast) lazy-drop)))
 
-                    (put-i64 (+ globals-addr (* 8 (global-pos (asc-globals-get (cadr ast))))) ENCODING_VOID)
+                    (let ((void (to-64-value (if opt-nan-boxing NB_ENCODED_VOID ENCODING_VOID))))
+                      (put-i64 (+ globals-addr (* 8 (global-pos (asc-globals-get (cadr ast))))) void))
                     lazy-val)))))))
 
 ;;
@@ -1411,12 +1412,17 @@
                                      (and late-inf (+ (* -8 (- closures-size (cadr late-inf))) TAG_MEMOBJ))))
                        (opnd
                          (if late-off
-                             (x86-mem late-off clo-reg)
+                             (if opt-nan-boxing
+                                 (x86-mem 0 clo-reg (x86-rax))
+                                 (x86-mem late-off clo-reg))
                              (begin
                                (assert (assoc (car lates) other-vars) "Internal error")
                                (x86-imm-int (obj-encoding #f 6))))))
                   (if (x86-mem? opnd)
-                      (x86-lea cgc (x86-rax) opnd)
+                      (if opt-nan-boxing
+                          (begin (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value (+ NB_MASK_MEM late-off))))
+                                 (x86-lea cgc (x86-rax) opnd)) ;; opnd uses rax
+                          (x86-lea cgc (x86-rax) opnd))
                       (x86-mov cgc (x86-rax) opnd))
                   (x86-mov cgc (x86-mem offset clo-reg) (x86-rax))
                   (loop (cdr lates) (+ offset 8)))))

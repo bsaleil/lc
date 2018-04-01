@@ -143,6 +143,11 @@ class System:
                 if (rc != 0) or (serr != '') or ("***" in sout):
                     timems = self.time_to_ms(-1)
                     rawTimes.append(timems)
+                    print("FAIL 1 --->")
+                    print(rc)
+                    print(serr)
+                    print(sout)
+                    print(cmd)
                     continue
                     #self.execError(file)
 
@@ -151,6 +156,8 @@ class System:
                 if (len(res) != 1):
                     timems = self.time_to_ms(-1)
                     rawTimes.append(timems)
+                    print("FAIL 2 --->")
+                    print(sout)
                     continue
 
                 timems = res[0]
@@ -220,15 +227,16 @@ systems = []
 # systems.append(lc_with_options("m5eponly", ["--max-versions 5","--disable-return-points"]))
 # systems.append(lc_with_options("m5rponly", ["--max-versions 5","--disable-entry-points"]))
 
-
-# nan-boxing opt
-systems.append(lc_with_options("LC4", ["--nan-boxing"]))
 # # tagging !opt
-# systems.append(lc_with_options("LC1", ["--disable-float-unboxing"]))
-# # nan-boxing !opt
-# systems.append(lc_with_options("LC3", ["--nan-boxing","--disable-float-unboxing"]))
+# systems.append(lc_with_options("tag-noopt-6g", ["--disable-float-unboxing","--min-heap 6500000"]))
 # # tagging opt
-# systems.append(lc_with_options("LC2", [""]))
+# systems.append(lc_with_options("tag-opt", []))
+# # tagging opt (6gb heap)
+# systems.append(lc_with_options("tag-opt-6g", ["--min-heap 6500000"]))
+# nan-boxing !opt
+systems.append(lc_with_options("nan-noopt-6g", ["--nan-boxing","--disable-float-unboxing"]))
+# nan-boxing opt
+systems.append(lc_with_options("nan-opt-6g", ["--nan-boxing"]))
 
 #
 # # Gambit

@@ -1,8 +1,9 @@
 
-(define (create-x n)
-  (make-vector n))
 
-(gambit$$pp (make-vector 3000))
+(define (go n)
+  (let loop ((repeat 100))
+    (if (> repeat 0)
+        (loop (- repeat 1) (make-vector n))
+        10)))
 
-;; Pourquoi on a besoin de encoding->obj d'une procédure ? (voir values.scm)
-;; -> il faut génrer les variables libres. On doit lire une variable depuis la fermeture encodée en nan boxing
+(go 80000)
