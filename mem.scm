@@ -166,7 +166,7 @@ void writeLcGlobal(___U64 global)
   (x86-add cgc sizeloc (x86-imm-int 7))
   (x86-mov cgc selector-reg (x86-imm-int -8))
   (x86-and cgc sizeloc selector-reg)
-  (x86-xor cgc selector-reg selector-reg) ;; we need to reset selector in case gc is triggered
+  (x86-mov cgc selector-reg (x86-imm-int (to-64-value (obj-encoding 0)))) ;; we need to reset selector in case gc is triggered
   ;; Save aligned size
   (x86-upush cgc sizeloc)
 
