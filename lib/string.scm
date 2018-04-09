@@ -27,9 +27,6 @@
 ;;
 ;;---------------------------------------------------------------------------
 
-(define (string->symbol str)
-  (gambit$$string->symbol str))
-
 (define (string->list s)
   (let ((len (string-length s)))
     (let loop ((i (- len 1)) (lst '()))

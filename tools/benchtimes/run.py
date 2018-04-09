@@ -148,6 +148,7 @@ class System:
                     print(serr)
                     print(sout)
                     print(cmd)
+                    raise Exception("bar");
                     continue
                     #self.execError(file)
 
@@ -156,8 +157,9 @@ class System:
                 if (len(res) != 1):
                     timems = self.time_to_ms(-1)
                     rawTimes.append(timems)
-                    print("FAIL 2 --->")
-                    print(sout)
+                    #print("FAIL 2 --->")
+                    #print(sout)
+                    #raise Exception("foo");
                     continue
 
                 timems = res[0]

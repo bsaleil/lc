@@ -1946,6 +1946,19 @@
     (x86-mov cgc dest (x86-mem (- 8 TAG_MEMOBJ) opsym))))
 
 ;;
+;; string->symbol
+(define (codegen-p-string->symbol cgc fs ffs op reg inlined-con? lstr sym-cst?)
+  (let ((dest  (codegen-reg-to-x86reg reg))
+        (opstr (codegen-loc-to-x86opnd fs ffs lstr)))
+    (x86-upush cgc opstr)
+    (x86-pcall cgc label-gambit-str-to-sym-handler)
+    (x86-upop cgc dest)
+    (if opt-nan-boxing
+        (begin (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
+               (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ) dest (x86-rax)))))))
+
+
+;;
 ;; set-car!/set-cdr!
 (define (codegen-p-set-cxr! cgc fs ffs op reg inlined-cond? lpair lval pair-cst? val-cst?)
   (assert (not pair-cst?) "Internal error, unexpected cst operand")

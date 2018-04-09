@@ -77,6 +77,10 @@
 (define NB_MAX_FIX (- (expt 2 31) 1))
 (define NB_MIN_FIX (* -1 (expt 2 31)))
 
+;;-----------------------------------------------------------------------------
+;; OBJECT -> ENCODING
+;;-----------------------------------------------------------------------------
+
 (define (nanboxing-obj-encoding obj #!optional i)
   (let ((v
           (cond ;; 32 bits fixnum
@@ -86,7 +90,7 @@
                                (+ (bitwise-and (bitwise-not (* obj -1)) (- (expt 2 32) 1)) 1)))
                          (+ NB_MASK_FIX two-compl))
                        (+ NB_MASK_FIX obj)))
-                ;; Symbol
+                ;; Procedure
                 ((procedure? obj)
                    (let* ((addr (- (tagging-obj-encoding obj) 1))
                           (head (get-i64 addr)))
@@ -95,10 +99,25 @@
                      (let* ((tagged (tagging-obj-encoding obj))
                             (addr (- tagged TAG_MEMOBJ)))
                        (+ NB_MASK_MEM addr))))
+                ((port? obj) (error "Unexpected port"))
+                ;;
+                ;; MEM ALLOCATED
                 ((or (symbol? obj) (string? obj) (port? obj) (f64vector? obj))
+                   (if (not (perm-object? obj))
+                       (set! obj (copy-permanent obj #f perm-domain)))
                    (let* ((tagged (tagging-obj-encoding obj))
                           (addr (- tagged TAG_MEMOBJ)))
                      (+ NB_MASK_MEM addr)))
+                ;; pair
+                ((pair? obj)
+                   (if (not (perm-object? obj)) (error "Unexpected !perm object 2"))
+                   (taggedpair->nanpair obj))
+                ;; vector
+                ((vector? obj)
+                   (if (not (perm-object? obj)) (error "Unexpected !perm object 3"))
+                   (taggedvector->nanvector obj))
+                ;; END MEM ALLOCATED
+                ;;
                 ;; void
                 ((equal? obj #!void)
                    NB_ENCODED_VOID)
@@ -117,33 +136,24 @@
                 ((char? obj)
                    (let ((int (char->integer obj)))
                      (+ NB_MASK_CHA int)))
-                ;; pair
-                ((pair? obj)
-                   (taggedpair->nanpair obj))
-                ;; vector
-                ((vector? obj)
-                   (taggedvector->nanvector obj))
                 ;; eof
                 ((eof-object? obj)
                    NB_ENCODED_EOF)
                 (else
+                   (println "OUT") (force-output)
                    (pp obj)
                    (pp i)
                    (error "NYI1")))))
    (let ((encoding
            (if (>= v (expt 2 63)) (- v (expt 2 64)) v)))
-     ; (if (equal? obj '(()))
-     ;     (begin
-     ;     (println "CONVERT CST TO: " (number->string v 16))
-     ;     (print "  for obj ") (pp obj)
-     ;     (println "  for values.scm call " i)))
      encoding)))
 
 (define (taggedpair->nanpair pair)
   (let* ((ecar (nanboxing-obj-encoding (car pair) -1))
          (ecdr (nanboxing-obj-encoding (cdr pair) -2))
-         (npair-m (cons 0 0))
-         (npair (copy-permanent npair-m #f perm-domain))
+         ;(npair-m (cons 0 0))
+         ;(npair (copy-permanent npair-m #f perm-domain))
+         (npair (alloc-pair #f))
          (tagged (tagging-obj-encoding npair))
          (addr (- tagged TAG_PAIR)))
     (put-i64 (+ addr  8) ecdr)
@@ -163,6 +173,10 @@
             (loop (+ i 1)))))
     (+ NB_MASK_MEM addr)))
 
+;;-----------------------------------------------------------------------------
+;; ENCODING -> OBJECT
+;;-----------------------------------------------------------------------------
+
 (define (nanboxing-encoding-obj encoding #!optional (i #f) (recursive #f))
   (if (not recursive)
       (set! cycle-set (make-table)))
@@ -173,9 +187,7 @@
          (type-mask (bitwise-and encoding NB_MASK_TYPE))
          (tag-mask  (bitwise-and encoding NB_MASK_TAG)))
 
-    (cond ;;
-          ((= encoding 0) 0) ;; TODO: i == 11 when closure is not given
-          ;; 32 bits fixnum
+    (cond ;; 32 bits fixnum
           ((= type-mask NB_MASK_FIX)
              (let* ((32val (bitwise-and (- (expt 2 32) 1) encoding))
                     (sign (bitwise-and (expt 2 31) encoding))
@@ -198,39 +210,18 @@
                      (error "NYI4"))))
           ;; Mem obj
           ((= tag-mask NB_MASK_MEM)
-             (let* ((address (bitwise-and encoding NB_MASK_VALUE_48))
+             (let* ((encoding (i))
+                    (address (- encoding #xFFFF000000000000))
                     (header (get-u64 address))
                     (stag (arithmetic-shift (bitwise-and header 248) -3)))
-               (cond ;; TODO
-                     ((table-ref cycle-set address #f) => (lambda (n)
-                        n))
-                     ;; Symbol
-                     ((or (= stag STAG_SYMBOL)
-                          (= stag STAG_STRING)
-                          (= stag 4) ;;
-                          (= stag 5) ;; box
-                          (= stag 29) ;; f64vector
-                          (= stag 21) ;; u8vector
-                          (= stag 30)) ;; float
-                        (tagging-encoding-obj (+ address TAG_MEMOBJ)))
-                     ;; Pair
-                     ((= stag STAG_PAIR)
-                        (nanpair->taggedpair address))
-                     ;; Procedure
-                     ((= stag STAG_PROCEDURE)
-                       (if (not (= header 2166))
-                           (begin (pp i)
-                                  (pp header)
-                                  (error "E")))
-                       (lambda () #f)) ;; TODO
-                     ;; Vector
-                     ((= stag STAG_VECTOR)
-                       (nanvector->taggedvector address))
-                     (else
-                        (pp header)
-                        (pp stag)
-                        (error "NYI3")))))
-          ;; TODO: should be else case when nan boxing fully implemented
+               (if (not (= (+ address #xFFFF000000000000) (i)))
+                   (error "Encoding changed"))
+               (if (and (not (= stag STAG_STRING))
+                        (not (= stag STAG_SYMBOL))
+                        (not (= stag 29))) ;; f64vector
+                   (begin (pp stag)
+                          (error "Unexpected type")))
+               (tagging-encoding-obj (+ address 1))))
           ;; Flonum
           ((< (bitwise-and encoding NB_MASK_TAG) NB_MASK_FLO_MAX)
              (ieee754->flonum encoding 'double))
@@ -247,20 +238,23 @@
 
 ;;
 (define (nanpair->taggedpair addr)
-  (let ((ecar (get-u64 (+ addr OFFSET_PAIR_CAR)))
-        (ecdr (get-u64 (+ addr OFFSET_PAIR_CDR)))
-        (pair (cons #f #f)))
+  (error "wip 1")
+  (let* ((ecar (get-u64 (+ addr OFFSET_PAIR_CAR)))
+         (ecdr (get-u64 (+ addr OFFSET_PAIR_CDR)))
+         (pair (alloc-pair #f)))
    (table-set! cycle-set addr pair)
-   (set-car! pair (nanboxing-encoding-obj ecar -1 #t))
-   (set-cdr! pair (nanboxing-encoding-obj ecdr -1 #t))
+   (##set-car! pair (nanboxing-encoding-obj ecar -1 #t))
+   (##set-cdr! pair (nanboxing-encoding-obj ecdr -1 #t))
    pair))
 
 ;;
 (define cycle-set (make-table))
 (define (nanvector->taggedvector addr)
+  (error "wip 2")
   (let* ((header (get-u64 addr))
          (len (arithmetic-shift header -11))
-         (vector (make-vector len)))
+         (v (make-vector len))
+         (vector (copy-permanent v #f perm-domain)))
     (table-set! cycle-set addr vector)
     (let loop ((i 0))
       (if (= i len)

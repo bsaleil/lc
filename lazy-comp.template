@@ -9,7 +9,7 @@ GDB=""
 # Minimum heap size, default is 512mb
 TRACE_HEAP="-:"
 #TRACE_HEAP="-:d2,"
-HEAP="m1512000"
+HEAP="m512000"
 
 for (( i=1; i<="$#"; i++ ))
 do

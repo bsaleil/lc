@@ -369,26 +369,45 @@
 
 ;;-----------------------------------------------------------------------------
 
-(c-define (gambit-call usp psp) (long long) void "gambit_call" ""
+(c-define (gambit-str-to-sym-tag usp psp) (long long) void "gambit_str_to_sym_tag" ""
+  (let* ((encoding48 (get-u48 (+ usp 88)))
+         (str (##encoding->object encoding48))
+         (sym (string->symbol str)))
+    (put-i64 (+ usp 88)
+             (##object->encoding sym))))
 
+(c-define (gambit-str-to-sym-nan usp psp) (long long) void "gambit_str_to_sym_nan" ""
+  (let* ((encoding48 (get-u48 (+ usp 88)))
+         (str (##encoding->object (+ encoding48 TAG_MEMOBJ)))
+         (sym (string->symbol str)))
+    (put-i64 (+ usp 88)
+             (##object->encoding sym))))
+
+(c-define (gambit-call usp psp) (long long) void "gambit_call" ""
   (let* ((nargs
            (encoding-obj (get-i64 (+ usp (* (+ (length regalloc-regs) 2) 8)))))
          (op-sym
-           (encoding-obj (get-i64 (+ usp (* (+ (length regalloc-regs) 1) 8)))))
-
+           (let* ((woffset (+ usp (* (+ (length regalloc-regs) 1) 8)))
+                  (getter (lambda () (get-u64 woffset)))
+                  (word (get-u64 woffset)))
+             (if opt-nan-boxing
+                 (nanboxing-encoding-obj word getter)
+                 (tagging-encoding-obj word))))
          (args
            (reverse
              (let loop ((n nargs) (offset 3))
                (if (= n 0)
                    '()
-                   (let ((word (get-u64 (+ usp (* (+ (length regalloc-regs) offset) 8)))))
-                     (cons (encoding-obj word)
+                   (let* ((woffset (+ usp (* (+ (length regalloc-regs) offset) 8)))
+                          (getter (lambda () (get-u64 woffset)))
+                          (word (get-u64 woffset)))
+                     (cons (if opt-nan-boxing
+                               (nanboxing-encoding-obj word getter)
+                               (tagging-encoding-obj word))
                            (loop (- n 1) (+ offset 1))))))))
-
          (op-fn (eval op-sym)))
 
     (let ((retval (apply op-fn args)))
-
       (put-i64 (+ usp (* 8 (+ (length regalloc-regs) 1)))
                (obj-encoding retval 4)))))
 
@@ -527,14 +546,16 @@
                        ,c-code))))))
 
 (define (init-labels cgc)
-  (set-cdef-label! label-repl             'repl             "___result = ___CAST(void*,repl);")
-  (set-cdef-label! label-print-msg        'print-msg        "___result = ___CAST(void*,print_msg);")
-  (set-cdef-label! label-print-msg-val    'print-msg-val    "___result = ___CAST(void*,print_msg_val);")
-  (set-cdef-label! label-rt-error         'rt_error         "___result = ___CAST(void*,rt_error);")
-  (set-cdef-label! label-gambit-call      'gambit_call      "___result = ___CAST(void*,gambit_call);")
-  (set-cdef-label! label-do-callback      'do_callback      "___result = ___CAST(void*,do_callback);")
-  (set-cdef-label! label-do-callback-fn   'do_callback_fn   "___result = ___CAST(void*,do_callback_fn);")
-  (set-cdef-label! label-do-callback-cont 'do_callback_cont "___result = ___CAST(void*,do_callback_cont);"))
+  (set-cdef-label! label-repl              'repl              "___result = ___CAST(void*,repl);")
+  (set-cdef-label! label-print-msg         'print-msg         "___result = ___CAST(void*,print_msg);")
+  (set-cdef-label! label-print-msg-val     'print-msg-val     "___result = ___CAST(void*,print_msg_val);")
+  (set-cdef-label! label-rt-error          'rt_error          "___result = ___CAST(void*,rt_error);")
+  (set-cdef-label! label-gambit-call       'gambit_call       "___result = ___CAST(void*,gambit_call);")
+  (set-cdef-label! label-gambit-str-to-sym-tag 'gambit_str_to_sym_tag "___result = ___CAST(void*,gambit_str_to_sym_tag);")
+  (set-cdef-label! label-gambit-str-to-sym-nan 'gambit_str_to_sym_nan "___result = ___CAST(void*,gambit_str_to_sym_nan);")
+  (set-cdef-label! label-do-callback       'do_callback       "___result = ___CAST(void*,do_callback);")
+  (set-cdef-label! label-do-callback-fn    'do_callback_fn    "___result = ___CAST(void*,do_callback_fn);")
+  (set-cdef-label! label-do-callback-cont  'do_callback_cont  "___result = ___CAST(void*,do_callback_cont);"))
 
 ;;-----------------------------------------------------------------------------
 
@@ -551,20 +572,13 @@
 ;; Process stack (pstack) is still used for each call to c code (stubs and others)
 (define ustack #f)
 (define ustack-init #f) ;; initial sp value (right of the stack)
-;(define ustack-len 1000000) ;; 1M
- (define ustack-len 1000000)
+(define ustack-len 1000000) ;; 1M
 (define (init-mcb)
   (set! mcb (make-mcb code-len))
   (set! code-addr (##foreign-address mcb))
   (if opt-nan-boxing
-      (begin (set! ustack (make-u64vector ustack-len))
-             ;(println "Stack is at " (number->string (object-address ustack) 16))
-             (let ((addr (object-address ustack)))
-               (let loop ((i 0))
-                 (if (< i ustack-len)
-                     (begin (put-i64 (+ addr 8 (* 8 i)) (to-64-value #xFFFE000000000000))
-                            (loop (+ i 1)))))
-               (write_lc_stack addr)))
+      (begin (set! ustack (make-u64vector ustack-len #xFFFE000000000000))
+             (write_lc_stack (object-address ustack)))
       (set! ustack (make-vector ustack-len)))
   (set! ustack-init (+ (object-address ustack) 8 (* 8 ustack-len))))
 
@@ -586,14 +600,8 @@
 
 (define (init-block)
   (if opt-nan-boxing
-      (begin (set! globals-space (make-u64vector globals-len))
-             ;(println "Global is at " (number->string (object-address globals-space) 16))
-             (let ((addr (object-address globals-space)))
-               (let loop ((i 0))
-                 (if (< i globals-len)
-                     (begin (put-i64 (+ addr 8 (* 8 i)) (to-64-value #xFFFE000000000000))
-                            (loop (+ i 1)))))
-               (write_lc_global addr)))
+      (begin (set! globals-space (make-u64vector globals-len #xFFFE000000000000))
+             (write_lc_global (object-address globals-space)))
       (set! globals-space (alloc-still-vector-i64 globals-len 0)))
   (set! globals-addr (+ (object-address globals-space) 8))
 
@@ -717,18 +725,18 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define label-heap-limit-handler       #f)
-(define label-alloc-still-handler      #f)
-(define label-gambit-call-handler      #f)
-(define label-do-callback-handler      #f)
-(define label-do-callback-fn-handler   #f)
-(define label-do-callback-cont-handler #f)
-(define label-rt-error-handler         #f)
-(define label-print-msg-handler        #f)
-(define label-print-msg-val-handler    #f)
-(define label-repl-handler             #f)
-
-(define label-err-wrong-num-args       #f)
+(define label-heap-limit-handler        #f)
+(define label-alloc-still-handler       #f)
+(define label-gambit-call-handler       #f)
+(define label-gambit-str-to-sym-handler #f)
+(define label-do-callback-handler       #f)
+(define label-do-callback-fn-handler    #f)
+(define label-do-callback-cont-handler  #f)
+(define label-rt-error-handler          #f)
+(define label-print-msg-handler         #f)
+(define label-print-msg-val-handler     #f)
+(define label-repl-handler              #f)
+(define label-err-wrong-num-args        #f)
 
 (define (gen-addr-handler cgc id addr cargs-generator)
   (let ((label-handler (asm-make-label cgc id)))
@@ -862,6 +870,12 @@
 
     (set! label-gambit-call-handler
           (gen-handler cgc 'gambit_call_handler label-gambit-call))
+    (x86-ret cgc)
+
+    (set! label-gambit-str-to-sym-handler
+          (if opt-nan-boxing
+              (gen-handler cgc 'gambit_str_to_sym_handler label-gambit-str-to-sym-nan)
+              (gen-handler cgc 'gambit_str_to_sym_handler label-gambit-str-to-sym-tag)))
     (x86-ret cgc)
 
     ;; do_callback
@@ -1027,6 +1041,7 @@
         (x86-r14)
         (x86-r15)))
 
+(define n-regalloc-regs 10)
 (define regalloc-regs
   (list (x86-rbx)
         (x86-r15)
@@ -1251,6 +1266,7 @@
                        ((and (pair? (car move))
                              (eq? (caar move) 'const))
                           (cond ((and (flonum? (cdar move)) (not opt-nan-boxing))
+                                   (error "NYI nan boxing")
                                    (x86-imm-int (get-i64 (+ (- OFFSET_FLONUM TAG_MEMOBJ) (obj-encoding (cdar move) 12)))))
                                 (else
                                    (x86-imm-int (obj-encoding (cdar move) 13)))))
@@ -1281,6 +1297,7 @@
                 ((and (pair? src) (eq? (car src) 'constcont))
                   (x86-label cgc (asm-make-label #f (new-sym 'SYM_OPT_)))
                   (let ((table (asc-cnnum-table-get (cdr src))))
+                    (error "NYI nan boxing")
                     (x86-mov cgc (x86-rax) (x86-imm-int (- (obj-encoding table 14) TAG_MEMOBJ)))
                     (x86-mov cgc dst (x86-rax))))
                 ;; Both in memory, use rax

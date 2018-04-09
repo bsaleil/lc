@@ -382,15 +382,15 @@
              (set! ctime-entries #f)
              (set! stub-freelist #f)
              (let loop ((i 0))
-               (if (< i (/ ustack-len 8))
+               (if (< i ustack-len)
                    (begin (if opt-nan-boxing
-                              (u64vector-set! ustack i 0)
+                              (u64vector-set! ustack i #xFFFE000000000000)
                               (vector-set! ustack i 0))
                           (loop (+ i 1)))))
              (let loop ((i 0))
                (if (< i globals-len)
                    (begin (if opt-nan-boxing
-                              (u64vector-set! ustack i 0)
+                              (u64vector-set! ustack i #xFFFE000000000000)
                               (vector-set! globals-space i 0))
                           (loop (+ i 1)))))
              (##gc)

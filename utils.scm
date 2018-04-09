@@ -227,7 +227,7 @@
 
 (define (permanent-object? obj)
   (and (##mem-allocated? obj)
-       (let* ((obj-addr (- (obj-encoding obj 2000) TAG_MEMOBJ))
+       (let* ((obj-addr (- (tagging-obj-encoding obj 2000) TAG_MEMOBJ))
               (life (bitwise-and (get-i64 obj-addr) 7)))
          (= life LIFE_PERM))))
 
@@ -263,6 +263,10 @@
 
 (define (get-u64 addr)
   ((c-lambda (int64) unsigned-long "___result = *___CAST(___U64*,___arg1);")
+   addr))
+
+(define (get-u48 addr)
+  ((c-lambda (int64) unsigned-long "___result = (*___CAST(___U64*,___arg1)) & 0xFFFFFFFFFFFF;")
    addr))
 
 (define (get-i64 addr)
