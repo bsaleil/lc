@@ -594,9 +594,9 @@
 (define globals-len 10000) ;; 1024 globals
 (define globals-addr #f)
 (define block #f)
-(define block-len 15)
 (define block-addr #f)
-(define debug-slots '((calls . 6) (tests . 7) (extests . 8) (closures . 9) (time . 10) (other . 11)))
+(define debug-slots '((calls . 6) (tests . 7) (extests . 8) (closures . 9) (time . 10) (other . 11) (flbox . 12) (flunbox . 13)))
+(define block-len (+ 6 (length debug-slots)))
 
 (define (init-block)
   (if opt-nan-boxing
@@ -604,9 +604,13 @@
              (write_lc_global (object-address globals-space)))
       (set! globals-space (alloc-still-vector-i64 globals-len 0)))
   (set! globals-addr (+ (object-address globals-space) 8))
-
-  (set! block (make-mcb block-len))
-  (set! block-addr (##foreign-address block)))
+  (set! block (alloc-perm-u64vector block-len))
+  (assert (perm-object? block) "Init error, block should be allocated as a permanent object")
+  (set! block-addr (+ (object-address block) 8))
+  (let loop ((i 0))
+    (if (< i (u64vector-length block))
+        (begin (put-i64 (+ block-addr (* i 8)) 0)
+               (loop (+ i 1))))))
 
 (define (write-mcb code start)
   (let ((len (u8vector-length code)))
@@ -1266,7 +1270,6 @@
                        ((and (pair? (car move))
                              (eq? (caar move) 'const))
                           (cond ((and (flonum? (cdar move)) (not opt-nan-boxing))
-                                   (error "NYI nan boxing")
                                    (x86-imm-int (get-i64 (+ (- OFFSET_FLONUM TAG_MEMOBJ) (obj-encoding (cdar move) 12)))))
                                 (else
                                    (x86-imm-int (obj-encoding (cdar move) 13)))))

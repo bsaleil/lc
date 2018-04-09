@@ -236,6 +236,13 @@
              scheme-object
              "___result = ___EXT(___alloc_scmobj) (NULL, ___sPROCEDURE, 8);")))
 
+(define (alloc-perm-u64vector len)
+  ((c-lambda (int)
+             scheme-object
+             "___result = ___EXT(___alloc_scmobj) (NULL, ___sU64VECTOR, 8*___arg1);")
+   len))
+
+
 (define (alloc-still-vector-i64 len v)
   ((c-lambda (int int64)
              scheme-object

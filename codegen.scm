@@ -1245,15 +1245,17 @@
                (if opt-nan-boxing
                    ;; nan boxing
                    (if (x86-mem? opleft)
-                       (begin (x86-label cgc (asm-make-label #f (new-sym 'LALALALA_FL)))
-                              (x86-movsd cgc (x86-xmm0) opleft))
+                       (x86-movsd cgc (x86-xmm0) opleft)
                        (x86-movd/movq cgc (x86-xmm0) opleft))
                    ;; tagging
-                   (if (x86-mem? opleft)
-                       (begin
-                         (x86-mov cgc (x86-rax) opleft)
-                         (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                       (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opleft))))))
+                   (begin
+                     (if (and opt-stats (not opt-float-unboxing))
+                         (gen-inc-slot cgc 'flunbox))
+                     (if (x86-mem? opleft)
+                         (begin
+                           (x86-mov cgc (x86-rax) opleft)
+                           (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                         (x86-movsd cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opleft)))))))
 
       ;; Right operand
       (cond ((and rightint? rcst?)
@@ -1280,10 +1282,13 @@
                        (begin (x86-movd/movq cgc (x86-xmm1) opright)
                               (x86-op cgc (x86-xmm0) (x86-xmm1))))
                    ;; tagging
-                   (if (x86-mem? opright)
-                       (begin (x86-mov cgc (x86-rax) opright)
-                              (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
-                       (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright))))))
+                   (begin
+                     (if (and opt-stats (not opt-float-unboxing))
+                         (gen-inc-slot cgc 'flunbox))
+                     (if (x86-mem? opright)
+                         (begin (x86-mov cgc (x86-rax) opright)
+                                (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) (x86-rax))))
+                         (x86-op cgc (x86-xmm0) (x86-mem (- 8 TAG_MEMOBJ) opright)))))))
 
       (if opt-nan-boxing
           (x86-movd/movq cgc dest (x86-xmm0))
@@ -1429,7 +1434,9 @@
             (else ;; x86-reg
                (if opt-nan-boxing
                    (x86-movd/movq cgc (x86-xmm0) opleft)
-                   (x86-movsd cgc (x86-xmm0) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opleft)))
+                   (begin (if (and opt-stats (not opt-float-unboxing))
+                              (gen-inc-slot cgc 'flunbox))
+                          (x86-movsd cgc (x86-xmm0) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opleft))))
                (set! opleft (x86-xmm0)))))
 
     (on-dynamic-mode
@@ -1459,7 +1466,9 @@
                (if opt-nan-boxing
                    (begin (x86-movd/movq cgc (x86-xmm1) opright)
                           (x86-comisd cgc opleft (x86-xmm1)))
-                   (x86-comisd cgc opleft (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opright))))))
+                   (begin (if (and opt-stats (not opt-float-unboxing))
+                              (gen-inc-slot cgc 'flunbox))
+                          (x86-comisd cgc opleft (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opright)))))))
 
     ;; NOTE: check that mlc-if patch is able to patch ieee jcc instructions (ja, jb, etc...)
     (if inline-if-cond?
@@ -2973,6 +2982,8 @@
         (if (x86-mem? op)
             (begin (x86-mov cgc (x86-rax) op)
                    (set! op (x86-rax))))
+        (if opt-stats
+            (gen-inc-slot cgc 'flunbox))
         (x86-movsd cgc opnd (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) op)))))
 
 (define (codegen-test-char cgc opval)

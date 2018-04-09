@@ -230,6 +230,9 @@ void writeLcGlobal(___U64 global)
   (assert (= (modulo nbytes 4) 0) "GC internal error")
   (assert (not (mem-still-required? nbytes)) "Internal error")
 
+  (if (and opt-stats (eq? stag STAG_FLONUM))
+      (gen-inc-slot cgc 'flbox))
+
   (x86-label cgc label-alloc-beg)
   ;; hp += (nbytes + 8)
   (x86-add cgc alloc-ptr (x86-imm-int (+ nbytes 8)))

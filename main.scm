@@ -506,7 +506,9 @@
 
   (if opt-stats
     (begin (println "Closures: " (get-slot 'closures))
-           (println "Executed tests: " (get-slot 'tests)))))
+           (println "Executed tests: " (get-slot 'tests))
+           (println "Flonum boxing operations: "   (if opt-nan-boxing "N/A" (get-slot 'flbox)))
+           (println "Flonum unboxing operations: " (if opt-nan-boxing "N/A" (get-slot 'flunbox))))))
 
 (define (print-opts)
   (if opt-ctime
