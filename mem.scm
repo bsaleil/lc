@@ -46,6 +46,7 @@
 #include <stdio.h>  // puts
 #include <stdlib.h> // exit
 #include <unistd.h> // getpid
+#include <math.h> // sin cos atan
 
 int ___heap_limit(); // Gambit ___heap_limit
 
@@ -116,6 +117,13 @@ void writeLcGlobal(___U64 global)
 
 (define (get___alloc_still-addr)
   ((c-lambda () long "get___alloc_still_addr")))
+
+(define (get-sin-addr)
+  ((c-lambda () long "___result = &sin;")))
+(define (get-cos-addr)
+  ((c-lambda () long "___result = &cos;")))
+(define (get-atan-addr)
+  ((c-lambda () long "___result = &atan;")))
 
 (define (get-heap_limit-addr)
   ((c-lambda () long "get_heap_limit_addr")))

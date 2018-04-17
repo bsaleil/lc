@@ -768,6 +768,7 @@
           (lambda (cgc)
             (ppush-pop-xmm
               cgc
+              xmm-regs
               (lambda (cgc)
                 (cargs-generator cgc) ;; Gen c args
                 ;; Aligned call to addr
@@ -821,6 +822,7 @@
           (lambda (cgc)
             (ppush-pop-xmm
               cgc
+              xmm-regs
               (lambda (cgc)
                 ;; Aligned call to label
                 (x86-mov  cgc (x86-rax) (x86-rsp)) ;; align stack-pointer for C call
@@ -977,7 +979,7 @@
   (proc cgc)
   (for-each (lambda (reg) (x86-ppop cgc reg)) (reverse regs)))
 
-(define (ppush-pop-xmm cgc proc)
+(define (ppush-pop-xmm cgc xmm-regs proc)
   (x86-sub cgc (x86-rsp) (x86-imm-int (* 8 (length xmm-regs))))
   (let loop ((n 0) (xmms xmm-regs))
     (if (not (null? xmms))
@@ -1026,7 +1028,9 @@
         (x86-rdx)  ;; 3rd argument
         (x86-rcx)  ;; 4th argument
         (x86-r8)   ;; 5th argument
-        (x86-r9))) ;; 6th argument
+        (x86-r9)   ;; 6th argument
+        (x86-r10)
+        (x86-r11)))
 
 (define all-regs
   (list (x86-rax)
@@ -1827,27 +1831,9 @@
 
        (define type-ctor (ctx-type-ctor ctx-type))
 
-       ;; TODO: clean & comments
-       (let* (;;
-              (r (and (ctx-type-flo? ctx-type)
-                      opt-float-unboxing
-                      (ctx-get-free-freg ast ctx lazy-success 0)))
-              (moves (and r (car r)))
-              (freg  (and r (cadr r)))
-              (ctx   (if  r (caddr r) ctx))
-              ;;
-              (ctx-success
-                  (if (and (ctx-type-flo? ctx-type)
-                           opt-float-unboxing)
-                      (let* ((ident (ctx-ident-at ctx stack-idx))
-                             (tctx (ctx-set-type ctx stack-idx (type-ctor) #t)))
-                        (if ident
-                            (foldr (lambda (slot ctx) (ctx-set-loc ctx slot freg))
-                                   tctx
-                                   (identifier-sslots (cdr ident)))
-                            (ctx-set-loc tctx (stack-idx-to-slot tctx stack-idx) freg)))
-                      (ctx-set-type ctx stack-idx (type-ctor) #t)))
-              (ctx-success-known ctx);; If know type is tested type, do not change ctx (TODO?)
+
+
+       (let* ((ctx-success-known ctx);; If know type is tested type, do not change ctx (TODO?)
               (ctx-fail ctx)
               (known-type  (ctx-get-type ctx stack-idx)))
 
@@ -1859,10 +1845,30 @@
                 (jump-to-version cgc lazy-fail ctx-fail))
                ;; known == unknown
                (opt-static-mode
+                (error "NYI")
                 (jump-to-version cgc lazy-fail ctx-fail)
-                (jump-to-version cgc lazy-success ctx-success))
+                (jump-to-version cgc lazy-success ctx-success-known))
                (else
-                 (let* ((x86-op x86-je)
+                 (let* (;;
+                        (r (and (ctx-type-flo? ctx-type)
+                                opt-float-unboxing
+                                (ctx-get-free-freg ast ctx lazy-success 0)))
+                        (moves (and r (car r)))
+                        (freg  (and r (cadr r)))
+                        (ctx   (if  r (caddr r) ctx))
+                        ;;
+                        (ctx-success
+                            (if (and (ctx-type-flo? ctx-type)
+                                     opt-float-unboxing)
+                                (let* ((ident (ctx-ident-at ctx stack-idx))
+                                       (tctx (ctx-set-type ctx stack-idx (type-ctor) #t)))
+                                  (if ident
+                                      (foldr (lambda (slot ctx) (ctx-set-loc ctx slot freg))
+                                             tctx
+                                             (identifier-sslots (cdr ident)))
+                                      (ctx-set-loc tctx (stack-idx-to-slot tctx stack-idx) freg)))
+                                (ctx-set-type ctx stack-idx (type-ctor) #t)))
+                        (x86-op x86-je)
                         (label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
                         (stub-first-label-addr #f)
                         (stub-labels

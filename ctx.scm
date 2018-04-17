@@ -1085,16 +1085,47 @@
 ;; GET FREE FREG
 (define (ctx-get-free-freg ast ctx succ nb-opnds)
 
-  (let ((free-fregs (ctx-free-fregs ctx)))
-    (if (null? free-fregs)
-        (begin
-          (pp ctx)
-          (error "NYI wip error"))
-        (let* ((reg (car free-fregs))
-               (free free-fregs))
-          (list '()
-                reg
-                ctx)))))
+  (define deep-opnd-reg #f)
+    ; (let loop ((idx (- (or nb-opnds 0) 1)))
+    ;   (if (< idx 0)
+    ;       #f
+    ;       (let ((r (ctx-get-loc ctx idx)))
+    ;         ;; We keep the the loc associated to this opnd if
+    ;         ;; (i) it's a fregister and (ii) this fregister is not used elsewhere
+    ;         (if (and (ctx-loc-is-fregister? r)
+    ;                  (not (ctx-loc-used ctx idx)))
+    ;             r
+    ;             (loop (- idx 1)))))))
+
+  (define (get-spilled-freg)
+    (let ((sl
+            (foldr (lambda (el r)
+                     (if (and (or (not r) (< (car el) (car r)))
+                              (ctx-loc-is-fregister? (cdr el)))
+                         el
+                         r))
+                   #f
+                   (ctx-slot-loc ctx))))
+      (assert sl "Internal error (ctx-get-free-freg)")
+      (cdr sl)))
+
+  (if deep-opnd-reg
+      (list '() deep-opnd-reg ctx)
+      (let ((free-fregs (ctx-free-fregs ctx)))
+        (if (null? free-fregs)
+            (let* ((moves/mloc/ctx (ctx-get-free-fmem ctx))
+                   (moves (car moves/mloc/ctx))
+                   (mloc  (cadr moves/mloc/ctx))
+                   (ctx   (caddr moves/mloc/ctx))
+                   (spill-freg (get-spilled-freg))
+                   (reg-slots (ctx-get-slots ctx spill-freg)))
+              ;; 1: changer tous les slots pour r -> m
+              (let ((ctx (ctx-set-loc-n ctx reg-slots mloc))
+                    (moves (append moves
+                                   (list (cons spill-freg mloc)))))
+                (list moves spill-freg ctx)))
+            (let ((reg (car free-fregs)))
+              (list '() reg ctx))))))
 
 (define (ctx-add-to-free ctx reg)
   (ctx-copy ctx #f #f (cons reg (ctx-free-regs ctx))))

@@ -161,6 +161,12 @@
           "invalid operands")
   (x86-sse-op cgc "movsd" dst src #xf2 #x10))
 
+(define (x86-sqrtsd cgc dst src)
+  (assert (or (and (x86-reg-xmm? dst) (x86-mem? src))
+              (and (x86-reg-xmm? dst) (x86-reg-xmm? src)))
+          "invalid operands")
+  (x86-sse-op cgc "sqrtsd" dst src #xf2 #x51))
+
 (define (x86-addss cgc dst src)
   (assert (or (and (x86-reg-xmm? dst) (x86-mem? src))
               (and (x86-reg-xmm? dst) (x86-reg-xmm? src)))

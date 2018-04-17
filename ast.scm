@@ -318,6 +318,10 @@
     (modulo              ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (remainder           ,cst-remainder ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     (zero?               ,dummy-cst-all ,lco-p-zero?      #f                            #f       ,ATX_BOO 1 ,ATX_NUM                   )
+    (sin                 ,dummy-cst-all #f                ,codegen-p-native-fl          #f       ,ATX_FLO 1 ,ATX_NUM                   )
+    (cos                 ,dummy-cst-all #f                ,codegen-p-native-fl          #f       ,ATX_FLO 1 ,ATX_NUM                   )
+    (atan                ,dummy-cst-all #f                ,codegen-p-native-fl          #f       ,ATX_FLO 1 ,ATX_NUM                   )
+    (sqrt                ,dummy-cst-all #f                ,codegen-p-sqrt               #f       ,ATX_FLO 1 ,ATX_NUM                   )
     (not                 ,cst-not       ,lco-p-not        ,codegen-p-not                #f       ,ATX_BOO 1 ,ATX_ALL                   )
     (set-car!            #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (set-cdr!            #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
@@ -1992,7 +1996,12 @@
             ast
             (lambda (cgc ctx)
               (define nb-opnds (length (cdr ast)))
-              (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ nb-opnds)))
+              (define ctx-get-free-*reg
+                      (if (and opt-float-unboxing
+                               (eq? (primitive-rettype primitive) ATX_FLO))
+                          ctx-get-free-freg
+                          ctx-get-free-reg))
+              (mlet ((moves/reg/ctx (ctx-get-free-*reg ast ctx succ nb-opnds)))
                 (apply-moves cgc ctx moves)
                 (gen-primitive cgc ctx succ reg prim)))))))
 

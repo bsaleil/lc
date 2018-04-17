@@ -487,7 +487,9 @@
 ;;-----------------------------------------------------------------------------
 
 (define (codegen-box-float-nan cgc src dst)
-  (x86-movd/movq cgc dst src))
+  (if (x86-mem? src)
+      (x86-mov cgc dst src)
+      (x86-movd/movq cgc dst src)))
 
 (define (codegen-box-float-tag cgc float-loc src dst)
   (gen-allocation-imm cgc STAG_FLONUM 8)
@@ -1180,7 +1182,8 @@
                (x86-movsd cgc dest opleft))
             ;; Nothing to do, left operand is in a xmm register
             ((x86-xmm? opleft)
-               (x86-movsd cgc dest opleft))
+               (if (not (equal? dest opleft))
+                   (x86-movsd cgc dest opleft)))
             (else ;; x86-reg
                (x86-movsd cgc dest (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opleft))))
 
@@ -1826,6 +1829,117 @@
     (if (and (not (= dest ropnd))
              (not (= selector-reg ropnd)))
         (x86-shl cgc ropnd (x86-imm-int 2))))
+
+;;
+;; sin
+(define (codegen-p-native-fl cgc fs ffs op reg inlined-cond? lval val-cst?)
+  (assert (not val-cst?) "Unexpected constant")
+  (let* ((addr (cond ((eq? op 'sin)  (get-sin-addr))
+                     ((eq? op 'cos)  (get-cos-addr))
+                     ((eq? op 'atan) (get-atan-addr))
+                     (else (error "NYI case"))))
+         (label (asm-make-label #f (new-sym op) addr)))
+    (if opt-float-unboxing
+        (codegen-p-native-fl-nobox cgc fs ffs reg lval label)
+        (codegen-p-native-fl-box   cgc fs ffs reg lval label))))
+
+(define (codegen-p-native-fl-nobox cgc fs ffs reg lval label)
+  (let ((dest (codegen-freg-to-x86reg reg))
+        (opnd (codegen-loc-to-x86opnd fs ffs lval)))
+    (ppush-pop-xmm
+      cgc
+      (set-sub regalloc-fregs (list dest))
+      (lambda (cgc)
+        (ppush-pop-regs
+          cgc
+          c-caller-save-regs
+          (lambda (cgc)
+            (cond ((x86-mem? opnd) (error "NYI case primitive sin"))
+                  ((x86-xmm? opnd) (x86-movsd cgc (x86-xmm0) opnd))
+                  (else (error "NYI case primitive sin")))
+            ;;
+            (x86-mov  cgc (x86-rax) (x86-rsp)) ;; align stack-pointer for C call
+            (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+            (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+            (x86-ppush cgc (x86-rax))
+            (x86-pcall cgc label)
+            (x86-ppop cgc (x86-rsp))
+            ;;
+            (x86-movsd cgc dest (x86-xmm0))))))))
+
+(define (codegen-p-native-fl-box cgc fs ffs reg lval label)
+  (let ((dest (codegen-reg-to-x86reg reg))
+        (opnd (codegen-loc-to-x86opnd fs ffs lval)))
+
+    ;; Alloc result flonum
+    (if (not opt-nan-boxing)
+        (gen-allocation-imm cgc STAG_FLONUM 8))
+
+        (ppush-pop-regs
+          cgc
+          (set-sub c-caller-save-regs (list dest))
+          (lambda (cgc)
+            (cond ((x86-mem? opnd) (error "NYI case primitive sin"))
+                  ((x86-xmm? opnd) (error "NYI case primitive sin"))
+                  (else
+                    (if opt-nan-boxing
+                        (x86-movd/movq cgc (x86-xmm0) opnd)
+                        (x86-movsd cgc (x86-xmm0) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opnd)))))
+            ;;
+            (x86-mov  cgc (x86-rax) (x86-rsp)) ;; align stack-pointer for C call
+            (x86-and  cgc (x86-rsp) (x86-imm-int -16))
+            (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+            (x86-ppush cgc (x86-rax))
+            (x86-pcall cgc label)
+            (x86-ppop cgc (x86-rsp))
+            ;;
+            (if opt-nan-boxing
+                (x86-movd/movq cgc dest (x86-xmm0))
+                (begin ;; Write number
+                       (x86-movsd cgc (x86-mem -8 alloc-ptr) (x86-xmm0))
+                       ;; Put
+                       (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))))))))
+
+;;
+;; sqrt
+(define (codegen-p-sqrt cgc fs ffs op reg inlined-cond? lval val-cst?)
+  (assert (not val-cst?) "Internal error, unexpected cst operand")
+  (if opt-float-unboxing
+      (codegen-p-sqrt-nobox cgc fs ffs reg lval)
+      (codegen-p-sqrt-box   cgc fs ffs reg lval)))
+
+(define (codegen-p-sqrt-nobox cgc fs ffs reg lval)
+  (define dest (codegen-freg-to-x86reg reg))
+  (define opnd (codegen-loc-to-x86opnd fs ffs lval))
+
+  (cond ((and (x86-reg? opnd)
+              (x86-xmm? opnd))
+           (x86-sqrtsd cgc dest opnd))
+        (else
+           (error "NYI case sqrt"))))
+
+(define (codegen-p-sqrt-box cgc fs ffs reg lval)
+  (define dest (codegen-reg-to-x86reg reg))
+  (define opnd (codegen-loc-to-x86opnd fs ffs lval))
+
+  ;; Alloc result flonum
+  (if (not opt-nan-boxing)
+      (gen-allocation-imm cgc STAG_FLONUM 8))
+
+  (cond ((x86-reg? opnd) ;; general register
+           (if opt-nan-boxing
+               (begin (x86-movd/movq cgc (x86-xmm1) opnd)
+                      (x86-sqrtsd cgc (x86-xmm0) (x86-xmm1)))
+               (x86-sqrtsd cgc (x86-xmm0) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opnd))))
+        (else
+           (error "NYI case sqrt")))
+
+  (if opt-nan-boxing
+      (x86-movd/movq cgc dest (x86-xmm0))
+      (begin ;; Write number
+             (x86-movsd cgc (x86-mem -8 alloc-ptr) (x86-xmm0))
+             ;; Put
+             (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))))
 
 ;;
 ;; not

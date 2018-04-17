@@ -42,8 +42,8 @@
 (define (odd? x)
   (= (modulo x 2) 1))
 
-(define (sin x)
-  (gambit$$sin x))
+; (define (sin x)
+;   (gambit$$sin x))
 
 (define (expt n m)
   (if (= m 0)
