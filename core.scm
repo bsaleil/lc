@@ -75,9 +75,9 @@
   (list ctx-type-cha? ctx-type-voi?
         ctx-type-nul? ctx-type-int?
         ctx-type-boo? ctx-type-pai?
-        ctx-type-vec? ctx-type-str?
-        ctx-type-sym? ctx-type-flo?
-        ctx-type-clo?))
+        ctx-type-vec? ctx-type-fec?
+        ctx-type-str? ctx-type-sym?
+        ctx-type-flo? ctx-type-clo?))
 
 ;; Is the type a cst used for versioning ?
 (define (const-versioned? type)
@@ -185,6 +185,7 @@
 (define STAG_IPORT     17)
 (define STAG_OPORT     18)
 (define STAG_STRING    19)
+(define STAG_F64VECTOR 29)
 (define STAG_FLONUM    30)
 
 ;;-----------------------------------------------------------------------------
@@ -207,6 +208,7 @@
 (define ATX_BOX (make-ctx-tbox))
 (define ATX_PAI (make-ctx-tpai))
 (define ATX_VEC (make-ctx-tvec))
+(define ATX_FEC (make-ctx-tfec))
 (define ATX_STR (make-ctx-tstr))
 (define ATX_SYM (make-ctx-tsym))
 (define ATX_IPO (make-ctx-tipo))
@@ -218,6 +220,7 @@
   (cond ((ctx-type-box? type) STAG_MOBJECT)
         ((ctx-type-pai? type) STAG_PAIR)
         ((ctx-type-vec? type) STAG_VECTOR)
+        ((ctx-type-fec? type) STAG_F64VECTOR)
         ((ctx-type-str? type) STAG_STRING)
         ((ctx-type-sym? type) STAG_SYMBOL)
         ((ctx-type-flo? type) STAG_FLONUM)

@@ -287,7 +287,7 @@
 
 (meta-add-tags
     ;; Type tags
-    unk cha voi nul ret int boo box pai vec str sym ipo flo opo clo
+    unk cha voi nul ret int boo box pai vec fec str sym ipo flo opo clo
     ;; Other tags
     cst id)
 
@@ -301,6 +301,7 @@
 (meta-add-type box (box) ())
 (meta-add-type pai (pai) ())
 (meta-add-type vec (vec) ())
+(meta-add-type fec (fec) ())
 (meta-add-type str (str) ())
 (meta-add-type sym (sym) ())
 (meta-add-type ipo (ipo) ())
@@ -314,6 +315,7 @@
 (meta-add-type booc (boo cst) (cst))
 (meta-add-type paic (pai cst) (cst))
 (meta-add-type vecc (vec cst) (cst))
+(meta-add-type fecc (fec cst) (cst))
 (meta-add-type strc (str cst) (cst))
 (meta-add-type symc (sym cst) (cst))
 (meta-add-type floc (flo cst) (cst))
@@ -326,6 +328,7 @@
   (or (ctx-type-box? type)
       (ctx-type-pai? type)
       (ctx-type-vec? type)
+      (ctx-type-fec? type)
       (ctx-type-str? type)
       (ctx-type-sym? type)
       (ctx-type-ipo? type)
@@ -342,6 +345,7 @@
     ((is "int") ctx-type-int?)
     ((is "boo") ctx-type-boo?)
     ((is "vec") ctx-type-vec?)
+    ((is "fec") ctx-type-fec?)
     ((is "str") ctx-type-str?)
     ((is "sym") ctx-type-sym?)
     ((is "flo") ctx-type-flo?)
@@ -357,6 +361,7 @@
     ((ctx-type-int? type) make-ctx-tint)
     ((ctx-type-boo? type) make-ctx-tboo)
     ((ctx-type-vec? type) make-ctx-tvec)
+    ((ctx-type-fec? type) make-ctx-tfec)
     ((ctx-type-str? type) make-ctx-tstr)
     ((ctx-type-sym? type) make-ctx-tsym)
     ((ctx-type-flo? type) make-ctx-tflo)
@@ -391,15 +396,16 @@
            (not (eq? (mem-allocated-kind l) 'PERM)))
       (set! l (copy-permanent l #f perm-domain)))
   (cond
-    ((char?    l)  (make-ctx-tchac l))
-    ((null?    l)  (make-ctx-tnulc l))
-    ((fixnum?  l)  (make-ctx-tintc l))
-    ((boolean? l)  (make-ctx-tbooc l))
-    ((pair?    l)  (make-ctx-tpaic l))
-    ((vector?  l)  (make-ctx-tvecc l))
-    ((string?  l)  (make-ctx-tstrc l))
-    ((symbol?  l)  (make-ctx-tsymc l))
-    ((flonum?  l)  (make-ctx-tfloc l))
+    ((char?    l)   (make-ctx-tchac l))
+    ((null?    l)   (make-ctx-tnulc l))
+    ((fixnum?  l)   (make-ctx-tintc l))
+    ((boolean? l)   (make-ctx-tbooc l))
+    ((pair?    l)   (make-ctx-tpaic l))
+    ((vector?  l)   (make-ctx-tvecc l))
+    ((f64vector? l) (make-ctx-tfecc l))
+    ((string?  l)   (make-ctx-tstrc l))
+    ((symbol?  l)   (make-ctx-tsymc l))
+    ((flonum?  l)   (make-ctx-tfloc l))
     (else (pp l) (error "Internal error (literal->ctx-type)"))))
 
 ;; CTX IDENTIFIER LOC
