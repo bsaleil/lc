@@ -205,6 +205,7 @@
     (,char-downcase . char-downcase)
     (,##eqv? . eqv?)
     (,vector . vector)
+    (,f64vector . f64vector)
     (,##vector . vector)
     (,##list . list)
     (,##string . string)

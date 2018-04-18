@@ -2918,7 +2918,7 @@
   (define vec-opnd (codegen-loc-to-x86opnd fs ffs vec-loc))
   (define vec-len  (length csts?/locs))
 
-  (if (x86-mem? vec-opnd) (error "Unimplemented case in codgeen."))
+  (if (x86-mem? vec-opnd) (error "Unimplemented case in codegen."))
 
   (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_VALUE_48)))
   (x86-and cgc vec-opnd (x86-rax))
@@ -2960,6 +2960,76 @@
               (begin (x86-mov cgc (x86-rax) opnd)
                      (set! opnd (x86-rax))))
           (x86-mov cgc (x86-mem offset vec-opnd) opnd)
+          (loop (cdr csts?/locs) (- i 1))))))
+
+;;
+;; f64vector
+;; An empty f64vector (of right size) already is created and is in 'vec-loc'
+(define (codegen-p-f64vector cgc fs ffs csts?/locs vec-loc)
+  (if opt-nan-boxing
+      (codegen-p-f64vector-nan cgc fs ffs csts?/locs vec-loc)
+      (codegen-p-f64vector-tag cgc fs ffs csts?/locs vec-loc)))
+
+(define (codegen-p-f64vector-nan cgc fs ffs csts?/locs vec-loc)
+  (define vec-opnd (codegen-loc-to-x86opnd fs ffs vec-loc))
+  (define vec-len  (length csts?/locs))
+
+  (if (x86-mem? vec-opnd) (error "Unimplemented case in codegen."))
+
+  (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_VALUE_48)))
+  (x86-and cgc vec-opnd (x86-rax))
+  (let loop ((csts?/locs csts?/locs)
+             (i vec-len))
+    (if (not (null? csts?/locs))
+        (let* ((cst? (caar csts?/locs))
+               (loc  (cdar csts?/locs))
+               (offset (* 8 (+ (- vec-len i) 1)))
+               (opnd (and (not cst?) (codegen-loc-to-x86opnd fs ffs loc))))
+          (cond ;; cst
+                (cst?
+                  (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding loc 102)))
+                  (x86-mov cgc (x86-mem offset vec-opnd) (x86-rax)))
+                ;;
+                ((x86-mem? opnd)
+                  (x86-mov cgc (x86-rax) opnd)
+                  (x86-mov cgc (x86-mem offset vec-opnd) (x86-rax)))
+                ;;
+                ((x86-xmm? opnd)
+                  (x86-movsd cgc (x86-mem offset vec-opnd) opnd))
+                (else
+                  (x86-mov cgc (x86-mem offset vec-opnd) opnd)))
+          (loop (cdr csts?/locs) (- i 1)))))
+  (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
+  (x86-or cgc vec-opnd (x86-rax)))
+
+(define (codegen-p-f64vector-tag cgc fs ffs csts?/locs vec-loc)
+  (define vec-opnd (codegen-loc-to-x86opnd fs ffs vec-loc))
+  (define vec-len  (length csts?/locs))
+
+  (let loop ((csts?/locs csts?/locs)
+             (i vec-len))
+    (if (not (null? csts?/locs))
+        (let* ((cst? (caar csts?/locs))
+               (loc  (cdar csts?/locs))
+               (offset (- (* 8 (+ (- vec-len i) 1)) TAG_MEMOBJ))
+               (opnd (if cst?
+                         (x86-imm-int (to-64-value (flonum->ieee754 loc 'double)))
+                         (codegen-loc-to-x86opnd fs ffs loc))))
+
+          (if (or (x86-imm? opnd)
+                  (x86-mem? opnd))
+              (begin (x86-mov cgc (x86-rax) opnd)
+                     (set! opnd (x86-rax))))
+
+          ;; If opt-float-unboxing is #f and it's not a cst, the value needs to be unboxed
+          (if (and (not opt-float-unboxing)
+                   (not cst?))
+              (begin (x86-mov cgc (x86-rax) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opnd))
+                     (set! opnd (x86-rax))))
+
+          ;; Write value
+          (let ((x86-op (if (x86-xmm? opnd) x86-movsd x86-mov)))
+            (x86-op cgc (x86-mem offset vec-opnd) opnd))
           (loop (cdr csts?/locs) (- i 1))))))
 
 ;;

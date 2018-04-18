@@ -353,6 +353,7 @@
     (##set-box!          #f             #f                ,codegen-p-set-box            #t       ,ATX_VOI 2 ,ATX_ALL ,ATX_ALL          )
     (##gettime-ns        #f             #f                ,codegen-p-gettime-ns         #f       ,ATX_INT 0                            )
     (vector              #f             ,lco-p-vector     #f                            #t       ,ATX_VEC #f                           )
+    (f64vector           #f             ,lco-p-f64vector  #f                            #f       ,ATX_FEC #f ,ATX_FLO                  )
     (list                #f             ,lco-p-list       #f                            #t       ,ATX_PAI #f                           )
     ;; These primitives are inlined during expansion but still here to build lambda
     (real?               ,dummy-cst-all #f                #f                            #f       ,ATX_BOO 1 ,ATX_ALL                   )
@@ -370,9 +371,9 @@
                  (let ((node-l (atom-node-make 'l)))
                    `(lambda l ,node-l)))
               ((eq? sym 'vector)
-                 (let ((node-l (atom-node-make 'l))
-                       (node-lv (atom-node-make 'list->vector)))
-                   (error "U")))
+                 (error "NYI case in get-prim-lambda"))
+              ((eq? sym 'f64vector)
+                 (error "NYI case in get-prim-lambda"))
               (else (error "Internal error"))))))
 
 (define (assert-p-nbargs sym ast)
@@ -1888,6 +1889,41 @@
     lazy-vector))
 
 ;;
+;; Special primitive 'f64vector'
+(define (lco-p-f64vector ast op succ)
+
+  (define nbargs (length (cdr ast)))
+
+  (define (get-csts?/locs ctx n)
+    (if (= n 0)
+        '()
+        (let* ((type (ctx-get-type ctx n))
+               (cst? (ctx-type-cst? type))
+               (loc  (if cst?
+                         (ctx-type-cst type)
+                         (ctx-get-loc ctx n))))
+          (cons (cons cst? loc)
+                (get-csts?/locs ctx (- n 1))))))
+
+  (let* ((lazy-set
+           (make-lazy-code
+             ast
+             (lambda (cgc ctx)
+               (let* ((vec-loc    (ctx-get-loc ctx 0))
+                      (csts?/locs (get-csts?/locs ctx nbargs))
+                      (fs  (ctx-fs ctx))
+                      (ffs (ctx-ffs ctx))
+                      (ctx (ctx-pop-n ctx (+ nbargs 1)))
+                      (ctx (ctx-push ctx (make-ctx-tfec) vec-loc)))
+                 (codegen-p-f64vector cgc fs ffs csts?/locs vec-loc)
+                 (jump-to-version cgc succ ctx)))))
+         (lazy-f64vector
+           (gen-ast (list (atom-node-make 'make-f64vector)
+                          (atom-node-make nbargs))
+                    lazy-set)))
+    lazy-f64vector))
+
+;;
 ;; Special primitive 'list'
 (define (lco-p-list ast op succ)
 
@@ -2033,15 +2069,22 @@
          (lazy-box-fl-args (get-box-fl-args-lco primitive lazy-primitive))
          (lazy-cst-check   (get-lazy-cst-check primitive lazy-box-fl-args)))
 
-    (if (primitive-nbargs primitive)
-        ;; Build args lco chain with type checks
-        (let ((types (primitive-argtypes primitive)))
-          (assert (= (length types)
-                     (length (cdr ast)))
-                  "Primitive error")
-          (check-types types (cdr ast) lazy-cst-check ast))
-        ;; No need to check types
-        (gen-ast-l (cdr ast) lazy-cst-check))))
+    (cond ;; !variadic primitive with fixed arg types
+          ((primitive-nbargs primitive)
+             ;; Build args lco chain with type checks
+             (let ((types (primitive-argtypes primitive)))
+               (assert (= (length types)
+                          (length (cdr ast)))
+                       "Primitive error")
+               (check-types types (cdr ast) lazy-cst-check ast)))
+          ;; variadic primitive with fixed arg types
+          ((not (null? (primitive-argtypes primitive)))
+             (let ((type (car (primitive-argtypes primitive))))
+               (let ((types (make-list (length (cdr ast)) type)))
+                 (check-types types (cdr ast) lazy-cst-check ast))))
+          ;; no need to check types
+          (else
+             (gen-ast-l (cdr ast) lazy-cst-check)))))
 
 ;; Build lazy objects chain of 'args' list
 ;; and insert type check for corresponding 'types'
