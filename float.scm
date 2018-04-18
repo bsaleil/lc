@@ -235,8 +235,8 @@
               (and (x86-reg-xmm? src) (or (x86-reg? dst) (x86-mem? dst))))
           "invalid operands")
   (if (x86-reg-xmm? src)
-    (x86-sse-op cgc "movq" src dst #x66 #x7e)
-    (x86-sse-op cgc "movq" dst src #x66 #x6e)))
+      (x86-sse-op cgc "movq" src dst #x66 #x7e)
+      (x86-sse-op cgc "movq" dst src #x66 #x6e)))
 
 (define (x86-cvtsi2sd cgc dst src)
   (assert (or (and (x86-reg-xmm? dst)

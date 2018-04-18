@@ -134,6 +134,7 @@
     (,f64vector-length . f64vector-length)
     (,##string-ref . string-ref)
     (,string-ref . string-ref)
+    (,fixnum->flonum . fixnum->flonum)
     (,##fixnum->flonum . ##fixnum->flonum)
     (,bitwise-and . bitwise-and)
     ;; Functions

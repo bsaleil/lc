@@ -1513,6 +1513,54 @@
     (x86-mov cgc dest (x86-imm-int (obj-encoding #f 46)))
     (x86-label cgc label-end)))
 
+;; fixnum->flonum
+
+(define (codegen-p-fixnum->flonum cgc fs ffs op reg inlined-cond? lval cst?)
+  (assert (not cst?) "Internal error, unexpected cst operand")
+  (if opt-float-unboxing
+      (codegen-p-fixnum->flonum-nobox cgc fs ffs op reg inlined-cond? lval cst?)
+      (codegen-p-fixnum->flonum-box cgc fs ffs op reg inlined-cond? lval cst?)))
+
+(define (codegen-p-fixnum->flonum-nobox cgc fs ffs op reg inlined-cond? lval cst?)
+  (define dest (codegen-freg-to-x86reg reg))
+  (define opnd (codegen-loc-to-x86opnd fs ffs lval))
+
+  (cond ((not opt-nan-boxing)
+           (x86-mov cgc (x86-rax) opnd)
+           (x86-sar cgc (x86-rax) (x86-imm-int 2)))
+        ((x86-mem? opnd)
+           (x86-mov cgc (x86-rax) opnd)
+           (x86-movsx cgc (x86-rax) (x86-eax)))
+        (else
+           (x86-movsx cgc (x86-rax) (x86-r64->r32 opnd))))
+
+  (x86-cvtsi2sd cgc dest (x86-rax)))
+
+(define (codegen-p-fixnum->flonum-box cgc fs ffs op reg inlined-cond? lval cst?)
+  (define dest (codegen-reg-to-x86reg reg))
+  (define opnd (codegen-loc-to-x86opnd fs ffs lval))
+
+  ;; Alloc result flonum
+  (if (not opt-nan-boxing)
+      (gen-allocation-imm cgc STAG_FLONUM 8))
+
+  (cond ((not opt-nan-boxing)
+           (x86-mov cgc (x86-rax) opnd)
+           (x86-sar cgc (x86-rax) (x86-imm-int 2)))
+        ((x86-mem? opnd)
+           (x86-mov cgc (x86-rax) opnd)
+           (x86-movsx cgc (x86-rax) (x86-eax)))
+        (else
+           (x86-movsx cgc (x86-rax) (x86-r64->r32 opnd))))
+
+  (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))
+
+  (if opt-nan-boxing
+      (x86-movd/movq cgc dest (x86-xmm0))
+      (begin ;; Write number
+             (x86-movsd cgc (x86-mem -8 alloc-ptr) (x86-xmm0))
+             ;; Put
+             (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))))
 ;;
 ;; box
 (define (codegen-p-box cgc fs ffs op reg inlined-cond? lval cst?)
@@ -3392,18 +3440,6 @@
     ;; Get stype
     (x86-and cgc dest (x86-imm-int 248))
     (x86-shr cgc dest (x86-imm-int 1))))
-
-(define (codegen-fixnum->flonum cgc fs reg lval)
-  (if opt-nan-boxing (error "NYI codegen nan"))
-  (let ((dest  (codegen-reg-to-x86reg reg))
-        (lval  (codegen-loc-to-x86opnd fs lval)))
-
-    (gen-allocation-imm cgc STAG_FLONUM 8)
-
-    (x86-cvtsi2sd cgc (x86-xmm0) lval)
-    (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-xmm0))
-    (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))))
-
 
 (define (codegen-make-vector-cst cgc fs reg len lval)
 

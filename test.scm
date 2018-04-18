@@ -1,4 +1,12 @@
 
+(define (foo n m l)
+  (gambit$$pp (fixnum->flonum l))
+  (gambit$$pp (fixnum->flonum m))
+  (gambit$$pp (fixnum->flonum n)))
+
+(foo 22 -12 -999999999)
+
+
 ; (define (foo v idx val)
 ;   (f64vector-set! v 0 5.0)
 ;   (f64vector-set! v 1 val)
