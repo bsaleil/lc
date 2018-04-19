@@ -1879,9 +1879,29 @@
         (x86-shl cgc ropnd (x86-imm-int 2))))
 
 ;;
+;; odd? & even?
+(define (codegen-p-odd?-even? cgc fs ffs op reg inlined-cond? lval val-cst?)
+
+  (define dest (codegen-reg-to-x86reg reg))
+  (define opnd (codegen-loc-to-x86opnd fs ffs lval))
+  (define label-end (asm-make-label #f (new-sym 'odd-even)))
+  (define bool (eq? op 'even?))
+
+  (assert (not val-cst) "Internal error. Unexpected constant")
+
+  (x86-mov cgc (x86-rax) opnd)
+  (if opt-nan-boxing
+      (x86-and cgc (x86-rax) (x86-imm-int 1))  ;;b1
+      (x86-and cgc (x86-rax) (x86-imm-int 4))) ;; b100
+  (x86-mov cgc dest (x86-imm-int (obj-encoding bool)))
+  (x86-je cgc label-end)
+  (x86-mov cgc dest (x86-imm-int (obj-encoding (not bool))))
+  (x86-label cgc label-end))
+
+;;
 ;; sin
 (define (codegen-p-native-fl cgc fs ffs op reg inlined-cond? lval val-cst?)
-  (assert (not val-cst?) "Unexpected constant")
+  (assert (not val-cst?) "Internal error. Unexpected constant")
   (let* ((addr (cond ((eq? op 'sin)  (get-sin-addr))
                      ((eq? op 'cos)  (get-cos-addr))
                      ((eq? op 'atan) (get-atan-addr))

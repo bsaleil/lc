@@ -183,6 +183,7 @@
     (,newline . newline)
     (,string-append . string-append)
     (,list->vector . list->vector)
+    (,list->f64vector . list->f64vector)
     (,list-ref . list-ref)
     (,substring . substring)
     (,string-copy . string-copy)
