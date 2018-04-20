@@ -1,3 +1,25 @@
+(define-macro (unless test . l)
+  `(if (not ,test) (begin ,@l)))
+
+(##define-macro (def-macro form . body)
+  `(##define-macro ,form (let () ,@body)))
+
+(def-macro (make-body x y z vx vy vz mass) `(vector ,x ,y ,z ,vx ,vy ,vz ,mass))
+(def-macro (body-x body)    `(vector-ref ,body 0))
+(def-macro (body-y body)    `(vector-ref ,body 1))
+(def-macro (body-z body)    `(vector-ref ,body 2))
+(def-macro (body-vx body)   `(vector-ref ,body 3))
+(def-macro (body-vy body)   `(vector-ref ,body 4))
+(def-macro (body-vz body)   `(vector-ref ,body 5))
+(def-macro (body-mass body) `(vector-ref ,body 6))
+(def-macro (body-x-set! body v)    `(vector-set! ,body 0 ,v))
+(def-macro (body-y-set! body v)    `(vector-set! ,body 1 ,v))
+(def-macro (body-z-set! body v)    `(vector-set! ,body 2 ,v))
+(def-macro (body-vx-set! body v)   `(vector-set! ,body 3 ,v))
+(def-macro (body-vy-set! body v)   `(vector-set! ,body 4 ,v))
+(def-macro (body-vz-set! body v)   `(vector-set! ,body 5 ,v))
+(def-macro (body-mass-set! body v) `(vector-set! ,body 6 ,v))
+
 ;;; The Computer Language Benchmarks Game
 ;;; http://shootout.alioth.debian.org/
 ;;;
@@ -11,37 +33,7 @@
 
 (define +solar-mass+ (* 4 +pi+ +pi+))
 
-;;-----------------------------------------------------------------------------
-;; Modified to work with LC
-
 ;(define-record body x y z vx vy vz mass)
-
-(##define-macro (def-macro form . body)
-  `(##define-macro ,form (let () ,@body)))
-
-(def-macro (make-body x y z vx vy vz mass) `(vector ,x ,y ,z ,vx ,vy ,vz ,mass))
-
-(def-macro (body-x body)    `(vector-ref ,body 0))
-(def-macro (body-y body)    `(vector-ref ,body 1))
-(def-macro (body-z body)    `(vector-ref ,body 2))
-(def-macro (body-vx body)   `(vector-ref ,body 3))
-(def-macro (body-vy body)   `(vector-ref ,body 4))
-(def-macro (body-vz body)   `(vector-ref ,body 5))
-(def-macro (body-mass body) `(vector-ref ,body 6))
-
-(def-macro (body-x-set! body v)    `(vector-set! ,body 0 ,v))
-(def-macro (body-y-set! body v)    `(vector-set! ,body 1 ,v))
-(def-macro (body-z-set! body v)    `(vector-set! ,body 2 ,v))
-(def-macro (body-vx-set! body v)   `(vector-set! ,body 3 ,v))
-(def-macro (body-vy-set! body v)   `(vector-set! ,body 4 ,v))
-(def-macro (body-vz-set! body v)   `(vector-set! ,body 5 ,v))
-(def-macro (body-mass-set! body v) `(vector-set! ,body 6 ,v))
-
-(def-macro (unless c  . b) `(if (not ,c) ,@b))
-
-;;-----------------------------------------------------------------------------
-
-
 
 (define *sun*
   (make-body 0.0 0.0 0.0 0.0 0.0 0.0 +solar-mass+))
@@ -100,10 +92,10 @@
   (let loop-o ((o system) (e 0.0))
       (if (null? o)
           e
-          (let ([e (+ e (* 0.5 (body-mass (car o))
+          (let ((e (+ e (* 0.5 (body-mass (car o))
       		     (+ (* (body-vx (car o)) (body-vx (car o)))
       			(* (body-vy (car o)) (body-vy (car o)))
-      			(* (body-vz (car o)) (body-vz (car o))))))])
+      			(* (body-vz (car o)) (body-vz (car o))))))))
 
             (let loop-i ((i (cdr o)) (e e))
       	(if (null? i)
@@ -112,7 +104,7 @@
       		   (dy (- (body-y (car o)) (body-y (car i))))
       		   (dz (- (body-z (car o)) (body-z (car i))))
       		   (distance (sqrt (+ (* dx dx) (* dy dy) (* dz dz)))))
-      	      (let ([e  (- e (/ (* (body-mass (car o)) (body-mass (car i))) distance))])
+      	      (let ((e  (- e (/ (* (body-mass (car o)) (body-mass (car i))) distance))))
       		(loop-i (cdr i) e)))))))))
 
 ;; -------------------------------
@@ -144,35 +136,27 @@
 
   (let loop-o ((o system))
     (unless (null? o)
-      (let ([o1 (car o)])
+      (let ((o1 (car o)))
         (body-x-set! o1 (+ (body-x o1) (* dt (body-vx o1))))
         (body-y-set! o1 (+ (body-y o1) (* dt (body-vy o1))))
         (body-z-set! o1 (+ (body-z o1) (* dt (body-vz o1))))
         (loop-o (cdr o))))))
 
 ;; -------------------------------
+
 (define (main n)
   (let ((system (list *sun* *jupiter* *saturn* *uranus* *neptune*)))
-
     (offset-momentum system)
-    (print-float (energy system))
+    (let ((before (energy system)))
+      (do ((i 1 (+ i 1)))
+          ((< n i))
+        (advance system 0.01))
+      (let ((after (energy system)))
+        (cons before after)))))
 
-    (do ((i 1 (+ i 1)))
-        ((< n i))
-      (advance system 0.01))
-    (print-float (energy system))))
+(let ((r (main 1000)))
+  (pp (< (+ 0.169075164 (car r)) 0.000000001))
+  (pp (< (+ 0.169087605 (cdr r)) 0.000000001)))
 
-(define floats '())
-(define (print-float n) (set! floats (cons n floats)))
-
-(main 100000)
-
-(pp (< (car floats) -0.169104))
-(pp (> (car floats) -0.169105))
-(pp (< (cadr floats) -0.169075))
-(pp (> (cadr floats) -0.169076))
-
-;#t
-;#t
 ;#t
 ;#t
