@@ -60,3 +60,4 @@
 (define sboyer-iters      100)
 (define gcbench-iters       1)
 (define compiler-iters    300)
+(define nbody-iters         1)
