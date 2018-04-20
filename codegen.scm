@@ -1952,7 +1952,9 @@
                   (else
                     (if opt-nan-boxing
                         (x86-movd/movq cgc (x86-xmm0) opnd)
-                        (x86-movsd cgc (x86-xmm0) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opnd)))))
+                        (begin (if (and opt-stats (not opt-float-unboxing))
+                                   (gen-inc-slot cgc 'flunbox))
+                               (x86-movsd cgc (x86-xmm0) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opnd))))))
             ;;
             (x86-mov  cgc (x86-rax) (x86-rsp)) ;; align stack-pointer for C call
             (x86-and  cgc (x86-rsp) (x86-imm-int -16))
@@ -1998,7 +2000,9 @@
            (if opt-nan-boxing
                (begin (x86-movd/movq cgc (x86-xmm1) opnd)
                       (x86-sqrtsd cgc (x86-xmm0) (x86-xmm1)))
-               (x86-sqrtsd cgc (x86-xmm0) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opnd))))
+               (begin (if (and opt-stats (not opt-float-unboxing))
+                          (gen-inc-slot cgc 'flunbox))
+                      (x86-sqrtsd cgc (x86-xmm0) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opnd)))))
         (else
            (error "NYI case sqrt")))
 
@@ -2608,6 +2612,8 @@
             (x86-mov cgc dest (x86-imm-int (flonum->ieee754 lval 'double))))
           ((and (not opt-nan-boxing)
                 (not opt-float-unboxing))
+            (if (and opt-stats (not opt-float-unboxing))
+                       (gen-inc-slot cgc 'flunbox))
             (if (x86-reg? opval)
                 (x86-mov cgc dest (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opval))
                 (error "NYI case make-f64vector"))))
@@ -2654,6 +2660,8 @@
           (x86-mov cgc dest (x86-imm-int (flonum->ieee754 lval 'double))))
         ((and (not opt-nan-boxing)
               (not opt-float-unboxing))
+          (if (and opt-stats (not opt-float-unboxing))
+                     (gen-inc-slot cgc 'flunbox))
           (if (x86-reg? opval)
               (x86-mov cgc dest (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opval))
               (error "NYI case make-f64vector"))))
@@ -2742,6 +2750,8 @@
             (cond (cst-val?
                     (x86-mov cgc dest (x86-imm-int (flonum->ieee754 lval 'double))))
                   ((not opt-float-unboxing)
+                    (if (and opt-stats (not opt-float-unboxing))
+                               (gen-inc-slot cgc 'flunbox))
                     (if (x86-reg? opval)
                         (x86-mov cgc dest (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opval))
                         (error "NYI case make-f64vector"))))
@@ -3092,7 +3102,9 @@
           ;; If opt-float-unboxing is #f and it's not a cst, the value needs to be unboxed
           (if (and (not opt-float-unboxing)
                    (not cst?))
-              (begin (x86-mov cgc (x86-rax) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opnd))
+              (begin (if (and opt-stats (not opt-float-unboxing))
+                         (gen-inc-slot cgc 'flunbox))
+                     (x86-mov cgc (x86-rax) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opnd))
                      (set! opnd (x86-rax))))
 
           ;; Write value
@@ -3336,8 +3348,12 @@
                 (x86-mov cgc opnd (x86-imm-int (flonum->ieee754 lval 'double))))
               ((and (x86-reg? opval)
                     (not (x86-xmm? opval)))
+                (if (and opt-stats (not opt-float-unboxing))
+                    (gen-inc-slot cgc 'flunbox))
                 (x86-mov cgc opnd (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opval)))
               ((x86-mem? opval)
+                (if (and opt-stats (not opt-float-unboxing))
+                    (gen-inc-slot cgc 'flunbox))
                 (x86-mov cgc opnd opval)
                 (x86-mov cgc opnd (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opnd))))
         (set! opval opnd)))

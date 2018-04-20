@@ -1,21 +1,4 @@
 
-; (define-macro (shl a b) `(fxarithmetic-shift-left  ,a ,b))
-; (define-macro (shr a b) `(fxarithmetic-shift-right ,a ,b))
-
-(define (shl n i)
-  (* n (expt 2 i)))
-
-(define (shr n i)
-  (if (and (< n 0) (odd? n))
-      (error "NYI case shr")
-      (quotient n (expt 2 i))))
-
-(define (foo n m)
-  (pp (shl n 2))
-  (pp (shr n m)))
-
-(foo 10 2)
-;(gambit$$pp (foo 3.14))
 
 ; (define (foo v idx val)
 ;   (f64vector-set! v 0 5.0)
