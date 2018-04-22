@@ -1887,7 +1887,7 @@
   (define label-end (asm-make-label #f (new-sym 'odd-even)))
   (define bool (eq? op 'even?))
 
-  (assert (not val-cst) "Internal error. Unexpected constant")
+  (assert (not val-cst?) "Internal error. Unexpected constant")
 
   (x86-mov cgc (x86-rax) opnd)
   (if opt-nan-boxing
