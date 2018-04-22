@@ -63,3 +63,10 @@
 
 (define (bitwise-and a b)
   (gambit$$bitwise-and a b))
+
+(define (arithmetic-shift n s)
+  (cond ((> s 0) (* n (expt 2 s)))
+        (else
+          (if (and (< n 0) (odd? n))
+              (error "NYI case shr")
+              (quotient n (expt 2 (* -1 s)))))))

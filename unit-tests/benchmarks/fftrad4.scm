@@ -1,5 +1,5 @@
 ;;-----------------------------------------------------------------------------
-;; LC MACROS & UTILS
+;; LC MACROS
 
 (##define-macro (def-macro form . body)
   `(##define-macro ,form (let () ,@body)))
@@ -11,15 +11,6 @@
 (def-macro (FLOATvector-length v)    `(vector-length ,v))
 (def-macro (FLOATsin v)    `(sin ,v))
 (def-macro (FLOATvector . lst) `(vector ,@lst))
-
-(def-macro (arithmetic-shift n s) `(lcshift ,n ,s))
-(define (lcshift n s)
-  (cond ((= s 0) n)
-        ((> s 0) (* n (expt 2 s)))
-        (else
-          (if (and (< n 0) (odd? n))
-              (error "NYI case shr")
-              (quotient n (expt 2 (* -1 s)))))))
 
 ;;-----------------------------------------------------------------------------
 

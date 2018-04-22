@@ -137,6 +137,7 @@
     (,fixnum->flonum . fixnum->flonum)
     (,##fixnum->flonum . ##fixnum->flonum)
     (,bitwise-and . bitwise-and)
+    (,arithmetic-shift . arithmetic-shift)
     ;; Functions
     (,abs       . abs)
     (,##fxabs . abs)
