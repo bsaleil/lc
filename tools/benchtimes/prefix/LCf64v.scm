@@ -13,12 +13,12 @@
 (def-macro (FLOATvector-length v)      `(f64vector-length ,v))
 
 (def-macro (nuc-const . lst)
- `',(list->vector
-      (map (lambda (x)
-             (if (vector? x)
-                 (list->f64vector (vector->list x))
-                 x))
-           lst)))
+  `',(list->vector
+       (map (lambda (x)
+              (if (vector? x)
+                (list->f64vector (vector->list x))
+                x))
+            lst)))
 
 (def-macro (FLOAT+ . lst) `(+ ,@lst))
 (def-macro (FLOAT- . lst) `(- ,@lst))
