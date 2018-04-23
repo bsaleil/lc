@@ -2836,7 +2836,15 @@
               #t)
           "Internal error")
 
-  (let* ((dest  (codegen-loc-to-x86opnd fs ffs reg)) ;; could be a reg (vector-ref) or freg (f64vector-ref)
+  (let* ((tdest (codegen-loc-to-x86opnd fs ffs reg)) ;; could be a reg (vector-ref) or freg (f64vector-ref)
+         ;; If op is f64vector-ref, and boxed tagged float are used, set dest to xmm0.
+         ;; Using xmm0 avoids the case where an unboxed float is stored in the 'dest' general register and gc is triggered by
+         ;; float allocation. In this case, the unboxed float is handled like a tagged value by the gc.
+         (dest (if (and (eq? op 'f64vector-ref)
+                        (not opt-float-unboxing)
+                        (not opt-nan-boxing))
+                   (x86-xmm0)
+                   tdest))
          (opvec (and (not vec-cst?) (codegen-loc-to-x86opnd fs ffs lvec)))
          (opidx (and (not val-cst?) (codegen-loc-to-x86opnd fs ffs lidx))))
 
@@ -2850,9 +2858,9 @@
         (begin ;; Alloc result flonum
                (gen-allocation-imm cgc STAG_FLONUM 8)
                ;; Write number
-               (x86-mov cgc (x86-mem -8 alloc-ptr) dest)
+               (x86-movsd cgc (x86-mem -8 alloc-ptr) (x86-xmm0))
                ;; Put
-               (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))))))
+               (x86-lea cgc tdest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))))))
 
 (define (codegen-p-*vector-ref-nan cgc dest opvec lvec vec-cst? opidx lidx val-cst?)
 
@@ -3311,6 +3319,7 @@
 
   (define tmp-used? #f)
   (define selector-used? #f)
+  (define r8-saved? #f)
 
   (define dest  (codegen-reg-to-x86reg reg))
   (define opvec (codegen-loc-to-x86opnd fs ffs lvec))
@@ -3325,8 +3334,9 @@
              (set! selector-used? #t)
              selector-reg)
           (else
-             (error "NYI"))))
-
+             (x86-ppush cgc (x86-r8))
+             (set! r8-saved? #t)
+             (x86-r8))))
 
   ;; keep vec in a register
   (if (x86-mem? opvec)
@@ -3366,6 +3376,8 @@
 
   (if selector-used?
       (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0))))
+  (if r8-saved?
+      (x86-ppop cgc (x86-r8)))
   (x86-mov cgc dest (x86-imm-int (obj-encoding #!void))))
 ;;
 ;; string-set!

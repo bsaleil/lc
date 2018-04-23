@@ -215,6 +215,11 @@ def lc_with_options(name,options):
     opts = opts + options
     return System(name,"LC","",".scm",opts,"(?:.*\n){9}CPU time: ([^\n]*)\n","(?:.*\n){10}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0)
 
+def lcf64v_with_options(name,options):
+    opts = ["/home/bapt/Bureau/these/lc/lc","{0}","--time"]
+    opts = opts + options
+    return System(name,"LCf64v","",".scm",opts,"(?:.*\n){9}CPU time: ([^\n]*)\n","(?:.*\n){10}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0)
+
 def gambit_no_options(name,gcsize):
     opts = []
     cmd = "/home/bapt/Bureau/gambit-4.8.7/gsc/gsc -:m"+ str(gcsize) + " -exe -o {0}.o1 {0}"
@@ -241,17 +246,23 @@ systems = []
 # systems.append(lc_with_options("nan-opt-6g", ["--nan-boxing"]))
 
 # LC
+# systems.append(lc_with_options("LC", []))
+
+# LC
 systems.append(lc_with_options("LC", []))
+systems.append(lc_with_options("LC-noopt", ["--disable-float-unboxing"]))
+systems.append(lc_with_options("LC-nan", ["--nan-boxing"]))
+systems.append(lc_with_options("LC-nan-noopt", ["--nan-boxing","--disable-float-unboxing"]))
+
+systems.append(lcf64v_with_options("LCf64v", []))
+systems.append(lcf64v_with_options("LCf64v-noopt", ["--disable-float-unboxing"]))
+systems.append(lcf64v_with_options("LCf64v-nan", ["--nan-boxing"]))
+systems.append(lcf64v_with_options("LCf64v-nan-noopt", ["--nan-boxing","--disable-float-unboxing"]))
 
 # Gambit
-systems.append(gambit_no_options("Gambit", 512000))
-systems.append(gambit_no_options("Gambitf64v", 512000))
+# systems.append(gambit_no_options("Gambit", 512000))
+# systems.append(gambit_no_options("Gambitf64v", 512000))
 
-#
-# # Gambit
-# systems.append(gambit_no_options("GambitS",    8000))
-# systems.append(gambit_no_options("GambitNS",   8000))
-# #systems.append(gambit_no_options("GambitSGC",1000000))
 
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))
