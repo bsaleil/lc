@@ -7,21 +7,21 @@
 
 ;;-----------------------------------------------------------------------------
 ;; use vector to implement body type instead of record for LC
-(define (make-body x y z vx vy vz mass) (vector x y z vx vy vz mass))
-(define (body-x body)    (vector-ref body 0))
-(define (body-y body)    (vector-ref body 1))
-(define (body-z body)    (vector-ref body 2))
-(define (body-vx body)   (vector-ref body 3))
-(define (body-vy body)   (vector-ref body 4))
-(define (body-vz body)   (vector-ref body 5))
-(define (body-mass body) (vector-ref body 6))
-(define (body-x-set! body v)    (vector-set! body 0 v))
-(define (body-y-set! body v)    (vector-set! body 1 v))
-(define (body-z-set! body v)    (vector-set! body 2 v))
-(define (body-vx-set! body v)   (vector-set! body 3 v))
-(define (body-vy-set! body v)   (vector-set! body 4 v))
-(define (body-vz-set! body v)   (vector-set! body 5 v))
-(define (body-mass-set! body v) (vector-set! body 6 v))
+(define (make-body x y z vx vy vz mass) (FLOATvector x y z vx vy vz mass))
+(define (body-x body)    (FLOATvector-ref body 0))
+(define (body-y body)    (FLOATvector-ref body 1))
+(define (body-z body)    (FLOATvector-ref body 2))
+(define (body-vx body)   (FLOATvector-ref body 3))
+(define (body-vy body)   (FLOATvector-ref body 4))
+(define (body-vz body)   (FLOATvector-ref body 5))
+(define (body-mass body) (FLOATvector-ref body 6))
+(define (body-x-set! body v)    (FLOATvector-set! body 0 v))
+(define (body-y-set! body v)    (FLOATvector-set! body 1 v))
+(define (body-z-set! body v)    (FLOATvector-set! body 2 v))
+(define (body-vx-set! body v)   (FLOATvector-set! body 3 v))
+(define (body-vy-set! body v)   (FLOATvector-set! body 4 v))
+(define (body-vz-set! body v)   (FLOATvector-set! body 5 v))
+(define (body-mass-set! body v) (FLOATvector-set! body 6 v))
 ;;-----------------------------------------------------------------------------
 
 ;; define planetary masses, initial positions & velocity
@@ -158,7 +158,7 @@
     "nbody"
     nbody-iters
     (lambda (result)
-      (and (< (+ 0.169075164 (car r)) 0.000000001)
-           (< (+ 0.169059907 (car r)) 0.000000001)))
+      (and (< (+ 0.169075164 (car result)) 0.000000001)
+           (< (+ 0.169086185 (cdr result)) 0.000000001)))
     (lambda (data) (lambda () (run data)))
-    50000000))
+    1000000))

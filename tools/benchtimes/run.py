@@ -235,10 +235,17 @@ systems = []
 # systems.append(lc_with_options("tag-opt", []))
 # # tagging opt (6gb heap)
 # systems.append(lc_with_options("tag-opt-6g", ["--min-heap 6500000"]))
-# nan-boxing !opt
-systems.append(lc_with_options("nan-noopt-6g", ["--nan-boxing","--disable-float-unboxing"]))
-# nan-boxing opt
-systems.append(lc_with_options("nan-opt-6g", ["--nan-boxing"]))
+# # nan-boxing !opt
+# systems.append(lc_with_options("nan-noopt-6g", ["--nan-boxing","--disable-float-unboxing"]))
+# # nan-boxing opt
+# systems.append(lc_with_options("nan-opt-6g", ["--nan-boxing"]))
+
+# LC
+systems.append(lc_with_options("LC", []))
+
+# Gambit
+systems.append(gambit_no_options("Gambit", 512000))
+systems.append(gambit_no_options("Gambitf64v", 512000))
 
 #
 # # Gambit

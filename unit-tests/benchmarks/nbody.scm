@@ -153,9 +153,10 @@
       (let ((after (energy system)))
         (cons before after)))))
 
-(let ((r (main 1000)))
+(let ((r (main 1000000)))
+  (pp r)
   (pp (< (+ 0.169075164 (car r)) 0.000000001))
-  (pp (< (+ 0.169087605 (cdr r)) 0.000000001)))
+  (pp (< (+ 0.169086185 (cdr r)) 0.000000001)))
 
 ;#t
 ;#t
