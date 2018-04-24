@@ -1151,17 +1151,17 @@
         return-reg
         #f))
 
-  (define deep-opnd-reg
-    (let loop ((idx (- (or nb-opnds 0) 1)))
-      (if (< idx 0)
-          #f
-          (let ((r (ctx-get-loc ctx idx)))
-            ;; We keep the the loc associated to this opnd if
-            ;; (i) it's a register and (ii) this register is not used elsewhere
-            (if (and (ctx-loc-is-register? r)
-                     (not (ctx-loc-used ctx idx)))
-                r
-                (loop (- idx 1)))))))
+  (define deep-opnd-reg #f)
+    ; (let loop ((idx (- (or nb-opnds 0) 1)))
+    ;   (if (< idx 0)
+    ;       #f
+    ;       (let ((r (ctx-get-loc ctx idx)))
+    ;         ;; We keep the the loc associated to this opnd if
+    ;         ;; (i) it's a register and (ii) this register is not used elsewhere
+    ;         (if (and (ctx-loc-is-register? r)
+    ;                  (not (ctx-loc-used ctx idx)))
+    ;             r
+    ;             (loop (- idx 1)))))))
 
   (define (get-spilled-reg)
     (let ((sl

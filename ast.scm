@@ -551,24 +551,31 @@
               (else (gen-error cgc (ERR_UNKNOWN_VAR sym))))))))
 
 (define (gen-get-localvar cgc ast ctx local succ)
-  (mlet ((type (ctx-identifier-type ctx (cdr local)))
-         (moves/reg/ctx
-           (if (and opt-float-unboxing
-                    (ctx-type-flo? type))
-               (ctx-get-free-freg ast ctx succ 0)
-               (ctx-get-free-reg ast ctx succ 0)))
-         (loc (ctx-identifier-loc ctx (cdr local))))
+  (let ((loc (ctx-identifier-loc ctx (cdr local)))
+        (type (ctx-identifier-type ctx (cdr local))))
+    (if (and (or (ctx-loc-is-register? loc)
+                 (ctx-loc-is-fregister? loc)))
+        ;; id is in a reg/freg loc
+        (jump-to-version cgc succ (ctx-push ctx type loc (car local)))
+        ;; id is in mem
+        (mlet ((type (ctx-identifier-type ctx (cdr local)))
+               (moves/reg/ctx
+                 (if (and opt-float-unboxing
+                          (ctx-type-flo? type))
+                     (ctx-get-free-freg ast ctx succ 0)
+                     (ctx-get-free-reg ast ctx succ 0)))
+               (loc (ctx-identifier-loc ctx (cdr local))))
 
-    (apply-moves cgc ctx moves)
+          (apply-moves cgc ctx moves)
 
-    (if (ctx-loc-is-freemem? loc)
-        ;; It's a free var that is only in closure
-        (let ((lclo (ctx-get-closure-loc ctx)))
-          (codegen-get-free cgc (ctx-fs ctx) (ctx-ffs ctx) reg lclo loc))
-        ;; The variable is in a register or in non closure memory
-        (apply-moves cgc ctx (list (cons loc reg))))
+          (if (ctx-loc-is-freemem? loc)
+              ;; It's a free var that is only in closure
+              (let ((lclo (ctx-get-closure-loc ctx)))
+                (codegen-get-free cgc (ctx-fs ctx) (ctx-ffs ctx) reg lclo loc))
+              ;; The variable is in a register or in non closure memory
+              (apply-moves cgc ctx (list (cons loc reg))))
 
-    (jump-to-version cgc succ (ctx-push ctx type reg (car local)))))
+          (jump-to-version cgc succ (ctx-push ctx type reg (car local)))))))
 
 (define (gen-get-globalvar cgc ast ctx global succ)
 

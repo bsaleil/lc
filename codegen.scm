@@ -1066,7 +1066,7 @@
      (else
        (cond ((eq? op '+)
                 (cond ((eq? dest opleft)
-                         (error "nb ii 6.1"))
+                         (x86-add cgc dest32 (l32 opright)))
                       ((eq? dest opright)
                          (error "nb ii 6.2"))
                       (else
@@ -1155,12 +1155,18 @@
 
   (assert (not (and lcst? rcst?)) "Internal error")
 
-  (let ((dest (codegen-freg-to-x86reg reg))
+  (let ((sdest #f)
+        (dest (codegen-freg-to-x86reg reg))
         (opleft (and (not lcst?) (codegen-loc-to-x86opnd fs ffs lleft)))
         (opright (and (not rcst?) (codegen-loc-to-x86opnd fs ffs lright))))
 
     ;;
     (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd) (/ . ,x86-divsd))))))
+
+      (if (or (eq? dest opleft)
+              (eq? dest opright))
+          (begin (set! sdest dest)
+                 (set! dest (x86-xmm1))))
 
       ;; Left operand
       (cond ((and leftint? lcst?)
@@ -1212,7 +1218,11 @@
             ((x86-xmm? opright)
                (x86-op cgc dest opright))
             (else ;; x86-reg
-               (x86-op cgc dest (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opright)))))))
+               (x86-op cgc dest (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opright)))))
+
+    (if (and sdest
+             (not (eq? dest sdest)))
+        (x86-movsd cgc sdest dest))))
 
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
 (define (codegen-num-ff-box cgc fs ffs op reg lleft leftint? lright rightint? lcst? rcst?)
