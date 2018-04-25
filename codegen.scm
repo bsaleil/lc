@@ -271,6 +271,19 @@
   (or (< imm -2147483648)
       (> imm 2147483647)))
 
+(define (immediate-to-xmm cgc xmm flo)
+  (if (= flo 0.0)
+      (x86-pxor cgc xmm xmm)
+      (let* ((rep (flonum->ieee754 flo 'double))
+             (rl (and (not (= rep 0)) (xmm_imm_shift rep)))) ;; right left
+        (if rl
+            ;; We can use psrl/psll
+            (begin (x86-pcmpeqb cgc xmm xmm)
+                   (and (> (car rl) 0) (x86-psrlw cgc xmm (x86-imm-int (car rl))))
+                   (and (> (cdr rl) 0) (x86-psllw cgc xmm (x86-imm-int (cdr rl)))))
+            (begin (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value (flonum->ieee754 flo 'double))))
+                   (x86-movd/movq cgc xmm (x86-rax)))))))
+
 ;;-----------------------------------------------------------------------------
 ;; Stacks
 ;;-----------------------------------------------------------------------------
@@ -1170,8 +1183,7 @@
 
       ;; Left operand
       (cond ((and leftint? lcst?)
-               (x86-mov cgc (x86-rax) (x86-imm-int lleft))
-               (x86-cvtsi2sd cgc dest (x86-rax)))
+               (immediate-to-xmm cgc dest (fixnum->flonum lleft)))
             (leftint?
                (if opt-nan-boxing
                    (begin
@@ -1182,8 +1194,7 @@
                      (x86-sar cgc (x86-rax) (x86-imm-int 2))))
                (x86-cvtsi2sd cgc dest (x86-rax)))
             (lcst?
-               (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lleft)))
-               (x86-movd/movq cgc dest (x86-rax)))
+               (immediate-to-xmm cgc dest lleft))
             ((x86-mem? opleft)
                (x86-movsd cgc dest opleft))
             ;; Nothing to do, left operand is in a xmm register
@@ -1195,8 +1206,7 @@
 
       ;; Right operand
       (cond ((and rightint? rcst?)
-               (x86-mov cgc (x86-rax) (x86-imm-int lright))
-               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))
+               (immediate-to-xmm cgc (x86-xmm0) (fixnum->flonum lright))
                (x86-op cgc dest (x86-xmm0)))
             (rightint?
               (if opt-nan-boxing
@@ -1209,8 +1219,7 @@
               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))
               (x86-op cgc dest (x86-xmm0)))
             (rcst?
-               (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lright)))
-               (x86-movd/movq cgc (x86-xmm0) (x86-rax))
+               (immediate-to-xmm cgc (x86-xmm0) lright)
                (x86-op cgc dest (x86-xmm0)))
             ((x86-mem? opright)
                (error "N3"))
@@ -1242,8 +1251,7 @@
 
       ;; Left operand
       (cond ((and leftint? lcst?)
-               (x86-mov cgc (x86-rax) (x86-imm-int lleft))
-               (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax)))
+               (immediate-to-xmm cgc (x86-xmm0) (fixnum->flonum lleft)))
             (leftint?
                (if opt-nan-boxing
                    (begin (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_32))
@@ -1252,8 +1260,7 @@
                           (x86-sar cgc (x86-rax) (x86-imm-int 2))))
                (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax)))
             (lcst?
-               (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lleft)))
-               (x86-movd/movq cgc (x86-xmm0) (x86-rax)))
+               (immediate-to-xmm cgc (x86-xmm0) lleft))
             (else
                (if opt-nan-boxing
                    ;; nan boxing
@@ -1272,8 +1279,7 @@
 
       ;; Right operand
       (cond ((and rightint? rcst?)
-               (x86-mov cgc (x86-rax) (x86-imm-int lright))
-               (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
+               (immediate-to-xmm cgc (x86-xmm1) (fixnum->flonum lright))
                (x86-op cgc (x86-xmm0) (x86-xmm1)))
             (rightint?
               (if opt-nan-boxing
@@ -1284,8 +1290,7 @@
               (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
               (x86-op cgc (x86-xmm0) (x86-xmm1)))
             (rcst?
-               (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lright)))
-               (x86-movd/movq cgc (x86-xmm1) (x86-rax))
+               (immediate-to-xmm cgc (x86-xmm1) lright)
                (x86-op cgc (x86-xmm0) (x86-xmm1)))
             (else
                (if opt-nan-boxing
@@ -1424,8 +1429,7 @@
     (on-dynamic-mode
       ;; Left operand
       (cond ((and leftint? lcst?)
-               (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 (fixnum->flonum lleft))))
-               (x86-movd/movq cgc (x86-xmm0) (x86-rax))
+               (immediate-to-xmm cgc (x86-xmm0) (fixnum->flonum lleft))
                (set! opleft (x86-xmm0)))
             (leftint?
                (if opt-nan-boxing
@@ -1436,8 +1440,7 @@
                (x86-cvtsi2sd cgc (x86-xmm0) (x86-rax))
                (set! opleft (x86-xmm0)))
             (lcst?
-               (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lleft)))
-               (x86-movd/movq cgc (x86-xmm0) (x86-rax))
+               (immediate-to-xmm cgc (x86-xmm0) lleft)
                (set! opleft (x86-xmm0)))
             ((x86-mem? opleft)
                (error "N1"))
@@ -1456,8 +1459,7 @@
       ;; Right operand
       (cond ((and rightint? rcst?)
                (assert (not leftint?) "Internal error")
-               (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 (fixnum->flonum lright))))
-               (x86-movd/movq cgc (x86-xmm1) (x86-rax))
+               (immediate-to-xmm cgc (x86-xmm1) (fixnum->flonum lright))
                (x86-comisd cgc opleft (x86-xmm1)))
             (rightint?
                (if opt-nan-boxing
@@ -1468,8 +1470,7 @@
                (x86-cvtsi2sd cgc (x86-xmm1) (x86-rax))
                (x86-comisd cgc opleft (x86-xmm1)))
             (rcst?
-               (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 lright)))
-               (x86-movd/movq cgc (x86-xmm1) (x86-rax))
+               (immediate-to-xmm cgc (x86-xmm1) lright)
                (x86-comisd cgc opleft (x86-xmm1)))
             ((x86-mem? opright)
                (error "NYI a"))

@@ -47,6 +47,7 @@
 #include <stdlib.h> // exit
 #include <unistd.h> // getpid
 #include <math.h> // sin cos atan
+#include <stdint.h>
 
 int ___heap_limit(); // Gambit ___heap_limit
 
@@ -106,6 +107,42 @@ void writeLcGlobal(___U64 global)
     ___PSTATE->lc_global = global;
 }
 
+// This function detects if an xmm register can be set to a value using tricks presented here:
+// https://blogs.msdn.microsoft.com/oldnewthing/20141215-00/?p=43403
+// It detects if the binary ieee754 double precision representation contains a single pack of 1
+// If it is the case, it returns the left (psll) and right (psrl) shifts to apply after pcmpeq
+// The result is returned in a 64 bits value:
+// .. 16 bits .. | .. 16 bits .. | .. 16 bits .. | .. 16 bits ..
+//    unused           psrl            psll        if 1, the tricks can be used
+//                                                 if 0, the tricks cannot be used
+// i must be a non-zero value
+uint64_t c_xmm_imm_shift(uint64_t i)
+{
+    int8_t highest = 63;
+    int8_t lowest = 0;
+    uint64_t start = pow(2,63);
+    while ((i & start) == 0)
+    {
+        highest--;
+        start = start >> 1;
+    }
+
+    lowest = highest;
+    while ((i & start) && (lowest >= 0))
+    {
+
+        i = i ^ start;
+        lowest--;
+        start = start >> 1;
+    }
+
+    if (i != 0)
+        return 0;
+
+    uint64_t l = (lowest + 1);
+    uint64_t r = (64 - highest + lowest);
+    return (i == 0) | l << 16 | r << 32;
+}
 ")
 
 ;; TODO: remove signal stack when gambit accepts new flag
@@ -139,6 +176,16 @@ void writeLcGlobal(___U64 global)
 
 (define (write_lc_global addr)
   ((c-lambda (long) void "writeLcGlobal") addr))
+
+(define (xmm_imm_shift imm)
+  (let* ((r ((c-lambda (unsigned-long) long "c_xmm_imm_shift") imm))
+         (opt? (= (bitwise-and r 65535) 1)))
+    (if opt?
+        (let ((psll (bitwise-and (arithmetic-shift r -16) 65535))
+              (psrl (bitwise-and (arithmetic-shift r -32) 65535)))
+          (cons psrl psll))
+        #f)))
+
 
 (define (get-pstate-addr)
   ((c-lambda () long "get_pstate_addr")))

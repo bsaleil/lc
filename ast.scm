@@ -3381,8 +3381,7 @@
 
   (define (alloc-cst-flo reg cst)
     (let ((opnd (codegen-freg-to-x86reg reg)))
-      (x86-mov cgc (x86-rax) (x86-imm-int (get-ieee754-imm64 cst)))
-      (x86-movd/movq cgc opnd (x86-rax))))
+      (immediate-to-xmm cgc opnd cst)))
 
   (define (alloc-cst-clo reg cst)
     (let ((entry-obj (car (asc-globalfn-entry-get cst))))

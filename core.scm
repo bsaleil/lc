@@ -126,6 +126,7 @@
 (define get___alloc_still-addr #f)
 (define get-pstate-addr #f)
 (define run-gc #f)         ;; mem.scm
+(define immediate-to-xmm #f)
 (define expand-tl #f)      ;; expand.scm
 (define gen-ast #f)        ;; ast.scm
 (define alloc-ptr #f)
@@ -1322,8 +1323,7 @@
                       (x86-xmm? dst))
                    (cond ;; imm -> xmm
                          ((x86-imm? src)
-                            (x86-mov cgc (x86-rax) src)
-                            (x86-movd/movq cgc dst (x86-rax)))
+                            (immediate-to-xmm cgc dst (cdar move)))
                          ;; mem -> xmm
                          ((x86-mem? src)
                             (x86-movsd cgc dst src))
