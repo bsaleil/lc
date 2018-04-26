@@ -290,13 +290,14 @@
 
 (define (primitive-get sym)            (assoc sym primitives))
 (define (primitive-sym prim)           (list-ref  prim 0))
-(define (primitive-lco-cst prim)       (list-ref  prim 1))
-(define (primitive-lcofun prim)        (list-ref  prim 2))
-(define (primitive-codegen prim)       (list-ref  prim 3))
-(define (primitive-box-fl-args? prim)  (list-ref  prim 4))
-(define (primitive-rettype prim)       (list-ref  prim 5))
-(define (primitive-nbargs prim)        (list-ref  prim 6))
-(define (primitive-argtypes prim)      (list-tail prim 7))
+(define (primitive-tag prim)           (list-ref  prim 1))
+(define (primitive-lco-cst prim)       (list-ref  prim 2))
+(define (primitive-lcofun prim)        (list-ref  prim 3))
+(define (primitive-codegen prim)       (list-ref  prim 4))
+(define (primitive-box-fl-args? prim)  (list-ref  prim 5))
+(define (primitive-rettype prim)       (list-ref  prim 6))
+(define (primitive-nbargs prim)        (list-ref  prim 7))
+(define (primitive-argtypes prim)      (list-tail prim 8))
 
 ;; TODO: remove or add ?/! from codegen-p functions
 ;; * Most primitives are "simple", they only need to call code generator.
@@ -309,58 +310,58 @@
 (define primitives '())
 (define (init-primitives)
   (set! primitives `(
-    ;; Symbol            LCO cst all    LCO getter        Codegen function          Box fl args? Return-type Nb-args Args-type
-    (car                 ,cst-car       #f                ,codegen-p-cxr                #f       ,ATX_UNK 1 ,ATX_PAI                   )
-    (cdr                 ,cst-cdr       #f                ,codegen-p-cxr                #f       ,ATX_UNK 1 ,ATX_PAI                   )
-    (cons                #f             #f                ,codegen-p-cons               #t       ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL          )
-    (eq?                 ,cst-eq?       ,lco-p-eq?        #f                            #f       ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          )
-    (char=?              ,cst-char=?    ,lco-p-eq?        #f                            #f       ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA          )
-    (quotient            ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
-    (modulo              ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
-    (remainder           ,cst-remainder ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
-    (odd?                ,dummy-cst-all #f                ,codegen-p-odd?-even?         #f       ,ATX_BOO 1 ,ATX_INT                   )
-    (even?               ,dummy-cst-all #f                ,codegen-p-odd?-even?         #f       ,ATX_BOO 1 ,ATX_INT                   )
-    (zero?               ,dummy-cst-all ,lco-p-zero?      #f                            #f       ,ATX_BOO 1 ,ATX_NUM                   )
-    (sin                 ,dummy-cst-all #f                ,codegen-p-native-fl          #f       ,ATX_FLO 1 ,ATX_NUM                   )
-    (cos                 ,dummy-cst-all #f                ,codegen-p-native-fl          #f       ,ATX_FLO 1 ,ATX_NUM                   )
-    (atan                ,dummy-cst-all #f                ,codegen-p-native-fl          #f       ,ATX_FLO 1 ,ATX_NUM                   )
-    (sqrt                ,dummy-cst-all #f                ,codegen-p-sqrt               #f       ,ATX_FLO 1 ,ATX_NUM                   )
-    (not                 ,cst-not       ,lco-p-not        ,codegen-p-not                #f       ,ATX_BOO 1 ,ATX_ALL                   )
-    (set-car!            #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
-    (set-cdr!            #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
-    (vector-length       ,cst-vec-len   #f                ,codegen-p-*vector-length     #f       ,ATX_INT 1 ,ATX_VEC                   )
-    (f64vector-length    ,dummy-cst-all #f                ,codegen-p-*vector-length     #f       ,ATX_INT 1 ,ATX_FEC                   )
-    (vector-ref          ,cst-vec-ref   #f                ,codegen-p-*vector-ref        #f       ,ATX_UNK 2 ,ATX_VEC ,ATX_INT          )
-    (f64vector-ref       ,dummy-cst-all #f                ,codegen-p-*vector-ref        #f       ,ATX_FLO 2 ,ATX_FEC ,ATX_INT          )
-    (char->integer       ,cst-char->int #f                ,codegen-p-ch<->int           #f       ,ATX_INT 1 ,ATX_CHA                   )
-    (integer->char       ,cst-int->char #f                ,codegen-p-ch<->int           #f       ,ATX_CHA 1 ,ATX_INT                   )
-    (string-ref          ,cst-str-ref   #f                ,codegen-p-string-ref         #f       ,ATX_CHA 2 ,ATX_STR ,ATX_INT          )
-    (string-set!         #f             #f                ,codegen-p-string-set!        #t       ,ATX_VOI 3 ,ATX_STR ,ATX_INT ,ATX_CHA )
-    (vector-set!         #f             #f                ,codegen-p-vector-set!        #t       ,ATX_VOI 3 ,ATX_VEC ,ATX_INT ,ATX_ALL )
-    (f64vector-set!      #f             #f                ,codegen-p-f64vector-set!     #f       ,ATX_VOI 3 ,ATX_FEC ,ATX_INT ,ATX_FLO )
-    (string-length       ,cst-str-len   #f                ,codegen-p-string-length      #f       ,ATX_INT 1 ,ATX_STR                   )
-    (exit                #f             #f                 #f                           #f       ,ATX_VOI 0                            )
-    (make-vector         #f             #f                ,codegen-p-make-vector        #t       ,ATX_VEC 2 ,ATX_INT ,ATX_ALL          )
-    (make-f64vector      #f             #f                ,codegen-p-make-f64vector     #f       ,ATX_FEC 2 ,ATX_INT ,ATX_FLO          )
-    (make-string         #f             #f                ,codegen-p-make-string        #f       ,ATX_STR 2 ,ATX_INT ,ATX_CHA          )
-    (eof-object?         ,dummy-cst-all ,lco-p-eof-obj    ,codegen-p-eof-object?        #f       ,ATX_BOO 1 ,ATX_ALL                   )
-    (symbol->string      ,cst-sym->str  #f                ,codegen-p-symbol->string     #f       ,ATX_STR 1 ,ATX_SYM                   )
-    (string->symbol      ,cst-str->sym  #f                ,codegen-p-string->symbol     #f       ,ATX_SYM 1 ,ATX_STR                   )
-    (current-output-port #f             ,lco-p-cur-x-port #f                            #f       ,ATX_OPO 0                            )
-    (current-input-port  #f             ,lco-p-cur-x-port #f                            #f       ,ATX_IPO 0                            )
-    (number?             ,cst-number?   ,lco-p-number?    #f                            #f       ,ATX_BOO 1 ,ATX_ALL                   )
-    (fixnum->flonum      ,dummy-cst-all #f                ,codegen-p-fixnum->flonum     #f       ,ATX_FLO 1 ,ATX_INT                   )
-    (##apply             #f             ,lco-p-apply      #f                            #f       ,ATX_UNK 2 ,ATX_CLO ,ATX_ALL          )
-    (##box               #f             #f                ,codegen-p-box                #t       ,ATX_BOX 1 ,ATX_ALL                   )
-    (##unbox             #f             #f                ,codegen-p-unbox              #t       ,ATX_UNK 1 ,ATX_ALL                   )
-    (##set-box!          #f             #f                ,codegen-p-set-box            #t       ,ATX_VOI 2 ,ATX_ALL ,ATX_ALL          )
-    (##gettime-ns        #f             #f                ,codegen-p-gettime-ns         #f       ,ATX_INT 0                            )
-    (vector              #f             ,lco-p-vector     #f                            #t       ,ATX_VEC #f                           )
-    (f64vector           #f             ,lco-p-f64vector  #f                            #f       ,ATX_FEC #f ,ATX_FLO                  )
-    (list                #f             ,lco-p-list       #f                            #t       ,ATX_PAI #f                           )
+    ;; Symbol                          LCO cst all    LCO getter        Codegen function          Box fl args? Return-type Nb-args Args-type
+    (car                 ,ATX_PAI   ,cst-car       #f                ,codegen-p-cxr                #f       ,ATX_UNK 1 ,ATX_PAI                   )
+    (cdr                 ,ATX_PAI   ,cst-cdr       #f                ,codegen-p-cxr                #f       ,ATX_UNK 1 ,ATX_PAI                   )
+    (cons                ,ATX_PAI   #f             #f                ,codegen-p-cons               #t       ,ATX_PAI 2 ,ATX_ALL ,ATX_ALL          )
+    (eq?                 #f         ,cst-eq?       ,lco-p-eq?        #f                            #f       ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          )
+    (char=?              ,ATX_CHA   ,cst-char=?    ,lco-p-eq?        #f                            #f       ,ATX_BOO 2 ,ATX_CHA ,ATX_CHA          )
+    (quotient            ,ATX_INT   ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
+    (modulo              ,ATX_INT   ,cst-binop     ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
+    (remainder           ,ATX_INT   ,cst-remainder ,lco-p-binop      #f                            #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
+    (odd?                ,ATX_INT   ,dummy-cst-all #f                ,codegen-p-odd?-even?         #f       ,ATX_BOO 1 ,ATX_INT                   )
+    (even?               ,ATX_INT   ,dummy-cst-all #f                ,codegen-p-odd?-even?         #f       ,ATX_BOO 1 ,ATX_INT                   )
+    (zero?               ,ATX_NUM   ,dummy-cst-all ,lco-p-zero?      #f                            #f       ,ATX_BOO 1 ,ATX_NUM                   )
+    (sin                 ,ATX_FLO   ,dummy-cst-all #f                ,codegen-p-native-fl          #f       ,ATX_FLO 1 ,ATX_NUM                   )
+    (cos                 ,ATX_FLO   ,dummy-cst-all #f                ,codegen-p-native-fl          #f       ,ATX_FLO 1 ,ATX_NUM                   )
+    (atan                ,ATX_FLO   ,dummy-cst-all #f                ,codegen-p-native-fl          #f       ,ATX_FLO 1 ,ATX_NUM                   )
+    (sqrt                ,ATX_FLO   ,dummy-cst-all #f                ,codegen-p-sqrt               #f       ,ATX_FLO 1 ,ATX_NUM                   )
+    (not                 #f         ,cst-not       ,lco-p-not        ,codegen-p-not                #f       ,ATX_BOO 1 ,ATX_ALL                   )
+    (set-car!            ,ATX_PAI   #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
+    (set-cdr!            ,ATX_PAI   #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
+    (vector-length       ,ATX_VEC   ,cst-vec-len   #f                ,codegen-p-*vector-length     #f       ,ATX_INT 1 ,ATX_VEC                   )
+    (f64vector-length    ,ATX_FEC   ,dummy-cst-all #f                ,codegen-p-*vector-length     #f       ,ATX_INT 1 ,ATX_FEC                   )
+    (vector-ref          ,ATX_VEC   ,cst-vec-ref   #f                ,codegen-p-*vector-ref        #f       ,ATX_UNK 2 ,ATX_VEC ,ATX_INT          )
+    (f64vector-ref       ,ATX_FEC   ,dummy-cst-all #f                ,codegen-p-*vector-ref        #f       ,ATX_FLO 2 ,ATX_FEC ,ATX_INT          )
+    (char->integer       #f         ,cst-char->int #f                ,codegen-p-ch<->int           #f       ,ATX_INT 1 ,ATX_CHA                   )
+    (integer->char       #f         ,cst-int->char #f                ,codegen-p-ch<->int           #f       ,ATX_CHA 1 ,ATX_INT                   )
+    (string-ref          ,ATX_STR   ,cst-str-ref   #f                ,codegen-p-string-ref         #f       ,ATX_CHA 2 ,ATX_STR ,ATX_INT          )
+    (string-set!         ,ATX_STR   #f             #f                ,codegen-p-string-set!        #t       ,ATX_VOI 3 ,ATX_STR ,ATX_INT ,ATX_CHA )
+    (vector-set!         ,ATX_VEC   #f             #f                ,codegen-p-vector-set!        #t       ,ATX_VOI 3 ,ATX_VEC ,ATX_INT ,ATX_ALL )
+    (f64vector-set!      ,ATX_FEC   #f             #f                ,codegen-p-f64vector-set!     #f       ,ATX_VOI 3 ,ATX_FEC ,ATX_INT ,ATX_FLO )
+    (string-length       ,ATX_STR   ,cst-str-len   #f                ,codegen-p-string-length      #f       ,ATX_INT 1 ,ATX_STR                   )
+    (exit                #f         #f             #f                 #f                           #f       ,ATX_VOI 0                            )
+    (make-vector         ,ATX_VEC   #f             #f                ,codegen-p-make-vector        #t       ,ATX_VEC 2 ,ATX_INT ,ATX_ALL          )
+    (make-f64vector      ,ATX_FEC   #f             #f                ,codegen-p-make-f64vector     #f       ,ATX_FEC 2 ,ATX_INT ,ATX_FLO          )
+    (make-string         ,ATX_STR   #f             #f                ,codegen-p-make-string        #f       ,ATX_STR 2 ,ATX_INT ,ATX_CHA          )
+    (eof-object?         #f         ,dummy-cst-all ,lco-p-eof-obj    ,codegen-p-eof-object?        #f       ,ATX_BOO 1 ,ATX_ALL                   )
+    (symbol->string      #f         ,cst-sym->str  #f                ,codegen-p-symbol->string     #f       ,ATX_STR 1 ,ATX_SYM                   )
+    (string->symbol      #f         ,cst-str->sym  #f                ,codegen-p-string->symbol     #f       ,ATX_SYM 1 ,ATX_STR                   )
+    (current-output-port ,ATX_OPO   #f             ,lco-p-cur-x-port #f                            #f       ,ATX_OPO 0                            )
+    (current-input-port  ,ATX_IPO   #f             ,lco-p-cur-x-port #f                            #f       ,ATX_IPO 0                            )
+    (number?             ,ATX_NUM   ,cst-number?   ,lco-p-number?    #f                            #f       ,ATX_BOO 1 ,ATX_ALL                   )
+    (fixnum->flonum      ,ATX_NUM   ,dummy-cst-all #f                ,codegen-p-fixnum->flonum     #f       ,ATX_FLO 1 ,ATX_INT                   )
+    (##apply             #f         #f             ,lco-p-apply      #f                            #f       ,ATX_UNK 2 ,ATX_CLO ,ATX_ALL          )
+    (##box               #f         #f             #f                ,codegen-p-box                #t       ,ATX_BOX 1 ,ATX_ALL                   )
+    (##unbox             #f         #f             #f                ,codegen-p-unbox              #t       ,ATX_UNK 1 ,ATX_ALL                   )
+    (##set-box!          #f         #f             #f                ,codegen-p-set-box            #t       ,ATX_VOI 2 ,ATX_ALL ,ATX_ALL          )
+    (##gettime-ns        #f         #f             #f                ,codegen-p-gettime-ns         #f       ,ATX_INT 0                            )
+    (vector              ,ATX_VEC   #f             ,lco-p-vector     #f                            #t       ,ATX_VEC #f                           )
+    (f64vector           ,ATX_FEC   #f             ,lco-p-f64vector  #f                            #f       ,ATX_FEC #f ,ATX_FLO                  )
+    (list                ,ATX_PAI   #f             ,lco-p-list       #f                            #t       ,ATX_PAI #f                           )
     ;; These primitives are inlined during expansion but still here to build lambda
-    (real?               ,dummy-cst-all #f                #f                            #f       ,ATX_BOO 1 ,ATX_ALL                   )
-    (eqv?                ,dummy-cst-all #f                #f                            #f       ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          ))))
+    (real?               ,ATX_NUM   ,dummy-cst-all #f                #f                            #f       ,ATX_BOO 1 ,ATX_ALL                   )
+    (eqv?                #f         ,dummy-cst-all #f                #f                            #f       ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          ))))
 
 (define (get-prim-lambda ast sym primitive)
   (let ((nbargs (primitive-nbargs primitive)))
@@ -1657,6 +1658,7 @@
 ;;
 ;;
 (define (mlc-primitive prim ast succ)
+
   (cond ((and (= (length ast) 2)
               (member prim '(##fx-? ##fl-)))
            (error "NYI atom mlc-primitive 1"))
@@ -1994,6 +1996,22 @@
 
 (define (mlc-primitive-d prim ast succ)
 
+  (define (make-op-stat-lco succ)
+    (make-lazy-code
+      (make-lco-id 34)
+      (lambda (cgc ctx)
+        (let* ((primitive (primitive-get prim))
+               (ptag (primitive-tag primitive)))
+          (and ptag
+               (gen-inc-slot cgc ptag)))
+        (jump-to-version cgc succ ctx))))
+
+  (let ((prim-lco (mlc-primitive-d* prim ast succ)))
+    (if opt-stats
+        (make-op-stat-lco prim-lco)
+        prim-lco)))
+
+(define (mlc-primitive-d* prim ast succ)
   ;; If all operands are cst, return list of ctx types
   ;; If one or more operands are not cst, return #f
   (define (get-all-cst-opnds ctx nopnds)
@@ -2789,6 +2807,9 @@
       ast
       (lambda (cgc ctx)
 
+        (if opt-stats
+            (gen-inc-slot cgc ATX_CLO))
+
         ;; Check if the identity of called function is available
         (set! fn-id-inf (call-get-eploc ctx (car ast)))
 
@@ -3020,6 +3041,8 @@
                       (lcst? (ctx-type-cst? ltype))
                       (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
                  (apply-moves cgc ctx moves)
+                 (if opt-stats
+                     (gen-inc-slot cgc ATX_FLO))
                  (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op freg lloc #t rloc #t lcst? rcst?)
                  (let* ((ctx (ctx-pop-n ctx 2))
                         (ctx (ctx-push ctx (make-ctx-tflo) freg)))
@@ -3067,6 +3090,8 @@
                 ;; Inlined if condition
                 (inlined-if-cond?
                   (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op #f lloc rloc lcst? rcst? #t)))
+                    (if opt-stats
+                        (gen-inc-slot cgc ATX_INT))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
                 ;; In these cases, we need a free register
                 ;; Then, get a free register, apply moves, and use it.
@@ -3075,9 +3100,13 @@
                     (apply-moves cgc ctx moves)
                     (cond
                       (num-op?
+                          (if opt-stats
+                              (gen-inc-slot cgc ATX_INT))
                           (codegen-num-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc rloc lcst? rcst?)
                           (jump-to-version cgc lco-overflow (ctx-push ctx type reg)))
                       (else
+                          (if opt-stats
+                              (gen-inc-slot cgc ATX_INT))
                           (codegen-cmp-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc rloc lcst? rcst? #f)
                           (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))))
 
@@ -3108,6 +3137,8 @@
                     (jump-to-version cgc lco (ctx-pop-n ctx 2))))
                 (inlined-if-cond?
                   (let ((x86-op (codegen-cmp-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op #f lloc leftint? rloc rightint? lcst? rcst? #t)))
+                    (if opt-stats
+                        (gen-inc-slot cgc ATX_FLO))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
                 ;; In these cases, we need a free register
                 ;; Then, get a free register, apply moves, and use it.
@@ -3117,11 +3148,15 @@
                                (ctx-get-free-freg ast ctx succ 2)
                                (ctx-get-free-reg ast ctx succ 2))))
                     (apply-moves cgc ctx moves)
+                    (if opt-stats
+                        (gen-inc-slot cgc ATX_FLO))
                     (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc leftint? rloc rightint? lcst? rcst?)
                     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg))))
                 (else
                   (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 2)))
                     (apply-moves cgc ctx moves)
+                    (if opt-stats
+                        (gen-inc-slot cgc ATX_FLO))
                     (codegen-cmp-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #f)
                     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))
 

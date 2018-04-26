@@ -208,7 +208,7 @@
 
   (--stats-full
     "Print full stats about execution"
-    ,(lambda (args) (if opt-time (error "--stats-ful option can't be used with --time"))
+    ,(lambda (args) (if opt-time (error "--stats-full option can't be used with --time"))
                     (set! opt-stats #t)
                     (set! opt-stats-full #t)
                     args))
@@ -566,7 +566,14 @@
     (let ((versions-info (get-versions-info all-lazy-code)))
       (println "Min versions number: " (car versions-info))
       (println "Max versions number: " (cdr versions-info)))
-    ;; Number of stubs, number of return stubs, and number of entry stubs for each number of versions
+    (let loop ((slots stats-slots))
+      (if (not (null? slots))
+          (let ((atx (caar slots))
+                (val (u64vector-ref block (cdar slots))))
+            (cond ((eq? atx ATX_ALL) #f)
+                  ((eq? atx ATX_NUM) (println "prim_num:" val))
+                  (else (println "prim_" (caaar slots) ":" val)))
+            (loop (cdr slots)))))
     (println "-------------------------")))
 
 (define (print-stats-full)

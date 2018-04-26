@@ -217,6 +217,12 @@
 (define ATX_OPO (make-ctx-topo))
 (define ATX_CLO (make-ctx-tclo))
 
+(define ATX_TYPE_LIST
+    (list ATX_ALL ATX_NUM ATX_UNK ATX_CHA ATX_VOI
+          ATX_NUL ATX_RET ATX_INT ATX_BOO ATX_BOX
+          ATX_PAI ATX_VEC ATX_FEC ATX_STR ATX_SYM
+          ATX_IPO ATX_FLO ATX_OPO ATX_CLO))
+
 (define (ctx-type->stag type)
   (cond ((ctx-type-box? type) STAG_MOBJECT)
         ((ctx-type-pai? type) STAG_PAIR)
@@ -599,7 +605,15 @@
 (define globals-addr #f)
 (define block #f)
 (define block-addr #f)
-(define debug-slots '((calls . 6) (tests . 7) (extests . 8) (closures . 9) (time . 10) (other . 11) (flbox . 12) (flunbox . 13)))
+(define stats-slots
+  (let loop ((idx 14) (atxs ATX_TYPE_LIST))
+    (if (null? atxs)
+        '()
+        (cons (cons (car atxs) idx)
+              (loop (+ idx 1) (cdr atxs))))))
+(define debug-slots
+  (append '((calls . 6) (tests . 7) (extests . 8) (closures . 9) (time . 10) (other . 11) (flbox . 12) (flunbox . 13))
+          stats-slots))
 (define block-len (+ 6 (length debug-slots)))
 
 (define (init-block)
