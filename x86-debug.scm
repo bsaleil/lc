@@ -50,6 +50,9 @@
     (x86-mov cgc r (x86-imm-int (+ block-addr (* (cdr res) 8))))
     (x86-mov cgc r (x86-mem 0 r))))
 
+(define (gen-inc-slots cgc slots)
+  (for-each (lambda (slot) (gen-inc-slot cgc slot)) slots))
+
 (define (gen-inc-slot cgc slot)
   (let ((res (assoc slot debug-slots)))
     (if (not res) (error "Compiler error"))
