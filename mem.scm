@@ -65,8 +65,9 @@ ___U64 alloc_still(___U64 stag, ___U64 bytes)
 
 ___U64  get___alloc_still_addr()      { return (___U64)&alloc_still; }
 
-int callHL()
+int callHL(___U64 ustackptr)
 {
+  ___PSTATE->lc_stack_ptr = ustackptr;
   int r = ___heap_limit(___PSPNC) && ___garbage_collect (___PSP 0);
   if (r != 0)
   {
@@ -176,6 +177,9 @@ uint64_t c_xmm_imm_shift(uint64_t i)
 
 (define (write_lc_global addr)
   ((c-lambda (long) void "writeLcGlobal") addr))
+
+(define (write_lc_stack_ptr usp)
+  ((c-lambda (long) void "___PSTATE->lc_stack_ptr = ___arg1;") usp))
 
 (define (xmm_imm_shift imm)
   (let* ((r ((c-lambda (unsigned-long) long "c_xmm_imm_shift") imm))

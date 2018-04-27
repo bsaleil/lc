@@ -193,6 +193,8 @@
 (define OFFSET_PAIR_CAR 16)
 (define OFFSET_PAIR_CDR  8)
 (define OFFSET_PROC_EP 8)
+(define OFFSET_CONT_EP 16)
+(define OFFSET_CONT_GENERIC 8)
 (define OFFSET_BOX 8)
 (define OFFSET_FLONUM 8)
 (define OFFSET_BODY 8)
@@ -824,8 +826,8 @@
     (codegen-return-clean cgc fs ffs)
     (let ((table-reg (if cont-saved? (x86-rax) (x86-rdx))))
       (if cridx
-          (x86-mov cgc (x86-rax) (x86-mem (+ 16 (* 8 cridx)) table-reg))
-          (x86-mov cgc (x86-rax) (x86-mem 8 table-reg)))
+          (x86-mov cgc (x86-rax) (x86-mem (+ OFFSET_CONT_EP (* 8 cridx)) table-reg))
+          (x86-mov cgc (x86-rax) (x86-mem OFFSET_CONT_GENERIC table-reg)))
       (x86-mov cgc (x86-r11) (x86-imm-int (obj-encoding cridx 20)))
       (x86-jmp cgc (x86-rax))))
 

@@ -161,6 +161,7 @@
 
 (define write_lc_global #f)
 (define write_lc_stack #f)
+(define write_lc_stack_ptr #f)
 
 ;;-----------------------------------------------------------------------------
 
@@ -288,6 +289,7 @@
 ;; The procedure exec-error is callable from generated machine code.
 ;; This function print the error message in rax
 (c-define (rt-error usp psp) (long long) void "rt_error" ""
+  (write_lc_stack_ptr usp)
   (let ((msg (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-rbx)))))))
     (if (not (equal? msg ""))
         (println msg))
@@ -380,6 +382,7 @@
 ;;-----------------------------------------------------------------------------
 
 (c-define (gambit-str-to-sym-tag usp psp) (long long) void "gambit_str_to_sym_tag" ""
+  (write_lc_stack_ptr usp)
   (let* ((encoding48 (get-u48 (+ usp 88)))
          (str (##encoding->object encoding48))
          (sym (string->symbol str)))
@@ -387,6 +390,7 @@
              (##object->encoding sym))))
 
 (c-define (gambit-str-to-sym-nan usp psp) (long long) void "gambit_str_to_sym_nan" ""
+  (write_lc_stack_ptr usp)
   (let* ((encoding48 (get-u48 (+ usp 88)))
          (str (##encoding->object (+ encoding48 TAG_MEMOBJ)))
          (sym (string->symbol str)))
@@ -394,6 +398,7 @@
              (##object->encoding sym))))
 
 (c-define (gambit-call usp psp) (long long) void "gambit_call" ""
+  (write_lc_stack_ptr usp)
   (let* ((nargs
            (encoding-obj (get-i64 (+ usp (* (+ (length regalloc-regs) 2) 8)))))
          (op-sym
@@ -426,6 +431,7 @@
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
 (c-define (do-callback usp psp) (long long) void "do_callback" ""
+  (write_lc_stack_ptr usp)
   (let* ((ret-addr (get-i64 psp))
 
          (callback-fn
@@ -472,6 +478,7 @@
 ;; | Call arg 1    |
 ;; +---------------+
 (c-define (do-callback-fn usp psp) (long long) void "do_callback_fn" ""
+  (write_lc_stack_ptr usp)
   (let* ((ret-addr (get-i64 psp))
 
          (selector
@@ -513,6 +520,7 @@
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
 (c-define (do-callback-cont usp psp) (long long) void "do_callback_cont" ""
+  (write_lc_stack_ptr usp)
   (let* ((ret-addr (get-i64 psp))
 
          (callback-fn
@@ -586,10 +594,8 @@
 (define (init-mcb)
   (set! mcb (make-mcb code-len))
   (set! code-addr (##foreign-address mcb))
-  (if opt-nan-boxing
-      (begin (set! ustack (make-u64vector ustack-len #xFFFE000000000000))
-             (write_lc_stack (object-address ustack)))
-      (set! ustack (make-vector ustack-len)))
+  (begin (set! ustack (make-u64vector ustack-len #xFFFE000000000000))
+         (write_lc_stack (object-address ustack)))
   (set! ustack-init (+ (object-address ustack) 8 (* 8 ustack-len))))
 
 ;; BLOCK :

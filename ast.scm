@@ -2371,7 +2371,7 @@
 ;;-----------------------------------------------------------------------------
 ;; APPLY & CALL
 
-;; Return air (const? . fn-num)
+;; Return pair (const? . fn-num)
 ;; const? is #t if fn-num is an fn-num of a const function
 ;; const? is #f if fn-num is an fn-num of a non const function
 (define (call-get-eploc ctx op)
