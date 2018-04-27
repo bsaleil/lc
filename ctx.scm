@@ -1945,11 +1945,13 @@
   (let* ((req-moves (get-req-moves))
          (moves (steps req-moves))
          (moves (add-boxes moves moves))
-         (fs-move (cons 'fs (- (ctx-fs dst-ctx)
-                               (ctx-fs src-ctx))))
-         (ffs-move (cons 'ffs (- (ctx-ffs dst-ctx)
-                                 (ctx-ffs src-ctx)))))
-    (cons fs-move (cons ffs-move moves))))
+         (fs-move
+           (let ((diff (- (ctx-fs dst-ctx) (ctx-fs src-ctx))))
+             (if (= diff 0) '() `((fs . ,diff)))))
+         (ffs-move
+           (let ((diff (- (ctx-ffs dst-ctx) (ctx-ffs src-ctx))))
+             (if (= diff 0) '() `((ffs . ,diff))))))
+    (append fs-move ffs-move moves)))
 
 (define (ctx-get-call-args-moves ast ctx nb-args cloloc contloc tail? generic-entry? inlined-call?)
 

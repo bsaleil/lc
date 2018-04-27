@@ -1482,7 +1482,7 @@
     (version
        (let ((label-merge (generate-merge-code ctx vctx version)))
          (callback label-merge)
-         (fn-patch label-merge #t))) ;; TODO: check if real new version
+         (fn-patch label-merge (not (eq? label-merge version)))))
     ;; No version, but we can generate one for this exact context
     ((eq? vctx ctx)
        (let ((label (generate-new-version ctx callback)))

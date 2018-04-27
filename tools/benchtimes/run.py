@@ -222,7 +222,7 @@ def lcf64v_with_options(name,options):
 
 def gambit_no_options(name,gcsize):
     opts = []
-    cmd = "/home/bapt/Bureau/gambit-4.8.7/gsc/gsc -:m"+ str(gcsize) + " -exe -o {0}.o1 {0}"
+    cmd = "/home/bapt/Bureau/gambitBOXUNBOX/gsc/gsc -:m"+ str(gcsize) + " -exe -o {0}.o1 {0}"
     return System(name,name,cmd,".o1",["{0}"],"(\d+) ms real time\\n","accounting for (\d+) ms real time",lambda x: x)
 
 #
@@ -260,8 +260,8 @@ systems.append(lcf64v_with_options("LCf64v-nan", ["--nan-boxing"]))
 systems.append(lcf64v_with_options("LCf64v-nan-noopt", ["--nan-boxing","--disable-float-unboxing"]))
 
 # Gambit
-# systems.append(gambit_no_options("Gambit", 512000))
-# systems.append(gambit_no_options("Gambitf64v", 512000))
+systems.append(gambit_no_options("Gambit", 512000))
+systems.append(gambit_no_options("Gambitf64v", 512000))
 
 
 config = Config()
