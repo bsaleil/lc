@@ -1119,7 +1119,7 @@
       (list '() deep-opnd-reg ctx)
       (let ((free-fregs (ctx-free-fregs ctx)))
         (if (null? free-fregs)
-            (let* ((moves/mloc/ctx (ctx-get-free-fmem ctx))
+            (let* ((moves/mloc/ctx (ctx-get-free-mem ctx))
                    (moves (car moves/mloc/ctx))
                    (mloc  (cadr moves/mloc/ctx))
                    (ctx   (caddr moves/mloc/ctx))
@@ -1427,10 +1427,7 @@
                       (ctx-set-loc ctx (stack-idx-to-slot ctx curr-idx) mloc))
                 ;; Else, we need a new memory slot
                 (let* ((type (ctx-get-type ctx curr-idx))
-                       (r (if (and opt-float-unboxing
-                                   (ctx-type-flo? type))
-                              (ctx-get-free-fmem ctx)
-                              (ctx-get-free-mem ctx)))
+                       (r (ctx-get-free-mem ctx))
                        (moves (car r))
                        (mem (cadr r))
                        (ctx (caddr r))
@@ -1687,6 +1684,7 @@
 ;; GET CALL ARGS MOVES
 ;; r3 & r5 are not used because rdi and R11 are used for ctx, nb-args
 (define args-regs '((r . 0) (r . 1) (r . 4) (r . 6) (r . 7) (r . 8))) ;; TODO move
+(define nb-args-regs (length args-regs))
 ;; Return reg is one of the last registers to increase the chances it is chosen
 ;; if it is preferred register in ctx-get-free-reg (which is the case each time succ lco is a 'ret lco)
 (define return-reg '(r . 8))
@@ -1774,16 +1772,6 @@
         (list (list (cons 'fs 1))
               mloc
               (ctx-copy ctx #f #f #f (cons mloc (ctx-free-mems ctx)) #f #f #f #f #f (+ (ctx-fs ctx) 1))))))
-
-(define (ctx-get-free-fmem ctx)
-  (if (not (null? (ctx-free-fmems ctx)))
-      ;; An existing memory slot is empty, use it
-      (list '() (car (ctx-free-fmems ctx)) ctx)
-      ;; Alloc a new memory slot
-      (let ((mloc (cons 'fm (ctx-ffs ctx))))
-        (list (list (cons 'ffs 1))
-              mloc
-              (ctx-copy ctx #f #f #f #f #f (cons mloc (ctx-free-fmems ctx)) #f #f #f #f (+ (ctx-ffs ctx) 1))))))
 
 ;; Return memory location associated to ident or #f if no memory slot
 (define (ctx-ident-mloc ctx ident)
@@ -2110,3 +2098,59 @@
                    (set-sub req-moves (list move))
                    (cons move pending-moves)
                    dst)))))
+
+;; TODO: compute gc map descriptor from ctx
+;; Descriptor is:
+;; | ...56 bits... | ...8 bits... |
+;; | frame objects |      fs      |
+;; each bit in 'frame objects' represents an entry of the stack frame
+;; if bit is 0, the object must be scanned
+;; if bit is 1, the object must *not* be scanned
+(define (ctx->gc-map-desc ctx)
+
+  (define (slot-from-loc loc)
+    (let ((sl (ctx-slot-loc ctx)))
+      (let loop ((sl sl))
+        (if (null? sl)
+            #f
+            (if (equal? (cdar sl) loc)
+                (caar sl)
+                (loop (cdr sl)))))))
+
+  (if (> (ctx-fs ctx) 56)
+      (error "NYI 56"))
+
+  (let* ((fs (ctx-fs ctx))
+         (fo (if (not opt-float-unboxing)
+                 0
+                 (let loop ((cur-idx 0) (r 0))
+                   (if (= cur-idx fs)
+                       r
+                       (let ((slot (slot-from-loc (cons 'm cur-idx))))
+                         (if (not slot)
+                             (loop (+ cur-idx 1) (bitwise-ior r (expt 2 (+ 8 cur-idx))))
+                             (let ((type (ctx-get-type ctx (slot-to-stack-idx ctx slot))))
+                               (if (ctx-type-flo? type)
+                                   (loop (+ cur-idx 1) (bitwise-ior r (expt 2 (+ 8 cur-idx))))
+                                   (loop (+ cur-idx 1) r))))))))))
+  (+ fo fs)))
+
+(define (call-stack->gc-map-desc stack)
+  (let* ((nargs (length stack))
+         (fs (+ (max (- nargs (length args-regs)) 0) 1))
+         (fo (if (not opt-float-unboxing)
+                 0
+                 (let loop ((stack stack) (n fs) (r 0))
+                   (if (= n 1)
+                       (bitwise-ior r 256)
+                       (let ((type (car stack)))
+                         (if (ctx-type-flo? type)
+                             (loop (cdr stack)
+                                   (- n 1)
+                                   (bitwise-xor r
+                                                (expt 2 (+ 7 n))))
+                             (loop (cdr stack) (- n 1) r))))))))
+    (+ fo fs)))
+
+(define (ret-gc-map-desc)
+  0)

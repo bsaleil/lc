@@ -253,22 +253,15 @@
               (x86-mov cgc (x86-rax) (x86-imm-int (get-hp-addr)))
               (x86-mov cgc (x86-mem 0 (x86-rax)) alloc-ptr)
 
-              ;; TODO regalloc: opt-time
+              ;; Write NULL in lc_stack_ptr of lc global ctx
+              ;; to stop scanning lc stack when gc is triggered
+              (let ((addr (get_lc_stack_ptr_addr)))
+                (x86-mov cgc (x86-rax) (x86-imm-int addr))
+                (x86-mov cgc (x86-rbx) (x86-imm-int 0))
+                (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rbx)))
 
-              (let ((loc (ctx-get-loc ctx 0))) ;; Get loc of value in top of stack
-                (cond ;; No return value
-                      ((and (not loc)
-                            (not (ctx-get-type ctx 0)))
-                        (x86-mov cgc (x86-rax) (x86-imm-int 0)))
-                      ((not loc)
-                        (let* ((type (ctx-get-type ctx 0))
-                               (cst  (ctx-type-cst type)))
-                          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding cst 1000)))))
-                      ((ctx-loc-is-register? loc)
-                        (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc)))
-                      ((ctx-loc-is-fregister? loc)
-                        (x86-mov cgc (x86-rax) (x86-imm-int 0)))
-                      (else (error "NYI main"))))
+              ;; Set rax to 0 (return value)
+              (x86-mov cgc (x86-rax) (x86-imm-int 0))
 
               (if (> (ctx-ffs ctx) 0)
                   (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (ctx-ffs ctx)))))
@@ -293,37 +286,6 @@
                            (jump-to-version cgc
                                             next
                                             (ctx-pop ctx))))))))))
-
-;;-----------------------------------------------------------------------------
-;; Interactive mode (REPL)
-
-(define (repl prog)
-  (apply (caddr (assoc '--help compiler-options)) '(#f)))
-;  (init-backend)
-;
-;  (println "  _     ____       ")
-;  (println " | |   / ___|      ")
-;  (println " | |  | |          ")
-;  (println " | |__| |___       ")
-;  (println " |_____\\____| REPL")
-;  (println "")
-;
-;  (let ((lco (lazy-exprs prog lazy-repl-call)))
-;    (gen-version-first lco (ctx-init)))
-;
-;  (##machine-code-block-exec mcb))
-;
-;(define lazy-repl-call
-;  (make-lazy-code
-;    #f
-;    (lambda (cgc ctx)
-;      ;; Generate call to repl handler defined in core.scm
-;      ;; This handler read from stdin, build lco chain,
-;      ;; and generate a version of the first lco of the chain.
-;      ;; The address of this version is returned in rax
-;      ;; then, jump to the version
-;      (x86-pcall cgc label-repl-handler)
-;      (x86-jmp cgc (x86-rax)))))
 
 ;;-----------------------------------------------------------------------------
 ;; Bash mode
@@ -375,28 +337,20 @@
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)
-             (set! lco #f)
-             (set! all-lazy-code #f)
-             (set! asc-cc-stub #f)
+             (set! lco            #f)
+             (set! all-lazy-code  #f)
+             (set! asc-cc-stub    #f)
              (set! asc-entry-load #f)
-             (set! ctime-entries #f)
-             (set! stub-freelist #f)
-             (let loop ((i 0))
-               (if (< i ustack-len)
-                   (begin (if opt-nan-boxing
-                              (u64vector-set! ustack i #xFFFE000000000000)
-                              (vector-set! ustack i 0))
-                          (loop (+ i 1)))))
-             (let loop ((i 0))
-               (if (< i globals-len)
-                   (begin (if opt-nan-boxing
-                              (u64vector-set! ustack i #xFFFE000000000000)
-                              (vector-set! globals-space i 0))
-                          (loop (+ i 1)))))
+             (set! ctime-entries  #f)
+             (set! stub-freelist  #f)
+             (u64vector-fill! ustack #xFFFE000000000000)
+             (if opt-nan-boxing
+                 (u64vector-fill! globals-space #xFFFE000000000000)
+                 (vector-fill! globals-space 0))
              (##gc)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
-       (begin (##machine-code-block-exec mcb))))
+      (##machine-code-block-exec mcb)))
 
 ;;-----------------------------------------------------------------------------
 ;; Main
@@ -440,10 +394,10 @@
   (init-frontend)
 
   (cond ;; If no files specified then start REPL
-        ((null? files)
-          (copy-with-declare "" "./tmp")
-          (let ((content (c#expand-program "./tmp" #f locat-table)))
-            (repl (expand-tl content))))
+        ; ((null? files)
+        ;   (copy-with-declare "" "./tmp")
+        ;   (let ((content (c#expand-program "./tmp" #f locat-table)))
+        ;     (repl (expand-tl content))))
         ;; Can only exec 1 file
         ((= (length files) 1)
           (copy-with-declare (car files) "./tmp")

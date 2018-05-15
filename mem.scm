@@ -67,7 +67,7 @@ ___U64  get___alloc_still_addr()      { return (___U64)&alloc_still; }
 
 int callHL(___U64 ustackptr)
 {
-  ___PSTATE->lc_stack_ptr = ustackptr;
+  lc_global_ctx.lc_stack_ptr = ustackptr;
   int r = ___heap_limit(___PSPNC) && ___garbage_collect (___PSP 0);
   if (r != 0)
   {
@@ -98,14 +98,12 @@ void initc()
 
 void writeLcStack(___U64 stack)
 {
-    //printf(\"Write stack %llu to pstate\\n\", stack);
-    ___PSTATE->lc_stack = stack;
+    lc_global_ctx.lc_stack = stack;
 }
 
 void writeLcGlobal(___U64 global)
 {
-    //printf(\"Write global %llu to pstate\\n\", global);
-    ___PSTATE->lc_global = global;
+    lc_global_ctx.lc_global = global;
 }
 
 // This function detects if an xmm register can be set to a value using tricks presented here:
@@ -179,7 +177,28 @@ uint64_t c_xmm_imm_shift(uint64_t i)
   ((c-lambda (long) void "writeLcGlobal") addr))
 
 (define (write_lc_stack_ptr usp)
-  ((c-lambda (long) void "___PSTATE->lc_stack_ptr = ___arg1;") usp))
+  ((c-lambda (long) void "lc_global_ctx.lc_stack_ptr = ___arg1;") usp))
+
+(define (write_lc_stack_desc desc)
+  ((c-lambda (long) void "lc_global_ctx.lc_stack_desc = ___arg1;") desc))
+
+(define (write_lc_stack_usedesc usedesc)
+  ((c-lambda (long) void "lc_global_ctx.lc_stack_usedesc = ___arg1;") usedesc))
+
+(define (get_lc_stack_desc_addr)
+  ((c-lambda () long "___result = &lc_global_ctx.lc_stack_desc;")))
+
+(define (get_lc_stack_usedesc_addr)
+  ((c-lambda () long "___result = &lc_global_ctx.lc_stack_usedesc;")))
+
+(define (get_lc_stack_ptr_addr)
+  ((c-lambda () long "___result = &lc_global_ctx.lc_stack_ptr;")))
+
+(define (block_gc)
+  ((c-lambda () void "lc_global_ctx.gc_lock = 1;")))
+
+(define (unblock_gc)
+  ((c-lambda () void "lc_global_ctx.gc_lock = 0;")))
 
 (define (xmm_imm_shift imm)
   (let* ((r ((c-lambda (unsigned-long) long "c_xmm_imm_shift") imm))
@@ -189,7 +208,6 @@ uint64_t c_xmm_imm_shift(uint64_t i)
               (psrl (bitwise-and (arithmetic-shift r -32) 65535)))
           (cons psrl psll))
         #f)))
-
 
 (define (get-pstate-addr)
   ((c-lambda () long "get_pstate_addr")))
@@ -207,7 +225,7 @@ uint64_t c_xmm_imm_shift(uint64_t i)
 ;; Alloc from nbbytes in rax (and align alloc-ptr)
 ;; Return encoded scheme object in rax
 ;; sizeloc is DESTROYED !
-(define (gen-allocation-rt cgc stag sizeloc)
+(define (gen-allocation-rt cgc stag sizeloc gc-desc)
 
   ;; TODO: use a dispatch to generate only still or not-still code
 
@@ -233,7 +251,10 @@ uint64_t c_xmm_imm_shift(uint64_t i)
   (x86-jl cgc label-not-still) ;; TODO jl or jle ?
     ;; TODO: write comments, and rewrite optimized code sequence
     (x86-ppush cgc (x86-imm-int stag)) ;; stag is not encoded, push it to pstack
+    (x86-mov cgc (x86-rax) (x86-imm-int (+ gc-desc 2))) ;; TODO (NOTE): see other call to label-alloc-still-handler
+    (x86-upush cgc (x86-rax))
     (x86-pcall cgc label-alloc-still-handler)
+    (x86-add cgc (x86-usp) (x86-imm-int 8))
     (x86-add cgc (x86-rsp) (x86-imm-int 8)) ;; remove stag
     (x86-jmp cgc label-alloc-still-end)
   (x86-label cgc label-not-still)
@@ -281,7 +302,7 @@ uint64_t c_xmm_imm_shift(uint64_t i)
 ;; For performance reason, unlike gen-allocation-rt,
 ;; this function does *not* return encoded object in rax.
 ;; Caller needs to load address of object
-(define (gen-allocation-imm cgc stag nbytes)
+(define (gen-allocation-imm cgc stag nbytes gc-desc)
 
   (define label-alloc-beg (asm-make-label #f (new-sym 'alloc_begin_)))
   (define label-alloc-end (asm-make-label #f (new-sym 'alloc_end_)))
@@ -300,16 +321,19 @@ uint64_t c_xmm_imm_shift(uint64_t i)
   (x86-mov cgc (x86-rax) (x86-imm-int (+ (* 5 8) block-addr)))
   (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
 
-  (x86-jle cgc label-alloc-end)
+  ;(x86-jle cgc label-alloc-end)
   ;; else
+    (x86-mov cgc (x86-rax) (x86-imm-int gc-desc))
+    (x86-upush cgc (x86-rax))
     (x86-pcall cgc label-heap-limit-handler)
+    (x86-add cgc (x86-usp) (x86-imm-int 8))
     (x86-add cgc alloc-ptr (x86-imm-int (+ nbytes 8)))
   ;; write header
   (x86-label cgc label-alloc-end)
 
   (x86-mov cgc (x86-mem (- 0 nbytes 8) alloc-ptr) (x86-imm-int (mem-header nbytes stag)) 64))
 
-(define (gen-allocation-imm-sti cgc stag nbytes)
+(define (gen-allocation-imm-sti cgc stag nbytes gc-desc)
 
   (assert (= (modulo nbytes 4) 0) "GC internal error")
   (assert (mem-still-required? nbytes) "Internal error")
@@ -321,7 +345,10 @@ uint64_t c_xmm_imm_shift(uint64_t i)
   ;; Stag is not encoded, push it to pstack
   (x86-ppush cgc (x86-imm-int stag))
   ;; Alloc
+  (x86-mov cgc (x86-rax) (x86-imm-int (+ gc-desc 2))) ;; TODO (NOTE): +2 for nbytes pushed before (no need to adjust fo (set it to 00))
+  (x86-upush cgc (x86-rax))
   (x86-pcall cgc label-alloc-still-handler)
+  (x86-add cgc (x86-usp) (x86-imm-int 8))
   ;; Clean stacks
   (x86-add cgc (x86-rsp) (x86-imm-int 8))
   (x86-add cgc (x86-usp) (x86-imm-int 16)))

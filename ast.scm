@@ -731,7 +731,7 @@
                      (opnd  (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
                      (ropnd (codegen-reg-to-x86reg reg)))
                 (apply-moves cgc ctx moves)
-                (codegen-box-float cgc (ctx-fs ctx) (ctx-ffs ctx) loc reg)
+                (codegen-box-float cgc (ctx->gc-map-desc ctx) (ctx-fs ctx) (ctx-ffs ctx) loc reg)
                 (let* ((ident (ctx-ident-at ctx idx-from))
                        (ctx
                          ;; Remove slot-info if the slot belongs to an identifier with > 1 slots
@@ -779,6 +779,8 @@
         (assert (not (and (not cridx)
                           (ctx-type-flo? (ctx-get-type ctx 0))))
                 "NYI case, cr overflow and ret value is a tflo")
+
+        (set-cr-gc-map-desc cridx (ret-gc-map-desc))
 
         (if (or (not (const-versioned? (ctx-get-type ctx 0)))
                 (not cridx))
@@ -1091,7 +1093,7 @@
 
   ;; Create closure
   ;; Closure size = length of free variables
-  (codegen-closure-create cgc close-length)
+  (codegen-closure-create cgc close-length (ctx->gc-map-desc ctx))
 
   ;; Write entry point or cctable location
   (if opt-entry-points
@@ -1353,8 +1355,8 @@
     (define (get-lazy-alloc succ)
       (make-lazy-code
         (make-lco-id 16)
-        (lambda (cgc ctx)
-          (gen-allocation-imm cgc STAG_PROCEDURE (* 8 (- closures-size 1)))
+        (lambda (cgc ctx) mtn
+          (gen-allocation-imm cgc STAG_PROCEDURE (* 8 (- closures-size 1)) (ctx->gc-map-desc ctx))
           (jump-to-version cgc (get-lazy-init-closures succ) ctx))))
 
     ;; Init all closures. Write headers, entry points, and free & late variables
@@ -1637,7 +1639,7 @@
                          (if (and opt-float-unboxing
                                   (ctx-type-flo? type))
                              ;; Float, push a boxed float
-                             (begin (codegen-box-float cgc #f #f loc 'tmp)
+                             (begin (codegen-box-float cgc (ctx->gc-map-desc ctx) #f #f loc 'tmp)
                                     (x86-upush cgc (x86-rax))
                                     (loop (- idx 1)))
                              ;; !Float, push value
@@ -1693,6 +1695,11 @@
          (gen  (primitive-codegen prim))
          (fs (ctx-fs ctx))
          (ffs (ctx-ffs ctx))
+         ;; TODO NOTE
+         (gc-desc
+            (if (not (ctx-fn-num ctx))
+                0
+                (ctx->gc-map-desc ctx)))
          (nargs (primitive-nbargs prim))
          (r  (build-list
                   nargs
@@ -1705,7 +1712,7 @@
                           (cons #f (ctx-get-loc ctx n)))))))
          (cst? (map car r))
          (locs (map cdr r))
-         (args (append (list cgc fs ffs op reg inlined-cond?)
+         (args (append (list cgc gc-desc fs ffs op reg inlined-cond?)
                        (reverse locs)
                        (reverse cst?)))
          (rtype (primitive-rettype prim)))
@@ -1955,13 +1962,14 @@
     (lambda (cgc ctx)
       (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 0))
              (fs (ctx-fs ctx))
-             (ffs (ctx-ffs ctx)))
+             (ffs (ctx-ffs ctx))
+             (gc-desc (ctx->gc-map-desc ctx)))
         (apply-moves cgc ctx moves)
         (let* ((len (length (cdr ast)))
                (csts?/locs (get-csts?/locs ctx (- len 1)))
                (nctx (ctx-pop-n ctx len))
                (nctx (ctx-push nctx (make-ctx-tpai) reg)))
-         (codegen-p-list cgc fs ffs reg csts?/locs)
+         (codegen-p-list cgc gc-desc fs ffs reg csts?/locs)
          (jump-to-version cgc succ nctx))))))
 
 ;;
@@ -2273,6 +2281,7 @@
                                      (add-callback
                                        cgc
                                        1
+                                       (ctx->gc-map-desc ctx)
                                        (let ((prev-action #f))
                                          (lambda (ret-addr selector)
 
@@ -2594,7 +2603,8 @@
         (if (and opt-entry-points
                  (or (not opt-call-max-len)
                      (<= nb-args opt-call-max-len)))
-            (set! idx (cctable-get-idx (cons cn-num call-stack)))
+            (begin (set! idx (cctable-get-idx (cons cn-num call-stack)))
+                   (set-cc-gc-map-desc idx (call-stack->gc-map-desc call-stack)))
             (set! force-generic? #t))
 
         (if (and opt-closest-cx-overflow
@@ -2654,8 +2664,6 @@
                        (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd mfs mffs loc))
                        (x86-upush cgc (x86-rax))
                        (loop (+ idx 1) (+ mfs 1) mffs))
-                    ((ctx-loc-is-fmemory? loc)
-                       (error "e3"))
                     (else
                        (loop (+ idx 1) mfs mffs))))))
 
@@ -2916,7 +2924,7 @@
 
   (define (gen-crtable)
     (let ((addrs (gen-stub)))
-      (set! crtable (get-crtable ast ctx (car addrs) (cdr addrs)))
+      (set! crtable (get-crtable ast ctx cont-ctx (car addrs) (cdr addrs)))
       crtable))
 
   ;; Add continuation flag to the lco
@@ -3043,7 +3051,7 @@
                  (apply-moves cgc ctx moves)
                  (if opt-stats
                      (gen-inc-slot cgc ATX_FLO))
-                 (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op freg lloc #t rloc #t lcst? rcst?)
+                 (codegen-num-ff cgc (ctx->gc-map-desc ctx) (ctx-fs ctx) (ctx-ffs ctx) op freg lloc #t rloc #t lcst? rcst?)
                  (let* ((ctx (ctx-pop-n ctx 2))
                         (ctx (ctx-push ctx (make-ctx-tflo) freg)))
                    (jump-to-version cgc succ ctx))))))
@@ -3150,7 +3158,7 @@
                     (apply-moves cgc ctx moves)
                     (if opt-stats
                         (gen-inc-slot cgc ATX_FLO))
-                    (codegen-num-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc leftint? rloc rightint? lcst? rcst?)
+                    (codegen-num-ff cgc (ctx->gc-map-desc ctx) (ctx-fs ctx) (ctx-ffs ctx) op reg lloc leftint? rloc rightint? lcst? rcst?)
                     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg))))
                 (else
                   (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 2)))
@@ -3329,9 +3337,10 @@
 ;; CR TABLES
 
 ;; Create a new cr table with 'init' as stub value
-(define (make-cr stub-addr generic-addr)
-  (let ((v (alloc-perm-vector-i64 (+ 1 global-cr-table-maxsize) stub-addr)))
-    (##u64vector-set! v 0 generic-addr)
+(define (make-cr cont-ctx stub-addr generic-addr)
+  (let ((v (alloc-perm-vector-i64 (+ 2 global-cr-table-maxsize) stub-addr)))
+    (##u64vector-set! v 0 (ctx->gc-map-desc cont-ctx))
+    (##u64vector-set! v 1 generic-addr)
     v))
 
 ;; all-crtables associates an ast to a table ('equal?' table)
@@ -3342,7 +3351,7 @@
 
 ;; Return crtable from crtable-key
 ;; Return the existing table if already created or create one, add entry, and return it
-(define (get-crtable ast ctx stub-addr generic-addr)
+(define (get-crtable ast ctx cont-ctx stub-addr generic-addr)
   ;; Use 'eq?' table to get prleiminary result
   (let ((crtables (table-ref all-crtables ast #f)))
     (if (not crtables)
@@ -3358,7 +3367,7 @@
                   (ctx-env ctx)))
            (crtable (table-ref crtables key #f)))
       (or crtable
-          (let ((crtable (make-cr stub-addr generic-addr)))
+          (let ((crtable (make-cr cont-ctx stub-addr generic-addr)))
             (table-set! crtables key crtable)
             crtable)))))
 
@@ -3469,4 +3478,4 @@
      (cons (car l) (formal-params (cdr l)))))
 
 ;; Return label of a stub generating error with 'msg'
-(define (get-label-error msg) (list-ref (add-callback #f   0 (lambda (ret-addr selector) (error msg))) 0))
+(define (get-label-error msg) (list-ref (add-callback #f 0 #f (lambda (ret-addr selector) (error msg))) 0))

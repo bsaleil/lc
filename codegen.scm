@@ -193,8 +193,8 @@
 (define OFFSET_PAIR_CAR 16)
 (define OFFSET_PAIR_CDR  8)
 (define OFFSET_PROC_EP 8)
-(define OFFSET_CONT_EP 16)
-(define OFFSET_CONT_GENERIC 8)
+(define OFFSET_CONT_EP 24)
+(define OFFSET_CONT_GENERIC 16)
 (define OFFSET_BOX 8)
 (define OFFSET_FLONUM 8)
 (define OFFSET_BODY 8)
@@ -250,8 +250,6 @@
          (codegen-mem-to-x86mem fs loc))
         ((ctx-loc-is-fregister? loc)
          (codegen-freg-to-x86reg loc))
-        ((ctx-loc-is-fmemory? loc)
-         (codegen-fmem-to-x86mem ffs loc))
         (else (error "Internal error"))))
 
 (define (codegen-mem-to-x86mem fs mem)
@@ -265,9 +263,6 @@
 
 (define (codegen-freg-to-x86reg freg)
   (list-ref regalloc-fregs (cdr freg)))
-
-(define (codegen-fmem-to-x86mem ffs fmem)
-  (x86-mem (* 8 (- ffs (cdr fmem) 1)) (x86-rsp)))
 
 (define (codegen-is-imm-64? imm)
   (or (< imm -2147483648)
@@ -384,8 +379,7 @@
              (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) treg)
              (eq? treg selector-reg)))
         ;;
-        ((or (ctx-loc-is-memory? src-loc)
-             (ctx-loc-is-fmemory? src-loc))
+        ((ctx-loc-is-memory? src-loc)
           (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs ffs src-loc))
           (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) (x86-rax))
           #f)
@@ -412,8 +406,7 @@
              (x86-mov cgc (x86-rax) (x86-mem (- fvar-offset TAG_MEMOBJ) closure-opnd))
              (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) (x86-rax))))
         ;;
-        ((or (ctx-loc-is-memory? src-loc)
-             (ctx-loc-is-fmemory? src-loc))
+        ((ctx-loc-is-memory? src-loc)
           (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs ffs src-loc))
           (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) (x86-rax)))
         ;;
@@ -501,13 +494,13 @@
 ;; Boxing
 ;;-----------------------------------------------------------------------------
 
-(define (codegen-box-float-nan cgc src dst)
+(define (codegen-box-float-nan cgc gc-desc src dst)
   (if (x86-mem? src)
       (x86-mov cgc dst src)
       (x86-movd/movq cgc dst src)))
 
-(define (codegen-box-float-tag cgc float-loc src dst)
-  (gen-allocation-imm cgc STAG_FLONUM 8)
+(define (codegen-box-float-tag cgc gc-desc float-loc src dst)
+  (gen-allocation-imm cgc STAG_FLONUM 8 gc-desc)
   (if (ctx-loc-is-fregister? float-loc)
       (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) src)
       (begin
@@ -515,13 +508,13 @@
         (x86-mov cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-rax))))
   (x86-lea cgc dst (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))
 
-(define (codegen-box-float cgc fs ffs float-loc dest-loc)
+(define (codegen-box-float cgc gc-desc fs ffs float-loc dest-loc)
   (define opnd (codegen-loc-to-x86opnd fs ffs float-loc))
   (define dest (codegen-reg-to-x86reg dest-loc))
   (assert (ctx-loc-is-register? dest-loc) "Internal codegen error")
   (if opt-nan-boxing
-      (codegen-box-float-nan cgc opnd dest)
-      (codegen-box-float-tag cgc float-loc opnd dest)))
+      (codegen-box-float-nan cgc gc-desc opnd dest)
+      (codegen-box-float-tag cgc gc-desc float-loc opnd dest)))
 
 ;;-----------------------------------------------------------------------------
 ;; Functions
@@ -588,7 +581,7 @@
     (x86-je cgc label-rest-end)
 
       ;; Alloc
-      (gen-allocation-imm cgc STAG_PAIR 16)
+      (gen-allocation-imm cgc STAG_PAIR 16 0)
       (x86-pcall cgc label-next-arg)
       (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
       (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) selector-reg)
@@ -649,11 +642,29 @@
     (x86-je cgc label-rest-end)
 
       ;; Alloc
-      (gen-allocation-imm cgc STAG_PAIR 16)
+      ;; TODO
+      (x86-mov cgc (x86-rax) (x86-imm-int (get_lc_stack_usedesc_addr)))
+      (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-imm-int 4) 64)
+      ;; TODO OPTIMIZE (GC MAP INTERFACE)
+      (let ((label-next (asm-make-label #f (new-sym 'next)))
+            (addr (get_lc_stack_desc_addr)))
+        (x86-mov cgc (x86-rax) (x86-rdi))
+        (x86-sub cgc (x86-rax) (x86-imm-int (* nb-args-regs 4)))
+        (x86-jns  cgc label-next) ;; jump if negative
+          (x86-mov cgc (x86-rax) (x86-imm-int 0))
+        (x86-label cgc label-next)
+        (x86-upush cgc (x86-rax)))
+      ;; END TODO
+      (gen-allocation-imm cgc STAG_PAIR 16 0) ;; alloc: fn-nb-args
+      (x86-add cgc (x86-usp) (x86-imm-int 8))
       (x86-pcall cgc label-next-arg)
       (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
       (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) selector-reg)
       (x86-lea cgc selector-reg (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
+      ;; TODO
+      (x86-mov cgc (x86-rax) (x86-imm-int (get_lc_stack_usedesc_addr)))
+      (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-imm-int 0) 64)
+      ;; END TODO
       (x86-jmp cgc label-rest-loop)
     ;;
     (x86-label cgc label-rest-end)
@@ -673,7 +684,7 @@
         (x86-upush cgc (x86-imm-int (obj-encoding '() 16))))))
 
 ;; Generate specialized function prologue with rest param and actual > formal
-(define (codegen-prologue-rest> cgc fs ffs locs rloc)
+(define (codegen-prologue-rest> cgc gc-desc fs ffs locs rloc)
   ;; TODO: one allocation for list
   ;; TODO: use x86 loop for mem locs
 
@@ -696,7 +707,7 @@
                               (x86-rcx)))
                          (else
                             (codegen-loc-to-x86opnd fs ffs loc)))))
-            (gen-allocation-imm cgc STAG_PAIR 16)
+            (gen-allocation-imm cgc STAG_PAIR 16 gc-desc)
             (if (or (x86-mem? opnd)
                     (x86-imm-int? opnd))
                 (begin (x86-mov cgc (x86-rax) opnd)
@@ -715,10 +726,10 @@
     (x86-mov cgc (x86-rcx) (x86-imm-int (obj-encoding 0 19)))))
 
 ;; Alloc closure and write header
-(define (codegen-closure-create cgc nb-free)
+(define (codegen-closure-create cgc nb-free gc-desc)
   (let* ((closure-size  (+ 1 nb-free))) ;; entry point & free vars
     ;; Alloc closure
-    (gen-allocation-imm cgc STAG_PROCEDURE (* 8 closure-size))))
+    (gen-allocation-imm cgc STAG_PROCEDURE (* 8 closure-size) gc-desc)))
 
 ;; Write entry point in closure (do not use cctable)
 (define (codegen-closure-ep cgc entryvec-loc nb-free)
@@ -1160,13 +1171,13 @@
                          (x86-sar cgc dest (x86-imm-int 2))
                          (x86-imul cgc dest opright))))))))
 
-(define (codegen-num-ff cgc fs ffs op reg lleft leftint? lright rightint? lcst? rcst?)
+(define (codegen-num-ff cgc gc-desc fs ffs op reg lleft leftint? lright rightint? lcst? rcst?)
   (if opt-float-unboxing
-      (codegen-num-ff-nobox cgc fs ffs op reg lleft leftint? lright rightint? lcst? rcst?)
-      (codegen-num-ff-box cgc fs ffs op reg lleft leftint? lright rightint? lcst? rcst?)))
+      (codegen-num-ff-nobox cgc gc-desc fs ffs op reg lleft leftint? lright rightint? lcst? rcst?)
+      (codegen-num-ff-box cgc gc-desc fs ffs op reg lleft leftint? lright rightint? lcst? rcst?)))
 
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
-(define (codegen-num-ff-nobox cgc fs ffs op reg lleft leftint? lright rightint? lcst? rcst?)
+(define (codegen-num-ff-nobox cgc gc-desc fs ffs op reg lleft leftint? lright rightint? lcst? rcst?)
 
   (assert (not (and lcst? rcst?)) "Internal error")
 
@@ -1236,7 +1247,7 @@
         (x86-movsd cgc sdest dest))))
 
 ;; Gen code for arithmetic operation on float/float (also handles int/float and float/int)
-(define (codegen-num-ff-box cgc fs ffs op reg lleft leftint? lright rightint? lcst? rcst?)
+(define (codegen-num-ff-box cgc gc-desc fs ffs op reg lleft leftint? lright rightint? lcst? rcst?)
 
   (assert (not (and lcst? rcst?)) "Internal error")
 
@@ -1246,7 +1257,7 @@
 
     ;; Alloc result flonum
     (if (not opt-nan-boxing)
-        (gen-allocation-imm cgc STAG_FLONUM 8))
+        (gen-allocation-imm cgc STAG_FLONUM 8 gc-desc))
 
     ;;
     (let ((x86-op (cdr (assoc op `((+ . ,x86-addsd) (- . ,x86-subsd) (* . ,x86-mulsd) (/ . ,x86-divsd))))))
@@ -1576,12 +1587,12 @@
              (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))))
 ;;
 ;; box
-(define (codegen-p-box cgc fs ffs op reg inlined-cond? lval cst?)
+(define (codegen-p-box cgc gc-desc fs ffs op reg inlined-cond? lval cst?)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opval (if cst?
                    (x86-imm-int (obj-encoding lval 47))
                    (codegen-loc-to-x86opnd fs ffs lval))))
-    (gen-allocation-imm cgc STAG_MOBJECT 8)
+    (gen-allocation-imm cgc STAG_MOBJECT 8 gc-desc)
     (if (or (x86-mem? opval)
             (x86-imm? opval))
         (begin
@@ -1595,7 +1606,7 @@
 
 ;;
 ;; unbox
-(define (codegen-p-unbox cgc fs ffs op reg inlined-cond? lbox cst?)
+(define (codegen-p-unbox cgc gc-desc fs ffs op reg inlined-cond? lbox cst?)
   (assert (not cst?) "Internal error, box can't be cst")
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opbox (codegen-loc-to-x86opnd fs ffs lbox)))
@@ -1612,7 +1623,7 @@
 ;;
 ;; box-set!
 
-(define (codegen-p-set-box cgc fs ffs op reg inlined-cond? lbox lval cst-box? cst-val?)
+(define (codegen-p-set-box cgc gc-desc fs ffs op reg inlined-cond? lbox lval cst-box? cst-val?)
   (if opt-nan-boxing
       (codegen-p-set-box-nan cgc fs ffs op reg inlined-cond? lbox lval cst-box? cst-val?)
       (codegen-p-set-box-tag cgc fs ffs op reg inlined-cond? lbox lval cst-box? cst-val?)))
@@ -1670,11 +1681,11 @@
 
 ;;
 ;; cons
-(define (codegen-p-cons cgc fs ffs op reg inlined-cond? lcar lcdr car-cst? cdr-cst?)
+(define (codegen-p-cons cgc gc-desc fs ffs op reg inlined-cond? lcar lcdr car-cst? cdr-cst?)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opcar (and (not car-cst?) (codegen-loc-to-x86opnd fs ffs lcar)))
         (opcdr (and (not cdr-cst?) (codegen-loc-to-x86opnd fs ffs lcdr))))
-    (gen-allocation-imm cgc STAG_PAIR 16)
+    (gen-allocation-imm cgc STAG_PAIR 16 gc-desc)
     (cond (car-cst?
             (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding lcar 51)))
             (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax)))
@@ -1708,13 +1719,13 @@
 ;;
 ;; list
 ;; csts?/locs is a list of pair (cst? . loc) for each 'list' argument
-(define (codegen-p-list cgc fs ffs rloc csts?/locs)
+(define (codegen-p-list cgc gc-desc fs ffs rloc csts?/locs)
 
   (define nb-els (length csts?/locs))
   (assert (ctx-loc-is-register? rloc) "Internal error")
   (assert (not (null? csts?/locs))    "Internal error")
 
-  (gen-allocation-imm cgc STAG_PAIR (- (* nb-els 3 8) 8))
+  (gen-allocation-imm cgc STAG_PAIR (- (* nb-els 3 8) 8) gc-desc)
 
   (let loop ((n (- (length csts?/locs) 1))
              (csts?/locs csts?/locs))
@@ -1893,7 +1904,7 @@
 
 ;;
 ;; odd? & even?
-(define (codegen-p-odd?-even? cgc fs ffs op reg inlined-cond? lval val-cst?)
+(define (codegen-p-odd?-even? cgc gc-desc fs ffs op reg inlined-cond? lval val-cst?)
 
   (define dest (codegen-reg-to-x86reg reg))
   (define opnd (codegen-loc-to-x86opnd fs ffs lval))
@@ -1913,7 +1924,7 @@
 
 ;;
 ;; sin
-(define (codegen-p-native-fl cgc fs ffs op reg inlined-cond? lval val-cst?)
+(define (codegen-p-native-fl cgc gc-desc fs ffs op reg inlined-cond? lval val-cst?)
   (assert (not val-cst?) "Internal error. Unexpected constant")
   (let* ((addr (cond ((eq? op 'sin)  (get-sin-addr))
                      ((eq? op 'cos)  (get-cos-addr))
@@ -1922,7 +1933,7 @@
          (label (asm-make-label #f (new-sym op) addr)))
     (if opt-float-unboxing
         (codegen-p-native-fl-nobox cgc fs ffs reg lval label)
-        (codegen-p-native-fl-box   cgc fs ffs reg lval label))))
+        (codegen-p-native-fl-box   cgc gc-desc fs ffs reg lval label))))
 
 (define (codegen-p-native-fl-nobox cgc fs ffs reg lval label)
   (let ((dest (codegen-freg-to-x86reg reg))
@@ -1948,13 +1959,13 @@
             ;;
             (x86-movsd cgc dest (x86-xmm0))))))))
 
-(define (codegen-p-native-fl-box cgc fs ffs reg lval label)
+(define (codegen-p-native-fl-box cgc gc-desc fs ffs reg lval label)
   (let ((dest (codegen-reg-to-x86reg reg))
         (opnd (codegen-loc-to-x86opnd fs ffs lval)))
 
     ;; Alloc result flonum
     (if (not opt-nan-boxing)
-        (gen-allocation-imm cgc STAG_FLONUM 8))
+        (gen-allocation-imm cgc STAG_FLONUM 8 gc-desc))
 
         (ppush-pop-regs
           cgc
@@ -1985,11 +1996,11 @@
 
 ;;
 ;; sqrt
-(define (codegen-p-sqrt cgc fs ffs op reg inlined-cond? lval val-cst?)
+(define (codegen-p-sqrt cgc gc-desc fs ffs op reg inlined-cond? lval val-cst?)
   (assert (not val-cst?) "Internal error, unexpected cst operand")
   (if opt-float-unboxing
       (codegen-p-sqrt-nobox cgc fs ffs reg lval)
-      (codegen-p-sqrt-box   cgc fs ffs reg lval)))
+      (codegen-p-sqrt-box   cgc gc-desc fs ffs reg lval)))
 
 (define (codegen-p-sqrt-nobox cgc fs ffs reg lval)
   (define dest (codegen-freg-to-x86reg reg))
@@ -2001,13 +2012,13 @@
         (else
            (error "NYI case sqrt"))))
 
-(define (codegen-p-sqrt-box cgc fs ffs reg lval)
+(define (codegen-p-sqrt-box cgc gc-desc fs ffs reg lval)
   (define dest (codegen-reg-to-x86reg reg))
   (define opnd (codegen-loc-to-x86opnd fs ffs lval))
 
   ;; Alloc result flonum
   (if (not opt-nan-boxing)
-      (gen-allocation-imm cgc STAG_FLONUM 8))
+      (gen-allocation-imm cgc STAG_FLONUM 8 gc-desc))
 
   (cond ((x86-reg? opnd) ;; general register
            (if opt-nan-boxing
@@ -2095,7 +2106,7 @@
 
 ;;
 ;; car/cdr
-(define (codegen-p-cxr cgc fs ffs op reg inlined-cond? lval cst?)
+(define (codegen-p-cxr cgc gc-desc fs ffs op reg inlined-cond? lval cst?)
 
   (assert (not cst?) "Internal error")
 
@@ -2120,7 +2131,7 @@
 
 ;;
 ;; symbol->string
-(define (codegen-p-symbol->string cgc fs ffs op reg inlined-con? lsym sym-cst?)
+(define (codegen-p-symbol->string cgc gc-desc fs ffs op reg inlined-con? lsym sym-cst?)
   (if opt-nan-boxing
       (codegen-p-symbol->string-nan cgc fs ffs op reg inlined-con? lsym sym-cst?)
       (codegen-p-symbol->string-tag cgc fs ffs op reg inlined-con? lsym sym-cst?)))
@@ -2155,7 +2166,7 @@
 
 ;;
 ;; string->symbol
-(define (codegen-p-string->symbol cgc fs ffs op reg inlined-con? lstr sym-cst?)
+(define (codegen-p-string->symbol cgc gc-desc fs ffs op reg inlined-con? lstr sym-cst?)
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opstr (codegen-loc-to-x86opnd fs ffs lstr)))
     (x86-upush cgc opstr)
@@ -2168,7 +2179,7 @@
 
 ;;
 ;; set-car!/set-cdr!
-(define (codegen-p-set-cxr! cgc fs ffs op reg inlined-cond? lpair lval pair-cst? val-cst?)
+(define (codegen-p-set-cxr! cgc gc-desc fs ffs op reg inlined-cond? lpair lval pair-cst? val-cst?)
   (assert (not pair-cst?) "Internal error, unexpected cst operand")
   (let ((dest (codegen-reg-to-x86reg reg))
         (oppair (codegen-loc-to-x86opnd fs ffs lpair))
@@ -2252,7 +2263,7 @@
 
 ;;
 ;; char->integer/integer->char
-(define (codegen-p-ch<->int cgc fs ffs op reg inlined-cond? lval #!optional cst?)
+(define (codegen-p-ch<->int cgc gc-desc fs ffs op reg inlined-cond? lval #!optional cst?)
 
   (let ((dest (codegen-reg-to-x86reg reg)))
 
@@ -2278,20 +2289,20 @@
 
 ;;
 ;; make-string
-(define (codegen-p-make-string cgc fs ffs op reg inlined-cond? llen lval len-cst? val-cst?)
+(define (codegen-p-make-string cgc gc-desc fs ffs op reg inlined-cond? llen lval len-cst? val-cst?)
 
   (cond ((and opt-nan-boxing len-cst?)
-          (codegen-p-make-string-imm-nan cgc fs ffs reg llen lval val-cst?))
+          (codegen-p-make-string-imm-nan cgc gc-desc fs ffs reg llen lval val-cst?))
         (opt-nan-boxing
-          (codegen-p-make-string-opn-nan cgc fs ffs reg llen lval val-cst?))
+          (codegen-p-make-string-opn-nan cgc gc-desc fs ffs reg llen lval val-cst?))
         (len-cst?
-          (codegen-p-make-string-imm-tag cgc fs ffs reg llen lval val-cst?))
+          (codegen-p-make-string-imm-tag cgc gc-desc fs ffs reg llen lval val-cst?))
         (else
-          (codegen-p-make-string-opn-tag cgc fs ffs reg llen lval val-cst?))))
+          (codegen-p-make-string-opn-tag cgc gc-desc fs ffs reg llen lval val-cst?))))
 
 ;;
 ;; string with cst len
-(define (codegen-p-make-string-imm-nan cgc fs ffs reg llen lval val-cst?)
+(define (codegen-p-make-string-imm-nan cgc gc-desc fs ffs reg llen lval val-cst?)
 
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (opval (if val-cst?
@@ -2300,7 +2311,7 @@
          (label-loop (asm-make-label #f (new-sym 'make-string-loop)))
          (label-end  (asm-make-label #f (new-sym 'make-string-end))))
 
-    (gen-allocation-imm cgc STAG_STRING (* 4 llen))
+    (gen-allocation-imm cgc STAG_STRING (* 4 llen) gc-desc)
 
     (x86-mov cgc (x86-rax) (x86-imm-int (* -4 llen)))
     (if val-cst?
@@ -2322,7 +2333,7 @@
 
 ;;
 ;; string with cst len
-(define (codegen-p-make-string-imm-tag cgc fs ffs reg llen lval val-cst?)
+(define (codegen-p-make-string-imm-tag cgc gc-desc fs ffs reg llen lval val-cst?)
 
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (opval (if val-cst?
@@ -2331,7 +2342,7 @@
          (label-loop (asm-make-label #f (new-sym 'make-string-loop)))
          (label-end  (asm-make-label #f (new-sym 'make-string-end))))
 
-    (gen-allocation-imm cgc STAG_STRING (* 4 llen))
+    (gen-allocation-imm cgc STAG_STRING (* 4 llen) gc-desc)
 
     (x86-mov cgc (x86-rax) (x86-imm-int (* -4 llen)))
     (if val-cst?
@@ -2354,7 +2365,7 @@
 
 ;;
 ;; string with !cst len
-(define (codegen-p-make-string-opn-nan cgc fs ffs reg llen lval val-cst?)
+(define (codegen-p-make-string-opn-nan cgc gc-desc fs ffs reg llen lval val-cst?)
 
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (oplen (codegen-loc-to-x86opnd fs ffs llen))
@@ -2366,7 +2377,7 @@
 
     (x86-mov cgc (x86-eax) (l32 oplen))
     (x86-shl cgc (x86-rax) (x86-imm-int 2))
-    (gen-allocation-rt cgc STAG_STRING (x86-rax))
+    (gen-allocation-rt cgc STAG_STRING (x86-rax) gc-desc)
 
     ;; str addr in rax
     (x86-mov cgc selector-reg (x86-imm-int NB_MASK_VALUE_48))
@@ -2397,7 +2408,7 @@
 
 ;;
 ;; string with !cst len
-(define (codegen-p-make-string-opn-tag cgc fs ffs reg llen lval val-cst?)
+(define (codegen-p-make-string-opn-tag cgc gc-desc fs ffs reg llen lval val-cst?)
 
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (oplen (codegen-loc-to-x86opnd fs ffs llen))
@@ -2408,7 +2419,7 @@
          (label-end  (asm-make-label #f (new-sym 'make-string-end))))
 
     (x86-mov cgc (x86-rax) oplen)
-    (gen-allocation-rt cgc STAG_STRING (x86-rax))
+    (gen-allocation-rt cgc STAG_STRING (x86-rax) gc-desc)
 
     (x86-mov cgc selector-reg oplen)
     (if val-cst?
@@ -2431,17 +2442,17 @@
 
 ;;
 ;; make-vector
-(define (codegen-p-make-vector cgc fs ffs op reg inlined-cond? llen lval cst-len? cst-val?)
+(define (codegen-p-make-vector cgc gc-desc fs ffs op reg inlined-cond? llen lval cst-len? cst-val?)
   (cond ((and cst-len?
               (mem-still-required? (* 8 llen)))
-           (codegen-p-make-vector-imm-sti cgc fs ffs reg llen lval cst-val?))
+           (codegen-p-make-vector-imm-sti cgc gc-desc fs ffs reg llen lval cst-val?))
         (cst-len?
-           (codegen-p-make-vector-imm cgc fs ffs reg llen lval cst-val?))
+           (codegen-p-make-vector-imm cgc gc-desc fs ffs reg llen lval cst-val?))
         (else
-           (codegen-p-make-vector-opn cgc fs ffs reg llen lval cst-val?))))
+           (codegen-p-make-vector-opn cgc gc-desc fs ffs reg llen lval cst-val?))))
 
 ;; make-vector with cst len
-(define (codegen-p-make-vector-imm cgc fs ffs reg llen lval cst-val?)
+(define (codegen-p-make-vector-imm cgc gc-desc fs ffs reg llen lval cst-val?)
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (oplen (x86-imm-int (obj-encoding llen 86)))
          (opval (if cst-val?
@@ -2451,7 +2462,7 @@
          (label-end  (asm-make-label #f (new-sym 'make-vector-end))))
 
     ;; Alloc vector
-    (gen-allocation-imm cgc STAG_VECTOR (* 8 llen))
+    (gen-allocation-imm cgc STAG_VECTOR (* 8 llen) gc-desc)
     ;; Loop counter
     (x86-mov cgc selector-reg (x86-imm-int (* -8 llen)))
     ;; Loop
@@ -2477,7 +2488,7 @@
     (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 89)))))
 
 ;; make-vector with cst len (still)
-(define (codegen-p-make-vector-imm-sti cgc fs ffs reg llen lval cst-val?)
+(define (codegen-p-make-vector-imm-sti cgc gc-desc fs ffs reg llen lval cst-val?)
 
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (oplen (x86-imm-int (obj-encoding llen 90)))
@@ -2488,7 +2499,7 @@
          (label-end  (asm-make-label #f (new-sym 'make-vector-end))))
 
   ;; Alloc vector
-  (gen-allocation-imm-sti cgc STAG_VECTOR (* 8 llen))
+  (gen-allocation-imm-sti cgc STAG_VECTOR (* 8 llen) gc-desc)
   ;; Loop counter
   (x86-mov cgc selector-reg (x86-imm-int (* 8 llen)))
   ;; Loop
@@ -2513,7 +2524,7 @@
   (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 93)))))
 
 ;; make-vector with !cst len
-(define (codegen-p-make-vector-opn cgc fs ffs reg llen lval cst-val?)
+(define (codegen-p-make-vector-opn cgc gc-desc fs ffs reg llen lval cst-val?)
 
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (oplen (codegen-loc-to-x86opnd fs ffs llen))
@@ -2532,7 +2543,7 @@
 
             (x86-mov cgc (x86-eax) (l32 oplen))
             (x86-shl cgc (x86-rax) (x86-imm-int 3))
-            (gen-allocation-rt cgc STAG_VECTOR (x86-rax))
+            (gen-allocation-rt cgc STAG_VECTOR (x86-rax) gc-desc)
 
             ;; if val is cst, mem, or eq dest
             ;; we need another free register
@@ -2567,7 +2578,7 @@
         (begin
             (x86-mov cgc (x86-rax) oplen)
             (x86-shl cgc (x86-rax) (x86-imm-int 1))
-            (gen-allocation-rt cgc STAG_VECTOR (x86-rax))
+            (gen-allocation-rt cgc STAG_VECTOR (x86-rax) gc-desc)
 
             ;; Loop
             (x86-mov cgc selector-reg oplen)
@@ -2598,16 +2609,17 @@
 
 ;;
 ;; make-f64vector
-(define (codegen-p-make-f64vector cgc fs ffs op reg inlined-cond? llen lval cst-len? cst-val?)
+(define (codegen-p-make-f64vector cgc gc-desc fs ffs op reg inlined-cond? llen lval cst-len? cst-val?)
   (cond ((and cst-len?
               (mem-still-required? (* 8 llen)))
-           (codegen-p-make-f64vector-imm-sti cgc fs ffs reg llen lval cst-val?))
+           (codegen-p-make-f64vector-imm-sti cgc gc-desc fs ffs reg llen lval cst-val?))
         (cst-len?
-           (codegen-p-make-f64vector-imm cgc fs ffs reg llen lval cst-val?))
+           (codegen-p-make-f64vector-imm cgc gc-desc fs ffs reg llen lval cst-val?))
         (else
+           (error "gc desc 3")
            (codegen-p-make-f64vector-opn cgc fs ffs reg llen lval cst-val?))))
 
-(define (codegen-p-make-f64vector-imm cgc fs ffs reg llen lval cst-val?)
+(define (codegen-p-make-f64vector-imm cgc gc-desc fs ffs reg llen lval cst-val?)
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (oplen (x86-imm-int (obj-encoding llen 86)))
          (opval (if cst-val?
@@ -2617,7 +2629,7 @@
          (label-end  (asm-make-label #f (new-sym 'make-vector-end))))
 
     ;; Alloc vector
-    (gen-allocation-imm cgc STAG_F64VECTOR (* 8 llen))
+    (gen-allocation-imm cgc STAG_F64VECTOR (* 8 llen) gc-desc)
     ;; Loop counter
     (x86-mov cgc selector-reg (x86-imm-int (* -8 llen)))
     ;; Loop
@@ -2654,7 +2666,7 @@
     (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 89)))))
 
 ;; make-f64vector with cst len (still)
-(define (codegen-p-make-f64vector-imm-sti cgc fs ffs reg llen lval cst-val?)
+(define (codegen-p-make-f64vector-imm-sti cgc gc-desc fs ffs reg llen lval cst-val?)
 
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (oplen (x86-imm-int (obj-encoding llen 90)))
@@ -2665,7 +2677,7 @@
          (label-end  (asm-make-label #f (new-sym 'make-vector-end))))
 
   ;; Alloc vector
-  (gen-allocation-imm-sti cgc STAG_F64VECTOR (* 8 llen))
+  (gen-allocation-imm-sti cgc STAG_F64VECTOR (* 8 llen) gc-desc)
   ;; Loop counter
   (x86-mov cgc selector-reg (x86-imm-int (* 8 llen)))
   ;; Loop
@@ -2795,7 +2807,7 @@
 
 ;;
 ;; *vector-length
-(define (codegen-p-*vector-length cgc fs ffs op reg inlined-cond? lvec cst-vec?)
+(define (codegen-p-*vector-length cgc gc-desc fs ffs op reg inlined-cond? lvec cst-vec?)
 
   (assert (not cst-vec?) "Internal error")
 
@@ -2818,7 +2830,7 @@
 
 ;;
 ;; string-length
-(define (codegen-p-string-length cgc fs ffs op reg inlined-cond? lstr str-cst?)
+(define (codegen-p-string-length cgc gc-desc fs ffs op reg inlined-cond? lstr str-cst?)
 
   (assert (not str-cst?) "Internal error. Unexpected cst operand")
 
@@ -2841,7 +2853,7 @@
 ;;
 ;; vector-ref
 ;; TODO val-cst? -> idx-cst?
-(define (codegen-p-*vector-ref cgc fs ffs op reg inlined-cond? lvec lidx vec-cst? val-cst?)
+(define (codegen-p-*vector-ref cgc gc-desc fs ffs op reg inlined-cond? lvec lidx vec-cst? val-cst?)
 
   (assert (not (and vec-cst? val-cst?)) "Internal error")
   (assert (if vec-cst?
@@ -2869,7 +2881,7 @@
              (not opt-float-unboxing)
              (not opt-nan-boxing))
         (begin ;; Alloc result flonum
-               (gen-allocation-imm cgc STAG_FLONUM 8)
+               (gen-allocation-imm cgc STAG_FLONUM 8 gc-desc)
                ;; Write number
                (x86-movsd cgc (x86-mem -8 alloc-ptr) (x86-xmm0))
                ;; Put
@@ -2936,7 +2948,7 @@
 
 ;;
 ;; string-ref
-(define (codegen-p-string-ref cgc fs ffs op reg inlined-cond? lstr lidx str-cst? idx-cst?)
+(define (codegen-p-string-ref cgc gc-desc fs ffs op reg inlined-cond? lstr lidx str-cst? idx-cst?)
 
   (assert (or (not str-cst?)
               (and (##mem-allocated? lstr)
@@ -3135,7 +3147,7 @@
 
 ;;
 ;; vector-set!
-(define (codegen-p-vector-set! cgc fs ffs op reg inlined-cond? lvec lidx lval vec-cst? idx-cst? val-cst?)
+(define (codegen-p-vector-set! cgc gc-desc fs ffs op reg inlined-cond? lvec lidx lval vec-cst? idx-cst? val-cst?)
 
   (assert (not vec-cst?) "Internal error")
   (assert (or (not val-cst?)
@@ -3258,7 +3270,7 @@
 
 ;;
 ;; f64vector-set!
-(define (codegen-p-f64vector-set! cgc fs ffs op reg inlined-cond? lvec lidx lval vec-cst? idx-cst? val-cst?)
+(define (codegen-p-f64vector-set! cgc gc-desc fs ffs op reg inlined-cond? lvec lidx lval vec-cst? idx-cst? val-cst?)
 
   (assert (not vec-cst?) "Internal error")
   (assert (or (not val-cst?)
@@ -3394,7 +3406,7 @@
   (x86-mov cgc dest (x86-imm-int (obj-encoding #!void))))
 ;;
 ;; string-set!
-(define (codegen-p-string-set! cgc fs ffs op reg inlined-cond? lstr lidx lchr str-cst? idx-cst? chr-cst?)
+(define (codegen-p-string-set! cgc gc-desc fs ffs op reg inlined-cond? lstr lidx lchr str-cst? idx-cst? chr-cst?)
   (if opt-nan-boxing
       (codegen-p-string-set!-nan cgc fs ffs op reg inlined-cond? lstr lidx lchr str-cst? idx-cst? chr-cst?)
       (codegen-p-string-set!-tag cgc fs ffs op reg inlined-cond? lstr lidx lchr str-cst? idx-cst? chr-cst?)))
