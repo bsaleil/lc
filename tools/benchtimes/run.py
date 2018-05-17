@@ -41,6 +41,7 @@ class System:
         self.regexms = regexms # regex to extract ms time
         self.regexgc = regexgc # regex to extract gc ms time
         self.times = {}
+        self.gctimes = {}
         self.time_to_ms = time_to_ms
 
         self.green = 2
@@ -130,6 +131,7 @@ class System:
             sys.stdout.flush()
 
             rawTimes = []
+            rawGCTimes = []
             for i in range(0,NEXEC):
                 print('.', end='')
                 sys.stdout.flush()
@@ -157,9 +159,9 @@ class System:
                 if (len(res) != 1):
                     timems = self.time_to_ms(-1)
                     rawTimes.append(timems)
-                    #print("FAIL 2 --->")
-                    #print(sout)
-                    #raise Exception("foo");
+                    print("FAIL 2 --->")
+                    print(sout)
+                    raise Exception("foo");
                     continue
 
                 timems = res[0]
@@ -173,14 +175,20 @@ class System:
                     timems = float(timems)
 
                 timems = self.time_to_ms(timems)
+                gctimems = self.time_to_ms(float(res[0]))
                 rawTimes.append(timems)
+                rawGCTimes.append(gctimems)
 
             print('')
             # Remove min, max and compute mean
             rawTimes.remove(max(rawTimes))
             rawTimes.remove(min(rawTimes))
+            rawGCTimes.remove(max(rawGCTimes))
+            rawGCTimes.remove(min(rawGCTimes))
             mean = sum(rawTimes) / float(len(rawTimes))
+            gcmean = sum(rawGCTimes) / float(len(rawGCTimes))
             self.times[file] = mean
+            self.gctimes[file] = gcmean
 
 #---------------------------------------------------------------------------
 
@@ -260,8 +268,8 @@ systems.append(lcf64v_with_options("LCf64v-nan", ["--nan-boxing"]))
 systems.append(lcf64v_with_options("LCf64v-nan-noopt", ["--nan-boxing","--disable-float-unboxing"]))
 
 # Gambit
-systems.append(gambit_no_options("Gambit", 512000))
-systems.append(gambit_no_options("Gambitf64v", 512000))
+# systems.append(gambit_no_options("Gambit", 512000))
+# systems.append(gambit_no_options("Gambitf64v", 512000))
 
 
 config = Config()
@@ -299,6 +307,7 @@ else:
 print("benchmark;",end='')
 for system in systems:
     print(system.name,end=';')
+    print(system.name+"(gc)",end=';')
 print("")
 # Print times
 for benchmark in config.benchmarks:
@@ -309,5 +318,7 @@ for benchmark in config.benchmarks:
     for system in systems:
         key = system.tmpDir + "/" + os.path.basename(benchmark) + system.eext
         assert(key in system.times.keys())
+        assert(key in system.gctimes.keys())
         print(system.times[key],end=';')
+        print(system.gctimes[key],end=';')
     print("");
