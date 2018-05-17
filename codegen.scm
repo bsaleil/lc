@@ -2616,8 +2616,7 @@
         (cst-len?
            (codegen-p-make-f64vector-imm cgc gc-desc fs ffs reg llen lval cst-val?))
         (else
-           (error "gc desc 3")
-           (codegen-p-make-f64vector-opn cgc fs ffs reg llen lval cst-val?))))
+           (codegen-p-make-f64vector-opn cgc gc-desc fs ffs reg llen lval cst-val?))))
 
 (define (codegen-p-make-f64vector-imm cgc gc-desc fs ffs reg llen lval cst-val?)
   (let* ((dest  (codegen-reg-to-x86reg reg))
@@ -2713,7 +2712,7 @@
   (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 93)))))
 
 ;; make-f64vector with !cst len
-(define (codegen-p-make-f64vector-opn cgc fs ffs reg llen lval cst-val?)
+(define (codegen-p-make-f64vector-opn cgc gc-desc fs ffs reg llen lval cst-val?)
 
   (let* ((dest  (codegen-reg-to-x86reg reg))
          (oplen (codegen-loc-to-x86opnd fs ffs llen))
@@ -2731,7 +2730,7 @@
         (begin
             (x86-mov cgc (x86-eax) (l32 oplen))
             (x86-shl cgc (x86-rax) (x86-imm-int 3))
-            (gen-allocation-rt cgc STAG_F64VECTOR (x86-rax))
+            (gen-allocation-rt cgc STAG_F64VECTOR (x86-rax) gc-desc)
 
             ;; if val is cst, mem, or eq dest
             ;; we need another free register
@@ -2767,7 +2766,7 @@
         (begin
             (x86-mov cgc (x86-rax) oplen)
             (x86-shl cgc (x86-rax) (x86-imm-int 1))
-            (gen-allocation-rt cgc STAG_F64VECTOR (x86-rax))
+            (gen-allocation-rt cgc STAG_F64VECTOR (x86-rax) gc-desc)
 
             ;; Loop
             (x86-mov cgc selector-reg oplen)
