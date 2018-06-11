@@ -163,6 +163,7 @@
 (define alloc-ptr  (x86-r9))
 (define global-ptr (x86-r8))
 (define selector-reg (x86-rcx))
+(define selector-init-val #x0001000000000000)
 (define tmp-reg (x86-rax))
 (define selector-reg-32 (x86-ecx))
 (define (x86-usp) (x86-rbp)) ;; user stack pointer is rbp
@@ -347,9 +348,11 @@
         (x86-op (if (ctx-loc-is-fregister? reg) x86-movsd x86-mov)))
 
   (if opt-nan-boxing
-      (begin (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
-             (x86-and cgc (x86-rax) copnd)
-             (x86-op cgc dest (x86-mem (* 8 (+ (cdr lvar) 2)) (x86-rax))))
+      (if (x86-reg? copnd)
+          (x86-op cgc dest (x86-mem (* 8 (+ (cdr lvar) 2)) copnd selector-reg))
+          (begin
+            (x86-mov cgc (x86-rax) copnd)
+            (x86-mov cgc dest (x86-mem (* 8 (+ (cdr lvar) 2)) (x86-rax) selector-reg))))
       (if (x86-reg? copnd)
           (x86-op cgc dest (x86-mem coffset copnd))
           (begin
@@ -371,28 +374,20 @@
              (if (ctx-loc-is-memory? closure-loc)
                  (begin (x86-mov cgc (x86-rax) closure-opnd)
                         (set! closure-opnd (x86-rax))))
-             (if (eq? closure-opnd (x86-rax))
-                 (begin (set! treg selector-reg)))
-             (x86-mov cgc treg (x86-imm-int NB_MASK_VALUE_48))
-             (x86-and cgc treg closure-opnd)
-             (x86-mov cgc treg (x86-mem fvar-offset treg))
-             (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) treg)
-             (eq? treg selector-reg)))
+             (x86-mov cgc treg (x86-mem fvar-offset closure-opnd selector-reg))
+             (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) treg)))
         ;;
         ((ctx-loc-is-memory? src-loc)
           (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs ffs src-loc))
-          (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) (x86-rax))
-          #f)
+          (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) (x86-rax)))
         ;;
         ((ctx-loc-is-fregister? src-loc)
           (x86-movd/movq cgc (x86-rax) (codegen-freg-to-x86reg src-loc))
-          (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) (x86-rax))
-          #f)
+          (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) (x86-rax)))
         ;;
         (else
           (let ((opn (codegen-reg-to-x86reg src-loc)))
-            (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) opn)
-            #f))))
+            (x86-mov cgc (x86-mem (* 8 dst-pos) base-reg) opn)))))
 
 (define (codegen-write-free-variable-tag cgc fs ffs src-loc dst-pos closure-loc base-reg)
   (cond ;;
@@ -597,7 +592,7 @@
           (x86-mov cgc (codegen-reg-to-x86reg reg) selector-reg))
         (x86-upush cgc selector-reg))
     ;; Reset selector used as temporary
-    (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 14)))))
+    (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
 
 
 (define (codegen-prologue-gen-rest-tag cgc fs ffs fn-nb-args)
@@ -642,7 +637,6 @@
     (x86-je cgc label-rest-end)
 
       ;; Alloc
-      ;; TODO
       (x86-mov cgc (x86-rax) (x86-imm-int (get_lc_stack_usedesc_addr)))
       (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-imm-int 4) 64)
       ;; TODO OPTIMIZE (GC MAP INTERFACE)
@@ -654,17 +648,16 @@
           (x86-mov cgc (x86-rax) (x86-imm-int 0))
         (x86-label cgc label-next)
         (x86-upush cgc (x86-rax)))
-      ;; END TODO
       (gen-allocation-imm cgc STAG_PAIR 16 0) ;; alloc: fn-nb-args
       (x86-add cgc (x86-usp) (x86-imm-int 8))
       (x86-pcall cgc label-next-arg)
       (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax))
       (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) selector-reg)
       (x86-lea cgc selector-reg (x86-mem (+ -24 TAG_PAIR) alloc-ptr))
-      ;; TODO
+      ;;
       (x86-mov cgc (x86-rax) (x86-imm-int (get_lc_stack_usedesc_addr)))
       (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-imm-int 0) 64)
-      ;; END TODO
+      ;;
       (x86-jmp cgc label-rest-loop)
     ;;
     (x86-label cgc label-rest-end)
@@ -673,7 +666,7 @@
           (x86-mov cgc (codegen-reg-to-x86reg reg) selector-reg))
         (x86-upush cgc selector-reg))
     ;; Reset selector used as temporary
-    (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 14)))))
+    (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
 
 ;; Generate specialized function prologue with rest param and actual == formal
 (define (codegen-prologue-rest= cgc destreg)
@@ -690,7 +683,7 @@
 
   (let ((dest (codegen-loc-to-x86opnd fs ffs rloc)))
 
-    (x86-mov cgc (x86-rcx) (x86-imm-int (obj-encoding '() 17)))
+    (x86-mov cgc selector-reg (x86-imm-int (obj-encoding '() 17)))
 
     (let loop ((locs locs))
       (if (not (null? locs))
@@ -701,10 +694,10 @@
                             (x86-imm-int (obj-encoding (cdr loc) 18)))
                          ((eq? (car loc) 'cf)
                             (let ((entry-obj (car (asc-globalfn-entry-get (cdr loc)))))
-                              (x86-upush cgc (x86-rcx))
+                              (x86-upush cgc selector-reg)
                               (gen-closure cgc 'selector #f entry-obj '())
                               (set! cdr-pushed? #t)
-                              (x86-rcx)))
+                              selector-reg))
                          (else
                             (codegen-loc-to-x86opnd fs ffs loc)))))
             (gen-allocation-imm cgc STAG_PAIR 16 gc-desc)
@@ -714,16 +707,16 @@
                        (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) (x86-rax)))
                 (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CAR) alloc-ptr) opnd))
             (if cdr-pushed?
-                (x86-upop cgc (x86-rcx)))
-            (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) (x86-rcx))
+                (x86-upop cgc selector-reg))
+            (x86-mov cgc (x86-mem (+ -24 OFFSET_PAIR_CDR) alloc-ptr) selector-reg)
             (if opt-nan-boxing
                 (begin (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
-                       (x86-lea cgc (x86-rcx) (x86-mem -24 alloc-ptr (x86-rax))))
-                (x86-lea cgc (x86-rcx) (x86-mem (+ -24 TAG_PAIR) alloc-ptr)))
+                       (x86-lea cgc selector-reg (x86-mem -24 alloc-ptr (x86-rax))))
+                (x86-lea cgc selector-reg (x86-mem (+ -24 TAG_PAIR) alloc-ptr)))
             (loop (cdr locs)))))
 
-    (x86-mov cgc dest (x86-rcx))
-    (x86-mov cgc (x86-rcx) (x86-imm-int (obj-encoding 0 19)))))
+    (x86-mov cgc dest selector-reg)
+    (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
 
 ;; Alloc closure and write header
 (define (codegen-closure-create cgc nb-free gc-desc)
@@ -876,9 +869,7 @@
 
   (if eploc
       (x86-mov cgc (x86-rdx) (x86-imm-int eploc))
-      (begin (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
-             (x86-and cgc (x86-rax) (x86-rsi))
-             (x86-mov cgc (x86-rdx) (x86-mem 8 (x86-rax))))) ;; get table
+      (x86-mov cgc (x86-rdx) (x86-mem 8 (x86-rax) selector-reg)))
 
   (x86-jmp cgc (x86-mem 8 (x86-rdx)))) ;; Jump to generic entry point
 
@@ -917,9 +908,7 @@
               (x86-jmp cgc (x86-mem cct-offset (x86-rdx))))
             (else
               (if opt-nan-boxing
-                  (begin (x86-mov cgc (x86-rdx) (x86-imm-int NB_MASK_VALUE_48))
-                         (x86-and cgc (x86-rdx) (x86-rsi))
-                         (x86-mov cgc (x86-rdx) (x86-mem 8 (x86-rdx))))
+                  (x86-mov cgc (x86-rdx) (x86-mem 8 (x86-rsi) selector-reg))
                   (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi))))
               (x86-jmp cgc (x86-mem cct-offset (x86-rdx)))))))
 
@@ -952,31 +941,30 @@
     (if (null? args-regs)
         (let ((label-loop (asm-make-label #f (new-sym 'apply-loop-args))))
           (x86-label cgc label-loop)
-          (x86-mov cgc selector-reg (x86-imm-int (obj-encoding '())))
-          (x86-cmp cgc (x86-rdx) selector-reg)
+          (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding '())))
+          (x86-cmp cgc (x86-rdx) (x86-rsi))
           (x86-je cgc label-end)
             (x86-inc cgc (x86-r11))
-            (x86-mov cgc selector-reg (x86-imm-int NB_MASK_VALUE_48))
-            (x86-and cgc selector-reg (x86-rdx))
-            (x86-mov cgc (x86-rdx) (x86-mem OFFSET_PAIR_CAR selector-reg))
+            (x86-mov cgc (x86-rsi) (x86-rdx))
+            (x86-mov cgc (x86-rdx) (x86-mem OFFSET_PAIR_CAR (x86-rsi) selector-reg))
             (x86-upush cgc (x86-rdx))
-            (x86-mov cgc (x86-rdx) (x86-mem OFFSET_PAIR_CDR selector-reg))
+            (x86-mov cgc (x86-rdx) (x86-mem OFFSET_PAIR_CDR (x86-rsi) selector-reg))
             (x86-jmp cgc label-loop))
         (begin
-          (x86-mov cgc selector-reg (x86-imm-int (obj-encoding '())))
-          (x86-cmp cgc (x86-rdx) selector-reg)
+          (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding '())))
+          (x86-cmp cgc (x86-rdx) (x86-rsi))
           (x86-je cgc label-end)
             (x86-inc cgc (x86-r11))
-            (x86-mov cgc selector-reg (x86-imm-int NB_MASK_VALUE_48))
-            (x86-and cgc selector-reg (x86-rdx))
-            (x86-mov cgc (codegen-loc-to-x86opnd fs ffs (car args-regs)) (x86-mem OFFSET_PAIR_CAR selector-reg))
-            (x86-mov cgc (x86-rdx) (x86-mem OFFSET_PAIR_CDR selector-reg))
+            (x86-nop cgc)
+            (x86-mov cgc (x86-rsi) (x86-rdx))
+            (x86-mov cgc (codegen-loc-to-x86opnd fs ffs (car args-regs)) (x86-mem OFFSET_PAIR_CAR (x86-rsi) selector-reg))
+            (x86-mov cgc (x86-rdx) (x86-mem OFFSET_PAIR_CDR (x86-rsi) selector-reg))
           (loop (cdr args-regs)))))
   (x86-label cgc label-end)
   (x86-mov cgc selector-reg (x86-imm-int (to-64-value NB_MASK_FIX)))
   (x86-or cgc (x86-r11) selector-reg)
   ;; Reset selector used as tmp reg
-  (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 26))))
+  (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))
 
 (define (codegen-apply-xxx-tag cgc fs ffs lst-loc)
   ;; r11, selector & r15 are used as tmp registers
@@ -1006,7 +994,7 @@
           (loop (cdr args-regs)))))
   (x86-label cgc label-end)
   ;; Reset selector used as tmp reg
-  (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 26))))
+  (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))
 
 (define (codegen-gambit-call cgc op-symbol nb-args dest-loc)
   (assert (ctx-loc-is-register? dest-loc) "Internal error")
@@ -1615,9 +1603,7 @@
                (set! opbox (x86-rax))))
 
     (if opt-nan-boxing
-        (begin (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
-               (x86-and cgc (x86-rax) opbox)
-               (x86-mov cgc dest (x86-mem OFFSET_BOX (x86-rax))))
+        (x86-mov cgc dest (x86-mem OFFSET_BOX opbox selector-reg))
         (x86-mov cgc dest (x86-mem (- OFFSET_BOX TAG_MEMOBJ) opbox)))))
 
 ;;
@@ -1636,9 +1622,6 @@
         (opbox (codegen-loc-to-x86opnd fs ffs lbox))
         (opval (and (not cst-val?) (codegen-loc-to-x86opnd fs ffs lval))))
 
-    (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
-    (x86-and cgc (x86-rax) opbox)
-
     (cond (cst-val?
             (x86-mov cgc dest (x86-imm-int (obj-encoding lval 48)))
             (set! opval dest))
@@ -1646,7 +1629,11 @@
             (x86-mov cgc dest opval)
             (set! opval dest)))
 
-    (x86-mov cgc (x86-mem 8 (x86-rax)) opval)
+    (if (x86-mem? opbox)
+        (begin (x86-mov cgc (x86-rax) opbox)
+               (set! opbox (x86-rax))))
+
+    (x86-mov cgc (x86-mem 8 opbox selector-reg) opval)
     (x86-mov cgc dest (x86-imm-int (obj-encoding #!void)))))
 
 (define (codegen-p-set-box-tag cgc fs ffs op reg inlined-cond? lbox lval cst-box? cst-val?)
@@ -1677,7 +1664,7 @@
     (x86-mov cgc dest (x86-imm-int (obj-encoding #!void)))
 
     (if use-selector?
-        (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 50))))))
+        (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))))
 
 ;;
 ;; cons
@@ -1841,7 +1828,7 @@
 
     ;; Restore selector
     (if selector-used
-        (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 59))))))
+        (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))))
 
 
 (define (codegen-p-binop-nan cgc op dest lcst? lleft lopnd ropnd label-div0)
@@ -2117,17 +2104,13 @@
         (dest  (codegen-reg-to-x86reg reg))
         (opval (codegen-loc-to-x86opnd fs ffs lval)))
 
+    (if (x86-mem? opval)
+        (begin (x86-mov cgc (x86-rax) opval)
+               (set! opval (x86-rax))))
 
     (if opt-nan-boxing
-        (begin
-          (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_VALUE_48)))
-          (x86-and cgc (x86-rax) opval)
-          (x86-mov cgc dest (x86-mem (+ offset TAG_PAIR) (x86-rax))))
-        (begin
-          (if (x86-mem? opval)
-              (begin (x86-mov cgc (x86-rax) opval)
-                     (set! opval (x86-rax))))
-          (x86-mov cgc dest (x86-mem offset opval))))))
+        (x86-mov cgc dest (x86-mem (+ offset TAG_PAIR) opval selector-reg))
+        (x86-mov cgc dest (x86-mem offset opval)))))
 
 ;;
 ;; symbol->string
@@ -2143,10 +2126,12 @@
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opsym (codegen-loc-to-x86opnd fs ffs lsym)))
 
+    (if (x86-mem? opsym)
+        (begin (x86-mov cgc (x86-rax) opsym)
+               (set! opsym (x86-rax))))
+
     ;; Get string scheme object from symbol representation
-    (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
-    (x86-and cgc (x86-rax) opsym)
-    (x86-mov cgc dest (x86-mem 8 (x86-rax)))
+    (x86-mov cgc dest (x86-mem 8 opsym selector-reg))
     (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
     (x86-lea cgc dest (x86-mem -1 dest (x86-rax)))))
 
@@ -2193,30 +2178,21 @@
 
 (define (codegen-p-set-cxr!-nan cgc op dest oppair opval lval val-cst?)
   (define offset (if (eq? op 'set-car!) OFFSET_PAIR_CAR OFFSET_PAIR_CDR))
-  (define saved-dest #f)
 
-  (if (and (eq? dest opval)
-           (not val-cst?))
-      (begin (set! saved-dest dest)
-             (set! dest selector-reg)))
-
-  (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
-  (x86-mov cgc dest oppair)
-  (x86-and cgc dest (x86-rax))
+  (if (x86-mem? oppair)
+      (begin (x86-mov cgc dest oppair)
+             (set! oppair dest)))
 
   (cond
     (val-cst?
-      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding lval 74)))
-      (x86-mov cgc (x86-mem offset dest) (x86-rax)))
+      (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding lval)))
+      (x86-mov cgc (x86-mem offset oppair selector-reg) (x86-rax)))
     ((ctx-loc-is-memory? lval)
-     (x86-mov cgc (x86-rax) opval)
-     (x86-mov cgc (x86-mem offset dest) (x86-rax)))
+      (x86-mov cgc (x86-rax) opval)
+      (x86-mov cgc (x86-mem offset oppair selector-reg) (x86-rax)))
     (else
-     (x86-mov cgc (x86-mem offset dest) opval)))
+      (x86-mov cgc (x86-mem offset oppair selector-reg) opval)))
 
-  (if saved-dest
-      (begin (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0)))
-             (set! dest saved-dest)))
   (x86-mov cgc dest (x86-imm-int (obj-encoding #!void))))
 
 
@@ -2329,7 +2305,7 @@
     (x86-label cgc label-end)
     (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
     (x86-lea cgc dest (x86-mem (- (* -4 llen) 8) alloc-ptr (x86-rax)))
-    (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 83)))))
+    (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
 
 ;;
 ;; string with cst len
@@ -2361,7 +2337,7 @@
 
     (x86-label cgc label-end)
     (x86-lea cgc dest (x86-mem (+ (- (* -4 llen) 8) TAG_MEMOBJ) 0 alloc-ptr))
-    (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 83)))))
+    (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
 
 ;;
 ;; string with !cst len
@@ -2403,7 +2379,7 @@
     (x86-label cgc label-end)
     (x86-mov cgc dest (x86-imm-int (to-64-value NB_MASK_MEM)))
     (x86-or  cgc dest (x86-rax))
-    (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 85)))))
+    (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
 
 
 ;;
@@ -2438,7 +2414,7 @@
 
     (x86-label cgc label-end)
     (x86-mov cgc dest (x86-rax))
-    (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 85)))))
+    (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
 
 ;;
 ;; make-vector
@@ -2485,7 +2461,7 @@
                (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
                (x86-or cgc dest (x86-rax)))
         (x86-lea cgc dest (x86-mem (+ (* (+ llen 1) -8) TAG_MEMOBJ) alloc-ptr)))
-    (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 89)))))
+    (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
 
 ;; make-vector with cst len (still)
 (define (codegen-p-make-vector-imm-sti cgc gc-desc fs ffs reg llen lval cst-val?)
@@ -2521,7 +2497,7 @@
       (begin (x86-mov cgc dest (x86-imm-int (to-64-value (- NB_MASK_MEM TAG_MEMOBJ))))
              (x86-lea cgc dest (x86-mem 0 (x86-rax) dest)))
       (x86-mov cgc dest (x86-rax)))
-  (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 93)))))
+  (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
 
 ;; make-vector with !cst len
 (define (codegen-p-make-vector-opn cgc gc-desc fs ffs reg llen lval cst-val?)
@@ -2573,7 +2549,7 @@
             (if save
                 (x86-ppop cgc save))
             (x86-mov cgc dest (x86-rax))
-            (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 95))))
+            (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))
 
         (begin
             (x86-mov cgc (x86-rax) oplen)
@@ -2605,7 +2581,7 @@
             ;;
             (x86-label cgc label-end)
             (x86-mov cgc dest (x86-rax))
-            (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 97)))))))
+            (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))))
 
 ;;
 ;; make-f64vector
@@ -2662,7 +2638,7 @@
                (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
                (x86-or cgc dest (x86-rax)))
         (x86-lea cgc dest (x86-mem (+ (* (+ llen 1) -8) TAG_MEMOBJ) alloc-ptr)))
-    (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 89)))))
+    (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
 
 ;; make-f64vector with cst len (still)
 (define (codegen-p-make-f64vector-imm-sti cgc gc-desc fs ffs reg llen lval cst-val?)
@@ -2709,7 +2685,7 @@
       (begin (x86-mov cgc dest (x86-imm-int (to-64-value (- NB_MASK_MEM TAG_MEMOBJ))))
              (x86-lea cgc dest (x86-mem 0 (x86-rax) dest)))
       (x86-mov cgc dest (x86-rax)))
-  (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 93)))))
+  (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
 
 ;; make-f64vector with !cst len
 (define (codegen-p-make-f64vector-opn cgc gc-desc fs ffs reg llen lval cst-val?)
@@ -2761,7 +2737,7 @@
             (if save
                 (x86-ppop cgc save))
             (x86-mov cgc dest (x86-rax))
-            (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 95))))
+            (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))
 
         (begin
             (x86-mov cgc (x86-rax) oplen)
@@ -2802,7 +2778,7 @@
             ;;
             (x86-label cgc label-end)
             (x86-mov cgc dest (x86-rax))
-            (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 97)))))))
+            (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))))
 
 ;;
 ;; *vector-length
@@ -2818,9 +2794,7 @@
                (set! opvec (x86-rax))))
 
     (if opt-nan-boxing
-        (begin (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
-               (x86-and cgc (x86-rax) opvec)
-               (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax)))
+        (begin (x86-mov cgc (x86-rax) (x86-mem 0 opvec selector-reg))
                (x86-shr cgc (x86-rax) (x86-imm-int 11)) ;; 8 header + 2 (to get length from nbytes)
                (x86-mov cgc dest (x86-imm-int (to-64-value NB_MASK_FIX)))
                (x86-or cgc dest (x86-rax)))
@@ -2836,17 +2810,16 @@
   (let ((dest  (codegen-reg-to-x86reg reg))
         (opstr (codegen-loc-to-x86opnd fs ffs lstr)))
 
+    (if (ctx-loc-is-memory? lstr)
+               (begin (x86-mov cgc (x86-rax) opstr)
+                      (set! opstr (x86-rax))))
+
     (if opt-nan-boxing
-        (begin (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
-               (x86-and cgc (x86-rax) opstr)
-               (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax)))
+        (begin (x86-mov cgc (x86-rax) (x86-mem 0 opstr selector-reg))
                (x86-shr cgc (x86-rax) (x86-imm-int 10)) ;; 8 header + 2 (to get length from nbytes)
                (x86-mov cgc dest (x86-imm-int (to-64-value NB_MASK_FIX)))
                (x86-or cgc dest (x86-rax)))
-        (begin (if (ctx-loc-is-memory? lstr)
-                   (begin (x86-mov cgc (x86-rax) opstr)
-                          (set! opstr (x86-rax))))
-               (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opstr))
+        (begin (x86-mov cgc dest (x86-mem (- TAG_MEMOBJ) opstr))
                (x86-shr cgc dest (x86-imm-int 8))))))
 
 ;;
@@ -2915,7 +2888,7 @@
         (x86-movsd cgc dest (x86-mem 0 selector-reg))
         (x86-mov   cgc dest (x86-mem 0 selector-reg)))
 
-    (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 100)))))
+    (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
 
 (define (codegen-p-*vector-ref-tag cgc dest opvec lvec vec-cst? opidx lidx val-cst?)
 
@@ -2943,7 +2916,7 @@
           (x86-op cgc dest (x86-mem (- 8 TAG_MEMOBJ) opvec opidx 1))))
 
     (if use-selector
-        (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 100))))))
+        (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))))
 
 ;;
 ;; string-ref
@@ -3030,8 +3003,6 @@
 
   (if (x86-mem? vec-opnd) (error "Unimplemented case in codegen."))
 
-  (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_VALUE_48)))
-  (x86-and cgc vec-opnd (x86-rax))
   (let loop ((csts?/locs csts?/locs)
              (i vec-len))
     (if (not (null? csts?/locs))
@@ -3042,16 +3013,14 @@
           (cond ;; cst
                 (cst?
                   (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding loc 102)))
-                  (x86-mov cgc (x86-mem offset vec-opnd) (x86-rax)))
+                  (x86-mov cgc (x86-mem offset vec-opnd selector-reg) (x86-rax)))
                 ;;
                 ((x86-mem? opnd)
                   (x86-mov cgc (x86-rax) opnd)
-                  (x86-mov cgc (x86-mem offset vec-opnd) (x86-rax)))
+                  (x86-mov cgc (x86-mem offset vec-opnd selector-reg) (x86-rax)))
                 (else
-                  (x86-mov cgc (x86-mem offset vec-opnd) opnd)))
-          (loop (cdr csts?/locs) (- i 1)))))
-  (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
-  (x86-or cgc vec-opnd (x86-rax)))
+                  (x86-mov cgc (x86-mem offset vec-opnd selector-reg) opnd)))
+          (loop (cdr csts?/locs) (- i 1))))))
 
 (define (codegen-p-vector-tag cgc fs ffs csts?/locs vec-loc)
   (define vec-opnd (codegen-loc-to-x86opnd fs ffs vec-loc))
@@ -3086,8 +3055,6 @@
 
   (if (x86-mem? vec-opnd) (error "Unimplemented case in codegen."))
 
-  (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_VALUE_48)))
-  (x86-and cgc vec-opnd (x86-rax))
   (let loop ((csts?/locs csts?/locs)
              (i vec-len))
     (if (not (null? csts?/locs))
@@ -3098,19 +3065,17 @@
           (cond ;; cst
                 (cst?
                   (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding loc 102)))
-                  (x86-mov cgc (x86-mem offset vec-opnd) (x86-rax)))
+                  (x86-mov cgc (x86-mem offset vec-opnd selector-reg) (x86-rax)))
                 ;;
                 ((x86-mem? opnd)
                   (x86-mov cgc (x86-rax) opnd)
-                  (x86-mov cgc (x86-mem offset vec-opnd) (x86-rax)))
+                  (x86-mov cgc (x86-mem offset vec-opnd selector-reg) (x86-rax)))
                 ;;
                 ((x86-xmm? opnd)
-                  (x86-movsd cgc (x86-mem offset vec-opnd) opnd))
+                  (x86-movsd cgc (x86-mem offset vec-opnd selector-reg) opnd))
                 (else
-                  (x86-mov cgc (x86-mem offset vec-opnd) opnd)))
-          (loop (cdr csts?/locs) (- i 1)))))
-  (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
-  (x86-or cgc vec-opnd (x86-rax)))
+                  (x86-mov cgc (x86-mem offset vec-opnd selector-reg) opnd)))
+          (loop (cdr csts?/locs) (- i 1))))))
 
 (define (codegen-p-f64vector-tag cgc fs ffs csts?/locs vec-loc)
   (define vec-opnd (codegen-loc-to-x86opnd fs ffs vec-loc))
@@ -3190,7 +3155,7 @@
          (x86-mov cgc dest (x86-imm-int (obj-encoding lval 105)))
          ;; op
          (x86-mov cgc (x86-mem 8 (x86-rax) selector-reg 3) dest)
-         (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 106))))
+         (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))
       ;; ncst/ncst
       (else
          (cond ;; opval is mem
@@ -3199,13 +3164,13 @@
                   (x86-and cgc selector-reg opidx)
                   (x86-mov cgc dest opval)
                   (x86-mov cgc (x86-mem 8 (x86-rax) selector-reg 3) dest)
-                  (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 107))))
+                  (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))
                ;; opval is dest
                ((eq? opval dest)
                   (x86-mov cgc selector-reg (x86-imm-int NB_MASK_VALUE_32))
                   (x86-and cgc selector-reg opidx)
                   (x86-mov cgc (x86-mem 8 (x86-rax) selector-reg 3) opval)
-                  (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 108))))
+                  (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))
                ;; opval is reg !dest
                (else
                   (x86-mov cgc dest (x86-imm-int NB_MASK_VALUE_32))
@@ -3236,7 +3201,7 @@
                (and idx-cst? (x86-mem? opval)))
              (x86-mov cgc selector-reg opval)
              (x86-mov cgc (x86-mem (+ (* 8 lidx) (- 8 TAG_MEMOBJ)) opvec) selector-reg)
-             (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 111))))
+             (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))
           ;; cst/reg
           (idx-cst?
              (x86-mov cgc (x86-mem (+ (* 8 lidx) (- 8 TAG_MEMOBJ)) opvec) opval))
@@ -3256,14 +3221,14 @@
                (x86-shl cgc tmpidx (x86-imm-int 1))
                (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opvec tmpidx) selector-reg)
                (if saved (x86-ppop cgc saved))
-               (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 112)))))
+               (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
           ;; reg/reg
           ;; mem/reg
           (else
              (x86-mov cgc selector-reg opidx)
              (x86-shl cgc selector-reg (x86-imm-int 1))
              (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opvec selector-reg) opval)
-             (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 113)))))
+             (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
 
     (x86-mov cgc dest (x86-imm-int (obj-encoding #!void)))))
 
@@ -3314,7 +3279,7 @@
          (x86-mov cgc dest (x86-imm-int (flonum->ieee754 lval 'double)))
          ;; op
          (x86-mov cgc (x86-mem 8 (x86-rax) selector-reg 3) dest)
-         (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 106))))
+         (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))
       ;; ncst/ncst
       (else
          (cond ;; opval is mem
@@ -3323,13 +3288,13 @@
                   (x86-and cgc selector-reg opidx)
                   (x86-mov cgc dest opval)
                   (x86-mov cgc (x86-mem 8 (x86-rax) selector-reg 3) dest)
-                  (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 107))))
+                  (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))
                ;; opval is dest
                ((eq? opval dest)
                   (x86-mov cgc selector-reg (x86-imm-int NB_MASK_VALUE_32))
                   (x86-and cgc selector-reg opidx)
                   (x86-mov cgc (x86-mem 8 (x86-rax) selector-reg 3) opval)
-                  (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 108))))
+                  (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))
                ;; opval is reg !dest
                (else
                   (x86-mov cgc dest (x86-imm-int NB_MASK_VALUE_32))
@@ -3399,7 +3364,7 @@
                (x86-op cgc (x86-mem (- 8 TAG_MEMOBJ) opvec opidx) opval))))
 
   (if selector-used?
-      (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0))))
+      (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))
   (if r8-saved?
       (x86-ppop cgc (x86-r8)))
   (x86-mov cgc dest (x86-imm-int (obj-encoding #!void))))
@@ -3439,7 +3404,7 @@
     (if idx-cst?
         (x86-mov cgc (x86-mem (+ 8 (* 4 lidx)) (x86-rax)) (l32 opchr) 32)
         (begin (x86-mov cgc (x86-mem 8 (x86-rax) selector-reg 2) (l32 opchr) 32)
-               (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0)))))
+               (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
     (x86-mov cgc dest (x86-imm-int (obj-encoding #!void)))))
 
 (define (codegen-p-string-set!-tag cgc fs ffs op reg inlined-cond? lstr lidx lchr str-cst? idx-cst? chr-cst?)
@@ -3480,7 +3445,7 @@
                           (set! opidx mreg)))
                ;;
                (x86-mov cgc (x86-mem (- 8 TAG_MEMOBJ) opstr opidx) selector-reg-32)
-               (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0))))))
+               (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))))
 
     (x86-mov cgc dest (x86-imm-int (obj-encoding #!void)))))
 
@@ -3570,9 +3535,11 @@
   (x86-cmp cgc (x86-rax) (x86-imm-int #xFFFF))
   (x86-jne cgc label-jump)
   ;; Check stag
-  (x86-mov cgc (x86-rax) (x86-imm-int NB_MASK_VALUE_48))
-  (x86-and cgc (x86-rax) op)
-  (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax)))
+  (if (x86-reg? op)
+      (x86-mov cgc (x86-rax) (x86-mem 0 op selector-reg))
+      (begin
+        (x86-mov cgc (x86-rax) op)
+        (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rax) selector-reg))))
   (x86-and cgc (x86-rax) (x86-imm-int 248))
   (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (ctx-type->stag type)))))
 
@@ -3614,5 +3581,5 @@
         (x86-mov cgc (x86-rax) opval)
         (x86-mov cgc selector-reg (x86-imm-int SPECIAL_MASK))
         (x86-and cgc (x86-rax) selector-reg)
-        (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0)))
+        (x86-mov cgc selector-reg (x86-imm-int selector-init-val))
         (x86-cmp cgc (x86-rax) (x86-imm-int TAG_SPECIAL)))))

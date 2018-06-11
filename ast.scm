@@ -2486,7 +2486,7 @@
              (unused-regs (set-sub (ctx-init-free-regs) used-regs)))
       (if (null? unused-regs)
           (begin (apply-moves cgc ctx moves 'selector)
-                 (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0 9))))
+                 (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))
           (apply-moves cgc ctx moves (car unused-regs)))
       ;; Force closure reg to contain #f for do_callback_fn if we call a const closure
       (if (and (not opt-entry-points)
@@ -3392,19 +3392,17 @@
 ;; clo-offset is the closure offset position from alloc-ptr
 (define (gen-free-vars cgc ids ctx free-offset base-reg)
   (let loop ((ids ids)
-             (free-offset free-offset)
-             (selector-used? #f))
+             (free-offset free-offset))
     (if (null? ids)
-        (if selector-used?
-            (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0))))
+        #f
         (let* ((id (car ids))
                (identifier (cdr (assoc id (ctx-env ctx))))
                (src-loc (ctx-identifier-loc ctx identifier))
                (fs (ctx-fs ctx))
                (ffs (ctx-ffs ctx))
                (closure-loc (and (ctx-loc-is-freemem? src-loc) (ctx-get-closure-loc ctx))))
-          (let ((r (codegen-write-free-variable cgc fs ffs src-loc free-offset closure-loc base-reg)))
-            (loop (cdr ids) (+ free-offset 1) (or r selector-used?)))))))
+          (begin (codegen-write-free-variable cgc fs ffs src-loc free-offset closure-loc base-reg)
+                 (loop (cdr ids) (+ free-offset 1)))))))
 
 ;; Return all free vars used by the list of ast knowing env 'clo-env'
 (define (free-vars-l lst params enc-ids)

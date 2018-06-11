@@ -243,7 +243,7 @@ uint64_t c_xmm_imm_shift(uint64_t i)
   (x86-add cgc sizeloc (x86-imm-int 7))
   (x86-mov cgc selector-reg (x86-imm-int -8))
   (x86-and cgc sizeloc selector-reg)
-  (x86-mov cgc selector-reg (x86-imm-int (to-64-value (obj-encoding 0)))) ;; we need to reset selector in case gc is triggered
+  (x86-mov cgc selector-reg (x86-imm-int selector-init-val)) ;; we need to reset selector in case gc is triggered
   ;; Save aligned size
   (x86-upush cgc sizeloc)
 
@@ -294,7 +294,7 @@ uint64_t c_xmm_imm_shift(uint64_t i)
       (begin (x86-mov cgc selector-reg (x86-imm-int (to-64-value (+ NB_MASK_MEM TAG_MEMOBJ))))
              (x86-xor cgc (x86-rax) selector-reg)))
   ;; Restore selector
-  (x86-mov cgc selector-reg (x86-imm-int (obj-encoding 0)))
+  (x86-mov cgc selector-reg (x86-imm-int selector-init-val))
   ;; Remove saved values
   (x86-add cgc (x86-usp) (x86-imm-int 16)))
 

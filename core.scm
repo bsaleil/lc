@@ -366,7 +366,7 @@
           (vector-ref (get-scmobj ret-addr) 0))
 
          (selector
-           (encoding-obj (get-i64 (- psp 16))))
+           (tagging-encoding-obj (get-u48 (- psp 16))))
 
          (new-ret-addr
           (run-add-to-ctime
@@ -379,7 +379,7 @@
 
     ;; reset selector
     (put-i64 (+ usp (selector-sp-offset))
-             (obj-encoding 0 5))
+             selector-init-val)
     (write_lc_stack_usedesc 0)))
 
 ;; Same behavior as 'do-callback' but calls callback with call site addr
@@ -410,7 +410,7 @@
   (block_gc)
   (write_lc_stack_ptr usp)
   (write_lc_stack_usedesc 1)
-  (if (= (encoding-obj (get-i64 (- psp 16))) 1)
+  (if (= (tagging-encoding-obj (get-u48 (- psp 16))) 1)
       ;; TODO: move in ctx
       (let* ((nargs (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-rdi))))))
              (fs (+ (max (- nargs nb-args-regs) 0) 1))
@@ -423,7 +423,7 @@
   (let* ((ret-addr (get-i64 psp))
 
          (selector
-          (encoding-obj (get-i64 (- psp 16))))
+          (tagging-encoding-obj (get-u48 (- psp 16))))
 
          (cc-idx
           (if opt-entry-points
@@ -456,7 +456,7 @@
 
     ;; reset selector
     (put-i64 (+ usp (selector-sp-offset))
-             (obj-encoding 0 6))
+             selector-init-val)
     (write_lc_stack_usedesc 0)))
     ;(println "exit do_callback_fn")))
 
@@ -465,8 +465,8 @@
 (c-define (do-callback-cont usp psp) (long long) void "do_callback_cont" ""
   (block_gc)
   (write_lc_stack_ptr usp)
-  (if (##bignum? (get-i64 (- psp 16))) (error "N1"))
-  (if (= (encoding-obj (get-i64 (- psp 16))) 1)
+  (if (##bignum? (get-u48 (- psp 16))) (error "N1"))
+  (if (= (tagging-encoding-obj (get-u48 (- psp 16))) 1)
       (error "NYI"))
   (if (##bignum? (get-i64 (+ usp (reg-sp-offset-r (x86-r11)))))
       (error "N2"))
@@ -482,7 +482,7 @@
           (vector-ref (get-scmobj ret-addr) 0))
 
          (selector
-          (encoding-obj (get-i64 (- psp 16))))
+          (tagging-encoding-obj (get-u48 (- psp 16))))
 
          (type-idx
           (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-r11))))))
@@ -503,7 +503,7 @@
 
     ;; reset selector
     (put-i64 (+ usp (selector-sp-offset))
-             (obj-encoding 0 7))
+             selector-init-val)
     (write_lc_stack_usedesc 0)))
     ;(println "exit do_callback_cont")))
 
@@ -674,10 +674,7 @@
            (x86-label cgc label)
            (if (> i 0)
                (begin
-                 (if opt-nan-boxing
-                     (x86-inc cgc (x86-rcx))
-                     (x86-add cgc (x86-ecx) (x86-imm-int (obj-encoding 1 8)))) ;; increment selector
-                 (x86-nop cgc)
+                 (x86-add cgc selector-reg (x86-imm-int (tagging-obj-encoding 1))) ;; increment selector
                  (loop (- i 1))))))
        (gen cgc)))
     stub-labels))
@@ -905,7 +902,7 @@
     (x86-mov cgc (x86-rcx) (x86-mem 0 (x86-rcx)))
     (x86-mov cgc (x86-mem (* 8 5) (x86-rax)) (x86-rcx))
 
-    (x86-mov cgc (x86-rcx) (x86-imm-int (obj-encoding 0 10)))
+    (x86-mov cgc (x86-rcx) (x86-imm-int selector-init-val))
     ;; Heap addr in alloc-ptr
     (x86-mov cgc alloc-ptr (x86-imm-int (get-hp-addr)))
     (x86-mov cgc alloc-ptr (x86-mem 0 alloc-ptr))
@@ -1321,7 +1318,7 @@
     (if (< (cdar r) 0)
         (x86-add cgc (x86-rsp) (x86-imm-int (* -8 (cdar r)))))
     (if selector-used?
-        (x86-xor cgc selector-reg selector-reg))))
+        (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))))
 
 
 ;;-----------------------------------------------------------------------------
