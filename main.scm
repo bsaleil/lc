@@ -129,6 +129,10 @@
      not necessarily expected if --disable-entry-points is provided"
      ,(lambda (args) (set! opt-lazy-inlined-call #f) args))
 
+  (--disable-pair-tag
+    "Use the genereric tag TAG_MEMOBJ for pairs instead of the specific TAG_PAIR"
+    ,(lambda (args) (set! opt-disable-pair-tag #t) args))
+
   (--enable-regalloc-inlined-call
     "TODO"
     ,(lambda (args) (set! opt-regalloc-inlined-call #t) args))

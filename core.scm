@@ -63,6 +63,7 @@
 (define opt-lazy-inlined-call    #t) ;; The function body is inlined at a call if (1) the identity of the callee is known, (2) there is no version of the function for this ctx
 (define opt-nan-boxing           #f) ;; Use nan boxing istead of tagging to encode values
 (define opt-float-unboxing       #t) ;; Use automatic float unboxing based on type specialization
+(define opt-disable-pair-tag     #f) ;; Use the generic TAG_MEMOBJ tag for pairs instead of the specific TAG_PAIR tag
 
 (define opt-propagate-continuation #f) ;; TODO
 (define opt-regalloc-inlined-call #f)  ;; TODO
@@ -919,6 +920,9 @@
       (x86-label cgc label))))
 
 (define (init-backend)
+
+  (if opt-disable-pair-tag
+      (set! TAG_PAIR TAG_MEMOBJ))
 
   (init-c)
   (init-code-allocator)
@@ -1903,7 +1907,7 @@
                           ((ctx-type-nul? ctx-type)
                            (codegen-test-value cgc opval '()))
                           ;; Pair type test
-                          ((and (ctx-type-pai? ctx-type) (not opt-nan-boxing))
+                          ((and (ctx-type-pai? ctx-type) (not opt-nan-boxing) (not opt-disable-pair-tag))
                            (x86-mov cgc (x86-rax) (x86-imm-int 3))
                            (x86-and cgc (x86-rax) opval)
                            (x86-cmp cgc (x86-rax) (x86-imm-int TAG_PAIR)))
