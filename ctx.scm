@@ -2099,7 +2099,7 @@
                    (cons move pending-moves)
                    dst)))))
 
-;; TODO: compute gc map descriptor from ctx
+;; Compute gc map descriptor from ctx
 ;; Descriptor is:
 ;; | ...56 bits... | ...8 bits... |
 ;; | frame objects |      fs      |

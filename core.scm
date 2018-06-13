@@ -167,6 +167,7 @@
 (define get_lc_stack_ptr_addr #f)
 (define block_gc #f)
 (define unblock_gc #f)
+(define selector-init-val #f)
 
 ;;-----------------------------------------------------------------------------
 

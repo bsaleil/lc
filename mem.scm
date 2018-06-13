@@ -32,6 +32,7 @@
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
+(define selector-init-val #f)
 (define MSECTION_BIGGEST 255) ;; words
 (define MSECTION_FUDGE  8192) ;; words
 
