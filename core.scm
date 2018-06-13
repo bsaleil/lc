@@ -295,7 +295,7 @@
 ;; The procedure exec-error is callable from generated machine code.
 ;; This function print the error message in rax
 (c-define (rt-error usp psp) (long long) void "rt_error" ""
-  (block_gc)
+  (block_gc 0)
   (let ((msg (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-rbx)))))))
     (if (not (equal? msg ""))
         (println msg))
@@ -304,7 +304,7 @@
 ;;-----------------------------------------------------------------------------
 
 (c-define (gambit-str-to-sym-tag usp psp) (long long) void "gambit_str_to_sym_tag" ""
-  (block_gc)
+  (block_gc 1)
   (let* ((encoding48 (get-u48 (+ usp 88)))
          (str (##encoding->object encoding48))
          (sym (string->symbol str)))
@@ -313,7 +313,7 @@
   (unblock_gc))
 
 (c-define (gambit-str-to-sym-nan usp psp) (long long) void "gambit_str_to_sym_nan" ""
-  (block_gc)
+  (block_gc 2)
   (let* ((encoding48 (get-u48 (+ usp 88)))
          (str (##encoding->object (+ encoding48 TAG_MEMOBJ)))
          (sym (string->symbol str)))
@@ -322,7 +322,7 @@
   (unblock_gc))
 
 (c-define (gambit-call usp psp) (long long) void "gambit_call" ""
-  (block_gc)
+  (block_gc 3)
   (let* ((nargs
            (encoding-obj (get-i64 (+ usp (* (+ (length regalloc-regs) 2) 8)))))
          (op-sym
@@ -356,7 +356,7 @@
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
 (c-define (do-callback usp psp) (long long) void "do_callback" ""
-  (block_gc)
+  (block_gc 4)
   (write_lc_stack_ptr usp)
   (write_lc_stack_usedesc 3)
   (write_lc_stack_desc (vector-ref (get-scmobj (get-i64 psp)) 1))
@@ -408,7 +408,7 @@
 ;; | Call arg 1    |
 ;; +---------------+
 (c-define (do-callback-fn usp psp) (long long) void "do_callback_fn" ""
-  (block_gc)
+  (block_gc 5)
   (write_lc_stack_ptr usp)
   (write_lc_stack_usedesc 1)
   (if (= (tagging-encoding-obj (get-u48 (- psp 16))) 1)
@@ -464,7 +464,7 @@
 ;; The procedures do-callback* are callable from generated machine code.
 ;; RCX holds selector (CL)
 (c-define (do-callback-cont usp psp) (long long) void "do_callback_cont" ""
-  (block_gc)
+  (block_gc 6)
   (write_lc_stack_ptr usp)
   (if (##bignum? (get-u48 (- psp 16))) (error "N1"))
   (if (= (tagging-encoding-obj (get-u48 (- psp 16))) 1)

@@ -195,8 +195,8 @@ uint64_t c_xmm_imm_shift(uint64_t i)
 (define (get_lc_stack_ptr_addr)
   ((c-lambda () long "___result = &lc_global_ctx.lc_stack_ptr;")))
 
-(define (block_gc)
-  ((c-lambda () void "lc_global_ctx.gc_lock = 1;")))
+(define (block_gc n)
+  ((c-lambda (long) void "lc_global_ctx.gc_lock = ___arg1;") n))
 
 (define (unblock_gc)
   ((c-lambda () void "lc_global_ctx.gc_lock = 0;")))
