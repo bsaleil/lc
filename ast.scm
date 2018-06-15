@@ -359,12 +359,14 @@
     (vector              (,ATX_VEC)          #f             ,lco-p-vector     #f                            #t       ,ATX_VEC #f                           )
     (f64vector           (,ATX_FEC)          #f             ,lco-p-f64vector  #f                            #f       ,ATX_FEC #f ,ATX_FLO                  )
     (list                (,ATX_PAI)          #f             ,lco-p-list       #f                            #t       ,ATX_PAI #f                           )
+    (bitwise-and         (,ATX_INT)          ,dummy-cst-all #f                ,codegen-p-bitwise-and        #f       ,ATX_INT 2 ,ATX_INT ,ATX_INT          )
     ;; These primitives are inlined during expansion but still here to build lambda
     (real?               (,ATX_NUM)          ,dummy-cst-all #f                #f                            #f       ,ATX_BOO 1 ,ATX_ALL                   )
     (eqv?                #f                  ,dummy-cst-all #f                #f                            #f       ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          )
     ;;
     (##print-double      #f                  #f             #f                ,codegen-p-print-double       #f       ,ATX_VOI 1 ,ATX_FLO                   )
-    (##print-perm-string #f                  #f             #f                ,codegen-p-print-perm-string  #f       ,ATX_VOI 1 ,ATX_STR                   ))))
+    (##print-perm-string #f                  #f             #f                ,codegen-p-print-perm-string  #f       ,ATX_VOI 1 ,ATX_STR                   )
+    (##process-statistics #f                 #f             #f                ,codegen-p-process-statistics #f       ,ATX_FEC 0                            ))))
 
 (define (get-prim-lambda ast sym primitive)
   (let ((nbargs (primitive-nbargs primitive)))
