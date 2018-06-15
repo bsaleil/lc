@@ -75,13 +75,13 @@
        r)))
 
 (define (##lc-exec-stats thunk)
-  (let* ((at-start (gambit$$##process-statistics))
+  (let* ((at-start (##process-statistics))
          (result (thunk))
-         (at-end (gambit$$##process-statistics)))
+         (at-end (##process-statistics)))
     (define (get-info msg idx)
       (cons msg
-            (- (gambit$$##f64vector-ref at-end idx)
-            (gambit$$##f64vector-ref at-start idx))))
+            (- (f64vector-ref at-end idx)
+               (f64vector-ref at-start idx))))
     (list
       result
       (get-info "User time" 0)
