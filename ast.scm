@@ -361,7 +361,10 @@
     (list                (,ATX_PAI)          #f             ,lco-p-list       #f                            #t       ,ATX_PAI #f                           )
     ;; These primitives are inlined during expansion but still here to build lambda
     (real?               (,ATX_NUM)          ,dummy-cst-all #f                #f                            #f       ,ATX_BOO 1 ,ATX_ALL                   )
-    (eqv?                #f                  ,dummy-cst-all #f                #f                            #f       ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          ))))
+    (eqv?                #f                  ,dummy-cst-all #f                #f                            #f       ,ATX_BOO 2 ,ATX_ALL ,ATX_ALL          )
+    ;;
+    (##print-double      #f                  #f             #f                ,codegen-p-print-double       #f       ,ATX_VOI 1 ,ATX_FLO                   )
+    (##print-perm-string #f                  #f             #f                ,codegen-p-print-perm-string  #f       ,ATX_VOI 1 ,ATX_STR                   ))))
 
 (define (get-prim-lambda ast sym primitive)
   (let ((nbargs (primitive-nbargs primitive)))

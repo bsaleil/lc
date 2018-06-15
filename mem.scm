@@ -143,11 +143,50 @@ uint64_t c_xmm_imm_shift(uint64_t i)
     uint64_t r = (64 - highest + lowest);
     return (i == 0) | l << 16 | r << 32;
 }
+
+void lc_print_double(double d)
+{
+    printf(\"%.16f\", d);
+}
+
+void lc_print_perm_string_tag(___U64 s)
+{
+    ___U64* ptr = (___U64*)(s-1);
+    ___U64 header = ptr[0];
+    ___U64 size = (header >> 10);
+
+    ___U32* str_ptr = (___U32*)(ptr+1);
+
+    for (___U64 i=0; i<size; i++)
+        printf(\"%c\",(char)str_ptr[i]);
+}
+
+void lc_print_perm_string_nan(___U64 s)
+{
+    ___U64* ptr = (___U64*)(s&0x0000FFFFFFFFFFFF);
+    ___U64 header = ptr[0];
+    ___U64 size = (header >> 10);
+
+    ___U32* str_ptr = (___U32*)(ptr+1);
+
+    for (___U64 i=0; i<size; i++)
+        printf(\"%c\",(char)str_ptr[i]);
+}
+
 ")
 
 ;; TODO: remove signal stack when gambit accepts new flag
 (define (init-c)
   ((c-lambda () void "initc")))
+
+(define (get_print_double-addr)
+  ((c-lambda () long "___result = &lc_print_double;")))
+
+(define (get_print_perm_string_tag-addr)
+  ((c-lambda () long "___result = &lc_print_perm_string_tag;")))
+
+(define (get_print_perm_string_nan-addr)
+  ((c-lambda () long "___result = &lc_print_perm_string_nan;")))
 
 (define (get___heap_limit-addr)
   ((c-lambda () long "get___heap_limit_addr")))

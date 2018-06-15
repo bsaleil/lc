@@ -257,15 +257,15 @@ systems = []
 # systems.append(lc_with_options("LC", []))
 
 # LC
-systems.append(lc_with_options("LC", []))
-systems.append(lc_with_options("LC-noopt", ["--disable-float-unboxing"]))
-systems.append(lc_with_options("LC-nan", ["--nan-boxing"]))
-systems.append(lc_with_options("LC-nan-noopt", ["--nan-boxing","--disable-float-unboxing"]))
+# systems.append(lc_with_options("LC", []))
+# systems.append(lc_with_options("LC-noopt", ["--disable-float-unboxing"]))
+# systems.append(lc_with_options("LC-nan", ["--nan-boxing"]))
+# systems.append(lc_with_options("LC-nan-noopt", ["--nan-boxing","--disable-float-unboxing"]))
 
-systems.append(lcf64v_with_options("LCf64v", []))
-systems.append(lcf64v_with_options("LCf64v-noopt", ["--disable-float-unboxing"]))
-systems.append(lcf64v_with_options("LCf64v-nan", ["--nan-boxing"]))
-systems.append(lcf64v_with_options("LCf64v-nan-noopt", ["--nan-boxing","--disable-float-unboxing"]))
+systems.append(lcf64v_with_options("LCf64v", ["--disable-pair-tag"]))
+systems.append(lcf64v_with_options("LCf64v-noopt", ["--disable-pair-tag","--disable-float-unboxing"]))
+systems.append(lcf64v_with_options("LCf64v-nan", ["--disable-pair-tag","--nan-boxing"]))
+systems.append(lcf64v_with_options("LCf64v-nan-noopt", ["--disable-pair-tag","--nan-boxing","--disable-float-unboxing"]))
 
 # Gambit
 # systems.append(gambit_no_options("Gambit", 512000))

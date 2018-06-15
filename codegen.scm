@@ -3503,6 +3503,63 @@
       (x86-jmp cgc loop)
     (x86-label cgc loop-end)))
 
+(define (codegen-p-print-double cgc gc-desc fs ffs op reg inlined-cond? lval cst?)
+  (assert (not cst?) "Internal error")
+  (let ((dest (codegen-reg-to-x86reg reg))
+        (opnd (codegen-loc-to-x86opnd fs ffs lval))
+        (label (asm-make-label #f (new-sym 'print_double) (get_print_double-addr))))
+    (ppush-pop-xmm
+      cgc
+      regalloc-fregs
+      (lambda (cgc)
+        (ppush-pop-regs
+          cgc
+          c-caller-save-regs
+          (lambda (cgc)
+            (x86-mov cgc (x86-rax) (x86-rsp))
+            (x86-and cgc (x86-rsp) (x86-imm-int -16))
+            (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+            (if (or opt-float-unboxing opt-nan-boxing)
+                (if (or (x86-xmm? opnd) (x86-mem? opnd))
+                    (x86-movsd cgc (x86-xmm0) opnd)
+                    (x86-movd/movq cgc (x86-xmm0) opnd))
+                (begin
+                    (x86-mov cgc (x86-rdi) opnd)
+                    (x86-movsd cgc (x86-xmm0) (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) (x86-rdi)))))
+            (x86-ppush cgc (x86-rax))
+            (x86-pcall cgc label)
+            (x86-ppop cgc (x86-rsp))))))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #!void)))))
+
+(define (codegen-p-print-perm-string cgc gc-desc fs ffs op reg inlined-cond? lval cst?)
+
+  (define cfn-addr
+          (if opt-nan-boxing
+              (get_print_perm_string_nan-addr)
+              (get_print_perm_string_tag-addr)))
+
+  (let ((dest (codegen-reg-to-x86reg reg))
+        (opnd (and (not cst?) (codegen-loc-to-x86opnd fs ffs lval)))
+        (label (asm-make-label #f (new-sym 'print_perm_string) cfn-addr)))
+    (ppush-pop-xmm
+      cgc
+      regalloc-fregs
+      (lambda (cgc)
+        (ppush-pop-regs
+          cgc
+          c-caller-save-regs
+          (lambda (cgc)
+            (x86-mov cgc (x86-rax) (x86-rsp))
+            (x86-and cgc (x86-rsp) (x86-imm-int -16))
+            (x86-sub  cgc (x86-rsp) (x86-imm-int 8))
+            (if cst?
+                (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding lval)))
+                (x86-mov cgc (x86-rdi) opnd))
+            (x86-ppush cgc (x86-rax))
+            (x86-pcall cgc label)
+            (x86-ppop cgc (x86-rsp))))))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #!void)))))
+
 ;;-----------------------------------------------------------------------------
 ;; Type checks
 ;;-----------------------------------------------------------------------------
