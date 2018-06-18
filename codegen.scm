@@ -3459,6 +3459,39 @@
           (x86-mov cgc opnd (x86-rax))
           (x86-shl cgc opnd (x86-imm-int 2))))))
 
+(define (codegen-p-bitwise-and cgc gc-desc fs ffs op reg inlined-cond? lleft lright lcst? rcst?)
+  (assert (not (and lcst? rcst?)) "Internal error")
+
+  (let ((dest (codegen-reg-to-x86reg reg))
+        (lopnd (and (not lcst?) (codegen-loc-to-x86opnd fs ffs lleft)))
+        (ropnd (and (not rcst?) (codegen-loc-to-x86opnd fs ffs lright))))
+
+   (cond (lcst?
+           (if (not (eq? dest ropnd))
+               (x86-mov cgc dest ropnd))
+           (let ((imm (obj-encoding lleft)))
+             (if (int32? imm)
+                 (x86-and cgc dest (x86-imm-int imm))
+                 (begin
+                   (x86-mov cgc (x86-rax) (x86-imm-int imm))
+                   (x86-and cgc dest (x86-rax))))))
+         (rcst?
+           (if (not (eq? dest ropnd))
+               (x86-mov cgc dest lopnd))
+           (let ((imm (obj-encoding lright)))
+             (if (int32? imm)
+                 (x86-and cgc dest (x86-imm-int imm))
+                 (begin
+                   (x86-mov cgc (x86-rax) (x86-imm-int imm))
+                   (x86-and cgc dest (x86-rax))))))
+         ((eq? dest ropnd)
+           (x86-and cgc ropnd lopnd))
+         ((eq? dest lopnd)
+           (x86-and cgc lopnd ropnd))
+         (else
+           (x86-mov cgc dest lopnd)
+           (x86-and cgc dest ropnd)))))
+
 ;;-----------------------------------------------------------------------------
 ;; Others
 ;;-----------------------------------------------------------------------------
@@ -3559,6 +3592,16 @@
             (x86-pcall cgc label)
             (x86-ppop cgc (x86-rsp))))))
     (x86-mov cgc dest (x86-imm-int (obj-encoding #!void)))))
+
+(define (codegen-p-process-statistics cgc gc-desc fs ffs op reg inlined-cond?)
+  (let ((dest  (codegen-reg-to-x86reg reg)))
+    (x86-mov cgc (x86-rax) (x86-imm-int 0))
+    (x86-upush cgc (x86-rax))
+    (x86-pcall cgc label-gambit-process-statistics-handler)
+    (x86-upop cgc dest)
+    (if opt-nan-boxing
+        (begin (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
+               (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ) dest (x86-rax)))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Type checks

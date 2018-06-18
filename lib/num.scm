@@ -61,9 +61,6 @@
             (min-h (cdr els) m)))))
   (min-h l a))
 
-(define (bitwise-and a b)
-  (gambit$$bitwise-and a b))
-
 (define (arithmetic-shift n s)
   (cond ((> s 0) (* n (expt 2 s)))
         (else

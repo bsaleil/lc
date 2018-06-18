@@ -303,6 +303,13 @@
 
 ;;-----------------------------------------------------------------------------
 
+(c-define (gambit-process-statistics usp psp) (long long) void "gambit_process_statistics" ""
+  (block_gc 7)
+  (let ((v (##process-statistics)))
+    (put-i64 (+ usp 88)
+             (##object->encoding v)))
+  (unblock_gc))
+
 (c-define (gambit-str-to-sym-tag usp psp) (long long) void "gambit_str_to_sym_tag" ""
   (block_gc 1)
   (let* ((encoding48 (get-u48 (+ usp 88)))
@@ -524,6 +531,7 @@
 (define (init-labels cgc)
   (set-cdef-label! label-rt-error          'rt_error          "___result = ___CAST(void*,rt_error);")
   (set-cdef-label! label-gambit-call       'gambit_call       "___result = ___CAST(void*,gambit_call);")
+  (set-cdef-label! label-gambit-process-statistics 'gambit_process_statistics "___result = ___CAST(void*,gambit_process_statistics);")
   (set-cdef-label! label-gambit-str-to-sym-tag 'gambit_str_to_sym_tag "___result = ___CAST(void*,gambit_str_to_sym_tag);")
   (set-cdef-label! label-gambit-str-to-sym-nan 'gambit_str_to_sym_nan "___result = ___CAST(void*,gambit_str_to_sym_nan);")
   (set-cdef-label! label-do-callback       'do_callback       "___result = ___CAST(void*,do_callback);")
@@ -705,15 +713,16 @@
 
 ;;-----------------------------------------------------------------------------
 
-(define label-heap-limit-handler        #f)
-(define label-alloc-still-handler       #f)
-(define label-gambit-call-handler       #f)
-(define label-gambit-str-to-sym-handler #f)
-(define label-do-callback-handler       #f)
-(define label-do-callback-fn-handler    #f)
-(define label-do-callback-cont-handler  #f)
-(define label-rt-error-handler          #f)
-(define label-err-wrong-num-args        #f)
+(define label-heap-limit-handler                #f)
+(define label-alloc-still-handler               #f)
+(define label-gambit-call-handler               #f)
+(define label-gambit-process-statistics-handler #f)
+(define label-gambit-str-to-sym-handler         #f)
+(define label-do-callback-handler               #f)
+(define label-do-callback-fn-handler            #f)
+(define label-do-callback-cont-handler          #f)
+(define label-rt-error-handler                  #f)
+(define label-err-wrong-num-args                #f)
 
 (define (gen-addr-handler cgc id addr cargs-generator)
   (let ((label-handler (asm-make-label cgc id)))
@@ -853,6 +862,10 @@
 
     (set! label-gambit-call-handler
           (gen-handler cgc 'gambit_call_handler label-gambit-call))
+    (x86-ret cgc)
+
+    (set! label-gambit-process-statistics-handler
+          (gen-handler cgc 'gambit_process_statistics label-gambit-process-statistics))
     (x86-ret cgc)
 
     (set! label-gambit-str-to-sym-handler
