@@ -363,9 +363,9 @@
               ((member (car expr) '(real? eqv?))  (using-same-locat (expand-prim expr)       expr))
               ((member (car expr) '(> >= < <= =)) (using-same-locat (expand-cmp expr)        expr))
               ((member (car expr) '(+ - * /))     (using-same-locat (expand-numop expr)      expr))
-              ((member (car expr)
-                       '(FLOAT> FLOAT>= FLOAT< FLOAT<= FLOAT= FLOAT+ FLOAT- FLOAT* FLOAT/))
-                 (using-same-locat (expand-fop expr) expr))
+              ; ((member (car expr)
+              ;          '(FLOAT> FLOAT>= FLOAT< FLOAT<= FLOAT= FLOAT+ FLOAT- FLOAT* FLOAT/))
+              ;    (using-same-locat (expand-fop expr) expr))
               ((member (car expr) list-accessors) (using-same-locat (expand-accessor expr) expr))
               (else
                  (using-same-locat

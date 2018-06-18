@@ -1787,13 +1787,51 @@
 ;; jump to lazy-fail if test fails
 (define (gen-dyn-type-test ctx-type stack-idx lazy-success lazy-fail #!optional ast)
 
+  (define lazy-funbox
+    (make-lazy-code
+      (make-lco-id 105)
+      (lambda (cgc ctx)
+        ;; alloc register
+        (let* ((r (ctx-get-free-freg ast ctx lazy-success 0))
+               (moves (car r))
+               (freg  (cadr r))
+               (ctx   (caddr r))
+               (dest (codegen-freg-to-x86reg freg))
+               (loc  (ctx-get-loc ctx stack-idx))
+               (opnd (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc)))
+          ;; apply moves
+          (apply-moves cgc ctx moves)
+          ;; unbox value
+          (if opt-nan-boxing
+              ;; NaN-boxing lazy unboxing
+              (if (x86-mem? opnd)
+                  (x86-movsd cgc dest opnd)
+                  (x86-movd/movq cgc dest opnd))
+              ;; Tagging lazy unboxing
+              (begin
+                (if (x86-mem? opnd)
+                    (begin (x86-mov cgc (x86-rax) opnd)
+                           (set! opnd (x86-rax))))
+                (if opt-stats
+                    (gen-inc-slot cgc 'flunbox))
+                (x86-movsd cgc dest (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opnd))))
+          ;; update ctx
+          (let* ((type-ctor (ctx-type-ctor ctx-type))
+                 (ctx
+                   (let* ((ident (ctx-ident-at ctx stack-idx))
+                                 (tctx (ctx-set-type ctx stack-idx (type-ctor) #t)))
+                          (if ident
+                              (foldr (lambda (slot ctx) (ctx-set-loc ctx slot freg))
+                                     tctx
+                                     (identifier-sslots (cdr ident)))
+                              (ctx-set-loc tctx (stack-idx-to-slot tctx stack-idx) freg)))))
+            (jump-to-version cgc lazy-success ctx))))))
+
   (make-lazy-code
      (make-lco-id 102)
      (lambda (cgc ctx)
 
        (define type-ctor (ctx-type-ctor ctx-type))
-
-
 
        (let* ((ctx-success-known ctx);; If know type is tested type, do not change ctx (TODO?)
               (ctx-fail ctx)
@@ -1812,24 +1850,16 @@
                 (jump-to-version cgc lazy-success ctx-success-known))
                (else
                  (let* (;;
-                        (r (and (ctx-type-flo? ctx-type)
-                                opt-float-unboxing
-                                (ctx-get-free-freg ast ctx lazy-success 0)))
-                        (moves (and r (car r)))
-                        (freg  (and r (cadr r)))
-                        (ctx   (if  r (caddr r) ctx))
-                        ;;
+                        (lazy-success
+                          (if (and (ctx-type-flo? ctx-type)
+                                   opt-float-unboxing)
+                              lazy-funbox
+                              lazy-success))
                         (ctx-success
-                            (if (and (ctx-type-flo? ctx-type)
-                                     opt-float-unboxing)
-                                (let* ((ident (ctx-ident-at ctx stack-idx))
-                                       (tctx (ctx-set-type ctx stack-idx (type-ctor) #t)))
-                                  (if ident
-                                      (foldr (lambda (slot ctx) (ctx-set-loc ctx slot freg))
-                                             tctx
-                                             (identifier-sslots (cdr ident)))
-                                      (ctx-set-loc tctx (stack-idx-to-slot tctx stack-idx) freg)))
-                                (ctx-set-type ctx stack-idx (type-ctor) #t)))
+                          (if (and (ctx-type-flo? ctx-type)
+                                   opt-float-unboxing)
+                              ctx
+                              (ctx-set-type ctx stack-idx (type-ctor) #t)))
                         (x86-op x86-je)
                         (label-jump (asm-make-label cgc (new-sym 'patchable_jump)))
                         (stub-first-label-addr #f)
@@ -1884,10 +1914,6 @@
                         (min (asm-label-pos (list-ref stub-labels 0))
                              (asm-label-pos (list-ref stub-labels 1))))
 
-                  ;; If we check a flonum, apply moves
-                  (if moves
-                      (apply-moves cgc ctx moves))
-
                   (if opt-verbose-jit
                       (println ">>> Gen dynamic type test at index " stack-idx))
 
@@ -1912,20 +1938,15 @@
                           ;; Char type check
                           ((ctx-type-cha? ctx-type)
                            (codegen-test-char cgc opval))
-                          ;; TODO WIP
+                          ;; Float nan boxing (NOTE: move to codegen-test-mem-obj)
                           ((and (ctx-type-flo? ctx-type) opt-nan-boxing)
                            (x86-mov cgc (x86-rax) opval)
                            (x86-shr cgc (x86-rax) (x86-imm-int 48))
                            (x86-cmp cgc (x86-rax) (x86-imm-int NB_MASK_FLO_MAX_UNSHIFTED))
-                           (set! x86-op x86-jle)
-                           (if opt-float-unboxing
-                               (let ((fopnd (codegen-freg-to-x86reg freg)))
-                                 (if (x86-mem? opval)
-                                     (x86-movsd cgc fopnd opval)
-                                     (x86-movd/movq cgc fopnd opval)))))
+                           (set! x86-op x86-jle))
                           ;; Procedure type test
                           ((ctx-type-mem-allocated? ctx-type)
-                            (codegen-test-mem-obj cgc ast opval lval ctx-type label-jump freg))
+                            (codegen-test-mem-obj cgc ast opval lval ctx-type label-jump))
                           ;; Other
                           (else (error "Unknown type " ctx-type)))
 

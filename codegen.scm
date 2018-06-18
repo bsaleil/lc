@@ -3581,12 +3581,12 @@
         (begin
           (x86-cmp cgc op (x86-imm-int imm))))))
 
-(define (codegen-test-mem-obj cgc ast op loc type label-jump freg)
+(define (codegen-test-mem-obj cgc ast op loc type label-jump)
   (if opt-nan-boxing
-      (codegen-test-mem-obj-nan cgc ast op loc type label-jump freg)
-      (codegen-test-mem-obj-tag cgc ast op loc type label-jump freg)))
+      (codegen-test-mem-obj-nan cgc ast op loc type label-jump)
+      (codegen-test-mem-obj-tag cgc ast op loc type label-jump)))
 
-(define (codegen-test-mem-obj-nan cgc ast op loc type label-jump freg)
+(define (codegen-test-mem-obj-nan cgc ast op loc type label-jump)
   (x86-mov cgc (x86-rax) op)
   (x86-shr cgc (x86-rax) (x86-imm-int 48))
   (x86-cmp cgc (x86-rax) (x86-imm-int #xFFFF))
@@ -3600,7 +3600,7 @@
   (x86-and cgc (x86-rax) (x86-imm-int 248))
   (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (ctx-type->stag type)))))
 
-(define (codegen-test-mem-obj-tag cgc ast op loc type label-jump freg)
+(define (codegen-test-mem-obj-tag cgc ast op loc type label-jump)
   ;; Check tag
   (x86-mov cgc (x86-rax) op)
   (x86-and cgc (x86-rax) (x86-imm-int 3))
@@ -3614,18 +3614,7 @@
       (x86-mov cgc (x86-rax) (x86-mem (* -1 TAG_MEMOBJ) op)))
   (x86-and cgc (x86-rax) (x86-imm-int 248)) ;; 0...011111000 to get type in object header
   ;; stag xxx << 3
-  (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (ctx-type->stag type))))
-
-  (if (and (ctx-type-flo? type)
-           opt-float-unboxing)
-      (let ((opnd (codegen-freg-to-x86reg freg)))
-        (x86-jne cgc label-jump)
-        (if (x86-mem? op)
-            (begin (x86-mov cgc (x86-rax) op)
-                   (set! op (x86-rax))))
-        (if opt-stats
-            (gen-inc-slot cgc 'flunbox))
-        (x86-movsd cgc opnd (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) op)))))
+  (x86-cmp cgc (x86-rax) (x86-imm-int (* 8 (ctx-type->stag type)))))
 
 (define (codegen-test-char cgc opval)
   (if opt-nan-boxing
