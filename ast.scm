@@ -1700,11 +1700,7 @@
          (gen  (primitive-codegen prim))
          (fs (ctx-fs ctx))
          (ffs (ctx-ffs ctx))
-         ;; TODO NOTE
-         (gc-desc
-            (if (not (ctx-fn-num ctx))
-                0
-                (ctx->gc-map-desc ctx)))
+         (gc-desc (ctx->gc-map-desc ctx))
          (nargs (primitive-nbargs prim))
          (r  (build-list
                   nargs

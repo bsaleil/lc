@@ -10,7 +10,6 @@ GDB=""
 TRACE_HEAP="-:"
 #TRACE_HEAP="-:d2,"
 HEAP="m512000"
-#HEAP="m10000"
 
 for (( i=1; i<="$#"; i++ ))
 do

@@ -418,7 +418,8 @@
   (block_gc 5)
   (write_lc_stack_ptr usp)
   (write_lc_stack_usedesc 1)
-  (if (= (tagging-encoding-obj (get-u48 (- psp 16))) 1)
+  (if (or (not opt-entry-points)
+          (= (tagging-encoding-obj (get-u48 (- psp 16))) 1))
       ;; TODO: move in ctx
       (let* ((nargs (encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-rdi))))))
              (fs (+ (max (- nargs nb-args-regs) 0) 1))
@@ -448,8 +449,11 @@
 
          ;; Closure is used as a Gambit procedure to keep an updated reference
          (closure
-          #f)
-          ;(encoding-obj (get-i64 (+ usp (reg-sp-offset-r (x86-rsi))))))
+          (and (not opt-entry-points)
+               (let ((u48 (get-u48 (+ usp (reg-sp-offset-r (x86-rsi))))))
+                 (if (= (bitwise-and u48 #b11) TAG_MEMOBJ)
+                     (##encoding->object u48)
+                     #f))))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))

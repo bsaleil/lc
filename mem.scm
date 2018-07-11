@@ -361,7 +361,7 @@ void lc_print_perm_string_nan(___U64 s)
   (x86-mov cgc (x86-rax) (x86-imm-int (+ (* 5 8) block-addr)))
   (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
 
-  ;(x86-jle cgc label-alloc-end)
+  (x86-jle cgc label-alloc-end)
   ;; else
     (x86-mov cgc (x86-rax) (x86-imm-int gc-desc))
     (x86-upush cgc (x86-rax))

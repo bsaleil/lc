@@ -347,7 +347,9 @@
              (set! asc-entry-load #f)
              (set! ctime-entries  #f)
              (set! stub-freelist  #f)
-             (u64vector-fill! ustack #xFFFE000000000000)
+             (if opt-nan-boxing
+                 (u64vector-fill! ustack #xFFFE000000000000)
+                 (u64vector-fill! ustack 0))
              (if opt-nan-boxing
                  (u64vector-fill! globals-space #xFFFE000000000000)
                  (vector-fill! globals-space 0))
