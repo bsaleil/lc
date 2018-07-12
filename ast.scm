@@ -1360,7 +1360,7 @@
     (define (get-lazy-alloc succ)
       (make-lazy-code
         (make-lco-id 16)
-        (lambda (cgc ctx) mtn
+        (lambda (cgc ctx)
           (gen-allocation-imm cgc STAG_PROCEDURE (* 8 (- closures-size 1)) (ctx->gc-map-desc ctx))
           (jump-to-version cgc (get-lazy-init-closures succ) ctx))))
 
