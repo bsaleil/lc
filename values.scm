@@ -140,9 +140,6 @@
                 ((eof-object? obj)
                    NB_ENCODED_EOF)
                 (else
-                   (println "OUT") (force-output)
-                   (pp obj)
-                   (pp i)
                    (error "NYI1")))))
    (let ((encoding
            (if (>= v (expt 2 63)) (- v (expt 2 64)) v)))

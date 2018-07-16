@@ -770,7 +770,7 @@
 
 ;; Generate function return using a return address
 ;; Retaddr (or cctable) is in rdx
-(define (codegen-return-rp cgc fs ffs lretobj lretval float?)
+(define (codegen-return-rp cgc gc-desc fs ffs lretobj lretval float?)
 
     (let ((opret    (codegen-reg-to-x86reg return-reg))
           (opretval (codegen-loc-to-x86opnd fs ffs lretval)))
@@ -783,7 +783,7 @@
       (if float?
           ;; Box float
           (begin
-            (gen-allocation-imm cgc STAG_FLONUM 8)
+            (gen-allocation-imm cgc STAG_FLONUM 8 gc-desc)
             (if (x86-mem? opretval)
                 (error "NYI")
                 (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opretval))
@@ -838,7 +838,7 @@
 ;; Generate function call using a single entry point
 ;; eploc is the cctable or entry points if it's known
 (define (codegen-call-ep cgc nb-args eploc direct-eploc)
-  (if opt-nan-boxing (error "NYI codegen nan"))
+
   (if nb-args ;; If nb-args given, move encoded in rdi, else nb-args is already encoded in rdi (apply)
       (x86-mov cgc (x86-rdi) (x86-imm-int (obj-encoding nb-args 21))))
 
@@ -853,8 +853,13 @@
           (error "NYI codegen-call-ep"))
           ;(x86-jmp cgc (x86-mem (+ eploc 8) #f)))
         (else
-          (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
-          (x86-jmp cgc (x86-rdx)))))
+          (if opt-nan-boxing
+              (begin
+                (x86-mov cgc (x86-rdx) (x86-mem 8 (x86-rsi) selector-reg))
+                (x86-jmp cgc (x86-rdx)))
+              (begin
+                (x86-mov cgc (x86-rdx) (x86-mem (- 8 TAG_MEMOBJ) (x86-rsi)))
+                (x86-jmp cgc (x86-rdx)))))))
 
 ;; Generate function call using a cctable and generic entry point
 ;; eploc is the cctable or entry points if it's known

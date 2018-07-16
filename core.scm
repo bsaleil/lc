@@ -547,9 +547,14 @@
 ;; Machine code block management
 
 ;; CODE
-(define code-len 12000000)
+(define code-len 6000000)
 (define code-addr #f)
 (define mcb #f)
+
+;; STUB SPACE
+(define ssb-len 6000000)
+(define ssb-addr #f)
+(define ssb #f)
 
 ;; User stack (ustack) is the used by generated machine code
 ;; This stack is a scheme object. This allows the Gambit GC to scan the stack
@@ -560,7 +565,10 @@
 (define ustack-len 1000000) ;; 1M
 (define (init-mcb)
   (set! mcb (make-mcb code-len))
+  (set! ssb (make-mcb ssb-len))
   (set! code-addr (##foreign-address mcb))
+  (set! ssb-addr (##foreign-address ssb))
+  (write_stubs_limits ssb-addr (+ ssb-addr ssb-len))
   (begin (set! ustack (make-u64vector ustack-len #xFFFE000000000000))
          (write_lc_stack (object-address ustack)))
   (set! ustack-init (+ (object-address ustack) 8 (* 8 ustack-len))))
@@ -652,7 +660,7 @@
   (init-block)
   (init-mcb)
   (set! code-alloc code-addr)
-  (set! stub-alloc (+ code-addr code-len))
+  (set! stub-alloc (+ ssb-addr ssb-len))
   (set! stub-freelist 0))
 
 (define (code-add gen)
@@ -938,6 +946,8 @@
 
   (if opt-disable-pair-tag
       (set! TAG_PAIR TAG_MEMOBJ))
+
+  (write_desc_intraprocedural (not opt-return-points))
 
   (init-c)
   (init-code-allocator)
@@ -1355,7 +1365,7 @@
 ;;-----------------------------------------------------------------------------
 ;; JIT
 
-(define (gen-version-* cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos #!optional fn-opt-label)
+(define (gen-version-* cgc lazy-code ctx label-sym fn-verbose fn-patch fn-codepos fn-opt-label #!optional (fn-block-prefix #f))
 
   (define (generate-moves ctx moves label-dest)
     (assert (not (null? moves)) "Internal error")
@@ -1413,12 +1423,14 @@
       (set! code-alloc (fn-codepos))
       (if cgc
           ;; we already have cgc, generate code
-          (begin (x86-label cgc version-label)
+          (begin (and fn-block-prefix (fn-block-prefix cgc))
+                 (x86-label cgc version-label)
                  ((lazy-code-generator lazy-code) cgc ctx))
           ;; add code to current code-alloc position
           (code-add
             (lambda (cgc)
               (asm-align cgc 4 0 #x90)
+              (and fn-block-prefix (fn-block-prefix cgc))
               (x86-label cgc version-label)
               ((lazy-code-generator lazy-code) cgc ctx))))
 
@@ -1441,6 +1453,8 @@
        (fn-patch version #f))
     ;; A version exists but another context is used
     (version
+       (if (or (not opt-entry-points) (not opt-return-points))
+           (error "nyi case")) ;; gc desc needs to be added to the version header
        (let ((label-merge (generate-merge-code ctx vctx version)))
          (callback label-merge)
          (fn-patch label-merge (not (eq? label-merge version)))))
@@ -1450,6 +1464,8 @@
          (fn-patch label #t)))
     ;; No version, and we need to generate one for another context
     (else
+       (if (or (not opt-entry-points) (not opt-return-points))
+           (error "wip 2")) ;; gc desc needs to be added to the version header
        (let* ((label-merge   (generate-merge-code ctx vctx #f))
               (label-version (generate-generic vctx label-merge callback))
               (label-first   (or label-merge label-version)))
@@ -1465,7 +1481,7 @@
 
   (define (fn-patch label-dest new-version?) #f)
 
-  (gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
+  (gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos #f))
 
 ;; #### LAZY CODE OBJECT
 ;; Generate a lco. Handle fall-through optimization
@@ -1494,11 +1510,11 @@
         (patch-jump jump-addr (asm-label-pos label-dest)))
     (asm-label-pos label-dest))
 
-  (gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
+  (gen-version-* #f lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos #f))
 
 ;; #### CONTINUATION
 ;; Generate a continuation
-(define (gen-version-continuation load-ret-label lazy-code ctx)
+(define (gen-version-continuation load-ret-label lazy-code ctx #!optional (gc-desc #f))
 
   (define (fn-verbose)
     (print "GEN VERSION CONTINUATION (RP)")
@@ -1514,7 +1530,11 @@
   (define (fn-codepos)
     code-alloc)
 
-  (gen-version-* #f lazy-code ctx 'continuation_ fn-verbose fn-patch fn-codepos))
+  (define (fn-block-prefix cgc)
+    (if gc-desc
+        (asm-64 cgc gc-desc)))
+
+  (gen-version-* #f lazy-code ctx 'continuation_ fn-verbose fn-patch fn-codepos #f fn-block-prefix))
 
 ;; #### CONTINUATION CR
 ;; Generate continuation using cr table (patch cr entry)
@@ -1533,7 +1553,7 @@
   (define (fn-codepos)
     code-alloc)
 
-  (gen-version-* #f lazy-code ctx 'continuation_ fn-verbose fn-patch fn-codepos))
+  (gen-version-* #f lazy-code ctx 'continuation_ fn-verbose fn-patch fn-codepos #f))
 
 ;; #### FUNCTION ENTRY
 ;; Generate an entry point
@@ -1674,7 +1694,7 @@
   (define (fn-codepos)
     code-alloc)
 
-  (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos))
+  (gen-version-* cgc lazy-code ctx 'version_ fn-verbose fn-patch fn-codepos #f))
 
 ;;-----------------------------------------------------------------------------
 

@@ -774,8 +774,9 @@
            (lret     (ctx-get-loc ctx 0))
            ;; Return address object loc
            (laddr (ctx-get-retobj-loc ctx)))
-      (let ((float-val? (and opt-float-unboxing (ctx-type-flo? type-ret))))
-        (codegen-return-rp cgc fs ffs laddr lret float-val?))))
+      (let ((float-val? (and opt-float-unboxing (ctx-type-flo? type-ret)))
+            (gc-desc (ctx->gc-map-desc ctx)))
+        (codegen-return-rp cgc gc-desc fs ffs laddr lret float-val?))))
 
   (define (gen-return-cr cgc ctx)
 
@@ -2865,10 +2866,12 @@
              (load-ret-label (asm-make-label #f (new-sym 'load-ret-addr)))
              ;; Flag in stub : is the continuation already generated ?
              (gen-flag #f)
+             (gc-desc (ctx->gc-map-desc ctx))
              ;; Continuation stub
              (stub-labels
                (add-callback cgc
                                   0
+                                  gc-desc
                                   (lambda (ret-addr selector)
                                     (if (not gen-flag) ;; Continuation not yet generated, then generate and set gen-flag to continuation addr
                                         (mlet ((args (cdr ast))
@@ -2881,7 +2884,8 @@
                                                 (gen-version-continuation
                                                   load-ret-label
                                                   succ
-                                                  (ctx-push ctx (make-ctx-tunk) return-reg)))))
+                                                  (ctx-push ctx (make-ctx-tunk) return-reg)
+                                                  gc-desc))))
                                     gen-flag))))
       ;; Generate code
       (codegen-load-cont-rp cgc load-ret-label (list-ref stub-labels 0))))

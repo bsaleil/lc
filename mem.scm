@@ -210,6 +210,19 @@ void lc_print_perm_string_nan(___U64 s)
              "___result = ___EXT(___make_vector) (___PSTATE, ___arg1, ___FAL);")
    len))
 
+(define (write_stubs_limits addr-begin addr-end)
+  ((c-lambda (long long) void
+      "lc_global_ctx.lc_stubs_begin = ___arg1;
+       lc_global_ctx.lc_stubs_end = ___arg2;")
+   addr-begin
+   addr-end))
+
+(define (write_desc_intraprocedural bool)
+  ((c-lambda (long) void "lc_global_ctx.lc_intraprocedural = ___arg1;")
+   (if bool
+       1
+       0)))
+
 (define (write_lc_stack addr)
   ((c-lambda (long) void "writeLcStack") addr))
 
