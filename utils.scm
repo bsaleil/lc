@@ -268,6 +268,10 @@
              "___EXT(___release_scmobj) (___arg1);")
    vect))
 
+(define (get-msb-u16 addr)
+  ((c-lambda (int64) unsigned-long "___result = (*___CAST(___U64*,___arg1)) >> 48;")
+   addr))
+
 (define (get-u64 addr)
   ((c-lambda (int64) unsigned-long "___result = *___CAST(___U64*,___arg1);")
    addr))

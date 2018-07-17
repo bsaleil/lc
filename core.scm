@@ -451,9 +451,14 @@
          (closure
           (and (not opt-entry-points)
                (let ((u48 (get-u48 (+ usp (reg-sp-offset-r (x86-rsi))))))
-                 (if (= (bitwise-and u48 #b11) TAG_MEMOBJ)
-                     (##encoding->object u48)
-                     #f))))
+                 (if opt-nan-boxing
+                     (let ((tag (get-msb-u16 (+ usp (reg-sp-offset-r (x86-rsi))))))
+                       (if (= tag NB_MASK_MEM_UNSHIFTED)
+                           (##encoding->object (+ u48 TAG_MEMOBJ))
+                           #f))
+                     (if (= (bitwise-and u48 #b11) TAG_MEMOBJ)
+                         (##encoding->object u48)
+                         #f)))))
 
          (callback-fn
           (vector-ref (get-scmobj ret-addr) 0))
@@ -1454,7 +1459,7 @@
     ;; A version exists but another context is used
     (version
        (if (or (not opt-entry-points) (not opt-return-points))
-           (error "nyi case")) ;; gc desc needs to be added to the version header
+           (error "NYI case")) ;; gc desc needs to be added to the version header
        (let ((label-merge (generate-merge-code ctx vctx version)))
          (callback label-merge)
          (fn-patch label-merge (not (eq? label-merge version)))))
@@ -1465,7 +1470,7 @@
     ;; No version, and we need to generate one for another context
     (else
        (if (or (not opt-entry-points) (not opt-return-points))
-           (error "wip 2")) ;; gc desc needs to be added to the version header
+           (error "NYI case")) ;; gc desc needs to be added to the version header
        (let* ((label-merge   (generate-merge-code ctx vctx #f))
               (label-version (generate-generic vctx label-merge callback))
               (label-first   (or label-merge label-version)))
@@ -1791,7 +1796,7 @@
   ;; Patch current closure
   (if closure
       ;; if known closure, patch it
-      (put-i64 (+ (- (obj-encoding closure 15) TAG_MEMOBJ) 8) label-addr))
+      (put-i64 (+ (- (tagging-obj-encoding closure 15) TAG_MEMOBJ) 8) label-addr))
 
   ;;
   (patch-direct-jmp-labels entryvec -1 label)

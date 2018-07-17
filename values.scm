@@ -64,6 +64,7 @@
 (define NB_MASK_TYPE (arithmetic-shift #x3FFFF NB_MASK_SHIFT))
 (define NB_MASK_TAG  (arithmetic-shift #xFFFF 48))
 (define NB_MASK_FLO_MAX_UNSHIFTED #xFFF8)
+(define NB_MASK_MEM_UNSHIFTED #xFFFF)
 (define NB_MASK_FLO_MAX (arithmetic-shift #xFFF8 48))
 
 (define NB_BIT_CHA (expt 2 46))
@@ -207,12 +208,9 @@
                      (error "NYI4"))))
           ;; Mem obj
           ((= tag-mask NB_MASK_MEM)
-             (let* ((encoding (i))
-                    (address (- encoding #xFFFF000000000000))
+             (let* ((address (- encoding #xFFFF000000000000))
                     (header (get-u64 address))
                     (stag (arithmetic-shift (bitwise-and header 248) -3)))
-               (if (not (= (+ address #xFFFF000000000000) (i)))
-                   (error "Encoding changed"))
                (if (and (not (= stag STAG_STRING))
                         (not (= stag STAG_SYMBOL))
                         (not (= stag 29))) ;; f64vector

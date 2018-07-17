@@ -782,12 +782,16 @@
       ;; Move return value to return register
       (if float?
           ;; Box float
-          (begin
-            (gen-allocation-imm cgc STAG_FLONUM 8 gc-desc)
-            (if (x86-mem? opretval)
-                (error "NYI")
-                (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opretval))
-            (x86-lea cgc opret (x86-mem (- TAG_MEMOBJ 16) alloc-ptr)))
+          (if opt-nan-boxing
+              (if (x86-mem? opretval)
+                  (x86-mov cgc opret opretval)
+                  (x86-movd/movq cgc opret opretval))
+              (begin
+                (gen-allocation-imm cgc STAG_FLONUM 8 gc-desc)
+                (if (x86-mem? opretval)
+                    (error "NYI")
+                    (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opretval))
+                (x86-lea cgc opret (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))))
           ;;
           (if (not (eq? opret opretval))
               (x86-mov cgc opret opretval))))

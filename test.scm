@@ -1,7 +1,8 @@
 
+(define (fibfp n)
+  (if (< n 2.)
+    n
+    (fibfp 0.)))
 
 
-(define (main . args)
-  33)
-
-(main)
+(gambit$$pp (fibfp 1.))
