@@ -514,7 +514,7 @@
                m))
           (else
              (set! fs (+ fs 1))
-             (cons 'm fs))))
+             (cons 'm (- fs 1)))))
 
   (define (compute-stack stack slot)
     (if (null? stack)
@@ -524,7 +524,7 @@
                  (if (and (ctx-type-cst? first)
                           (not (ctx-type-id? first)))
                      (let ((ident (ctx-ident-at ctx (slot-to-stack-idx ctx slot))))
-                       (if (and #f ident (identifier-cst (cdr ident)))
+                       (if (and ident (identifier-cst (cdr ident)))
                            ;; It's a cst associated to a cst identifier
                            first
                            ;; If stack type is cst, and not associated to a cst identifier, then change loc

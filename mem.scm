@@ -301,7 +301,7 @@ void lc_print_perm_string_nan(___U64 s)
   (x86-upush cgc sizeloc)
 
   (x86-cmp cgc sizeloc (x86-imm-int (* 8 MSECTION_BIGGEST)))
-  (x86-jl cgc label-not-still) ;; TODO jl or jle ?
+  (x86-jl cgc label-not-still)
     ;; TODO: write comments, and rewrite optimized code sequence
     (x86-ppush cgc (x86-imm-int stag)) ;; stag is not encoded, push it to pstack
     (x86-mov cgc (x86-rax) (x86-imm-int (+ gc-desc 2))) ;; TODO (NOTE): see other call to label-alloc-still-handler
@@ -319,9 +319,12 @@ void lc_print_perm_string_nan(___U64 s)
   (x86-mov cgc (x86-rax) (x86-imm-int (+ (* 5 8) block-addr)))
   (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
   (x86-jle cgc label-alloc-end)
-
+    ;;
+    (x86-mov cgc (x86-rax) (x86-imm-int (+ gc-desc 2)))
+    (x86-upush cgc (x86-rax))
     ;; call heap-limit
     (x86-pcall cgc label-heap-limit-handler)
+    (x86-add cgc (x86-usp) (x86-imm-int 8))
     ;; rax = encoded ptr to obj
     (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
     ;; Update alloc ptr

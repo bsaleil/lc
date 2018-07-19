@@ -164,6 +164,8 @@
 (define write_lc_stack_ptr #f)
 (define write_lc_stack_desc #f)
 (define write_lc_stack_usedesc #f)
+(define write_desc_intraprocedural #f)
+(define write_stubs_limits #f)
 (define get_lc_stack_ptr_addr #f)
 (define block_gc #f)
 (define unblock_gc #f)
@@ -257,6 +259,7 @@
 (define ERR_LET              "!!! ERROR - ILL-FORMED LET")
 (define ERR_LET*             "!!! ERROR - ILL-FORMED LET*")
 (define ERR_LETREC           "!!! ERROR - ILL-FORMED LETREC")
+(define ERR_CHECK            "!!! ERROR - CHECK FAILED")
 
 (define (ERR_TYPE_EXPECTED type)
   (string-append (string-upcase (ctx-type-symbol type))
@@ -1276,7 +1279,7 @@
                        (else
                           (codegen-loc-to-x86opnd (- (ctx-fs ctx) fs-offset) (- (ctx-ffs ctx) ffs-offset) (car move))))))
 
-          (cond ;; dst is #f, src need to be a cst (cst -> cst)
+          (cond ;; dst is #f, src needs to be a cst (cst -> cst)
                 ((not dst)
                    ;; TODO: assert src is a cst.
                    ;; However, it's possible that we move loc -> cst. for example if we merge two ctx, dst ctx has a cst and src ctx lost informtion
@@ -1395,8 +1398,7 @@
 
   (define (generate-merge-code src-ctx dst-ctx label-dest)
     (let ((moves (ctx-regalloc-merge-moves src-ctx dst-ctx)))
-      (if (and label-dest
-               (null? moves))
+      (if (null? moves)
           ;; No merge code is generated, return label-dest
           label-dest
           ;; Genereate moves
@@ -1816,7 +1818,7 @@
              (lambda (cgc ctx)
                (if (not opt-static-mode)
                    (begin
-                     (pp "FAIL TEST")
+                     (println ERR_CHECK)
                      (pp ast)))
                (if (or (ctx-type-flo? ctx-type) (ctx-type-int? ctx-type))
                    (gen-error cgc ERR_NUMBER_EXPECTED)

@@ -804,7 +804,7 @@
                ;;
                (cst? (not lret)))
 
-          (assert (if (not lret) (ctx-type-cst? type-ret) #t) "Internal error")
+          (assert (if (not lret) (ctx-type-cst? type-ret) #t) "Internal error gen-return-cr")
 
           (if (ctx-type-cst? taddr)
               (let ((lco (asc-cnnum-lco-get (ctx-type-cst taddr)))
