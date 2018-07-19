@@ -1255,14 +1255,19 @@
                                 (x86-imm-int (obj-encoding (cddar move) 11)))
                               (let* ((loc (cdar move))
                                      (opnd (codegen-loc-to-x86opnd (- (ctx-fs ctx) fs-offset) (- (ctx-ffs ctx) ffs-offset) loc)))
-                                (gen-allocation-imm cgc STAG_FLONUM 8 (ctx->gc-map-desc ctx))
-                                (if (x86-mem? opnd)
+                                (if opt-nan-boxing
+                                    ;; NaN Boxing, boxing fl does not require mem allocation
+                                    opnd
+                                    ;; Tagging, boxing fl requires mem allocation
                                     (begin
-                                      (x86-mov cgc (x86-rax) opnd)
-                                      (x86-mov cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-rax)))
-                                    (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opnd))
-                                (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
-                                (x86-rax))))
+                                      (gen-allocation-imm cgc STAG_FLONUM 8 (ctx->gc-map-desc ctx))
+                                      (if (x86-mem? opnd)
+                                          (begin
+                                            (x86-mov cgc (x86-rax) opnd)
+                                            (x86-mov cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) (x86-rax)))
+                                          (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opnd))
+                                      (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
+                                      (x86-rax))))))
                        ((and (pair? (car move))
                              (or (eq? (caar move) 'constfn)
                                  (eq? (caar move) 'constcont)))

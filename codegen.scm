@@ -1387,7 +1387,7 @@
                    (x86-mem? opr))
             (begin
               (x86-mov cgc (x86-rax) opl)
-              (x86-cmp cgc (x86-eax) (x86-r64->r32 opr)))
+              (x86-cmp cgc (x86-eax) (l32 opr)))
             (let ((l (l32 opl))
                   (r (l32 opr)))
               (x86-cmp cgc l r 32)))
