@@ -1386,7 +1386,8 @@
       (set! code-alloc (fn-codepos))
       (if cgc
           ;;
-          (begin (x86-label cgc label)
+          (begin (and fn-block-prefix (fn-block-prefix cgc))
+                 (x86-label cgc label)
                  (apply-moves cgc ctx moves)
                  (if label-dest
                      (x86-jmp cgc label-dest)))
@@ -1394,6 +1395,7 @@
           (code-add
             (lambda (cgc)
               (asm-align cgc 4 0 #x90)
+              (and fn-block-prefix (fn-block-prefix cgc))
               (x86-label cgc label)
               (apply-moves cgc ctx moves)
               (if label-dest
@@ -1404,8 +1406,14 @@
   (define (generate-merge-code src-ctx dst-ctx label-dest)
     (let ((moves (ctx-regalloc-merge-moves src-ctx dst-ctx)))
       (if (null? moves)
-          ;; No merge code is generated, return label-dest
-          label-dest
+          ;; No move, no merge code is generated
+          (if (and label-dest fn-block-prefix)
+              ;; If a version exists (label-dest is not #f) and fn-block-prefix,
+              ;; then we need to force prefix generation using generate-moves function
+              ;; with an empty list of moves
+              (generate-moves dst-ctx '() label-dest)
+              ;; Else, just return destination label
+              label-dest)
           ;; Genereate moves
           (generate-moves dst-ctx moves label-dest))))
 
@@ -1419,12 +1427,18 @@
       ;(set! code-alloc (fn-codepos))
       (if cgc
           ;; we already have cgc, generate code
-          (begin (x86-label cgc version-label)
+          (begin ;; generate prefix only if label-merge is #f.
+                 ;; if label-merge is not #f, it means that fn prefix has already been generated in merge block
+                 (and fn-block-prefix (not label-merge) (fn-block-prefix cgc))
+                 (x86-label cgc version-label)
                  ((lazy-code-generator lazy-code) cgc ctx))
           ;; add code to current code-alloc position
           (code-add
             (lambda (cgc)
               (asm-align cgc 4 0 #x90)
+              ;; generate prefix only if label-merge is #f.
+              ;; if label-merge is not #f, it means that fn prefix has already been generated in merge block
+              (and fn-block-prefix (not label-merge) (fn-block-prefix cgc))
               (x86-label cgc version-label)
               ((lazy-code-generator lazy-code) cgc ctx))))
       version-label))
@@ -1465,8 +1479,6 @@
        (fn-patch version #f))
     ;; A version exists but another context is used
     (version
-       (if (or (not opt-entry-points) (not opt-return-points))
-           (error "NYI case")) ;; gc desc needs to be added to the version header
        (let ((label-merge (generate-merge-code ctx vctx version)))
          (callback label-merge)
          (fn-patch label-merge (not (eq? label-merge version)))))
@@ -1476,8 +1488,6 @@
          (fn-patch label #t)))
     ;; No version, and we need to generate one for another context
     (else
-       (if (or (not opt-entry-points) (not opt-return-points))
-           (error "NYI case")) ;; gc desc needs to be added to the version header
        (let* ((label-merge   (generate-merge-code ctx vctx #f))
               (label-version (generate-generic vctx label-merge callback))
               (label-first   (or label-merge label-version)))
@@ -1542,9 +1552,12 @@
   (define (fn-codepos)
     code-alloc)
 
-  (define (fn-block-prefix cgc)
-    (if gc-desc
-        (asm-64 cgc gc-desc)))
+  (define fn-block-prefix
+    (if opt-return-points
+        #f
+        (lambda (cgc)
+          (if gc-desc
+              (asm-64 cgc gc-desc)))))
 
   (gen-version-* #f lazy-code ctx 'continuation_ fn-verbose fn-patch fn-codepos #f fn-block-prefix))
 
