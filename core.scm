@@ -595,13 +595,13 @@
 (define block #f)
 (define block-addr #f)
 (define stats-slots
-  (let loop ((idx 14) (atxs ATX_TYPE_LIST))
+  (let loop ((idx 15) (atxs ATX_TYPE_LIST))
     (if (null? atxs)
         '()
         (cons (cons (car atxs) idx)
               (loop (+ idx 1) (cdr atxs))))))
 (define debug-slots
-  (append '((calls . 6) (tests . 7) (extests . 8) (closures . 9) (time . 10) (other . 11) (flbox . 12) (flunbox . 13))
+  (append '((calls . 6) (tests . 7) (extests . 8) (closures . 9) (time . 10) (other . 11) (flbox . 12) (flunbox . 13) (allocbytes . 14))
           stats-slots))
 (define block-len (+ 6 (length debug-slots)))
 

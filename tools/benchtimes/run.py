@@ -262,10 +262,22 @@ systems = []
 # systems.append(lc_with_options("LC-nan", ["--nan-boxing"]))
 # systems.append(lc_with_options("LC-nan-noopt", ["--nan-boxing","--disable-float-unboxing"]))
 
-systems.append(lcf64v_with_options("LCf64v", ["--disable-pair-tag"]))
-systems.append(lcf64v_with_options("LCf64v-noopt", ["--disable-pair-tag","--disable-float-unboxing"]))
-systems.append(lcf64v_with_options("LCf64v-nan", ["--disable-pair-tag","--nan-boxing"]))
-systems.append(lcf64v_with_options("LCf64v-nan-noopt", ["--disable-pair-tag","--nan-boxing","--disable-float-unboxing"]))
+# systems.append(lcf64v_with_options("LCf64v", ["--disable-pair-tag"]))
+# systems.append(lcf64v_with_options("LCf64v-noopt", ["--disable-pair-tag","--disable-float-unboxing"]))
+# systems.append(lcf64v_with_options("LCf64v-nan", ["--disable-pair-tag","--nan-boxing"]))
+# systems.append(lcf64v_with_options("LCf64v-nan-noopt", ["--disable-pair-tag","--nan-boxing","--disable-float-unboxing"]))
+
+systems.append(lcf64v_with_options("tag-intra-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing","--disable-entry-points","--disable-return-points"]))
+systems.append(lcf64v_with_options("tag-inter-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing"]))
+
+systems.append(lcf64v_with_options("nan-intra-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing","--disable-entry-points","--disable-return-points","--nan-boxing"]))
+systems.append(lcf64v_with_options("nan-inter-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing","--nan-boxing"]))
+
+systems.append(lcf64v_with_options("nan-intra-opt",   ["--disable-pair-tag","--max-versions 5","--disable-entry-points","--disable-return-points","--nan-boxing"]))
+systems.append(lcf64v_with_options("nan-inter-opt",   ["--disable-pair-tag","--max-versions 5","--nan-boxing"]))
+
+systems.append(lcf64v_with_options("tag-intra-opt",   ["--disable-pair-tag","--max-versions 5","--disable-entry-points","--disable-return-points"]))
+systems.append(lcf64v_with_options("tag-inter-opt",   ["--disable-pair-tag","--max-versions 5"]))
 
 # Gambit
 # systems.append(gambit_no_options("Gambit", 512000))

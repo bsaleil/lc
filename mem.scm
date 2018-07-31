@@ -288,8 +288,6 @@ void lc_print_perm_string_nan(___U64 s)
   (define label-not-still (asm-make-label #f (new-sym 'alloc_not_still_)))
   (define label-alloc-still-end (asm-make-label #f (new-sym 'alloc_still_end_)))
 
-  (x86-label cgc label-alloc-beg)
-
   ;; Save size (bytes)
   (x86-upush cgc sizeloc)
   ;; Align sizeloc (8 bytes)
@@ -299,6 +297,9 @@ void lc_print_perm_string_nan(___U64 s)
   (x86-mov cgc selector-reg (x86-imm-int selector-init-val)) ;; we need to reset selector in case gc is triggered
   ;; Save aligned size
   (x86-upush cgc sizeloc)
+
+  (if opt-stats
+      (gen-add-slot cgc 'allocbytes sizeloc))
 
   (x86-cmp cgc sizeloc (x86-imm-int (* 8 MSECTION_BIGGEST)))
   (x86-jl cgc label-not-still)
@@ -369,6 +370,9 @@ void lc_print_perm_string_nan(___U64 s)
   (if (and opt-stats (eq? stag STAG_FLONUM))
       (gen-inc-slot cgc 'flbox))
 
+  (if opt-stats
+      (gen-add-slot cgc 'allocbytes (x86-imm-int nbytes)))
+
   (x86-label cgc label-alloc-beg)
   ;; hp += (nbytes + 8)
   (x86-add cgc alloc-ptr (x86-imm-int (+ nbytes 8)))
@@ -393,6 +397,9 @@ void lc_print_perm_string_nan(___U64 s)
 
   (assert (= (modulo nbytes 4) 0) "GC internal error")
   (assert (mem-still-required? nbytes) "Internal error")
+
+  (if opt-stats
+      (gen-add-slot cgc 'allocbytes (x86-imm-int nbytes)))
 
   ;; Save size (bytes)
   (x86-upush cgc (x86-imm-int nbytes))
