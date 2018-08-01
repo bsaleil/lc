@@ -415,7 +415,6 @@
 ;;-----------------------------------------------------------------------------
 
 (define (codegen-box-float-nan cgc gc-desc src dst)
-  (x86-movd/movq cgc dst src)
   (if (x86-mem? src)
       (x86-mov cgc dst src)
       (x86-movd/movq cgc dst src)))
