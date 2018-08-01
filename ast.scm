@@ -350,7 +350,6 @@
     (current-output-port (,ATX_OPO)          #f             ,lco-p-cur-x-port #f                            #f       ,ATX_OPO 0                            )
     (current-input-port  (,ATX_IPO)          #f             ,lco-p-cur-x-port #f                            #f       ,ATX_IPO 0                            )
     (number?             (,ATX_NUM)          ,cst-number?   ,lco-p-number?    #f                            #f       ,ATX_BOO 1 ,ATX_ALL                   )
-    (fixnum->flonum      (,ATX_INT ,ATX_FLO) ,dummy-cst-all #f                ,codegen-p-fixnum->flonum     #f       ,ATX_FLO 1 ,ATX_INT                   )
     (##apply             #f                  #f             ,lco-p-apply      #f                            #f       ,ATX_UNK 2 ,ATX_CLO ,ATX_ALL          )
     (##box               #f                  #f             #f                ,codegen-p-box                #t       ,ATX_BOX 1 ,ATX_ALL                   )
     (##unbox             #f                  #f             #f                ,codegen-p-unbox              #t       ,ATX_UNK 1 ,ATX_ALL                   )
