@@ -1149,7 +1149,7 @@
                (immediate-to-xmm cgc (x86-xmm0) lright)
                (x86-op cgc dest (x86-xmm0)))
             ((x86-mem? opright)
-               (error "N3"))
+               (x86-op cgc dest opright))
             ;; Right operand is in a xmm register
             ((x86-xmm? opright)
                (x86-op cgc dest opright))
@@ -2605,7 +2605,8 @@
                                (gen-inc-slot cgc 'flunbox))
                     (if (x86-reg? opval)
                         (x86-mov cgc dest (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) opval))
-                        (error "NYI case make-f64vector"))))
+                        (begin (x86-mov cgc dest opval)
+                               (x86-mov cgc dest (x86-mem (- OFFSET_FLONUM TAG_MEMOBJ) dest))))))
             (x86-label cgc label-loop)
             (x86-cmp cgc selector-reg (x86-imm-int 0))
             (x86-je cgc label-end)
@@ -2818,6 +2819,7 @@
         ((x86-mem? opstr)
            (x86-mov cgc (x86-rax) opstr)
            (set! opstr (x86-rax))))
+
   (if (and opidx
            (x86-mem? opidx))
       (if (eq? opstr (x86-rax))
@@ -2825,8 +2827,7 @@
                  (set! opidx selector-reg)
                  (set! use-selector #t))
           (begin (x86-mov cgc (x86-rax) opidx)
-                 (set! opstr (x86-rax)))))
-
+                 (set! opidx (x86-rax)))))
   (if idx-cst?
       (x86-mov cgc (x86-eax) (x86-mem (+ (- 8 TAG_MEMOBJ) (* 4 lidx)) opstr))
       (x86-mov cgc (x86-eax) (x86-mem (- 8 TAG_MEMOBJ) opidx opstr)))
@@ -3187,6 +3188,7 @@
 
   ;; keep unboxed val in a register
   (if (or val-cst?
+          (not (x86-reg? opval))
           (not (x86-xmm? opval)))
       (let ((opnd (next-free)))
         (cond (val-cst?
@@ -3448,10 +3450,10 @@
 
 (define (codegen-test-value cgc op obj)
   (let ((imm (obj-encoding obj 114)))
-    (if (codegen-is-imm-64? imm)
+    (if (or (x86-mem? op) (codegen-is-imm-64? imm))
         (begin
           (x86-mov cgc (x86-rax) (x86-imm-int imm))
-          (x86-cmp cgc (x86-rax) op))
+          (x86-cmp cgc op (x86-rax)))
         (begin
           (x86-cmp cgc op (x86-imm-int imm))))))
 

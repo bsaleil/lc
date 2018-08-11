@@ -2117,7 +2117,7 @@
                 (caar sl)
                 (loop (cdr sl)))))))
 
-  (if (> (ctx-fs ctx) 56)
+  (if (and opt-float-unboxing (> (ctx-fs ctx) 56))
       (error "NYI 56"))
 
   (let* ((fs (ctx-fs ctx))
