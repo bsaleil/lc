@@ -32,7 +32,7 @@ class Config:
 
 class System:
 
-    def __init__(self,name,prefixsuffix,ccmd,eext,ecmd,regexms,regexgc,time_to_ms):
+    def __init__(self,name,prefixsuffix,ccmd,eext,ecmd,regexms,regexgc,time_to_ms,env):
         self.name = name
         self.prefixsuffix = prefixsuffix
         self.ccmd = ccmd # Compilation cmd
@@ -43,6 +43,7 @@ class System:
         self.times = {}
         self.gctimes = {}
         self.time_to_ms = time_to_ms
+        self.env = env
 
         self.green = 2
         self.yellow = 3
@@ -111,7 +112,10 @@ class System:
                 print('   ' + filename + '...')
                 cmd = self.ccmd.format(infile)
                 # compile file
-                code = subprocess.call(cmd,shell=True)
+                if (self.env):
+                    code = subprocess.call(cmd,shell=True,env=self.env)
+                else:
+                    code = subprocess.call(cmd,shell=True)
                 if code != 0:
                     self.compileError(infile)
                 # remove source
@@ -138,7 +142,10 @@ class System:
                 def f (x): return x.format(file)
                 cmd = list(map(f,self.ecmd))
                 pipe = subprocess.PIPE
-                p = subprocess.Popen(cmd, universal_newlines=True, stdin=pipe, stdout=pipe, stderr=pipe)
+                if (self.env):
+                    p = subprocess.Popen(cmd, universal_newlines=True, stdin=pipe, stdout=pipe, stderr=pipe, env=self.env)
+                else:
+                    p = subprocess.Popen(cmd, universal_newlines=True, stdin=pipe, stdout=pipe, stderr=pipe)
                 sout, serr = p.communicate()
                 rc = p.returncode
 
@@ -221,17 +228,24 @@ def userWants(str):
 def lc_with_options(name,options):
     opts = ["/home/bapt/Bureau/these/lc/lc","{0}","--time"]
     opts = opts + options
-    return System(name,"LC","",".scm",opts,"(?:.*\n){9}CPU time: ([^\n]*)\n","(?:.*\n){10}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0)
+    return System(name,"LC","",".scm",opts,"(?:.*\n){9}CPU time: ([^\n]*)\n","(?:.*\n){10}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0,False)
 
 def lcf64v_with_options(name,options):
     opts = ["/home/bapt/Bureau/these/lc/lc","{0}","--time"]
     opts = opts + options
-    return System(name,"LCf64v","",".scm",opts,"(?:.*\n){9}CPU time: ([^\n]*)\n","(?:.*\n){10}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0)
+    return System(name,"LCf64v","",".scm",opts,"(?:.*\n){9}CPU time: ([^\n]*)\n","(?:.*\n){10}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0,False)
 
 def gambit_no_options(name,gcsize):
     opts = []
     cmd = "/home/bapt/Bureau/gambitBOXUNBOX/gsc/gsc -:m"+ str(gcsize) + " -exe -o {0}.o1 {0}"
-    return System(name,name,cmd,".o1",["{0}"],"(\d+) ms real time\\n","accounting for (\d+) ms real time",lambda x: x)
+    return System(name,name,cmd,".o1",["{0}"],"(\d+) ms real time\\n","accounting for (\d+) ms real time",lambda x: x,False)
+
+def chez_no_options(name):
+    opts = []
+    cmd = "echo '(compile-file \"{0}\")' | /home/bapt/Bureau/xp-scheme/ChezScheme/a6le/bin/scheme -q"
+    newenv = os.environ.copy()
+    newenv["SCHEMEHEAPDIRS"] = "/home/bapt/Bureau/xp-scheme/ChezScheme/boot/a6le/"
+    return System(name,name,cmd,".so",["/home/bapt/Bureau/xp-scheme/ChezScheme/a6le/bin/scheme","{0}"],"REGEXMS","REGEXGC",lambda x: x,newenv)
 
 #
 systems = []
@@ -267,17 +281,20 @@ systems = []
 # systems.append(lcf64v_with_options("LCf64v-nan", ["--disable-pair-tag","--nan-boxing"]))
 # systems.append(lcf64v_with_options("LCf64v-nan-noopt", ["--disable-pair-tag","--nan-boxing","--disable-float-unboxing"]))
 
-systems.append(lcf64v_with_options("tag-intra-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing","--disable-entry-points","--disable-return-points"]))
-systems.append(lcf64v_with_options("tag-inter-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing"]))
+# systems.append(lcf64v_with_options("tag-intra-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing","--disable-entry-points","--disable-return-points"]))
+# systems.append(lcf64v_with_options("tag-inter-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing"]))
+#
+# systems.append(lcf64v_with_options("nan-intra-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing","--disable-entry-points","--disable-return-points","--nan-boxing"]))
+# systems.append(lcf64v_with_options("nan-inter-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing","--nan-boxing"]))
+#
+# systems.append(lcf64v_with_options("nan-intra-opt",   ["--disable-pair-tag","--max-versions 5","--disable-entry-points","--disable-return-points","--nan-boxing"]))
+# systems.append(lcf64v_with_options("nan-inter-opt",   ["--disable-pair-tag","--max-versions 5","--nan-boxing"]))
+#
+# systems.append(lcf64v_with_options("tag-intra-opt",   ["--disable-pair-tag","--max-versions 5","--disable-entry-points","--disable-return-points"]))
+# systems.append(lcf64v_with_options("tag-inter-opt",   ["--disable-pair-tag","--max-versions 5"]))
 
-systems.append(lcf64v_with_options("nan-intra-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing","--disable-entry-points","--disable-return-points","--nan-boxing"]))
-systems.append(lcf64v_with_options("nan-inter-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing","--nan-boxing"]))
-
-systems.append(lcf64v_with_options("nan-intra-opt",   ["--disable-pair-tag","--max-versions 5","--disable-entry-points","--disable-return-points","--nan-boxing"]))
-systems.append(lcf64v_with_options("nan-inter-opt",   ["--disable-pair-tag","--max-versions 5","--nan-boxing"]))
-
-systems.append(lcf64v_with_options("tag-intra-opt",   ["--disable-pair-tag","--max-versions 5","--disable-entry-points","--disable-return-points"]))
-systems.append(lcf64v_with_options("tag-inter-opt",   ["--disable-pair-tag","--max-versions 5"]))
+systems.append(chez_no_options("ChezScheme"))
+systems.append(lcf64v_with_options("tag-inter-opt", ["--disable-pair-tag","--max-versions 5"]))
 
 # Gambit
 # systems.append(gambit_no_options("Gambit", 512000))

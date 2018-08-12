@@ -4706,7 +4706,7 @@
   (let* ((dest (file-root source))
          (module-name (file-name dest))
          (info-port (if (memq 'verbose opts) (current-output-port) #f))
-         (result (compile-program
+         (result (BENCH-compile-program
                   (list **include-sym source)
                   (if target-name target-name (default-target))
                   opts
@@ -4720,7 +4720,7 @@
   (let* ((dest "program")
          (module-name "program")
          (info-port (if (memq 'verbose opts) (current-output-port) #f))
-         (result (compile-program
+         (result (BENCH-compile-program
                   source
                   (if target-name target-name (default-target))
                   opts
@@ -4732,7 +4732,7 @@
     result))
 (define wrap-program #f)
 (set! wrap-program (lambda (program) program))
-(define (compile-program program target-name opts module-name dest info-port)
+(define (BENCH-compile-program program target-name opts module-name dest info-port)
   (define (compiler-body)
     (if (not (valid-module-name? module-name))
         (compiler-error
