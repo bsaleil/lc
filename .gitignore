@@ -8,3 +8,5 @@ tmp
 lib.scm
 unit-tests/benchmarks/foo
 unit-tests/mutable-out
+test.scm
+run.sh
