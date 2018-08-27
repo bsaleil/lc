@@ -66,17 +66,17 @@ test:
 	rm ./unit-tests/mutable-out -rf
 	./run-ut.scm
 
-all-test:
+all-tests:
 	rm ./unit-tests/mutable-out -rf
 	./run-ut.scm
 	./run-ut.scm --disable-inlined-call
 	./run-ut.scm --disable-entry-points --disable-return-points
 	./run-ut.scm --max-versions 5
-	./run-ut.scm --max-versions 5 --enable-const-vers --enable-cxoverflow-fallback
 	./run-ut.scm --max-versions 5 --disable-regalloc-vers
+	./run-ut.scm --max-versions 0 --disable-float-unboxing
 
 # Run full unit tests with and without entry and return points
-full-test:
+ext-tests:
 	rm ./unit-tests/mutable-out -rf
 
 	./run-ut.scm

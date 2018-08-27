@@ -922,16 +922,21 @@
   ;; Reset selector used as tmp reg
   (x86-mov cgc selector-reg (x86-imm-int selector-init-val)))
 
-(define (codegen-gambit-call cgc op-symbol nb-args dest-loc)
+(define (codegen-gambit-call cgc gc-desc op-symbol nb-args dest-loc)
   (assert (ctx-loc-is-register? dest-loc) "Internal error")
 
   (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding nb-args 27)))
   (x86-upush cgc (x86-rax))
   (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding op-symbol 28)))
   (x86-upush cgc (x86-rax))
+  (x86-mov cgc (x86-rax) (x86-imm-int gc-desc 29))
+  (x86-upush cgc (x86-rax))
+  (x86-mov cgc (x86-rax) (x86-imm-int nb-args 30))
+  (x86-upush cgc (x86-rax))
   (x86-pcall cgc label-gambit-call-handler)
+
   (x86-upop cgc (codegen-reg-to-x86reg dest-loc))
-  (x86-add cgc (x86-usp) (x86-imm-int (* 8 (+ nb-args 1)))))
+  (x86-add cgc (x86-usp) (x86-imm-int (* 8 (+ nb-args 3)))))
 
 ;; Shift arguments on stack for tail calls
 ;; starts with [usp+offset-from] -> [usp+offset-to]

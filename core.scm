@@ -332,34 +332,42 @@
   (unblock_gc))
 
 (c-define (gambit-call usp psp) (long long) void "gambit_call" ""
+
   (block_gc 3)
+  (write_lc_stack_ptr usp)
+  (write_lc_stack_usedesc 5)
+
+  (assert (<= (encoding-obj (get-i64 (+ usp (* (+ n-regalloc-regs 4) 8)))) 2)
+          "Unsupported number of arguments in gambit-call primitive")
+
   (let* ((nargs
-           (encoding-obj (get-i64 (+ usp (* (+ (length regalloc-regs) 2) 8)))))
+           (encoding-obj (get-i64 (+ usp (* (+ n-regalloc-regs 4) 8)))))
          (op-sym
-           (let* ((woffset (+ usp (* (+ (length regalloc-regs) 1) 8)))
+           (let* ((woffset (+ usp (* (+ n-regalloc-regs 3) 8)))
                   (getter (lambda () (get-u64 woffset)))
                   (word (get-u64 woffset)))
              (if opt-nan-boxing
                  (nanboxing-encoding-obj word getter)
-                 (tagging-encoding-obj word))))
-         (args
-           (reverse
-             (let loop ((n nargs) (offset 3))
-               (if (= n 0)
-                   '()
-                   (let* ((woffset (+ usp (* (+ (length regalloc-regs) offset) 8)))
-                          (getter (lambda () (get-u64 woffset)))
-                          (word (get-u64 woffset)))
-                     (cons (if opt-nan-boxing
-                               (nanboxing-encoding-obj word getter)
-                               (tagging-encoding-obj word))
-                           (loop (- n 1) (+ offset 1))))))))
-         (op-fn (eval op-sym)))
+                 (tagging-encoding-obj word)))))
 
-    (let ((retval (apply op-fn args)))
+    (let ((retval
+            (cond ((= nargs 0)
+                     (unblock_gc)
+                     (apply (eval op-sym) '()))
+                  ((= nargs 1)
+                     (let ((a1 (tagging-encoding-obj (get-u64 (+ usp (* (+ n-regalloc-regs 5) 8))))))
+                       (unblock_gc)
+                       (apply (eval op-sym) (list a1))))
+                  ((= nargs 2)
+                     (let ((a1 (tagging-encoding-obj (get-u64 (+ usp (* (+ n-regalloc-regs 6) 8)))))
+                           (a2 (tagging-encoding-obj (get-u64 (+ usp (* (+ n-regalloc-regs 5) 8))))))
+                       (unblock_gc)
+                       (apply (eval op-sym) (list a1 a2))))
+                  (else
+                     (error "NNN")))))
+
       (put-i64 (+ usp (* 8 (+ (length regalloc-regs) 1)))
-               (obj-encoding retval 4))))
-  (unblock_gc))
+               (obj-encoding retval 4)))))
 
 ;;-----------------------------------------------------------------------------
 

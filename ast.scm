@@ -330,7 +330,7 @@
     (set-car!            (,ATX_PAI)          #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (set-cdr!            (,ATX_PAI)          #f             #f                ,codegen-p-set-cxr!           #t       ,ATX_VOI 2 ,ATX_PAI ,ATX_ALL          )
     (vector-length       (,ATX_VEC)          ,cst-vec-len   #f                ,codegen-p-*vector-length     #f       ,ATX_INT 1 ,ATX_VEC                   )
-    (f64vector-length    (,ATX_FEC)          ,dummy-cst-all #f                ,codegen-p-*vector-length     #f       ,ATX_INT 1 ,ATX_FEC                   )
+    (f64vector-length    (,ATX_FEC)          ,cst-f64-len   #f                ,codegen-p-*vector-length     #f       ,ATX_INT 1 ,ATX_FEC                   )
     (vector-ref          (,ATX_VEC)          ,cst-vec-ref   #f                ,codegen-p-*vector-ref        #f       ,ATX_UNK 2 ,ATX_VEC ,ATX_INT          )
     (f64vector-ref       (,ATX_FEC)          ,dummy-cst-all #f                ,codegen-p-*vector-ref        #f       ,ATX_FLO 2 ,ATX_FEC ,ATX_INT          )
     (char->integer       (,ATX_CHA ,ATX_INT) ,cst-char->int #f                ,codegen-p-ch<->int           #f       ,ATX_INT 1 ,ATX_CHA                   )
@@ -1651,7 +1651,7 @@
                              (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
                                     (x86-upush cgc (x86-rax))
                                     (loop (- idx 1)))))))
-                 (codegen-gambit-call cgc gsym nargs reg)
+                 (codegen-gambit-call cgc (ctx->gc-map-desc ctx) gsym nargs reg)
                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) (make-ctx-tunk) reg)))))))
     (if generated-arg?
         lazy-call
@@ -2183,6 +2183,7 @@
 (define cst-cdr       (cst-prim-1 (lambda (cst) (cdr (ctx-type-cst cst)))))
 (define cst-not       (cst-prim-1 (lambda (cst) (not (ctx-type-cst cst)))))
 (define cst-vec-len   (cst-prim-1 (lambda (cst) (vector-length (ctx-type-cst cst)))))
+(define cst-f64-len   (cst-prim-1 (lambda (cst) (f64vector-length (ctx-type-cst cst)))))
 (define cst-char->int (cst-prim-1 (lambda (cst) (char->integer (ctx-type-cst cst)))))
 (define cst-int->char (cst-prim-1 (lambda (cst) (integer->char (ctx-type-cst cst)))))
 (define cst-str-len   (cst-prim-1 (lambda (cst) (string-length (ctx-type-cst cst)))))
