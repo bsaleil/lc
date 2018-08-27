@@ -14,7 +14,7 @@ JIT compiler for Scheme targeting Linux x86-64 platforms.
 LC depends on a modified version of the Gambit Scheme compiler which must be installed before building LC. The ```gsc``` executable of the modified version of Gambit must be available in ```PATH``` both when building and running LC.
 
 ```bash
-# Build modified version of Gambit
+# Build the modified version of Gambit
 git clone https://github.com/bsaleil/gambit
 cd gambit
 ./configure --enable-single-host
@@ -27,7 +27,7 @@ See Gambit [INSTALL](https://github.com/gambit/gambit/blob/master/INSTALL.txt) f
 
 ```bash
 # Build LC
-git clone https://github.com/bsaleil/lc
+git clone https://github.com/bsaleil/lc -b stable
 cd lc
 make -j8
 ```
