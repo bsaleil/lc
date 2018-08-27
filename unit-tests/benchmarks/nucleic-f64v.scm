@@ -26,6 +26,15 @@
 (def-macro (FLOATcos n)              `(cos ,n))
 (def-macro (FLOATsin n)              `(sin ,n))
 (def-macro (FLOATsqrt n)             `(sqrt ,n))
+(def-macro (FLOAT= . lst)    `(= ,@lst))
+(def-macro (FLOAT> . lst)    `(> ,@lst))
+(def-macro (FLOAT>= . lst)    `(>= ,@lst))
+(def-macro (FLOAT< . lst)    `(< ,@lst))
+(def-macro (FLOAT<= . lst)    `(<= ,@lst))
+(def-macro (FLOAT+ . lst)    `(+ ,@lst))
+(def-macro (FLOAT- . lst)    `(- ,@lst))
+(def-macro (FLOAT* . lst)    `(* ,@lst))
+(def-macro (FLOAT/ . lst)    `(/ ,@lst))
 
 (def-macro (nuc-const . lst)
  `',(list->vector

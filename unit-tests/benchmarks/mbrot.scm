@@ -1,5 +1,17 @@
 ;;; MBROT -- Generation of Mandelbrot set fractal.
 
+(##define-macro (def-macro form . body)
+  `(##define-macro ,form (let () ,@body)))
+
+(def-macro (FLOAT> . lst)    `(> ,@lst))
+(def-macro (FLOAT>= . lst)    `(>= ,@lst))
+(def-macro (FLOAT< . lst)    `(< ,@lst))
+(def-macro (FLOAT<= . lst)    `(<= ,@lst))
+(def-macro (FLOAT+ . lst)    `(+ ,@lst))
+(def-macro (FLOAT- . lst)    `(- ,@lst))
+(def-macro (FLOAT* . lst)    `(* ,@lst))
+(def-macro (FLOAT/ . lst)    `(/ ,@lst))
+
 (define (count r i step x y)
 
   (let ((max-count 64)

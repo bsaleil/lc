@@ -11,6 +11,15 @@
 (def-macro (FLOATvector-length v)    `(vector-length ,v))
 (def-macro (FLOATsin v)    `(sin ,v))
 (def-macro (FLOATvector . lst) `(vector ,@lst))
+(def-macro (FLOAT= . lst)    `(= ,@lst))
+(def-macro (FLOAT> . lst)    `(> ,@lst))
+(def-macro (FLOAT>= . lst)    `(>= ,@lst))
+(def-macro (FLOAT< . lst)    `(< ,@lst))
+(def-macro (FLOAT<= . lst)    `(<= ,@lst))
+(def-macro (FLOAT+ . lst)    `(+ ,@lst))
+(def-macro (FLOAT- . lst)    `(- ,@lst))
+(def-macro (FLOAT* . lst)    `(* ,@lst))
+(def-macro (FLOAT/ . lst)    `(/ ,@lst))
 
 ;;-----------------------------------------------------------------------------
 

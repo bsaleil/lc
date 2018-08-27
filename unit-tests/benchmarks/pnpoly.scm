@@ -6,6 +6,15 @@
 (def-macro (FLOATvector-const . lst) `',(list->vector lst))
 (def-macro (FLOATvector-ref v i)     `(vector-ref ,v ,i))
 (def-macro (FLOATvector-length v)    `(vector-length ,v))
+(def-macro (FLOAT= . lst)    `(= ,@lst))
+(def-macro (FLOAT> . lst)    `(> ,@lst))
+(def-macro (FLOAT>= . lst)    `(>= ,@lst))
+(def-macro (FLOAT< . lst)    `(< ,@lst))
+(def-macro (FLOAT<= . lst)    `(<= ,@lst))
+(def-macro (FLOAT+ . lst)    `(+ ,@lst))
+(def-macro (FLOAT- . lst)    `(- ,@lst))
+(def-macro (FLOAT* . lst)    `(* ,@lst))
+(def-macro (FLOAT/ . lst)    `(/ ,@lst))
 
 ;;------------------------------------------------------------------------------
 

@@ -1,9 +1,11 @@
 
-(define (foo n)
-  (AAcompile-program n n))
+(define (foo a b . c)
+  (pp a)
+  (pp b)
+  (pp c))
 
-(define (AAcompile-program a b)
-   (+ a b))
-
-(display (foo 15))
-(newline)
+;(foo)
+;(foo 1)
+(foo 1 1)
+; (foo 1 1 1)
+; (foo 1 1 1 1)

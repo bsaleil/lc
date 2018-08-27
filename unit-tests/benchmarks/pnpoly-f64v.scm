@@ -6,6 +6,14 @@
 (def-macro (FLOATvector-const . lst) `',(list->f64vector lst))
 (def-macro (FLOATvector-ref v i)     `(f64vector-ref ,v ,i))
 (def-macro (FLOATvector-length v)    `(f64vector-length ,v))
+(def-macro (FLOAT> . lst)    `(> ,@lst))
+(def-macro (FLOAT>= . lst)    `(>= ,@lst))
+(def-macro (FLOAT< . lst)    `(< ,@lst))
+(def-macro (FLOAT<= . lst)    `(<= ,@lst))
+(def-macro (FLOAT+ . lst)    `(+ ,@lst))
+(def-macro (FLOAT- . lst)    `(- ,@lst))
+(def-macro (FLOAT* . lst)    `(* ,@lst))
+(def-macro (FLOAT/ . lst)    `(/ ,@lst))
 
 ;;------------------------------------------------------------------------------
 
