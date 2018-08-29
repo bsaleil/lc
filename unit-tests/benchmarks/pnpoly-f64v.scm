@@ -3,10 +3,9 @@
 (##define-macro (def-macro form . body)
   `(##define-macro ,form (let () ,@body)))
 
-(def-macro (FLOATvector-const . lst) `',(list->vector lst))
-(def-macro (FLOATvector-ref v i)     `(vector-ref ,v ,i))
-(def-macro (FLOATvector-length v)    `(vector-length ,v))
-(def-macro (FLOAT= . lst)    `(= ,@lst))
+(def-macro (FLOATvector-const . lst) `',(list->f64vector lst))
+(def-macro (FLOATvector-ref v i)     `(f64vector-ref ,v ,i))
+(def-macro (FLOATvector-length v)    `(f64vector-length ,v))
 (def-macro (FLOAT> . lst)    `(> ,@lst))
 (def-macro (FLOAT>= . lst)    `(>= ,@lst))
 (def-macro (FLOAT< . lst)    `(< ,@lst))

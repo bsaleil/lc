@@ -1,22 +1,38 @@
 #!/bin/bash
 
-GSC="gsc -:m512000"
-LC_FILES="float.o1 utils.o1 ctx.o1 types.o1 core.o1 native.o1 mem.o1 codegen.o1 ast.o1 expand.o1 analyses.o1 main.o1"
+GSC="gsc"
+LC_FILES="values.o1 float.o1 utils.o1 ctx.o1 types.o1 core.o1 native.o1 mem.o1 codegen.o1 ast.o1 expand.o1 analyses.o1 main.o1"
 ARGS=()
 
-for i in "$@" ; do
-    # --gdb arg, then call gsc through gdb
-    if [[ $i == "--gdb" ]] ; then
-        GSC="gdb -ex run --args gsc"
-    # scm file, then use realpath
-    elif [[ $i == *.scm ]] ; then
-        ARGS+=($(readlink -f $i))
+# GDB call, default is empty (do not use gdb)
+GDB=""
+# Minimum heap size, default is 512mb
+TRACE_HEAP="-:"
+#TRACE_HEAP="-:d2,"
+HEAP="m512000"
+
+for (( i=1; i<="$#"; i++ ))
+do
+    arg=${!i}
+    # --gdb arg, set $GDB
+    if [[ $arg == "--gdb" ]] ; then
+        GDB="gdb -ex run --args"
+    # --min-heap, set $HEAP
+    elif [[ $arg == "--min-heap" ]] ; then
+        pos=$i
+        next=$((i+1))
+        HEAP="m${!next}"
+        i=$((next))
+    # scm file, use realpath
+    elif [[ ${!i} == *.scm ]] ; then
+        ARGS+=($(readlink -f ${!i}))
     # else, keep unchanged
     else
-        ARGS+=($i)
+        ARGS+=(${!i})
     fi
 done
 
 # Chdir to script path
 cd "$(dirname "$0")"
-$GSC -i $LC_FILES ${ARGS[@]}
+# Run
+$GDB $GSC "$TRACE_HEAP$HEAP" -i $LC_FILES ${ARGS[@]}

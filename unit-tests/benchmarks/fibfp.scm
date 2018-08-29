@@ -1,5 +1,17 @@
 ;;; FIBFP -- Computes fib(35) using floating point
 
+(##define-macro (def-macro form . body)
+  `(##define-macro ,form (let () ,@body)))
+
+(def-macro (FLOAT> . lst)  `(> ,@lst))
+(def-macro (FLOAT>= . lst) `(>= ,@lst))
+(def-macro (FLOAT< . lst)  `(< ,@lst))
+(def-macro (FLOAT<= . lst) `(<= ,@lst))
+(def-macro (FLOAT+ . lst)  `(+ ,@lst))
+(def-macro (FLOAT- . lst)  `(- ,@lst))
+(def-macro (FLOAT* . lst)  `(* ,@lst))
+(def-macro (FLOAT/ . lst)  `(/ ,@lst))
+
 (define (fibfp n)
   (if (FLOAT< n 2.)
     n

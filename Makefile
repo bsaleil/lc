@@ -2,7 +2,7 @@ GSC_FLAGS= -prelude "(declare (not safe))"
 CONFIG_FILE= config-release.scm
 LC_STRAT=strat1
 
-all: config types.o1 analyses.o1 float.o1 utils.o1 main.o1 native.o1 mem.o1 codegen.o1 ast.o1 core.o1 expand.o1 ctx.o1 lib
+all: config values.o1 types.o1 analyses.o1 float.o1 utils.o1 main.o1 native.o1 mem.o1 codegen.o1 ast.o1 core.o1 expand.o1 ctx.o1 lib
 	cp lazy-comp.template lc
 	chmod u+x lc
 
@@ -21,6 +21,9 @@ lib:
 
 config:
 	cp $(CONFIG_FILE) config.scm
+
+values.o1: values.scm
+	gsc $(GSC_FLAGS) -o $@ $<
 
 types.o1: $(and $(LC_STRAT),dummy)
 	gsc $(GSC_FLAGS) -o $@ $(LC_STRAT).scm
@@ -63,17 +66,17 @@ test:
 	rm ./unit-tests/mutable-out -rf
 	./run-ut.scm
 
-all-test:
+all-tests:
 	rm ./unit-tests/mutable-out -rf
 	./run-ut.scm
 	./run-ut.scm --disable-inlined-call
 	./run-ut.scm --disable-entry-points --disable-return-points
 	./run-ut.scm --max-versions 5
-	./run-ut.scm --max-versions 5 --enable-const-vers --enable-cxoverflow-fallback
 	./run-ut.scm --max-versions 5 --disable-regalloc-vers
+	./run-ut.scm --max-versions 0 --disable-float-unboxing
 
 # Run full unit tests with and without entry and return points
-full-test:
+ext-tests:
 	rm ./unit-tests/mutable-out -rf
 
 	./run-ut.scm

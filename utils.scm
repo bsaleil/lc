@@ -211,17 +211,6 @@
         (error "Internal error: can't allocate block of size" size)
         mcb)))
 
-(define (obj-encoding obj)
-  (let ((n (##object->encoding obj)))
-    (if (>= n (expt 2 63)) (- n (expt 2 64)) n)))
-
-(define (encoding-obj encoding)
-  (let ((n
-          (if (< encoding 0)
-              (+ (expt 2 63) (bitwise-and encoding (- (expt 2 63) 1)))
-              encoding)))
-    (##encoding->object n)))
-
 (define (pp-flonum n #!optional (nfrac 2))
   (define (print-int-part n)
       (print (##flonum->fixnum (truncate n))))
@@ -238,7 +227,7 @@
 
 (define (permanent-object? obj)
   (and (##mem-allocated? obj)
-       (let* ((obj-addr (- (obj-encoding obj) TAG_MEMOBJ))
+       (let* ((obj-addr (- (tagging-obj-encoding obj 2000) TAG_MEMOBJ))
               (life (bitwise-and (get-i64 obj-addr) 7)))
          (= life LIFE_PERM))))
 
@@ -246,6 +235,13 @@
   ((c-lambda ()
              scheme-object
              "___result = ___EXT(___alloc_scmobj) (NULL, ___sPROCEDURE, 8);")))
+
+(define (alloc-perm-u64vector len)
+  ((c-lambda (int)
+             scheme-object
+             "___result = ___EXT(___alloc_scmobj) (NULL, ___sU64VECTOR, 8*___arg1);")
+   len))
+
 
 (define (alloc-still-vector-i64 len v)
   ((c-lambda (int int64)
@@ -272,8 +268,16 @@
              "___EXT(___release_scmobj) (___arg1);")
    vect))
 
+(define (get-msb-u16 addr)
+  ((c-lambda (int64) unsigned-long "___result = (*___CAST(___U64*,___arg1)) >> 48;")
+   addr))
+
 (define (get-u64 addr)
   ((c-lambda (int64) unsigned-long "___result = *___CAST(___U64*,___arg1);")
+   addr))
+
+(define (get-u48 addr)
+  ((c-lambda (int64) unsigned-long "___result = (*___CAST(___U64*,___arg1)) & 0xFFFFFFFFFFFF;")
    addr))
 
 (define (get-i64 addr)

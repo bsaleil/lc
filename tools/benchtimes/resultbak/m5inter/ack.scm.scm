@@ -60,6 +60,9 @@
        (println "CPU time: "
          (+ (cdr (assoc "User time" (cdr r)))
             (cdr (assoc "Sys time" (cdr r)))))
+       (println "GC CPU time: "
+         (+ (cdr (assoc "GC user time" (cdr r)))
+            (cdr (assoc "GC sys time" (cdr r)))))
        (map (lambda (el) (println (car el) ": " (cdr el))) (cdr r))
        r)))
 

@@ -32,6 +32,7 @@
 (include "~~lib/_x86#.scm")
 (include "~~lib/_asm#.scm")
 
+(define selector-init-val #f)
 (define MSECTION_BIGGEST 255) ;; words
 (define MSECTION_FUDGE  8192) ;; words
 
@@ -46,6 +47,8 @@
 #include <stdio.h>  // puts
 #include <stdlib.h> // exit
 #include <unistd.h> // getpid
+#include <math.h> // sin cos atan
+#include <stdint.h>
 
 int ___heap_limit(); // Gambit ___heap_limit
 
@@ -63,8 +66,9 @@ ___U64 alloc_still(___U64 stag, ___U64 bytes)
 
 ___U64  get___alloc_still_addr()      { return (___U64)&alloc_still; }
 
-int callHL()
+int callHL(___U64 ustackptr)
 {
+  lc_global_ctx.lc_stack_ptr = ustackptr;
   int r = ___heap_limit(___PSPNC) && ___garbage_collect (___PSP 0);
   if (r != 0)
   {
@@ -93,8 +97,81 @@ void initc()
   signal(SIGINT, lcIntHandler);
 }
 
+void writeLcStack(___U64 stack)
+{
+    lc_global_ctx.lc_stack = stack;
+}
 
+void writeLcGlobal(___U64 global)
+{
+    lc_global_ctx.lc_global = global;
+}
 
+// This function detects if an xmm register can be set to a value using tricks presented here:
+// https://blogs.msdn.microsoft.com/oldnewthing/20141215-00/?p=43403
+// It detects if the binary ieee754 double precision representation contains a single pack of 1
+// If it is the case, it returns the left (psll) and right (psrl) shifts to apply after pcmpeq
+// The result is returned in a 64 bits value:
+// .. 16 bits .. | .. 16 bits .. | .. 16 bits .. | .. 16 bits ..
+//    unused           psrl            psll        if 1, the tricks can be used
+//                                                 if 0, the tricks cannot be used
+// i must be a non-zero value
+uint64_t c_xmm_imm_shift(uint64_t i)
+{
+    int8_t highest = 63;
+    int8_t lowest = 0;
+    uint64_t start = pow(2,63);
+    while ((i & start) == 0)
+    {
+        highest--;
+        start = start >> 1;
+    }
+
+    lowest = highest;
+    while ((i & start) && (lowest >= 0))
+    {
+
+        i = i ^ start;
+        lowest--;
+        start = start >> 1;
+    }
+
+    if (i != 0)
+        return 0;
+
+    uint64_t l = (lowest + 1);
+    uint64_t r = (64 - highest + lowest);
+    return (i == 0) | l << 16 | r << 32;
+}
+
+void lc_print_double(double d)
+{
+    printf(\"%.16f\", d);
+}
+
+void lc_print_perm_string_tag(___U64 s)
+{
+    ___U64* ptr = (___U64*)(s-1);
+    ___U64 header = ptr[0];
+    ___U64 size = (header >> 10);
+
+    ___U32* str_ptr = (___U32*)(ptr+1);
+
+    for (___U64 i=0; i<size; i++)
+        printf(\"%c\",(char)str_ptr[i]);
+}
+
+void lc_print_perm_string_nan(___U64 s)
+{
+    ___U64* ptr = (___U64*)(s&0x0000FFFFFFFFFFFF);
+    ___U64 header = ptr[0];
+    ___U64 size = (header >> 10);
+
+    ___U32* str_ptr = (___U32*)(ptr+1);
+
+    for (___U64 i=0; i<size; i++)
+        printf(\"%c\",(char)str_ptr[i]);
+}
 
 ")
 
@@ -102,11 +179,27 @@ void initc()
 (define (init-c)
   ((c-lambda () void "initc")))
 
+(define (get_print_double-addr)
+  ((c-lambda () long "___result = &lc_print_double;")))
+
+(define (get_print_perm_string_tag-addr)
+  ((c-lambda () long "___result = &lc_print_perm_string_tag;")))
+
+(define (get_print_perm_string_nan-addr)
+  ((c-lambda () long "___result = &lc_print_perm_string_nan;")))
+
 (define (get___heap_limit-addr)
   ((c-lambda () long "get___heap_limit_addr")))
 
 (define (get___alloc_still-addr)
   ((c-lambda () long "get___alloc_still_addr")))
+
+(define (get-sin-addr)
+  ((c-lambda () long "___result = &sin;")))
+(define (get-cos-addr)
+  ((c-lambda () long "___result = &cos;")))
+(define (get-atan-addr)
+  ((c-lambda () long "___result = &atan;")))
 
 (define (get-heap_limit-addr)
   ((c-lambda () long "get_heap_limit_addr")))
@@ -116,6 +209,58 @@ void initc()
              scheme-object
              "___result = ___EXT(___make_vector) (___PSTATE, ___arg1, ___FAL);")
    len))
+
+(define (write_stubs_limits addr-begin addr-end)
+  ((c-lambda (long long) void
+      "lc_global_ctx.lc_stubs_begin = ___arg1;
+       lc_global_ctx.lc_stubs_end = ___arg2;")
+   addr-begin
+   addr-end))
+
+(define (write_desc_intraprocedural bool)
+  ((c-lambda (long) void "lc_global_ctx.lc_intraprocedural = ___arg1;")
+   (if bool
+       1
+       0)))
+
+(define (write_lc_stack addr)
+  ((c-lambda (long) void "writeLcStack") addr))
+
+(define (write_lc_global addr)
+  ((c-lambda (long) void "writeLcGlobal") addr))
+
+(define (write_lc_stack_ptr usp)
+  ((c-lambda (long) void "lc_global_ctx.lc_stack_ptr = ___arg1;") usp))
+
+(define (write_lc_stack_desc desc)
+  ((c-lambda (long) void "lc_global_ctx.lc_stack_desc = ___arg1;") desc))
+
+(define (write_lc_stack_usedesc usedesc)
+  ((c-lambda (long) void "lc_global_ctx.lc_stack_usedesc = ___arg1;") usedesc))
+
+(define (get_lc_stack_desc_addr)
+  ((c-lambda () long "___result = &lc_global_ctx.lc_stack_desc;")))
+
+(define (get_lc_stack_usedesc_addr)
+  ((c-lambda () long "___result = &lc_global_ctx.lc_stack_usedesc;")))
+
+(define (get_lc_stack_ptr_addr)
+  ((c-lambda () long "___result = &lc_global_ctx.lc_stack_ptr;")))
+
+(define (block_gc n)
+  ((c-lambda (long) void "lc_global_ctx.gc_lock = ___arg1;") n))
+
+(define (unblock_gc)
+  ((c-lambda () void "lc_global_ctx.gc_lock = 0;")))
+
+(define (xmm_imm_shift imm)
+  (let* ((r ((c-lambda (unsigned-long) long "c_xmm_imm_shift") imm))
+         (opt? (= (bitwise-and r 65535) 1)))
+    (if opt?
+        (let ((psll (bitwise-and (arithmetic-shift r -16) 65535))
+              (psrl (bitwise-and (arithmetic-shift r -32) 65535)))
+          (cons psrl psll))
+        #f)))
 
 (define (get-pstate-addr)
   ((c-lambda () long "get_pstate_addr")))
@@ -133,7 +278,7 @@ void initc()
 ;; Alloc from nbbytes in rax (and align alloc-ptr)
 ;; Return encoded scheme object in rax
 ;; sizeloc is DESTROYED !
-(define (gen-allocation-rt cgc stag sizeloc)
+(define (gen-allocation-rt cgc stag sizeloc gc-desc)
 
   ;; TODO: use a dispatch to generate only still or not-still code
 
@@ -143,22 +288,27 @@ void initc()
   (define label-not-still (asm-make-label #f (new-sym 'alloc_not_still_)))
   (define label-alloc-still-end (asm-make-label #f (new-sym 'alloc_still_end_)))
 
-  (x86-label cgc label-alloc-beg)
-
   ;; Save size (bytes)
   (x86-upush cgc sizeloc)
   ;; Align sizeloc (8 bytes)
   (x86-add cgc sizeloc (x86-imm-int 7))
   (x86-mov cgc selector-reg (x86-imm-int -8))
   (x86-and cgc sizeloc selector-reg)
+  (x86-mov cgc selector-reg (x86-imm-int selector-init-val)) ;; we need to reset selector in case gc is triggered
   ;; Save aligned size
   (x86-upush cgc sizeloc)
 
+  (if opt-stats
+      (gen-add-slot cgc 'allocbytes sizeloc))
+
   (x86-cmp cgc sizeloc (x86-imm-int (* 8 MSECTION_BIGGEST)))
-  (x86-jl cgc label-not-still) ;; TODO jl or jle ?
+  (x86-jl cgc label-not-still)
     ;; TODO: write comments, and rewrite optimized code sequence
     (x86-ppush cgc (x86-imm-int stag)) ;; stag is not encoded, push it to pstack
+    (x86-mov cgc (x86-rax) (x86-imm-int (+ gc-desc 2))) ;; TODO (NOTE): see other call to label-alloc-still-handler
+    (x86-upush cgc (x86-rax))
     (x86-pcall cgc label-alloc-still-handler)
+    (x86-add cgc (x86-usp) (x86-imm-int 8))
     (x86-add cgc (x86-rsp) (x86-imm-int 8)) ;; remove stag
     (x86-jmp cgc label-alloc-still-end)
   (x86-label cgc label-not-still)
@@ -170,9 +320,12 @@ void initc()
   (x86-mov cgc (x86-rax) (x86-imm-int (+ (* 5 8) block-addr)))
   (x86-cmp cgc alloc-ptr (x86-mem 0 (x86-rax)) 64)
   (x86-jle cgc label-alloc-end)
-
+    ;;
+    (x86-mov cgc (x86-rax) (x86-imm-int (+ gc-desc 2)))
+    (x86-upush cgc (x86-rax))
     ;; call heap-limit
     (x86-pcall cgc label-heap-limit-handler)
+    (x86-add cgc (x86-usp) (x86-imm-int 8))
     ;; rax = encoded ptr to obj
     (x86-lea cgc (x86-rax) (x86-mem TAG_MEMOBJ alloc-ptr))
     ;; Update alloc ptr
@@ -189,11 +342,16 @@ void initc()
   (x86-mov cgc selector-reg (x86-mem 8 (x86-usp))) ;; get saved nbytes (no aligned)
   (x86-shl cgc selector-reg (x86-imm-int 8))
   (x86-or  cgc selector-reg (x86-imm-int (mem-header 0 stag)))
+
   (x86-mov cgc (x86-mem (- TAG_MEMOBJ) (x86-rax)) selector-reg) ;; write header
 
   (x86-label cgc label-alloc-still-end)
+  (if opt-nan-boxing
+      ;; change encoding from tagging to nan-boxing
+      (begin (x86-mov cgc selector-reg (x86-imm-int (to-64-value (+ NB_MASK_MEM TAG_MEMOBJ))))
+             (x86-xor cgc (x86-rax) selector-reg)))
   ;; Restore selector
-  (x86-mov cgc selector-reg (x86-imm-int 0))
+  (x86-mov cgc selector-reg (x86-imm-int selector-init-val))
   ;; Remove saved values
   (x86-add cgc (x86-usp) (x86-imm-int 16)))
 
@@ -201,13 +359,19 @@ void initc()
 ;; For performance reason, unlike gen-allocation-rt,
 ;; this function does *not* return encoded object in rax.
 ;; Caller needs to load address of object
-(define (gen-allocation-imm cgc stag nbytes)
+(define (gen-allocation-imm cgc stag nbytes gc-desc)
 
   (define label-alloc-beg (asm-make-label #f (new-sym 'alloc_begin_)))
   (define label-alloc-end (asm-make-label #f (new-sym 'alloc_end_)))
 
   (assert (= (modulo nbytes 4) 0) "GC internal error")
   (assert (not (mem-still-required? nbytes)) "Internal error")
+
+  (if (and opt-stats (eq? stag STAG_FLONUM))
+      (gen-inc-slot cgc 'flbox))
+
+  (if opt-stats
+      (gen-add-slot cgc 'allocbytes (x86-imm-int nbytes)))
 
   (x86-label cgc label-alloc-beg)
   ;; hp += (nbytes + 8)
@@ -219,17 +383,23 @@ void initc()
 
   (x86-jle cgc label-alloc-end)
   ;; else
+    (x86-mov cgc (x86-rax) (x86-imm-int gc-desc))
+    (x86-upush cgc (x86-rax))
     (x86-pcall cgc label-heap-limit-handler)
+    (x86-add cgc (x86-usp) (x86-imm-int 8))
     (x86-add cgc alloc-ptr (x86-imm-int (+ nbytes 8)))
   ;; write header
   (x86-label cgc label-alloc-end)
 
   (x86-mov cgc (x86-mem (- 0 nbytes 8) alloc-ptr) (x86-imm-int (mem-header nbytes stag)) 64))
 
-(define (gen-allocation-imm-sti cgc stag nbytes)
+(define (gen-allocation-imm-sti cgc stag nbytes gc-desc)
 
   (assert (= (modulo nbytes 4) 0) "GC internal error")
   (assert (mem-still-required? nbytes) "Internal error")
+
+  (if opt-stats
+      (gen-add-slot cgc 'allocbytes (x86-imm-int nbytes)))
 
   ;; Save size (bytes)
   (x86-upush cgc (x86-imm-int nbytes))
@@ -238,7 +408,10 @@ void initc()
   ;; Stag is not encoded, push it to pstack
   (x86-ppush cgc (x86-imm-int stag))
   ;; Alloc
+  (x86-mov cgc (x86-rax) (x86-imm-int (+ gc-desc 2))) ;; TODO (NOTE): +2 for nbytes pushed before (no need to adjust fo (set it to 00))
+  (x86-upush cgc (x86-rax))
   (x86-pcall cgc label-alloc-still-handler)
+  (x86-add cgc (x86-usp) (x86-imm-int 8))
   ;; Clean stacks
   (x86-add cgc (x86-rsp) (x86-imm-int 8))
   (x86-add cgc (x86-usp) (x86-imm-int 16)))

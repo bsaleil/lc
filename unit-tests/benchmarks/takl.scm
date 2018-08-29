@@ -4,11 +4,11 @@
   (if (= n 0)
     '()
     (cons n (listn (- n 1)))))
- 
+
 (define l18 (listn 18))
 (define l12 (listn 12))
 (define  l6 (listn 6))
- 
+
 (define (shorterp x y)
   (and (not (null? y))
        (or (null? x)

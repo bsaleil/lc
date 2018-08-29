@@ -36,15 +36,6 @@
 (define (negative? x)
   (< x 0))
 
-(define (even? x)
-  (= (modulo x 2) 0))
-
-(define (odd? x)
-  (= (modulo x 2) 1))
-
-(define (sin x)
-  (gambit$$sin x))
-
 (define (expt n m)
   (if (= m 0)
      1
@@ -70,5 +61,9 @@
             (min-h (cdr els) m)))))
   (min-h l a))
 
-(define (bitwise-and a b)
-  (gambit$$bitwise-and a b))
+(define (arithmetic-shift n s)
+  (cond ((> s 0) (* n (expt 2 s)))
+        (else
+          (if (and (< n 0) (odd? n))
+              (error "NYI case shr")
+              (quotient n (expt 2 (* -1 s)))))))

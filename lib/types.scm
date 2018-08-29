@@ -57,6 +57,16 @@
     (begin (vector-set! vec pos (car lst))
            (list->vector-h (cdr lst) vec (+ pos 1) len))))
 
+(define (list->f64vector lst)
+  (let ((len (length lst)))
+    (let loop ((v (make-f64vector len))
+               (lst lst)
+               (idx 0))
+      (if (= idx len)
+          v
+          (begin (f64vector-set! v idx (car lst))
+                 (loop v (cdr lst) (+ idx 1)))))))
+
 (define (number->string num)
   (define (digit->string d)
     (make-string 1 (integer->char (+ d 48))))

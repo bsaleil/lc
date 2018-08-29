@@ -32,7 +32,7 @@ class Config:
 
 class System:
 
-    def __init__(self,name,prefixsuffix,ccmd,eext,ecmd,regexms,regexgc,time_to_ms):
+    def __init__(self,name,prefixsuffix,ccmd,eext,ecmd,regexms,regexgc,time_to_ms,env):
         self.name = name
         self.prefixsuffix = prefixsuffix
         self.ccmd = ccmd # Compilation cmd
@@ -41,7 +41,9 @@ class System:
         self.regexms = regexms # regex to extract ms time
         self.regexgc = regexgc # regex to extract gc ms time
         self.times = {}
+        self.gctimes = {}
         self.time_to_ms = time_to_ms
+        self.env = env
 
         self.green = 2
         self.yellow = 3
@@ -110,7 +112,10 @@ class System:
                 print('   ' + filename + '...')
                 cmd = self.ccmd.format(infile)
                 # compile file
-                code = subprocess.call(cmd,shell=True)
+                if (self.env):
+                    code = subprocess.call(cmd,shell=True,env=self.env)
+                else:
+                    code = subprocess.call(cmd,shell=True)
                 if code != 0:
                     self.compileError(infile)
                 # remove source
@@ -130,23 +135,43 @@ class System:
             sys.stdout.flush()
 
             rawTimes = []
+            rawGCTimes = []
             for i in range(0,NEXEC):
                 print('.', end='')
                 sys.stdout.flush()
                 def f (x): return x.format(file)
                 cmd = list(map(f,self.ecmd))
                 pipe = subprocess.PIPE
-                p = subprocess.Popen(cmd, universal_newlines=True, stdin=pipe, stdout=pipe, stderr=pipe)
+                if (self.env):
+                    p = subprocess.Popen(cmd, universal_newlines=True, stdin=pipe, stdout=pipe, stderr=pipe, env=self.env)
+                else:
+                    p = subprocess.Popen(cmd, universal_newlines=True, stdin=pipe, stdout=pipe, stderr=pipe)
                 sout, serr = p.communicate()
                 rc = p.returncode
 
                 if (rc != 0) or (serr != '') or ("***" in sout):
-                    self.execError(file)
+                    timems = self.time_to_ms(-1)
+                    rawTimes.append(timems)
+                    print("FAIL 1 --->")
+                    print(rc)
+                    print(serr)
+                    print(sout)
+                    print(cmd)
+                    raise Exception("bar");
+                    continue
+                    #self.execError(file)
 
                 res = re.findall(self.regexms, sout)
-                assert (len(res) == 1)
-                timems = res[0]
 
+                if (len(res) != 1):
+                    timems = self.time_to_ms(-1)
+                    rawTimes.append(timems)
+                    print("FAIL 2 --->")
+                    print(sout)
+                    raise Exception("foo");
+                    continue
+
+                timems = res[0]
                 # Remove gc time
                 res = re.findall(self.regexgc, sout)
                 assert (len(res) == 0 or len(res) == 1)
@@ -157,14 +182,20 @@ class System:
                     timems = float(timems)
 
                 timems = self.time_to_ms(timems)
+                gctimems = self.time_to_ms(float(res[0]))
                 rawTimes.append(timems)
+                rawGCTimes.append(gctimems)
 
             print('')
             # Remove min, max and compute mean
             rawTimes.remove(max(rawTimes))
             rawTimes.remove(min(rawTimes))
+            rawGCTimes.remove(max(rawGCTimes))
+            rawGCTimes.remove(min(rawGCTimes))
             mean = sum(rawTimes) / float(len(rawTimes))
+            gcmean = sum(rawGCTimes) / float(len(rawGCTimes))
             self.times[file] = mean
+            self.gctimes[file] = gcmean
 
 #---------------------------------------------------------------------------
 
@@ -195,14 +226,26 @@ def userWants(str):
     return r == 'y'
 
 def lc_with_options(name,options):
-    opts = ["/home/bapt/Bureau/these/lazy-comp/lazy-comp","{0}","--time"]
+    opts = ["/home/bapt/Bureau/these/lc/lc","{0}","--time"]
     opts = opts + options
-    return System(name,"LC","",".scm",opts,"(?:.*\n){11}Real time: (\d*.\d*)\n","(?:.*\n){14}GC real time: (\d*.\d*)\n",lambda x: x*1000.0)
+    return System(name,"LC","",".scm",opts,"(?:.*\n){9}CPU time: ([^\n]*)\n","(?:.*\n){10}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0,False)
+
+def lcf64v_with_options(name,options):
+    opts = ["/home/bapt/Bureau/these/lc/lc","{0}","--time"]
+    opts = opts + options
+    return System(name,"LCf64v","",".scm",opts,"(?:.*\n){9}CPU time: ([^\n]*)\n","(?:.*\n){10}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0,False)
 
 def gambit_no_options(name,gcsize):
     opts = []
-    cmd = "/home/bapt/Bureau/gambit-4.8.7/gsc/gsc -:m"+ str(gcsize) + " -exe -o {0}.o1 {0}"
-    return System(name,name,cmd,".o1",["{0}"],"(\d+) ms real time\\n","accounting for (\d+) ms real time",lambda x: x)
+    cmd = "/home/bapt/Bureau/gambitBOXUNBOX/gsc/gsc -:m"+ str(gcsize) + " -exe -o {0}.o1 {0}"
+    return System(name,name,cmd,".o1",["{0}"],"(\d+) ms real time\\n","accounting for (\d+) ms real time",lambda x: x,False)
+
+def chez_no_options(name):
+    opts = []
+    cmd = "echo '(compile-file \"{0}\")' | /home/bapt/Bureau/xp-scheme/ChezScheme/a6le/bin/scheme -q"
+    newenv = os.environ.copy()
+    newenv["SCHEMEHEAPDIRS"] = "/home/bapt/Bureau/xp-scheme/ChezScheme/boot/a6le/"
+    return System(name,name,cmd,".so",["/home/bapt/Bureau/xp-scheme/ChezScheme/a6le/bin/scheme","{0}"],"REGEXMS","REGEXGC",lambda x: x,newenv)
 
 #
 systems = []
@@ -212,18 +255,56 @@ systems = []
 # systems.append(lc_with_options("m5intra",  ["--max-versions 5","--disable-entry-points","--disable-return-points"]))
 # systems.append(lc_with_options("m5eponly", ["--max-versions 5","--disable-return-points"]))
 # systems.append(lc_with_options("m5rponly", ["--max-versions 5","--disable-entry-points"]))
-systems.append(lc_with_options("LC", [""]))
 
+# # tagging !opt
+# systems.append(lc_with_options("tag-noopt-6g", ["--disable-float-unboxing","--min-heap 6500000"]))
+# # tagging opt
+# systems.append(lc_with_options("tag-opt", []))
+# # tagging opt (6gb heap)
+# systems.append(lc_with_options("tag-opt-6g", ["--min-heap 6500000"]))
+# # nan-boxing !opt
+# systems.append(lc_with_options("nan-noopt-6g", ["--nan-boxing","--disable-float-unboxing"]))
+# # nan-boxing opt
+# systems.append(lc_with_options("nan-opt-6g", ["--nan-boxing"]))
+
+# LC
+# systems.append(lc_with_options("LC", []))
+
+# LC
+# systems.append(lc_with_options("LC", []))
+# systems.append(lc_with_options("LC-noopt", ["--disable-float-unboxing"]))
+# systems.append(lc_with_options("LC-nan", ["--nan-boxing"]))
+# systems.append(lc_with_options("LC-nan-noopt", ["--nan-boxing","--disable-float-unboxing"]))
+
+# systems.append(lcf64v_with_options("LCf64v", ["--disable-pair-tag"]))
+# systems.append(lcf64v_with_options("LCf64v-noopt", ["--disable-pair-tag","--disable-float-unboxing"]))
+# systems.append(lcf64v_with_options("LCf64v-nan", ["--disable-pair-tag","--nan-boxing"]))
+# systems.append(lcf64v_with_options("LCf64v-nan-noopt", ["--disable-pair-tag","--nan-boxing","--disable-float-unboxing"]))
+
+# systems.append(lcf64v_with_options("tag-intra-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing","--disable-entry-points","--disable-return-points"]))
+# systems.append(lcf64v_with_options("tag-inter-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing"]))
 #
-# # Gambit
-# systems.append(gambit_no_options("GambitS",    8000))
-# systems.append(gambit_no_options("GambitNS",   8000))
-# #systems.append(gambit_no_options("GambitSGC",1000000))
+# systems.append(lcf64v_with_options("nan-intra-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing","--disable-entry-points","--disable-return-points","--nan-boxing"]))
+# systems.append(lcf64v_with_options("nan-inter-noopt", ["--disable-pair-tag","--max-versions 5","--disable-float-unboxing","--nan-boxing"]))
+#
+# systems.append(lcf64v_with_options("nan-intra-opt",   ["--disable-pair-tag","--max-versions 5","--disable-entry-points","--disable-return-points","--nan-boxing"]))
+# systems.append(lcf64v_with_options("nan-inter-opt",   ["--disable-pair-tag","--max-versions 5","--nan-boxing"]))
+#
+# systems.append(lcf64v_with_options("tag-intra-opt",   ["--disable-pair-tag","--max-versions 5","--disable-entry-points","--disable-return-points"]))
+# systems.append(lcf64v_with_options("tag-inter-opt",   ["--disable-pair-tag","--max-versions 5"]))
+
+systems.append(chez_no_options("ChezScheme"))
+systems.append(lcf64v_with_options("tag-inter-opt", ["--disable-pair-tag","--max-versions 5"]))
+
+# Gambit
+# systems.append(gambit_no_options("Gambit", 512000))
+# systems.append(gambit_no_options("Gambitf64v", 512000))
+
 
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))
 
-distPath = "/home/bapt/Bureau/lc-ECOOP/tools/benchtimes"
+distPath = "/home/bapt/Bureau/these/lc/tools/benchtimes"
 
 config.benchPath = distPath + '/bench/'
 config.resPath = scriptPath + '/result/'
@@ -255,6 +336,7 @@ else:
 print("benchmark;",end='')
 for system in systems:
     print(system.name,end=';')
+    print(system.name+"(gc)",end=';')
 print("")
 # Print times
 for benchmark in config.benchmarks:
@@ -265,5 +347,7 @@ for benchmark in config.benchmarks:
     for system in systems:
         key = system.tmpDir + "/" + os.path.basename(benchmark) + system.eext
         assert(key in system.times.keys())
+        assert(key in system.gctimes.keys())
         print(system.times[key],end=';')
+        print(system.gctimes[key],end=';')
     print("");

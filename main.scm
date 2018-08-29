@@ -53,9 +53,39 @@
 ;;--------------------------------------------------------------------------------
 ;; Compiler options
 
+(define (print-help)
+  (newline)
+  (println (string-bold "NAME"))
+  (println "       lc - Scheme JIT compiler")
+  (newline)
+  (println (string-bold "SYNOPSIS"))
+  (println "       ./lc [file] [options]")
+  (newline)
+  (println (string-bold "OPTIONS"))
+  (let ((options (sort compiler-options (lambda (a b)
+                                          (string<? (symbol->string (car a))
+                                                    (symbol->string (car b)))))))
+    (for-each (lambda (option) (println "       " (car option))
+                               (println "       " "       " (cadr option))
+                               (newline))
+              options))
+  (newline))
+
 ;; Contains all compiler options
 ;; An option contains (option-text help-text option-lambda)
 (define compiler-options `(
+
+  ;; OPTIONS PARSED BY THE LAUNCHER (still declared here for doc)
+
+  (--gdb
+     "Run the compiler with gdb"
+     ,(lambda (args) (cdr args)))
+
+  (--min-heap
+     "Set the minimum heap size (mb). Ex. '--min-heap 1000000' to ask for a 1 gigabyte heap"
+     ,(lambda (args) (cdr args)))
+
+  ;; LC RUNTIME OPTIONS
 
   (--call-max-len
     "Set the max number of args allowed when using a specialized entry point"
@@ -108,10 +138,18 @@
     ,(lambda (args) (if opt-call-max-len (error "--call-max-len requires interprocedural extensions"))
                     (set! opt-entry-points #f) args))
 
+  (--disable-float-unboxing
+    "Disable automatic float unboxing based on type specialization"
+    ,(lambda (args) (set! opt-float-unboxing #f) args))
+
   (--disable-inlined-call
     "Disable lazy call inlining when callee identity is known. Lazy call inlining causes function duplication which is
      not necessarily expected if --disable-entry-points is provided"
      ,(lambda (args) (set! opt-lazy-inlined-call #f) args))
+
+  (--disable-pair-tag
+    "Use the genereric tag TAG_MEMOBJ for pairs instead of the specific TAG_PAIR"
+    ,(lambda (args) (set! opt-disable-pair-tag #t) args))
 
   (--enable-regalloc-inlined-call
     "TODO"
@@ -136,19 +174,7 @@
   (--help
     "Print help"
     ,(lambda (args)
-      (newline)
-      (println (string-bold "NAME"))
-      (println "       lc - Scheme JIT compiler")
-      (newline)
-      (println (string-bold "SYNOPSIS"))
-      (println "       ./lc [file] [options]")
-      (newline)
-      (println (string-bold "OPTIONS"))
-      (for-each (lambda (option) (println "       " (car option))
-                                 (println "       " "       " (cadr option))
-                                 (newline))
-                compiler-options)
-      (newline)
+      (print-help)
       (exit 0)))
 
   (--dump-binary
@@ -156,15 +182,15 @@
     ,(lambda (args) (set! opt-dump-bin #t)
                     args))
 
-  (--dump-versions
-    "Dump versions for each lco"
-    ,(lambda (args) (set! opt-dump-versions #t)
-                    args))
-
   (--export-locat-info
     "Export locat info so it can be used by locatview tool"
     ,(lambda (args) (set! opt-export-locat-info #t)
                     args))
+
+  (--nan-boxing
+     "Enable nan boxing"
+     ,(lambda (args) (set! opt-nan-boxing #t)
+                     args))
 
   (--nolib
      "Do not include the standard library"
@@ -176,15 +202,28 @@
      ,(lambda (args) (set! opt-inlining-limit (string->number (cadr args)))
                      (cdr args)))
 
+  (--static-pass
+     "Enable static pass"
+     ,(lambda (args) (set! opt-static-pass #t)
+                     args))
+
   (--stats
     "Print stats about execution"
     ,(lambda (args) (if opt-time (error "--stats option can't be used with --time"))
                     (set! opt-stats #t)
                     args))
 
+  (--stats-full
+    "Print full stats about execution"
+    ,(lambda (args) (if opt-time (error "--stats-full option can't be used with --time"))
+                    (set! opt-stats #t)
+                    (set! opt-stats-full #t)
+                    args))
+
   (--time
     "Print exec time information"
     ,(lambda (args) (if opt-stats (error "--time option can't be used with --stats"))
+                    (if opt-stats-full (error "--time option can't be used with --stats-full"))
                     (set! opt-time #t)
                     args))
 
@@ -214,28 +253,22 @@
 
   (let ((lazy-final
           (make-lazy-code
-            #f
+            (make-lco-id 1001)
             (lambda (cgc ctx)
 
               ;; Update gambit heap ptr from LC heap ptr
-              (x86-mov cgc (x86-mem (get-hp-addr)) alloc-ptr)
+              (x86-mov cgc (x86-rax) (x86-imm-int (get-hp-addr)))
+              (x86-mov cgc (x86-mem 0 (x86-rax)) alloc-ptr)
 
-              ;; TODO regalloc: opt-time
+              ;; Write NULL in lc_stack_ptr of lc global ctx
+              ;; to stop scanning lc stack when gc is triggered
+              (let ((addr (get_lc_stack_ptr_addr)))
+                (x86-mov cgc (x86-rax) (x86-imm-int addr))
+                (x86-mov cgc (x86-rbx) (x86-imm-int 0))
+                (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rbx)))
 
-              (let ((loc (ctx-get-loc ctx 0))) ;; Get loc of value in top of stack
-                (cond ;; No return value
-                      ((and (not loc)
-                            (not (ctx-get-type ctx 0)))
-                        (x86-mov cgc (x86-rax) (x86-imm-int 0)))
-                      ((not loc)
-                        (let* ((type (ctx-get-type ctx 0))
-                               (cst  (ctx-type-cst type)))
-                          (x86-mov cgc (x86-rax) (x86-imm-int (obj-encoding cst)))))
-                      ((ctx-loc-is-register? loc)
-                        (x86-mov cgc (x86-rax) (codegen-reg-to-x86reg loc)))
-                      ((ctx-loc-is-fregister? loc)
-                        (x86-mov cgc (x86-rax) (x86-imm-int 0)))
-                      (else (error "NYI main"))))
+              ;; Set rax to 0 (return value)
+              (x86-mov cgc (x86-rax) (x86-imm-int 0))
 
               (if (> (ctx-ffs ctx) 0)
                   (x86-add cgc (x86-rsp) (x86-imm-int (* 8 (ctx-ffs ctx)))))
@@ -255,80 +288,78 @@
             (let ((next (lazy-exprs (cdr exprs) succ)))
               (gen-ast (car exprs)
                        (make-lazy-code
-                         #f
+                         (make-lco-id 1002)
                          (lambda (cgc ctx)
                            (jump-to-version cgc
                                             next
                                             (ctx-pop ctx))))))))))
 
 ;;-----------------------------------------------------------------------------
-;; Interactive mode (REPL)
-
-(define (repl prog)
-  (apply (caddr (assoc '--help compiler-options)) '(#f)))
-;  (init-backend)
-;
-;  (println "  _     ____       ")
-;  (println " | |   / ___|      ")
-;  (println " | |  | |          ")
-;  (println " | |__| |___       ")
-;  (println " |_____\\____| REPL")
-;  (println "")
-;
-;  (let ((lco (lazy-exprs prog lazy-repl-call)))
-;    (gen-version-first lco (ctx-init)))
-;
-;  (##machine-code-block-exec mcb))
-;
-;(define lazy-repl-call
-;  (make-lazy-code
-;    #f
-;    (lambda (cgc ctx)
-;      ;; Generate call to repl handler defined in core.scm
-;      ;; This handler read from stdin, build lco chain,
-;      ;; and generate a version of the first lco of the chain.
-;      ;; The address of this version is returned in rax
-;      ;; then, jump to the version
-;      (x86-pcall cgc label-repl-handler)
-;      (x86-jmp cgc (x86-rax)))))
-
-;;-----------------------------------------------------------------------------
 ;; Bash mode
 
 (define (exec prog)
 
-    (define (one-exec)
-      (set! from-space init-from-space)
-      (set! to-space   init-to-space)
-      (##machine-code-block-exec mcb))
+  (define (one-exec)
+    (set! from-space init-from-space)
+    (set! to-space   init-to-space)
+    (##machine-code-block-exec mcb))
+
+  (define (run-dynamic-pass lco)
+    (strat-switch-mode 'dynamic)
+    (gen-version-first lco (ctx-init)))
+
+  (define (run-static-pass lco)
+    ;; save options
+    (define tmp-propagate-continuation opt-propagate-continuation)
+    (define tmp-opt-const-vers         opt-const-vers)
+    (define tmp-max-versions           opt-max-versions)
+    (println "Running static BBV...")
+    ;; Set static config
+    (set! opt-static-mode #t)
+    (set! opt-propagate-continuation #t)
+    (set! opt-const-vers #t)
+    (set! opt-max-versions #f)
+    (strat-switch-mode 'static)
+    (gen-version-first lco (ctx-init))
+    (println "done!")
+    ; Reset cc/cr tables
+    (set! global-cc-table (make-table test: equal?))
+    (set! global-cr-table (make-table))
+    (set! all-crtables (make-table test: eq?))
+    (set! all-cctables (make-table test: eq?))
+    ;; restore options
+    (set! opt-static-mode #f)
+    (set! opt-propagate-continuation tmp-propagate-continuation)
+    (set! opt-const-vers tmp-opt-const-vers)
+    (set! opt-max-versions tmp-max-versions))
 
   (init-backend)
 
   (let ((lco (lazy-exprs prog #f)))
     (run-add-to-ctime
       (lambda ()
-        (gen-version-first lco (ctx-init)))))
+        (if opt-static-pass
+            (run-static-pass lco))
+        (run-dynamic-pass lco))))
 
   (if opt-time
       (begin (##machine-code-block-exec mcb)
-             (set! lco #f)
-             (set! all-lazy-code #f)
-             (set! asc-cc-stub #f)
+             (set! lco            #f)
+             (set! all-lazy-code  #f)
+             (set! asc-cc-stub    #f)
              (set! asc-entry-load #f)
-             (set! ctime-entries #f)
-             (set! stub-freelist #f)
-             (let loop ((i 0))
-               (if (< i (/ ustack-len 8))
-                   (begin (vector-set! ustack i 0)
-                          (loop (+ i 1)))))
-             (let loop ((i 0))
-               (if (< i globals-len)
-                   (begin (vector-set! globals-space i 0)
-                          (loop (+ i 1)))))
+             (set! ctime-entries  #f)
+             (set! stub-freelist  #f)
+             (if opt-nan-boxing
+                 (u64vector-fill! ustack #xFFFE000000000000)
+                 (u64vector-fill! ustack 0))
+             (if opt-nan-boxing
+                 (u64vector-fill! globals-space #xFFFE000000000000)
+                 (vector-fill! globals-space 0))
              (##gc)
              (time (##machine-code-block-exec mcb)
                    (current-output-port)))
-       (##machine-code-block-exec mcb)))
+      (##machine-code-block-exec mcb)))
 
 ;;-----------------------------------------------------------------------------
 ;; Main
@@ -372,10 +403,10 @@
   (init-frontend)
 
   (cond ;; If no files specified then start REPL
-        ((null? files)
-          (copy-with-declare "" "./tmp")
-          (let ((content (c#expand-program "./tmp" #f locat-table)))
-            (repl (expand-tl content))))
+        ; ((null? files)
+        ;   (copy-with-declare "" "./tmp")
+        ;   (let ((content (c#expand-program "./tmp" #f locat-table)))
+        ;     (repl (expand-tl content))))
         ;; Can only exec 1 file
         ((= (length files) 1)
           (copy-with-declare (car files) "./tmp")
@@ -385,7 +416,9 @@
                 (analyses-a-conversion! exp-content)
                 (compute-liveness exp-content)
                 (exec exp-content))))
-        (else (error "NYI")))
+        (else
+          (print-help)
+          (exit 0)))
 
   (rt-print-opts)
   (print-opts)
@@ -438,19 +471,22 @@
 
   (if opt-stats
     (begin (println "Closures: " (get-slot 'closures))
-           (println "Executed tests: " (get-slot 'tests)))))
+           (println "Executed tests: " (get-slot 'tests))
+           (println "Flonum boxing operations: "   (if opt-nan-boxing "N/A" (get-slot 'flbox)))
+           (println "Flonum unboxing operations: " (if opt-nan-boxing "N/A" (get-slot 'flunbox)))
+           (println "Bytes allocated: " (get-slot 'allocbytes)))))
 
 (define (print-opts)
   (if opt-ctime
       (print-ctime))
   (if opt-stats
       (print-stats))
+  (if opt-stats-full
+      (print-stats-full))
   (if opt-export-locat-info
       (export-locat-info))
   (if opt-dump-bin
-      (print-mcb))
-  (if opt-dump-versions
-      (print-versions)))
+      (print-mcb)))
 
 (define (print-ctime)
   (println
@@ -468,40 +504,6 @@
       (print-mcb-h code-addr code-alloc)
       (println ">> Dump written in dump.bin")
       (close-output-port f)))
-
-(define (print-versions)
-  (let loop ((lcos all-lazy-code) (i 0))
-    (if (not (null? lcos))
-        (let ((lco (car lcos)))
-          (if (> (lazy-code-nb-real-versions lco) 0)
-              (let* ((versions (lazy-code-versions lco))
-                     (real-versions (keep cddr (table->list (lazy-code-versions lco)))))
-                (print "#" (##object->serial-number lco) "# ")
-                (for-each (lambda (flag) (print flag ",")) (lazy-code-flags lco))
-                (newline)
-                (let loop2 ((rv real-versions))
-                  (if (not (null? rv))
-                      (let* ((version (car rv))
-                             (ctx (car version))
-                             (stack
-                                 (if (ctx? ctx)
-                                     (ctx-stack ctx)
-                                     ctx)))
-                        (if (null? stack)
-                            (print "EMPTY")
-                            (for-each
-                              (lambda (type)
-                                (if (not (ctx-type-ret? type))
-                                    (begin
-                                      (print (ctx-type-symbol type))
-                                      (if (ctx-type-cst? type)
-                                          (print "(" (ctx-type-cst type) ") ")
-                                          (print " ")))))
-                              stack))
-                        (newline)
-                        (loop2 (cdr rv)))))))
-          (loop (cdr lcos) (+ i 1))))
-    all-lazy-code))
 
 (define (print-stats)
   ;; Print stats report
@@ -530,8 +532,18 @@
     (let ((versions-info (get-versions-info all-lazy-code)))
       (println "Min versions number: " (car versions-info))
       (println "Max versions number: " (cdr versions-info)))
-    ;; Number of stubs, number of return stubs, and number of entry stubs for each number of versions
-    (println "-------------------------")
+    (let loop ((slots stats-slots))
+      (if (not (null? slots))
+          (let ((atx (caar slots))
+                (val (u64vector-ref block (cdar slots))))
+            (cond ((eq? atx ATX_ALL) #f)
+                  ((eq? atx ATX_NUM) (println "prim_num:" val))
+                  (else (println "prim_" (caaar slots) ":" val)))
+            (loop (cdr slots)))))
+    (println "-------------------------")))
+
+(define (print-stats-full)
+    ;; Lco num stats
     (println "Number of stubs for each number of version")
     (println "#versions;#stubs;#ret;#entry;#cont;#cond")
     (let ((versions-info-full (get-versions-info-full all-lazy-code)))
@@ -543,7 +555,32 @@
                            (count (cddr n) (lambda (n) (member 'cont n))) ";"
                            (count (cddr n) (lambda (n) (member 'cond n)))))
                 (sort versions-info-full (lambda (n m) (< (car n) (car m)))))
-      (println "-------------------------"))))
+      (println "-------------------------"))
+    ;; Lco ids stats
+    (println "Number of lco for each lco-id")
+    (println "#lco-id;#lco")
+    (let (;; find max lco-id
+          (max-id (foldr (lambda (l r)
+                           (define ast (lazy-code-ast l #t))
+                           (if (and (pair? ast) (eq? (car ast) '##lco-id))
+                               (max (cdr ast) r)
+                               r))
+                         0
+                         all-lazy-code)))
+      ;; for each lco-id, count # of lco and add it to lst if # != 0
+      (let loop ((i 0) (lst '()))
+        (if (> i max-id)
+            ;; Sort by lco-id and print
+            (for-each (lambda (p)
+                        (if (< (car p) 10)   (print " "))
+                        (if (< (car p) 100)  (print " "))
+                        (if (< (car p) 1000) (print " "))
+                        (println (car p) ":" (cdr p)))
+                      (reverse (sort lst (lambda (n m) (< (cdr n) (cdr m))))))
+            (let ((n (count all-lazy-code (lambda (lco) (equal? (lazy-code-ast lco #t) `(##lco-id . ,i))))))
+              (if (> n 0)
+                  (loop (+ i 1) (cons (cons i n) lst))
+                  (loop (+ i 1) lst)))))))
 
 ;;-----------------------------------------------------------------------------
 ;; Locat infos
@@ -606,36 +643,33 @@
                       (print (ctx-type-symbol stype) " ")))
                 (ctx-stack ctx))))))
       ;; Slot loc
-      (print-array-item
-        (string-append
-          "Reg-alloc -> "
-          (with-output-to-string '()
-            (lambda () (display (ctx-slot-loc ctx))))))
+    ;  (print-array-item
+    ;    (string-append
+    ;      "Reg-alloc -> "
+    ;      (with-output-to-string '()
+    ;        (lambda () (display (ctx-slot-loc ctx))))))
 
-      (print-array-item
-        (string-append
-          "env -> "
-          (with-output-to-string '()
-            (lambda () (display (ctx-env ctx)))))))
+    ;  (print-array-item
+    ;    (string-append
+    ;      "env -> "
+    ;      (with-output-to-string '()
+    ;        (lambda () (display (ctx-env ctx)))))))
+    )
 
-    (let loop ((versions (table->list versions))
+    (let loop ((versions versions)
                (n 1))
       (if (not (null? versions))
-          (let* ((version-entry (car versions))
-                 (real-version? (cddr version-entry)))
-            (if real-version?
-                (begin
-                  ;(print-array-item (string-append "ctx" (number->string n)))
-                  (format-ctx (car version-entry) n)
-                  (set! n (+ n 1))))
-            (loop (cdr versions) n)))))
+          (let ((ctx (car versions)))
+            ;(print-array-item (string-append "ctx" (number->string n)))
+            (format-ctx ctx n)
+            (loop (cdr versions) (+ n 1))))))
 
   (define (format-entry lin col lco)
     (let ((n (next-linecol-n lin col)))
       (print "  \"" lin "." col "." n "\"" ": [")
       (format-n-versions (lazy-code-nb-real-versions lco))
       (format-serial (##object->serial-number lco))
-      (format-ctxs (lazy-code-versions lco))
+      (format-ctxs (lazy-code-versions-ctx lco))
       (println "],")))
 
   ;; For each lco

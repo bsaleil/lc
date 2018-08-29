@@ -1,8 +1,5 @@
 catch signal SIGTRAP
-command
-i r rax
-set $rip = $rip + 1
-c
-end
+set logging file out
+set logging on
 run
 quit

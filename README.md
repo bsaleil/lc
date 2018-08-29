@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.com/bsaleil/lc.svg?token=8gcbGkkhvfNySyut3swg&branch=master)](https://travis-ci.com/bsaleil/lc)
 
-JIT compiler for Scheme targeting x86-64 platforms.
+JIT compiler for Scheme targeting Linux x86-64 platforms.
 
 * Baptiste Saleil and Marc Feeley. Interprocedural Specialization of Higher-Order Dynamic Languages Without Static Analysis. In European Conference on Object-Oriented Programming (ECOOP'17), 2017.
 <br/>[[pdf](http://drops.dagstuhl.de/opus/volltexte/2017/7271/pdf/LIPIcs-ECOOP-2017-23.pdf)]
@@ -11,15 +11,37 @@ JIT compiler for Scheme targeting x86-64 platforms.
 
 ### Building
 
-A recent version of [Gambit](http://gambitscheme.org/) (probably >= 4.8.6) must be installed.
+LC depends on a modified version of the Gambit Scheme compiler that must be installed before building LC:
 
 ```bash
-git clone https://github.com/bsaleil/lc.git
+# Build the modified version of Gambit
+git clone https://github.com/bsaleil/gambit
+cd gambit
+mkdir build
+./configure --enable-single-host --prefix=$(pwd)/build
+make -j8
+make install
+```
+
+The ```gsc``` executable of the modified version of Gambit must be available in ```PATH``` both when building and running LC:
+
+```bash
+# Make 'gsc' binary available in PATH
+export PATH=$(pwd)/build/bin:$PATH
+```
+
+Then, LC can be built:
+
+```bash
+# Build LC
+git clone https://github.com/bsaleil/lc -b stable
 cd lc
 make -j8
 ```
 
 ### Running
+
+Make sure the ```gsc``` binary of the modified version of gambit is also available in ```PATH``` when running lc.
 
 ```bash
 ./lc file.scm

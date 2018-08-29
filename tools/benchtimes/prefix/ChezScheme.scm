@@ -1,8 +1,22 @@
-;;------------------------------------------------------------------------------
-;; Macros
+;(declare (standard-bindings) (extended-bindings) (block))
+;------------------------------------------------------------------------------
 
-(##define-macro (def-macro form . body)
-  `(##define-macro ,form (let () ,@body)))
+; Macros...
+
+(define-syntax def-macro
+  (syntax-rules ()
+    ((k (name . args) body ...)
+     (def-macro name (lambda args body ...)))
+    ((k name transformer)
+     (define-syntax name
+       (lambda (stx)
+         (syntax-case stx ()
+           ((l . sv)
+            (let* ((v (syntax->datum (syntax sv)))
+                   (e (apply transformer v)))
+              (if (eq? (void) e)
+                  (syntax (void))
+                  (datum->syntax (syntax l) e))))))))))
 
 (def-macro (FLOATvector-const . lst)   `',(list->vector lst))
 (def-macro (FLOATvector? x)            `(vector? ,x))
@@ -13,7 +27,7 @@
 (def-macro (FLOATvector-length v)      `(vector-length ,v))
 
 (def-macro (nuc-const . lst)
-`',(list->vector lst))
+  `',(list->vector lst))
 
 (def-macro (FLOAT+ . lst) `(+ ,@lst))
 (def-macro (FLOAT- . lst) `(- ,@lst))
@@ -50,11 +64,13 @@
 (def-macro (GENERIC> . lst)  `(> ,@lst))
 (def-macro (GENERIC>= . lst) `(>= ,@lst))
 (def-macro (GENERICexpt . lst) `(expt ,@lst))
+;)
+;)
 
-;;------------------------------------------------------------------------------
+;------------------------------------------------------------------------------
 
-(define ###TIME_BEFORE### 0)
-(define ###TIME_AFTER###  0)
+;INSERTCODE
+;------------------------------------------------------------------------------
 
 (define (run-bench name count ok? run)
   (let loop ((i count) (result '(undefined)))
@@ -63,17 +79,21 @@
       result)))
 
 (define (run-benchmark name count ok? run-maker . args)
-  (let ((run (apply run-maker args)))
-    (set! ###TIME_BEFORE### (##gettime-ns))
-    (let ((result (run-bench name count ok? run)))
-      (set! ###TIME_AFTER### (##gettime-ns))
-      (let ((ms (/ (- ###TIME_AFTER### ###TIME_BEFORE###) 1000000)))
-        (print ms)
-        (println " ms real time")
-        (if (not (ok? result))
-          (begin
-            (display "*** wrong result ***")
-            (newline)
-            (display "*** got: ")
-            (write result)
-            (newline)))))))
+  (newline)
+  (let* ((run (apply run-maker args))
+         (result (time (run-bench name count ok? run))))
+    (if (not (ok? result))
+      (begin
+        (display "*** wrong result ***")
+        (newline)
+        (display "*** got: ")
+        (write result)
+        (newline)))))
+
+(define (fatal-error . args)
+  (for-each display args)
+  (newline)
+  (exit 1))
+
+ (define (call-with-output-file/truncate filename proc)
+   (call-with-output-file filename proc))
