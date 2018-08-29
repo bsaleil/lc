@@ -53,6 +53,24 @@
 ;;--------------------------------------------------------------------------------
 ;; Compiler options
 
+(define (print-help)
+  (newline)
+  (println (string-bold "NAME"))
+  (println "       lc - Scheme JIT compiler")
+  (newline)
+  (println (string-bold "SYNOPSIS"))
+  (println "       ./lc [file] [options]")
+  (newline)
+  (println (string-bold "OPTIONS"))
+  (let ((options (sort compiler-options (lambda (a b)
+                                          (string<? (symbol->string (car a))
+                                                    (symbol->string (car b)))))))
+    (for-each (lambda (option) (println "       " (car option))
+                               (println "       " "       " (cadr option))
+                               (newline))
+              options))
+  (newline))
+
 ;; Contains all compiler options
 ;; An option contains (option-text help-text option-lambda)
 (define compiler-options `(
@@ -156,22 +174,7 @@
   (--help
     "Print help"
     ,(lambda (args)
-      (newline)
-      (println (string-bold "NAME"))
-      (println "       lc - Scheme JIT compiler")
-      (newline)
-      (println (string-bold "SYNOPSIS"))
-      (println "       ./lc [file] [options]")
-      (newline)
-      (println (string-bold "OPTIONS"))
-      (let ((options (sort compiler-options (lambda (a b)
-                                              (string<? (symbol->string (car a))
-                                                        (symbol->string (car b)))))))
-        (for-each (lambda (option) (println "       " (car option))
-                                   (println "       " "       " (cadr option))
-                                   (newline))
-                  options))
-      (newline)
+      (print-help)
       (exit 0)))
 
   (--dump-binary
@@ -413,7 +416,9 @@
                 (analyses-a-conversion! exp-content)
                 (compute-liveness exp-content)
                 (exec exp-content))))
-        (else (error "NYI")))
+        (else
+          (print-help)
+          (exit 0)))
 
   (rt-print-opts)
   (print-opts)
