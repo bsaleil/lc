@@ -532,6 +532,10 @@
     (let ((versions-info (get-versions-info all-lazy-code)))
       (println "Min versions number: " (car versions-info))
       (println "Max versions number: " (cdr versions-info)))
+    (println "-------------------------")))
+
+(define (print-stats-full)
+    ;; Classification stats
     (let loop ((slots stats-slots))
       (if (not (null? slots))
           (let ((atx (caar slots))
@@ -540,9 +544,6 @@
                   ((eq? atx ATX_NUM) (println "prim_num:" val))
                   (else (println "prim_" (caaar slots) ":" val)))
             (loop (cdr slots)))))
-    (println "-------------------------")))
-
-(define (print-stats-full)
     ;; Lco num stats
     (println "Number of stubs for each number of version")
     (println "#versions;#stubs;#ret;#entry;#cont;#cond")

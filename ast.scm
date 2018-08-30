@@ -304,8 +304,7 @@
 ;;   A "simple" primitive has only a codegen function and no lco getter
 ;; * More complex primitives need more complex work.
 ;;   A "complex" primitive has no codegen function but a lco getter that is
-;;   used to guild lco chain and return first lco of the chain
-;; TODO CST APPLY ?
+;;   used to build lco chain and return first lco of the chain
 
 (define primitives '())
 (define (init-primitives)
@@ -2016,7 +2015,7 @@
         (jump-to-version cgc succ ctx))))
 
   (let ((prim-lco (mlc-primitive-d* prim ast succ)))
-    (if opt-stats
+    (if opt-stats-full
         (make-op-stat-lco prim-lco)
         prim-lco)))
 
@@ -2817,7 +2816,7 @@
       ast
       (lambda (cgc ctx)
 
-        (if opt-stats
+        (if opt-stats-full
             (gen-inc-slot cgc ATX_CLO))
 
         ;; Check if the identity of called function is available
@@ -3054,7 +3053,7 @@
                       (lcst? (ctx-type-cst? ltype))
                       (lloc  (if lcst? (ctx-type-cst ltype) (ctx-get-loc ctx 1))))
                  (apply-moves cgc ctx moves)
-                 (if opt-stats
+                 (if opt-stats-full
                      (gen-inc-slot cgc ATX_FLO))
                  (codegen-num-ff cgc (ctx->gc-map-desc ctx) (ctx-fs ctx) (ctx-ffs ctx) op freg lloc #t rloc #t lcst? rcst?)
                  (let* ((ctx (ctx-pop-n ctx 2))
@@ -3103,7 +3102,7 @@
                 ;; Inlined if condition
                 (inlined-if-cond?
                   (let ((x86-op (codegen-cmp-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op #f lloc rloc lcst? rcst? #t)))
-                    (if opt-stats
+                    (if opt-stats-full
                         (gen-inc-slot cgc ATX_INT))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
                 ;; In these cases, we need a free register
@@ -3113,12 +3112,12 @@
                     (apply-moves cgc ctx moves)
                     (cond
                       (num-op?
-                          (if opt-stats
+                          (if opt-stats-full
                               (gen-inc-slot cgc ATX_INT))
                           (codegen-num-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc rloc lcst? rcst?)
                           (jump-to-version cgc lco-overflow (ctx-push ctx type reg)))
                       (else
-                          (if opt-stats
+                          (if opt-stats-full
                               (gen-inc-slot cgc ATX_INT))
                           (codegen-cmp-ii cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc rloc lcst? rcst? #f)
                           (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))))
@@ -3150,7 +3149,7 @@
                     (jump-to-version cgc lco (ctx-pop-n ctx 2))))
                 (inlined-if-cond?
                   (let ((x86-op (codegen-cmp-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op #f lloc leftint? rloc rightint? lcst? rcst? #t)))
-                    (if opt-stats
+                    (if opt-stats-full
                         (gen-inc-slot cgc ATX_FLO))
                     ((lazy-code-generator succ) cgc (ctx-pop-n ctx 2) x86-op)))
                 ;; In these cases, we need a free register
@@ -3161,14 +3160,14 @@
                                (ctx-get-free-freg ast ctx succ 2)
                                (ctx-get-free-reg ast ctx succ 2))))
                     (apply-moves cgc ctx moves)
-                    (if opt-stats
+                    (if opt-stats-full
                         (gen-inc-slot cgc ATX_FLO))
                     (codegen-num-ff cgc (ctx->gc-map-desc ctx) (ctx-fs ctx) (ctx-ffs ctx) op reg lloc leftint? rloc rightint? lcst? rcst?)
                     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg))))
                 (else
                   (mlet ((moves/reg/ctx (ctx-get-free-reg ast ctx succ 2)))
                     (apply-moves cgc ctx moves)
-                    (if opt-stats
+                    (if opt-stats-full
                         (gen-inc-slot cgc ATX_FLO))
                     (codegen-cmp-ff cgc (ctx-fs ctx) (ctx-ffs ctx) op reg lloc leftint? rloc rightint? lcst? rcst? #f)
                     (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx 2) type reg)))))))))
