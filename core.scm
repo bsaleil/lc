@@ -63,6 +63,7 @@
 (define opt-lazy-inlined-call    #t) ;; The function body is inlined at a call if (1) the identity of the callee is known, (2) there is no version of the function for this ctx
 (define opt-nan-boxing           #f) ;; Use nan boxing istead of tagging to encode values
 (define opt-float-unboxing       #t) ;; Use automatic float unboxing based on type specialization
+(define opt-int-unboxing         #f) ;; TODO
 (define opt-disable-pair-tag     #f) ;; Use the generic TAG_MEMOBJ tag for pairs instead of the specific TAG_PAIR tag
 
 (define opt-propagate-continuation #f) ;; TODO
@@ -364,7 +365,7 @@
                        (unblock_gc)
                        (apply (eval op-sym) (list a1 a2))))
                   (else
-                     (error "NNN")))))
+                     (error "Invalid number of arguments in gambit$$ primitive")))))
 
       (put-i64 (+ usp (* 8 (+ (length regalloc-regs) 1)))
                (obj-encoding retval 4)))))
@@ -1252,6 +1253,9 @@
                ;; Compute x86 src operand
                (src
                  (cond ((and (pair? (car move))
+                             (eq? (caar move) 'intbox))
+                          (x86-imm-int (obj-encoding (cddar move))))
+                       ((and (pair? (car move))
                              (eq? (caar move) 'flbox))
                           ;; Check move validity
                           (assert (or (and (eq? (cadar move) 'const) (flonum? (cddar move)))
@@ -1277,6 +1281,11 @@
                                       (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
                                       (x86-rax))))))
                        ((and (pair? (car move))
+                             (eq? (caar move) 'intbox))
+                          (if (eq? (cadar move) 'const)
+                              (x86-imm-int (obj-encoding (cddar move)))
+                              (error "NYI")))
+                       ((and (pair? (car move))
                              (or (eq? (caar move) 'constfn)
                                  (eq? (caar move) 'constcont)))
                           ;; If src is a constfn, create closure in move
@@ -1285,6 +1294,8 @@
                              (eq? (caar move) 'const))
                           (cond ((and (flonum? (cdar move)) (not opt-nan-boxing))
                                    (x86-imm-int (get-i64 (+ (- OFFSET_FLONUM TAG_MEMOBJ) (obj-encoding (cdar move) 12)))))
+                                ((integer? (cdar move))
+                                   (x86-imm-int (cdar move)))
                                 (else
                                    (x86-imm-int (obj-encoding (cdar move) 13)))))
                        ((eq? (car move) 'rtmp)
@@ -1856,6 +1867,20 @@
 ;; jump to lazy-fail if test fails
 (define (gen-dyn-type-test ctx-type stack-idx lazy-success lazy-fail #!optional ast)
 
+  (define lazy-fix-unbox
+    (make-lazy-code
+      (make-lco-id 105)
+      (lambda (cgc ctx)
+        (let* ((ident (ctx-ident-at ctx stack-idx))
+               (loc   (if ident
+                          (ctx-identifier-loc ctx (cdr ident))
+                          (ctx-get-loc ctx stack-idx))))
+          (if opt-nan-boxing
+              (error "NYI")
+              (x86-shr cgc (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc) (x86-imm-int 2)))
+          (let ((ctx (ctx-set-loc ctx (stack-idx-to-slot ctx stack-idx) loc #t)))
+            (jump-to-version cgc lazy-success ctx))))))
+
   (define lazy-funbox
     (make-lazy-code
       (make-lco-id 105)
@@ -1920,10 +1945,12 @@
                (else
                  (let* (;;
                         (lazy-success
-                          (if (and (ctx-type-flo? ctx-type)
-                                   opt-float-unboxing)
-                              lazy-funbox
-                              lazy-success))
+                          (cond ((and opt-float-unboxing (ctx-type-flo? ctx-type))
+                                   lazy-funbox)
+                                ((and opt-int-unboxing (ctx-type-int? ctx-type))
+                                   lazy-fix-unbox)
+                                (else
+                                   lazy-success)))
                         (ctx-success
                           (if (and (ctx-type-flo? ctx-type)
                                    opt-float-unboxing)

@@ -437,6 +437,19 @@
       (codegen-box-float-nan cgc gc-desc opnd dest)
       (codegen-box-float-tag cgc gc-desc opnd dest)))
 
+(define (codegen-box-int-tag cgc src dst)
+  (if (not (eq? src dst))
+      (x86-mov cgc dst src))
+  (x86-shl cgc dst (x86-imm-int 2)))
+
+(define (codegen-box-int cgc fs ffs int-loc dest-loc)
+  (define opnd (codegen-loc-to-x86opnd fs ffs int-loc))
+  (define dest (codegen-reg-to-x86reg dest-loc))
+  (assert (ctx-loc-is-register? dest-loc) "Internal codegen error")
+  (if opt-nan-boxing
+      (error "NYI")
+      (codegen-box-int-tag cgc opnd dest)))
+
 ;;-----------------------------------------------------------------------------
 ;; Functions
 ;;-----------------------------------------------------------------------------
@@ -696,7 +709,7 @@
 
 ;; Generate function return using a return address
 ;; Retaddr (or cctable) is in rdx
-(define (codegen-return-rp cgc gc-desc fs ffs lretobj lretval float?)
+(define (codegen-return-rp cgc gc-desc fs ffs lretobj lretval float? int?)
 
     (let ((opret    (codegen-reg-to-x86reg return-reg))
           (opretval (codegen-loc-to-x86opnd fs ffs lretval)))
@@ -706,12 +719,14 @@
           (error "NYI, see codegen-return-cr"))
 
       ;; Move return value to return register
-      (if float?
-          ;; Box float
-          (codegen-box-float cgc gc-desc fs ffs lretval return-reg)
-          ;;
-          (if (neq? opret opretval)
-              (x86-mov cgc opret opretval))))
+      (cond (float?
+              (codegen-box-float cgc gc-desc fs ffs lretval return-reg))
+            (int?
+              (codegen-box-int cgc fs ffs lretval return-reg))
+            ;;
+            (else
+              (if (neq? opret opretval)
+                  (x86-mov cgc opret opretval)))))
 
     (codegen-return-retobj cgc fs ffs lretobj)
     (codegen-return-clean cgc fs ffs)
@@ -1042,23 +1057,25 @@
 
    (cond
      (lcst?
-       (cond ((eq? op '+) (if (neq? dest opright)
-                              (x86-mov cgc dest opright))
-                          (x86-add cgc dest (x86-imm-int (obj-encoding lleft 29))))
-             ((eq? op '-) (if (eq? dest opright)
-                              (begin (x86-mov cgc (x86-rax) dest)
-                                     (set! opright (x86-rax))))
-                          (x86-mov cgc dest (x86-imm-int (obj-encoding lleft 30)))
-                          (x86-sub cgc dest opright))
-             ((eq? op '*) (x86-imul cgc dest opright (x86-imm-int lleft)))))
+       (let ((imm (x86-imm-int (if (or (eq? op '*) opt-int-unboxing) lleft (obj-encoding lleft)))))
+         (cond ((eq? op '+) (if (neq? dest opright)
+                                (x86-mov cgc dest opright))
+                            (x86-add cgc dest imm))
+               ((eq? op '-) (if (eq? dest opright)
+                                (begin (x86-mov cgc (x86-rax) dest)
+                                       (set! opright (x86-rax))))
+                            (x86-mov cgc dest imm)
+                            (x86-sub cgc dest opright))
+               ((eq? op '*) (x86-imul cgc dest opright imm)))))
      (rcst?
-       (cond ((eq? op '+) (if (neq? dest opleft)
-                              (x86-mov cgc dest opleft))
-                          (x86-add cgc dest (x86-imm-int (obj-encoding lright 31))))
-             ((eq? op '-) (if (neq? dest opleft)
-                              (x86-mov cgc dest opleft))
-                          (x86-sub cgc dest (x86-imm-int (obj-encoding lright 32))))
-             ((eq? op '*) (x86-imul cgc dest opleft (x86-imm-int lright)))))
+       (let ((imm (x86-imm-int (if (or (eq? op '*) opt-int-unboxing) lright (obj-encoding lright)))))
+         (cond ((eq? op '+) (if (neq? dest opleft)
+                                (x86-mov cgc dest opleft))
+                            (x86-add cgc dest imm))
+               ((eq? op '-) (if (neq? dest opleft)
+                                (x86-mov cgc dest opleft))
+                            (x86-sub cgc dest imm))
+               ((eq? op '*) (x86-imul cgc dest opleft imm)))))
      (else
        (cond ((eq? op '+)
                 (cond ((eq? dest opleft)
@@ -1080,14 +1097,14 @@
                          (x86-sub cgc dest opright))))
              ((eq? op '*)
                 (cond ((eq? dest opleft)
-                         (x86-sar cgc dest (x86-imm-int 2))
+                         (and (not opt-int-unboxing) (x86-sar cgc dest (x86-imm-int 2)))
                          (x86-imul cgc dest opright))
                       ((eq? dest opright)
-                         (x86-sar cgc dest (x86-imm-int 2))
+                         (and (not opt-int-unboxing) (x86-sar cgc dest (x86-imm-int 2)))
                          (x86-imul cgc dest opleft))
                       (else
                          (x86-mov cgc dest opleft)
-                         (x86-sar cgc dest (x86-imm-int 2))
+                         (and (not opt-int-unboxing) (x86-sar cgc dest (x86-imm-int 2)))
                          (x86-imul cgc dest opright))))))))
 
 (define (codegen-num-ff cgc gc-desc fs ffs op reg lleft leftint? lright rightint? lcst? rcst?)

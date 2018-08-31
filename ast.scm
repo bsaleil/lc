@@ -773,8 +773,9 @@
            ;; Return address object loc
            (laddr (ctx-get-retobj-loc ctx)))
       (let ((float-val? (and opt-float-unboxing (ctx-type-flo? type-ret)))
+            (int-val?   (and opt-int-unboxing   (ctx-type-int? type-ret)))
             (gc-desc (ctx->gc-map-desc ctx)))
-        (codegen-return-rp cgc gc-desc fs ffs laddr lret float-val?))))
+        (codegen-return-rp cgc gc-desc fs ffs laddr lret float-val? int-val?))))
 
   (define (gen-return-cr cgc ctx)
 
@@ -2468,7 +2469,8 @@
                            (begin (x86-mov cgc (x86-rax) (x86-imm-int encoding))
                                   (x86-upush cgc (x86-rax)))
                            (x86-upush cgc (x86-imm-int encoding)))))
-                  ((eq? (caar locs) 'flbox)
+                  ((or (eq? (caar locs) 'flbox)
+                       (eq? (caar locs) 'intbox))
                      (let ((move (cons (car locs) 'rtmp)))
                        (apply-moves cgc ctx (list move))
                        (x86-upush cgc (codegen-reg-to-x86reg 'tmp))))
@@ -2493,7 +2495,6 @@
       (if (and (not opt-entry-points)
                const-fn)
           (x86-mov cgc (x86-rsi) (x86-imm-int (obj-encoding #f 10))))
-
       ctx)))
 
 ;; Shift args and closure for tail call
@@ -3429,13 +3430,17 @@
     (let ((opnd (codegen-freg-to-x86reg reg)))
       (immediate-to-xmm cgc opnd cst)))
 
+  (define (alloc-cst-int reg cst)
+    (let ((opnd (codegen-reg-to-x86reg reg)))
+      (assert (if (##mem-allocated? cst) (perm-object? cst) #t) "Internal error")
+      (x86-mov cgc opnd (x86-imm-int cst))))
+
   (define (alloc-cst-clo reg cst)
     (let ((entry-obj (car (asc-globalfn-entry-get cst))))
       (gen-closure cgc reg #f entry-obj '())))
 
   (define (alloc-cst reg cst)
     (let ((opnd (codegen-reg-to-x86reg reg)))
-      ;; wip: if mem allocated, we need to assert that it is a perm object
       (assert (if (##mem-allocated? cst) (perm-object? cst) #t) "Internal error")
       (x86-mov cgc opnd (x86-imm-int (obj-encoding cst 12)))))
 
@@ -3451,9 +3456,10 @@
                           (ctx-get-free-reg ast ctx #f 0))))
                (apply-moves cgc ctx moves)
                ;; Alloc cst
-               (cond ((and opt-float-unboxing
-                           (ctx-type-flo? type))
+               (cond ((and opt-float-unboxing (ctx-type-flo? type))
                         (alloc-cst-flo reg cst))
+                     ((and opt-int-unboxing (ctx-type-int? type))
+                        (alloc-cst-int reg cst))
                      ((ctx-type-clo? type) (alloc-cst-clo reg cst))
                      (else                 (alloc-cst reg cst)))
                ;; Update & return ctx

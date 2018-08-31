@@ -133,6 +133,10 @@
     "Disable continuation (cn-num) propagation"
     ,(lambda (args) (set! opt-propagate-continuation #t) args))
 
+  (--enable-int-unboxing
+    "Enable automatic integer unboxing based on type specialization"
+    ,(lambda (args) (set! opt-int-unboxing #t) args))
+
   (--disable-entry-points
     "Disable the use of multiple entry points use only one generic entry point"
     ,(lambda (args) (if opt-call-max-len (error "--call-max-len requires interprocedural extensions"))

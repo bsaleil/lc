@@ -42,6 +42,7 @@
 (define opt-propagate-continuation #f)
 (define opt-static-mode #f)
 (define opt-float-unboxing #f)
+(define opt-int-unboxing #f)
 
 (define asc-cnnum-ctx-get #f)
 (define asc-cnnum-lco-get #f)
@@ -1724,7 +1725,16 @@
 ;; change ONE SLOT only
 ;; TODO: use extra bool arg to change for associated identifier too  to match public api
 ;;       (see ctx-set-type)
-(define (ctx-set-loc ctx slot loc)
+(define (ctx-set-loc ctx slot loc #!optional change-id-loc)
+  (if change-id-loc
+      (let* ((ident (ctx-ident-at ctx (slot-to-stack-idx ctx slot)))
+             (slots (and ident (identifier-sslots (cdr ident)))))
+        (if slots
+            (ctx-set-loc-n ctx slots loc)
+            (ctx-set-loc-h ctx slot loc)))
+      (ctx-set-loc-h ctx slot loc)))
+
+(define (ctx-set-loc-h ctx slot loc)
 
   (define (get-slot-loc slot-loc)
     (if (null? slot-loc)
@@ -1923,6 +1933,8 @@
                                     (cons 'constfn (ctx-type-cst type)))
                                  ((ctx-type-ret? type)
                                     (cons 'constcont (ctx-type-cst type)))
+                                 ((ctx-type-int? type)
+                                    (cons 'intbox (cons 'const (ctx-type-cst type))))
                                  (else
                                     (cons 'const (ctx-type-cst type))))))
                     (assert (not (and (not src) dst)) "Internal error")
@@ -1986,9 +1998,17 @@
                               (cons 'flbox (cons 'const (ctx-type-cst type))))
                             (next-float
                               (cons 'const (ctx-type-cst type)))))
+                     ((ctx-type-int? type)
+                        (if (or (and (not opt-entry-points)
+                                     (not inlined-call?))
+                                generic-entry?
+                                (not opt-int-unboxing))
+                            (next-other (cons 'intbox (cons 'const (ctx-type-cst type))))
+                            (next-other (cons 'const (ctx-type-cst type)))))
                      (else
-                        (next-other
-                          (cons 'const (ctx-type-cst type))))))
+                        (if (and (ctx-type-int? type) (not opt-int-unboxing))
+                            (next-other (cons 'intbox (cons 'const (ctx-type-cst type))))
+                            (next-other (cons 'const (ctx-type-cst type)))))))
             ;; Type is float !cst
             ((and (ctx-type-flo? type)
                   (or (and (not opt-entry-points)
