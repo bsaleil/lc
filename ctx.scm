@@ -2018,7 +2018,8 @@
                (next-other
                  (cons 'flbox loc)))
             ;; Type is fixnum !cst
-            ((and (ctx-type-int? type)
+            ((and opt-int-unboxing
+                  (ctx-type-int? type)
                   (or (and (not opt-entry-points)
                            (not inlined-call?))
                       generic-entry?))
