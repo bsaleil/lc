@@ -1641,16 +1641,23 @@
                    (if (>= idx 0)
                        (let ((loc  (ctx-get-loc ctx idx))
                              (type (ctx-get-type ctx idx)))
-                         (if (and opt-float-unboxing
-                                  (ctx-type-flo? type))
-                             ;; Float, push a boxed float
-                             (begin (codegen-box-float cgc (ctx->gc-map-desc ctx) #f #f loc 'tmp)
-                                    (x86-upush cgc (x86-rax))
-                                    (loop (- idx 1)))
-                             ;; !Float, push value
-                             (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
-                                    (x86-upush cgc (x86-rax))
-                                    (loop (- idx 1)))))))
+                         (cond ;; Float, push a boxed float
+                               ((and opt-float-unboxing
+                                     (ctx-type-flo? type))
+                                  (codegen-box-float cgc (ctx->gc-map-desc ctx) #f #f loc 'tmp)
+                                  (x86-upush cgc (x86-rax))
+                                  (loop (- idx 1)))
+                               ;; Integer, push a boxed integer
+                               ((and opt-int-unboxing
+                                     (ctx-type-int? type))
+                                  (codegen-box-int cgc #f #f loc 'tmp)
+                                  (x86-upush cgc (x86-rax))
+                                  (loop (- idx 1)))
+                               ;; !Float, push value
+                               (else
+                                 (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd (ctx-fs ctx) (ctx-ffs ctx) loc))
+                                 (x86-upush cgc (x86-rax))
+                                 (loop (- idx 1)))))))
                  (codegen-gambit-call cgc (ctx->gc-map-desc ctx) gsym nargs reg)
                  (jump-to-version cgc succ (ctx-push (ctx-pop-n ctx nargs) (make-ctx-tunk) reg)))))))
     (if generated-arg?
