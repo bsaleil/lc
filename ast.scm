@@ -721,6 +721,20 @@
         ;;
         (jump-to-version cgc succ ctx)))))
 
+(define (gen-drop-int cgc ctx idx-from idx-to)
+
+  (define (drop idx-from)
+    (if (not (= idx-from idx-to))
+        (let* ((type (ctx-get-type ctx idx-from)))
+          (if (and (ctx-type-int? type)
+                   (not (ctx-type-cst? type)))
+              (let ((loc (ctx-get-loc ctx idx-from)))
+                (codegen-box-int cgc (ctx-fs ctx) (ctx-ffs ctx) loc loc)))
+          (drop (+ idx-from 1)))))
+
+  (if opt-int-unboxing
+      (drop idx-from)))
+
 (define (gen-drop-float cgc ctx ast idx-from idx-to)
 
   (define (drop ctx idx-from)
@@ -2484,7 +2498,6 @@
                   (else
                      (x86-upush cgc (codegen-loc-to-x86opnd fs (ctx-ffs ctx) (car locs)))))
             (loop (+ fs 1) (cdr locs)))))
-
     (let* ((used-regs
              (foldr (lambda (el r)
                       (define regs '())

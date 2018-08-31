@@ -150,6 +150,7 @@
 (define gen-allocation-imm #f)
 
 (define codegen-prologue-rest> #f)
+(define gen-drop-int #f)
 (define gen-drop-float #f)
 (define asc-cnnum-table-get #f)
 (define make-lco-id #f)
@@ -159,6 +160,7 @@
 (define codegen-test-mem-obj #f)
 (define codegen-test-value #f)
 (define codegen-test-char #f)
+(define codegen-box-int #f)
 
 (define write_lc_global #f)
 (define write_lc_stack #f)
@@ -1254,7 +1256,12 @@
                (src
                  (cond ((and (pair? (car move))
                              (eq? (caar move) 'intbox))
-                          (x86-imm-int (obj-encoding (cddar move))))
+                          (if (eq? (cadar move) 'const)
+                              (x86-imm-int (obj-encoding (cddar move)))
+                              (let* ((loc  (cdar move))
+                                     (opnd (codegen-loc-to-x86opnd (- (ctx-fs ctx) fs-offset) (- (ctx-ffs ctx) ffs-offset) loc)))
+                                (codegen-box-int cgc (- (ctx-fs ctx) fs-offset) (- (ctx-ffs ctx) ffs-offset) loc loc)
+                                opnd)))
                        ((and (pair? (car move))
                              (eq? (caar move) 'flbox))
                           ;; Check move validity
@@ -1280,11 +1287,6 @@
                                           (x86-movsd cgc (x86-mem (+ -16 OFFSET_FLONUM) alloc-ptr) opnd))
                                       (x86-lea cgc (x86-rax) (x86-mem (- TAG_MEMOBJ 16) alloc-ptr))
                                       (x86-rax))))))
-                       ((and (pair? (car move))
-                             (eq? (caar move) 'intbox))
-                          (if (eq? (cadar move) 'const)
-                              (x86-imm-int (obj-encoding (cddar move)))
-                              (error "NYI")))
                        ((and (pair? (car move))
                              (or (eq? (caar move) 'constfn)
                                  (eq? (caar move) 'constcont)))
@@ -1670,6 +1672,7 @@
                  (asm-align cgc 4 0 #x90)
                  (x86-label cgc block-label)
                  (set! ctx (gen-drop-float cgc ctx ast 0 (- nb-actual (- nb-formal 1))))
+                 (gen-drop-int cgc ctx 0 (- nb-actual (- nb-formal 1)))
                  (let* ((nb-extra (- nb-actual (- nb-formal 1)))
                         (rloc
                           (let ((r (ctx-get-loc ctx (- nb-extra 1))))

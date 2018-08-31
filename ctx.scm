@@ -2009,6 +2009,7 @@
                         (if (and (ctx-type-int? type) (not opt-int-unboxing))
                             (next-other (cons 'intbox (cons 'const (ctx-type-cst type))))
                             (next-other (cons 'const (ctx-type-cst type)))))))
+            ;; TODO: merge these two cases
             ;; Type is float !cst
             ((and (ctx-type-flo? type)
                   (or (and (not opt-entry-points)
@@ -2016,6 +2017,13 @@
                       generic-entry?))
                (next-other
                  (cons 'flbox loc)))
+            ;; Type is fixnum !cst
+            ((and (ctx-type-int? type)
+                  (or (and (not opt-entry-points)
+                           (not inlined-call?))
+                      generic-entry?))
+               (next-other
+                 (cons 'intbox loc)))
             ;; Others
             (else
                (if (and (ctx-type-flo? type)
