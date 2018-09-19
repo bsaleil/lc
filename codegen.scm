@@ -2426,12 +2426,16 @@
 
         (begin
             (x86-mov cgc (x86-rax) oplen)
-            (x86-shl cgc (x86-rax) (x86-imm-int 1))
+            (if opt-int-unboxing
+                (x86-shl cgc (x86-rax) (x86-imm-int 3))
+                (x86-shl cgc (x86-rax) (x86-imm-int 1)))
             (gen-allocation-rt cgc STAG_VECTOR (x86-rax) gc-desc)
 
             ;; Loop
             (x86-mov cgc selector-reg oplen)
-            (x86-shl cgc selector-reg (x86-imm-int 1))
+            (if opt-int-unboxing
+                (x86-shl cgc selector-reg (x86-imm-int 3))
+                (x86-shl cgc selector-reg (x86-imm-int 1)))
             (if cst-val?
                 (x86-mov cgc dest (x86-imm-int (obj-encoding lval 96))))
             (x86-label cgc label-loop)

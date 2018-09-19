@@ -2107,16 +2107,16 @@
                 (apply-moves cgc ctx moves)
                 (gen-primitive cgc ctx succ reg prim)))))))
 
-  (define (get-box-fl-args-lco primitive next)
-    (if (and opt-float-unboxing
-             (primitive-box-fl-args? primitive))
+  (define (get-box-unboxed-args-lco primitive next)
+    (if (not (primitive-box-fl-args? primitive))
+        next
         (make-lazy-code (make-lco-id 24)
           (lambda (cgc ctx)
             (let* ((idx-to (or (primitive-nbargs primitive)
-                               (length (cdr ast))))
-                   (ctx (gen-drop-float cgc ctx ast 0 idx-to)))
-              (jump-to-version cgc next ctx))))
-        next))
+                               (length (cdr ast)))))
+              (and opt-float-unboxing (set! ctx (gen-drop-float cgc ctx ast 0 idx-to)))
+              (and opt-int-unboxing   (gen-drop-int cgc ctx 0 idx-to))
+              (jump-to-version cgc next ctx))))))
 
   ;; Assert primitive nb args
   (assert-p-nbargs prim ast)
@@ -2124,7 +2124,7 @@
   ;;
   (let* ((primitive (primitive-get prim))
          (lazy-primitive   (get-prim-lco primitive))
-         (lazy-box-fl-args (get-box-fl-args-lco primitive lazy-primitive))
+         (lazy-box-fl-args (get-box-unboxed-args-lco primitive lazy-primitive))
          (lazy-cst-check   (get-lazy-cst-check primitive lazy-box-fl-args)))
 
     (cond ;; !variadic primitive with fixed arg types
