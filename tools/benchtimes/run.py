@@ -235,6 +235,14 @@ def lcf64v_with_options(name,options):
     opts = opts + options
     return System(name,"LCf64v","",".scm",opts,"(?:.*\n){9}CPU time: ([^\n]*)\n","(?:.*\n){10}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0,False)
 
+def pycket_no_options(name):
+    opts = ["/home/bapt/Bureau/testPycket/pycket/pycket-c","{0}"]
+    newenv = os.environ.copy()
+    newenv["PLTHOME"] = "/home/bapt/Bureau/testPycket/racket/"
+    newenv["PATH"] = "/home/bapt/Bureau/testPycket/racket/racket/bin/:" + newenv["PATH"]
+    newenv["PYTHONPATH"] = "/home/bapt/Bureau/testPycket/pycket:/home/bapt/Bureau/testPycket/pycket/pypy"
+    return System(name,"Pycket","",".scm",opts,"real time:[\s]*([\S]*)[\s]*gc time", "gc time:[\s]*([\S]*)[\s]*", lambda x: x, newenv)
+
 def gambit_no_options(name,gcsize):
     opts = []
     cmd = "/home/bapt/Bureau/gambitBOXUNBOX/gsc/gsc -:m"+ str(gcsize) + " -exe -o {0}.o1 {0}"
@@ -293,13 +301,14 @@ systems = []
 # systems.append(lcf64v_with_options("tag-intra-opt",   ["--disable-pair-tag","--max-versions 5","--disable-entry-points","--disable-return-points"]))
 # systems.append(lcf64v_with_options("tag-inter-opt",   ["--disable-pair-tag","--max-versions 5"]))
 
-systems.append(chez_no_options("ChezScheme"))
-systems.append(lcf64v_with_options("tag-inter-opt", ["--disable-pair-tag","--max-versions 5"]))
+# systems.append(chez_no_options("ChezScheme"))
+# systems.append(lcf64v_with_options("tag-inter-opt", ["--disable-pair-tag","--max-versions 5"]))
 
 # Gambit
 # systems.append(gambit_no_options("Gambit", 512000))
 # systems.append(gambit_no_options("Gambitf64v", 512000))
 
+systems.append(pycket_no_options("Pycket1"));
 
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))
