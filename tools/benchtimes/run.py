@@ -230,10 +230,24 @@ def lc_with_options(name,options):
     opts = opts + options
     return System(name,"LC","",".scm",opts,"(?:.*\n){9}CPU time: ([^\n]*)\n","(?:.*\n){10}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0,False)
 
+def lc_with_options_notime(name,options):
+    opts = ["/home/bapt/Bureau/these/lc/lc","{0}"]
+    opts = opts + options
+    newenv = os.environ.copy()
+    newenv["PATH"] = "/home/bapt/Bureau/gambitBSALEIL/BUILD/bin/:" + newenv["PATH"]
+    return System(name,"LC","",".scm",opts,"(?:.*\n){0}CPU time: ([^\n]*)\nGC","(?:.*\n){1}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
+
 def lcf64v_with_options(name,options):
     opts = ["/home/bapt/Bureau/these/lc/lc","{0}","--time"]
     opts = opts + options
     return System(name,"LCf64v","",".scm",opts,"(?:.*\n){9}CPU time: ([^\n]*)\n","(?:.*\n){10}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0,False)
+
+def lcf64v_with_options_notime(name,options):
+    opts = ["/home/bapt/Bureau/these/lc/lc","{0}"]
+    opts = opts + options
+    newenv = os.environ.copy()
+    newenv["PATH"] = "/home/bapt/Bureau/gambitBSALEIL/BUILD/bin/:" + newenv["PATH"]
+    return System(name,"LCf64v","",".scm",opts,"(?:.*\n){0}CPU time: ([^\n]*)\nGC","(?:.*\n){1}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
 
 def pycket_no_options(name):
     opts = ["/home/bapt/Bureau/testPycket/pycket/pycket-c","{0}"]
@@ -309,6 +323,8 @@ systems = []
 # systems.append(gambit_no_options("Gambitf64v", 512000))
 
 systems.append(pycket_no_options("Pycket1"));
+systems.append(lc_with_options_notime("LC", []));
+systems.append(lcf64v_with_options_notime("LCfv", []));
 
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))
