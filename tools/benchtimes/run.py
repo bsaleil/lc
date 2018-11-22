@@ -177,12 +177,14 @@ class System:
                 assert (len(res) == 0 or len(res) == 1)
                 if (len(res) == 1):
                     timems = (float(timems) - float(res[0]))
+                    gctimems = float(res[0])
                 else:
                     assert "no collections" in sout, "Invalid regexp"
                     timems = float(timems)
+                    gctimems = 0.0
 
                 timems = self.time_to_ms(timems)
-                gctimems = self.time_to_ms(float(res[0]))
+                gctimems = self.time_to_ms(gctimems)
                 rawTimes.append(timems)
                 rawGCTimes.append(gctimems)
 
@@ -228,26 +230,30 @@ def userWants(str):
 def lc_with_options(name,options):
     opts = ["/home/bapt/Bureau/these/lc/lc","{0}","--time"]
     opts = opts + options
-    return System(name,"LC","",".scm",opts,"(?:.*\n){9}CPU time: ([^\n]*)\n","(?:.*\n){10}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0,False)
+    newenv = os.environ.copy()
+    newenv["PATH"] = "/home/bapt/Bureau/gambitBSALEIL/BUILD/bin/:" + newenv["PATH"]
+    return System(name,"LC","",".scm",opts,"(?:.*\n){13}Real time: ([^\n]*)\n","(?:.*\n){16}GC real time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
 
 def lc_with_options_notime(name,options):
     opts = ["/home/bapt/Bureau/these/lc/lc","{0}"]
     opts = opts + options
     newenv = os.environ.copy()
     newenv["PATH"] = "/home/bapt/Bureau/gambitBSALEIL/BUILD/bin/:" + newenv["PATH"]
-    return System(name,"LC","",".scm",opts,"(?:.*\n){0}CPU time: ([^\n]*)\nGC","(?:.*\n){1}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
+    return System(name,"LC","",".scm",opts,"(?:.*\n){4}Real time: ([^\n]*)\nGC","(?:.*\n){7}GC real time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
 
 def lcf64v_with_options(name,options):
     opts = ["/home/bapt/Bureau/these/lc/lc","{0}","--time"]
     opts = opts + options
-    return System(name,"LCf64v","",".scm",opts,"(?:.*\n){9}CPU time: ([^\n]*)\n","(?:.*\n){10}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0,False)
+    newenv = os.environ.copy()
+    newenv["PATH"] = "/home/bapt/Bureau/gambitBSALEIL/BUILD/bin/:" + newenv["PATH"]
+    return System(name,"LCf64v","",".scm",opts,"(?:.*\n){13}Real time: ([^\n]*)\n","(?:.*\n){16}GC real time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
 
 def lcf64v_with_options_notime(name,options):
     opts = ["/home/bapt/Bureau/these/lc/lc","{0}"]
     opts = opts + options
     newenv = os.environ.copy()
     newenv["PATH"] = "/home/bapt/Bureau/gambitBSALEIL/BUILD/bin/:" + newenv["PATH"]
-    return System(name,"LCf64v","",".scm",opts,"(?:.*\n){0}CPU time: ([^\n]*)\nGC","(?:.*\n){1}GC CPU time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
+    return System(name,"LCf64v","",".scm",opts,"(?:.*\n){4}Real time: ([^\n]*)\nGC","(?:.*\n){7}GC real time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
 
 def pycket_no_options(name):
     opts = ["/home/bapt/Bureau/testPycket/pycket/pycket-c","{0}"]
@@ -259,7 +265,7 @@ def pycket_no_options(name):
 
 def gambit_no_options(name,gcsize):
     opts = []
-    cmd = "/home/bapt/Bureau/gambitBOXUNBOX/gsc/gsc -:m"+ str(gcsize) + " -exe -o {0}.o1 {0}"
+    cmd = "gsc -:m"+ str(gcsize) + " -exe -o {0}.o1 {0}"
     return System(name,name,cmd,".o1",["{0}"],"(\d+) ms real time\\n","accounting for (\d+) ms real time",lambda x: x,False)
 
 def chez_no_options(name):
@@ -322,9 +328,19 @@ systems = []
 # systems.append(gambit_no_options("Gambit", 512000))
 # systems.append(gambit_no_options("Gambitf64v", 512000))
 
-systems.append(pycket_no_options("Pycket1"));
-systems.append(lc_with_options_notime("LC", []));
-systems.append(lcf64v_with_options_notime("LCfv", []));
+# LC/Pycket (exec+compil time)
+systems.append(pycket_no_options("Pycket"));
+systems.append(lc_with_options_notime("LC5", ["--max-versions 5"]));
+systems.append(lcf64v_with_options_notime("LC5f64", ["--max-versions 5"]));
+systems.append(lc_with_options_notime("LCnaive", ["--max-versions 0", "--disable-float-unboxing", "--disable-entry-points", "--disable-return-points", "--disable-regalloc-vers"]))
+
+# # LC/Gambit/LC (exec time)
+# systems.append(gambit_no_options("Gambit", 512000))
+# systems.append(gambit_no_options("Gambitf64v", 512000))
+# systems.append(lc_with_options("LC5", ["--max-versions 5"]));
+# systems.append(lcf64v_with_options("LC5f64", ["--max-versions 5"]));
+# systems.append(lc_with_options("LCnaive", ["--max-versions 0", "--disable-float-unboxing", "--disable-entry-points", "--disable-return-points", "--disable-regalloc-vers"]));
+# systems.append(lcf64v_with_options("LCf64naive", ["--max-versions 0", "--disable-float-unboxing", "--disable-entry-points", "--disable-return-points", "--disable-regalloc-vers"]));
 
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))

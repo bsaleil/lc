@@ -29,7 +29,7 @@ def print_m(arg,**kwargs):
 if len(sys.argv) <= 4:
     print("Invalid arguments")
     print("Usage:")
-    print('   python thisscript.py path/to/benchmarks path/to/lc "KeyToExtract" [execs]')
+    print('   python lckey_to_csv.py path/to/benchmarks path/to/lc "KeyToExtract" [execs]')
     print('Each exec has the form:')
     print('exec_name;arg1;arg2;...;argn')
     sys.exit(0)
