@@ -462,3 +462,39 @@
                      (else
                        (let ((first (liveness (car exprs) locals succs)))
                          (loop (cdr exprs) (list first))))))))))
+
+;;-----------------------------------------------------------------------------
+;; Function arg count
+;;-----------------------------------------------------------------------------
+
+(define (count-fnargs-inject ast)
+
+  (define (inject-body body nargs rest)
+    (let ((op (atom-node-make '##register-lc-call))
+          (nargs (atom-node-make nargs))
+          (rest (atom-node-make rest)))
+      (list
+        (append `(begin (,op ,nargs ,rest))
+                (map count-fnargs-inject body)))))
+
+  (cond ((not (pair? ast)) ast)
+        ((eq? (car ast) 'quote)
+           ast)
+        ((and (eq? (car ast) 'define)
+              (pair? (cadr ast)))
+           (pp ast)
+           (error "Internal error"))
+        ((eq? (car ast) 'lambda)
+           (let* ((args (cadr ast))
+                  (body
+                   (cond ((symbol? args)
+                            (inject-body (cddr ast) 0 args))
+                         ((list? args)
+                            (inject-body (cddr ast) (length args) #f))
+                         ((pair? args)
+                            (let ((nargs (- (length (flatten args)) 1))
+                                  (rest (list-last (flatten args))))
+                              (inject-body (cddr ast) nargs rest))))))
+             (cons 'lambda (cons args body))))
+        (else
+           (map count-fnargs-inject ast))))

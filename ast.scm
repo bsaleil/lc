@@ -364,7 +364,9 @@
     ;;
     (##print-double      #f                  #f             #f                ,codegen-p-print-double       #f       ,ATX_VOI 1 ,ATX_FLO                   )
     (##print-perm-string #f                  #f             #f                ,codegen-p-print-perm-string  #f       ,ATX_VOI 1 ,ATX_STR                   )
-    (##process-statistics #f                 #f             #f                ,codegen-p-process-statistics #f       ,ATX_FEC 0                            ))))
+    (##process-statistics #f                 #f             #f                ,codegen-p-process-statistics #f       ,ATX_FEC 0                            )
+    (##register-lc-call   #f                 #f             #f                ,codegen-p-register-lc-call   #f       ,ATX_VOI 2 ,ATX_INT ,ATX_ALL          ))))
+
 
 (define (get-prim-lambda ast sym primitive)
   (let ((nbargs (primitive-nbargs primitive)))
