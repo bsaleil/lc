@@ -75,7 +75,7 @@
 ;; An option contains (option-text help-text option-lambda)
 (define compiler-options `(
 
-  ;; OPTIONS PARSED BY THE LAUNCHER (still declared here for doc)
+  ;; OPTIONS PARSED BY THE LAUNCHER (here for doc)
 
   (--gdb
      "Run the compiler with gdb"
@@ -124,6 +124,10 @@
                      (cons (ctx-string->tpred next)
                            types))))))))
 
+  (--count-function-args
+    "Count and print the number of arguments used at function calls"
+    ,(lambda (args) (set! opt-count-fnargs #t) args))
+
   (--ctime
     "Print compilation time after execution"
     ,(lambda (args) (set! opt-ctime #t) args))
@@ -145,6 +149,10 @@
   (--disable-float-unboxing
     "Disable automatic float unboxing based on type specialization"
     ,(lambda (args) (set! opt-float-unboxing #f) args))
+
+  (--disable-free-versioning
+    "Disable versioning based on free variables"
+    ,(lambda (args) (set! opt-free-versioning #f) args))
 
   (--disable-inlined-call
     "Disable lazy call inlining when callee identity is known. Lazy call inlining causes function duplication which is
@@ -221,6 +229,7 @@
     "Print full stats about execution"
     ,(lambda (args) (if opt-time (error "--stats-full option can't be used with --time"))
                     (set! opt-stats #t)
+                    (set! opt-count-fnargs #t)
                     (set! opt-stats-full #t)
                     args))
 
@@ -416,6 +425,10 @@
           (copy-with-declare (car files) "./tmp")
         (let ((content (c#expand-program "./tmp" #f locat-table))) ;(read-all (open-input-file (car files)))))
               (let ((exp-content (expand-tl content)))
+                ;; If we want to count fnargs, inject the ##register-lc-call
+                ;; primitive in lambdas
+                (if opt-count-fnargs
+                    (set! exp-content (count-fnargs-inject exp-content)))
                 (analyses-find-global-types! exp-content)
                 (analyses-a-conversion! exp-content)
                 (compute-liveness exp-content)
@@ -485,6 +498,8 @@
       (print-ctime))
   (if opt-stats
       (print-stats))
+  (if opt-count-fnargs
+      (print-count-fnargs))
   (if opt-stats-full
       (print-stats-full))
   (if opt-export-locat-info
@@ -537,6 +552,27 @@
       (println "Min versions number: " (car versions-info))
       (println "Max versions number: " (cdr versions-info)))
     (println "-------------------------")))
+
+(define (print-count-fnargs)
+  (define (print block block-len)
+    (let ((max-index
+            (let loop ((i (- block-len 1)))
+              (if (not (= (u64vector-ref block i) 0))
+                  i
+                  (loop (- i 1))))))
+      (let loop ((i 0))
+        (if (<= i max-index)
+            (begin (println i ': (u64vector-ref block i))
+                   (loop (+ i 1)))))))
+  (println "-------------------------")
+  (println "Number of call executed per number of arguments")
+  (println "#args:#calls")
+  (print count-fnargs-block count-fnargs-block-len)
+  (println "-------------------------")
+  (println "Number of call executed per number of arguments (rest)")
+  (println "#args:#calls")
+  (print count-fnargsr-block count-fnargs-block-len)
+  (println "-------------------------"))
 
 (define (print-stats-full)
     ;; Classification stats

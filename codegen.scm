@@ -3462,6 +3462,51 @@
         (begin (x86-mov cgc (x86-rax) (x86-imm-int (to-64-value NB_MASK_MEM)))
                (x86-lea cgc dest (x86-mem (- TAG_MEMOBJ) dest (x86-rax)))))))
 
+(define (codegen-p-register-lc-call cgc gc-desc fs ffs op reg inlined-cond? lnargs lrest ncst? rcst?)
+  (if opt-nan-boxing (error "Internal error"))
+  (let ((dest (codegen-reg-to-x86reg reg)))
+    ;;
+    (if (and rcst? lrest (not (null? lrest)))
+        (error "Internal error"))
+    ;; if rest? is not the #f constant, write count-fnargsr array
+
+        (let ((label-next (asm-make-label #f (new-sym 'label_next)))
+              (label-loop (asm-make-label #f (new-sym 'label_loop))))
+          (x86-mov cgc selector-reg (x86-imm-int count-fnargsr-block-addr))
+          (if rcst?
+              #f ;; if lrest is the null cst, there is no value in the rest list
+              (begin
+                (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs ffs lrest))
+                (x86-label cgc label-loop)
+                (x86-cmp cgc (x86-rax) (x86-imm-int (obj-encoding '())))
+                (x86-je  cgc label-next)
+                  (x86-add cgc (x86-rcx) (x86-imm-int 8))
+                  (x86-mov cgc (x86-rax) (x86-mem (- OFFSET_PAIR_CDR TAG_PAIR) (x86-rax)))
+                  (x86-jmp cgc label-loop)
+                (x86-label cgc label-next)))
+          (if ncst?
+            (x86-add cgc (x86-rcx) (x86-imm-int (* 8 lnargs)))
+            (begin (x86-mov cgc (x86-rax) (codegen-loc-to-x86opnd fs ffs lnargs))
+                   (x86-shl cgc (x86-rax) (x86-imm-int 1))
+                   (x86-add cgc (x86-rcx) (x86-rax))))
+          ;;
+          (x86-mov cgc (x86-rax) (x86-mem 0 (x86-rcx)))
+          (x86-add cgc (x86-rax) (x86-imm-int 1))
+          (x86-mov cgc (x86-mem 0 (x86-rcx)) (x86-rax)))
+    ;; increment count-fnargs array
+    (x86-mov cgc (x86-rax) (x86-imm-int count-fnargs-block-addr))
+    (if ncst?
+        (x86-add cgc (x86-rax) (x86-imm-int (* 8 lnargs)))
+        (begin (x86-mov cgc (x86-rcx) (codegen-loc-to-x86opnd fs ffs lnargs))
+               (x86-shl cgc (x86-rcx) (x86-imm-int 1))
+               (x86-add cgc (x86-rax) (x86-rcx))))
+    (x86-mov cgc (x86-rcx) (x86-mem 0 (x86-rax)))
+    (x86-add cgc (x86-rcx) (x86-imm-int 1))
+    (x86-mov cgc (x86-mem 0 (x86-rax)) (x86-rcx))
+    (x86-mov cgc dest (x86-imm-int (obj-encoding #!void)))
+    (x86-mov cgc selector-reg (x86-imm-int selector-init-val))))
+
+
 ;;-----------------------------------------------------------------------------
 ;; Type checks
 ;;-----------------------------------------------------------------------------

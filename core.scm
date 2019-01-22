@@ -65,6 +65,8 @@
 (define opt-float-unboxing       #t) ;; Use automatic float unboxing based on type specialization
 (define opt-int-unboxing         #f) ;; TODO
 (define opt-disable-pair-tag     #f) ;; Use the generic TAG_MEMOBJ tag for pairs instead of the specific TAG_PAIR tag
+(define opt-count-fnargs         #f) ;; Count and print the number of arguments used at function calls
+(define opt-free-versioning      #t) ;; Use free variable information in code versioning
 
 (define opt-propagate-continuation #f) ;; TODO
 (define opt-regalloc-inlined-call #f)  ;; TODO
@@ -616,6 +618,13 @@
           stats-slots))
 (define block-len (+ 6 (length debug-slots)))
 
+(define count-fnargs-block-len 25)
+(define count-fnargs-block #f)
+(define count-fnargs-block-addr #f)
+;; rest
+(define count-fnargsr-block #f)
+(define count-fnargsr-block-addr #f)
+
 (define (init-block)
   (if opt-nan-boxing
       (begin (set! globals-space (make-u64vector globals-len #xFFFE000000000000))
@@ -625,6 +634,12 @@
   (set! block (alloc-perm-u64vector block-len))
   (assert (perm-object? block) "Init error, block should be allocated as a permanent object")
   (set! block-addr (+ (object-address block) 8))
+  (if opt-count-fnargs
+      (begin
+        (set! count-fnargs-block (alloc-perm-u64vector count-fnargs-block-len))
+        (set! count-fnargsr-block (alloc-perm-u64vector count-fnargs-block-len))
+        (set! count-fnargs-block-addr (+ (object-address count-fnargs-block) 8))
+        (set! count-fnargsr-block-addr (+ (object-address count-fnargsr-block) 8))))
   (let loop ((i 0))
     (if (< i (u64vector-length block))
         (begin (put-i64 (+ block-addr (* i 8)) 0)

@@ -364,7 +364,9 @@
     ;;
     (##print-double      #f                  #f             #f                ,codegen-p-print-double       #f       ,ATX_VOI 1 ,ATX_FLO                   )
     (##print-perm-string #f                  #f             #f                ,codegen-p-print-perm-string  #f       ,ATX_VOI 1 ,ATX_STR                   )
-    (##process-statistics #f                 #f             #f                ,codegen-p-process-statistics #f       ,ATX_FEC 0                            ))))
+    (##process-statistics #f                 #f             #f                ,codegen-p-process-statistics #f       ,ATX_FEC 0                            )
+    (##register-lc-call   #f                 #f             #f                ,codegen-p-register-lc-call   #f       ,ATX_VOI 2 ,ATX_INT ,ATX_ALL          ))))
+
 
 (define (get-prim-lambda ast sym primitive)
   (let ((nbargs (primitive-nbargs primitive)))
@@ -575,6 +577,7 @@
           (if (ctx-loc-is-freemem? loc)
               ;; It's a free var that is only in closure
               (let ((lclo (ctx-get-closure-loc ctx)))
+                (assert (not (and opt-free-versioning (not (ctx-type-unk? type)))) "Internal error")
                 (codegen-get-free cgc (ctx-fs ctx) (ctx-ffs ctx) reg lclo loc))
               ;; The variable is in a register or in non closure memory
               (apply-moves cgc ctx (list (cons loc reg))))
@@ -3320,7 +3323,9 @@
 (define (get-cc-key ctx fvars-imm fvars-late)
   (foldr (lambda (n r)
            (if (member (car n) fvars-imm)
-               (cons (ctx-identifier-type ctx (cdr n)) r)
+               (if opt-free-versioning
+                   (cons (ctx-identifier-type ctx (cdr n)) r)
+                   (cons (make-ctx-tunk) r))
                (cons #f r)))
          '()
          (ctx-env ctx)))
@@ -3350,6 +3355,9 @@
                 (fn-num (new-fn-num)))
             (asc-fnnum-nbargs-add fn-num (and (list? (cadr ast)) (length (cadr ast))))
             (table-set! cctables key (cons cctable fn-num))
+            (assert (not (and (not opt-free-versioning)
+                              (> (table-length cctables) 1)))
+                    "Internal error")
             (cons #t (cons cctable fn-num)))))))
 
 ;; Fill cctable with stub and generic addresses

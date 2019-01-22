@@ -43,6 +43,7 @@
 (define opt-static-mode #f)
 (define opt-float-unboxing #f)
 (define opt-int-unboxing #f)
+(define opt-free-versioning #f)
 
 (define asc-cnnum-ctx-get #f)
 (define asc-cnnum-lco-get #f)
@@ -669,7 +670,7 @@
     (if (null? ids)
         '()
         (let* ((id         (caar ids))
-               (enc-type   (if opt-entry-points ;; We can't use free variable type to specialize ctx if opt-entry-points is #f
+               (enc-type   (if (and opt-entry-points opt-free-versioning) ;; We can't use free variable type to specialize ctx if opt-entry-points is #f
                                (or (cdar ids) (make-ctx-tclo)) ;; enclosing type, or #f if late
                                (make-ctx-tunk)))
                (identifier (make-identifier 'free '() '() enc-type (cons 'f nvar) #f (eq? id bound-id))))
