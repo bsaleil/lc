@@ -577,7 +577,7 @@
           (if (ctx-loc-is-freemem? loc)
               ;; It's a free var that is only in closure
               (let ((lclo (ctx-get-closure-loc ctx)))
-                (assert (not (and opt-free-versioning (not (ctx-type-unk? type)))) "Internal error")
+                (assert (not (and (not opt-free-versioning) (not (ctx-type-unk? type)))) "Internal error")
                 (codegen-get-free cgc (ctx-fs ctx) (ctx-ffs ctx) reg lclo loc))
               ;; The variable is in a register or in non closure memory
               (apply-moves cgc ctx (list (cons loc reg))))
