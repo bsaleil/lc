@@ -329,10 +329,11 @@ systems = []
 # systems.append(gambit_no_options("Gambitf64v", 512000))
 
 # LC/Pycket (exec+compil time)
-systems.append(pycket_no_options("Pycket"));
-systems.append(lc_with_options_notime("LC5", ["--max-versions 5"]));
-systems.append(lcf64v_with_options_notime("LC5f64", ["--max-versions 5"]));
-systems.append(lc_with_options_notime("LCnaive", ["--max-versions 0", "--disable-float-unboxing", "--disable-entry-points", "--disable-return-points", "--disable-regalloc-vers"]))
+systems.append(lc_with_options_notime("LC5", []))
+# systems.append(pycket_no_options("Pycket"));
+# systems.append(lc_with_options_notime("LC5", ["--max-versions 5"]));
+# systems.append(lcf64v_with_options_notime("LC5f64", ["--max-versions 5"]));
+# systems.append(lc_with_options_notime("LCnaive", ["--max-versions 0", "--disable-float-unboxing", "--disable-entry-points", "--disable-return-points", "--disable-regalloc-vers"]))
 
 # # LC/Gambit/LC (exec time)
 # systems.append(gambit_no_options("Gambit", 512000))

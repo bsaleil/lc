@@ -67,6 +67,7 @@
 (define opt-disable-pair-tag     #f) ;; Use the generic TAG_MEMOBJ tag for pairs instead of the specific TAG_PAIR tag
 (define opt-count-fnargs         #f) ;; Count and print the number of arguments used at function calls
 (define opt-free-versioning      #t) ;; Use free variable information in code versioning
+(define opt-count-table-specs    #f) ;; Count and print the number of specializations of cxtables
 
 (define opt-propagate-continuation #f) ;; TODO
 (define opt-regalloc-inlined-call #f)  ;; TODO
