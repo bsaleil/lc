@@ -18,6 +18,12 @@ EXEC_ONLY = False
 if '--exec-only' in sys.argv:
     EXEC_ONLY = True
 
+LC_PATH = os.path.dirname(os.path.abspath(__file__)) + "/../../"
+LC_BIN = LC_PATH + "/lc"
+
+CUSTOM_GSC_PATH = "/home/bapt/Bureau/github-repos/gambitBSALEIL"
+CUSTOM_GSC_BIN_PATH = CUSTOM_GSC_PATH + "/build/bin"
+
 #---------------------------------------------------------------------------
 
 class Config:
@@ -228,31 +234,31 @@ def userWants(str):
     return r == 'y'
 
 def lc_with_options(name,options):
-    opts = ["/home/bapt/Bureau/these/lc/lc","{0}","--time"]
+    opts = [LC_BIN,"{0}","--time"]
     opts = opts + options
     newenv = os.environ.copy()
-    newenv["PATH"] = "/home/bapt/Bureau/gambitBSALEIL/BUILD/bin/:" + newenv["PATH"]
+    newenv["PATH"] = CUSTOM_GSC_BIN_PATH + ":" + newenv["PATH"]
     return System(name,"LC","",".scm",opts,"(?:.*\n){13}Real time: ([^\n]*)\n","(?:.*\n){16}GC real time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
 
 def lc_with_options_notime(name,options):
-    opts = ["/home/bapt/Bureau/these/lc/lc","{0}"]
+    opts = [LC_BIN,"{0}"]
     opts = opts + options
     newenv = os.environ.copy()
-    newenv["PATH"] = "/home/bapt/Bureau/gambitBSALEIL/BUILD/bin/:" + newenv["PATH"]
+    newenv["PATH"] = CUSTOM_GSC_BIN_PATH + ":" + newenv["PATH"]
     return System(name,"LC","",".scm",opts,"(?:.*\n){4}Real time: ([^\n]*)\nGC","(?:.*\n){7}GC real time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
 
 def lcf64v_with_options(name,options):
-    opts = ["/home/bapt/Bureau/these/lc/lc","{0}","--time"]
+    opts = [LC_BIN,"{0}","--time"]
     opts = opts + options
     newenv = os.environ.copy()
-    newenv["PATH"] = "/home/bapt/Bureau/gambitBSALEIL/BUILD/bin/:" + newenv["PATH"]
+    newenv["PATH"] = CUSTOM_GSC_BIN_PATH + ":" + newenv["PATH"]
     return System(name,"LCf64v","",".scm",opts,"(?:.*\n){13}Real time: ([^\n]*)\n","(?:.*\n){16}GC real time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
 
 def lcf64v_with_options_notime(name,options):
-    opts = ["/home/bapt/Bureau/these/lc/lc","{0}"]
+    opts = [LC_BIN,"{0}"]
     opts = opts + options
     newenv = os.environ.copy()
-    newenv["PATH"] = "/home/bapt/Bureau/gambitBSALEIL/BUILD/bin/:" + newenv["PATH"]
+    newenv["PATH"] = CUSTOM_GSC_BIN_PATH + ":" + newenv["PATH"]
     return System(name,"LCf64v","",".scm",opts,"(?:.*\n){4}Real time: ([^\n]*)\nGC","(?:.*\n){7}GC real time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
 
 def pycket_no_options(name):
@@ -346,7 +352,7 @@ systems.append(lc_with_options_notime("LC5", []))
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))
 
-distPath = "/home/bapt/Bureau/these/lc/tools/benchtimes"
+distPath = LC_PATH + "/tools/benchtimes"
 
 config.benchPath = distPath + '/bench/'
 config.resPath = scriptPath + '/result/'
