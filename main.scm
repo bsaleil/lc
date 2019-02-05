@@ -656,21 +656,23 @@
     (println "}"))
 
   (define (format-n-versions n)
-    (print-array-item "~#versions")
+    (print-array-item "~# versions")
     (print-array-item n))
 
   (define (format-serial s)
-    (print-array-item "~#serial")
+    (print-array-item "~# serial")
     (print-array-item s))
 
   (define (format-ctxs versions)
     (define (format-ctx ctx n)
       ;; Ctx id
-      (print-array-item (string-append "~ctx" (number->string n)))
+      (print-array-item (string-append "~version"))
       ;; Stack
       (print-array-item
         (string-append
-          "Stack -> "
+          "v"
+          (number->string n)
+          ": "
           (with-output-to-string '()
             (lambda ()
               (for-each
