@@ -128,6 +128,10 @@
     "Count and print the number of arguments used at function calls"
     ,(lambda (args) (set! opt-count-fnargs #t) args))
 
+  (--count-table-specs
+    "Count and print the number of specializations of cxtables"
+    ,(lambda (args) (set! opt-count-table-specs #t) args))
+
   (--ctime
     "Print compilation time after execution"
     ,(lambda (args) (set! opt-ctime #t) args))
@@ -149,6 +153,10 @@
   (--disable-float-unboxing
     "Disable automatic float unboxing based on type specialization"
     ,(lambda (args) (set! opt-float-unboxing #f) args))
+
+  (--disable-free-versioning
+    "Disable versioning based on free variables"
+    ,(lambda (args) (set! opt-free-versioning #f) args))
 
   (--disable-inlined-call
     "Disable lazy call inlining when callee identity is known. Lazy call inlining causes function duplication which is
@@ -226,6 +234,7 @@
     ,(lambda (args) (if opt-time (error "--stats-full option can't be used with --time"))
                     (set! opt-stats #t)
                     (set! opt-count-fnargs #t)
+                    (set! opt-count-table-specs #t)
                     (set! opt-stats-full #t)
                     args))
 
@@ -496,6 +505,8 @@
       (print-stats))
   (if opt-count-fnargs
       (print-count-fnargs))
+  (if opt-count-table-specs
+      (print-count-table-specs))
   (if opt-stats-full
       (print-stats-full))
   (if opt-export-locat-info
@@ -568,6 +579,41 @@
   (println "Number of call executed per number of arguments (rest)")
   (println "#args:#calls")
   (print count-fnargsr-block count-fnargs-block-len)
+  (println "-------------------------"))
+
+(define (print-count-table-specs)
+
+  (define (get-cxtable-spec tables)
+    (define rtable '())
+    (define (add nspec)
+      (let ((r (assoc nspec rtable)))
+        (if r
+            (set-cdr! r (+ (cdr r) 1))
+            (set! rtable (cons (cons nspec 1) rtable)))))
+    (let ((lsts (table->list tables)))
+      (map (lambda (el)
+             (let ((nspec (table-length (cdr el))))
+               (add nspec)))
+           lsts))
+    rtable)
+
+  (define (export cxtables)
+    (let* ((cc (get-cxtable-spec cxtables))
+           (smax (apply max (map car cc))))
+      (let loop ((i 0))
+        (if (<= i smax)
+            (let ((r (assoc i cc)))
+              (println i ":" (or r 0))
+              (loop (+ i 1)))))))
+
+  (println "-------------------------")
+  (println "Number of cctables per number of specialized tables")
+  (println "#spec:#tables")
+  (export all-cctables)
+  (println "-------------------------")
+  (println "Number of crtables per number of specialized tables")
+  (println "#spec:#tables")
+  (export all-crtables)
   (println "-------------------------"))
 
 (define (print-stats-full)
