@@ -7,7 +7,7 @@
 <!--**************************************************-->
 <!--CSS-->
 <style type="text/css" media="screen">
-    * { font-family: Monaco, Menlo, "Ubuntu Mono", Consolas, source-code-pro, monospace; font-size: 20px; padding:0; margin:0;}
+    * { font-family: Monaco, Menlo, Consolas, source-code-pro, "Ubuntu Mono", monospace; font-size: 20px; padding:0; margin:0;}
     html, body { height: 100%; color:#cccccc; background-color: #2d2d2d; }
     #header  { height: 5%; color:#f99157; }
     #img-warning { width: 25px; height: auto;}
@@ -50,6 +50,25 @@
       background:rgba(100,200,100,0.5);
       z-index:20
     }
+
+    html {
+      scrollbar-face-color: #646464;
+      scrollbar-base-color: #646464;
+      scrollbar-3dlight-color: #646464;
+      scrollbar-highlight-color: #646464;
+      scrollbar-track-color: #000;
+      scrollbar-arrow-color: #000;
+      scrollbar-shadow-color: #646464;
+      scrollbar-dark-shadow-color: #646464;
+    }
+
+    ::-webkit-scrollbar { width: 8px; height: 3px;}
+    ::-webkit-scrollbar-button {  background-color: #666; }
+    ::-webkit-scrollbar-track {  background-color: #646464;}
+    ::-webkit-scrollbar-track-piece { background-color: #000;}
+    ::-webkit-scrollbar-thumb { height: 50px; background-color: #666; border-radius: 3px;}
+    ::-webkit-scrollbar-corner { background-color: #646464;}}
+    ::-webkit-resizer { background-color: #666;}
 </style>
 <!--**************************************************-->
 
@@ -97,7 +116,6 @@
   //   "5.15": ["#versions","1", "ctx1","(fixnum fixnum)","ctx2","(fixnum)"],
   // };
 
-  // TODO
   function trOver(tr)
   {
     resetWarning();
@@ -136,7 +154,6 @@
          .replace(/'/g, "&#039;");
  }
 
-  // TODO expecting locat row/col
   function setActiveObj(row,col,nlo)
   {
     var ace_row = row-1;
@@ -151,11 +168,21 @@
       editor.renderer.scrollCursorIntoView({row: ace_row, column: 1}, 0.5) // Scroll and center to cursor if needed.
       // Print expr info
       var str = row + "." + col + "." + nlo + "<br/>";
+      var online = false;
       info.forEach(function (el){
-        if (el[0] == '~')
+        if (el == '~# versions')
+          str += "<b>" + escapeHtml(el.substr(1)) + ":</b>";
+        else if (el == '~# serial')
+          str += "<b>" + escapeHtml(el.substr(1)) + ":</b>";
+        else if (el == '~version')
+            str += ""
+        else if (el[0] == '~')
           str += "<b>" + escapeHtml(el.substr(1)) + ":</b><br/>";
-        else
-          str += "&nbsp;&nbsp;" + escapeHtml(el) + "<br/>";
+        else {
+          if (el[0] == "v" && el[1] == "1")
+            str += "<b>versions:</b><br/>"
+          str += "&nbsp" + escapeHtml(el) + "<br/>";
+        }
       });
       document.getElementById("info").innerHTML = str;
       // Add new highlighting marker
@@ -201,7 +228,9 @@
   editor.setTheme("ace/theme/tomorrow_night_eighties");
   editor.setFontSize(20);
   editor.getSession().setMode("ace/mode/scheme");
-  editor.setReadOnly(true)
+  editor.setReadOnly(true);
+  editor.setOptions({readOnly: true, highlightActiveLine: false, highlightGutterLine: false});
+  editor.renderer.$cursorLayer.element.style.display = "none";
   editor.setValue(code);
   editor.selection.moveTo(0,0); // scroll to top by setting the cursor to 0,0
   editor.on("mousemove", function (e)
