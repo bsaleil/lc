@@ -603,7 +603,7 @@
       (let loop ((i 0))
         (if (<= i smax)
             (let ((r (assoc i cc)))
-              (println i ":" (or r 0))
+              (println i ":" (or (and r (cdr r)) 0))
               (loop (+ i 1)))))))
 
   (println "-------------------------")
