@@ -269,6 +269,11 @@ def pycket_no_options(name):
     newenv["PYTHONPATH"] = "/home/bapt/Bureau/testPycket/pycket:/home/bapt/Bureau/testPycket/pycket/pypy"
     return System(name,"Pycket","",".scm",opts,"real time:[\s]*([\S]*)[\s]*gc time", "gc time:[\s]*([\S]*)[\s]*", lambda x: x, newenv)
 
+def gambit_boxunbox_no_options(name):
+    opts = []
+    cmd = "/home/bapt/Bureau/gambitBOXUNBOX/gsc/gsc -:=/home/bapt/Bureau/gambitBOXUNBOX/ -exe -o {0}.o1 {0}"
+    return System(name,name,cmd,".o1",["{0}"],"(\d+) ms real time\\n","accounting for (\d+) ms real time",lambda x: x,False)
+
 def gambit_no_options(name,gcsize):
     opts = []
     cmd = "gsc -:m"+ str(gcsize) + " -exe -o {0}.o1 {0}"
@@ -337,6 +342,9 @@ systems = []
 # LC/Pycket (exec+compil time)
 systems.append(lc_with_options_notime("LC", []))
 systems.append(lcf64v_with_options_notime("LCf64v", []))
+
+systems.append(gambit_boxunbox_no_options("GambitBU"))
+systems.append(gambit_boxunbox_no_options("GambitBUf64v"))
 # systems.append(pycket_no_options("Pycket"));
 # systems.append(lc_with_options_notime("LC5", ["--max-versions 5"]));
 # systems.append(lcf64v_with_options_notime("LC5f64", ["--max-versions 5"]));
