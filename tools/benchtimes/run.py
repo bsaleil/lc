@@ -262,11 +262,10 @@ def lcf64v_with_options_notime(name,options):
     return System(name,"LCf64v","",".scm",opts,"(?:.*\n){4}Real time: ([^\n]*)\nGC","(?:.*\n){7}GC real time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
 
 def pycket_no_options(name):
-    opts = ["/home/bapt/Bureau/testPycket/pycket/pycket-c","{0}"]
+    opts = ["/home/bapt/Bureau/pycket/pycket/pycket-c-linklets","{0}"]
     newenv = os.environ.copy()
-    newenv["PLTHOME"] = "/home/bapt/Bureau/testPycket/racket/"
-    newenv["PATH"] = "/home/bapt/Bureau/testPycket/racket/racket/bin/:" + newenv["PATH"]
-    newenv["PYTHONPATH"] = "/home/bapt/Bureau/testPycket/pycket:/home/bapt/Bureau/testPycket/pycket/pypy"
+    newenv["PLTCOLLECTS"] = "/usr/share/racket/collects"
+    newenv["PYTHONPATH"] = "/home/bapt/Bureau/pycket/pycket/:/home/bapt/Bureau/pycket/pycket/pypy/"
     return System(name,"Pycket","",".scm",opts,"real time:[\s]*([\S]*)[\s]*gc time", "gc time:[\s]*([\S]*)[\s]*", lambda x: x, newenv)
 
 def gambit_no_options(name,gcsize):
@@ -335,7 +334,7 @@ systems = []
 # systems.append(gambit_no_options("Gambitf64v", 512000))
 
 # LC/Pycket (exec+compil time)
-systems.append(lc_with_options_notime("LC5", []))
+#systems.append(lc_with_options_notime("LC5", []))
 # systems.append(pycket_no_options("Pycket"));
 # systems.append(lc_with_options_notime("LC5", ["--max-versions 5"]));
 # systems.append(lcf64v_with_options_notime("LC5f64", ["--max-versions 5"]));
@@ -348,6 +347,20 @@ systems.append(lc_with_options_notime("LC5", []))
 # systems.append(lcf64v_with_options("LC5f64", ["--max-versions 5"]));
 # systems.append(lc_with_options("LCnaive", ["--max-versions 0", "--disable-float-unboxing", "--disable-entry-points", "--disable-return-points", "--disable-regalloc-vers"]));
 # systems.append(lcf64v_with_options("LCf64naive", ["--max-versions 0", "--disable-float-unboxing", "--disable-entry-points", "--disable-return-points", "--disable-regalloc-vers"]));
+
+##
+## Thesis
+# systems.append(lcf64v_with_options("LCtime-1", ["--disable-inlined-call", "--disable-entry-points", "--disable-return-points", "--disable-float-unboxing", "--max-versions 0"]))
+# systems.append(lcf64v_with_options("LCtime-2", ["--disable-inlined-call", "--disable-entry-points", "--disable-return-points"]))
+# systems.append(lcf64v_with_options("LCtime-3", ["--disable-inlined-call", "--disable-entry-points", "--disable-return-points", "--max-versions 5"]))
+# systems.append(lcf64v_with_options("LCtime-4", []))
+# systems.append(lcf64v_with_options("LCtime-5", ["--max-versions 5"]))
+# systems.append(lcf64v_with_options("LCtime-6", ["--disable-float-unboxing"]))
+# systems.append(lcf64v_with_options("LCtime-7", ["--disable-float-unboxing", "--max-versions 5"]))
+# systems.append(lcf64v_with_options("LCtime-8", ["--nan-boxing"]))
+# systems.append(lcf64v_with_options("LCtime-9", ["--nan-boxing", "--max-versions 5"]))
+systems.append(pycket_no_options("Pycket"));
+##
 
 config = Config()
 scriptPath = os.path.dirname(os.path.realpath(__file__))
