@@ -31,6 +31,12 @@ from scipy import stats
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.ticker import FuncFormatter
 
+def remove_last_if_empty(lst):
+    if (lst[-1] == ''):
+        return lst[:-1]
+    else:
+        return lst
+
 class Graph:
     def __init__(self,dataobj):
         self.dataobj = dataobj
@@ -152,7 +158,8 @@ class Graph:
         # Draw bars
         self.draw_bars(xlabels,data,bar_labels)
         # Draw legend
-        self.draw_legend(len(data));
+        if (len(data) > 1):
+            self.draw_legend(len(data));
         # Setup axes & grid
         self.setup_axes(self.axes,len(xlabels));
         # Export to pdf or show
@@ -220,11 +227,13 @@ class Data:
         with open(CSV_FILE, 'r') as file:
             lines = file.readlines();
             colLabels = lines[0].replace("\n","").split(';')[1:]
+            colLabels  = remove_last_if_empty(colLabels);
             rowLabels = list(map(lambda x:x.split(";")[0],lines))[1:]
 
             data = []
             for line in lines[1:]:
                 strs = line.replace("\n","").split(";")[1:]
+                strs = remove_last_if_empty(strs);
                 nums = list(map(float,strs))
                 data.append(nums)
             return Data(rowLabels,colLabels,data)
