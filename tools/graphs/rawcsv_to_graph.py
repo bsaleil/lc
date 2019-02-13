@@ -3,10 +3,10 @@
 
 import sys
 
-if len(sys.argv) != 6:
+if len(sys.argv) != 7:
     print("Invalid arguments")
     print("Usage:")
-    print('   python thisscript.py path/to/file.csv ref_col sort_col "col1:col2:...:coln" "name1:name2:...:name3"')
+    print('   python thisscript.py path/to/file.csv ref_col sort_col mean "col1:col2:...:coln" "name1:name2:...:name3"')
     sys.exit(0)
 
 CSV_FILE  = sys.argv[1]
@@ -14,16 +14,16 @@ REF_COL   = sys.argv[2]
 SORT_COL  = False
 if sys.argv[3] != "no":
     SORT_COL = sys.argv[3]
-DRAW_COLS = sys.argv[4].split(":")
-BAR_NAMES = sys.argv[5].split(":")
+MEAN      = False # MEAN is "no", "geo" or "arith"
+if sys.argv[4] != "no":
+    MEAN = sys.argv[4]
+DRAW_COLS = sys.argv[5].split(":")
+BAR_NAMES = sys.argv[6].split(":")
 
 FONT_SIZE = 9
 
-COLOR_MAX = 0.4
+COLOR_MAX = 0.5
 COLOR_MIN = 0.8
-
-# MEAN is False, "geo" or "arith"
-MEAN = "arith"
 
 import matplotlib.pyplot as plt; plt.rcdefaults()
 import numpy as np
@@ -67,8 +67,8 @@ class Graph:
         # Set x axis limit
         nx = nb_x_els
         if MEAN:
-            nx += 1
-        axes.set_xlim([0,nx])
+            nx += 2 # 1 space and 1 mean
+        axes.set_xlim([0,nx+self.bar_width])
         # Rotate x labels
         labels = axes.get_xticklabels()
         plt.setp(labels, rotation=45)
@@ -107,18 +107,18 @@ class Graph:
     def draw_bars(self,xlabels,data,bar_labels):
         # Compute colors
         if (len(data) == 1):
-            color_step = COLOR_MAX - COLOR_MIN
+            colors = ['0.5']
         else:
             color_step = (COLOR_MAX - COLOR_MIN) / (len(data)-1)
-        colors = np.arange(COLOR_MIN,COLOR_MAX+color_step,color_step)
-        colors = list(map(str, colors))
+            colors = np.arange(COLOR_MIN,COLOR_MAX+color_step,color_step)
+            colors = list(map(str, colors))
         #
         length = len(xlabels)
         if MEAN:
-            length += 1
+            length += 2 # 1 space, 1 mean
         y_pos = np.arange(length)
-        bar_width = 1.0/(len(data)+1)
-        margin = 0
+        self.bar_width = 1.0/(len(data)+1)
+        margin = self.bar_width
         i = 0
 
         for d in data:
@@ -129,17 +129,20 @@ class Graph:
                     mean = np.mean(d)
                 elif MEAN == "geo":
                     mean = stats.mstats.gmean(d);
-                d = d + [mean];
+                d = d + [0] # space
+                d = d + [mean]
                 print('Mean ' + bar_labels[i] + ': ' + str(mean))
             # draw
-            plt.bar(y_pos+margin,d,width=bar_width, align='edge', alpha=1.0,label=bar_labels[i],color=colors[i])
-            margin += bar_width
+            plt.bar(y_pos+margin,d,width=self.bar_width, align='edge', alpha=1.0,label=bar_labels[i],color=colors[i])
+            margin += self.bar_width
             i += 1
         if MEAN == "arith":
-            xlabels = xlabels + ['arith-mean']
+            xlabels = xlabels + ['', 'arith-mean']
         elif MEAN == "geo":
-            xlabels = xlabels + ['geo-mean']
-        plt.xticks(y_pos+((1.0-bar_width)/2.0)+0.25, xlabels, ha='right')
+            xlabels = xlabels + ['', 'geo-mean']
+        offset = self.bar_width + (self.bar_width * len(data)) / 2.0
+        offset += 0.25 # add constant
+        plt.xticks(y_pos + offset, xlabels, ha='right')
 
     def draw(self,bar_labels):
         xlabels, data = self.prepare_data()

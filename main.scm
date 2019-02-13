@@ -534,7 +534,7 @@
 (define (print-stats)
   ;; Print stats report
   (let ((code-bytes (- code-alloc code-addr))
-        (stub-bytes (- (+ code-addr code-len) stub-alloc)))
+        (stub-bytes (- (+ ssb-addr ssb-len) stub-alloc)))
     ;; Code size
     (println "Code size (bytes): " code-bytes)
     ;; Stub size
@@ -603,7 +603,7 @@
       (let loop ((i 0))
         (if (<= i smax)
             (let ((r (assoc i cc)))
-              (println i ":" (or r 0))
+              (println i ":" (or (and r (cdr r)) 0))
               (loop (+ i 1)))))))
 
   (println "-------------------------")
