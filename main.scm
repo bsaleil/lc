@@ -514,8 +514,8 @@
 
 (define (print-ctime)
   (println
-    "Compilation time (real time):"
-    real-compilation-time))
+    "Compilation time:"
+    (* real-compilation-time 1000.0))) ;; print in ms
 
 (define (print-mcb)
   (let ((f (open-output-file "dump.bin")))

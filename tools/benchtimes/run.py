@@ -178,16 +178,20 @@ class System:
                     continue
 
                 timems = res[0]
+                gctimems = 0.0;
                 # Remove gc time
-                res = re.findall(self.regexgc, sout)
-                assert (len(res) == 0 or len(res) == 1)
-                if (len(res) == 1):
-                    timems = (float(timems) - float(res[0]))
-                    gctimems = float(res[0])
+                if (self.regexgc):
+                    res = re.findall(self.regexgc, sout)
+                    assert (len(res) == 0 or len(res) == 1)
+                    if (len(res) == 1):
+                        timems = (float(timems) - float(res[0]))
+                        gctimems = float(res[0])
+                    else:
+                        assert "no collections" in sout, "Invalid regexp"
+                        timems = float(timems)
+                        gctimems = 0.0
                 else:
-                    assert "no collections" in sout, "Invalid regexp"
                     timems = float(timems)
-                    gctimems = 0.0
 
                 timems = self.time_to_ms(timems)
                 gctimems = self.time_to_ms(gctimems)
@@ -247,6 +251,13 @@ def lc_with_options_notime(name,options):
     newenv["PATH"] = CUSTOM_GSC_BIN_PATH + ":" + newenv["PATH"]
     return System(name,"LC","",".scm",opts,"(?:.*\n){4}Real time: ([^\n]*)\nGC","(?:.*\n){7}GC real time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
 
+def lc_with_options_ctime(name,options):
+    opts = [LC_BIN,"{0}","--ctime"]
+    opts = opts + options
+    newenv = os.environ.copy()
+    newenv["PATH"] = CUSTOM_GSC_BIN_PATH + ":" + newenv["PATH"]
+    return System(name,"LC","",".scm",opts,"Compilation time:([^\\n]*)",False,lambda x: x,newenv)
+
 def lcf64v_with_options(name,options):
     opts = [LC_BIN,"{0}","--time"]
     opts = opts + options
@@ -260,6 +271,14 @@ def lcf64v_with_options_notime(name,options):
     newenv = os.environ.copy()
     newenv["PATH"] = CUSTOM_GSC_BIN_PATH + ":" + newenv["PATH"]
     return System(name,"LCf64v","",".scm",opts,"(?:.*\n){4}Real time: ([^\n]*)\nGC","(?:.*\n){7}GC real time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
+
+def lcf64v_with_options_ctime(name,options):
+    opts = [LC_BIN,"{0}","--ctime"]
+    opts = opts + options
+    newenv = os.environ.copy()
+    newenv["PATH"] = CUSTOM_GSC_BIN_PATH + ":" + newenv["PATH"]
+    return System(name,"LCf64v","",".scm",opts,"Compilation time:([^\\n]*)",False,lambda x: x,newenv)
+
 
 def pycket_no_options(name):
     opts = ["/home/bapt/Bureau/testPycket/pycket/pycket-c","{0}"]
@@ -339,12 +358,15 @@ systems = []
 # systems.append(gambit_no_options("Gambit", 512000))
 # systems.append(gambit_no_options("Gambitf64v", 512000))
 
-# LC/Pycket (exec+compil time)
-systems.append(lc_with_options_notime("LC", []))
-systems.append(lcf64v_with_options_notime("LCf64v", []))
+systems.append(lc_with_options_ctime("lcctimevec", []))
+systems.append(lcf64v_with_options_ctime("lcctimefec", []))
 
-systems.append(gambit_boxunbox_no_options("GambitBU"))
-systems.append(gambit_boxunbox_no_options("GambitBUf64v"))
+# LC/Pycket (exec+compil time)
+# systems.append(lc_with_options_notime("LC", []))
+# systems.append(lcf64v_with_options_notime("LCf64v", []))
+#
+# systems.append(gambit_boxunbox_no_options("GambitBU"))
+# systems.append(gambit_boxunbox_no_options("GambitBUf64v"))
 # systems.append(pycket_no_options("Pycket"));
 # systems.append(lc_with_options_notime("LC5", ["--max-versions 5"]));
 # systems.append(lcf64v_with_options_notime("LC5f64", ["--max-versions 5"]));
