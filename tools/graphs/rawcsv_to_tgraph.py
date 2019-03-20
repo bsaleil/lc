@@ -79,11 +79,15 @@ class Graph:
         plt.setp(labels, rotation=45)
         # Add latex '%' to ylabels
         #formatter = FuncFormatter(lambda y,pos: str(int(y) / 100.0) + r'\tiny $\times$')
-        formatter = FuncFormatter(lambda y,pos:str("%.1f" % int(y))+r'\tiny $\times$')
+        formatter = FuncFormatter(lambda y,pos:str("%.1f" % y)+r'\tiny $\times$')
         axes.yaxis.set_major_formatter(formatter)
         #
         start, end = axes.get_ylim()
-        axes.yaxis.set_ticks(np.arange(start, end, 1.0))
+        print(start)
+        print(end)
+        print(np.arange(start, end, 0.5))
+        axes.yaxis.set_ticks([0.5,1.0])
+        #axes.yaxis.set_ticks(np.arange(start, end, 0.5))
 
     def draw_legend(self,nb_bars):
         legend = plt.legend(bbox_to_anchor=(0.0, 1.02, 1., .0), loc=3, ncol=nb_bars, mode="expand", borderaxespad=0.,fontsize=FONT_SIZE,fancybox=False)
@@ -193,7 +197,7 @@ class Data:
             if '(gc)' in colname:
                 result.append(1.0)
             else:
-                result.append(1.0 / (val / ref))
+                result.append(val / ref)
         return result
 
     def extract_cols(self,colLabels):
@@ -212,7 +216,7 @@ class Data:
         if (colName != "X"):
             colIdx = self.colLabels.index(colName)
         # Sort data and row labels
-        data, labels = (list(t) for t in zip(*sorted(zip(self.data, self.rowLabels), key=lambda x:x[0][colIdx], reverse=True)))
+        data, labels = (list(t) for t in zip(*sorted(zip(self.data, self.rowLabels), key=lambda x:x[0][colIdx], reverse=False)))
         self.data = data;
         self.rowLabels = labels;
 

@@ -3,10 +3,10 @@
 
 import sys
 
-if len(sys.argv) != 8:
+if len(sys.argv) != 9:
     print("Invalid arguments")
     print("Usage:")
-    print('   python thisscript.py path/to/file.csv ref_col sort_col inverse? mean "col1:col2:...:coln" "name1:name2:...:name3"')
+    print('   python thisscript.py path/to/file.csv ref_col sort_col inverse? factor? mean "col1:col2:...:coln" "name1:name2:...:name3"')
     sys.exit(0)
 
 CSV_FILE  = sys.argv[1]
@@ -15,11 +15,12 @@ SORT_COL  = False
 if sys.argv[3] != "no":
     SORT_COL = sys.argv[3]
 INVERSE   = (sys.argv[4] == 'yes') #
+FACTOR    = (sys.argv[5] == 'yes')
 MEAN      = False # MEAN is "no", "geo" or "arith"
-if sys.argv[5] != "no":
-    MEAN = sys.argv[5]
-DRAW_COLS = sys.argv[6].split(":")
-BAR_NAMES = sys.argv[7].split(":")
+if sys.argv[6] != "no":
+    MEAN = sys.argv[6]
+DRAW_COLS = sys.argv[7].split(":")
+BAR_NAMES = sys.argv[8].split(":")
 
 FONT_SIZE = 9
 
@@ -83,8 +84,10 @@ class Graph:
         labels = axes.get_xticklabels()
         plt.setp(labels, rotation=45)
         # Add latex '%' to ylabels
-        #formatter = FuncFormatter(lambda y,pos: str(int(y) / 100.0) + r'\tiny $\times$')
-        formatter = FuncFormatter(lambda y,pos:str(int(y))+r'$\%$')
+        if FACTOR:
+            formatter = FuncFormatter(lambda y,pos: str(int(y) / 100.0) + r'\tiny $\times$')
+        else:
+            formatter = FuncFormatter(lambda y,pos:str(int(y))+r'$\%$')
         axes.yaxis.set_major_formatter(formatter)
 
     def draw_legend(self,nb_bars):
