@@ -101,6 +101,10 @@
     ,(lambda (args) (set! opt-cr-max (string->number (cadr args)))
                     (cdr args)))
 
+  (--code-size
+    "Print generated code size after execution"
+    ,(lambda (args) (set! opt-code-size #t) args))
+
   (--const-vers-types
     "Select the type of the constants used for interprocedural versioning. (ex. --const-vers-types boo cha str)"
     ,(lambda (args)
@@ -509,6 +513,8 @@
       (print-stats-full))
   (if opt-export-locat-info
       (export-locat-info))
+  (if (and opt-code-size (not opt-stats))
+      (print-code-size))
   (if opt-dump-bin
       (print-mcb)))
 
@@ -529,12 +535,16 @@
       (println ">> Dump written in dump.bin")
       (close-output-port f)))
 
+(define (print-code-size)
+  (let ((code-bytes (- code-alloc code-addr)))
+    (println "Code size (bytes): " code-bytes)))
+
 (define (print-stats)
   ;; Print stats report
   (let ((code-bytes (- code-alloc code-addr))
         (stub-bytes (- (+ ssb-addr ssb-len) stub-alloc)))
     ;; Code size
-    (println "Code size (bytes): " code-bytes)
+    (print-code-size)
     ;; Stub size
     (println "Stub size (bytes): " stub-bytes)
     ;; Code + Stub size

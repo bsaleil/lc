@@ -3,10 +3,10 @@
 
 import sys
 
-if len(sys.argv) != 8:
+if len(sys.argv) != 7:
     print("Invalid arguments")
     print("Usage:")
-    print('   python thisscript.py path/to/file.csv ref_col sort_col inverse? mean "col1:col2:...:coln" "name1:name2:...:name3"')
+    print('   python thisscript.py path/to/file.csv ref_col sort_col mean "col1:col2:...:coln" "name1:name2:...:name3"')
     sys.exit(0)
 
 CSV_FILE  = sys.argv[1]
@@ -14,20 +14,16 @@ REF_COL   = sys.argv[2]
 SORT_COL  = False
 if sys.argv[3] != "no":
     SORT_COL = sys.argv[3]
-INVERSE   = (sys.argv[4] == 'yes') #
 MEAN      = False # MEAN is "no", "geo" or "arith"
-if sys.argv[5] != "no":
-    MEAN = sys.argv[5]
-DRAW_COLS = sys.argv[6].split(":")
-BAR_NAMES = sys.argv[7].split(":")
+if sys.argv[4] != "no":
+    MEAN = sys.argv[4]
+DRAW_COLS = sys.argv[5].split(":")
+BAR_NAMES = sys.argv[6].split(":")
 
 FONT_SIZE = 9
 
 COLOR_MAX = 0.5
 COLOR_MIN = 0.8
-
-print('--')
-print(' '.join(sys.argv))
 
 import matplotlib.pyplot as plt; plt.rcdefaults()
 import numpy as np
@@ -57,7 +53,6 @@ class Graph:
         plt.rc('font', **font)
         # ytick every 50%
         fig, axes = plt.subplots(figsize=(7,2.5))
-        # ticks = np.arange(0, 401, 50)
         # axes.set_yticks(ticks)
         # axes.set_ylim(0,400)
         # Hide small guide lines of y axis and hide top lines of x axis
@@ -84,8 +79,11 @@ class Graph:
         plt.setp(labels, rotation=45)
         # Add latex '%' to ylabels
         #formatter = FuncFormatter(lambda y,pos: str(int(y) / 100.0) + r'\tiny $\times$')
-        formatter = FuncFormatter(lambda y,pos:str(int(y))+r'$\%$')
+        formatter = FuncFormatter(lambda y,pos:str("%.1f" % int(y))+r'\tiny $\times$')
         axes.yaxis.set_major_formatter(formatter)
+        #
+        start, end = axes.get_ylim()
+        axes.yaxis.set_ticks(np.arange(start, end, 1.0))
 
     def draw_legend(self,nb_bars):
         legend = plt.legend(bbox_to_anchor=(0.0, 1.02, 1., .0), loc=3, ncol=nb_bars, mode="expand", borderaxespad=0.,fontsize=FONT_SIZE,fancybox=False)
@@ -191,10 +189,11 @@ class Data:
         for data in self.data:
             ref = data[refidx]
             val = data[colidx]
-            if INVERSE:
-                result.append(100-(val*100.0/ref))
+
+            if '(gc)' in colname:
+                result.append(1.0)
             else:
-                result.append(val*100.0/ref)
+                result.append(1.0 / (val / ref))
         return result
 
     def extract_cols(self,colLabels):
@@ -213,7 +212,7 @@ class Data:
         if (colName != "X"):
             colIdx = self.colLabels.index(colName)
         # Sort data and row labels
-        data, labels = (list(t) for t in zip(*sorted(zip(self.data, self.rowLabels),key=lambda x:x[0][colIdx], reverse=INVERSE)))
+        data, labels = (list(t) for t in zip(*sorted(zip(self.data, self.rowLabels), key=lambda x:x[0][colIdx], reverse=True)))
         self.data = data;
         self.rowLabels = labels;
 
@@ -257,7 +256,7 @@ for colLabel in labels:
 # Export tex table
 dataobj.sort_name('X')
 tex = dataobj.to_tex_table()
-#print(tex)
+print(tex)
 
 do = dataobj.extract_cols(DRAW_COLS);
 
