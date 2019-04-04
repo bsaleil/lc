@@ -1755,30 +1755,21 @@
     (x86-je cgc label-div0)
 
     (x86-mov cgc (x86-rax) lopnd)
-    (x86-sar cgc (x86-rax) (x86-imm-int 2))
     (x86-cqo cgc)
 
-    (x86-sar cgc ropnd (x86-imm-int 2))
     (x86-idiv cgc ropnd)
 
     (cond ((eq? op 'quotient)
             (x86-shl cgc (x86-rax) (x86-imm-int 2))
             (x86-mov cgc dest (x86-rax)))
           ((eq? op 'remainder)
-            (x86-shl cgc (x86-rdx) (x86-imm-int 2))
             (x86-mov cgc dest (x86-rdx)))
           ((eq? op 'modulo)
             (x86-mov cgc (x86-rax) (x86-rdx))
             (x86-add cgc (x86-rax) ropnd)
             (x86-cqo cgc)
             (x86-idiv cgc ropnd)
-            (x86-shl cgc (x86-rdx) (x86-imm-int 2))
-            (x86-mov cgc dest (x86-rdx))))
-
-    ;; Restore ropnd
-    (if (and (not (= dest ropnd))
-             (not (= selector-reg ropnd)))
-        (x86-shl cgc ropnd (x86-imm-int 2))))
+            (x86-mov cgc dest (x86-rdx)))))
 
 ;;
 ;; odd? & even?

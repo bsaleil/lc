@@ -41,12 +41,10 @@
   (let ((tmp (gensym)))
     `(if opt-ctime
          (let ((,tmp (##exec-stats ,f)))
-           (set! user-compilation-time
-                 (+ (- (+ (cdr (assoc 'user-time ,tmp))
-                          (cdr (assoc 'sys-time  ,tmp)))
-                       (+ (cdr (assoc 'gc-user-time ,tmp))
-                          (cdr (assoc 'gc-sys-time ,tmp))))
-                    user-compilation-time))
+           (set! real-compilation-time
+                 (+ (- (cdr (assoc 'real-time ,tmp))
+                       (cdr (assoc 'gc-real-time ,tmp)))
+                    real-compilation-time))
            (cdr (assoc 'result ,tmp)))
          (,f))))
 
@@ -102,6 +100,10 @@
     "Set the max size of the global return points table"
     ,(lambda (args) (set! opt-cr-max (string->number (cadr args)))
                     (cdr args)))
+
+  (--code-size
+    "Print generated code size after execution"
+    ,(lambda (args) (set! opt-code-size #t) args))
 
   (--const-vers-types
     "Select the type of the constants used for interprocedural versioning. (ex. --const-vers-types boo cha str)"
@@ -511,13 +513,15 @@
       (print-stats-full))
   (if opt-export-locat-info
       (export-locat-info))
+  (if (and opt-code-size (not opt-stats))
+      (print-code-size))
   (if opt-dump-bin
       (print-mcb)))
 
 (define (print-ctime)
   (println
-    "Compilation time (user time):"
-    user-compilation-time))
+    "Compilation time:"
+    (* real-compilation-time 1000.0))) ;; print in ms
 
 (define (print-mcb)
   (let ((f (open-output-file "dump.bin")))
@@ -531,12 +535,16 @@
       (println ">> Dump written in dump.bin")
       (close-output-port f)))
 
+(define (print-code-size)
+  (let ((code-bytes (- code-alloc code-addr)))
+    (println "Code size (bytes): " code-bytes)))
+
 (define (print-stats)
   ;; Print stats report
   (let ((code-bytes (- code-alloc code-addr))
         (stub-bytes (- (+ ssb-addr ssb-len) stub-alloc)))
     ;; Code size
-    (println "Code size (bytes): " code-bytes)
+    (print-code-size)
     ;; Stub size
     (println "Stub size (bytes): " stub-bytes)
     ;; Code + Stub size

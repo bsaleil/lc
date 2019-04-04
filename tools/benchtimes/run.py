@@ -178,12 +178,18 @@ class System:
                     continue
 
                 timems = res[0]
+                gctimems = 0.0;
                 # Remove gc time
-                res = re.findall(self.regexgc, sout)
-                assert (len(res) == 0 or len(res) == 1)
-                if (len(res) == 1):
-                    timems = (float(timems) - float(res[0]))
-                    gctimems = float(res[0])
+                if (self.regexgc):
+                    res = re.findall(self.regexgc, sout)
+                    assert (len(res) == 0 or len(res) == 1)
+                    if (len(res) == 1):
+                        timems = (float(timems) - float(res[0]))
+                        gctimems = float(res[0])
+                    else:
+                        assert "no collections" in sout, "Invalid regexp"
+                        timems = float(timems)
+                        gctimems = 0.0
                 else:
                     assert "no collections" in sout, "Invalid regexp"
                     timems = float(timems)
@@ -339,8 +345,15 @@ systems = []
 # systems.append(gambit_no_options("Gambit", 512000))
 # systems.append(gambit_no_options("Gambitf64v", 512000))
 
+systems.append(lc_with_options_ctime("lcctimevec", []))
+systems.append(lcf64v_with_options_ctime("lcctimefec", []))
+
 # LC/Pycket (exec+compil time)
-systems.append(lc_with_options_notime("LC5", []))
+# systems.append(lc_with_options_notime("LC", []))
+# systems.append(lcf64v_with_options_notime("LCf64v", []))
+#
+# systems.append(gambit_boxunbox_no_options("GambitBU"))
+# systems.append(gambit_boxunbox_no_options("GambitBUf64v"))
 # systems.append(pycket_no_options("Pycket"));
 # systems.append(lc_with_options_notime("LC5", ["--max-versions 5"]));
 # systems.append(lcf64v_with_options_notime("LC5f64", ["--max-versions 5"]));

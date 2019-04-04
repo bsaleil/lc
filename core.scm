@@ -68,6 +68,8 @@
 (define opt-count-fnargs         #f) ;; Count and print the number of arguments used at function calls
 (define opt-free-versioning      #t) ;; Use free variable information in code versioning
 (define opt-count-table-specs    #f) ;; Count and print the number of specializations of cxtables
+(define opt-code-size            #f) ;; Print generated code size after execution
+
 
 (define opt-propagate-continuation #f) ;; TODO
 (define opt-regalloc-inlined-call #f)  ;; TODO
@@ -95,17 +97,15 @@
                  (loop (cdr preds)))))))
 
 ;; Macro to compute compilation time
-(define user-compilation-time 0)
+(define real-compilation-time 0.0)
 (define-macro (run-add-to-ctime f)
   (let ((tmp (gensym)))
     `(if opt-ctime
          (let ((,tmp (##exec-stats ,f)))
-           (set! user-compilation-time
-                 (+ (- (+ (cdr (assoc 'user-time ,tmp))
-                          (cdr (assoc 'sys-time  ,tmp)))
-                       (+ (cdr (assoc 'gc-user-time ,tmp))
-                          (cdr (assoc 'gc-sys-time ,tmp))))
-                    user-compilation-time))
+           (set! real-compilation-time
+                 (+ (- (cdr (assoc 'real-time ,tmp))
+                       (cdr (assoc 'gc-real-time ,tmp)))
+                    real-compilation-time))
            (cdr (assoc 'result ,tmp)))
          (,f))))
 
