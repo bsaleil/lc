@@ -113,7 +113,7 @@ class System:
         else:
             # Else, compile files
             for infile in files:
-                # TODO
+                #
                 filename = os.path.splitext(os.path.basename(infile))[0]
                 print('   ' + filename + '...')
                 cmd = self.ccmd.format(infile)
@@ -300,10 +300,10 @@ def gambit_no_options(name,gcsize):
 
 def chez_no_options(name):
     opts = []
-    cmd = "echo '(compile-file \"{0}\")' | /home/bapt/Bureau/xp-scheme/ChezScheme/a6le/bin/scheme -q"
+    cmd = "echo '(compile-program \"{0}\" \"{0}.so\")' | /home/bapt/Bureau/chezscheme/chez-build/bin/scheme -q"
     newenv = os.environ.copy()
-    newenv["SCHEMEHEAPDIRS"] = "/home/bapt/Bureau/xp-scheme/ChezScheme/boot/a6le/"
-    return System(name,name,cmd,".so",["/home/bapt/Bureau/xp-scheme/ChezScheme/a6le/bin/scheme","{0}"],"REGEXMS","REGEXGC",lambda x: x,newenv)
+    newenv["SCHEMEHEAPDIRS"] = "/home/bapt/Bureau/chezscheme/chez-build/lib/csv9.5.2/a6le/"
+    return System(name,"ChezScheme",cmd,".so",["/home/bapt/Bureau/chezscheme/chez-build/bin/scheme","--program","{0}"],"\\n([^s]*)s elapsed real time","real time, including ([^s]*)s collecting",lambda x: x*1000.0,newenv)
 
 #
 systems = []
@@ -358,8 +358,9 @@ systems = []
 # systems.append(gambit_no_options("Gambit", 512000))
 # systems.append(gambit_no_options("Gambitf64v", 512000))
 
-systems.append(lc_with_options_ctime("lcctimevec", []))
-systems.append(lcf64v_with_options_ctime("lcctimefec", []))
+systems.append(chez_no_options("ChezAOT"))
+# systems.append(gambit_no_options("Gambit", 512000))
+# systems.append(lcf64v_with_options("LCf64v", ["--max-versions 5"]))
 
 # LC/Pycket (exec+compil time)
 # systems.append(lc_with_options_notime("LC", []))
