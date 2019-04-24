@@ -191,7 +191,9 @@ class System:
                         timems = float(timems)
                         gctimems = 0.0
                 else:
+                    assert "no collections" in sout, "Invalid regexp"
                     timems = float(timems)
+                    gctimems = 0.0
 
                 timems = self.time_to_ms(timems)
                 gctimems = self.time_to_ms(gctimems)
@@ -251,13 +253,6 @@ def lc_with_options_notime(name,options):
     newenv["PATH"] = CUSTOM_GSC_BIN_PATH + ":" + newenv["PATH"]
     return System(name,"LC","",".scm",opts,"(?:.*\n){4}Real time: ([^\n]*)\nGC","(?:.*\n){7}GC real time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
 
-def lc_with_options_ctime(name,options):
-    opts = [LC_BIN,"{0}","--ctime"]
-    opts = opts + options
-    newenv = os.environ.copy()
-    newenv["PATH"] = CUSTOM_GSC_BIN_PATH + ":" + newenv["PATH"]
-    return System(name,"LC","",".scm",opts,"Compilation time:([^\\n]*)",False,lambda x: x,newenv)
-
 def lcf64v_with_options(name,options):
     opts = [LC_BIN,"{0}","--time"]
     opts = opts + options
@@ -271,14 +266,6 @@ def lcf64v_with_options_notime(name,options):
     newenv = os.environ.copy()
     newenv["PATH"] = CUSTOM_GSC_BIN_PATH + ":" + newenv["PATH"]
     return System(name,"LCf64v","",".scm",opts,"(?:.*\n){4}Real time: ([^\n]*)\nGC","(?:.*\n){7}GC real time: ([^\n]*)\n",lambda x: x*1000.0,newenv)
-
-def lcf64v_with_options_ctime(name,options):
-    opts = [LC_BIN,"{0}","--ctime"]
-    opts = opts + options
-    newenv = os.environ.copy()
-    newenv["PATH"] = CUSTOM_GSC_BIN_PATH + ":" + newenv["PATH"]
-    return System(name,"LCf64v","",".scm",opts,"Compilation time:([^\\n]*)",False,lambda x: x,newenv)
-
 
 def pycket_no_options(name):
     opts = ["/home/bapt/Bureau/testPycket/pycket/pycket-c","{0}"]
