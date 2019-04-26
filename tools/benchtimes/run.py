@@ -4,6 +4,7 @@ import os
 import shutil
 import glob
 import subprocess
+import statistics
 import sys
 import re
 
@@ -23,6 +24,10 @@ LC_BIN = LC_PATH + "/lc"
 
 CUSTOM_GSC_PATH = "/home/bapt/Bureau/github-repos/gambitBSALEIL"
 CUSTOM_GSC_BIN_PATH = CUSTOM_GSC_PATH + "/build/bin"
+
+# Coefficient of variation (exec & gc)
+COEFSVAR = []
+GCCOEFSVAR = []
 
 #---------------------------------------------------------------------------
 
@@ -206,8 +211,19 @@ class System:
             rawTimes.remove(min(rawTimes))
             rawGCTimes.remove(max(rawGCTimes))
             rawGCTimes.remove(min(rawGCTimes))
+
             mean = sum(rawTimes) / float(len(rawTimes))
             gcmean = sum(rawGCTimes) / float(len(rawGCTimes))
+
+            stddev = statistics.stdev(rawTimes)
+            COEFSVAR.append(stddev / mean * 100.0)
+
+            gcstddev = statistics.stdev(rawGCTimes)
+            if (gcmean == 0.0):
+                GCCOEFSVAR.append(0.0)
+            else:
+                GCCOEFSVAR.append(gcstddev / gcmean * 100.0)
+
             self.times[file] = mean
             self.gctimes[file] = gcmean
 
@@ -345,7 +361,8 @@ systems = []
 # systems.append(gambit_no_options("Gambit", 512000))
 # systems.append(gambit_no_options("Gambitf64v", 512000))
 
-systems.append(chez_no_options("ChezAOT"))
+systems.append(lc_with_options("LC5", ["--max-versions 5"]))
+#systems.append(chez_no_options("ChezAOT"))
 # systems.append(gambit_no_options("Gambit", 512000))
 # systems.append(lcf64v_with_options("LCf64v", ["--max-versions 5"]))
 
@@ -417,4 +434,8 @@ for benchmark in config.benchmarks:
         assert(key in system.gctimes.keys())
         print(system.times[key],end=';')
         print(system.gctimes[key],end=';')
-    print("");
+    print("")
+
+# Max coefficient of variation
+print("## Maximum coefficient of variation (exec): " + str(max(COEFSVAR)) + "%")
+print("## Maximum coefficient of variation (gc)  : " + str(max(GCCOEFSVAR)) + "%")
