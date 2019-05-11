@@ -36,7 +36,7 @@ Then, LC can be built:
 # Build LC
 git clone https://github.com/bsaleil/lc -b stable
 cd lc
-make -j8
+make debug -j8
 ```
 
 ### Running
